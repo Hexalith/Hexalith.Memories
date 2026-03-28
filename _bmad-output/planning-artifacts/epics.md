@@ -195,7 +195,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - Graph axis: dual-role — standalone traversal + optional fusion scorer (D2)
 - Eventual consistency + DAPR Workflow saga/compensation (D3)
 - Google embedding only in MVP; OpenAI/Mistral in Phase 1.5/2 (D4)
-- External Apache Tika container for content extraction (D13)
+- Kreuzberg NuGet package for content extraction — in-process, Rust core via P/Invoke (D13)
 - Versioned contract namespaces: `Contracts.V1` (D14)
 - Synthetic benchmark dataset with known relationships (D11)
 - Domain validation service: `IngestionValidator` (D12)
@@ -230,7 +230,7 @@ No UX Design document — this project is a Developer Tool / API Backend with no
 - FR1: Epic 1 — Ingest from local files
 - FR2: Epic 6 — Ingest from URLs
 - FR3: Epic 6 — Batch-ingest from directory
-- FR4: Epic 1 — Text extraction (Tika)
+- FR4: Epic 1 — Text extraction (Kreuzberg)
 - FR5: Epic 1 — Generate embeddings
 - FR6: Epic 1 — Memory unit fully searchable after ingestion
 - FR7: Epic 1 — Metadata with origin tracking
@@ -307,7 +307,7 @@ No UX Design document — this project is a Developer Tool / API Backend with no
 ### Phase: MVP — Gate 1 (Three-Axis Validation)
 
 ### Epic 1: Foundation, Ingestion & Graph Edge Indexing
-Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts, Redis (RediSearch + Vector), FalkorDB, Tika, git submodules, and the IndexGraphActivity.
+Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), git submodules, and the IndexGraphActivity.
 **FRs covered:** FR1, FR4, FR5, FR6, FR7, FR13, FR46, FR65, FR68
 
 ### Epic 2: Three-Axis Search, Fusion & Benchmark Validation
@@ -368,7 +368,7 @@ Every commit is automatically built, tested, and versioned via GitHub Actions. P
 
 ## Epic 1: Foundation, Ingestion & Graph Edge Indexing
 
-Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Tika, git submodules, and the IndexGraphActivity.
+Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), git submodules, and the IndexGraphActivity.
 
 ### Story 1.1: Project Scaffolding & Single-Command Boot
 
@@ -422,30 +422,29 @@ So that all services share a consistent, versioned type system with serializatio
 **When** I serialize it to JSON and deserialize it back
 **Then** the round-trip produces an identical object (contract tests pass)
 
-### Story 1.3: Content Extraction via Tika
+### Story 1.3: Content Extraction via Kreuzberg
 
 As a developer,
-I want the system to extract text from ingested files (plain text, PDF, markdown) using Apache Tika,
+I want the system to extract text from ingested files (plain text, PDF, markdown) using Kreuzberg NuGet,
 So that any supported file format can be processed into searchable content.
 
 **Acceptance Criteria:**
 
-**Given** the AppHost is running with Tika container on port 9998
+**Given** the Kreuzberg NuGet package is installed in the Server project
 **When** `ExtractContentActivity` receives a plain text file
 **Then** it returns the raw text content unchanged
 
-**Given** the AppHost is running with Tika container
+**Given** the Kreuzberg NuGet package is installed
 **When** `ExtractContentActivity` receives a PDF file
 **Then** it returns the extracted text content from the PDF
 
-**Given** the AppHost is running with Tika container
+**Given** the Kreuzberg NuGet package is installed
 **When** `ExtractContentActivity` receives a markdown file
 **Then** it returns the text content with markdown structure preserved
 
-**Given** the Tika container is unhealthy or unreachable
+**Given** `KreuzbergClient.ExtractBytesSync()` throws an exception
 **When** `ExtractContentActivity` is invoked
-**Then** it throws a retriable exception with a clear error message
-**And** the DAPR Workflow retry policy handles the retry with exponential backoff
+**Then** the exception propagates for DAPR Workflow retry with exponential backoff
 
 **Given** any supported file
 **When** extraction completes
@@ -1262,7 +1261,7 @@ So that I can populate case memory from web resources and local file collections
 
 **Given** a valid URL pointing to a web page or document
 **When** I ingest from that URL into a case (FR2)
-**Then** the system fetches the URL content, passes it through `ExtractContentActivity` (Tika), and processes it through the full `IngestionWorkflow`
+**Then** the system fetches the URL content, passes it through `ExtractContentActivity` (Kreuzberg), and processes it through the full `IngestionWorkflow`
 **And** the memory unit's SourceUri is set to the URL and SourceType is `url`
 
 **Given** a URL that returns a 404 or is unreachable

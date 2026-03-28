@@ -1,15 +1,39 @@
+using Dapr.Client;
 using Dapr.Workflow;
 
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.HealthChecks;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.ServiceDefaults;
+
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddDaprClient();
 
-// Test: Register DAPR Workflow with empty options.
-// If this throws at runtime with zero workflows, defer to Story 1.3.
-builder.Services.AddDaprWorkflow(options => { });
+TimeSpan healthCheckTimeout = TimeSpan.FromSeconds(3);
+_ = builder.Services.AddHealthChecks()
+    .AddCheck<DaprSidecarHealthCheck>(
+        "dapr-sidecar",
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"],
+        timeout: healthCheckTimeout)
+    .Add(new HealthCheckRegistration(
+        "dapr-statestore",
+        sp => new DaprStateStoreHealthCheck(
+            sp.GetRequiredService<DaprClient>(),
+            "statestore"),
+        failureStatus: HealthStatus.Unhealthy,
+        tags: ["ready"],
+        timeout: healthCheckTimeout));
+
+builder.Services.AddSingleton<IContentExtractionClient, ContentExtractionClient>();
+builder.Services.AddDaprWorkflow(options =>
+{
+    options.RegisterActivity<ExtractContentActivity>();
+});
 
 // Test: Register DAPR Actors with configuration.
 // If this throws at runtime with zero actors, defer to Story 1.4.

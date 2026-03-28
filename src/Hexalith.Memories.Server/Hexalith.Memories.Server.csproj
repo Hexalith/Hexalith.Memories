@@ -18,6 +18,7 @@
     <PackageReference Include="Dapr.Actors.AspNetCore" />
     <PackageReference Include="Dapr.AI" />
     <PackageReference Include="Dapr.AI.Microsoft.Extensions" />
+    <PackageReference Include="Kreuzberg" />
   </ItemGroup>
 
 </Project>

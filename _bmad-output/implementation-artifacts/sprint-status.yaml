@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-03-28 # Story 1.2 done
+# last_updated: 2026-03-28 # Story 1.3 done
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -36,7 +36,7 @@
 
 generated: 2026-03-26
 last_updated: 2026-03-28
- # Story 1.2 done
+ # Story 1.3 done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -49,8 +49,8 @@ development_status:
   epic-1: in-progress
   1-1-project-scaffolding-and-single-command-boot: done
   1-2-memory-unit-domain-model-and-contracts: done
-  1-3-content-extraction-via-kreuzberg: review
-  1-4-embedding-generation: backlog
+  1-3-content-extraction-via-kreuzberg: done
+  1-4-embedding-generation: ready-for-dev
   1-5-three-backend-indexing: backlog
   1-6-ingestion-workflow-orchestration: backlog
   1-7-embedding-provider-configuration: backlog

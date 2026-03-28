@@ -8,5 +8,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj" />
+    <Project Path="tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj" />
   </Folder>
 </Solution>

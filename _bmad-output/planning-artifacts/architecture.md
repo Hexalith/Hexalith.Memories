@@ -213,7 +213,7 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 | Fusion algorithm testable without backends | Pure function: `Fuse(List<ScoredResult>[], FusionWeights) → RankedResults`. No backend calls. |
 | Normalization independently testable | Separate functions: `NormalizeBm25(rawScore, corpusStats) → float`. Known inputs → known outputs. |
 | Corpus statistics injectable | `ICorpusStatisticsProvider` — real implementation delegates to `CorpusStatisticsActor`; test implementation returns fixed values. |
-| Workflow activities testable independently | Each activity is a standalone class with DI. Test activities directly without workflow engine. Mock external dependencies (Tika, embedding API, Redis, FalkorDB). |
+| Workflow activities testable independently | Each activity is a standalone class with DI. Test activities directly without workflow engine. Mock external dependencies (Kreuzberg, embedding API, Redis, FalkorDB). |
 | Workflow orchestration testable | Use DAPR Workflow test framework — verify activity sequencing, compensation paths, and retry behavior. |
 | Actor logic testable without DAPR | Extract business logic into plain service classes; actor is a thin host that delegates. Test the service, not the actor infrastructure. |
 | Consistency compensation testable | `ITenantInfrastructureResolver` doubles as fault injection point — test returns failing backend connection. Workflow compensation paths verified via activity mocks. |
@@ -514,7 +514,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 |---|---|---|---|---|
 | D11 | Benchmark test data | Synthetic dataset with known relationships and controlled vocabulary | Deterministic, reproducible, perfect ground truth for automated NDCG@10 scoring. Real-world validation deferred to Phase 1.5. | Benchmark suite, Gate 1 validation |
 | D12 | Input validation boundary | Domain validation service (`IngestionValidator`) | All entry points (REST, DAPR, MCP) share same validation. Single source of truth. Plain C# class, no infrastructure dependency. | Server, all ingestion paths |
-| D13 | Content extraction | External Apache Tika container | 1000+ format support, resource isolation (extraction doesn't spike Server memory), battle-tested. | Deployment topology (+1 container), AppHost, pipeline `extracting` stage, health checks |
+| D13 | Content extraction | Kreuzberg NuGet package (in-process, Rust core via P/Invoke) | 91+ format support, native .NET integration (zero dependencies), eliminates JVM container, built-in OCR/chunking/embeddings for future RAG phases. Trade-off: extraction runs in-process (no container isolation), acceptable for MVP payloads ≤1MB (NFR5). | `Directory.Packages.props` (+1 package), `ContentExtractionClient`, no AppHost container, no health check needed |
 | D14 | Contract evolution | Versioned namespaces (`Contracts.V1`, `Contracts.V2`) | Clean separation, consumers upgrade deliberately. MVP ships V1 only — no overhead until first breaking change. | All packages depending on Contracts, DAPR payloads, CloudEvents |
 
 ### API & Communication
@@ -538,7 +538,6 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | AI Agent Service + DAPR sidecar | Python Dapr Agents: AI enrichment, NLP, causal inference | ~256MB + sidecar | 5010, 3510, 50011 |
 | Redis Stack | RediSearch + Vector Search + DAPR state (workflows + actors) | ~512MB | 6379 |
 | FalkorDB | Graph database | ~256MB | 6380 |
-| Apache Tika | Content extraction service | ~256MB | 9998 |
 | Aspire Dashboard | Local dev observability | ~128MB | 18888, 18889 |
 
 ### Complete Decision Registry
@@ -557,7 +556,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D10 | Index rebuild: accept degradation | Design naming for concurrent versions | MVP |
 | D11 | Synthetic benchmark dataset | Deterministic ground truth | MVP |
 | D12 | Domain validation service | Consistent across entry points | MVP |
-| D13 | External Tika for content extraction | Resource isolation, format coverage | MVP |
+| D13 | Kreuzberg NuGet for content extraction | Native .NET, no JVM, RAG-ready, 91+ formats | MVP |
 | D14 | Versioned contract namespaces | Clean consumer upgrade path | MVP |
 | D15 | Type-scoped actor identity | Future-safe naming | MVP |
 | D16 | xUnit + Shouldly + NSubstitute (aligned with EventStore) | Ecosystem consistency | MVP |
@@ -578,7 +577,7 @@ Contracts.V1 ← Server ← AppHost
                   ↑
               FalkorDB
 
-Server Workflows → Activities → {Tika, Embedding API, Redis, FalkorDB}
+Server Workflows → Activities → {Kreuzberg (in-process), Embedding API, Redis, FalkorDB}
 Server Workflows → CallAiAgentActivity → DAPR service invocation → Python AI Agent Service
 Python AI Agent → DAPR Conversation API → LLM providers
 Server Actors → Redis (DAPR actor state store)
@@ -678,7 +677,7 @@ Three layers, matching EventStore:
 
 1. **Input validation:** FluentValidation via MediatR pipeline
 2. **Domain logic:** Result pattern (`DomainResult`) — never throw for business rules
-3. **Infrastructure:** Exceptions only for truly exceptional conditions (Redis down, Tika unreachable)
+3. **Infrastructure:** Exceptions only for truly exceptional conditions (Redis down, Kreuzberg extraction failure)
 
 **Error response format (MVP):**
 ```json
@@ -712,7 +711,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 }
 ```
 
-**Activity definition:** Activities are standalone DI-enabled classes. Each activity does one thing (single responsibility). Activities call external services (Tika, embedding API, Redis, FalkorDB) — workflows never call external services directly.
+**Activity definition:** Activities are standalone DI-enabled classes. Each activity does one thing (single responsibility). Activities call services (Kreuzberg in-process, embedding API, Redis, FalkorDB) — workflows never call services directly.
 ```csharp
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
@@ -1224,7 +1223,7 @@ Hexalith.Memories/
 │   │   ├── Activities/
 │   │   │   ├── Ingestion/
 │   │   │   │   ├── ValidateContentActivity.cs
-│   │   │   │   ├── ExtractContentActivity.cs       # Calls Tika
+│   │   │   ��   ├── ExtractContentActivity.cs       # Calls Kreuzberg (in-process)
 │   │   │   │   ├── GenerateEmbeddingActivity.cs    # Calls embedding API (checks rate limiter actor)
 │   │   │   │   └── CheckIdempotencyActivity.cs     # Duplicate detection
 │   │   │   ├── AiEnrichment/
@@ -1411,11 +1410,10 @@ Hexalith.Memories/
 
 | Service | Language | Owns | Communicates With | Protocol |
 |---|---|---|---|---|
-| Memories Server | C# | Domain logic, workflows, actors, search, tenants | Redis, FalkorDB, Tika, Embedding API, AI Agent Service | DAPR workflows/actors/state/service-invocation, HTTP |
+| Memories Server | C# | Domain logic, workflows, actors, search, tenants | Redis, FalkorDB, Embedding API, AI Agent Service | DAPR workflows/actors/state/service-invocation, HTTP |
 | AI Agent Service | Python | AI enrichment agents, NLP tools, causal inference | LLM providers (via DAPR Conversation API), Memories Server (callbacks) | DAPR service invocation, DAPR Conversation API |
 | MCP Server (Phase 1.5) | C# | MCP tool definitions, token-budget shaping | Memories Server | DAPR service invocation |
 | CLI (Phase 1.5) | C# | Terminal UX, output formatting | Memories Server | REST via ingress |
-| Tika | Java | Content extraction | — (stateless) | HTTP |
 
 **Data Boundaries:**
 
@@ -1448,7 +1446,7 @@ Ingest: CLI/MCP → Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(I
   IngestionWorkflow orchestration:
     1. CheckIdempotencyActivity (duplicate detection)
     2. ValidateContentActivity (domain validation)
-    3. ExtractContentActivity → Tika (HTTP)
+    3. ExtractContentActivity → Kreuzberg (in-process, P/Invoke)
     4. EmbeddingRateLimiterActor.TryConsumeAsync() (per-tenant gate)
     5. GenerateEmbeddingActivity → Google Embedding API (HTTP)
     6. [Optional] AiEnrichmentWorkflow (child workflow):
