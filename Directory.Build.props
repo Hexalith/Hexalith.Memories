@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Detect missing git submodules -->
+  <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
+    <Error
+      Condition="!Exists('$(MSBuildThisFileDirectory)src/submodules/Hexalith.Commons/.git')"
+      Text="Git submodule 'Hexalith.Commons' is missing. Run: git submodule update --init --recursive" />
+    <Error
+      Condition="!Exists('$(MSBuildThisFileDirectory)src/submodules/Hexalith.EventStore/.git')"
+      Text="Git submodule 'Hexalith.EventStore' is missing. Run: git submodule update --init --recursive" />
+  </Target>
+</Project>

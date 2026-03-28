@@ -416,3 +416,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# DAPR secrets
+secrets.json
+deploy/dapr/components/secrets.json

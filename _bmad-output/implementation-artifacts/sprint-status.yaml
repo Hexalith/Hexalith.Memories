@@ -1,0 +1,149 @@
+# generated: 2026-03-26
+# last_updated: 2026-03-26
+# project: Hexalith.Memories
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-26
+last_updated: 2026-03-26
+project: Hexalith.Memories
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # --- Phase: MVP — Gate 1 (Three-Axis Validation) ---
+
+  # Epic 1: Foundation, Ingestion & Graph Edge Indexing
+  epic-1: in-progress
+  1-1-project-scaffolding-and-single-command-boot: review
+  1-2-memory-unit-domain-model-and-contracts: backlog
+  1-3-content-extraction-via-tika: backlog
+  1-4-embedding-generation: backlog
+  1-5-three-backend-indexing: backlog
+  1-6-ingestion-workflow-orchestration: backlog
+  1-7-embedding-provider-configuration: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Three-Axis Search, Fusion & Benchmark Validation
+  epic-2: backlog
+  2-1-syntactic-search-bm25-via-redisearch: backlog
+  2-2-semantic-search-vector-via-redis-vector: backlog
+  2-3-graph-scoped-search: backlog
+  2-4-score-normalization: backlog
+  2-5-fusion-algorithm-and-hybrid-search: backlog
+  2-6-explain-mode-and-confidence-scores: backlog
+  2-7-benchmark-suite-and-thesis-validation: backlog
+  epic-2-retrospective: optional
+
+  # --- Phase: MVP — Core Domain (post Gate 1 validation) ---
+
+  # Epic 3: Case Management & Memory Organization
+  epic-3: backlog
+  3-1-create-and-list-cases: backlog
+  3-2-case-status-and-activity: backlog
+  3-3-case-member-management: backlog
+  3-4-case-scoped-and-cross-case-search: backlog
+  3-5-memory-unit-deletion-and-case-deletion: backlog
+  3-6-annotations-and-corrections: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Causal Intelligence & Graph Traversal
+  epic-4: backlog
+  4-1-causal-chain-traversal: backlog
+  4-2-edge-type-filtering-and-taxonomy: backlog
+  4-3-gap-detection-and-confidence-promotion: backlog
+  epic-4-retrospective: optional
+
+  # --- Phase: MVP — Gate 2 (Tenant Isolation) ---
+
+  # Epic 5: Tenant Isolation & Multi-Tenancy
+  epic-5: backlog
+  5-1-tenant-provisioning-workflow: backlog
+  5-2-tenant-deletion-workflow: backlog
+  5-3-tenant-isolation-verification: backlog
+  5-4-tenant-context-enforcement: backlog
+  5-5-tenant-configuration-and-listing: backlog
+  5-6-graceful-degradation-on-backend-failure: backlog
+  epic-5-retrospective: optional
+
+  # --- Phase: MVP — Gate 3 (Developer Experience) ---
+
+  # Epic 6: Ingestion Pipeline Resilience & Operations
+  epic-6: backlog
+  6-1-url-and-directory-ingestion: backlog
+  6-2-per-tenant-load-management-and-rate-limiting: backlog
+  6-3-retry-failure-visibility-and-re-ingestion: backlog
+  6-4-pipeline-state-persistence-and-zero-data-loss: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: CLI & Developer Experience
+  epic-7: backlog
+  7-1-cli-foundation-and-command-structure: backlog
+  7-2-output-formats-and-explain-display: backlog
+  7-3-actionable-error-messages-and-discoverable-actions: backlog
+  7-4-quickstart-and-documentation: backlog
+  7-5-search-and-access-telemetry: backlog
+  epic-7-retrospective: optional
+
+  # --- Phase: MVP — Operations ---
+
+  # Epic 8: Observability & System Health
+  epic-8: backlog
+  8-1-health-checks-and-readiness: backlog
+  8-2-consistency-verification-and-repair: backlog
+  8-3-data-export: backlog
+  epic-8-retrospective: optional
+
+  # --- Phase 1.5 (Fast-Follow) ---
+
+  # Epic 9: EventStore Integration & Zero-Code Memory
+  epic-9: backlog
+  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: backlog
+  9-2-dual-embedding-and-causal-chain-indexing: backlog
+  9-3-handler-registration-and-mismatch-detection: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: MCP Server & LLM Agent Interface
+  epic-10: backlog
+  10-1-mcp-server-and-tool-registration: backlog
+  10-2-token-budget-responses-and-authentication: backlog
+  epic-10-retrospective: optional
+
+  # --- Infrastructure (Cross-Cutting) ---
+
+  # Epic 11: CI/CD & Automated Quality Pipeline
+  epic-11: backlog
+  11-1-github-actions-build-and-test-pipeline: backlog
+  11-2-semantic-release-and-nuget-publishing: backlog
+  epic-11-retrospective: optional

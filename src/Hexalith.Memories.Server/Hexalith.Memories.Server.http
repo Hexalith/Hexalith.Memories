@@ -1,0 +1,6 @@
+@Hexalith.Memories.Server_HostAddress = http://localhost:5243
+
+GET {{Hexalith.Memories.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
