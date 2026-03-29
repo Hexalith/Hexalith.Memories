@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Remove global xUnit using — this is a helper library, not a test project -->
+    <Using Remove="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
