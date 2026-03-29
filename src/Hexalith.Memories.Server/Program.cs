@@ -2,6 +2,7 @@ using Dapr.Client;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.ServiceDefaults;
@@ -30,15 +31,19 @@ _ = builder.Services.AddHealthChecks()
         timeout: healthCheckTimeout));
 
 builder.Services.AddSingleton<IContentExtractionClient, ContentExtractionClient>();
+builder.Services.AddHttpClient<EmbeddingClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 builder.Services.AddDaprWorkflow(options =>
 {
     options.RegisterActivity<ExtractContentActivity>();
+    options.RegisterActivity<GenerateEmbeddingActivity>();
 });
 
-// Test: Register DAPR Actors with configuration.
-// If this throws at runtime with zero actors, defer to Story 1.4.
 builder.Services.AddActors(options =>
 {
+    options.Actors.RegisterActor<EmbeddingRateLimiterActor>();
     options.ActorIdleTimeout = TimeSpan.FromMinutes(60);
     options.ActorScanInterval = TimeSpan.FromSeconds(30);
     options.ReentrancyConfig = new Dapr.Actors.ActorReentrancyConfig { Enabled = false };
