@@ -1,6 +1,6 @@
 # Story 1.4: Embedding Generation
 
-Status: review
+Status: done
 
 ## Story
 
@@ -434,3 +434,5 @@ Claude Opus 4.6 (1M context)
 - [x] [Review][Patch] Harden `SetCeiling` to reject non-positive values and clamp the current window to the new ceiling [src/Hexalith.Memories.Server/Actors/RateLimiterLogic.cs:62]
 - [x] [Review][Defer] End-to-end embedding flow is not wired into orchestration [src/Hexalith.Memories.Server/Program.cs:41] — deferred: orchestration and memory-unit persistence belong to upcoming ingestion workflow work and depend on the final pipeline shape.
 - [x] [Review][Defer] Rate-limiting scope conflicts with credential scope [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs:37] — deferred: Story 1.7 introduces provider configuration and is the right place to decide per-tenant vs per-credential quota enforcement.
+- [x] [Review][Defer] Story transition rationale is comment-only and not machine-readable [_bmad-output/implementation-artifacts/sprint-status.yaml:39] — deferred, pre-existing
+- [x] [Review][Defer] Story status requires manual dual-write across tracking files [_bmad-output/implementation-artifacts/1-4-embedding-generation.md:3] — deferred, pre-existing
