@@ -1,6 +1,6 @@
 # Story 1.4: Embedding Generation
 
-Status: in-progress
+Status: review
 
 ## Story
 
