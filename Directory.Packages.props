@@ -41,5 +41,8 @@
     <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.5.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+
+    <!-- Integration Testing -->
+    <PackageVersion Include="Testcontainers" Version="4.3.0" />
   </ItemGroup>
 </Project>

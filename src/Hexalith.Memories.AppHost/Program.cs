@@ -1,3 +1,4 @@
+using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
@@ -7,6 +8,7 @@ string secretsFile = EnsureSecretsFile();
 IResourceBuilder<ContainerResource> redis = builder
     .AddContainer("redis", "redis/redis-stack")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
+EndpointReference redisEndpoint = redis.GetEndpoint("redis");
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
     .AddDaprComponent("statestore", "state.redis")
@@ -23,6 +25,7 @@ IResourceBuilder<IDaprComponentResource> secretStore = builder
 IResourceBuilder<ContainerResource> falkordb = builder
     .AddContainer("falkordb", "falkordb/falkordb")
     .WithEndpoint(port: 6380, targetPort: 6379, name: "falkordb");
+EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
 // Memories Server with DAPR sidecar
 // DAPR sidecar manages connections to Redis/FalkorDB via component config
@@ -38,6 +41,12 @@ _ = builder
         })
         .WithReference(stateStore)
         .WithReference(secretStore))
+    .WithEnvironment(
+        "ConnectionStrings__redis",
+        ReferenceExpression.Create($"{redisEndpoint.Property(EndpointProperty.HostAndPort)}"))
+    .WithEnvironment(
+        "ConnectionStrings__falkordb",
+        ReferenceExpression.Create($"{falkordbEndpoint.Property(EndpointProperty.HostAndPort)}"))
     .WaitFor(redis)
     .WaitFor(falkordb);
 
