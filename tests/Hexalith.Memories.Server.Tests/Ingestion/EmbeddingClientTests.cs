@@ -13,6 +13,9 @@ using Dapr.Client;
 
 using Hexalith.Memories.Server.Ingestion;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -33,7 +36,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
         float[] result = await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
@@ -51,7 +54,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.TooManyRequests, "rate limited");
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
@@ -66,7 +69,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.InternalServerError, "server error");
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
@@ -85,7 +88,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         await Should.ThrowAsync<ArgumentException>(
@@ -101,7 +104,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
         await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
@@ -127,7 +130,7 @@ public class EmbeddingClientTests
                 Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("DAPR sidecar not running"));
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
@@ -146,7 +149,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, malformedJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
@@ -164,7 +167,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
@@ -185,7 +188,7 @@ public class EmbeddingClientTests
         });
         HttpClient httpClient = new(handler) { Timeout = TimeSpan.FromMilliseconds(50) };
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         await Should.ThrowAsync<TaskCanceledException>(
@@ -200,7 +203,7 @@ public class EmbeddingClientTests
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, invalidJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
@@ -210,13 +213,37 @@ public class EmbeddingClientTests
     }
 
     [Fact]
+    public async Task GenerateAsync_FakeEmbeddingEnabled_ShouldBypassSecretStoreAndHttp()
+    {
+        // Arrange
+        TestDelegatingHandler handler = new((_, _) =>
+            throw new InvalidOperationException("HTTP client should not be called when fake embedding is enabled."));
+        HttpClient httpClient = new(handler);
+        DaprClient daprClient = Substitute.For<DaprClient>();
+
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(useFakeEmbedding: true), CreateHostEnvironment());
+
+        // Act
+        float[] result = await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
+
+        // Assert
+        result.Length.ShouldBe(768);
+        result[0].ShouldNotBe(0f);
+        await daprClient.DidNotReceive().GetSecretAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<Dictionary<string, string>>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PrimeApiKeyAsync_ReusesCachedSecretAcrossCalls()
     {
         // Arrange
         HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
         DaprClient daprClient = CreateDaprClientWithSecret();
 
-        EmbeddingClient client = new(httpClient, daprClient);
+        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
         await client.PrimeApiKeyAsync(TenantId, CancellationToken.None);
@@ -228,6 +255,22 @@ public class EmbeddingClientTests
             "google-embedding-api-key",
             Arg.Any<Dictionary<string, string>>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void Constructor_FakeEmbeddingEnabledOutsideDevelopment_ThrowsInvalidOperationException()
+    {
+        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
+        DaprClient daprClient = Substitute.For<DaprClient>();
+
+        InvalidOperationException ex = Should.Throw<InvalidOperationException>(
+            () => new EmbeddingClient(
+                httpClient,
+                daprClient,
+                CreateConfiguration(useFakeEmbedding: true),
+                CreateHostEnvironment(Environments.Production)));
+
+        ex.Message.ShouldContain("Fake embeddings are only supported");
     }
 
     private static float[] CreateVector(int dimensions)
@@ -269,6 +312,21 @@ public class EmbeddingClientTests
                 Arg.Any<CancellationToken>())
             .Returns(new Dictionary<string, string> { ["google-embedding-api-key"] = TestApiKey });
         return daprClient;
+    }
+
+    private static IConfiguration CreateConfiguration(bool useFakeEmbedding = false)
+        => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Memories:Testing:UseFakeEmbedding"] = useFakeEmbedding.ToString(),
+            })
+            .Build();
+
+    private static IHostEnvironment CreateHostEnvironment(string environmentName = "Development")
+    {
+        IHostEnvironment hostEnvironment = Substitute.For<IHostEnvironment>();
+        hostEnvironment.EnvironmentName.Returns(environmentName);
+        return hostEnvironment;
     }
 
     private sealed class TestDelegatingHandler : DelegatingHandler

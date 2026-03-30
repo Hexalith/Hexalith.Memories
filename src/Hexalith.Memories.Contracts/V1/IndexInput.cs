@@ -17,6 +17,10 @@ public sealed record IndexInput
 
     public required SourceType SourceType { get; init; }
 
+    public required string IngestedBy { get; init; }
+
+    public required DateTimeOffset IngestedAt { get; init; }
+
     public required float[] EmbeddingVector { get; init; }
 
     public required string EmbeddingProvider { get; init; }

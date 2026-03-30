@@ -5,62 +5,83 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using Dapr.Client;
+using Dapr.Workflow;
+
+using Hexalith.Memories.Server.Activities.Ingestion;
+
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for CheckIdempotencyActivity (Story 1.6, AC6 — Task 3).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
 public class CheckIdempotencyActivityTests
 {
-    [Fact(Skip = "ATDD Red Phase: CheckIdempotencyActivity not yet implemented (Story 1.6, Task 3)")]
+    [Fact]
     public async Task RunAsync_NewSource_ShouldReturnIsDuplicateFalse()
     {
-        // Arrange: DaprClient.GetStateAsync returns null (no existing dedup key)
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
+            .Returns(Task.FromResult<string>(null!));
+        CheckIdempotencyActivity activity = new(daprClient);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        // Act: Run the activity
+        IdempotencyResult result = await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1"));
 
-        // Assert:
-        // result.IsDuplicate.ShouldBeFalse()
-        // result.ExistingMemoryUnitId.ShouldBeNull()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.IsDuplicate.ShouldBeFalse();
+        result.ExistingMemoryUnitId.ShouldBeNull();
     }
 
-    [Fact(Skip = "ATDD Red Phase: CheckIdempotencyActivity not yet implemented (Story 1.6, Task 3)")]
+    [Fact]
     public async Task RunAsync_ExistingSource_ShouldReturnIsDuplicateTrue()
     {
-        // Arrange: DaprClient.GetStateAsync returns existing MemoryUnitId
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
+            .Returns("mu-existing-id");
+        CheckIdempotencyActivity activity = new(daprClient);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        // Act: Run the activity
+        IdempotencyResult result = await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1"));
 
-        // Assert:
-        // result.IsDuplicate.ShouldBeTrue()
-        // result.ExistingMemoryUnitId.ShouldBe("mu-existing-id")
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.IsDuplicate.ShouldBeTrue();
+        result.ExistingMemoryUnitId.ShouldBe("mu-existing-id");
     }
 
-    [Fact(Skip = "ATDD Red Phase: CheckIdempotencyActivity not yet implemented (Story 1.6, Task 3)")]
+    [Fact]
     public async Task RunAsync_DedupKeyFormat_ShouldUseTenantCaseSourceUriHash()
     {
-        // Arrange: Known SourceUri, TenantId, CaseId
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
+            .Returns(Task.FromResult<string>(null!));
+        CheckIdempotencyActivity activity = new(daprClient);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        // Act: Run the activity
+        string sourceUri = "file:///doc.pdf";
+        string expectedKey = DedupKeyBuilder.BuildKey("tenant-1", "case-1", sourceUri);
 
-        // Assert: DaprClient.GetStateAsync called with key format:
-        //   "dedup:{tenantId}:{caseId}:{sha256(sourceUri)}"
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await activity.RunAsync(
+            context,
+            new IdempotencyInput(sourceUri, "tenant-1", "case-1"));
+
+        await daprClient.Received(1).GetStateAsync<string>("statestore", expectedKey);
     }
 
-    [Fact(Skip = "ATDD Red Phase: CheckIdempotencyActivity not yet implemented (Story 1.6, Task 3)")]
+    [Fact]
     public async Task RunAsync_StateStoreUnavailable_ShouldPropagateException()
     {
-        // Arrange: DaprClient.GetStateAsync throws DaprException
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
+            .ThrowsAsync(new InvalidOperationException("State store unavailable"));
+        CheckIdempotencyActivity activity = new(daprClient);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        // Act & Assert: Exception propagates (workflow retry handles it)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => activity.RunAsync(
+                context,
+                new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1")));
     }
 }

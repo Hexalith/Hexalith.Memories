@@ -29,13 +29,14 @@ EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
 // Memories Server with DAPR sidecar
 // DAPR sidecar manages connections to Redis/FalkorDB via component config
+// AppPort is intentionally omitted so Aspire Testing can auto-detect the
+// randomized project port instead of pinning the sidecar to localhost:5000.
 _ = builder
     .AddProject<Projects.Hexalith_Memories_Server>("memories-server")
     .WithDaprSidecar(sidecar => sidecar
         .WithOptions(new DaprSidecarOptions
         {
             AppId = "memories-server",
-            AppPort = 5000,
             DaprHttpPort = 3500,
             DaprGrpcPort = 50001,
         })

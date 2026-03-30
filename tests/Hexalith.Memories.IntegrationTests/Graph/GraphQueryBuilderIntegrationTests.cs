@@ -53,7 +53,7 @@ public class GraphQueryBuilderIntegrationTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeMemoryUnitNode(
             "mu-idem-001", "case-001", "test content", "hash123",
             "file:///test.txt", SourceType.File, "google:text-embedding-004",
-            768, DateTimeOffset.UtcNow);
+            768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
 
         // Act — execute twice (MERGE should be idempotent)
         await falkor.QueryAsync(graphId, query, parameters);
@@ -81,7 +81,7 @@ public class GraphQueryBuilderIntegrationTests
 
         (string muQuery, IDictionary<string, object> muParams) = _builder.BuildMergeMemoryUnitNode(
             "mu-edge-001", "case-edge-001", "content", "hash",
-            "file:///t.txt", SourceType.File, "provider", 768, DateTimeOffset.UtcNow);
+            "file:///t.txt", SourceType.File, "provider", 768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
         await falkor.QueryAsync(graphId, muQuery, muParams);
 
         // Act — create Contains edge
@@ -112,12 +112,12 @@ public class GraphQueryBuilderIntegrationTests
 
         (string sourceMuQuery, IDictionary<string, object> sourceMuParams) = _builder.BuildMergeMemoryUnitNode(
             sharedId, "case-collision-001", "source content", "hash-source",
-            "file:///source.txt", SourceType.File, "provider", 3, DateTimeOffset.UtcNow);
+            "file:///source.txt", SourceType.File, "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
         await falkor.QueryAsync(graphId, sourceMuQuery, sourceMuParams);
 
         (string targetMuQuery, IDictionary<string, object> targetMuParams) = _builder.BuildMergeMemoryUnitNode(
             targetId, "case-collision-001", "target content", "hash-target",
-            "file:///target.txt", SourceType.File, "provider", 3, DateTimeOffset.UtcNow);
+            "file:///target.txt", SourceType.File, "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
         await falkor.QueryAsync(graphId, targetMuQuery, targetMuParams);
 
         // Act

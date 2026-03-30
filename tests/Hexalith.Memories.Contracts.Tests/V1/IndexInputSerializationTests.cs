@@ -91,6 +91,8 @@ public class IndexInputSerializationTests
         ContentHash = "sha256hash",
         SourceUri = "file:///document.pdf",
         SourceType = SourceType.File,
+        IngestedBy = "user@example.com",
+        IngestedAt = DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
         EmbeddingVector = [0.1f, 0.2f, 0.3f],
         EmbeddingProvider = "google:text-embedding-004",
         EmbeddingDimensions = 3,

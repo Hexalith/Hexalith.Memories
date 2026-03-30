@@ -5,91 +5,148 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using Dapr.Workflow;
+
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for cleanup/compensation activities (Story 1.6, AC3 — Task 5).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
+using StackExchange.Redis;
+
 public class CleanupActivityTests
 {
     // --- CleanupSyntacticActivity ---
 
-    [Fact(Skip = "ATDD Red Phase: CleanupSyntacticActivity not yet implemented (Story 1.6, Task 5.1)")]
+    [Fact]
     public async Task CleanupSyntactic_ShouldDeleteRedisHashKey()
     {
-        // Arrange: Mock IConnectionMultiplexer, CleanupInput with TenantId and MemoryUnitId
+        IDatabase db = Substitute.For<IDatabase>();
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(true);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        CleanupSyntacticActivity activity = new(redis, Substitute.For<ILogger<CleanupSyntacticActivity>>());
 
-        // Act: Run CleanupSyntacticActivity
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
 
-        // Assert: db.KeyDeleteAsync("{tenantId}:mu:{memoryUnitId}") called
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: CleanupSyntacticActivity not yet implemented (Story 1.6, Task 5.1)")]
+    [Fact]
     public async Task CleanupSyntactic_KeyDoesNotExist_ShouldNotThrow()
     {
-        // Arrange: Redis key does not exist (KeyDeleteAsync returns false)
+        IDatabase db = Substitute.For<IDatabase>();
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(false);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        CleanupSyntacticActivity activity = new(redis, Substitute.For<ILogger<CleanupSyntacticActivity>>());
 
-        // Act: Run CleanupSyntacticActivity — should succeed (idempotent)
+        bool result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
 
-        // Assert: No exception thrown
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ShouldBeFalse(); // Key didn't exist — idempotent
     }
 
     // --- CleanupSemanticActivity ---
 
-    [Fact(Skip = "ATDD Red Phase: CleanupSemanticActivity not yet implemented (Story 1.6, Task 5.2)")]
+    [Fact]
     public async Task CleanupSemantic_ShouldDeleteRedisVectorHashKey()
     {
-        // Arrange: Mock IConnectionMultiplexer, CleanupInput
+        IDatabase db = Substitute.For<IDatabase>();
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(true);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        CleanupSemanticActivity activity = new(redis, Substitute.For<ILogger<CleanupSemanticActivity>>());
 
-        // Act: Run CleanupSemanticActivity
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
 
-        // Assert: db.KeyDeleteAsync("{tenantId}:vec:{memoryUnitId}") called
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: CleanupSemanticActivity not yet implemented (Story 1.6, Task 5.2)")]
+    [Fact]
     public async Task CleanupSemantic_KeyDoesNotExist_ShouldNotThrow()
     {
-        // Arrange: Redis vector key does not exist
+        IDatabase db = Substitute.For<IDatabase>();
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(false);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        CleanupSemanticActivity activity = new(redis, Substitute.For<ILogger<CleanupSemanticActivity>>());
 
-        // Act: Run CleanupSemanticActivity — idempotent
+        bool result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
 
-        // Assert: No exception thrown
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ShouldBeFalse(); // Idempotent
     }
 
     // --- CleanupGraphActivity ---
 
-    [Fact(Skip = "ATDD Red Phase: CleanupGraphActivity not yet implemented (Story 1.6, Task 5.3)")]
-    public async Task CleanupGraph_ShouldDeleteFalkorDbNode()
+    [Fact]
+    public async Task CleanupGraph_ShouldCallBuildDeleteMemoryUnitNode()
     {
-        // Arrange: Mock IGraphQueryBuilder (BuildDeleteMemoryUnitNode), mock FalkorDB multiplexer
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        CleanupGraphActivity activity = new(falkorDb, builder, Substitute.For<ILogger<CleanupGraphActivity>>());
 
-        // Act: Run CleanupGraphActivity
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // BuildDeleteMemoryUnitNode called with memoryUnitId
-        // Query executed via graph.QueryAsync with DETACH DELETE
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
     }
 
-    [Fact(Skip = "ATDD Red Phase: CleanupGraphActivity not yet implemented (Story 1.6, Task 5.3)")]
+    [Fact]
     public async Task CleanupGraph_NodeDoesNotExist_ShouldNotThrow()
     {
-        // Arrange: FalkorDB node does not exist (MATCH returns empty)
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        CleanupGraphActivity activity = new(falkorDb, builder, Substitute.For<ILogger<CleanupGraphActivity>>());
 
-        // Act: Run CleanupGraphActivity — idempotent (MATCH+DELETE on nothing = no-op)
+        // MATCH+DELETE on non-existent node is a no-op in FalkorDB — should not throw
+        bool result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-nonexistent", "tenant-1"));
 
-        // Assert: No exception thrown
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ShouldBeTrue();
+    }
+
+    private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDb()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
+        falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        RedisResult fakeResult = RedisResult.Create(
+        [
+            RedisResult.Create(Array.Empty<RedisResult>()),
+            RedisResult.Create(Array.Empty<RedisResult>()),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("Nodes deleted: 0")),
+                RedisResult.Create(new RedisValue("Relationships deleted: 0")),
+                RedisResult.Create(new RedisValue("Cached execution: 0")),
+                RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+            ]),
+        ]);
+
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(fakeResult);
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(fakeResult);
+
+        return (falkorDb, db);
     }
 }

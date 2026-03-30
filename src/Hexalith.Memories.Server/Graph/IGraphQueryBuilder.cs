@@ -18,7 +18,9 @@ public interface IGraphQueryBuilder
         SourceType sourceType,
         string embeddingProvider,
         int embeddingDimensions,
-        DateTimeOffset indexedAt);
+        string ingestedBy,
+        DateTimeOffset ingestedAt,
+        string metadataJson);
 
     /// <summary>Creates a case node if it doesn't exist (MERGE pattern).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(string caseId);
@@ -33,4 +35,10 @@ public interface IGraphQueryBuilder
 
     /// <summary>Creates a stub node for a referenced memory unit that may not be ingested yet.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(string memoryUnitId);
+
+    /// <summary>Checks whether a memory unit node exists in the graph.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCheckMemoryUnitExists(string memoryUnitId);
+
+    /// <summary>Deletes a memory unit node and all its relationships (compensation).</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildDeleteMemoryUnitNode(string memoryUnitId);
 }

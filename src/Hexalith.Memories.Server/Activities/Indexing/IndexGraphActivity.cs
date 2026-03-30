@@ -1,5 +1,7 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -53,7 +55,9 @@ public sealed class IndexGraphActivity : WorkflowActivity<IndexInput, IndexResul
             input.SourceType,
             input.EmbeddingProvider,
             input.EmbeddingDimensions,
-            DateTimeOffset.UtcNow);
+            input.IngestedBy,
+            input.IngestedAt,
+            JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options));
         await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
         // 3. Contains edge: case → memory unit

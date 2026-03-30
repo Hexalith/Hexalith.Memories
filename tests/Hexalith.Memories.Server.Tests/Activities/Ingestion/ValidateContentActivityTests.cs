@@ -5,102 +5,198 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using Dapr.Workflow;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.TestHelpers.Factories;
+
+using NSubstitute;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for ValidateContentActivity (Story 1.6, AC1 — Task 2).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
 public class ValidateContentActivityTests
 {
-    [Fact(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Fact]
     public async Task RunAsync_ValidInput_ShouldReturnIsValidTrue()
     {
-        // Arrange: IngestionInput with all required fields populated
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create();
 
-        // Act: Run the activity
+        ValidateResult result = await activity.RunAsync(context, input);
 
-        // Assert:
-        // result.IsValid.ShouldBeTrue()
-        // result.ErrorMessage.ShouldBeNull()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.IsValid.ShouldBeTrue();
+        result.ErrorMessage.ShouldBeNull();
     }
 
-    [Theory(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     public async Task RunAsync_InvalidTenantId_ShouldThrowArgumentException(string? tenantId)
     {
-        // Arrange: IngestionInput with invalid TenantId
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(tenantId: tenantId ?? "placeholder")
+            with
+        { TenantId = tenantId! };
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        // No retry — invalid input stays invalid
-        _ = tenantId;
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
     }
 
-    [Theory(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     public async Task RunAsync_InvalidCaseId_ShouldThrowArgumentException(string? caseId)
     {
-        // Arrange: IngestionInput with invalid CaseId
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(caseId: caseId ?? "placeholder")
+            with
+        { CaseId = caseId! };
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        _ = caseId;
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
     }
 
-    [Theory(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     public async Task RunAsync_InvalidSourceUri_ShouldThrowArgumentException(string? sourceUri)
     {
-        // Arrange: IngestionInput with invalid SourceUri
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(sourceUri: sourceUri ?? "placeholder")
+            with
+        { SourceUri = sourceUri! };
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        _ = sourceUri;
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
     }
 
-    [Fact(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
-    public async Task RunAsync_NullContentBytes_ShouldThrowArgumentException()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task RunAsync_InvalidContentType_ShouldThrowArgumentException(string? contentType)
     {
-        // Arrange: IngestionInput with ContentBytes = null
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(contentType: contentType ?? "placeholder")
+            with
+        { ContentType = contentType! };
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
     }
 
-    [Fact(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Fact]
+    public async Task RunAsync_NullContentBytes_ShouldThrowArgumentNullException()
+    {
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create() with { ContentBytes = null! };
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+
+        ex.ShouldBeOfType<ArgumentException>();
+    }
+
+    [Fact]
     public async Task RunAsync_EmptyContentBytes_ShouldThrowArgumentException()
     {
-        // Arrange: IngestionInput with ContentBytes = Array.Empty<byte>()
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: []);
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
     }
 
-    [Theory(Skip = "ATDD Red Phase: ValidateContentActivity not yet implemented (Story 1.6, Task 2)")]
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
     public async Task RunAsync_InvalidIngestedBy_ShouldThrowArgumentException(string? ingestedBy)
     {
-        // Arrange: IngestionInput with invalid IngestedBy
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(ingestedBy: ingestedBy ?? "placeholder")
+            with
+        { IngestedBy = ingestedBy! };
 
-        // Act & Assert: Should.ThrowAsync<ArgumentException>(...)
-        _ = ingestedBy;
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(999)]
+    public async Task RunAsync_InvalidSourceType_ShouldThrowArgumentOutOfRangeException(int sourceType)
+    {
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.File)
+            with
+        { SourceType = (SourceType)sourceType };
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+
+        ex.ShouldBeOfType<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task RunAsync_TenantIdWithInvalidCharacters_ShouldThrowArgumentException()
+    {
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(tenantId: "tenant/invalid");
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+
+        ex.Message.ShouldContain("TenantId contains invalid characters");
+    }
+
+    [Fact]
+    public async Task RunAsync_ContentBytesLargerThanOneMegabyte_ShouldThrowArgumentException()
+    {
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: new byte[(1024 * 1024) + 1]);
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+
+        ex.Message.ShouldContain("1 MB");
+    }
+
+    [Theory]
+    [MemberData(nameof(GetInvalidConfidences))]
+    public async Task RunAsync_MetadataConfidenceOutsideRange_ShouldThrowArgumentException(float confidence)
+    {
+        ValidateContentActivity activity = new();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        IngestionInput input = IngestionInputFactory.Create();
+        input.Metadata["priority"] = new MetadataField("urgent", MetadataOrigin.Human, confidence);
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, input));
+
+        ex.Message.ShouldContain("confidence must be between 0.0 and 1.0");
+    }
+
+    public static IEnumerable<object[]> GetInvalidConfidences()
+    {
+        yield return [-0.1f];
+        yield return [1.1f];
+        yield return [float.NaN];
+        yield return [float.PositiveInfinity];
     }
 }

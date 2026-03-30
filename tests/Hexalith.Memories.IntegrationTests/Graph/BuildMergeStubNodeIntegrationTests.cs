@@ -84,7 +84,7 @@ public class BuildMergeStubNodeIntegrationTests
         (string fullQuery, IDictionary<string, object> fullParams) = _builder.BuildMergeMemoryUnitNode(
             memoryUnitId, "case-001", "enriched content", "hash-full",
             "file:///enriched.txt", SourceType.File, "google:text-embedding-004",
-            768, DateTimeOffset.UtcNow);
+            768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
         await falkor.QueryAsync(graphId, fullQuery, fullParams);
 
         // Assert — still one node, now with full properties
@@ -114,7 +114,7 @@ public class BuildMergeStubNodeIntegrationTests
         // Create full node
         (string fullQuery, IDictionary<string, object> fullParams) = _builder.BuildMergeMemoryUnitNode(
             fullNodeId, "case-001", "full content", "hash",
-            "file:///full.txt", SourceType.File, "provider", 768, DateTimeOffset.UtcNow);
+            "file:///full.txt", SourceType.File, "provider", 768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
         await falkor.QueryAsync(graphId, fullQuery, fullParams);
 
         // Create stub node

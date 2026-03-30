@@ -3,12 +3,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 // </copyright>
 
-// ATDD Red Phase: This factory is ready for Story 1.6 implementation.
-// Uncomment once IngestionInput contract is created in Contracts/V1/IngestionInput.cs.
-// See: _bmad-output/test-artifacts/atdd-checklist-epic-1.md
-
-#if false // ATDD: Enable when IngestionInput contract exists (Story 1.6, Task 1.1)
-
 namespace Hexalith.Memories.TestHelpers.Factories;
 
 using System.Text;
@@ -55,5 +49,3 @@ public static class IngestionInputFactory
         };
     }
 }
-
-#endif
