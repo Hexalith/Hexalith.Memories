@@ -5,219 +5,574 @@
 
 namespace Hexalith.Memories.Server.Tests.Workflows;
 
+using System.Text;
+
+using Dapr.Workflow;
+
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Workflows;
+using Hexalith.Memories.TestHelpers.Factories;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
 
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for the IngestionWorkflow (Story 1.6).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
 public class IngestionWorkflowTests
 {
+    private static readonly DateTime TestTimestamp = new(2026, 3, 29, 10, 0, 0, DateTimeKind.Utc);
+    private static readonly Guid TestGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
     // --- AC1: Full pipeline orchestration ---
 
-    [Fact(Skip = "ATDD Red Phase: IngestionWorkflow not yet implemented (Story 1.6, AC1)")]
+    [Fact]
     public async Task RunAsync_HappyPath_ShouldCallAllActivitiesInOrder()
     {
-        // Arrange: Create a valid IngestionInput with all required fields
-        // Mock WorkflowContext to track activity call order
-        // Mock all activities to return success
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        List<string> callLog = [];
+        SetupHappyPathActivities(context, input, callLog: callLog);
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        IngestionResult result = await workflow.RunAsync(context, input);
 
-        // Assert: Activities called in order:
-        // 1. CheckIdempotencyActivity (returns IsDuplicate=false)
-        // 2. ValidateContentActivity (returns IsValid=true)
-        // 3. ExtractContentActivity (returns ExtractionResult)
-        // 4. GenerateEmbeddingActivity (returns EmbeddingResult)
-        // 5. IndexSyntacticActivity, IndexSemanticActivity, IndexGraphActivity (fan-out)
-        // 6. VerifyConsistencyActivity (all backends present)
-        // 7. SaveDedupKeyActivity (writes dedup key)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ShouldNotBeNull();
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        result.MemoryUnitId.ShouldBe(TestGuid.ToString());
+        result.WasDuplicate.ShouldBeFalse();
+        result.ConsistencyNote.ShouldBeNull();
+        callLog.ShouldBe(
+        [
+            nameof(CheckIdempotencyActivity),
+            nameof(ValidateContentActivity),
+            nameof(ExtractContentActivity),
+            nameof(GenerateEmbeddingActivity),
+            nameof(IndexSyntacticActivity),
+            nameof(IndexSemanticActivity),
+            nameof(IndexGraphActivity),
+            nameof(VerifyConsistencyActivity),
+            nameof(SaveDedupKeyActivity),
+        ]);
     }
 
-    [Fact(Skip = "ATDD Red Phase: IngestionWorkflow not yet implemented (Story 1.6, AC1)")]
+    [Fact]
     public async Task RunAsync_HappyPath_ShouldReturnIndexedStatusWithMemoryUnitId()
     {
-        // Arrange: valid input, all activities succeed
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        IngestionResult result = await workflow.RunAsync(context, input);
 
-        // Assert:
-        // result.Status.ShouldBe(MemoryUnitStatus.Indexed)
-        // result.MemoryUnitId.ShouldNotBeNullOrWhiteSpace()
-        // result.WasDuplicate.ShouldBeFalse()
-        // result.ConsistencyNote.ShouldBeNull()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        result.MemoryUnitId.ShouldNotBeNullOrWhiteSpace();
+        result.WasDuplicate.ShouldBeFalse();
+        result.ConsistencyNote.ShouldBeNull();
     }
 
-    [Fact(Skip = "ATDD Red Phase: IngestionWorkflow not yet implemented (Story 1.6, AC1)")]
-    public async Task RunAsync_FanOut_ShouldExecuteThreeIndexingActivitiesInParallel()
+    [Fact]
+    public async Task RunAsync_FanOut_ShouldCallAllThreeIndexingActivities()
     {
-        // Arrange: valid input, extract + embed succeed
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        List<string> callLog = [];
+        SetupPreIndexActivities(context, input, callLog);
 
-        // Act: Run the workflow
+        TaskCompletionSource<IndexResult> syntacticTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<IndexResult> semanticTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<IndexResult> graphTask = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> allIndexTasksScheduled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int scheduledCount = 0;
 
-        // Assert: All three indexing activities are scheduled via Task.WhenAll
-        // IndexSyntacticActivity called with correct IndexInput
-        // IndexSemanticActivity called with correct IndexInput
-        // IndexGraphActivity called with correct IndexInput
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        Task<IndexResult> RegisterIndexTask(string activityName, Task<IndexResult> task)
+        {
+            callLog.Add(activityName);
+            if (Interlocked.Increment(ref scheduledCount) == 3)
+            {
+                allIndexTasksScheduled.TrySetResult(true);
+            }
+
+            return task;
+        }
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => RegisterIndexTask(nameof(IndexSyntacticActivity), syntacticTask.Task));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => RegisterIndexTask(nameof(IndexSemanticActivity), semanticTask.Task));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => RegisterIndexTask(nameof(IndexGraphActivity), graphTask.Task));
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog.Add(nameof(VerifyConsistencyActivity));
+                return Task.FromResult(new ConsistencyResult(true, true, true));
+            });
+        context.CallActivityAsync<bool>(
+                nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog.Add(nameof(SaveDedupKeyActivity));
+                return Task.FromResult(true);
+            });
+
+        IngestionWorkflow workflow = new();
+
+        Task<IngestionResult> runTask = workflow.RunAsync(context, input);
+
+        await allIndexTasksScheduled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        callLog.ShouldContain(nameof(IndexSyntacticActivity));
+        callLog.ShouldContain(nameof(IndexSemanticActivity));
+        callLog.ShouldContain(nameof(IndexGraphActivity));
+        callLog.ShouldNotContain(nameof(VerifyConsistencyActivity));
+
+        syntacticTask.SetResult(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        semanticTask.SetResult(new IndexResult("semantic", TestGuid.ToString(), input.TenantId));
+        graphTask.SetResult(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+
+        IngestionResult result = await runTask;
+
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
     }
 
     // --- AC2: Consistency verification ---
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, AC2)")]
+    [Fact]
     public async Task RunAsync_AllBackendsPresent_ShouldReturnNullConsistencyNote()
     {
-        // Arrange: all indexing succeeds, VerifyConsistencyActivity returns all true
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        IngestionResult result = await workflow.RunAsync(context, input);
 
-        // Assert:
-        // result.ConsistencyNote.ShouldBeNull()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ConsistencyNote.ShouldBeNull();
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, AC2)")]
-    public async Task RunAsync_MissingBackend_ShouldLogWarningAndReturnConsistencyNote()
+    [Fact]
+    public async Task RunAsync_MissingBackend_ShouldReturnConsistencyNote()
     {
-        // Arrange: indexing succeeds but VerifyConsistencyActivity returns GraphExists=false
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input,
+            consistency: new ConsistencyResult(true, true, false));
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        IngestionResult result = await workflow.RunAsync(context, input);
 
-        // Assert:
-        // result.Status.ShouldBe(MemoryUnitStatus.Indexed) — not failed, just noted
-        // result.ConsistencyNote.ShouldContain("graph")
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        result.ConsistencyNote.ShouldNotBeNull();
+        result.ConsistencyNote.ShouldContain("graph");
     }
 
     // --- AC3: Saga compensation ---
 
-    [Fact(Skip = "ATDD Red Phase: Saga compensation not yet implemented (Story 1.6, AC3)")]
-    public async Task RunAsync_SemanticFails_ShouldOnlyCleanupSyntacticAndGraph()
+    [Fact]
+    public async Task RunAsync_SemanticFails_ShouldOnlyCleanupCompletedBackends()
     {
-        // Arrange: Syntactic + Graph succeed, Semantic fails after retry exhaustion
-        // Mock IndexSyntacticActivity → returns IndexResult("syntactic", ...)
-        // Mock IndexGraphActivity → returns IndexResult("graph", ...)
-        // Mock IndexSemanticActivity → throws WorkflowTaskFailedException
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
 
-        // Act: Run the workflow (expect it to throw)
+        // Syntactic succeeds, semantic fails (faulted task), graph succeeds
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
 
-        // Assert:
-        // CleanupSyntacticActivity called (syntactic was in completedBackends)
-        // CleanupGraphActivity called (graph was in completedBackends)
-        // CleanupSemanticActivity NOT called (semantic never completed)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        // Compensation activities
+        context.CallActivityAsync<bool>(nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        // Syntactic and Graph were cleaned up, Semantic was NOT
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: Saga compensation not yet implemented (Story 1.6, AC3)")]
+    [Fact]
     public async Task RunAsync_AllIndexingFails_ShouldNotCallAnyCleanup()
     {
-        // Arrange: All three indexing activities fail
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
 
-        // Act: Run the workflow (expect it to throw)
+        // All three fail (faulted tasks)
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Syntactic failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Graph failed")));
 
-        // Assert: No cleanup activities called (nothing succeeded to compensate)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        IngestionWorkflow workflow = new();
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: Saga compensation not yet implemented (Story 1.6, AC3)")]
-    public async Task RunAsync_IndexingFailure_ShouldReportFailedStatusWithDetails()
+    [Fact]
+    public async Task RunAsync_CleanupFailure_ShouldStillAttemptRemainingCleanup()
     {
-        // Arrange: Indexing fails after retry exhaustion
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
 
-        // Act: Run the workflow (expect it to throw with FailureDetails)
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
 
-        // Assert:
-        // Exception propagates (workflow marked as failed by DAPR)
-        // FailureDetails would include: stage="indexing", errorCode, retryCount
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<bool>(new InvalidOperationException("Cleanup failed")));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexingFailure_ShouldAttachFailureDetails()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        ex.Data[nameof(FailureDetails)].ShouldBeOfType<FailureDetails>();
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.Stage.ShouldBe("indexing");
+        details.ErrorCode.ShouldBe(nameof(InvalidOperationException));
+        details.RetryCount.ShouldBe(5);
+        ex.Data[nameof(MemoryUnitStatus)].ShouldBe(MemoryUnitStatus.Failed);
+        ex.Data["MemoryUnitId"].ShouldBe(TestGuid.ToString());
     }
 
     // --- AC4: Provenance tracking ---
 
-    [Fact(Skip = "ATDD Red Phase: Provenance tracking not yet implemented (Story 1.6, AC4)")]
-    public async Task RunAsync_ShouldPopulateIngestedByFromInput()
-    {
-        // Arrange: IngestionInput with IngestedBy = "user@example.com"
-
-        // Act: Run the workflow
-
-        // Assert:
-        // The IngestedBy value is propagated through the pipeline
-        // result.MemoryUnitId.ShouldNotBeNullOrWhiteSpace()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
-    }
-
-    [Fact(Skip = "ATDD Red Phase: Provenance tracking not yet implemented (Story 1.6, AC4)")]
+    [Fact]
     public async Task RunAsync_ShouldSetIngestedAtFromWorkflowContext()
     {
-        // Arrange: Mock WorkflowContext.CurrentUtcDateTime
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        IngestionResult result = await workflow.RunAsync(context, input);
 
-        // Assert:
-        // result.IngestedAt.ShouldBe(context.CurrentUtcDateTime)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.IngestedAt.UtcDateTime.ShouldBe(TestTimestamp);
     }
 
-    // --- AC5: DAPR sidecar recovery (integration-level, documented for completeness) ---
-
-    [Fact(Skip = "ATDD Red Phase: Integration test — requires Aspire test harness (Story 1.6, AC5)")]
-    public async Task RunAsync_SidecarRestart_ShouldResumeFromLastPersistedState()
+    [Fact]
+    public async Task RunAsync_ShouldPropagateProvenanceToIndexActivities()
     {
-        // This is a Tier 3 integration test requiring DistributedApplicationTestingBuilder
-        // Verify that DAPR Durable Task Framework replays workflow from persisted state
-        // Deferred to Epic 11 CI story or Story 8 observability
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Integration test deferred");
+        IngestionInput input = IngestionInputFactory.Create(ingestedBy: "reviewer@example.com");
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexGraphActivity),
+            Arg.Is<IndexInput>(i =>
+                i.IngestedBy == input.IngestedBy &&
+                i.IngestedAt == new DateTimeOffset(TestTimestamp, TimeSpan.Zero)),
+            Arg.Any<WorkflowTaskOptions>());
     }
 
     // --- AC6: Duplicate detection ---
 
-    [Fact(Skip = "ATDD Red Phase: Duplicate detection not yet implemented (Story 1.6, AC6)")]
+    [Fact]
     public async Task RunAsync_DuplicateSource_ShouldReturnEarlyWithExistingId()
     {
-        // Arrange: CheckIdempotencyActivity returns IsDuplicate=true, ExistingMemoryUnitId="mu-existing"
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
 
-        // Act: Run the workflow
+        // CheckIdempotency returns duplicate
+        context.CallActivityAsync<IdempotencyResult>(
+                nameof(CheckIdempotencyActivity), Arg.Any<IdempotencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IdempotencyResult(true, "mu-existing"));
 
-        // Assert:
-        // result.WasDuplicate.ShouldBeTrue()
-        // result.MemoryUnitId.ShouldBe("mu-existing")
-        // result.Status.ShouldBe(MemoryUnitStatus.Indexed)
-        // ValidateContentActivity NOT called (short-circuited)
-        // ExtractContentActivity NOT called
-        // No indexing activities called
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.WasDuplicate.ShouldBeTrue();
+        result.MemoryUnitId.ShouldBe("mu-existing");
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+
+        // Validate and Extract should NOT have been called
+        await context.DidNotReceive().CallActivityAsync<ValidateResult>(
+            nameof(ValidateContentActivity), Arg.Any<IngestionInput>());
+        await context.DidNotReceive().CallActivityAsync<ExtractionResult>(
+            nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: Dedup key persistence not yet implemented (Story 1.6, AC6)")]
+    [Fact]
     public async Task RunAsync_SuccessfulIngestion_ShouldCallSaveDedupKeyActivity()
     {
-        // Arrange: Full happy path
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
 
-        // Act: Run the workflow
+        await workflow.RunAsync(context, input);
 
-        // Assert:
-        // SaveDedupKeyActivity called with DedupKeyInput containing:
-        //   DedupKey = "dedup:{tenantId}:{caseId}:{sha256(sourceUri)}"
-        //   MemoryUnitId = generated ID
-        // SaveDedupKeyActivity called AFTER VerifyConsistencyActivity (ordering matters)
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await context.Received().CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_SaveDedupKeyFailure_ShouldRollbackAllIndexedBackends()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+
+        context.CallActivityAsync<bool>(
+                nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<bool>(new InvalidOperationException("Dedup save failed")));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.Stage.ShouldBe("dedup");
+
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_VerifyConsistencyFailure_ShouldAttachVerificationStage()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("semantic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<ConsistencyResult>(new InvalidOperationException("Verification failed")));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.Stage.ShouldBe("verifying");
+    }
+
+    // --- Helpers ---
+
+    private static WorkflowContext CreateMockContext()
+    {
+        WorkflowContext context = Substitute.For<WorkflowContext>();
+        context.NewGuid().Returns(TestGuid);
+        context.CurrentUtcDateTime.Returns(TestTimestamp);
+        context.CreateReplaySafeLogger<IngestionWorkflow>()
+            .Returns(Substitute.For<ILogger>());
+        return context;
+    }
+
+    private static void SetupPreIndexActivities(WorkflowContext context, IngestionInput input, List<string>? callLog = null)
+    {
+        // CheckIdempotency — not a duplicate
+        context.CallActivityAsync<IdempotencyResult>(
+                nameof(CheckIdempotencyActivity), Arg.Any<IdempotencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(CheckIdempotencyActivity));
+                return Task.FromResult(new IdempotencyResult(false, null));
+            });
+
+        // Validate
+        context.CallActivityAsync<ValidateResult>(
+                nameof(ValidateContentActivity), Arg.Any<IngestionInput>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(ValidateContentActivity));
+                return Task.FromResult(new ValidateResult(true, null));
+            });
+
+        // Extract
+        context.CallActivityAsync<ExtractionResult>(
+                nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(ExtractContentActivity));
+                return Task.FromResult(new ExtractionResult("Extracted text content", "abc123hash", new DateTimeOffset(TestTimestamp)));
+            });
+
+        // Embed
+        context.CallActivityAsync<EmbeddingResult>(
+                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(GenerateEmbeddingActivity));
+                return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3));
+            });
+    }
+
+    private static void SetupHappyPathActivities(
+        WorkflowContext context,
+        IngestionInput input,
+        ConsistencyResult? consistency = null,
+        List<string>? callLog = null)
+    {
+        SetupPreIndexActivities(context, input, callLog);
+
+        string muId = TestGuid.ToString();
+
+        // Index activities
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(IndexSyntacticActivity));
+                return Task.FromResult(new IndexResult("syntactic", muId, input.TenantId));
+            });
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(IndexSemanticActivity));
+                return Task.FromResult(new IndexResult("semantic", muId, input.TenantId));
+            });
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(IndexGraphActivity));
+                return Task.FromResult(new IndexResult("graph", muId, input.TenantId));
+            });
+
+        // Verify consistency
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(VerifyConsistencyActivity));
+                return Task.FromResult(consistency ?? new ConsistencyResult(true, true, true));
+            });
+
+        // Save dedup key
+        context.CallActivityAsync<bool>(
+                nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(SaveDedupKeyActivity));
+                return Task.FromResult(true);
+            });
     }
 }

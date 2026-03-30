@@ -13,6 +13,9 @@ using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -81,7 +84,9 @@ public class GenerateEmbeddingActivityTests
         // Arrange
         EmbeddingClient embeddingClient = Substitute.For<EmbeddingClient>(
             Substitute.For<System.Net.Http.HttpClient>(),
-            Substitute.For<Dapr.Client.DaprClient>());
+            Substitute.For<Dapr.Client.DaprClient>(),
+            CreateConfiguration(),
+            CreateHostEnvironment());
         embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -124,7 +129,9 @@ public class GenerateEmbeddingActivityTests
         // Arrange
         EmbeddingClient embeddingClient = Substitute.For<EmbeddingClient>(
             Substitute.For<System.Net.Http.HttpClient>(),
-            Substitute.For<Dapr.Client.DaprClient>());
+            Substitute.For<Dapr.Client.DaprClient>(),
+            CreateConfiguration(),
+            CreateHostEnvironment());
         embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new EmbeddingApiException("missing secret", TenantId));
 
@@ -173,12 +180,29 @@ public class GenerateEmbeddingActivityTests
     {
         EmbeddingClient client = Substitute.For<EmbeddingClient>(
             Substitute.For<System.Net.Http.HttpClient>(),
-            Substitute.For<Dapr.Client.DaprClient>());
+            Substitute.For<Dapr.Client.DaprClient>(),
+            CreateConfiguration(),
+            CreateHostEnvironment());
         client.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
         client.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(vectorToReturn);
         return client;
+    }
+
+    private static IConfiguration CreateConfiguration(bool useFakeEmbedding = false)
+        => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Memories:Testing:UseFakeEmbedding"] = useFakeEmbedding.ToString(),
+            })
+            .Build();
+
+    private static IHostEnvironment CreateHostEnvironment(string environmentName = "Development")
+    {
+        IHostEnvironment hostEnvironment = Substitute.For<IHostEnvironment>();
+        hostEnvironment.EnvironmentName.Returns(environmentName);
+        return hostEnvironment;
     }
 
     private static IActorProxyFactory CreateMockActorProxyFactory(bool allowed)

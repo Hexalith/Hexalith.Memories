@@ -1,12 +1,42 @@
+// <copyright file="MemoriesJsonContext.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Contracts.V1;
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+
+/// <summary>Source-generated JSON metadata for commonly exchanged Memories contracts.</summary>
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(Dictionary<string, MetadataField>))]
+[JsonSerializable(typeof(ErrorResponse))]
+[JsonSerializable(typeof(ExtractionInput))]
+[JsonSerializable(typeof(ExtractionResult))]
+[JsonSerializable(typeof(FailureDetails))]
+[JsonSerializable(typeof(GraphEdge))]
+[JsonSerializable(typeof(IndexInput))]
+[JsonSerializable(typeof(IndexResult))]
+[JsonSerializable(typeof(IngestionInput))]
+[JsonSerializable(typeof(IngestionResult))]
+[JsonSerializable(typeof(MemoryUnit))]
+[JsonSerializable(typeof(MetadataField))]
+internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>
 public static class MemoriesJsonContext
 {
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+    /// <summary>Gets the shared serializer options for Memories contracts and workflow payloads.</summary>
+    public static JsonSerializerOptions Options { get; } = CreateOptions();
+
+    private static JsonSerializerOptions CreateOptions()
+        => new(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(
+                MemoriesJsonSourceGenerationContext.Default,
+                new DefaultJsonTypeInfoResolver()),
+        };
 }

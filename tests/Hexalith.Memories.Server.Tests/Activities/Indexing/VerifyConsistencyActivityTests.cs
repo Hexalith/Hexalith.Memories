@@ -5,95 +5,191 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using Dapr.Workflow;
+
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for VerifyConsistencyActivity (Story 1.6, AC2 — Task 4).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
+using StackExchange.Redis;
+
 public class VerifyConsistencyActivityTests
 {
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
     public async Task RunAsync_AllBackendsPresent_ShouldReturnAllTrue()
     {
-        // Arrange:
-        // Mock Redis (IConnectionMultiplexer) — key exists for syntactic and semantic
-        // Mock FalkorDB (IConnectionMultiplexer "falkordb") — node exists in graph
-        // ConsistencyInput with MemoryUnitId and TenantId
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: true);
 
-        // Act: Run the activity
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // result.SyntacticExists.ShouldBeTrue()
-        // result.SemanticExists.ShouldBeTrue()
-        // result.GraphExists.ShouldBeTrue()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.SyntacticExists.ShouldBeTrue();
+        result.SemanticExists.ShouldBeTrue();
+        result.GraphExists.ShouldBeTrue();
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
     public async Task RunAsync_SyntacticMissing_ShouldReturnSyntacticExistsFalse()
     {
-        // Arrange: Redis key {tenantId}:mu:{memoryUnitId} does not exist
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: false,
+            semanticExists: true,
+            graphExists: true);
 
-        // Act: Run the activity
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // result.SyntacticExists.ShouldBeFalse()
-        // result.SemanticExists.ShouldBeTrue()
-        // result.GraphExists.ShouldBeTrue()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.SyntacticExists.ShouldBeFalse();
+        result.SemanticExists.ShouldBeTrue();
+        result.GraphExists.ShouldBeTrue();
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
     public async Task RunAsync_SemanticMissing_ShouldReturnSemanticExistsFalse()
     {
-        // Arrange: Redis key {tenantId}:vec:{memoryUnitId} does not exist
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: false,
+            graphExists: true);
 
-        // Act: Run the activity
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // result.SemanticExists.ShouldBeFalse()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.SyntacticExists.ShouldBeTrue();
+        result.SemanticExists.ShouldBeFalse();
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
     public async Task RunAsync_GraphMissing_ShouldReturnGraphExistsFalse()
     {
-        // Arrange: FalkorDB node with memoryUnitId does not exist in tenant graph
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: false);
 
-        // Act: Run the activity
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // result.GraphExists.ShouldBeFalse()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.GraphExists.ShouldBeFalse();
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
     public async Task RunAsync_ShouldUseTenantNamespacedKeys()
     {
-        // Arrange: ConsistencyInput with specific TenantId and MemoryUnitId
+        (VerifyConsistencyActivity activity, IDatabase redisDb, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: true);
 
-        // Act: Run the activity
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
 
-        // Assert:
-        // Redis queried with key "{tenantId}:mu:{memoryUnitId}" for syntactic
-        // Redis queried with key "{tenantId}:vec:{memoryUnitId}" for semantic
-        // FalkorDB queried with graph "{tenantId}" for graph
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
     }
 
-    [Fact(Skip = "ATDD Red Phase: VerifyConsistencyActivity not yet implemented (Story 1.6, Task 4)")]
+    [Fact]
+    public async Task RunAsync_ShouldCallGraphQueryBuilder()
+    {
+        (VerifyConsistencyActivity activity, _, IGraphQueryBuilder builder) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: true);
+
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
+
+        builder.Received(1).BuildCheckMemoryUnitExists("mu-001");
+    }
+
+    [Fact]
     public async Task RunAsync_RedisUnavailable_ShouldPropagateException()
     {
-        // Arrange: IConnectionMultiplexer throws on GetDatabase()
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>())
+            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection failed"));
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb(true);
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        VerifyConsistencyActivity activity = new(redis, falkorDb, builder, Substitute.For<ILogger<VerifyConsistencyActivity>>());
 
-        // Act & Assert: Exception propagates to workflow retry
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<RedisConnectionException>(
+            () => activity.RunAsync(
+                Substitute.For<WorkflowActivityContext>(),
+                new ConsistencyInput("mu-001", "tenant-1")));
+    }
+
+    private static (VerifyConsistencyActivity Activity, IDatabase RedisDb, IGraphQueryBuilder Builder) CreateActivity(
+        bool syntacticExists,
+        bool semanticExists,
+        bool graphExists)
+    {
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), Arg.Any<CommandFlags>())
+            .Returns(syntacticExists);
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")), Arg.Any<CommandFlags>())
+            .Returns(semanticExists);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        (IConnectionMultiplexer falkorMux, _) = CreateMockFalkorDb(graphExists);
+        IGraphQueryBuilder builder = CreateMockBuilder();
+
+        VerifyConsistencyActivity activity = new(
+            redis, falkorMux, builder, Substitute.For<ILogger<VerifyConsistencyActivity>>());
+
+        return (activity, redisDb, builder);
+    }
+
+    private static IGraphQueryBuilder CreateMockBuilder()
+    {
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildCheckMemoryUnitExists(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) RETURN m.id", new Dictionary<string, object> { ["id"] = "mock" }));
+        return builder;
+    }
+
+    private static (IConnectionMultiplexer Mux, IDatabase Db) CreateMockFalkorDb(bool nodeExists)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer mux = Substitute.For<IConnectionMultiplexer>();
+        mux.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        // GRAPH.QUERY returns [headers, data_rows, statistics]
+        RedisResult[] dataRows = nodeExists
+            ? [RedisResult.Create(new RedisValue[] { "mu-001" })]
+            : [];
+
+        RedisResult fakeResult = RedisResult.Create(
+        [
+            RedisResult.Create(Array.Empty<RedisResult>()), // headers
+            RedisResult.Create(dataRows),                   // data rows
+            RedisResult.Create(                             // statistics
+            [
+                RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+            ]),
+        ]);
+
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(fakeResult);
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(fakeResult);
+
+        return (mux, db);
     }
 }

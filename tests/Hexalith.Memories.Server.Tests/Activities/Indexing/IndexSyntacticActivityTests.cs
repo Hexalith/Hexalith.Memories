@@ -1,11 +1,11 @@
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
-
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -45,7 +45,10 @@ public class IndexSyntacticActivityTests
                 && HasEntry(entries, "sourceUriText", input.SourceUri)
                 && HasEntry(entries, "sourceType", "file")
                 && HasEntry(entries, "sourceTypeText", "file")
-                && HasEntry(entries, "metadataText", "priority urgent human")),
+                && HasEntry(entries, "metadataText", "priority urgent human")
+                && HasEntry(entries, "metadataJson", JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options))
+                && HasEntry(entries, "ingestedBy", input.IngestedBy)
+                && HasEntry(entries, "ingestedAt", input.IngestedAt.ToString("o"))),
             Arg.Any<CommandFlags>());
     }
 
@@ -145,6 +148,8 @@ public class IndexSyntacticActivityTests
         ContentHash = "abc123hash",
         SourceUri = "file:///test.txt",
         SourceType = SourceType.File,
+        IngestedBy = "test-user@example.com",
+        IngestedAt = DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
         EmbeddingVector = new float[] { 0.1f, 0.2f, 0.3f },
         EmbeddingProvider = "google:text-embedding-004",
         EmbeddingDimensions = 3,

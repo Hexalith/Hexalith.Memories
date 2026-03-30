@@ -5,6 +5,7 @@
 
   <ItemGroup>
     <!-- Aspire -->
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.1.3" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.13.1" />

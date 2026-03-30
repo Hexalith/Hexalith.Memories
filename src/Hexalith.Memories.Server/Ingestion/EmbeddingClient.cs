@@ -6,31 +6,45 @@
 namespace Hexalith.Memories.Server.Ingestion;
 
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
 using Dapr.Client;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 /// <summary>Typed HTTP client for generating embeddings via Google text-embedding-004 API.</summary>
 public class EmbeddingClient
 {
     private const int ExpectedDimensions = 768;
     private const string GoogleEmbeddingEndpoint = "https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent";
+    private const string FakeEmbeddingConfigKey = "Memories:Testing:UseFakeEmbedding";
     private const string SecretKeyName = "google-embedding-api-key";
     private const string SecretStoreName = "secretstore";
 
     private readonly DaprClient _daprClient;
     private readonly HttpClient _httpClient;
+    private readonly bool _useFakeEmbedding;
 
     private string? _apiKey;
 
     /// <summary>Initializes a new instance of the <see cref="EmbeddingClient"/> class.</summary>
     /// <param name="httpClient">The HTTP client injected by IHttpClientFactory.</param>
     /// <param name="daprClient">The DAPR client for secret retrieval.</param>
-    public EmbeddingClient(HttpClient httpClient, DaprClient daprClient)
+    /// <param name="configuration">The application configuration.</param>
+    /// <param name="hostEnvironment">The current host environment.</param>
+    public EmbeddingClient(HttpClient httpClient, DaprClient daprClient, IConfiguration configuration, IHostEnvironment hostEnvironment)
     {
         _httpClient = httpClient;
         _daprClient = daprClient;
+        _useFakeEmbedding = configuration.GetValue<bool>(FakeEmbeddingConfigKey);
+
+        if (_useFakeEmbedding && !hostEnvironment.IsDevelopment())
+        {
+            throw new InvalidOperationException("Fake embeddings are only supported in development and test environments.");
+        }
     }
 
     /// <summary>Loads and caches the embedding API key so configuration failures happen before rate-limit budget is consumed.</summary>
@@ -38,7 +52,14 @@ public class EmbeddingClient
     /// <param name="ct">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public virtual async Task PrimeApiKeyAsync(string tenantId, CancellationToken ct)
-        => _ = await GetApiKeyAsync(tenantId, ct).ConfigureAwait(false);
+    {
+        if (_useFakeEmbedding)
+        {
+            return;
+        }
+
+        _ = await GetApiKeyAsync(tenantId, ct).ConfigureAwait(false);
+    }
 
     /// <summary>Generates a 768-dimension embedding vector for the given text.</summary>
     /// <param name="text">The text content to embed.</param>
@@ -48,6 +69,11 @@ public class EmbeddingClient
     public virtual async Task<float[]> GenerateAsync(string text, string tenantId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(text);
+
+        if (_useFakeEmbedding)
+        {
+            return CreateDeterministicVector(text);
+        }
 
         string apiKey = await GetApiKeyAsync(tenantId, ct).ConfigureAwait(false);
 
@@ -143,5 +169,18 @@ public class EmbeddingClient
                 tenantId,
                 ex);
         }
+    }
+
+    private static float[] CreateDeterministicVector(string text)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(text));
+        float[] vector = new float[ExpectedDimensions];
+
+        for (int i = 0; i < vector.Length; i++)
+        {
+            vector[i] = ((hash[i % hash.Length] / 255f) * 2f) - 1f;
+        }
+
+        return vector;
     }
 }

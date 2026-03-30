@@ -1,5 +1,7 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -38,6 +40,8 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         var ft = db.FT();
         string sourceType = ToCamelCase(input.SourceType);
         string metadataText = FlattenMetadata(input.Metadata);
+        string metadataJson = JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options);
+        string ingestedAt = input.IngestedAt.ToString("o");
 
         string indexName = $"{input.TenantId}:memories:idx";
         string hashKey = $"{input.TenantId}:mu:{input.MemoryUnitId}";
@@ -74,9 +78,13 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
                 new HashEntry("sourceType", sourceType),
                 new HashEntry("sourceTypeText", sourceType),
                 new HashEntry("metadataText", metadataText),
+                new HashEntry("metadataJson", metadataJson),
                 new HashEntry("contentHash", input.ContentHash),
                 new HashEntry("caseId", input.CaseId),
                 new HashEntry("embeddingProvider", input.EmbeddingProvider),
+                new HashEntry("ingestedBy", input.IngestedBy),
+                new HashEntry("ingestedAt", ingestedAt),
+                new HashEntry("lastUpdated", ingestedAt),
             ]).ConfigureAwait(false);
 
         _logger.LogInformation(

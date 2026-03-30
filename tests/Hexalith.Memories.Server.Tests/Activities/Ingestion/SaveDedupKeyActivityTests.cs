@@ -5,48 +5,55 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using Dapr.Client;
+using Dapr.Workflow;
+
+using Hexalith.Memories.Server.Activities.Ingestion;
+
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for SaveDedupKeyActivity (Story 1.6, AC6 — Task 5b).
-/// All tests are in RED phase (Skip) — remove Skip annotations once implementation is complete.
-/// </summary>
 public class SaveDedupKeyActivityTests
 {
-    [Fact(Skip = "ATDD Red Phase: SaveDedupKeyActivity not yet implemented (Story 1.6, Task 5b)")]
+    [Fact]
     public async Task RunAsync_ShouldSaveStateWithCorrectKeyAndValue()
     {
-        // Arrange:
-        // Mock DaprClient
-        // DedupKeyInput with DedupKey = "dedup:tenant-1:case-1:abc123" and MemoryUnitId = "mu-001"
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        SaveDedupKeyActivity activity = new(daprClient);
 
-        // Act: Run the activity
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
 
-        // Assert:
-        // DaprClient.SaveStateAsync("statestore", "dedup:tenant-1:case-1:abc123", "mu-001") called
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await daprClient.Received(1).SaveStateAsync("statestore", "dedup:tenant-1:case-1:abc123", "mu-001");
     }
 
-    [Fact(Skip = "ATDD Red Phase: SaveDedupKeyActivity not yet implemented (Story 1.6, Task 5b)")]
+    [Fact]
     public async Task RunAsync_ShouldReturnTrue()
     {
-        // Arrange: DaprClient.SaveStateAsync succeeds
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        SaveDedupKeyActivity activity = new(daprClient);
 
-        // Act: Run the activity
+        bool result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
 
-        // Assert: result.ShouldBeTrue()
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        result.ShouldBeTrue();
     }
 
-    [Fact(Skip = "ATDD Red Phase: SaveDedupKeyActivity not yet implemented (Story 1.6, Task 5b)")]
+    [Fact]
     public async Task RunAsync_StateStoreUnavailable_ShouldPropagateException()
     {
-        // Arrange: DaprClient.SaveStateAsync throws
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.SaveStateAsync("statestore", Arg.Any<string>(), Arg.Any<string>())
+            .ThrowsAsync(new InvalidOperationException("State store unavailable"));
+        SaveDedupKeyActivity activity = new(daprClient);
 
-        // Act & Assert: Exception propagates to workflow retry
-        await Task.CompletedTask;
-        true.ShouldBeFalse("Not implemented");
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => activity.RunAsync(
+                Substitute.For<WorkflowActivityContext>(),
+                new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001")));
     }
 }
