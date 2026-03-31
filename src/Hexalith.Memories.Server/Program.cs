@@ -56,6 +56,11 @@ builder.Services.AddSingleton<SyntacticSearchService>(sp =>
     new SyntacticSearchService(
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<ILogger<SyntacticSearchService>>()));
+builder.Services.AddSingleton<SemanticSearchService>(sp =>
+    new SemanticSearchService(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<EmbeddingClient>(),
+        sp.GetRequiredService<ILogger<SemanticSearchService>>()));
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -183,12 +188,16 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 });
 
 app.MapGet("/api/search", async (
-    SyntacticSearchService searchService,
+    SyntacticSearchService syntacticService,
+    SemanticSearchService semanticService,
+    IActorProxyFactory actorProxyFactory,
     [FromQuery] string tenantId,
     [FromQuery] string query,
     [FromQuery] string? caseId,
     [FromQuery] int maxResults = 10,
-    [FromQuery] int offset = 0) =>
+    [FromQuery] int offset = 0,
+    [FromQuery] string axis = "syntactic",
+    CancellationToken cancellationToken = default) =>
 {
     if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(query))
     {
@@ -204,20 +213,61 @@ app.MapGet("/api/search", async (
         return Results.BadRequest(tenantValidationError);
     }
 
+    if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_AXIS",
+            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic.",
+            "Use axis=syntactic or axis=semantic."));
+    }
+
     int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
     int clampedOffset = Math.Max(offset, 0);
 
-    SearchResult searchResult = await searchService.SearchAsync(
-        new SearchQuery
-        {
-            TenantId = tenantId,
-            Query = query,
-            CaseId = caseId,
-            MaxResults = clampedMaxResults,
-            Offset = clampedOffset,
-        });
+    var searchQuery = new SearchQuery
+    {
+        TenantId = tenantId,
+        Query = query,
+        CaseId = caseId,
+        MaxResults = clampedMaxResults,
+        Offset = clampedOffset,
+    };
 
-    return Results.Ok(searchResult);
+    if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
+    {
+        ITenantConfigurationActor actor = actorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(
+                new ActorId(tenantId), nameof(TenantConfigurationActor));
+
+        try
+        {
+            TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+            SearchResult searchResult = await semanticService.SearchAsync(
+                searchQuery, config, cancellationToken);
+            return Results.Ok(searchResult);
+        }
+        catch (EmbeddingApiException ex)
+        {
+            return Results.Json(
+                SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
+                statusCode: 503);
+        }
+        catch (EmbeddingRateLimitException ex)
+        {
+            return Results.Json(
+                SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
+                statusCode: 503);
+        }
+        catch (SemanticSearchDimensionMismatchException ex)
+        {
+            return Results.Json(
+                SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
+                statusCode: 500);
+        }
+    }
+
+    return Results.Ok(await syntacticService.SearchAsync(searchQuery));
 });
 
 app.Run();
