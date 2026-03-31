@@ -1,6 +1,6 @@
 # Story 2.1: Syntactic Search (BM25 via RediSearch)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -31,46 +31,56 @@ So that I can find memory units that contain specific keywords or phrases.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create search contracts in `Contracts/V1/` (AC: 1, 3, 4)
-  - [ ] 1.1 Create `SearchQuery.cs` sealed record (TenantId, Query, CaseId?, MaxResults, Offset)
-  - [ ] 1.2 Create `ScoredResult.cs` sealed record (MemoryUnitId, Score, ContentSnippet, SourceUri, SourceType, Axis?)
-  - [ ] 1.3 Create `SearchResult.cs` sealed record (Results list, TotalCount, Query echo)
-  - [ ] 1.4 Register all three types AND `IReadOnlyList<ScoredResult>` in `MemoriesJsonSourceGenerationContext`
-  - [ ] 1.5 Add serialization round-trip tests for all new contracts
+- [x] Task 1: Create search contracts in `Contracts/V1/` (AC: 1, 3, 4)
+    - [x] 1.1 Create `SearchQuery.cs` sealed record (TenantId, Query, CaseId?, MaxResults, Offset)
+    - [x] 1.2 Create `ScoredResult.cs` sealed record (MemoryUnitId, Score, ContentSnippet, SourceUri, SourceType, Axis?)
+    - [x] 1.3 Create `SearchResult.cs` sealed record (Results list, TotalCount, Query echo)
+    - [x] 1.4 Register all three types AND `IReadOnlyList<ScoredResult>` in `MemoriesJsonSourceGenerationContext`
+    - [x] 1.5 Add serialization round-trip tests for all new contracts
 
-- [ ] Task 2: Implement `SyntacticSearchService` in `Server/Search/` (AC: 1, 2, 3, 4)
-  - [ ] 2.1 Create `SyntacticSearchService.cs` using NRedisStack `ft.SearchAsync()` (async — do NOT use sync `ft.Search()`)
-  - [ ] 2.2 Build FT.SEARCH query from `SearchQuery` input with tenant-scoped index
-  - [ ] 2.3 Map RediSearch `Document` results to `ScoredResult` records (set `Axis = "syntactic"`)
-  - [ ] 2.4 Add query input sanitization: escape RediSearch special characters in user query terms
-  - [ ] 2.5 Handle missing index gracefully (empty result, not exception)
-  - [ ] 2.6 Extract pure testable `internal static` methods: `MapDocumentToScoredResult`, `BuildQueryString`, `EscapeRedisQuery` (internal — tests access via `InternalsVisibleTo`). Inline the "Unknown Index name" check directly in `SearchAsync()` — it's a 3-line guard, not worth a separate method.
-  - [ ] 2.7 Add unit tests for all extracted pure functions
+- [x] Task 2: Implement `SyntacticSearchService` in `Server/Search/` (AC: 1, 2, 3, 4)
+    - [x] 2.1 Create `SyntacticSearchService.cs` using NRedisStack `ft.SearchAsync()` (async — do NOT use sync `ft.Search()`)
+    - [x] 2.2 Build FT.SEARCH query from `SearchQuery` input with tenant-scoped index
+    - [x] 2.3 Map RediSearch `Document` results to `ScoredResult` records (set `Axis = "syntactic"`)
+    - [x] 2.4 Add query input sanitization: escape RediSearch special characters in user query terms
+    - [x] 2.5 Handle missing index gracefully (empty result, not exception)
+    - [x] 2.6 Extract pure testable `internal static` methods: `MapDocumentToScoredResult`, `BuildQueryString`, `EscapeRedisQuery` (internal — tests access via `InternalsVisibleTo`). Inline the "Unknown Index name" check directly in `SearchAsync()` — it's a 3-line guard, not worth a separate method.
+    - [x] 2.7 Add unit tests for all extracted pure functions
 
-- [ ] Task 3: Add REST search endpoint (AC: 1, 3, 4)
-  - [ ] 3.1 Add `GET /api/search` endpoint in `Program.cs` accepting query parameters
-  - [ ] 3.2 Validate required fields (tenantId, query), cap MaxResults at 100, return `ErrorResponse` for invalid input
-  - [ ] 3.3 Wire `SyntacticSearchService` via DI (singleton)
+- [x] Task 3: Add REST search endpoint (AC: 1, 3, 4)
+    - [x] 3.1 Add `GET /api/search` endpoint in `Program.cs` accepting query parameters
+    - [x] 3.2 Validate required fields (tenantId, query), cap MaxResults at 100, return `ErrorResponse` for invalid input
+    - [x] 3.3 Wire `SyntacticSearchService` via DI (singleton)
 
-- [ ] Task 4: Integration tests with real Redis Stack (AC: 1, 2, 3, 4)
-  - [ ] 4.1 Create `SyntacticSearchIntegrationTests` in IntegrationTests project
-  - [ ] 4.2 Seed test data via `IndexSyntacticActivity` (reuse existing indexing infrastructure)
-  - [ ] 4.3 Test BM25 ranking: multi-term query returns results ordered by relevance
-  - [ ] 4.4 Test empty results: query with no matches returns empty set
-  - [ ] 4.5 Test tenant isolation: query for tenant A does not return tenant B results
-  - [ ] 4.6 Test missing index: query against non-existent tenant returns empty set
-  - [ ] 4.7 Test special characters: query with hyphens/parentheses does not throw parse error
-  - [ ] 4.8 Test offset pagination: query with offset=10, verify results start from 11th document
-  - [ ] 4.9 Test broad-match query: single common word matching many docs returns capped results correctly
-  - [ ] 4.10 Latency smoke test: 10 concurrent queries against seeded 100+ docs, assert <200ms p95 — mark with `[Trait("Category", "Performance")]` to allow separate CI scheduling
-  - [ ] 4.11 Test query injection prevention: user input containing `@sourceType:{file}` is escaped and does NOT act as field filter
-  - [ ] 4.12 Test CaseId injection prevention: caseId containing `} @content:{secret` does not inject a content filter
+- [x] Task 4: Integration tests with real Redis Stack (AC: 1, 2, 3, 4)
+    - [x] 4.1 Create `SyntacticSearchIntegrationTests` in IntegrationTests project
+    - [x] 4.2 Seed test data via `IndexSyntacticActivity` (reuse existing indexing infrastructure)
+    - [x] 4.3 Test BM25 ranking: multi-term query returns results ordered by relevance
+    - [x] 4.4 Test empty results: query with no matches returns empty set
+    - [x] 4.5 Test tenant isolation: query for tenant A does not return tenant B results
+    - [x] 4.6 Test missing index: query against non-existent tenant returns empty set
+    - [x] 4.7 Test special characters: query with hyphens/parentheses does not throw parse error
+    - [x] 4.8 Test offset pagination: query with offset=10, verify results start from 11th document
+    - [x] 4.9 Test broad-match query: single common word matching many docs returns capped results correctly
+    - [x] 4.10 Latency smoke test: 10 concurrent queries against seeded 100+ docs, assert <200ms p95 — mark with `[Trait("Category", "Performance")]` to allow separate CI scheduling
+    - [x] 4.11 Test query injection prevention: user input containing `@sourceType:{file}` is escaped and does NOT act as field filter
+    - [x] 4.12 Test CaseId injection prevention: caseId containing `} @content:{secret` does not inject a content filter
+
+### Review Findings
+
+- [x] \[Review\]\[Patch\] Add an explicit `HasIndexedMemoryUnits` signal to `SearchResult` so empty tenants are distinguishable from normal no-match searches.
+- [x] \[Review\]\[Patch\] Clamp `MaxResults` and `Offset` inside `SyntacticSearchService.SearchAsync` [src/Hexalith.Memories.Server/Search/SyntacticSearchService.cs:46]
+- [x] \[Review\]\[Patch\] Exercise the required `offset=10` pagination scenario and verify the 11th-document start [tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs:167]
+- [x] \[Review\]\[Patch\] Strengthen the query-injection integration assertions so field-filter injection cannot pass unnoticed [tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs:232]
+- [x] \[Review\]\[Patch\] Strengthen the `caseId`-injection integration assertions so escaped TAG filters are actually verified [tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs:259]
+- [x] \[Review\]\[Patch\] Make the latency smoke test assert p95 < 200 ms instead of aggregate batch time [tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs:284]
 
 ## Dev Notes
 
 ### Implementation Overview
 
 This story adds the **first search capability** to the project. You are building:
+
 1. Three new V1 contracts (`SearchQuery`, `ScoredResult`, `SearchResult`)
 2. One service (`SyntacticSearchService`) that executes RediSearch `FT.SEARCH` queries
 3. One REST endpoint (`GET /api/search`)
@@ -156,6 +166,7 @@ The `Server/Search/` folder does **not exist yet** — this story creates it. Th
 | `metadataText` | 0.25 | Flattened metadata key/value pairs |
 
 **TAG fields (exact match/filter):**
+
 - `sourceUri` — exact match filter
 - `sourceType` — exact match filter
 - `contentHash` — dedup lookup
@@ -186,44 +197,51 @@ RedisSearchResult result = await ft.SearchAsync($"{tenantId}:memories:idx", quer
 **Critical implementation details:**
 
 1. **Namespace collision:** NRedisStack has its own `NRedisStack.Search.SearchResult`. Use alias:
-   ```csharp
-   using RedisSearchResult = NRedisStack.Search.SearchResult;
-   ```
-   Our contract is `Hexalith.Memories.Contracts.V1.SearchResult`.
+
+    ```csharp
+    using RedisSearchResult = NRedisStack.Search.SearchResult;
+    ```
+
+    Our contract is `Hexalith.Memories.Contracts.V1.SearchResult`.
 
 2. **BM25 scores:** Call `query.WithScores()` BEFORE executing search. Each `Document` then gets a `.Score` property (double). Typical range: ~0.5 to ~25.0 for matching documents. Non-matching docs don't appear at all.
 
 3. **Document ID parsing:** `Document.Id` is the full hash key (e.g., `"tenant1:mu:abc123"`). Extract MemoryUnitId by stripping the known prefix. No fallback needed — every document from the index has prefix `{tenantId}:mu:` by definition (the index is created with that prefix filter):
-   ```csharp
-   string prefix = $"{tenantId}:mu:";
-   string memoryUnitId = document.Id[prefix.Length..];
-   ```
+
+    ```csharp
+    string prefix = $"{tenantId}:mu:";
+    string memoryUnitId = document.Id[prefix.Length..];
+    ```
 
 4. **Field access:** `document.GetProperties()` returns key-value pairs. Access via `document["fieldName"]` which returns `RedisValue`.
 
 5. **Missing index:** Throws `RedisServerException` containing `"Unknown Index name"`. Catch and return empty result — an empty/new tenant is valid.
 
 6. **Case-scoped TAG filter:** TAG values with special characters (hyphens, dots) must use curly brace syntax. **Critical: escape the caseId value** before embedding to prevent TAG filter injection (e.g., a caseId of `"} @content:{secret"` would break the query structure):
-   ```csharp
-   string escapedCaseId = EscapeRedisQuery(caseId);
-   string queryText = caseId is not null
-       ? $"@caseId:{{{escapedCaseId}}} {escapedSearchTerms}"
-       : escapedSearchTerms;
-   ```
+
+    ```csharp
+    string escapedCaseId = EscapeRedisQuery(caseId);
+    string queryText = caseId is not null
+        ? $"@caseId:{{{escapedCaseId}}} {escapedSearchTerms}"
+        : escapedSearchTerms;
+    ```
 
 7. **Query tokenization:** Pass the escaped query string directly to RediSearch — it handles tokenization, stemming, and stop-word removal internally. Do NOT split the query into terms yourself.
 
 8. **Special characters in queries:** RediSearch dialect 2 treats `-`, `(`, `)`, `@`, `!`, `{`, `}`, `|` as syntax. `|` is the TAG OR operator — unescaped pipes in caseId would break case isolation. Escape all:
-   ```csharp
-   static string EscapeRedisQuery(string input)
-       => Regex.Replace(input, @"[-@!{}()\[\]^~*?:\\\"'|]", @"\$0");
-   ```
+
+    ```csharp
+    static string EscapeRedisQuery(string input)
+        => Regex.Replace(input, @"[-@!{}()\[\]^~*?:\\\"'|]", @"\$0");
+    ```
 
 9. **SourceType parsing from hash:** Hash stores `sourceType` as camelCase string (e.g., `"file"`). Parse:
-   ```csharp
-   Enum.TryParse<SourceType>(value, ignoreCase: true, out var result)
-   ```
-   Fallback to `SourceType.File` for unrecognized values (forward compatibility). `File` is chosen as the safest default because it's the most common source type and has no special processing implications. Do NOT throw — new source types added in future stories must not break existing search.
+
+    ```csharp
+    Enum.TryParse<SourceType>(value, ignoreCase: true, out var result)
+    ```
+
+    Fallback to `SourceType.File` for unrecognized values (forward compatibility). `File` is chosen as the safest default because it's the most common source type and has no special processing implications. Do NOT throw — new source types added in future stories must not break existing search.
 
 10. **ContentSnippet truncation:** Hash `content` field stores full text. Truncate to nearest space before 200 chars, append `"..."` if truncated. Truncate at word boundary (avoids UTF-8 issues).
 
@@ -234,6 +252,7 @@ RedisSearchResult result = await ft.SearchAsync($"{tenantId}:memories:idx", quer
 ### Contract Design
 
 Follow existing patterns established in Epic 1 contracts (see `ErrorResponse.cs`, `IndexInput.cs`, `MemoryUnit.cs`):
+
 - `sealed record` with `required` properties (required fields first, nullable last)
 - No external NuGet dependencies in Contracts project
 - XML doc summaries on public types
@@ -243,6 +262,7 @@ Follow existing patterns established in Epic 1 contracts (see `ErrorResponse.cs`
 - **Source-gen registration:** When adding `SearchResult` with `IReadOnlyList<ScoredResult>`, ALSO register `[JsonSerializable(typeof(IReadOnlyList<ScoredResult>))]` in `MemoriesJsonSourceGenerationContext`. Without this, the generic collection falls through to reflection-based serialization (works in dev but breaks AOT/trimming). Follow the pattern of `[JsonSerializable(typeof(Dictionary<string, MetadataField>))]` already in the context.
 
 **SearchQuery:**
+
 ```csharp
 public sealed record SearchQuery
 {
@@ -255,6 +275,7 @@ public sealed record SearchQuery
 ```
 
 **ScoredResult** (reused by all axes in future stories):
+
 ```csharp
 public sealed record ScoredResult
 {
@@ -268,6 +289,7 @@ public sealed record ScoredResult
 ```
 
 **SearchResult:**
+
 ```csharp
 public sealed record SearchResult
 {
@@ -356,6 +378,7 @@ All queries MUST be scoped to the tenant's index. The index name `{tenantId}:mem
 **Test framework:** xUnit `[Fact]` + Shouldly assertions (`result.ShouldBe(expected)`, `Should.Throw<T>()`) + NSubstitute for mocks (`Substitute.For<T>()`). Do NOT use FluentAssertions or Moq.
 
 **Tier 1 — Contracts.Tests (unit, no dependencies):**
+
 - File pattern: `tests/Hexalith.Memories.Contracts.Tests/V1/{Type}SerializationTests.cs`
 - Follow exact pattern from `ErrorResponseSerializationTests.cs`: `RoundTrip_ShouldProduceIdenticalObject()` and `PropertyNames_ShouldBeCamelCase()`
 - Serialize/deserialize via `MemoriesJsonContext.Options`
@@ -364,45 +387,47 @@ All queries MUST be scoped to the tenant's index. The index name `{tenantId}:mem
 - Test `SearchResult` with empty `Results` list
 
 **Tier 2 — Server.Tests (unit, pure logic focus):**
+
 - File: `tests/Hexalith.Memories.Server.Tests/Search/SyntacticSearchServiceTests.cs`
 - Extract testable **static pure functions** from `SyntacticSearchService`:
-  - `MapDocumentToScoredResult(Document doc, string tenantId)` — hash key parsing, field extraction, SourceType parsing, content truncation, Axis tagging
-  - `BuildQueryString(string searchTerms, string? caseId)` — case-scoped TAG filter construction, CaseId escaping
-  - `EscapeRedisQuery(string input)` — RediSearch special character escaping
+    - `MapDocumentToScoredResult(Document doc, string tenantId)` — hash key parsing, field extraction, SourceType parsing, content truncation, Axis tagging
+    - `BuildQueryString(string searchTerms, string? caseId)` — case-scoped TAG filter construction, CaseId escaping
+    - `EscapeRedisQuery(string input)` — RediSearch special character escaping
 - The "Unknown Index name" check is inlined in `SearchAsync()` (3-line guard, not worth extracting)
 - Test cases:
-  - MemoryUnitId extraction: `"tenant1:mu:abc123"` -> `"abc123"` (prefix strip, no fallback)
-  - SourceType parsing: `"file"` -> `SourceType.File`, `"event"` -> `SourceType.Event` (case-insensitive)
-  - SourceType fallback: unknown value -> `SourceType.File`
-  - ContentSnippet truncation: 500-char input -> 200-char output at word boundary
-  - ContentSnippet short: 100-char input -> unchanged, no `"..."`
-  - Empty results: zero documents -> empty list with TotalCount=0
-  - Missing index: `SearchAsync()` with non-existent tenant -> empty result (inlined "Unknown Index name" guard)
-  - BM25 score positive: matching document has Score > 0.0
-  - Case-scoped query: with caseId -> `"@caseId:{case\-1} escaped terms"`, without -> `"escaped terms"`
-  - CaseId injection prevention: caseId `"} @content:{secret"` -> escaped before TAG embedding, does NOT inject content filter
-  - Query escaping: `"claim-denied"` -> `"claim\-denied"`, `"@admin"` -> `"\@admin"`
-  - All-special-char query: `"---"` after escaping -> return empty results (not error)
-  - Query injection prevention: input `"@sourceType:{file}"` -> escaped to `"\@sourceType\:\{file\}"`, does NOT act as field filter
-  - Null/missing field handling: document with `sourceType.IsNullOrEmpty` -> skipped, not crash
-  - Missing content field: document with `content.IsNullOrEmpty` -> skipped (most likely stale entry scenario)
+    - MemoryUnitId extraction: `"tenant1:mu:abc123"` -> `"abc123"` (prefix strip, no fallback)
+    - SourceType parsing: `"file"` -> `SourceType.File`, `"event"` -> `SourceType.Event` (case-insensitive)
+    - SourceType fallback: unknown value -> `SourceType.File`
+    - ContentSnippet truncation: 500-char input -> 200-char output at word boundary
+    - ContentSnippet short: 100-char input -> unchanged, no `"..."`
+    - Empty results: zero documents -> empty list with TotalCount=0
+    - Missing index: `SearchAsync()` with non-existent tenant -> empty result (inlined "Unknown Index name" guard)
+    - BM25 score positive: matching document has Score > 0.0
+    - Case-scoped query: with caseId -> `"@caseId:{case\-1} escaped terms"`, without -> `"escaped terms"`
+    - CaseId injection prevention: caseId `"} @content:{secret"` -> escaped before TAG embedding, does NOT inject content filter
+    - Query escaping: `"claim-denied"` -> `"claim\-denied"`, `"@admin"` -> `"\@admin"`
+    - All-special-char query: `"---"` after escaping -> return empty results (not error)
+    - Query injection prevention: input `"@sourceType:{file}"` -> escaped to `"\@sourceType\:\{file\}"`, does NOT act as field filter
+    - Null/missing field handling: document with `sourceType.IsNullOrEmpty` -> skipped, not crash
+    - Missing content field: document with `content.IsNullOrEmpty` -> skipped (most likely stale entry scenario)
 - **Do NOT mock `IConnectionMultiplexer` -> `IDatabase` -> `SearchCommands` chain** — that's brittle. Tier 3 covers it.
 
 **Tier 3 — IntegrationTests (real Redis Stack via Testcontainers):**
+
 - File: `tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs`
 - Use `[Collection("RedisStack")]` with existing `RedisStackFixture` (file: `tests/Hexalith.Memories.IntegrationTests/Fixtures/RedisStackFixture.cs`)
 - Seed data by constructing `IndexSyntacticActivity` with the fixture's `Connection` and calling `RunAsync()` directly (same pattern as `IndexSyntacticIntegrationTests.cs`)
 - Use `IndexInputFactory.Create()` from `TestHelpers` project for test data
 - Test cases:
-  - BM25 ranking: seed 3+ docs with varied relevance, assert ordering
-  - Tenant isolation: seed identical docs under two unique tenant IDs, query one, assert zero cross-leak
-  - Case scoping: seed docs with different `caseId`, query with `@caseId` TAG filter, assert filtering
-  - Empty results: query with gibberish term against seeded docs, assert empty
-  - Missing index: query against never-seeded tenant, assert empty (not exception)
-  - Special characters: query with hyphens, parentheses doesn't throw
-  - Offset pagination: seed 15+ docs, query with offset=10, maxResults=5, assert correct skip
-  - Broad-match: seed many docs with common word, assert MaxResults cap respected
-  - Latency smoke: 10 concurrent queries via `Task.WhenAll()`, assert p95 <200ms
+    - BM25 ranking: seed 3+ docs with varied relevance, assert ordering
+    - Tenant isolation: seed identical docs under two unique tenant IDs, query one, assert zero cross-leak
+    - Case scoping: seed docs with different `caseId`, query with `@caseId` TAG filter, assert filtering
+    - Empty results: query with gibberish term against seeded docs, assert empty
+    - Missing index: query against never-seeded tenant, assert empty (not exception)
+    - Special characters: query with hyphens, parentheses doesn't throw
+    - Offset pagination: seed 15+ docs, query with offset=10, maxResults=5, assert correct skip
+    - Broad-match: seed many docs with common word, assert MaxResults cap respected
+    - Latency smoke: 10 concurrent queries via `Task.WhenAll()`, assert p95 <200ms
 
 ### Performance Considerations (NFR1: <200ms p95)
 
@@ -446,14 +471,16 @@ All queries MUST be scoped to the tenant's index. The index name `{tenantId}:mem
 ### Previous Story Intelligence
 
 **From Story 1.5 (Three-Backend Indexing) — DONE:**
+
 - `[FromKeyedServices("redis")] IConnectionMultiplexer redis` pattern for Redis injection
 - `TenantIdGuard.Validate()` for tenant ID validation before any Redis operation
 - Index creation is idempotent (catches "Index already exists" exception)
-- `NRedisStack.Search` namespace for all FT.* operations
+- `NRedisStack.Search` namespace for all FT.\* operations
 - `NRedisStack.RedisStackCommands` for `db.FT()` extension method
 - Hash field names: `content`, `sourceUri`, `sourceUriText`, `sourceType`, `sourceTypeText`, `metadataText`, `metadataJson`, `contentHash`, `caseId`, `embeddingProvider`, `ingestedBy`, `ingestedAt`, `lastUpdated`
 
 **From Story 1.6 (Ingestion Workflow) — DONE:**
+
 - REST endpoints use minimal API pattern in `Program.cs` (no controllers)
 - Validation returns `ErrorResponse(Code, Message, Suggestion)` for 400 responses
 - `Results.Ok()`, `Results.BadRequest()`, `Results.NotFound()` for responses
@@ -461,6 +488,7 @@ All queries MUST be scoped to the tenant's index. The index name `{tenantId}:mem
 - JSON options configured via `builder.Services.ConfigureHttpJsonOptions()` with `MemoriesJsonContext.Options`
 
 **From Story 1.7 (Embedding Provider Configuration) — READY-FOR-DEV (not yet implemented):**
+
 - `TenantEmbeddingConfig` contract already exists in Contracts/V1
 - `EmbeddingClient` is currently registered as typed HttpClient (`AddHttpClient<EmbeddingClient>()`) — Story 1.7 will change to singleton
 - This has NO impact on Story 2.1 — search service uses `IConnectionMultiplexer` directly, not `EmbeddingClient`
@@ -468,6 +496,7 @@ All queries MUST be scoped to the tenant's index. The index name `{tenantId}:mem
 ### Git Intelligence
 
 Recent commits show stable indexing infrastructure:
+
 - `5621fe9` Merge PR #6: Ingestion workflow orchestration (Story 1.6)
 - `f1ae9d6` feat: implement ingestion workflow orchestration
 - `2253f09` Merge PR #5: Three-backend indexing (Story 1.5)
@@ -478,6 +507,7 @@ All indexing infrastructure is merged to main. Search builds on top of the exist
 ### Dependencies & Imports
 
 The `SyntacticSearchService` needs these imports (all already available in the Server project):
+
 ```csharp
 using NRedisStack.RedisStackCommands;    // db.FT() extension
 using NRedisStack.Search;                 // Query, SearchResult (alias this)
@@ -514,8 +544,41 @@ NRedisStack 1.3.0 and StackExchange.Redis 2.12.4 are already in `Directory.Packa
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- NRedisStack 1.3.0 `Query.WithScores` is a property, not a chainable method — use `SetWithScores(true)` instead
+- NRedisStack 1.3.0 `SearchCommands` type is in `NRedisStack` namespace, not `NRedisStack.Search`
+- Redis Stack error message for missing index is `"No such index"` (not `"Unknown Index name"` as documented) — catch filter updated to handle both variants
 
 ### Completion Notes List
 
+- Task 1: Created `SearchQuery`, `ScoredResult`, `SearchResult` sealed records in `Contracts/V1/` with full XML docs, copyright headers, and source-gen JSON registration (including `IReadOnlyList<ScoredResult>`). 9 serialization round-trip tests added covering defaults, camelCase property names, and nullable fields.
+- Task 2: Implemented `SyntacticSearchService` in `Server/Search/` with async `FT.SEARCH` via NRedisStack, RediSearch special character escaping (regex-based), case-scoped TAG filtering with injection prevention, content snippet truncation at word boundary, stale entry detection, and source-gen logger messages. 22 unit tests added covering all pure static functions.
+- Task 3: Added `GET /api/search` endpoint in `Program.cs` with `tenantId`/`query` validation, `MaxResults` clamping (1-100), `Offset` normalization, and `SyntacticSearchService` DI registration as singleton.
+- Task 4: Created 11 integration tests with real Redis Stack via Testcontainers covering BM25 ranking, tenant isolation, case scoping, empty results, missing index, special characters, offset pagination, broad-match capping, latency smoke test (10 concurrent queries), query injection prevention, and CaseId injection prevention.
+
 ### File List
+
+**New files:**
+
+- src/Hexalith.Memories.Contracts/V1/SearchQuery.cs
+- src/Hexalith.Memories.Contracts/V1/ScoredResult.cs
+- src/Hexalith.Memories.Contracts/V1/SearchResult.cs
+- src/Hexalith.Memories.Server/Search/SyntacticSearchService.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchQuerySerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/ScoredResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchResultSerializationTests.cs
+- tests/Hexalith.Memories.Server.Tests/Search/SyntacticSearchServiceTests.cs
+- tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs
+
+**Modified files:**
+
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs (added ScoredResult, SearchQuery, SearchResult, IReadOnlyList<ScoredResult> registrations)
+- src/Hexalith.Memories.Server/Program.cs (added SyntacticSearchService DI registration and GET /api/search endpoint)
+
+### Change Log
+
+- 2026-03-31: Implemented Story 2.1 — Syntactic Search (BM25 via RediSearch). Added 3 contracts, 1 service, 1 REST endpoint, 42 tests (9 contract serialization, 22 service unit, 11 integration). All ACs satisfied, zero regressions.
+

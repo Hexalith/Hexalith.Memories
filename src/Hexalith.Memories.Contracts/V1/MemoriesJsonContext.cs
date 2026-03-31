@@ -17,12 +17,16 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(ExtractionResult))]
 [JsonSerializable(typeof(FailureDetails))]
 [JsonSerializable(typeof(GraphEdge))]
+[JsonSerializable(typeof(IReadOnlyList<ScoredResult>))]
 [JsonSerializable(typeof(IndexInput))]
 [JsonSerializable(typeof(IndexResult))]
 [JsonSerializable(typeof(IngestionInput))]
 [JsonSerializable(typeof(IngestionResult))]
 [JsonSerializable(typeof(MemoryUnit))]
 [JsonSerializable(typeof(MetadataField))]
+[JsonSerializable(typeof(ScoredResult))]
+[JsonSerializable(typeof(SearchQuery))]
+[JsonSerializable(typeof(SearchResult))]
 [JsonSerializable(typeof(TenantEmbeddingConfig))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 

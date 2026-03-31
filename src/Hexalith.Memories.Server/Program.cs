@@ -10,6 +10,7 @@ using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.ServiceDefaults;
 
@@ -51,6 +52,10 @@ builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("falkordb", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "falkordb"));
 builder.Services.AddSingleton<IGraphQueryBuilder, GraphQueryBuilder>();
+builder.Services.AddSingleton<SyntacticSearchService>(sp =>
+    new SyntacticSearchService(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<ILogger<SyntacticSearchService>>()));
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -175,6 +180,44 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 
         throw;
     }
+});
+
+app.MapGet("/api/search", async (
+    SyntacticSearchService searchService,
+    [FromQuery] string tenantId,
+    [FromQuery] string query,
+    [FromQuery] string? caseId,
+    [FromQuery] int maxResults = 10,
+    [FromQuery] int offset = 0) =>
+{
+    if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(query))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "Both 'tenantId' and 'query' are required.",
+            "Provide tenantId and query as query parameters."));
+    }
+
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
+    int clampedOffset = Math.Max(offset, 0);
+
+    SearchResult searchResult = await searchService.SearchAsync(
+        new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = query,
+            CaseId = caseId,
+            MaxResults = clampedMaxResults,
+            Offset = clampedOffset,
+        });
+
+    return Results.Ok(searchResult);
 });
 
 app.Run();
