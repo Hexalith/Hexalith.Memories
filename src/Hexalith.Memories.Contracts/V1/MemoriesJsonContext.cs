@@ -23,6 +23,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IngestionResult))]
 [JsonSerializable(typeof(MemoryUnit))]
 [JsonSerializable(typeof(MetadataField))]
+[JsonSerializable(typeof(TenantEmbeddingConfig))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

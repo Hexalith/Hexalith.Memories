@@ -1,3 +1,5 @@
+using Dapr.Actors;
+using Dapr.Actors.Client;
 using Dapr.Client;
 using Dapr.Workflow;
 
@@ -38,10 +40,11 @@ _ = builder.Services.AddHealthChecks()
         timeout: healthCheckTimeout));
 
 builder.Services.AddSingleton<IContentExtractionClient, ContentExtractionClient>();
-builder.Services.AddHttpClient<EmbeddingClient>(client =>
+builder.Services.AddHttpClient("EmbeddingClient", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddSingleton<EmbeddingClient>();
 
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
@@ -72,6 +75,7 @@ builder.Services.AddDaprWorkflow(options =>
 builder.Services.AddActors(options =>
 {
     options.Actors.RegisterActor<EmbeddingRateLimiterActor>();
+    options.Actors.RegisterActor<TenantConfigurationActor>();
     options.ActorIdleTimeout = TimeSpan.FromMinutes(60);
     options.ActorScanInterval = TimeSpan.FromSeconds(30);
     options.ReentrancyConfig = new Dapr.Actors.ActorReentrancyConfig { Enabled = false };
@@ -107,6 +111,72 @@ app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient,
     return state is null ? Results.NotFound() : Results.Ok(state);
 });
 
+app.MapGet("/api/tenants/{tenantId}/embedding-config", async (IActorProxyFactory actorProxyFactory, string tenantId) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ITenantConfigurationActor actor = actorProxyFactory
+        .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenantId), nameof(TenantConfigurationActor));
+    TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+    return Results.Ok(config);
+});
+
+app.MapPut("/api/tenants/{tenantId}/embedding-config",
+    async (IActorProxyFactory actorProxyFactory, string tenantId, TenantEmbeddingConfig config, bool forceReindex = false) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    try
+    {
+        EmbeddingProviderDefaults.Validate(config);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_CONFIG", ex.Message, "Fix the configuration values and retry."));
+    }
+
+    ITenantConfigurationActor actor = actorProxyFactory
+        .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenantId), nameof(TenantConfigurationActor));
+
+    try
+    {
+        await actor.SetEmbeddingConfigAsync(config, forceReindex);
+        TenantEmbeddingConfig updatedConfig = await actor.GetEmbeddingConfigAsync();
+        return Results.Ok(updatedConfig);
+    }
+    catch (EmbeddingConfigChangeException ex)
+    {
+        return Results.Conflict(CreateEmbeddingConfigConflictResponse(
+            ex.TenantId,
+            ex.CurrentConfig ?? EmbeddingProviderDefaults.Google(),
+            ex.ProposedConfig ?? config,
+            ex.AffectedFields));
+    }
+    catch (ActorMethodInvocationException) when (!forceReindex)
+    {
+        TenantEmbeddingConfig currentConfig = await actor.GetEmbeddingConfigAsync();
+        string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(currentConfig, config);
+        if (affectedFields.Length > 0)
+        {
+            return Results.Conflict(CreateEmbeddingConfigConflictResponse(
+                tenantId,
+                currentConfig,
+                config,
+                affectedFields));
+        }
+
+        throw;
+    }
+});
+
 app.Run();
 
 static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
@@ -132,4 +202,42 @@ static ErrorResponse? ValidateIngestionRequest(IngestionInput input)
             ex.Message,
             "Ensure the ingestion request is valid before scheduling ingestion.");
     }
+}
+
+static ErrorResponse? ValidateTenantId(string tenantId)
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+        return null;
+    }
+    catch (ArgumentException ex)
+    {
+        return new ErrorResponse(
+            "INVALID_TENANT_ID",
+            ex.Message,
+            "Use only alphanumeric characters and hyphens for tenant identifiers.");
+    }
+}
+
+static object CreateEmbeddingConfigConflictResponse(
+    string tenantId,
+    TenantEmbeddingConfig currentConfig,
+    TenantEmbeddingConfig proposedConfig,
+    string[] affectedFields)
+{
+    EmbeddingConfigChangeException exception = new(
+        tenantId,
+        currentConfig,
+        proposedConfig,
+        affectedFields);
+
+    return new
+    {
+        error = "EmbeddingConfigChangeRequired",
+        message = exception.Message,
+        currentConfig,
+        proposedConfig,
+        affectedFields,
+    };
 }

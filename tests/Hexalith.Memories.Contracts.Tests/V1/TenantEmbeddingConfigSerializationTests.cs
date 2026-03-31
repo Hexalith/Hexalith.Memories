@@ -5,48 +5,79 @@
 
 namespace Hexalith.Memories.Contracts.Tests.V1;
 
-/// <summary>
-/// ATDD acceptance tests for TenantEmbeddingConfig serialization (Story 1.7, AC #1).
-/// TDD Red Phase: These tests define expected behavior before implementation.
-/// Remove Skip attributes and uncomment type references once TenantEmbeddingConfig is created.
-/// </summary>
+using System.Text.Json;
+
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
 public class TenantEmbeddingConfigSerializationTests
 {
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantEmbeddingConfig not yet implemented")]
+    [Fact]
     public void RoundTrip_AllFieldsPopulated_ShouldProduceIdenticalJson()
     {
-        // AC #1: provider, model, dimensions, rateLimitPerMinute configurable
-        // var original = new TenantEmbeddingConfig
-        // {
-        //     Provider = "google",
-        //     Model = "gemini-embedding-001",
-        //     Dimensions = 768,
-        //     RateLimitPerMinute = 1500,
-        //     ApiSecretKeyName = "google-embedding-api-key",
-        //     ReindexRequired = false,
-        // };
-        // string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
-        // var deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
-        // string json2 = JsonSerializer.Serialize(deserialized, MemoriesJsonContext.Options);
-        // json2.ShouldBe(json);
-        throw new NotImplementedException("TDD Red Phase — create TenantEmbeddingConfig in Contracts/V1/");
+        TenantEmbeddingConfig original = CreateFullConfig();
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
+        string json2 = JsonSerializer.Serialize(deserialized, MemoriesJsonContext.Options);
+
+        json2.ShouldBe(json);
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantEmbeddingConfig not yet implemented")]
+    [Fact]
     public void RoundTrip_ReindexRequiredTrue_ShouldPreserve()
     {
-        // AC #4: reindex tracking — ReindexRequired=true must survive round-trip
-        // var original = new TenantEmbeddingConfig { ..., ReindexRequired = true };
-        // string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
-        // json.ShouldContain("\"reindexRequired\":true");
-        throw new NotImplementedException("TDD Red Phase — create TenantEmbeddingConfig in Contracts/V1/");
+        TenantEmbeddingConfig original = CreateFullConfig() with { ReindexRequired = true };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"reindexRequired\":true");
+
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
+        deserialized.ShouldNotBeNull();
+        deserialized.ReindexRequired.ShouldBeTrue();
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantEmbeddingConfig not yet implemented")]
+    [Fact]
     public void PropertyNames_ShouldBeCamelCase()
     {
-        // Verify camelCase: "provider", "model", "dimensions",
-        // "rateLimitPerMinute", "apiSecretKeyName", "reindexRequired"
-        throw new NotImplementedException("TDD Red Phase — create TenantEmbeddingConfig in Contracts/V1/");
+        TenantEmbeddingConfig config = CreateFullConfig();
+
+        string json = JsonSerializer.Serialize(config, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"provider\":");
+        json.ShouldContain("\"model\":");
+        json.ShouldContain("\"dimensions\":");
+        json.ShouldContain("\"rateLimitPerMinute\":");
+        json.ShouldContain("\"apiSecretKeyName\":");
+        json.ShouldContain("\"reindexRequired\":");
     }
+
+    [Fact]
+    public void RoundTrip_AllFieldValues_ShouldPreserve()
+    {
+        TenantEmbeddingConfig original = CreateFullConfig();
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.Provider.ShouldBe("google");
+        deserialized.Model.ShouldBe("gemini-embedding-001");
+        deserialized.Dimensions.ShouldBe(768);
+        deserialized.RateLimitPerMinute.ShouldBe(1500);
+        deserialized.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+        deserialized.ReindexRequired.ShouldBeFalse();
+    }
+
+    private static TenantEmbeddingConfig CreateFullConfig() => new()
+    {
+        Provider = "google",
+        Model = "gemini-embedding-001",
+        Dimensions = 768,
+        RateLimitPerMinute = 1500,
+        ApiSecretKeyName = "google-embedding-api-key",
+        ReindexRequired = false,
+    };
 }

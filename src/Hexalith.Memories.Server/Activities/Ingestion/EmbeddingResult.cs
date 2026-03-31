@@ -6,8 +6,8 @@
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
 /// <summary>Result of embedding generation containing the vector and provider metadata.</summary>
-/// <param name="Vector">The embedding vector (768 dimensions for text-embedding-004).</param>
-/// <param name="Provider">The embedding provider identifier (e.g. "google:text-embedding-004").</param>
+/// <param name="Vector">The embedding vector with dimensions matching the tenant's configured model.</param>
+/// <param name="Provider">The embedding provider identifier (e.g. "google:gemini-embedding-001").</param>
 /// <param name="Dimensions">The number of dimensions in the vector.</param>
 public sealed record EmbeddingResult(
     float[] Vector,

@@ -11,6 +11,7 @@ using System.Text.Json;
 
 using Dapr.Client;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Configuration;
@@ -33,13 +34,14 @@ public class EmbeddingClientTests
         // Arrange
         float[] expectedVector = CreateVector(768);
         string responseJson = CreateEmbeddingResponse(expectedVector);
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
-        float[] result = await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
+        float[] result = await client.GenerateAsync(TestText, TenantId, config, CancellationToken.None);
 
         // Assert
         result.Length.ShouldBe(768);
@@ -51,14 +53,15 @@ public class EmbeddingClientTests
     public async Task GenerateAsync_Http429Response_ThrowsEmbeddingRateLimitException()
     {
         // Arrange
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.TooManyRequests, "rate limited");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.TooManyRequests, "rate limited");
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.TenantId.ShouldBe(TenantId);
     }
 
@@ -66,14 +69,15 @@ public class EmbeddingClientTests
     public async Task GenerateAsync_Http500Response_ThrowsEmbeddingApiException()
     {
         // Arrange
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.InternalServerError, "server error");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.InternalServerError, "server error");
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.StatusCode.ShouldBe(500);
         ex.ResponseBody.ShouldBe("server error");
         ex.TenantId.ShouldBe(TenantId);
@@ -85,14 +89,15 @@ public class EmbeddingClientTests
     public async Task GenerateAsync_NullOrEmptyText_ThrowsArgumentException(string? text)
     {
         // Arrange
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, "{}");
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         await Should.ThrowAsync<ArgumentException>(
-            () => client.GenerateAsync(text!, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(text!, TenantId, config, CancellationToken.None));
     }
 
     [Fact]
@@ -101,13 +106,14 @@ public class EmbeddingClientTests
         // Arrange
         float[] vector = CreateVector(768);
         string responseJson = CreateEmbeddingResponse(vector);
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
-        await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
+        await client.GenerateAsync(TestText, TenantId, config, CancellationToken.None);
 
         // Assert
         await daprClient.Received(1).GetSecretAsync(
@@ -121,7 +127,7 @@ public class EmbeddingClientTests
     public async Task GenerateAsync_DaprSecretStoreUnavailable_ThrowsEmbeddingApiExceptionWithActionableMessage()
     {
         // Arrange
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, "{}");
         DaprClient daprClient = Substitute.For<DaprClient>();
         daprClient.GetSecretAsync(
                 Arg.Any<string>(),
@@ -129,12 +135,13 @@ public class EmbeddingClientTests
                 Arg.Any<Dictionary<string, string>>(),
                 Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("DAPR sidecar not running"));
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("secretstore");
         ex.Message.ShouldContain("secretstore.yaml");
         ex.TenantId.ShouldBe(TenantId);
@@ -146,14 +153,15 @@ public class EmbeddingClientTests
     {
         // Arrange
         string malformedJson = """{"unexpected": "shape"}""";
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, malformedJson);
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, malformedJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("embedding.values");
         ex.Message.ShouldContain(malformedJson);
     }
@@ -164,14 +172,15 @@ public class EmbeddingClientTests
         // Arrange
         float[] shortVector = CreateVector(100);
         string responseJson = CreateEmbeddingResponse(shortVector);
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, responseJson);
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, responseJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("768");
         ex.Message.ShouldContain("100");
     }
@@ -187,12 +196,15 @@ public class EmbeddingClientTests
             return new HttpResponseMessage(HttpStatusCode.OK);
         });
         HttpClient httpClient = new(handler) { Timeout = TimeSpan.FromMilliseconds(50) };
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        httpClientFactory.CreateClient("EmbeddingClient").Returns(httpClient);
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         await Should.ThrowAsync<TaskCanceledException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
     }
 
     [Fact]
@@ -200,14 +212,15 @@ public class EmbeddingClientTests
     {
         // Arrange
         string invalidJson = "not json at all";
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, invalidJson);
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, invalidJson);
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
-            () => client.GenerateAsync(TestText, TenantId, CancellationToken.None));
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("invalid JSON");
         ex.Message.ShouldContain(invalidJson);
     }
@@ -216,15 +229,16 @@ public class EmbeddingClientTests
     public async Task GenerateAsync_FakeEmbeddingEnabled_ShouldBypassSecretStoreAndHttp()
     {
         // Arrange
-        TestDelegatingHandler handler = new((_, _) =>
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        httpClientFactory.CreateClient(Arg.Any<string>()).Returns(_ =>
             throw new InvalidOperationException("HTTP client should not be called when fake embedding is enabled."));
-        HttpClient httpClient = new(handler);
         DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(useFakeEmbedding: true), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(useFakeEmbedding: true), CreateHostEnvironment());
 
         // Act
-        float[] result = await client.GenerateAsync(TestText, TenantId, CancellationToken.None);
+        float[] result = await client.GenerateAsync(TestText, TenantId, config, CancellationToken.None);
 
         // Assert
         result.Length.ShouldBe(768);
@@ -240,14 +254,15 @@ public class EmbeddingClientTests
     public async Task PrimeApiKeyAsync_ReusesCachedSecretAcrossCalls()
     {
         // Arrange
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, "{}");
         DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        EmbeddingClient client = new(httpClient, daprClient, CreateConfiguration(), CreateHostEnvironment());
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act
-        await client.PrimeApiKeyAsync(TenantId, CancellationToken.None);
-        await client.PrimeApiKeyAsync(TenantId, CancellationToken.None);
+        await client.PrimeApiKeyAsync(TenantId, config, CancellationToken.None);
+        await client.PrimeApiKeyAsync(TenantId, config, CancellationToken.None);
 
         // Assert
         await daprClient.Received(1).GetSecretAsync(
@@ -260,12 +275,12 @@ public class EmbeddingClientTests
     [Fact]
     public void Constructor_FakeEmbeddingEnabledOutsideDevelopment_ThrowsInvalidOperationException()
     {
-        HttpClient httpClient = CreateHttpClient(HttpStatusCode.OK, "{}");
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, "{}");
         DaprClient daprClient = Substitute.For<DaprClient>();
 
         InvalidOperationException ex = Should.Throw<InvalidOperationException>(
             () => new EmbeddingClient(
-                httpClient,
+                httpClientFactory,
                 daprClient,
                 CreateConfiguration(useFakeEmbedding: true),
                 CreateHostEnvironment(Environments.Production)));
@@ -292,14 +307,17 @@ public class EmbeddingClientTests
         });
     }
 
-    private static HttpClient CreateHttpClient(HttpStatusCode statusCode, string responseBody)
+    private static IHttpClientFactory CreateHttpClientFactory(HttpStatusCode statusCode, string responseBody)
     {
         TestDelegatingHandler handler = new((_, _) =>
             Task.FromResult(new HttpResponseMessage(statusCode)
             {
                 Content = new StringContent(responseBody, Encoding.UTF8, "application/json"),
             }));
-        return new HttpClient(handler);
+        HttpClient httpClient = new(handler);
+        IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient("EmbeddingClient").Returns(httpClient);
+        return factory;
     }
 
     private static DaprClient CreateDaprClientWithSecret()

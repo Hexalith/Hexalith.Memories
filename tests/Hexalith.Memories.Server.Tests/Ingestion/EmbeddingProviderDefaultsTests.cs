@@ -5,98 +5,83 @@
 
 namespace Hexalith.Memories.Server.Tests.Ingestion;
 
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for EmbeddingProviderDefaults (Story 1.7, AC #2, #3).
-/// TDD Red Phase: These tests define expected behavior before implementation.
-/// Remove Skip attributes once EmbeddingProviderDefaults is implemented.
-/// </summary>
 public class EmbeddingProviderDefaultsTests
 {
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Google_ShouldReturnCorrectDefaults()
     {
-        // Arrange & Act — AC #2: default Google config
-        // var config = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        // Assert — gemini-embedding-001 replaces deprecated text-embedding-004
-        // config.Provider.ShouldBe("google");
-        // config.Model.ShouldBe("gemini-embedding-001");
-        // config.Dimensions.ShouldBe(768);
-        // config.RateLimitPerMinute.ShouldBe(1500);
-        // config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
-        // config.ReindexRequired.ShouldBeFalse();
-        throw new NotImplementedException("TDD Red Phase — implement EmbeddingProviderDefaults.Google()");
+        config.Provider.ShouldBe("google");
+        config.Model.ShouldBe("gemini-embedding-001");
+        config.Dimensions.ShouldBe(768);
+        config.RateLimitPerMinute.ShouldBe(1500);
+        config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+        config.ReindexRequired.ShouldBeFalse();
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Validate_ValidConfig_ShouldNotThrow()
     {
-        // Arrange — AC #3: extensible provider pattern with validation
-        // var config = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
 
-        // Act & Assert — valid config should pass
-        // Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement EmbeddingProviderDefaults.Validate()");
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
+    public void Validate_UnsupportedProvider_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = "openai" };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
     public void Validate_DimensionsZero_ShouldThrow()
     {
-        // Arrange — dimensions must be > 0
-        // var config = EmbeddingProviderDefaults.Google() with { Dimensions = 0 };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 0 };
 
-        // Act & Assert
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement validation: dimensions > 0");
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Validate_NegativeDimensions_ShouldThrow()
     {
-        // Arrange
-        // var config = EmbeddingProviderDefaults.Google() with { Dimensions = -1 };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = -1 };
 
-        // Act & Assert
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement validation: dimensions > 0");
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Validate_RateLimitExceedsMaximum_ShouldThrow()
     {
-        // Arrange — rate limit per minute must be <= 3000 for Google
-        // var config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 3001 };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 3001 };
 
-        // Act & Assert
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement validation: rateLimitPerMinute <= 3000");
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Validate_RateLimitZero_ShouldThrow()
     {
-        // Arrange
-        // var config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 0 };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 0 };
 
-        // Act & Assert
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement validation: rateLimitPerMinute > 0");
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Fact]
     public void Validate_ApiSecretKeyNameWithSpecialChars_ShouldThrow()
     {
-        // Arrange — apiSecretKeyName must match ^[a-z0-9-]+$ (prevents path traversal)
-        // var config = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = "../secret-key" };
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = "../secret-key" };
 
-        // Act & Assert
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        throw new NotImplementedException("TDD Red Phase — implement validation: apiSecretKeyName pattern");
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Theory(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Theory]
     [InlineData("key with spaces")]
     [InlineData("KEY_UPPER")]
     [InlineData("key/slash")]
@@ -104,34 +89,91 @@ public class EmbeddingProviderDefaultsTests
     [InlineData("")]
     public void Validate_InvalidApiSecretKeyNames_ShouldThrow(string invalidKeyName)
     {
-        // Arrange — apiSecretKeyName must match ^[a-z0-9-]+$
-        // var config = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = invalidKeyName };
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        _ = invalidKeyName;
-        throw new NotImplementedException("TDD Red Phase — implement validation: apiSecretKeyName pattern");
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = invalidKeyName };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Theory(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Theory]
     [InlineData("")]
-    [InlineData(null)]
     [InlineData("   ")]
-    public void Validate_EmptyProvider_ShouldThrow(string? provider)
+    public void Validate_EmptyProvider_ShouldThrow(string provider)
     {
-        // var config = EmbeddingProviderDefaults.Google() with { Provider = provider! };
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        _ = provider;
-        throw new NotImplementedException("TDD Red Phase — implement validation: provider not empty");
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = provider };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
     }
 
-    [Theory(Skip = "TDD Red Phase — Story 1.7: EmbeddingProviderDefaults not yet implemented")]
+    [Theory]
     [InlineData("")]
-    [InlineData(null)]
     [InlineData("   ")]
-    public void Validate_EmptyModel_ShouldThrow(string? model)
+    public void Validate_EmptyModel_ShouldThrow(string model)
     {
-        // var config = EmbeddingProviderDefaults.Google() with { Model = model! };
-        // Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
-        _ = model;
-        throw new NotImplementedException("TDD Red Phase — implement validation: model not empty");
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Model = model };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_RateLimitAtMaximum_ShouldNotThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 3000 };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Theory]
+    [InlineData(768)]
+    [InlineData(1536)]
+    [InlineData(3072)]
+    public void Validate_GoogleSupportedDimensions_ShouldNotThrow(int dimensions)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = dimensions };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_GoogleUnsupportedDimension_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 42 };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_ModelWithUnsafeCharacters_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Model = "gemini/embedding/001" };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void GetBreakingChangeFields_ShouldReportProviderModelAndDimensions()
+    {
+        TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig proposed = current with
+        {
+            Provider = "openai",
+            Model = "other-model",
+            Dimensions = 1536,
+        };
+
+        string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(current, proposed);
+
+        affectedFields.ShouldBe(["provider", "model", "dimensions"]);
+    }
+
+    [Theory]
+    [InlineData("valid-key-name")]
+    [InlineData("key123")]
+    [InlineData("a")]
+    [InlineData("my-secret-key-01")]
+    public void Validate_ValidApiSecretKeyNames_ShouldNotThrow(string validKeyName)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = validKeyName };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
     }
 }

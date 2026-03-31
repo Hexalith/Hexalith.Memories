@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-03-30 # Story 1.6 done after adversarial code review
+last_updated: 2026-03-31 # Story 1.7 review fixes applied and completed
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   1-4-embedding-generation: done
   1-5-three-backend-indexing: done
   1-6-ingestion-workflow-orchestration: done
-  1-7-embedding-provider-configuration: ready-for-dev
+  1-7-embedding-provider-configuration: done
   epic-1-retrospective: optional
 
   # Epic 2: Three-Axis Search, Fusion & Benchmark Validation

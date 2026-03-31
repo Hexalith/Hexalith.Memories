@@ -5,143 +5,274 @@
 
 namespace Hexalith.Memories.Server.Tests.Actors;
 
+using System.Reflection;
+using System.Text.Json;
+
+using Dapr.Actors;
+using Dapr.Actors.Runtime;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Ingestion;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for TenantConfigurationActor (Story 1.7, AC #1, #2, #4).
-/// TDD Red Phase: These tests define expected behavior before implementation.
-/// Remove Skip attributes once TenantConfigurationActor is implemented.
-/// Uses the same actor testing pattern as EmbeddingRateLimiterActorTests:
-/// ActorHost.CreateForTest + reflection-injected mock StateManager.
-/// </summary>
 public class TenantConfigurationActorTests
 {
     private const string TenantId = "test-tenant";
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
+    [Fact]
     public async Task GetEmbeddingConfigAsync_UnconfiguredTenant_ShouldReturnGoogleDefaults()
     {
-        // Arrange — AC #1: default config for new tenants
-        // (actor, stateManager) = CreateActorWithMockState();
-        // SetupEmptyState(stateManager);
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
 
         // Act
-        // var config = await actor.GetEmbeddingConfigAsync();
-
-        // Assert — gemini-embedding-001 defaults
-        // config.Provider.ShouldBe("google");
-        // config.Model.ShouldBe("gemini-embedding-001");
-        // config.Dimensions.ShouldBe(768);
-        // config.RateLimitPerMinute.ShouldBe(1500);
-        // config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
-        // config.ReindexRequired.ShouldBeFalse();
-        throw new NotImplementedException("TDD Red Phase — implement TenantConfigurationActor.GetEmbeddingConfigAsync()");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_NewConfig_ShouldPersistToActorState()
-    {
-        // Arrange — AC #1: store config as part of tenant configuration
-        // (actor, stateManager) = CreateActorWithMockState();
-        // SetupEmptyState(stateManager);
-        // var newConfig = new TenantEmbeddingConfig { ... };
-
-        // Act
-        // await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
-
-        // Assert — config persisted under "embeddingConfig" key
-        // await stateManager.Received().SetStateAsync(
-        //     "embeddingConfig",
-        //     Arg.Is<TenantEmbeddingConfig>(c => c.Provider == "google" && c.Model == "gemini-embedding-001"),
-        //     Arg.Any<CancellationToken>());
-        throw new NotImplementedException("TDD Red Phase — implement TenantConfigurationActor.SetEmbeddingConfigAsync()");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_ProviderChanged_WithoutForceReindex_ShouldThrow()
-    {
-        // Arrange — AC #4: warn that existing vectors are incompatible
-        // (actor, stateManager) = CreateActorWithMockState();
-        // Set existing config with provider="google", model="gemini-embedding-001"
-        // New config changes provider to "openai"
-
-        // Act & Assert — should throw EmbeddingConfigChangeException
-        // await Should.ThrowAsync<EmbeddingConfigChangeException>(
-        //     () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
-        throw new NotImplementedException("TDD Red Phase — implement reindex warning on provider change");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_ModelChanged_WithoutForceReindex_ShouldThrow()
-    {
-        // Arrange — AC #4: model change requires reindex
-        // Existing: gemini-embedding-001, New: text-embedding-004
-
-        // Act & Assert
-        // await Should.ThrowAsync<EmbeddingConfigChangeException>(
-        //     () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
-        throw new NotImplementedException("TDD Red Phase — implement reindex warning on model change");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_DimensionsChanged_WithoutForceReindex_ShouldThrow()
-    {
-        // Arrange — AC #4: dimensions change requires reindex
-        // Existing: 768, New: 3072
-
-        // Act & Assert
-        // await Should.ThrowAsync<EmbeddingConfigChangeException>(
-        //     () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
-        throw new NotImplementedException("TDD Red Phase — implement reindex warning on dimensions change");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_ForceReindex_ShouldSaveAndSetReindexRequired()
-    {
-        // Arrange — AC #4: forceReindex=true saves config with ReindexRequired flag
-        // Existing: gemini-embedding-001/768, New: different model/dims
-
-        // Act
-        // await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
-
-        // Assert — saved with ReindexRequired = true
-        // await stateManager.Received().SetStateAsync(
-        //     "embeddingConfig",
-        //     Arg.Is<TenantEmbeddingConfig>(c => c.ReindexRequired == true),
-        //     Arg.Any<CancellationToken>());
-        throw new NotImplementedException("TDD Red Phase — implement forceReindex flag handling");
-    }
-
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task SetEmbeddingConfigAsync_RateLimitOnlyChange_ShouldNotRequireForceReindex()
-    {
-        // Arrange — rateLimitPerMinute change does NOT affect vectors
-        // Existing: rateLimitPerMinute=1500, New: rateLimitPerMinute=1000
-        // Same provider, model, dimensions
-
-        // Act — should NOT throw (no vector impact)
-        // await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
 
         // Assert
-        // await stateManager.Received().SetStateAsync(
-        //     "embeddingConfig",
-        //     Arg.Is<TenantEmbeddingConfig>(c => c.RateLimitPerMinute == 1000),
-        //     Arg.Any<CancellationToken>());
-        throw new NotImplementedException("TDD Red Phase — implement non-breaking config change passthrough");
+        config.Provider.ShouldBe("google");
+        config.Model.ShouldBe("gemini-embedding-001");
+        config.Dimensions.ShouldBe(768);
+        config.RateLimitPerMinute.ShouldBe(1500);
+        config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+        config.ReindexRequired.ShouldBeFalse();
+        await stateManager.DidNotReceive().SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: TenantConfigurationActor not yet implemented")]
-    public async Task GetEmbeddingConfigAsync_CorruptedState_ShouldReturnDefault()
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_NewConfig_ShouldPersistToActorState()
     {
-        // Arrange — defensive deserialization: bad JSON returns default
-        // Setup stateManager to throw JsonException from GetStateAsync
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google();
 
         // Act
-        // var config = await actor.GetEmbeddingConfigAsync();
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.Provider == "google" && c.Model == "gemini-embedding-001"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_FirstCustomDimensions_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Dimensions = 1536 };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 1536 && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_ModelChanged_WithoutForceReindex_ShouldThrow()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Model = "text-embedding-004" };
+
+        // Act & Assert
+        EmbeddingConfigChangeException ex = await Should.ThrowAsync<EmbeddingConfigChangeException>(
+            () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
+        ex.AffectedFields.ShouldContain("model");
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_DimensionsChanged_WithoutForceReindex_ShouldThrow()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Dimensions = 3072 };
+
+        // Act & Assert
+        EmbeddingConfigChangeException ex = await Should.ThrowAsync<EmbeddingConfigChangeException>(
+            () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
+        ex.AffectedFields.ShouldContain("dimensions");
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_ForceReindex_ShouldSaveAndSetReindexRequired()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Model = "different-model" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.ReindexRequired && c.Model == "different-model"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_RateLimitOnlyChange_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 1000 };
+
+        // Act — should NOT throw
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.RateLimitPerMinute == 1000),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_NonBreakingChange_ShouldPreserveExistingReindexFlag()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, EmbeddingProviderDefaults.Google() with { ReindexRequired = true });
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with
+        {
+            RateLimitPerMinute = 1000,
+            ReindexRequired = false,
+        };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.RateLimitPerMinute == 1000 && c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_CorruptedState_ShouldReturnDefault()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        stateManager.TryGetStateAsync<TenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
+            .ThrowsAsync(new JsonException("corrupted state"));
+
+        // Act
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
 
         // Assert — returns Google default, does NOT throw
-        // config.Provider.ShouldBe("google");
-        // config.Model.ShouldBe("gemini-embedding-001");
-        throw new NotImplementedException("TDD Red Phase — implement defensive deserialization fallback");
+        config.Provider.ShouldBe("google");
+        config.Model.ShouldBe("gemini-embedding-001");
+        await stateManager.DidNotReceive().SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_InvalidStoredConfig_ShouldReturnDefault()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        TenantEmbeddingConfig invalidConfig = EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = "invalid/key" };
+        SetupExistingState(stateManager, invalidConfig);
+
+        // Act
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        // Assert
+        config.Provider.ShouldBe("google");
+        config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_FirstWrite_ShouldIgnoreClientSuppliedReindexFlag()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { ReindexRequired = true };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_ExistingConfig_ShouldReturnStoredConfig()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        TenantEmbeddingConfig storedConfig = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };
+        SetupExistingState(stateManager, storedConfig);
+
+        // Act
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        // Assert
+        config.RateLimitPerMinute.ShouldBe(500);
+    }
+
+    private static (TenantConfigurationActor Actor, IActorStateManager StateManager) CreateActorWithMockState()
+    {
+        IActorStateManager stateManager = Substitute.For<IActorStateManager>();
+
+        ActorHost host = ActorHost.CreateForTest<TenantConfigurationActor>(
+            new ActorTestOptions { ActorId = new ActorId(TenantId) });
+
+        TenantConfigurationActor actor = new(host, NullLogger<TenantConfigurationActor>.Instance);
+
+        PropertyInfo? prop = typeof(Actor).GetProperty("StateManager", BindingFlags.Public | BindingFlags.Instance);
+        prop?.SetValue(actor, stateManager);
+
+        return (actor, stateManager);
+    }
+
+    private static void SetupEmptyState(IActorStateManager stateManager)
+    {
+        stateManager.TryGetStateAsync<TenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<TenantEmbeddingConfig>(false, default!));
+    }
+
+    private static void SetupExistingState(IActorStateManager stateManager, TenantEmbeddingConfig config)
+    {
+        stateManager.TryGetStateAsync<TenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<TenantEmbeddingConfig>(true, config));
     }
 }

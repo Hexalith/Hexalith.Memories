@@ -5,81 +5,149 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using Dapr.Actors;
+using Dapr.Actors.Client;
+using Dapr.Workflow;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Ingestion;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+
+using NSubstitute;
+
 using Shouldly;
 
-/// <summary>
-/// ATDD acceptance tests for GenerateEmbeddingActivity tenant config integration (Story 1.7, AC #2).
-/// TDD Red Phase: These tests validate that the activity reads config from TenantConfigurationActor
-/// and passes it to EmbeddingClient. Remove Skip attributes once Story 1.7 is implemented.
-/// </summary>
 public class GenerateEmbeddingActivityConfigTests
 {
     private const string TenantId = "test-tenant";
     private const string TestText = "Hello world";
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: Activity not yet refactored for tenant config")]
+    [Fact]
     public async Task RunAsync_ShouldReadConfigFromTenantConfigurationActor()
     {
-        // Arrange — AC #2: activity reads tenant's provider configuration
-        // Mock ITenantConfigurationActor to return custom config
-        // Mock EmbeddingClient, IEmbeddingRateLimiterActor
+        // Arrange
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+
+        (GenerateEmbeddingActivity activity, _, _) = CreateActivity(tenantConfigActor);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        EmbeddingInput input = new(TenantId, TestText);
 
         // Act
-        // var result = await activity.RunAsync(context, input);
+        await activity.RunAsync(context, input);
 
-        // Assert — verify TenantConfigurationActor.GetEmbeddingConfigAsync() was called
-        // tenantConfigActor.Received(1).GetEmbeddingConfigAsync();
-        throw new NotImplementedException("TDD Red Phase — implement config reading in GenerateEmbeddingActivity");
+        // Assert
+        await tenantConfigActor.Received(1).GetEmbeddingConfigAsync();
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: Activity not yet refactored for tenant config")]
+    [Fact]
     public async Task RunAsync_ShouldPassConfigToEmbeddingClient()
     {
-        // Arrange — AC #2: config values passed to EmbeddingClient
-        // Setup TenantConfigurationActor to return: model=gemini-embedding-001, dims=768
-        // Mock EmbeddingClient.GenerateAsync to accept TenantEmbeddingConfig param
+        // Arrange
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+
+        (GenerateEmbeddingActivity activity, EmbeddingClient embeddingClient, _) = CreateActivity(tenantConfigActor);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        EmbeddingInput input = new(TenantId, TestText);
 
         // Act
-        // var result = await activity.RunAsync(context, input);
+        await activity.RunAsync(context, input);
 
-        // Assert — verify EmbeddingClient received the tenant config
-        // await embeddingClient.Received(1).GenerateAsync(
-        //     TestText, TenantId,
-        //     Arg.Is<TenantEmbeddingConfig>(c => c.Model == "gemini-embedding-001"),
-        //     Arg.Any<CancellationToken>());
-        throw new NotImplementedException("TDD Red Phase — implement config passthrough to EmbeddingClient");
+        // Assert
+        await embeddingClient.Received(1).GenerateAsync(
+            TestText, TenantId,
+            Arg.Is<TenantEmbeddingConfig>(c => c.Model == "gemini-embedding-001"),
+            Arg.Any<CancellationToken>());
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: Activity not yet refactored for tenant config")]
+    [Fact]
     public async Task RunAsync_ShouldSetRateLimiterCeilingFromConfig()
     {
-        // Arrange — AC #2: rate limiter ceiling from tenant config
-        // Setup TenantConfigurationActor to return rateLimitPerMinute=500
+        // Arrange
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+
+        (GenerateEmbeddingActivity activity, _, IEmbeddingRateLimiterActor rateLimiter) = CreateActivity(tenantConfigActor);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        EmbeddingInput input = new(TenantId, TestText);
 
         // Act
-        // var result = await activity.RunAsync(context, input);
+        await activity.RunAsync(context, input);
 
-        // Assert — SetCeilingAsync called unconditionally before TryConsumeAsync
-        // Received.InOrder(() =>
-        // {
-        //     rateLimiter.SetCeilingAsync(500);
-        //     rateLimiter.TryConsumeAsync();
-        // });
-        throw new NotImplementedException("TDD Red Phase — implement rate limiter ceiling from config");
+        // Assert — SetCeilingAsync called with config value before TryConsumeAsync
+        Received.InOrder(() =>
+        {
+            rateLimiter.SetCeilingAsync(500);
+            rateLimiter.TryConsumeAsync();
+        });
     }
 
-    [Fact(Skip = "TDD Red Phase — Story 1.7: Activity not yet refactored for tenant config")]
+    [Fact]
     public async Task RunAsync_ShouldReturnDynamicProviderAndDimensions()
     {
-        // Arrange — AC #2: provider/dimensions from config, not hardcoded
-        // Setup config with model="gemini-embedding-001", dims=768
+        // Arrange
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+
+        (GenerateEmbeddingActivity activity, _, _) = CreateActivity(tenantConfigActor);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        EmbeddingInput input = new(TenantId, TestText);
 
         // Act
-        // var result = await activity.RunAsync(context, input);
+        EmbeddingResult result = await activity.RunAsync(context, input);
 
         // Assert — result uses config values, not "google:text-embedding-004"/768 constants
-        // result.Provider.ShouldBe("google:gemini-embedding-001");
-        // result.Dimensions.ShouldBe(768);
-        throw new NotImplementedException("TDD Red Phase — implement dynamic provider/dimensions in result");
+        result.Provider.ShouldBe("google:gemini-embedding-001");
+        result.Dimensions.ShouldBe(768);
+    }
+
+    private static (GenerateEmbeddingActivity Activity, EmbeddingClient Client, IEmbeddingRateLimiterActor RateLimiter) CreateActivity(
+        ITenantConfigurationActor tenantConfigActor)
+    {
+        EmbeddingClient embeddingClient = Substitute.For<EmbeddingClient>(
+            Substitute.For<IHttpClientFactory>(),
+            Substitute.For<Dapr.Client.DaprClient>(),
+            CreateConfiguration(),
+            CreateHostEnvironment());
+        embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(new float[768]);
+
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        rateLimiter.TryConsumeAsync().Returns(true);
+
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(tenantConfigActor);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(rateLimiter);
+
+        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        return (activity, embeddingClient, rateLimiter);
+    }
+
+    private static IConfiguration CreateConfiguration()
+        => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Memories:Testing:UseFakeEmbedding"] = "false",
+            })
+            .Build();
+
+    private static IHostEnvironment CreateHostEnvironment()
+    {
+        IHostEnvironment env = Substitute.For<IHostEnvironment>();
+        env.EnvironmentName.Returns("Development");
+        return env;
     }
 }

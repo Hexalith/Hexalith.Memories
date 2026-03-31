@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Ingestion;
 
+using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
@@ -12,32 +13,30 @@ using System.Text.Json;
 
 using Dapr.Client;
 
+using Hexalith.Memories.Contracts.V1;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
-/// <summary>Typed HTTP client for generating embeddings via Google text-embedding-004 API.</summary>
+/// <summary>Singleton HTTP client for generating embeddings via configurable provider APIs.</summary>
 public class EmbeddingClient
 {
-    private const int ExpectedDimensions = 768;
-    private const string GoogleEmbeddingEndpoint = "https://generativelanguage.googleapis.com/v1/models/text-embedding-004:embedContent";
     private const string FakeEmbeddingConfigKey = "Memories:Testing:UseFakeEmbedding";
-    private const string SecretKeyName = "google-embedding-api-key";
     private const string SecretStoreName = "secretstore";
 
+    private readonly ConcurrentDictionary<string, string> _apiKeyCache = new();
     private readonly DaprClient _daprClient;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly bool _useFakeEmbedding;
 
-    private string? _apiKey;
-
     /// <summary>Initializes a new instance of the <see cref="EmbeddingClient"/> class.</summary>
-    /// <param name="httpClient">The HTTP client injected by IHttpClientFactory.</param>
+    /// <param name="httpClientFactory">The HTTP client factory for creating HTTP clients.</param>
     /// <param name="daprClient">The DAPR client for secret retrieval.</param>
     /// <param name="configuration">The application configuration.</param>
     /// <param name="hostEnvironment">The current host environment.</param>
-    public EmbeddingClient(HttpClient httpClient, DaprClient daprClient, IConfiguration configuration, IHostEnvironment hostEnvironment)
+    public EmbeddingClient(IHttpClientFactory httpClientFactory, DaprClient daprClient, IConfiguration configuration, IHostEnvironment hostEnvironment)
     {
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _daprClient = daprClient;
         _useFakeEmbedding = configuration.GetValue<bool>(FakeEmbeddingConfigKey);
 
@@ -49,33 +48,41 @@ public class EmbeddingClient
 
     /// <summary>Loads and caches the embedding API key so configuration failures happen before rate-limit budget is consumed.</summary>
     /// <param name="tenantId">The tenant identifier for error context.</param>
+    /// <param name="config">The tenant embedding configuration containing the API secret key name.</param>
     /// <param name="ct">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public virtual async Task PrimeApiKeyAsync(string tenantId, CancellationToken ct)
+    public virtual async Task PrimeApiKeyAsync(string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
     {
+        EmbeddingProviderDefaults.Validate(config);
+
         if (_useFakeEmbedding)
         {
             return;
         }
 
-        _ = await GetApiKeyAsync(tenantId, ct).ConfigureAwait(false);
+        _ = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Generates a 768-dimension embedding vector for the given text.</summary>
+    /// <summary>Generates an embedding vector for the given text using the tenant's configured provider.</summary>
     /// <param name="text">The text content to embed.</param>
     /// <param name="tenantId">The tenant identifier for error context.</param>
+    /// <param name="config">The tenant embedding configuration.</param>
     /// <param name="ct">A cancellation token.</param>
-    /// <returns>A 768-dimension float array.</returns>
-    public virtual async Task<float[]> GenerateAsync(string text, string tenantId, CancellationToken ct)
+    /// <returns>A float array with the configured number of dimensions.</returns>
+    public virtual async Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrEmpty(text);
+        ArgumentNullException.ThrowIfNull(config);
+        EmbeddingProviderDefaults.Validate(config);
 
         if (_useFakeEmbedding)
         {
-            return CreateDeterministicVector(text);
+            return CreateDeterministicVector(text, config.Dimensions);
         }
 
-        string apiKey = await GetApiKeyAsync(tenantId, ct).ConfigureAwait(false);
+        string apiKey = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
+
+        string endpointUrl = BuildEndpointUrl(config);
 
         string requestJson = JsonSerializer.Serialize(new
         {
@@ -86,14 +93,50 @@ public class EmbeddingClient
                     new { text },
                 },
             },
+            output_dimensionality = config.Dimensions,
         });
 
-        using HttpRequestMessage request = new(HttpMethod.Post, GoogleEmbeddingEndpoint);
+        using HttpResponseMessage response = await SendEmbeddingRequestAsync(endpointUrl, requestJson, apiKey, ct).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            _apiKeyCache.TryRemove(config.ApiSecretKeyName, out _);
+            string refreshedApiKey = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
+            using HttpResponseMessage retryResponse = await SendEmbeddingRequestAsync(endpointUrl, requestJson, refreshedApiKey, ct).ConfigureAwait(false);
+            return await HandleEmbeddingResponseAsync(retryResponse, tenantId, config.Dimensions, ct).ConfigureAwait(false);
+        }
+
+        return await HandleEmbeddingResponseAsync(response, tenantId, config.Dimensions, ct).ConfigureAwait(false);
+    }
+
+    private static string BuildEndpointUrl(TenantEmbeddingConfig config)
+        => config.Provider.ToLowerInvariant() switch
+        {
+            EmbeddingProviderDefaults.GoogleProviderName => $"https://generativelanguage.googleapis.com/v1beta/models/{config.Model}:embedContent",
+            _ => throw new ArgumentException(
+                $"Provider '{config.Provider}' is not supported in the MVP implementation.",
+                nameof(config.Provider)),
+        };
+
+    private async Task<HttpResponseMessage> SendEmbeddingRequestAsync(
+        string endpointUrl,
+        string requestJson,
+        string apiKey,
+        CancellationToken ct)
+    {
+        HttpClient httpClient = _httpClientFactory.CreateClient("EmbeddingClient");
+        using HttpRequestMessage request = new(HttpMethod.Post, endpointUrl);
         request.Headers.Add("x-goog-api-key", apiKey);
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        using HttpResponseMessage response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+    }
 
+    private static async Task<float[]> HandleEmbeddingResponseAsync(
+        HttpResponseMessage response,
+        string tenantId,
+        int expectedDimensions,
+        CancellationToken ct)
+    {
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
             throw new EmbeddingRateLimitException(tenantId);
@@ -106,23 +149,24 @@ public class EmbeddingClient
             throw new EmbeddingApiException((int)response.StatusCode, responseBody, tenantId);
         }
 
-        return ParseEmbeddingResponse(responseBody, tenantId);
+        return ParseEmbeddingResponse(responseBody, tenantId, expectedDimensions);
     }
 
-    private async Task<string> GetApiKeyAsync(string tenantId, CancellationToken ct)
+    private async Task<string> GetApiKeyAsync(string tenantId, string apiSecretKeyName, CancellationToken ct)
     {
-        if (_apiKey is not null)
+        if (_apiKeyCache.TryGetValue(apiSecretKeyName, out string? cachedKey))
         {
-            return _apiKey;
+            return cachedKey;
         }
 
         try
         {
             Dictionary<string, string> secret = await _daprClient
-                .GetSecretAsync(SecretStoreName, SecretKeyName, cancellationToken: ct)
+                .GetSecretAsync(SecretStoreName, apiSecretKeyName, cancellationToken: ct)
                 .ConfigureAwait(false);
-            _apiKey = secret[SecretKeyName];
-            return _apiKey;
+            string apiKey = secret[apiSecretKeyName];
+            _apiKeyCache.TryAdd(apiSecretKeyName, apiKey);
+            return apiKey;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -134,7 +178,7 @@ public class EmbeddingClient
         }
     }
 
-    private static float[] ParseEmbeddingResponse(string responseBody, string tenantId)
+    private static float[] ParseEmbeddingResponse(string responseBody, string tenantId, int expectedDimensions)
     {
         try
         {
@@ -152,10 +196,10 @@ public class EmbeddingClient
                     $"Malformed embedding API response: 'embedding.values' deserialized to null. Response: {responseBody}",
                     tenantId);
 
-            if (values.Length != ExpectedDimensions)
+            if (values.Length != expectedDimensions)
             {
                 throw new EmbeddingApiException(
-                    $"Expected {ExpectedDimensions} dimensions but received {values.Length}. " +
+                    $"Expected {expectedDimensions} dimensions but received {values.Length}. " +
                     "Google API may have returned truncated or malformed response.",
                     tenantId);
             }
@@ -171,10 +215,10 @@ public class EmbeddingClient
         }
     }
 
-    private static float[] CreateDeterministicVector(string text)
+    private static float[] CreateDeterministicVector(string text, int dimensions)
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(text));
-        float[] vector = new float[ExpectedDimensions];
+        float[] vector = new float[dimensions];
 
         for (int i = 0; i < vector.Length; i++)
         {

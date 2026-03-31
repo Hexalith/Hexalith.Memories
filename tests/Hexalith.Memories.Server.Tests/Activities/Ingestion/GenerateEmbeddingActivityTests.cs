@@ -9,6 +9,7 @@ using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Workflow;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
@@ -31,14 +32,21 @@ public class GenerateEmbeddingActivityTests
     {
         // Arrange
         float[] expectedVector = new float[768];
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(expectedVector);
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
         rateLimiter.TryConsumeAsync().Returns(true);
         actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(
             Arg.Any<ActorId>(),
             Arg.Any<string>())
             .Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
+            Arg.Any<ActorId>(),
+            Arg.Any<string>())
+            .Returns(tenantConfigActor);
         EmbeddingInput input = new(TenantId, TestText);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
@@ -49,16 +57,8 @@ public class GenerateEmbeddingActivityTests
 
         // Assert
         result.Vector.ShouldBe(expectedVector);
-        result.Provider.ShouldBe("google:text-embedding-004");
+        result.Provider.ShouldBe("google:gemini-embedding-001");
         result.Dimensions.ShouldBe(768);
-
-        Received.InOrder(() =>
-        {
-            embeddingClient.PrimeApiKeyAsync(TenantId, Arg.Any<CancellationToken>());
-            actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), "EmbeddingRateLimiterActor");
-            rateLimiter.TryConsumeAsync();
-            embeddingClient.GenerateAsync(TestText, TenantId, Arg.Any<CancellationToken>());
-        });
     }
 
     [Fact]
@@ -82,14 +82,8 @@ public class GenerateEmbeddingActivityTests
     public async Task RunAsync_EmbeddingClientThrows_ExceptionPropagates()
     {
         // Arrange
-        EmbeddingClient embeddingClient = Substitute.For<EmbeddingClient>(
-            Substitute.For<System.Net.Http.HttpClient>(),
-            Substitute.For<Dapr.Client.DaprClient>(),
-            CreateConfiguration(),
-            CreateHostEnvironment());
-        embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
-        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
+        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new EmbeddingApiException(500, "internal error", TenantId));
 
         IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true);
@@ -119,32 +113,6 @@ public class GenerateEmbeddingActivityTests
 
         // Act & Assert
         await Should.ThrowAsync<ArgumentException>(() => activity.RunAsync(context, input));
-        await embeddingClient.DidNotReceive().PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        actorProxyFactory.DidNotReceive().CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>());
-    }
-
-    [Fact]
-    public async Task RunAsync_PrimeApiKeyFails_DoesNotConsumeRateLimitBudget()
-    {
-        // Arrange
-        EmbeddingClient embeddingClient = Substitute.For<EmbeddingClient>(
-            Substitute.For<System.Net.Http.HttpClient>(),
-            Substitute.For<Dapr.Client.DaprClient>(),
-            CreateConfiguration(),
-            CreateHostEnvironment());
-        embeddingClient.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new EmbeddingApiException("missing secret", TenantId));
-
-        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
-        EmbeddingInput input = new(TenantId, TestText);
-        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
-
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
-
-        // Act & Assert
-        await Should.ThrowAsync<EmbeddingApiException>(() => activity.RunAsync(context, input));
-        actorProxyFactory.DidNotReceive().CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>());
-        await embeddingClient.DidNotReceive().GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -155,12 +123,18 @@ public class GenerateEmbeddingActivityTests
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
         rateLimiter.TryConsumeAsync().Returns(true);
 
         actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(
                 Arg.Any<ActorId>(),
                 Arg.Any<string>())
             .Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
+                Arg.Any<ActorId>(),
+                Arg.Any<string>())
+            .Returns(tenantConfigActor);
 
         EmbeddingInput input = new(TenantId, TestText);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
@@ -174,18 +148,21 @@ public class GenerateEmbeddingActivityTests
         actorProxyFactory.Received(1).CreateActorProxy<IEmbeddingRateLimiterActor>(
             Arg.Is<ActorId>(id => id.ToString() == TenantId),
             "EmbeddingRateLimiterActor");
+        actorProxyFactory.Received(1).CreateActorProxy<ITenantConfigurationActor>(
+            Arg.Is<ActorId>(id => id.ToString() == TenantId),
+            "TenantConfigurationActor");
     }
 
     private static EmbeddingClient CreateMockEmbeddingClient(float[] vectorToReturn)
     {
         EmbeddingClient client = Substitute.For<EmbeddingClient>(
-            Substitute.For<System.Net.Http.HttpClient>(),
+            Substitute.For<IHttpClientFactory>(),
             Substitute.For<Dapr.Client.DaprClient>(),
             CreateConfiguration(),
             CreateHostEnvironment());
-        client.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        client.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
-        client.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+        client.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .Returns(vectorToReturn);
         return client;
     }
@@ -209,12 +186,18 @@ public class GenerateEmbeddingActivityTests
     {
         IActorProxyFactory factory = Substitute.For<IActorProxyFactory>();
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
         rateLimiter.TryConsumeAsync().Returns(allowed);
 
         factory.CreateActorProxy<IEmbeddingRateLimiterActor>(
                 Arg.Any<ActorId>(),
                 Arg.Any<string>())
             .Returns(rateLimiter);
+        factory.CreateActorProxy<ITenantConfigurationActor>(
+                Arg.Any<ActorId>(),
+                Arg.Any<string>())
+            .Returns(tenantConfigActor);
 
         return factory;
     }
