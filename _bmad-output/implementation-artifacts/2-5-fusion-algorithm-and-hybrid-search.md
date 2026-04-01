@@ -1,6 +1,6 @@
 # Story 2.5: Fusion Algorithm & Hybrid Search
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -36,7 +36,7 @@ So that I get the best possible results by combining syntactic, semantic, and gr
 5. **Given** one search backend is unavailable during hybrid search
    **When** the remaining axes return results
    **Then** the system returns partial results with a `degraded: true` flag indicating which axes were unavailable
-   **And** `unavailableAxes` only lists axes that were enabled but *failed* — axes intentionally excluded via the `axes` parameter or missing required parameters (e.g., graph without `graphStartNodeId`) do NOT appear in `unavailableAxes` and do NOT set `degraded: true`
+   **And** `unavailableAxes` only lists axes that were enabled but _failed_ — axes intentionally excluded via the `axes` parameter or missing required parameters (e.g., graph without `graphStartNodeId`) do NOT appear in `unavailableAxes` and do NOT set `degraded: true`
 
 6. **Given** a hybrid search with `offset` and `maxResults` parameters
    **When** fused results are returned
@@ -45,159 +45,168 @@ So that I get the best possible results by combining syntactic, semantic, and gr
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `FusionWeights` record in Contracts (AC: 1, 3)
-  - [ ] 1.1 Create `src/Hexalith.Memories.Contracts/V1/FusionWeights.cs` as `public sealed record` with properties: `double SyntacticWeight` (default 0.4), `double SemanticWeight` (default 0.4), `double GraphWeight` (default 0.2). Use `init` setters. Include validation: all weights must be >= 0.0 and at least one weight must be > 0.0
-  - [ ] 1.2 Add `FusionWeights` to `MemoriesJsonContext` for AOT serialization support
+- [x] Task 1: Create `FusionWeights` record in Contracts (AC: 1, 3)
+    - [x] 1.1 Create `src/Hexalith.Memories.Contracts/V1/FusionWeights.cs` as `public sealed record` with properties: `double SyntacticWeight` (default 0.4), `double SemanticWeight` (default 0.4), `double GraphWeight` (default 0.2). Use `init` setters. Include validation: all weights must be >= 0.0 and at least one weight must be > 0.0
+    - [x] 1.2 Add `FusionWeights` to `MemoriesJsonContext` for AOT serialization support
 
-- [ ] Task 2: Create `HybridSearchResult` record in Contracts (AC: 1, 5)
-  - [ ] 2.1 Create `src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs` as `public sealed record` with properties:
-    - `IReadOnlyList<FusedScoredResult> Results` — ranked fused results
-    - `long TotalCount` — total across all axes before dedup
-    - `bool Degraded` — true if any axis failed
-    - `IReadOnlyList<string> UnavailableAxes` — list of axis names that were unavailable (e.g., `["graph"]`)
-    - `string Query` — echo of the query
-  - [ ] 2.2 Create `FusedScoredResult` record in the same file with properties:
-    - `string MemoryUnitId`
-    - `double CompositeScore` — the final fused score in [0.0, 1.0]
-    - `string ContentSnippet`
-    - `string SourceUri`
-    - `SourceType SourceType`
-    - `double? SyntacticScore` — normalized, null if axis not queried or not found
-    - `double? SemanticScore` — normalized, null if axis not queried or not found
-    - `double? GraphScore` — normalized, null if axis not queried or not found
-  - [ ] 2.3 Add `HybridSearchResult` and `FusedScoredResult` to `MemoriesJsonContext`
+- [x] Task 2: Create `HybridSearchResult` record in Contracts (AC: 1, 5)
+    - [x] 2.1 Create `src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs` as `public sealed record` with properties:
+        - `IReadOnlyList<FusedScoredResult> Results` — ranked fused results
+        - `long TotalCount` — total across all axes before dedup
+        - `bool Degraded` — true if any axis failed
+        - `IReadOnlyList<string> UnavailableAxes` — list of axis names that were unavailable (e.g., `["graph"]`)
+        - `string Query` — echo of the query
+    - [x] 2.2 Create `FusedScoredResult` record in the same file with properties:
+        - `string MemoryUnitId`
+        - `double CompositeScore` — the final fused score in [0.0, 1.0]
+        - `string ContentSnippet`
+        - `string SourceUri`
+        - `SourceType SourceType`
+        - `double? SyntacticScore` — normalized, null if axis not queried or not found
+        - `double? SemanticScore` — normalized, null if axis not queried or not found
+        - `double? GraphScore` — normalized, null if axis not queried or not found
+    - [x] 2.3 Add `HybridSearchResult` and `FusedScoredResult` to `MemoriesJsonContext`
 
-- [ ] Task 3: Create `FusionEngine` static class — the pure fusion function (AC: 1, 2)
-  - [ ] 3.1 Create `src/Hexalith.Memories.Server/Search/FusionEngine.cs` as `internal static class`
-  - [ ] 3.2 Implement the main Fuse method:
-    ```csharp
-    internal static IReadOnlyList<FusedScoredResult> Fuse(
-        IReadOnlyList<ScoredResult>? syntacticResults,
-        IReadOnlyList<ScoredResult>? semanticResults,
-        IReadOnlyList<ScoredResult>? graphResults,
-        FusionWeights weights,
-        int documentCount,
-        double averageDocumentLength)
-    ```
-    **Algorithm:**
-    1. Build a `Dictionary<string, FusionAccumulator>` keyed by `MemoryUnitId` across all non-null result lists
-    2. For each syntactic result: normalize score via `ScoreNormalizer.NormalizeBm25(score, documentCount, averageDocumentLength)` and store
-    3. For each semantic result: normalize via `ScoreNormalizer.NormalizeCosine(score)` and store
-    4. For each graph result: score is already normalized (graph search returns normalized proximity scores via `ScoreNormalizer.NormalizeGraphProximity`) — store as-is
-    5. Compute composite score per memory unit as weighted average over **active axes only**: `sum(weight_i * score_i) / sum(weight_i)` where `i` iterates only over axes that produced a score for that unit. This prevents units found by fewer axes from being penalized by division over all weights
-    6. Populate `FusedScoredResult` with per-axis scores (null if that axis didn't return the unit)
-    7. Sort descending by `CompositeScore`. Ties broken by `MemoryUnitId` (lexicographic) for determinism (NFR25)
-    8. Return the sorted list
-  - [ ] 3.3 The method is a pure function: no I/O, no injected services, no state — all data passed as parameters. `documentCount` and `averageDocumentLength` are from `CorpusStatisticsActor` (resolved by the caller, not by the fusion function)
-  - [ ] 3.4 Guard: if all three result lists are null/empty, return empty list. If `weights` has all-zero weights for active axes, return empty list
-  - [ ] 3.5 Content snippet, SourceUri, SourceType: take from the first axis that provided the result (prefer syntactic > semantic > graph). All three axes pull content from the same Redis hash source — the preference order is for determinism, not quality
+- [x] Task 3: Create `FusionEngine` static class — the pure fusion function (AC: 1, 2)
+    - [x] 3.1 Create `src/Hexalith.Memories.Server/Search/FusionEngine.cs` as `internal static class`
+    - [x] 3.2 Implement the main Fuse method:
+        ```csharp
+        internal static IReadOnlyList<FusedScoredResult> Fuse(
+            IReadOnlyList<ScoredResult>? syntacticResults,
+            IReadOnlyList<ScoredResult>? semanticResults,
+            IReadOnlyList<ScoredResult>? graphResults,
+            FusionWeights weights,
+            int documentCount,
+            double averageDocumentLength)
+        ```
+        **Algorithm:**
+        1. Build a `Dictionary<string, FusionAccumulator>` keyed by `MemoryUnitId` across all non-null result lists
+        2. For each syntactic result: normalize score via `ScoreNormalizer.NormalizeBm25(score, documentCount, averageDocumentLength)` and store
+        3. For each semantic result: normalize via `ScoreNormalizer.NormalizeCosine(score)` and store
+        4. For each graph result: score is already normalized (graph search returns normalized proximity scores via `ScoreNormalizer.NormalizeGraphProximity`) — store as-is
+        5. Compute composite score per memory unit as weighted average over **active axes only**: `sum(weight_i * score_i) / sum(weight_i)` where `i` iterates only over axes that produced a score for that unit. This prevents units found by fewer axes from being penalized by division over all weights
+        6. Populate `FusedScoredResult` with per-axis scores (null if that axis didn't return the unit)
+        7. Sort descending by `CompositeScore`. Ties broken by `MemoryUnitId` (lexicographic) for determinism (NFR25)
+        8. Return the sorted list
+    - [x] 3.3 The method is a pure function: no I/O, no injected services, no state — all data passed as parameters. `documentCount` and `averageDocumentLength` are from `CorpusStatisticsActor` (resolved by the caller, not by the fusion function)
+    - [x] 3.4 Guard: if all three result lists are null/empty, return empty list. If `weights` has all-zero weights for active axes, return empty list
+    - [x] 3.5 Content snippet, SourceUri, SourceType: take from the first axis that provided the result (prefer syntactic > semantic > graph). All three axes pull content from the same Redis hash source — the preference order is for determinism, not quality
 
-- [ ] Task 4: Create `HybridSearchService` class (AC: 1, 3, 4, 5, 6)
-  - [ ] 4.1 Create `src/Hexalith.Memories.Server/Search/HybridSearchService.cs` as `internal sealed partial class` (partial for `[LoggerMessage]` source generators)
-  - [ ] 4.2 Constructor accepts **delegate functions** for each axis search, not direct service references. This enables unit testing without mocking sealed classes:
-    ```csharp
-    internal sealed partial class HybridSearchService(
-        Func<SearchQuery, Task<SearchResult>> syntacticSearchFunc,
-        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semanticSearchFunc,
-        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graphSearchFunc,
-        IActorProxyFactory actorProxyFactory,
-        ILogger<HybridSearchService> logger)
-    ```
-    The DI registration (Task 5) wires these delegates to the concrete service methods.
-  - [ ] 4.3 Main method signature:
-    ```csharp
-    internal async Task<HybridSearchResult> SearchAsync(
-        SearchQuery query,
-        TenantEmbeddingConfig? embeddingConfig,
-        string? graphStartNodeId,
-        int graphDepth,
-        FusionWeights weights,
-        IReadOnlySet<string> enabledAxes,
-        CancellationToken cancellationToken)
-    ```
-  - [ ] 4.4 Implementation flow:
-    1. Build a list of `Task<SearchResult?>` for each enabled axis. Only launch axes present in `enabledAxes` (valid values: `"syntactic"`, `"semantic"`, `"graph"`)
-    2. For semantic: requires `embeddingConfig` (if null and axis enabled, log warning and skip axis, add to unavailable)
-    3. For graph: requires `graphStartNodeId` (if null and axis enabled, skip axis — graph participation in hybrid search requires a starting node). **Note:** Graph axis in hybrid mode uses pure graph traversal (no inner search delegate), returning proximity-scored results that are fused with other axes. This is the "optional fusion scorer" role (D2), distinct from graph-scoped search (which post-filters other axis results)
-    4. Execute enabled searches in parallel via `Task.WhenAll`
-    5. Catch exceptions per-axis: wrap each axis call in try/catch. On failure, set that axis result to null, add axis name to `unavailableAxes`, log error. Do NOT let one axis failure crash the entire hybrid search (NFR18: partial results). **Important distinction:** `unavailableAxes` only tracks axes that were enabled and *failed*. Axes excluded by the caller (not in `enabledAxes`) or missing required parameters (semantic without embeddingConfig, graph without startNodeId) are *intentionally excluded* — they do NOT set `degraded = true` and do NOT appear in `unavailableAxes`
-    6. Fetch `CorpusStatistics` from actor proxy — needed for BM25 normalization:
-       ```csharp
-       ICorpusStatisticsActor statsActor = actorProxyFactory
-           .CreateActorProxy<ICorpusStatisticsActor>(
-               new ActorId(query.TenantId),
-               nameof(CorpusStatisticsActor));
-       CorpusStatistics stats = await statsActor.GetStatisticsAsync();
-       ```
-       If `stats.DocumentCount == 0`, BM25 normalization will return 0.0 for all scores — this is correct behavior (stats not yet meaningful). If the actor call itself fails, catch and treat syntactic scores as raw (log warning, set documentCount=0, averageDocumentLength=0)
-    7. Call `FusionEngine.Fuse(...)` with collected results, weights, and corpus stats
-    8. Apply pagination: skip `query.Offset`, take `query.MaxResults` from the fused sorted list
-    9. Construct and return `HybridSearchResult` with degraded flag and unavailable axes
+- [x] Task 4: Create `HybridSearchService` class (AC: 1, 3, 4, 5, 6)
+    - [x] 4.1 Create `src/Hexalith.Memories.Server/Search/HybridSearchService.cs` as `internal sealed partial class` (partial for `[LoggerMessage]` source generators)
+    - [x] 4.2 Constructor accepts **delegate functions** for each axis search, not direct service references. This enables unit testing without mocking sealed classes:
+        ```csharp
+        internal sealed partial class HybridSearchService(
+            Func<SearchQuery, Task<SearchResult>> syntacticSearchFunc,
+            Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semanticSearchFunc,
+            Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graphSearchFunc,
+            IActorProxyFactory actorProxyFactory,
+            ILogger<HybridSearchService> logger)
+        ```
+        The DI registration (Task 5) wires these delegates to the concrete service methods.
+    - [x] 4.3 Main method signature:
+        ```csharp
+        internal async Task<HybridSearchResult> SearchAsync(
+            SearchQuery query,
+            TenantEmbeddingConfig? embeddingConfig,
+            string? graphStartNodeId,
+            int graphDepth,
+            FusionWeights weights,
+            IReadOnlySet<string> enabledAxes,
+            CancellationToken cancellationToken)
+        ```
+    - [x] 4.4 Implementation flow:
+        1. Build a list of `Task<SearchResult?>` for each enabled axis. Only launch axes present in `enabledAxes` (valid values: `"syntactic"`, `"semantic"`, `"graph"`)
+        2. For semantic: requires `embeddingConfig` (if null because the prerequisite is unavailable, log warning and skip axis. If configuration lookup failed before execution, mark semantic as unavailable and continue with the remaining axes)
+        3. For graph: requires `graphStartNodeId` (if null and axis enabled, skip axis — graph participation in hybrid search requires a starting node). **Note:** Graph axis in hybrid mode uses pure graph traversal (no inner search delegate), returning proximity-scored results that are fused with other axes. This is the "optional fusion scorer" role (D2), distinct from graph-scoped search (which post-filters other axis results)
+        4. Execute enabled searches in parallel via `Task.WhenAll`
+        5. Catch exceptions per-axis: wrap each axis call in try/catch. On failure, set that axis result to null, add axis name to `unavailableAxes`, log error. Do NOT let one axis failure crash the entire hybrid search (NFR18: partial results). **Important distinction:** `unavailableAxes` only tracks axes that were enabled and _failed_. Axes excluded by the caller (not in `enabledAxes`) or missing required parameters (semantic without embeddingConfig, graph without startNodeId) are _intentionally excluded_ — they do NOT set `degraded = true` and do NOT appear in `unavailableAxes`
+        6. Fetch `CorpusStatistics` from actor proxy — needed for BM25 normalization:
+            ```csharp
+            ICorpusStatisticsActor statsActor = actorProxyFactory
+                .CreateActorProxy<ICorpusStatisticsActor>(
+                    new ActorId(query.TenantId),
+                    nameof(CorpusStatisticsActor));
+            CorpusStatistics stats = await statsActor.GetStatisticsAsync();
+            ```
+            If `stats.DocumentCount == 0`, BM25 normalization will return 0.0 for all scores — this is correct behavior (stats not yet meaningful). If the actor call itself fails, catch it, mark the syntactic axis unavailable, and fuse only the remaining normalized axes.
+        7. Call `FusionEngine.Fuse(...)` with collected results, weights, and corpus stats
+        8. Apply pagination: skip `query.Offset`, take `query.MaxResults` from the fused sorted list
+        9. Construct and return `HybridSearchResult` with degraded flag and unavailable axes
 
-- [ ] Task 5: Register `HybridSearchService` in Program.cs (AC: 1)
-  - [ ] 5.1 Add DI registration following existing pattern (explicit factory), wiring delegates to concrete service methods:
-    ```csharp
-    builder.Services.AddSingleton<HybridSearchService>(sp =>
-    {
-        var syntactic = sp.GetRequiredService<SyntacticSearchService>();
-        var semantic = sp.GetRequiredService<SemanticSearchService>();
-        var graph = sp.GetRequiredService<GraphScopedSearch>();
-        return new HybridSearchService(
-            query => syntactic.SearchAsync(query),
-            (query, config, ct) => semantic.SearchAsync(query, config, ct),
-            // innerSearch: null -> pure graph traversal mode (fusion scorer, not graph-scoped search)
-            (query, startNode, depth, ct) => graph.SearchAsync(query, startNode, depth, innerSearch: null, ct),
-            sp.GetRequiredService<IActorProxyFactory>(),
-            sp.GetRequiredService<ILogger<HybridSearchService>>());
-    });
-    ```
+- [x] Task 5: Register `HybridSearchService` in Program.cs (AC: 1)
+    - [x] 5.1 Add DI registration following existing pattern (explicit factory), wiring delegates to concrete service methods:
+        ```csharp
+        builder.Services.AddSingleton<HybridSearchService>(sp =>
+        {
+            var syntactic = sp.GetRequiredService<SyntacticSearchService>();
+            var semantic = sp.GetRequiredService<SemanticSearchService>();
+            var graph = sp.GetRequiredService<GraphScopedSearch>();
+            return new HybridSearchService(
+                query => syntactic.SearchAsync(query),
+                (query, config, ct) => semantic.SearchAsync(query, config, ct),
+                // innerSearch: null -> pure graph traversal mode (fusion scorer, not graph-scoped search)
+                (query, startNode, depth, ct) => graph.SearchAsync(query, startNode, depth, innerSearch: null, ct),
+                sp.GetRequiredService<IActorProxyFactory>(),
+                sp.GetRequiredService<ILogger<HybridSearchService>>());
+        });
+        ```
 
-- [ ] Task 6: Add `axis=hybrid` endpoint routing in Program.cs (AC: 1, 3, 4, 5, 6)
-  - [ ] 6.1 In the existing `/api/search` endpoint handler, add a new branch for `axis == "hybrid"`:
-    - Parse `axes` query parameter (comma-separated, e.g., `axes=syntactic,semantic,graph`). Default: all three axes enabled
-    - Parse optional `graphStartNodeId` and `depth` (existing params)
-    - Construct `FusionWeights` with default weights (0.4, 0.4, 0.2). Weights are NOT user-configurable via query params in MVP — hardcoded defaults, tunable per-tenant later
-    - Parse `enabledAxes` from the `axes` query parameter into a `HashSet<string>`
-    - Fetch `TenantEmbeddingConfig` from `TenantConfigurationActor` (existing pattern) if semantic axis enabled
-    - Call `HybridSearchService.SearchAsync(...)` and return `HybridSearchResult`
-  - [ ] 6.2 Validate `axes` parameter: reject unknown axis names with 400 Bad Request
-  - [ ] 6.3 Return HTTP 200 with `HybridSearchResult` (includes degraded flag if applicable)
+- [x] Task 6: Add `axis=hybrid` endpoint routing in Program.cs (AC: 1, 3, 4, 5, 6)
+    - [x] 6.1 In the existing `/api/search` endpoint handler, add a new branch for `axis == "hybrid"`:
+        - Parse `axes` query parameter (comma-separated, e.g., `axes=syntactic,semantic,graph`). Default: all three axes enabled
+        - Parse optional `graphStartNodeId` and `depth` (existing params)
+        - Construct `FusionWeights` with default weights (0.4, 0.4, 0.2). Weights are NOT user-configurable via query params in MVP — hardcoded defaults, tunable per-tenant later
+        - Parse `enabledAxes` from the `axes` query parameter into a `HashSet<string>`
+        - Fetch `TenantEmbeddingConfig` from `TenantConfigurationActor` (existing pattern) if semantic axis enabled
+        - Call `HybridSearchService.SearchAsync(...)` and return `HybridSearchResult`
+    - [x] 6.2 Validate `axes` parameter: reject unknown axis names with 400 Bad Request
+    - [x] 6.3 Return HTTP 200 with `HybridSearchResult` (includes degraded flag if applicable)
 
-- [ ] Task 7: Unit tests for `FusionEngine` (AC: 1, 2)
-  - [ ] 7.1 Create `tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs`
-  - [ ] 7.2 Test: all three axes with known scores -> expected composite scores (manually computed weighted average)
-  - [ ] 7.3 Test: syntactic + semantic only (graph null) -> composite uses only two-axis weights
-  - [ ] 7.4 Test: single axis only (other two null) -> composite equals normalized single-axis score
-  - [ ] 7.5 Test: same memory unit appearing in multiple axes -> merged with per-axis scores populated
-  - [ ] 7.6 Test: memory unit appearing in only one axis -> other axis scores are null, composite uses single-axis weight
-  - [ ] 7.7 Test: determinism — same inputs produce identical output ordering (NFR25)
-  - [ ] 7.8 Test: tie-breaking — two units with same composite score ordered by MemoryUnitId lexicographically
-  - [ ] 7.9 Test: empty inputs (all null) -> empty result list
-  - [ ] 7.10 Test: BM25 normalization applied correctly — raw BM25 score of 10.0 with docCount=1000, avgDocLen=200 produces expected normalized value in composite
-  - [ ] 7.11 Test: cosine passthrough — cosine score of 0.85 appears unchanged in FusedScoredResult.SemanticScore
-  - [ ] 7.12 Test: graph scores passed through (already normalized by GraphScopedSearch)
-  - [ ] 7.13 Test: content snippet taken from syntactic result when available (preferred source)
-  - [ ] 7.14 Test: content snippet falls back to semantic then graph when syntactic not available for that unit
-  - [ ] 7.15 Test: all-zero weights for active axes -> returns empty list (no division by zero)
-  - [ ] 7.16 Test: composite score always in [0.0, 1.0] range with Property-based testing using random inputs (10 iterations)
-  - [ ] 7.17 Test: BM25 raw score = double.NaN -> normalized to 0.0 by ScoreNormalizer, does not poison composite score (poison pill prevention)
-  - [ ] 7.18 Test: BM25 raw score = double.PositiveInfinity -> normalized to 0.0, does not produce NaN/Infinity composite
+- [x] Task 7: Unit tests for `FusionEngine` (AC: 1, 2)
+    - [x] 7.1 Create `tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs`
+    - [x] 7.2 Test: all three axes with known scores -> expected composite scores (manually computed weighted average)
+    - [x] 7.3 Test: syntactic + semantic only (graph null) -> composite uses only two-axis weights
+    - [x] 7.4 Test: single axis only (other two null) -> composite equals normalized single-axis score
+    - [x] 7.5 Test: same memory unit appearing in multiple axes -> merged with per-axis scores populated
+    - [x] 7.6 Test: memory unit appearing in only one axis -> other axis scores are null, composite uses single-axis weight
+    - [x] 7.7 Test: determinism — same inputs produce identical output ordering (NFR25)
+    - [x] 7.8 Test: tie-breaking — two units with same composite score ordered by MemoryUnitId lexicographically
+    - [x] 7.9 Test: empty inputs (all null) -> empty result list
+    - [x] 7.10 Test: BM25 normalization applied correctly — raw BM25 score of 10.0 with docCount=1000, avgDocLen=200 produces expected normalized value in composite
+    - [x] 7.11 Test: cosine passthrough — cosine score of 0.85 appears unchanged in FusedScoredResult.SemanticScore
+    - [x] 7.12 Test: graph scores passed through (already normalized by GraphScopedSearch)
+    - [x] 7.13 Test: content snippet taken from syntactic result when available (preferred source)
+    - [x] 7.14 Test: content snippet falls back to semantic then graph when syntactic not available for that unit
+    - [x] 7.15 Test: all-zero weights for active axes -> returns empty list (no division by zero)
+    - [x] 7.16 Test: composite score always in [0.0, 1.0] range with Property-based testing using random inputs (10 iterations)
+    - [x] 7.17 Test: BM25 raw score = double.NaN -> normalized to 0.0 by ScoreNormalizer, does not poison composite score (poison pill prevention)
+    - [x] 7.18 Test: BM25 raw score = double.PositiveInfinity -> normalized to 0.0, does not produce NaN/Infinity composite
 
-- [ ] Task 8: Unit tests for `HybridSearchService` (AC: 3, 5, 6)
-  - [ ] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs`
-  - [ ] 8.2 Inject fake `Func<>` delegates (lambda stubs) and mock `IActorProxyFactory` via NSubstitute. No sealed-class mocking needed — the delegate constructor pattern makes this straightforward
-  - [ ] 8.3 Test: all three axes enabled -> all three delegate functions called
-  - [ ] 8.4 Test: `enabledAxes = {"syntactic", "semantic"}` -> only syntactic and semantic delegates called, graph delegate NOT called
-  - [ ] 8.5 Test: syntactic delegate throws exception -> `degraded=true`, `unavailableAxes=["syntactic"]`, remaining axes still return correct fused results with recomputed composite scores
-  - [ ] 8.6 Test: semantic enabled but `embeddingConfig` is null -> semantic intentionally excluded (NOT in unavailableAxes, NOT degraded)
-  - [ ] 8.7 Test: graph enabled but `graphStartNodeId` is null -> graph intentionally excluded (NOT in unavailableAxes, NOT degraded)
-  - [ ] 8.8 Test: corpus stats actor called with correct tenantId
-  - [ ] 8.9 Test: pagination — offset=5, maxResults=3 correctly slices fused results; TotalCount reflects pre-pagination count
+- [x] Task 8: Unit tests for `HybridSearchService` (AC: 3, 5, 6)
+    - [x] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs`
+    - [x] 8.2 Inject fake `Func<>` delegates (lambda stubs) and mock `IActorProxyFactory` via NSubstitute. No sealed-class mocking needed — the delegate constructor pattern makes this straightforward
+    - [x] 8.3 Test: all three axes enabled -> all three delegate functions called
+    - [x] 8.4 Test: `enabledAxes = {"syntactic", "semantic"}` -> only syntactic and semantic delegates called, graph delegate NOT called
+    - [x] 8.5 Test: syntactic delegate throws exception -> `degraded=true`, `unavailableAxes=["syntactic"]`, remaining axes still return correct fused results with recomputed composite scores
+    - [x] 8.6 Test: semantic enabled but `embeddingConfig` is null -> semantic intentionally excluded (NOT in unavailableAxes, NOT degraded)
+    - [x] 8.7 Test: graph enabled but `graphStartNodeId` is null -> graph intentionally excluded (NOT in unavailableAxes, NOT degraded)
+    - [x] 8.8 Test: corpus stats actor called with correct tenantId
+    - [x] 8.9 Test: pagination — offset=5, maxResults=3 correctly slices fused results; TotalCount reflects pre-pagination count
 
-- [ ] Task 9: Contract tests for new records (AC: 1)
-  - [ ] 9.1 Add serialization round-trip tests for `FusionWeights`, `HybridSearchResult`, `FusedScoredResult` in `tests/Hexalith.Memories.Contracts.Tests/V1/`
-  - [ ] 9.2 Follow existing pattern from `ScoredResultTests.cs` — serialize to JSON, deserialize back, verify equality
-  - [ ] 9.3 Test: `FusionWeights` default constructor produces expected 0.4/0.4/0.2 values — prevents accidental default changes
+- [x] Task 9: Contract tests for new records (AC: 1)
+    - [x] 9.1 Add serialization round-trip tests for `FusionWeights`, `HybridSearchResult`, `FusedScoredResult` in `tests/Hexalith.Memories.Contracts.Tests/V1/`
+    - [x] 9.2 Follow existing pattern from `ScoredResultTests.cs` — serialize to JSON, deserialize back, verify equality
+    - [x] 9.3 Test: `FusionWeights` default constructor produces expected 0.4/0.4/0.2 values — prevents accidental default changes
+
+### Review Findings
+
+- [x] `[Review][Patch]` Preserve normalized hybrid scoring when corpus statistics are unavailable by degrading the syntactic axis instead of fusing raw BM25 [src/Hexalith.Memories.Server/Search/HybridSearchService.cs]
+- [x] `[Review][Patch]` Avoid pre-fusion axis pagination in hybrid search [src/Hexalith.Memories.Server/Search/HybridSearchService.cs]
+- [x] `[Review][Patch]` Make `UnavailableAxes` thread-safe under parallel axis failures [src/Hexalith.Memories.Server/Search/HybridSearchService.cs]
+- [x] `[Review][Patch]` Treat semantic config lookup failures as degraded semantic-axis failures [src/Hexalith.Memories.Server/Program.cs; src/Hexalith.Memories.Server/Search/HybridSearchService.cs]
+- [x] `[Review][Patch]` Accept the story's `graphStartNodeId` query parameter for hybrid search [src/Hexalith.Memories.Server/Program.cs]
+- [x] `[Review][Patch]` Preserve request cancellation instead of converting it into partial success [src/Hexalith.Memories.Server/Search/HybridSearchService.cs]
 
 ## Dev Notes
 
@@ -258,12 +267,14 @@ This is the "optional fusion scorer" role from architecture decision D2. The gra
 
 **Critical distinction: failed vs. intentionally excluded.**
 
-`degraded = true` and `unavailableAxes` are ONLY set when an enabled axis *fails at runtime* (throws an exception). They are NOT set when:
+`degraded = true` and `unavailableAxes` are ONLY set when an enabled axis _fails at runtime_ (throws an exception). They are NOT set when:
+
 - An axis is excluded via the `axes` parameter (intentional caller choice)
 - Graph axis is enabled but `graphStartNodeId` is null (missing prerequisite — silently excluded)
 - Semantic axis is enabled but `embeddingConfig` is null (missing prerequisite — silently excluded)
 
 When a backend is unavailable (throws exception during search), the system:
+
 1. Catches the exception per-axis (does not propagate)
 2. Adds the axis name to `unavailableAxes`
 3. Sets `degraded = true` on the response
@@ -275,6 +286,7 @@ This satisfies NFR18 (partial backend failure -> degraded, not total failure) an
 ### Determinism (NFR25)
 
 The fusion function produces deterministic scores because:
+
 - All normalization functions are pure (ScoreNormalizer)
 - Weighted average is a deterministic computation
 - Tie-breaking uses lexicographic ordering on MemoryUnitId (deterministic)
@@ -285,23 +297,27 @@ Note: result ordering within the same composite score tier may vary ONLY if Memo
 ### Existing Search Service Patterns to Follow
 
 **SyntacticSearchService** (`Search/SyntacticSearchService.cs`):
+
 - Constructor: `(IConnectionMultiplexer redis, ILogger<T> logger)` via keyed DI
 - Returns `SearchResult` with `ScoredResult[]` where `Axis = "syntactic"`, Score = raw BM25
 - Index: `{tenantId}:memories:idx`
 
 **SemanticSearchService** (`Search/SemanticSearchService.cs`):
+
 - Constructor: `(IConnectionMultiplexer redis, EmbeddingClient embeddingClient, ILogger<T> logger)`
 - Returns `SearchResult` with `ScoredResult[]` where `Axis = "semantic"`, Score = cosine similarity [0,1]
 - Requires `TenantEmbeddingConfig` parameter (fetched from `TenantConfigurationActor` by caller)
 - Enriches results from syntactic hashes via batch pipeline
 
 **GraphScopedSearch** (`Search/GraphScopedSearch.cs`):
+
 - Constructor: `(IConnectionMultiplexer falkordb, IConnectionMultiplexer redis, IGraphQueryBuilder queryBuilder, ILogger<T> logger)`
 - Returns `SearchResult` with `ScoredResult[]` where `Axis = "graph"`, Score = proximity (already normalized)
 - Two modes: pure traversal (no inner search) and graph-scoped inner search
 - For hybrid fusion, use **pure traversal** mode: call `SearchAsync(query, startNodeId, depth, innerSearch: null, cancellationToken)`
 
 **ScoreNormalizer** (`Search/ScoreNormalizer.cs`):
+
 - `NormalizeBm25(double rawScore, int documentCount, double averageDocumentLength)` -> [0.0, 1.0]
 - `NormalizeCosine(double cosineScore)` -> [0.0, 1.0] (passthrough with clamp)
 - `NormalizeGraphProximity(int hopDistance)` -> [0.0, 1.0] (already called inside GraphScopedSearch)
@@ -324,6 +340,8 @@ If `stats.DocumentCount == 0` (empty index or stats not yet refreshed), `ScoreNo
 
 **Cold start note:** The first hybrid search after actor activation may produce semantic-only results until `CorpusStatisticsActor` refreshes stats (dueTime is `TimeSpan.Zero`, so within seconds). This is transient and self-healing — subsequent queries will include BM25 scores once the timer fires.
 
+If the actor call itself fails, the implementation now degrades the syntactic axis and reports it in `UnavailableAxes` rather than mixing unbounded raw BM25 with normalized semantic/graph scores.
+
 ### Endpoint Routing Pattern
 
 The existing `/api/search` endpoint in Program.cs (lines ~197-392) handles axis routing via the `axis` query parameter. Add a new branch:
@@ -345,6 +363,7 @@ axis=hybrid (NEW)
 ### Project Structure Notes
 
 New files follow existing conventions:
+
 ```
 src/Hexalith.Memories.Contracts/V1/
   FusionWeights.cs              # NEW — fusion weight configuration
@@ -365,6 +384,7 @@ tests/Hexalith.Memories.Contracts.Tests/V1/
 ```
 
 All files use:
+
 - ITANEO copyright header
 - `namespace Hexalith.Memories.{Project}.{Folder};` file-scoped namespace
 - `sealed` classes (no inheritance)
@@ -377,9 +397,9 @@ All files use:
 - **Assertions:** Shouldly (`result.ShouldBe(expected)`, `result.ShouldBeInRange(0.0, 1.0)`)
 - **Tolerance for doubles:** `result.ShouldBe(expected, tolerance: 0.001)` for floating-point comparisons
 - **Mocking strategy (resolved):**
-  - `FusionEngine.Fuse()` — pure function, no mocking needed. Test exhaustively with direct assertions
-  - `HybridSearchService` — constructor accepts `Func<>` delegates (not concrete sealed classes). Tests inject lambda stubs that return canned `SearchResult` data or throw exceptions for degradation scenarios. No NSubstitute needed for search services
-  - `IActorProxyFactory` — mock via NSubstitute to return a substitute `ICorpusStatisticsActor` that returns known `CorpusStatistics`
+    - `FusionEngine.Fuse()` — pure function, no mocking needed. Test exhaustively with direct assertions
+    - `HybridSearchService` — constructor accepts `Func<>` delegates (not concrete sealed classes). Tests inject lambda stubs that return canned `SearchResult` data or throw exceptions for degradation scenarios. No NSubstitute needed for search services
+    - `IActorProxyFactory` — mock via NSubstitute to return a substitute `ICorpusStatisticsActor` that returns known `CorpusStatistics`
 - **Determinism test (NFR25):** Run Fuse 100 times with same inputs, verify identical output each time
 - **Latency test (NFR3):** <1s hybrid latency at 10 concurrent queries is an integration/performance concern — deferred to Story 2.7 benchmark suite or integration test suite. Not in scope for unit tests
 
@@ -401,6 +421,7 @@ All files use:
 ### Previous Story Intelligence (Story 2.4)
 
 From Story 2.4 implementation:
+
 - `ScoreNormalizer` is `internal static class` with three pure functions — reuse directly, do not duplicate
 - `CorpusStatisticsActor` caches per-tenant stats (docCount, avgDocLength) with 5-minute refresh timer
 - Actor ID = tenant ID — call via `actorProxyFactory.CreateActorProxy<ICorpusStatisticsActor>(new ActorId(tenantId), nameof(CorpusStatisticsActor))`
@@ -415,6 +436,7 @@ From Story 2.4 implementation:
 ### Git Intelligence
 
 Recent commits show sequential search axis implementations:
+
 - `81057a3` feat: Implement GraphScopedSearch for traversing FalkorDB and enriching results from Redis
 - `5c39312` feat: Implement Semantic Search Service with KNN vector search capabilities
 - `0d104b7` feat: Implement Syntactic Search Service with BM25 ranking and related data models
@@ -425,10 +447,40 @@ Pattern: Each search service is a standalone `internal sealed class` registered 
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
 
+- Build error: `TenantEmbeddingConfig.ModelName` -> corrected to `Model` in test helper
+
 ### Completion Notes List
 
+- Task 1: Created `FusionWeights` sealed record with init properties (0.4/0.4/0.2 defaults) and `Validate()` method. Registered in `MemoriesJsonContext`.
+- Task 2: Created `HybridSearchResult` and `FusedScoredResult` sealed records with per-axis nullable scores, degradation info, and pagination support. Registered in `MemoriesJsonContext`.
+- Task 3: Implemented `FusionEngine.Fuse()` pure static function using `FusionAccumulator` dictionary for deduplication, weighted average over active axes only, deterministic tie-breaking by MemoryUnitId, and `Math.Clamp` to [0,1]. Uses `CollectionsMarshal.GetValueRefOrAddDefault` for efficient dictionary access.
+- Task 4: Created `HybridSearchService` with delegate-based constructor pattern, parallel axis execution via `Task.WhenAll`, per-axis try/catch for degradation, corpus stats fetch from actor proxy, and post-fusion pagination. Includes `FindInvalidAxis` static validator.
+- Task 5: Registered `HybridSearchService` as singleton with explicit factory wiring delegates to concrete service methods. Graph delegate uses `innerSearch: null` for pure traversal mode.
+- Task 6: Added `axis=hybrid` branch in `/api/search` endpoint with `axes` query parameter parsing, validation via `FindInvalidAxis`, `TenantEmbeddingConfig` fetch when semantic enabled, and `FusionWeights` defaults.
+- Task 7: 18 FusionEngine unit tests covering all ACs: three-axis fusion, two-axis, single-axis, deduplication, determinism (100 iterations), tie-breaking, empty inputs, BM25 normalization, cosine passthrough, graph passthrough, content snippet preference order, zero-weight edge case, random property-based testing, NaN/Infinity poison pill prevention.
+- Task 8: 10 HybridSearchService-focused tests using NSubstitute `Func<>` delegates and mock `IActorProxyFactory`: all-axes call verification, excluded axis not called, degradation on exception, intentional exclusion (null config/startNode) NOT degraded, correct tenant ID in actor proxy, corpus-stats degradation, pre-unavailable semantic degradation, cancellation propagation, and pagination slicing with TotalCount.
+- Task 9: 11 contract serialization tests: FusionWeights round-trip + defaults + validation + camelCase, HybridSearchResult round-trip + degraded state + unavailable axes, FusedScoredResult round-trip + null scores + camelCase.
+- Review fixes: hybrid search now widens axis query windows before post-fusion pagination, keeps `UnavailableAxes` thread-safe, preserves request cancellation, accepts `graphStartNodeId` as a hybrid alias, and degrades semantic/syntactic axes when prerequisite lookups fail before normalized fusion can proceed.
+
+### Change Log
+
+- 2026-04-01: Implemented Story 2.5 — Fusion Algorithm & Hybrid Search. All 9 tasks completed. 36 new tests added (471 total unit tests pass, 0 regressions).
+- 2026-04-01: Applied code review fixes for hybrid search routing, degradation metadata, cancellation handling, and post-fusion pagination. Added 3 focused unit tests and 1 hybrid endpoint integration test; all targeted validation passed.
+
 ### File List
+
+- src/Hexalith.Memories.Contracts/V1/FusionWeights.cs (NEW)
+- src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs (NEW — includes FusedScoredResult)
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs (MODIFIED — added FusedScoredResult, FusionWeights, HybridSearchResult)
+- src/Hexalith.Memories.Server/Search/FusionEngine.cs (NEW)
+- src/Hexalith.Memories.Server/Search/HybridSearchService.cs (NEW)
+- src/Hexalith.Memories.Server/Program.cs (MODIFIED — added HybridSearchService DI registration + axis=hybrid endpoint routing)
+- tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs (NEW — 18 tests)
+- tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs (NEW — 10 tests)
+- tests/Hexalith.Memories.Contracts.Tests/V1/FusionWeightsSerializationTests.cs (NEW — 6 tests)
+- tests/Hexalith.Memories.Contracts.Tests/V1/HybridSearchResultSerializationTests.cs (NEW — 5 tests)
+- tests/Hexalith.Memories.IntegrationTests/Search/HybridSearchApiIntegrationTests.cs (NEW — hybrid `graphStartNodeId` endpoint coverage)
