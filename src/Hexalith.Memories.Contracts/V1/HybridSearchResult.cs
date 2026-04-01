@@ -1,0 +1,53 @@
+// <copyright file="HybridSearchResult.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Contracts.V1;
+
+/// <summary>Response envelope for a hybrid (multi-axis) search with fusion scoring and degradation info.</summary>
+public sealed record HybridSearchResult
+{
+    /// <summary>Gets the ranked list of fused search results.</summary>
+    public required IReadOnlyList<FusedScoredResult> Results { get; init; }
+
+    /// <summary>Gets the total number of deduplicated fused results before pagination.</summary>
+    public required long TotalCount { get; init; }
+
+    /// <summary>Gets a value indicating whether any enabled axis failed at runtime.</summary>
+    public required bool Degraded { get; init; }
+
+    /// <summary>Gets the list of axis names that were enabled but failed (e.g., <c>["graph"]</c>).</summary>
+    public required IReadOnlyList<string> UnavailableAxes { get; init; }
+
+    /// <summary>Gets the original query string echoed back for correlation.</summary>
+    public required string Query { get; init; }
+}
+
+/// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>
+public sealed record FusedScoredResult
+{
+    /// <summary>Gets the identifier of the matched memory unit.</summary>
+    public required string MemoryUnitId { get; init; }
+
+    /// <summary>Gets the final fused composite score in [0.0, 1.0].</summary>
+    public required double CompositeScore { get; init; }
+
+    /// <summary>Gets a truncated content snippet from the matched memory unit.</summary>
+    public required string ContentSnippet { get; init; }
+
+    /// <summary>Gets the source URI of the matched memory unit.</summary>
+    public required string SourceUri { get; init; }
+
+    /// <summary>Gets the source type of the matched memory unit.</summary>
+    public required SourceType SourceType { get; init; }
+
+    /// <summary>Gets the normalized syntactic (BM25) score, or null if the axis was not queried or didn't find this unit.</summary>
+    public double? SyntacticScore { get; init; }
+
+    /// <summary>Gets the normalized semantic (vector) score, or null if the axis was not queried or didn't find this unit.</summary>
+    public double? SemanticScore { get; init; }
+
+    /// <summary>Gets the normalized graph (proximity) score, or null if the axis was not queried or didn't find this unit.</summary>
+    public double? GraphScore { get; init; }
+}

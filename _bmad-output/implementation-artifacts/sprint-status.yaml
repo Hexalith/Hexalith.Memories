@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-01 # Story 2.4 done after review fixes
+last_updated: 2026-04-01 # Story 2.5 done after review fixes
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -61,8 +61,8 @@ development_status:
   2-2-semantic-search-vector-via-redis-vector: done
   2-3-graph-scoped-search: done
   2-4-score-normalization: done
-  2-5-fusion-algorithm-and-hybrid-search: ready-for-dev
-  2-6-explain-mode-and-confidence-scores: backlog
+  2-5-fusion-algorithm-and-hybrid-search: done
+  2-6-explain-mode-and-confidence-scores: ready-for-dev
   2-7-benchmark-suite-and-thesis-validation: backlog
   epic-2-retrospective: optional
 

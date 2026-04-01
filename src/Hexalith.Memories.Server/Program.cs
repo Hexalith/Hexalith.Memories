@@ -67,6 +67,18 @@ builder.Services.AddSingleton<GraphScopedSearch>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<IGraphQueryBuilder>(),
         sp.GetRequiredService<ILogger<GraphScopedSearch>>()));
+builder.Services.AddSingleton<HybridSearchService>(sp =>
+{
+    var syntactic = sp.GetRequiredService<SyntacticSearchService>();
+    var semantic = sp.GetRequiredService<SemanticSearchService>();
+    var graph = sp.GetRequiredService<GraphScopedSearch>();
+    return new HybridSearchService(
+        query => syntactic.SearchAsync(query),
+        (query, config, ct) => semantic.SearchAsync(query, config, ct),
+        (query, startNode, depth, ct) => graph.SearchAsync(query, startNode, depth, innerSearch: null, ct),
+        sp.GetRequiredService<IActorProxyFactory>(),
+        sp.GetRequiredService<ILogger<HybridSearchService>>());
+});
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -198,6 +210,7 @@ app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,
     GraphScopedSearch graphScopedSearch,
+    HybridSearchService hybridSearchService,
     IActorProxyFactory actorProxyFactory,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
@@ -205,7 +218,9 @@ app.MapGet("/api/search", async (
     [FromQuery] int maxResults = 10,
     [FromQuery] int offset = 0,
     [FromQuery] string axis = "syntactic",
+    [FromQuery] string? axes = null,
     [FromQuery] string? startNodeId = null,
+    [FromQuery(Name = "graphStartNodeId")] string? graphStartNodeId = null,
     [FromQuery] int depth = 2,
     CancellationToken cancellationToken = default) =>
 {
@@ -226,12 +241,13 @@ app.MapGet("/api/search", async (
     // Validate axis BEFORE query — axis determines whether query is required
     if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase))
+        !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
     {
         return Results.BadRequest(new ErrorResponse(
             "INVALID_AXIS",
-            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph.",
-            "Use axis=syntactic, axis=semantic, or axis=graph."));
+            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph, hybrid.",
+            "Use axis=syntactic, axis=semantic, axis=graph, or axis=hybrid."));
     }
 
     // --- axis=graph: pure traversal (query NOT required) ---
@@ -269,6 +285,84 @@ app.MapGet("/api/search", async (
                 new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
                 statusCode: 504);
         }
+    }
+
+    // --- axis=hybrid: multi-axis fusion ---
+    if (string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "INVALID_INPUT",
+                "Parameter 'query' is required for hybrid search.",
+                "Provide query as a query parameter."));
+        }
+
+        // Parse enabled axes (default: all three)
+        HashSet<string> enabledAxes = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
+        if (!string.IsNullOrWhiteSpace(axes))
+        {
+            enabledAxes = new HashSet<string>(
+                axes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        string? invalidAxis = HybridSearchService.FindInvalidAxis(enabledAxes);
+        if (invalidAxis is not null)
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "INVALID_AXIS",
+                $"Unknown axis '{invalidAxis}' in axes parameter. Valid axes: syntactic, semantic, graph.",
+                "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic."));
+        }
+
+        var hybridQuery = new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = query,
+            CaseId = caseId,
+            MaxResults = Math.Clamp(maxResults, 1, 100),
+            Offset = Math.Max(offset, 0),
+        };
+
+        var weights = new FusionWeights();
+        TenantEmbeddingConfig? embeddingConfig = null;
+        List<string> preUnavailableAxes = [];
+        string? effectiveGraphStartNodeId = !string.IsNullOrWhiteSpace(graphStartNodeId)
+            ? graphStartNodeId
+            : startNodeId;
+
+        if (enabledAxes.Contains("semantic"))
+        {
+            try
+            {
+                ITenantConfigurationActor actor = actorProxyFactory
+                    .CreateActorProxy<ITenantConfigurationActor>(
+                        new ActorId(tenantId), nameof(TenantConfigurationActor));
+                embeddingConfig = await actor.GetEmbeddingConfigAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                preUnavailableAxes.Add("semantic");
+            }
+        }
+
+        int clampedDepth = Math.Clamp(depth, 0, 10);
+        HybridSearchResult hybridResult = await hybridSearchService.SearchAsync(
+            hybridQuery,
+            embeddingConfig,
+            effectiveGraphStartNodeId,
+            clampedDepth,
+            weights,
+            enabledAxes,
+            preUnavailableAxes,
+            cancellationToken);
+
+        return Results.Ok(hybridResult);
     }
 
     // --- For syntactic, semantic, and graph-scoped inner search: query IS required ---
