@@ -150,6 +150,36 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         return (query, parameters);
     }
 
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountMemoryUnits()
+    {
+        const string query = "MATCH (m:MemoryUnit) RETURN COUNT(m) AS count";
+
+        Dictionary<string, object> parameters = [];
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
+
+        // Depth is interpolated as literal — Cypher does not support parameterized path length.
+        // Same pattern as edge type labels in BuildMergeEdge: validated closed set.
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit) RETURN DISTINCT n.id AS nodeId, min(length(p)) AS hopDistance";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["startId"] = startNodeId,
+        };
+
+        return (query, parameters);
+    }
+
     /// <summary>
     /// Converts an <see cref="EdgeType"/> enum value to UPPER_SNAKE_CASE Cypher relationship label.
     /// Uses an explicit switch expression on the closed set — no regex, no ToString interpolation.

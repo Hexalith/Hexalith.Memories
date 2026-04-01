@@ -45,7 +45,7 @@ public sealed class SemanticSearchApiIntegrationTests
         string tenantId = $"tenant-{Guid.NewGuid():N}";
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=test&axis=graph");
+            $"/api/search?tenantId={tenantId}&query=test&axis=not-a-real-axis");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 

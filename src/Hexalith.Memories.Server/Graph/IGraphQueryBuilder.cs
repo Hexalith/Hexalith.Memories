@@ -41,4 +41,11 @@ public interface IGraphQueryBuilder
 
     /// <summary>Deletes a memory unit node and all its relationships (compensation).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildDeleteMemoryUnitNode(string memoryUnitId);
+
+    /// <summary>Counts memory unit nodes in the tenant graph.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountMemoryUnits();
+
+    /// <summary>Builds a bidirectional graph traversal query from a starting node up to depth.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth);
 }

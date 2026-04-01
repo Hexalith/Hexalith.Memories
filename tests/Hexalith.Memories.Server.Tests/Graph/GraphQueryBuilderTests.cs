@@ -142,6 +142,16 @@ public class GraphQueryBuilderTests
         parameters["id"].ShouldBe("mu-stub-001");
     }
 
+    [Fact]
+    public void BuildCountMemoryUnits_ShouldReturnCountQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountMemoryUnits();
+
+        query.ShouldContain("MATCH (m:MemoryUnit)");
+        query.ShouldContain("COUNT(m) AS count");
+        parameters.Count.ShouldBe(0);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -233,6 +243,63 @@ public class GraphQueryBuilderTests
         query.ShouldNotContain(adversarialTarget);
         parameters["sourceId"].ShouldBe(adversarialSource);
         parameters["targetId"].ShouldBe(adversarialTarget);
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_ShouldReturnParameterizedQueryWithStartId()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3);
+
+        query.ShouldContain("$startId");
+        query.ShouldContain("[*0..3]");
+        query.ShouldContain("DISTINCT");
+        query.ShouldContain("nodeId");
+        query.ShouldContain("hopDistance");
+        parameters["startId"].ShouldBe("mu-start-001");
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_DepthZero_ShouldReturnQueryWithZeroDepth()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseFromNode("mu-001", 0);
+
+        query.ShouldContain("[*0..0]");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-100)]
+    public void BuildTraverseFromNode_NegativeDepth_ShouldThrowArgumentOutOfRangeException(int depth)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseFromNode("mu-001", depth));
+    }
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(100)]
+    public void BuildTraverseFromNode_DepthExceedsMax_ShouldThrowArgumentOutOfRangeException(int depth)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseFromNode("mu-001", depth));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildTraverseFromNode_NullOrEmptyStartNodeId_ShouldThrow(string? startNodeId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildTraverseFromNode(startNodeId!, 2));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildTraverseFromNode_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialId = "INJECT_TRAVERSE_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode(adversarialId, 5);
+
+        query.ShouldNotContain(adversarialId);
+        parameters["startId"].ShouldBe(adversarialId);
     }
 
     [Fact]

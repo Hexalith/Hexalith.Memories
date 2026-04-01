@@ -61,6 +61,12 @@ builder.Services.AddSingleton<SemanticSearchService>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<EmbeddingClient>(),
         sp.GetRequiredService<ILogger<SemanticSearchService>>()));
+builder.Services.AddSingleton<GraphScopedSearch>(sp =>
+    new GraphScopedSearch(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<IGraphQueryBuilder>(),
+        sp.GetRequiredService<ILogger<GraphScopedSearch>>()));
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -190,21 +196,24 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,
+    GraphScopedSearch graphScopedSearch,
     IActorProxyFactory actorProxyFactory,
     [FromQuery] string tenantId,
-    [FromQuery] string query,
+    [FromQuery] string? query,
     [FromQuery] string? caseId,
     [FromQuery] int maxResults = 10,
     [FromQuery] int offset = 0,
     [FromQuery] string axis = "syntactic",
+    [FromQuery] string? startNodeId = null,
+    [FromQuery] int depth = 2,
     CancellationToken cancellationToken = default) =>
 {
-    if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(query))
+    if (string.IsNullOrWhiteSpace(tenantId))
     {
         return Results.BadRequest(new ErrorResponse(
             "INVALID_INPUT",
-            "Both 'tenantId' and 'query' are required.",
-            "Provide tenantId and query as query parameters."));
+            "Parameter 'tenantId' is required.",
+            "Provide tenantId as a query parameter."));
     }
 
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
@@ -213,27 +222,138 @@ app.MapGet("/api/search", async (
         return Results.BadRequest(tenantValidationError);
     }
 
+    // Validate axis BEFORE query — axis determines whether query is required
     if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
+        !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase))
     {
         return Results.BadRequest(new ErrorResponse(
             "INVALID_AXIS",
-            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic.",
-            "Use axis=syntactic or axis=semantic."));
+            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph.",
+            "Use axis=syntactic, axis=semantic, or axis=graph."));
     }
 
-    int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
-    int clampedOffset = Math.Max(offset, 0);
+    // --- axis=graph: pure traversal (query NOT required) ---
+    if (string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase))
+    {
+        if (string.IsNullOrWhiteSpace(startNodeId))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "MISSING_START_NODE",
+                "Graph-scoped search requires a startNodeId parameter.",
+                "Provide startNodeId=<memoryUnitId> to specify the graph traversal starting point."));
+        }
 
-    var searchQuery = new SearchQuery
+        int clampedDepth = Math.Clamp(depth, 0, 10);
+        int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
+        var searchQuery = new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = query ?? string.Empty,
+            CaseId = caseId,
+            MaxResults = clampedMaxResults,
+            Offset = Math.Max(offset, 0),
+        };
+
+        try
+        {
+            SearchResult result = await graphScopedSearch.SearchAsync(
+                searchQuery, startNodeId, clampedDepth,
+                innerSearch: null, cancellationToken);
+            return Results.Ok(result);
+        }
+        catch (TimeoutException)
+        {
+            return Results.Json(
+                new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
+                statusCode: 504);
+        }
+    }
+
+    // --- For syntactic, semantic, and graph-scoped inner search: query IS required ---
+    if (string.IsNullOrWhiteSpace(query))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "Parameter 'query' is required for syntactic and semantic search.",
+            "Provide query as a query parameter."));
+    }
+
+    int clampedMax = Math.Clamp(maxResults, 1, 100);
+    int clampedOff = Math.Max(offset, 0);
+    var mainSearchQuery = new SearchQuery
     {
         TenantId = tenantId,
         Query = query,
         CaseId = caseId,
-        MaxResults = clampedMaxResults,
-        Offset = clampedOffset,
+        MaxResults = clampedMax,
+        Offset = clampedOff,
     };
 
+    // --- Graph-scoped inner search (syntactic/semantic + startNodeId) ---
+    if (!string.IsNullOrWhiteSpace(startNodeId))
+    {
+        int clampedDepth = Math.Clamp(depth, 0, 10);
+
+        if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            ITenantConfigurationActor actor = actorProxyFactory
+                .CreateActorProxy<ITenantConfigurationActor>(
+                    new ActorId(tenantId), nameof(TenantConfigurationActor));
+
+            try
+            {
+                TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+                SearchResult result = await graphScopedSearch.SearchAsync(
+                    mainSearchQuery, startNodeId, clampedDepth,
+                    q => semanticService.SearchAsync(q, config, cancellationToken),
+                    cancellationToken);
+                return Results.Ok(result);
+            }
+            catch (EmbeddingApiException ex)
+            {
+                return Results.Json(
+                    SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
+                    statusCode: 503);
+            }
+            catch (EmbeddingRateLimitException ex)
+            {
+                return Results.Json(
+                    SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
+                    statusCode: 503);
+            }
+            catch (SemanticSearchDimensionMismatchException ex)
+            {
+                return Results.Json(
+                    SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
+                    statusCode: 500);
+            }
+            catch (TimeoutException)
+            {
+                return Results.Json(
+                    new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
+                    statusCode: 504);
+            }
+        }
+
+        try
+        {
+            SearchResult syntacticResult = await graphScopedSearch.SearchAsync(
+                mainSearchQuery, startNodeId, clampedDepth,
+                q => syntacticService.SearchAsync(q),
+                cancellationToken);
+            return Results.Ok(syntacticResult);
+        }
+        catch (TimeoutException)
+        {
+            return Results.Json(
+                new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
+                statusCode: 504);
+        }
+    }
+
+    // --- Existing routing for syntactic/semantic without graph scope ---
     if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
     {
         ITenantConfigurationActor actor = actorProxyFactory
@@ -244,7 +364,7 @@ app.MapGet("/api/search", async (
         {
             TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
             SearchResult searchResult = await semanticService.SearchAsync(
-                searchQuery, config, cancellationToken);
+                mainSearchQuery, config, cancellationToken);
             return Results.Ok(searchResult);
         }
         catch (EmbeddingApiException ex)
@@ -267,7 +387,7 @@ app.MapGet("/api/search", async (
         }
     }
 
-    return Results.Ok(await syntacticService.SearchAsync(searchQuery));
+    return Results.Ok(await syntacticService.SearchAsync(mainSearchQuery));
 });
 
 app.Run();
