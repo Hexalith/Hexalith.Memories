@@ -158,7 +158,7 @@ public sealed partial class GraphScopedSearch
     }
 
     internal static double ComputeProximityScore(int hopDistance)
-        => Math.Clamp(1.0 / (1.0 + hopDistance), 0.0, 1.0);
+        => ScoreNormalizer.NormalizeGraphProximity(hopDistance);
 
     internal static List<ScoredResult> FilterToGraphScope(
         IReadOnlyList<ScoredResult> results, HashSet<string> nodeIds)

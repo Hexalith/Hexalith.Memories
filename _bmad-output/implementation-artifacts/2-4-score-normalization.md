@@ -1,6 +1,6 @@
 # Story 2.4: Score Normalization
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,77 +37,85 @@ So that scores from different axes are comparable and the fusion algorithm produ
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `ScoreNormalizer` pure static class (AC: 1, 2, 3)
-  - [ ] 1.1 Create `src/Hexalith.Memories.Server/Search/ScoreNormalizer.cs` as `internal static class`
-  - [ ] 1.2 Implement `NormalizeBm25(double rawScore, int documentCount, double averageDocumentLength)` using saturation formula: `rawScore / (rawScore + k)` where `k = Math.Log2(documentCount + 1) * (averageDocumentLength / 100.0)`, clamped to [0.0, 1.0]. Guard: if `!double.IsFinite(rawScore) || rawScore <= 0.0 || documentCount <= 0 || averageDocumentLength <= 0.0`, return 0.0. The `IsFinite` check prevents NaN/Infinity from propagating through fusion as poison pills.
-  - [ ] 1.3 Implement `NormalizeCosine(double cosineScore)` as passthrough: guard `if (!double.IsFinite(cosineScore)) return 0.0`, then `Math.Clamp(cosineScore, 0.0, 1.0)`. The `IsFinite` guard is critical because `Math.Clamp(NaN, 0, 1)` returns NaN, not 0.
-  - [ ] 1.4 Implement `NormalizeGraphProximity(int hopDistance)` — guard: `ArgumentOutOfRangeException.ThrowIfNegative(hopDistance)` then `Math.Clamp(1.0 / (1.0 + hopDistance), 0.0, 1.0)`. This centralizes the formula; `GraphScopedSearch.ComputeProximityScore` should call `ScoreNormalizer.NormalizeGraphProximity` to avoid duplication. Negative hop distance would produce `1/0` = Infinity which clamps to 1.0 — a silent wrong answer scored as "same node".
-  - [ ] 1.5 All three methods are pure functions: no I/O, no state, deterministic
+- [x] Task 1: Create `ScoreNormalizer` pure static class (AC: 1, 2, 3)
+    - [x] 1.1 Create `src/Hexalith.Memories.Server/Search/ScoreNormalizer.cs` as `internal static class`
+    - [x] 1.2 Implement `NormalizeBm25(double rawScore, int documentCount, double averageDocumentLength)` using saturation formula: `rawScore / (rawScore + k)` where `k = Math.Log2(documentCount + 1) * (averageDocumentLength / 100.0)`, clamped to [0.0, 1.0]. Guard: if `!double.IsFinite(rawScore) || rawScore <= 0.0 || documentCount <= 0 || averageDocumentLength <= 0.0`, return 0.0. The `IsFinite` check prevents NaN/Infinity from propagating through fusion as poison pills.
+    - [x] 1.3 Implement `NormalizeCosine(double cosineScore)` as passthrough: guard `if (!double.IsFinite(cosineScore)) return 0.0`, then `Math.Clamp(cosineScore, 0.0, 1.0)`. The `IsFinite` guard is critical because `Math.Clamp(NaN, 0, 1)` returns NaN, not 0.
+    - [x] 1.4 Implement `NormalizeGraphProximity(int hopDistance)` — guard: `ArgumentOutOfRangeException.ThrowIfNegative(hopDistance)` then `Math.Clamp(1.0 / (1.0 + hopDistance), 0.0, 1.0)`. This centralizes the formula; `GraphScopedSearch.ComputeProximityScore` should call `ScoreNormalizer.NormalizeGraphProximity` to avoid duplication. Negative hop distance would produce `1/0` = Infinity which clamps to 1.0 — a silent wrong answer scored as "same node".
+    - [x] 1.5 All three methods are pure functions: no I/O, no state, deterministic
 
-- [ ] Task 2: Create `CorpusStatistics` record (AC: 4)
-  - [ ] 2.1 Create `src/Hexalith.Memories.Server/Actors/CorpusStatistics.cs` as `internal sealed record` with properties: `int DocumentCount`, `double AverageDocumentLength`, `DateTimeOffset LastRefreshedAt`. Located in `Server/Actors/` (not Contracts) because this is purely DAPR actor internal state — not a public API contract. DAPR handles serialization internally via its own JSON serializer, so no `MemoriesJsonSourceGenerationContext` registration is needed.
+- [x] Task 2: Create `CorpusStatistics` record (AC: 4)
+    - [x] 2.1 Create `src/Hexalith.Memories.Server/Actors/CorpusStatistics.cs` as `public sealed record` with properties: `int DocumentCount`, `double AverageDocumentLength`, `DateTimeOffset LastRefreshedAt`. Located in `Server/Actors/` (not Contracts). Made public (not internal) because DAPR actor proxy requires public interface return types — `ICorpusStatisticsActor.GetStatisticsAsync()` returns `CorpusStatistics`.
 
-- [ ] Task 3: Create `ICorpusStatisticsActor` interface (AC: 4)
-  - [ ] 3.1 Create `src/Hexalith.Memories.Server/Actors/ICorpusStatisticsActor.cs` extending `IActor`
-  - [ ] 3.2 Define methods: `Task<int> GetDocumentCountAsync()`, `Task<double> GetAverageDocumentLengthAsync()`, `Task<CorpusStatistics> GetStatisticsAsync()` (convenience method returning full snapshot)
-  - [ ] 3.3 Follow exact pattern of `ITenantConfigurationActor` (same namespace, same XML doc style)
+- [x] Task 3: Create `ICorpusStatisticsActor` interface (AC: 4)
+    - [x] 3.1 Create `src/Hexalith.Memories.Server/Actors/ICorpusStatisticsActor.cs` extending `IActor`
+    - [x] 3.2 Define methods: `Task<int> GetDocumentCountAsync()`, `Task<double> GetAverageDocumentLengthAsync()`, `Task<CorpusStatistics> GetStatisticsAsync()` (convenience method returning full snapshot)
+    - [x] 3.3 Follow exact pattern of `ITenantConfigurationActor` (same namespace, same XML doc style)
 
-- [ ] Task 4: Create `CorpusStatisticsActor` implementation (AC: 4)
-  - [ ] 4.1 Create `src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs` as `internal sealed class` extending `Actor, ICorpusStatisticsActor`
-  - [ ] 4.2 Constructor: `(ActorHost host, [FromKeyedServices("redis")] IConnectionMultiplexer redis, ILogger<CorpusStatisticsActor> logger)` — inject Redis to query RediSearch index info
-  - [ ] 4.3 State key: `"corpusStats"`, type: `CorpusStatistics`
-  - [ ] 4.4 `OnActivateAsync()`: register timer `"RefreshCorpusStats"` with `dueTime: TimeSpan.Zero` (refresh immediately on activation), `period: TimeSpan.FromMinutes(5)`
-  - [ ] 4.5 Timer callback `RefreshStatsCallbackAsync()`: query RediSearch via raw `db.ExecuteAsync("FT.INFO", indexName)` and parse via `ParseFtInfoResult(RedisResult)` (see Task 4.10). Use `Id.GetId()` for tenantId. Handle missing index gracefully (set DocumentCount=0, AverageDocumentLength=0). Handle `RedisConnectionException` by logging a warning and retaining previous state — do not let a transient connection failure wipe cached stats or deactivate the actor
-  - [ ] 4.10 Extract `internal static CorpusStatistics ParseFtInfoResult(RedisResult raw, DateTimeOffset refreshedAt)` as a pure function in `CorpusStatisticsActor`. Parses the flat key-value `RedisResult[]` array to extract `num_docs` and `doc_table_size_mb`. **Must check `items[i].Type` before casting** — FT.INFO may return nested arrays for some fields (e.g., `index_definition`, `attributes`). Skip any entry where `items[i].Type != ResultType.BulkString` to survive Redis version upgrades that change the response format. Testable without Redis — accepts a mock `RedisResult` array
-  - [ ] 4.6 Persist state via `StateManager.SetStateAsync("corpusStats", stats)` BEFORE returning from every public method and after refresh — per architecture requirement D24 (state persisted before every response)
-  - [ ] 4.7 `GetDocumentCountAsync()`: return cached `DocumentCount` from state. If no state exists yet (first call before timer fires), trigger refresh inline. If refresh still returns docCount=0 (empty index), consumers should treat BM25 normalization as unavailable rather than normalizing all scores to 0.0 — the `CorpusStatistics.DocumentCount == 0` signal indicates stats are not yet meaningful
-  - [ ] 4.8 `GetAverageDocumentLengthAsync()`: return cached `AverageDocumentLength` from state
-  - [ ] 4.9 `GetStatisticsAsync()`: return full `CorpusStatistics` snapshot
+- [x] Task 4: Create `CorpusStatisticsActor` implementation (AC: 4)
+    - [x] 4.1 Create `src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs` as `internal sealed partial class` extending `Actor, ICorpusStatisticsActor`
+    - [x] 4.2 Constructor: `(ActorHost host, [FromKeyedServices("redis")] IConnectionMultiplexer redis, ILogger<CorpusStatisticsActor> logger)` — inject Redis to query RediSearch index info
+    - [x] 4.3 State key: `"corpusStats"`, type: `CorpusStatistics`
+    - [x] 4.4 `OnActivateAsync()`: register timer `"RefreshCorpusStats"` with `dueTime: TimeSpan.Zero` (refresh immediately on activation), `period: TimeSpan.FromMinutes(5)`
+    - [x] 4.5 Timer callback `RefreshStatsCallbackAsync()`: query RediSearch via raw `db.ExecuteAsync("FT.INFO", indexName)` and parse via `ParseFtInfoResult(RedisResult)` (see Task 4.10). Use `Id.GetId()` for tenantId. Handle missing index gracefully (set DocumentCount=0, AverageDocumentLength=0). Handle `RedisConnectionException` by logging a warning and retaining previous state — do not let a transient connection failure wipe cached stats or deactivate the actor
+    - [x] 4.10 Extract `internal static CorpusStatistics ParseFtInfoResult(RedisResult raw, DateTimeOffset refreshedAt)` as a pure function in `CorpusStatisticsActor`. Parses the flat key-value `RedisResult[]` array to extract `num_docs` and `doc_table_size_mb`. Uses `Resp2Type` (not deprecated `Type`) for type checking. Skips non-BulkString keys gracefully to survive Redis version upgrades that change the response format. Testable without Redis — accepts a mock `RedisResult` array
+    - [x] 4.6 Persist state via `StateManager.SetStateAsync("corpusStats", stats)` BEFORE returning from every public method and after refresh — per architecture requirement D24 (state persisted before every response)
+    - [x] 4.7 `GetDocumentCountAsync()`: return cached `DocumentCount` from state. If no state exists yet (first call before timer fires), trigger refresh inline. If refresh still returns docCount=0 (empty index), consumers should treat BM25 normalization as unavailable rather than normalizing all scores to 0.0 — the `CorpusStatistics.DocumentCount == 0` signal indicates stats are not yet meaningful
+    - [x] 4.8 `GetAverageDocumentLengthAsync()`: return cached `AverageDocumentLength` from state
+    - [x] 4.9 `GetStatisticsAsync()`: return full `CorpusStatistics` snapshot
 
-- [ ] Task 5: Register actor in Program.cs (AC: 4)
-  - [ ] 5.1 Add `options.Actors.RegisterActor<CorpusStatisticsActor>()` in the existing `AddActors` block (after `TenantConfigurationActor`)
+- [x] Task 5: Register actor in Program.cs (AC: 4)
+    - [x] 5.1 Add `options.Actors.RegisterActor<CorpusStatisticsActor>()` in the existing `AddActors` block (after `TenantConfigurationActor`)
 
-- [ ] Task 6: Refactor `GraphScopedSearch.ComputeProximityScore` to use `ScoreNormalizer` (AC: 3)
-  - [ ] 6.1 Change `GraphScopedSearch.ComputeProximityScore(int hopDistance)` body to delegate to `ScoreNormalizer.NormalizeGraphProximity(hopDistance)` — keeps the existing public API surface but centralizes the formula
-  - [ ] 6.2 Verify existing `GraphScopedSearchTests` still pass (formula unchanged, only call site moved)
+- [x] Task 6: Refactor `GraphScopedSearch.ComputeProximityScore` to use `ScoreNormalizer` (AC: 3)
+    - [x] 6.1 Change `GraphScopedSearch.ComputeProximityScore(int hopDistance)` body to delegate to `ScoreNormalizer.NormalizeGraphProximity(hopDistance)` — keeps the existing public API surface but centralizes the formula
+    - [x] 6.2 Verify existing `GraphScopedSearchTests` still pass (formula unchanged, only call site moved)
 
-- [ ] Task 7: Unit tests for `ScoreNormalizer` (AC: 1, 2, 3, 5)
-  - [ ] 7.1 Create `tests/Hexalith.Memories.Server.Tests/Search/ScoreNormalizerTests.cs`
-  - [ ] 7.2 Test `NormalizeBm25`: rawScore=0 -> 0.0
-  - [ ] 7.3 Test `NormalizeBm25`: rawScore=5.0, docCount=1000, avgDocLen=200 -> expected value (compute manually from formula)
-  - [ ] 7.4 Test `NormalizeBm25`: rawScore=100.0 (very high) -> close to 1.0 (saturation)
-  - [ ] 7.5 Test `NormalizeBm25`: output always in [0.0, 1.0] for any positive rawScore
-  - [ ] 7.6 Test `NormalizeBm25`: docCount=0 -> returns 0.0
-  - [ ] 7.7 Test `NormalizeBm25`: monotonicity — higher rawScore always produces higher normalized score (same corpus stats)
-  - [ ] 7.8 Test `NormalizeCosine`: score=0.91 -> 0.91 (passthrough)
-  - [ ] 7.9 Test `NormalizeCosine`: score=0.0 -> 0.0
-  - [ ] 7.10 Test `NormalizeCosine`: score=1.0 -> 1.0
-  - [ ] 7.11 Test `NormalizeCosine`: score=1.001 (floating-point overshoot) -> clamped to 1.0
-  - [ ] 7.12 Test `NormalizeGraphProximity`: hopDistance=0 -> 1.0
-  - [ ] 7.13 Test `NormalizeGraphProximity`: hopDistance=1 -> 0.5
-  - [ ] 7.14 Test `NormalizeGraphProximity`: hopDistance=2 -> 0.333 (tolerance 0.001)
-  - [ ] 7.15 Test `NormalizeGraphProximity`: hopDistance=3 -> 0.25
-  - [ ] 7.16 Test `NormalizeBm25`: rawScore=-5.0 (negative) -> 0.0
-  - [ ] 7.17 Test `NormalizeGraphProximity`: hopDistance=1000 (very large) -> value > 0.0 and < 1.0
-  - [ ] 7.18 Test `NormalizeBm25`: rawScore=double.NaN -> 0.0 (IsFinite guard)
-  - [ ] 7.19 Test `NormalizeBm25`: rawScore=double.PositiveInfinity -> 0.0 (IsFinite guard)
-  - [ ] 7.20 Test `NormalizeCosine`: score=double.NaN -> 0.0 (IsFinite guard)
-  - [ ] 7.21 Test `NormalizeGraphProximity`: hopDistance=-1 -> throws `ArgumentOutOfRangeException`
+- [x] Task 7: Unit tests for `ScoreNormalizer` (AC: 1, 2, 3, 5)
+    - [x] 7.1 Create `tests/Hexalith.Memories.Server.Tests/Search/ScoreNormalizerTests.cs`
+    - [x] 7.2 Test `NormalizeBm25`: rawScore=0 -> 0.0
+    - [x] 7.3 Test `NormalizeBm25`: rawScore=5.0, docCount=1000, avgDocLen=200 -> expected value (compute manually from formula)
+    - [x] 7.4 Test `NormalizeBm25`: rawScore=100.0 (very high) -> close to 1.0 (saturation)
+    - [x] 7.5 Test `NormalizeBm25`: output always in [0.0, 1.0] for any positive rawScore
+    - [x] 7.6 Test `NormalizeBm25`: docCount=0 -> returns 0.0
+    - [x] 7.7 Test `NormalizeBm25`: monotonicity — higher rawScore always produces higher normalized score (same corpus stats)
+    - [x] 7.8 Test `NormalizeCosine`: score=0.91 -> 0.91 (passthrough)
+    - [x] 7.9 Test `NormalizeCosine`: score=0.0 -> 0.0
+    - [x] 7.10 Test `NormalizeCosine`: score=1.0 -> 1.0
+    - [x] 7.11 Test `NormalizeCosine`: score=1.001 (floating-point overshoot) -> clamped to 1.0
+    - [x] 7.12 Test `NormalizeGraphProximity`: hopDistance=0 -> 1.0
+    - [x] 7.13 Test `NormalizeGraphProximity`: hopDistance=1 -> 0.5
+    - [x] 7.14 Test `NormalizeGraphProximity`: hopDistance=2 -> 0.333 (tolerance 0.001)
+    - [x] 7.15 Test `NormalizeGraphProximity`: hopDistance=3 -> 0.25
+    - [x] 7.16 Test `NormalizeBm25`: rawScore=-5.0 (negative) -> 0.0
+    - [x] 7.17 Test `NormalizeGraphProximity`: hopDistance=1000 (very large) -> value > 0.0 and < 1.0
+    - [x] 7.18 Test `NormalizeBm25`: rawScore=double.NaN -> 0.0 (IsFinite guard)
+    - [x] 7.19 Test `NormalizeBm25`: rawScore=double.PositiveInfinity -> 0.0 (IsFinite guard)
+    - [x] 7.20 Test `NormalizeCosine`: score=double.NaN -> 0.0 (IsFinite guard)
+    - [x] 7.21 Test `NormalizeGraphProximity`: hopDistance=-1 -> throws `ArgumentOutOfRangeException`
 
-- [ ] Task 8: Unit tests for `CorpusStatisticsActor` (AC: 4)
-  - [ ] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Actors/CorpusStatisticsActorTests.cs`
-  - [ ] 8.2 Test: `GetDocumentCountAsync` returns value from state
-  - [ ] 8.3 Test: `GetAverageDocumentLengthAsync` returns value from state
-  - [ ] 8.4 Test: `GetStatisticsAsync` returns full snapshot
-  - [ ] 8.5 Test: `ParseFtInfoResult` with valid `RedisResult[]` array containing `num_docs=100` and `doc_table_size_mb=0.5` -> returns `CorpusStatistics { DocumentCount=100, AverageDocumentLength=5242.88 }`
-  - [ ] 8.6 Test: `ParseFtInfoResult` with empty/malformed `RedisResult[]` -> returns `CorpusStatistics { DocumentCount=0, AverageDocumentLength=0 }` (graceful degradation, no exception)
-  - [ ] 8.7 Note: Full actor lifecycle tests (timer, Redis query) are integration-level — defer to Story 2.5 or a dedicated integration test story if needed. Unit tests focus on pure state-based behavior and the `ParseFtInfoResult` pure function
+- [x] Task 8: Unit tests for `CorpusStatisticsActor` (AC: 4)
+    - [x] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Actors/CorpusStatisticsActorTests.cs`
+    - [x] 8.2 Test: `GetDocumentCountAsync` returns value from state
+    - [x] 8.3 Test: `GetAverageDocumentLengthAsync` returns value from state
+    - [x] 8.4 Test: `GetStatisticsAsync` returns full snapshot
+    - [x] 8.5 Test: `ParseFtInfoResult` with valid `RedisResult[]` array containing `num_docs=100` and `doc_table_size_mb=0.5` -> returns `CorpusStatistics { DocumentCount=100, AverageDocumentLength=5242.88 }`
+    - [x] 8.6 Test: `ParseFtInfoResult` with empty/malformed `RedisResult[]` -> returns `CorpusStatistics { DocumentCount=0, AverageDocumentLength=0 }` (graceful degradation, no exception)
+    - [x] 8.7 Note: Full actor lifecycle tests (timer, Redis query) are integration-level — defer to Story 2.5 or a dedicated integration test story if needed. Unit tests focus on pure state-based behavior and the `ParseFtInfoResult` pure function
+
+### Review Findings
+
+- [x] [Review][Patch] Persist cached corpus statistics before every public response [src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs:36]
+- [x] [Review][Patch] Guard BM25 normalization against non-finite and overflowed corpus inputs [src/Hexalith.Memories.Server/Search/ScoreNormalizer.cs:23]
+- [x] [Review][Patch] Validate and fully parse `doc_table_size_mb` values from FT.INFO [src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs:105]
+- [x] [Review][Patch] Harden corpus-stat refresh error handling for missing-index variants and Redis timeouts [src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs:149]
 
 ## Dev Notes
 
 ### Implementation Overview
 
 This story creates the **score normalization layer** that makes all three search axis scores comparable before fusion (Story 2.5). You are building:
+
 1. A `ScoreNormalizer` static class with three pure normalization functions (BM25 saturation, cosine passthrough, graph proximity)
 2. A `CorpusStatisticsActor` DAPR actor that caches per-tenant RediSearch index statistics
 3. A `CorpusStatistics` record for actor state
@@ -123,20 +131,26 @@ Raw BM25 scores from RediSearch are unbounded (typically 0-30+, but can be highe
 ```csharp
 internal static double NormalizeBm25(double rawScore, int documentCount, double averageDocumentLength)
 {
-    if (!double.IsFinite(rawScore) || rawScore <= 0.0 || documentCount <= 0 || averageDocumentLength <= 0.0)
+    if (!double.IsFinite(rawScore) ||
+        rawScore <= 0.0 ||
+        documentCount <= 0 ||
+        !double.IsFinite(averageDocumentLength) ||
+        averageDocumentLength <= 0.0)
         return 0.0;
 
     // Corpus-adaptive saturation constant:
     // - log2(docCount+1) scales with corpus size (more docs = higher threshold)
     // - avgDocLen/100 scales with document length (longer docs = higher raw BM25)
-    double k = Math.Log2(documentCount + 1) * (averageDocumentLength / 100.0);
-    k = Math.Max(k, 1.0); // Floor at 1.0 to prevent division issues with tiny corpora
+    double k = Math.Log2((double)documentCount + 1.0) * (averageDocumentLength / 100.0);
+    if (!double.IsFinite(k) || k <= 0.0)
+        return 0.0;
 
     return Math.Clamp(rawScore / (rawScore + k), 0.0, 1.0);
 }
 ```
 
 **Why saturation normalization:** The `score / (score + k)` formula produces a natural S-curve:
+
 - Zero raw score -> 0.0
 - Raw score equal to k -> 0.5
 - Very high raw scores asymptote toward 1.0 (never exceed it)
@@ -241,6 +255,7 @@ catch (RedisServerException ex) when (ex.Message.Contains("Unknown Index name"))
 **Redis connection resilience:** Wrap `ExecuteAsync` in a try/catch for `RedisConnectionException` (transient network failures). On connection failure, log a warning and retain the previous cached state — do not overwrite with zeros or let the exception deactivate the actor.
 
 **Average document length:** RediSearch does not directly expose average document length. Practical approaches:
+
 1. Compute from `DocTableSizeMB / NumDocs` (bytes per document, rough proxy)
 2. Sample a few documents and compute average `content.Length`
 3. Track incrementally during ingestion (add to indexing activity)
@@ -284,6 +299,7 @@ Existing `GraphScopedSearchTests` for `ComputeProximityScore` remain unchanged �
 ### Project Structure Notes
 
 New files follow existing project conventions:
+
 ```
 src/Hexalith.Memories.Server/
   Actors/
@@ -304,6 +320,7 @@ tests/Hexalith.Memories.Server.Tests/
 ```
 
 All files use:
+
 - ITANEO copyright header
 - `namespace Hexalith.Memories.{Project}.{Folder};` file-scoped namespace
 - `sealed` classes (no inheritance)
@@ -331,6 +348,7 @@ All files use:
 ### Previous Story Intelligence (Story 2.3)
 
 From Story 2.3 implementation:
+
 - `GraphScopedSearch.ComputeProximityScore` uses `1/(1+hopDistance)` — reuse this formula, do not change it
 - `[FromKeyedServices("redis")]` and `[FromKeyedServices("falkordb")]` are the keyed DI patterns for Redis connections
 - `sealed partial class` with `[LoggerMessage]` for structured logging
@@ -341,8 +359,44 @@ From Story 2.3 implementation:
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- Build error: `CorpusStatistics` was `internal` but returned by `public` interface `ICorpusStatisticsActor.GetStatisticsAsync()` — fixed by making `CorpusStatistics` public (DAPR actor proxy requires public interfaces)
+- Build error: `RedisResult.Type` is obsolete in StackExchange.Redis 2.12.4 — replaced with `Resp2Type`
 
 ### Completion Notes List
 
+- Created `ScoreNormalizer` with three pure normalization functions: BM25 saturation, cosine passthrough, graph proximity decay
+- Created `CorpusStatistics` record for per-tenant corpus stats (doc count, avg doc length, refresh timestamp)
+- Created `ICorpusStatisticsActor` interface following `ITenantConfigurationActor` pattern
+- Created `CorpusStatisticsActor` with timer-based FT.INFO refresh (5-minute interval), Redis connection resilience, and inline refresh on first access
+- Extracted `ParseFtInfoResult` as a pure static function — testable without Redis, handles nested arrays gracefully via `Resp2Type` checks
+- Registered `CorpusStatisticsActor` in `Program.cs` AddActors block
+- Refactored `GraphScopedSearch.ComputeProximityScore` to delegate to `ScoreNormalizer.NormalizeGraphProximity` — centralizes formula, existing tests unaffected
+- 23 unit tests for `ScoreNormalizer` covering all edge cases (NaN, Infinity, negatives, monotonicity, tiny corpora, range bounds, overflow safety)
+- 9 unit tests for `CorpusStatisticsActor` covering state retrieval and `ParseFtInfoResult` parsing (valid, empty, null, nested arrays, NaN rejection, bounds checks)
+- Full test suite: 336 tests, 0 failures, 0 regressions
+- Review-fix validation: 32 targeted tests passed, 0 failures
+
 ### File List
+
+New files:
+
+- src/Hexalith.Memories.Server/Search/ScoreNormalizer.cs
+- src/Hexalith.Memories.Server/Actors/CorpusStatistics.cs
+- src/Hexalith.Memories.Server/Actors/ICorpusStatisticsActor.cs
+- src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs
+- tests/Hexalith.Memories.Server.Tests/Search/ScoreNormalizerTests.cs
+- tests/Hexalith.Memories.Server.Tests/Actors/CorpusStatisticsActorTests.cs
+
+Modified files:
+
+- src/Hexalith.Memories.Server/Program.cs (added CorpusStatisticsActor registration)
+- src/Hexalith.Memories.Server/Search/GraphScopedSearch.cs (ComputeProximityScore delegates to ScoreNormalizer)
+
+### Change Log
+
+- 2026-04-01: Story 2.4 implemented — score normalization layer with ScoreNormalizer (3 pure functions), CorpusStatisticsActor (timer-based FT.INFO refresh), and 27 unit tests. GraphScopedSearch.ComputeProximityScore refactored to centralize formula. Full test suite: 336 passed, 0 regressions.
+- 2026-04-01: Review fixes applied — cached actor reads now persist before return, BM25 normalization rejects non-finite corpus stats and preserves tiny-corpus scaling, FT.INFO parsing handles invalid numeric payloads more defensively, and targeted validation passed (32 tests).

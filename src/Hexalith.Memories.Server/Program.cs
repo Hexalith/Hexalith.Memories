@@ -92,6 +92,7 @@ builder.Services.AddActors(options =>
 {
     options.Actors.RegisterActor<EmbeddingRateLimiterActor>();
     options.Actors.RegisterActor<TenantConfigurationActor>();
+    options.Actors.RegisterActor<CorpusStatisticsActor>();
     options.ActorIdleTimeout = TimeSpan.FromMinutes(60);
     options.ActorScanInterval = TimeSpan.FromSeconds(30);
     options.ReentrancyConfig = new Dapr.Actors.ActorReentrancyConfig { Enabled = false };
