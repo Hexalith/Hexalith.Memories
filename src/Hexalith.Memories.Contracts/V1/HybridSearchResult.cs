@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Text.Json.Serialization;
+
 /// <summary>Response envelope for a hybrid (multi-axis) search with fusion scoring and degradation info.</summary>
 public sealed record HybridSearchResult
 {
@@ -22,6 +24,10 @@ public sealed record HybridSearchResult
 
     /// <summary>Gets the original query string echoed back for correlation.</summary>
     public required string Query { get; init; }
+
+    /// <summary>Gets the explain-mode metadata describing normalization methods and fusion weights. Null when explain=false.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SearchExplanation? Explanation { get; init; }
 }
 
 /// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>

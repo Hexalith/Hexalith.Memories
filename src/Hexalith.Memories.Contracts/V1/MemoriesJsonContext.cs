@@ -11,6 +11,8 @@ using System.Text.Json.Serialization.Metadata;
 
 /// <summary>Source-generated JSON metadata for commonly exchanged Memories contracts.</summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(AxisExplanation))]
+[JsonSerializable(typeof(Dictionary<string, AxisExplanation>))]
 [JsonSerializable(typeof(Dictionary<string, MetadataField>))]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(ExtractionInput))]
@@ -28,6 +30,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(MemoryUnit))]
 [JsonSerializable(typeof(MetadataField))]
 [JsonSerializable(typeof(ScoredResult))]
+[JsonSerializable(typeof(SearchExplanation))]
 [JsonSerializable(typeof(SearchQuery))]
 [JsonSerializable(typeof(SearchResult))]
 [JsonSerializable(typeof(TenantEmbeddingConfig))]

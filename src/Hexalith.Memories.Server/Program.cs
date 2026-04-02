@@ -222,6 +222,7 @@ app.MapGet("/api/search", async (
     [FromQuery] string? startNodeId = null,
     [FromQuery(Name = "graphStartNodeId")] string? graphStartNodeId = null,
     [FromQuery] int depth = 2,
+    [FromQuery] bool explain = false,
     CancellationToken cancellationToken = default) =>
 {
     if (string.IsNullOrWhiteSpace(tenantId))
@@ -277,6 +278,11 @@ app.MapGet("/api/search", async (
             SearchResult result = await graphScopedSearch.SearchAsync(
                 searchQuery, startNodeId, clampedDepth,
                 innerSearch: null, cancellationToken);
+            if (explain)
+            {
+                result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
+            }
+
             return Results.Ok(result);
         }
         catch (TimeoutException)
@@ -362,6 +368,16 @@ app.MapGet("/api/search", async (
             preUnavailableAxes,
             cancellationToken);
 
+        if (explain)
+        {
+            IReadOnlySet<string> explanationAxes = DetermineHybridExplanationAxes(
+                enabledAxes,
+                hybridResult.UnavailableAxes,
+                embeddingConfig is not null,
+                !string.IsNullOrWhiteSpace(effectiveGraphStartNodeId));
+            hybridResult = hybridResult with { Explanation = ExplainMetadataBuilder.BuildForHybrid(explanationAxes, weights) };
+        }
+
         return Results.Ok(hybridResult);
     }
 
@@ -404,6 +420,11 @@ app.MapGet("/api/search", async (
                     mainSearchQuery, startNodeId, clampedDepth,
                     q => semanticService.SearchAsync(q, config, cancellationToken),
                     cancellationToken);
+                if (explain)
+                {
+                    result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
+                }
+
                 return Results.Ok(result);
             }
             catch (EmbeddingApiException ex)
@@ -438,6 +459,11 @@ app.MapGet("/api/search", async (
                 mainSearchQuery, startNodeId, clampedDepth,
                 q => syntacticService.SearchAsync(q),
                 cancellationToken);
+            if (explain)
+            {
+                syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+            }
+
             return Results.Ok(syntacticResult);
         }
         catch (TimeoutException)
@@ -460,6 +486,11 @@ app.MapGet("/api/search", async (
             TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
             SearchResult searchResult = await semanticService.SearchAsync(
                 mainSearchQuery, config, cancellationToken);
+            if (explain)
+            {
+                searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
+            }
+
             return Results.Ok(searchResult);
         }
         catch (EmbeddingApiException ex)
@@ -482,7 +513,13 @@ app.MapGet("/api/search", async (
         }
     }
 
-    return Results.Ok(await syntacticService.SearchAsync(mainSearchQuery));
+    SearchResult syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
+    if (explain)
+    {
+        syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+    }
+
+    return Results.Ok(syntacticDefault);
 });
 
 app.Run();
@@ -526,6 +563,35 @@ static ErrorResponse? ValidateTenantId(string tenantId)
             ex.Message,
             "Use only alphanumeric characters and hyphens for tenant identifiers.");
     }
+}
+
+static IReadOnlySet<string> DetermineHybridExplanationAxes(
+    IReadOnlySet<string> requestedAxes,
+    IReadOnlyCollection<string> unavailableAxes,
+    bool hasSemanticConfiguration,
+    bool hasGraphStartNode)
+{
+    ArgumentNullException.ThrowIfNull(requestedAxes);
+    ArgumentNullException.ThrowIfNull(unavailableAxes);
+
+    HashSet<string> explanationAxes = new(requestedAxes, StringComparer.OrdinalIgnoreCase);
+
+    if (!hasSemanticConfiguration)
+    {
+        _ = explanationAxes.Remove("semantic");
+    }
+
+    if (!hasGraphStartNode)
+    {
+        _ = explanationAxes.Remove("graph");
+    }
+
+    foreach (string unavailableAxis in unavailableAxes)
+    {
+        _ = explanationAxes.Remove(unavailableAxis);
+    }
+
+    return explanationAxes;
 }
 
 static object CreateEmbeddingConfigConflictResponse(

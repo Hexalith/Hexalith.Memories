@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Text.Json.Serialization;
+
 /// <summary>Search response envelope containing ranked results and metadata.</summary>
 public sealed record SearchResult
 {
@@ -19,4 +21,8 @@ public sealed record SearchResult
 
     /// <summary>Gets the original query string echoed back for correlation.</summary>
     public required string Query { get; init; }
+
+    /// <summary>Gets the explain-mode metadata describing normalization methods and fusion weights. Null when explain=false.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SearchExplanation? Explanation { get; init; }
 }
