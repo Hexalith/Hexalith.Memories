@@ -82,6 +82,21 @@ public class FusionEngineTests
         results[0].GraphScore.ShouldBeNull();
     }
 
+    [Fact]
+    public void Fuse_EmptyQueriedAxis_ShouldKeepAxisWeightActive()
+    {
+        var syntactic = new List<ScoredResult>();
+        var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.85, "semantic") };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, semantic, null, DefaultWeights, 1000, 200.0);
+
+        results.Count.ShouldBe(1);
+        results[0].SyntacticScore.ShouldBeNull();
+        results[0].SemanticScore.ShouldBe(0.85);
+        results[0].CompositeScore.ShouldBe(0.425, tolerance: 0.001);
+    }
+
     // 7.5: Same memory unit appearing in multiple axes -> merged with per-axis scores populated
     [Fact]
     public void Fuse_SameUnitMultipleAxes_ShouldMergeWithPerAxisScores()
@@ -98,9 +113,9 @@ public class FusionEngineTests
         results[0].SemanticScore!.Value.ShouldBe(0.9, tolerance: 0.001);
     }
 
-    // 7.6: Memory unit appearing in only one axis -> other axis scores are null
+    // 7.6: Memory unit appearing in only one active axis -> other active axis scores stay null, but composite keeps the axis weight active
     [Fact]
-    public void Fuse_UnitInOneAxisOnly_ShouldHaveNullForOtherAxes()
+    public void Fuse_UnitInOneAxisOnly_ShouldKeepNullForOtherActiveAxes()
     {
         var syntactic = new List<ScoredResult> { MakeResult("mu-1", 5.0, "syntactic") };
         var semantic = new List<ScoredResult> { MakeResult("mu-2", 0.9, "semantic") };
@@ -112,8 +127,17 @@ public class FusionEngineTests
         FusedScoredResult mu1 = results.First(r => r.MemoryUnitId == "mu-1");
         FusedScoredResult mu2 = results.First(r => r.MemoryUnitId == "mu-2");
 
+        // Public result contract preserves null for axes that did not return this document.
         mu1.SemanticScore.ShouldBeNull();
         mu2.SyntacticScore.ShouldBeNull();
+
+        // Inactive axis (graph was null) stays null ("not queried")
+        mu1.GraphScore.ShouldBeNull();
+        mu2.GraphScore.ShouldBeNull();
+
+        // Composite scoring still penalizes the missing active axis internally.
+        mu1.CompositeScore.ShouldBe(0.100, tolerance: 0.02);
+        mu2.CompositeScore.ShouldBe(0.45, tolerance: 0.001);
     }
 
     // 7.7: Determinism — same inputs produce identical output ordering (NFR25)

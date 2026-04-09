@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>

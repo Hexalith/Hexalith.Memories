@@ -1,0 +1,157 @@
+[
+  {
+    "queryId": "BQ-01",
+    "query": "What caused the payment processing outage in March?",
+    "description": "Requires syntactic ('payment processing', 'March'), semantic (meaning of 'outage' relates to 'service disruption', 'failures'), graph (causal chain from deployment to incident to root cause)",
+    "expectedResults": [
+      "mu-020",
+      "mu-001",
+      "mu-003",
+      "mu-018",
+      "mu-016",
+      "mu-006",
+      "mu-031"
+    ],
+    "graphStartNodeId": "mu-001",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-02",
+    "query": "Find all discussions related to the API redesign decision",
+    "description": "Requires syntactic ('API redesign'), semantic (discussions about 'architectural changes'), graph (references edges to ADR-042)",
+    "expectedResults": [
+      "mu-011",
+      "mu-026",
+      "mu-028",
+      "mu-013",
+      "mu-015"
+    ],
+    "graphStartNodeId": "mu-011",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-03",
+    "query": "What were the consequences of the database migration?",
+    "description": "Requires syntactic ('database migration'), semantic (impact/consequences language), graph (caused_by chain from migration event through outage)",
+    "expectedResults": [
+      "mu-015",
+      "mu-012",
+      "mu-003",
+      "mu-018",
+      "mu-020",
+      "mu-001",
+      "mu-017"
+    ],
+    "graphStartNodeId": "mu-015",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-04",
+    "query": "How did the March deployment affect transaction success rates?",
+    "description": "Requires syntactic ('March deployment', 'transaction'), semantic (impact on success rates), graph (deployment → outage → metrics chain)",
+    "expectedResults": [
+      "mu-006",
+      "mu-001",
+      "mu-004",
+      "mu-017",
+      "mu-007",
+      "mu-002",
+      "mu-010"
+    ],
+    "graphStartNodeId": "mu-006",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-05",
+    "query": "What remediation actions were taken after the incident?",
+    "description": "Requires syntactic ('remediation', 'actions'), semantic (fixes, improvements, action items), graph (postmortem → action items → ADRs chain)",
+    "expectedResults": [
+      "mu-032",
+      "mu-031",
+      "mu-033",
+      "mu-007",
+      "mu-012",
+      "mu-034",
+      "mu-030"
+    ],
+    "graphStartNodeId": "mu-031",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-06",
+    "query": "What monitoring detected the connection pool exhaustion?",
+    "description": "Adversarial calibration query — semantic search alone finds most monitoring docs. Requires syntactic ('connection pool exhaustion'), semantic (monitoring/alerting concepts), graph (alert → outage → pool metrics). Designed so semantic nearly matches hybrid.",
+    "expectedResults": [
+      "mu-022",
+      "mu-019",
+      "mu-021",
+      "mu-024",
+      "mu-003",
+      "mu-023"
+    ],
+    "graphStartNodeId": "mu-022",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-07",
+    "query": "What code review issues led to the production incident?",
+    "description": "Adversarial calibration query — syntactic search for 'code review' finds the review doc well. Requires syntactic ('code review'), semantic (quality issues leading to problems), graph (review → deployment → outage chain). Single-axis gets close to hybrid.",
+    "expectedResults": [
+      "mu-027",
+      "mu-018",
+      "mu-006",
+      "mu-001",
+      "mu-020",
+      "mu-030"
+    ],
+    "graphStartNodeId": "mu-027",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  },
+  {
+    "queryId": "BQ-08",
+    "query": "Show the investigation findings about database timeout root cause",
+    "description": "Requires syntactic ('database timeout', 'root cause'), semantic (investigation/analysis findings), graph (investigation timeline → query analysis → root cause chain)",
+    "expectedResults": [
+      "mu-020",
+      "mu-018",
+      "mu-003",
+      "mu-016",
+      "mu-019",
+      "mu-001"
+    ],
+    "graphStartNodeId": "mu-016",
+    "requiredAxes": [
+      "syntactic",
+      "semantic",
+      "graph"
+    ]
+  }
+]

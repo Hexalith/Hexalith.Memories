@@ -147,6 +147,38 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildSearchTermsQuery_SingleTerm_ShouldReturnEscapedTerm()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("claim-denied");
+
+        result.ShouldBe(@"claim\-denied");
+    }
+
+    [Fact]
+    public void BuildSearchTermsQuery_KeywordPhrase_ShouldPreservePhraseSemantics()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("payment processing outage");
+
+        result.ShouldBe("payment processing outage");
+    }
+
+    [Fact]
+    public void BuildSearchTermsQuery_NaturalLanguageQuestion_ShouldUseOrSemantics()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("what caused the payment outage in march?");
+
+        result.ShouldBe("(what | caused | the | payment | outage | in | march\\?)");
+    }
+
+    [Fact]
+    public void BuildSearchTermsQuery_NaturalLanguagePromptWithDuplicateTerms_ShouldDeduplicate()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("show show the outage findings now");
+
+        result.ShouldBe("(show | the | outage | findings | now)");
+    }
+
+    [Fact]
     public void BuildQueryString_WithoutCaseId_ShouldReturnSearchTermsOnly()
     {
         string result = SyntacticSearchService.BuildQueryString("escaped terms", null);

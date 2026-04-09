@@ -39,6 +39,15 @@ public class HybridSearchServiceTests
             Query = "test query",
         };
 
+    private static SearchResult MakeSearchResult(IReadOnlyList<ScoredResult> results, long totalCount, bool hasIndexedMemoryUnits)
+        => new()
+        {
+            Results = results,
+            TotalCount = totalCount,
+            HasIndexedMemoryUnits = hasIndexedMemoryUnits,
+            Query = "test query",
+        };
+
     private static (HybridSearchService Service, Func<SearchQuery, Task<SearchResult>> Syntactic, Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> Semantic, Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> Graph, IActorProxyFactory ActorFactory) CreateService()
     {
         Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
@@ -214,6 +223,85 @@ public class HybridSearchServiceTests
         result.Results[0].CompositeScore.ShouldBe(0.85, tolerance: 0.001);
     }
 
+    [Fact]
+    public async Task SearchAsync_UnindexedAxisShouldNotPenalizeOtherAxes()
+    {
+        var (service, syntactic, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult([], 0, false));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult(MakeResult("mu-1", 0.85, "semantic")));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeFalse();
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results.Count.ShouldBe(1);
+        result.Results[0].SyntacticScore.ShouldBeNull();
+        result.Results[0].SemanticScore.ShouldNotBeNull();
+        result.Results[0].SemanticScore!.Value.ShouldBe(0.85, tolerance: 0.001);
+        result.Results[0].CompositeScore.ShouldBe(0.85, tolerance: 0.001);
+    }
+
+    [Fact]
+    public async Task SearchAsync_StaleOnlyAxisShouldBeExcludedFromFusion()
+    {
+        var (service, syntactic, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult([], 1, true));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("semantic");
+        result.Results.Count.ShouldBe(1);
+        result.Results[0].MemoryUnitId.ShouldBe("mu-1");
+        result.Results[0].SyntacticScore.ShouldNotBeNull();
+        result.Results[0].SemanticScore.ShouldBeNull();
+        result.Results[0].CompositeScore.ShouldBe(result.Results[0].SyntacticScore!.Value, tolerance: 0.001);
+    }
+
+    [Fact]
+    public async Task SearchAsync_StaleLeadingPageShouldBackfillLaterValidHits()
+    {
+        var (service, syntactic, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+        semantic(
+                Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 2),
+                Arg.Any<TenantEmbeddingConfig>(),
+                Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult([], 4, true));
+        semantic(
+                Arg.Is<SearchQuery>(q => q.Offset == 2 && q.MaxResults == 2),
+                Arg.Any<TenantEmbeddingConfig>(),
+                Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult([MakeResult("mu-2", 0.80, "semantic")], 4, true));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(maxResults: 2), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeFalse();
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results.Count.ShouldBe(2);
+        result.Results.ShouldContain(r => r.MemoryUnitId == "mu-2");
+        await semantic.Received(1)(
+            Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 2),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+        await semantic.Received(1)(
+            Arg.Is<SearchQuery>(q => q.Offset == 2 && q.MaxResults == 2),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
     // 8.9: Pagination — offset=5, maxResults=3 correctly slices fused results
     [Fact]
     public async Task SearchAsync_Pagination_ShouldSliceFusedResults()
@@ -236,7 +324,7 @@ public class HybridSearchServiceTests
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
 
-        hybridResult.TotalCount.ShouldBe(10);
+        hybridResult.TotalCount.ShouldBe(8);
         hybridResult.Results.Count.ShouldBe(3);
         // Results should be the 6th, 7th, 8th items after sorting (offset=5, take 3)
         hybridResult.Results[0].MemoryUnitId.ShouldBe("mu-05");

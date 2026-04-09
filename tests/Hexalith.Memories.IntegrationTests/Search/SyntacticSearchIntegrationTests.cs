@@ -166,6 +166,62 @@ public class SyntacticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_NaturalLanguageQuestion_ShouldReturnKeywordMatches()
+    {
+        // Arrange
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-1",
+            "Payment outage in March traced to database timeout and connection pool exhaustion.");
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-2",
+            "Invoice batch completed successfully overnight with no alerting issues.");
+
+        SyntacticSearchService service = CreateService();
+
+        // Act
+        SearchResult result = await service.SearchAsync(new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = "What caused the payment outage in March?",
+        });
+
+        // Assert
+        result.Results.ShouldContain(r => r.MemoryUnitId == "mu-1");
+        result.Results.ShouldNotContain(r => r.MemoryUnitId == "mu-2");
+    }
+
+    [Fact]
+    public async Task SearchAsync_KeywordPhrase_ShouldPreserveAndStyleMatching()
+    {
+        // Arrange
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-1",
+            "Payment outage in March traced to database timeout and connection pool exhaustion.");
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-2",
+            "Outage analysis focused on overnight invoice jobs without any customer impact.");
+
+        SyntacticSearchService service = CreateService();
+
+        // Act
+        SearchResult result = await service.SearchAsync(new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = "payment outage",
+        });
+
+        // Assert
+        result.Results.ShouldContain(r => r.MemoryUnitId == "mu-1");
+        result.Results.ShouldNotContain(r => r.MemoryUnitId == "mu-2");
+    }
+
+    [Fact]
     public async Task SearchAsync_OffsetPagination_ShouldSkipResults()
     {
         // Arrange — seed 15 documents

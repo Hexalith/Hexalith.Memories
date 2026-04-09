@@ -96,7 +96,7 @@ internal sealed partial class HybridSearchService(
 
         if (enabledAxes.Contains("syntactic"))
         {
-            syntacticTask = ExecuteAxisAsync("syntactic", () => syntacticSearchFunc(axisQuery), unavailableAxes);
+            syntacticTask = ExecuteAxisAsync("syntactic", axisQuery, syntacticSearchFunc, unavailableAxes);
         }
 
         if (enabledAxes.Contains("semantic"))
@@ -110,7 +110,11 @@ internal sealed partial class HybridSearchService(
             }
             else
             {
-                semanticTask = ExecuteAxisAsync("semantic", () => semanticSearchFunc(axisQuery, embeddingConfig, cancellationToken), unavailableAxes);
+                semanticTask = ExecuteAxisAsync(
+                    "semantic",
+                    axisQuery,
+                    searchQuery => semanticSearchFunc(searchQuery, embeddingConfig, cancellationToken),
+                    unavailableAxes);
             }
         }
 
@@ -125,7 +129,11 @@ internal sealed partial class HybridSearchService(
             }
             else
             {
-                graphTask = ExecuteAxisAsync("graph", () => graphSearchFunc(axisQuery, graphStartNodeId, graphDepth, cancellationToken), unavailableAxes);
+                graphTask = ExecuteAxisAsync(
+                    "graph",
+                    axisQuery,
+                    searchQuery => graphSearchFunc(searchQuery, graphStartNodeId, graphDepth, cancellationToken),
+                    unavailableAxes);
             }
         }
 
@@ -138,6 +146,10 @@ internal sealed partial class HybridSearchService(
         SearchResult? syntacticResult = syntacticTask is not null ? await syntacticTask.ConfigureAwait(false) : null;
         SearchResult? semanticResult = semanticTask is not null ? await semanticTask.ConfigureAwait(false) : null;
         SearchResult? graphResult = graphTask is not null ? await graphTask.ConfigureAwait(false) : null;
+
+        syntacticResult = NormalizeAxisResult(syntacticResult, "syntactic", query.TenantId, unavailableAxes, logger);
+        semanticResult = NormalizeAxisResult(semanticResult, "semantic", query.TenantId, unavailableAxes, logger);
+        graphResult = NormalizeAxisResult(graphResult, "graph", query.TenantId, unavailableAxes, logger);
 
         // Fetch corpus statistics for BM25 normalization
         int documentCount = 0;
@@ -240,12 +252,58 @@ internal sealed partial class HybridSearchService(
 
     private static async Task<SearchResult?> ExecuteAxisAsync(
         string axisName,
-        Func<Task<SearchResult>> searchFunc,
+        SearchQuery axisQuery,
+        Func<SearchQuery, Task<SearchResult>> searchFunc,
         ConcurrentDictionary<string, byte> unavailableAxes)
     {
         try
         {
-            return await searchFunc().ConfigureAwait(false);
+            int targetWindowSize = Math.Clamp(axisQuery.MaxResults, 1, 100);
+            int currentOffset = Math.Max(axisQuery.Offset, 0);
+            long totalCount = 0;
+            bool hasIndexedMemoryUnits = false;
+            SearchResult? firstPage = null;
+            List<ScoredResult> collectedResults = [];
+
+            while (collectedResults.Count < targetWindowSize)
+            {
+                SearchResult page = await searchFunc(axisQuery with
+                {
+                    Offset = currentOffset,
+                    MaxResults = targetWindowSize,
+                }).ConfigureAwait(false);
+
+                firstPage ??= page;
+                totalCount = page.TotalCount;
+                hasIndexedMemoryUnits |= page.HasIndexedMemoryUnits;
+
+                if (!page.HasIndexedMemoryUnits)
+                {
+                    return page;
+                }
+
+                if (page.Results.Count > 0)
+                {
+                    int remainingSlots = targetWindowSize - collectedResults.Count;
+                    collectedResults.AddRange(page.Results.Take(remainingSlots));
+                }
+
+                currentOffset += targetWindowSize;
+
+                if (page.TotalCount == 0 || currentOffset >= page.TotalCount)
+                {
+                    break;
+                }
+            }
+
+            return firstPage is null
+                ? null
+                : firstPage with
+                {
+                    Results = collectedResults,
+                    TotalCount = totalCount,
+                    HasIndexedMemoryUnits = hasIndexedMemoryUnits,
+                };
         }
         catch (OperationCanceledException)
         {
@@ -258,6 +316,33 @@ internal sealed partial class HybridSearchService(
         }
     }
 
+    private static SearchResult? NormalizeAxisResult(
+        SearchResult? result,
+        string axisName,
+        string tenantId,
+        ConcurrentDictionary<string, byte> unavailableAxes,
+        ILogger logger)
+    {
+        if (result is null)
+        {
+            return null;
+        }
+
+        if (!result.HasIndexedMemoryUnits)
+        {
+            return null;
+        }
+
+        if (result.TotalCount > 0 && result.Results.Count == 0)
+        {
+            _ = unavailableAxes.TryAdd(axisName, 0);
+            LogAxisDroppedFromFusion(logger, axisName, tenantId);
+            return null;
+        }
+
+        return result;
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic axis skipped for tenant {TenantId}: {Reason}")]
     private static partial void LogSemanticSkipped(ILogger logger, string tenantId, string reason);
 
@@ -266,4 +351,7 @@ internal sealed partial class HybridSearchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to fetch corpus statistics for tenant {TenantId} — BM25 normalization will use defaults")]
     private static partial void LogCorpusStatsFailure(ILogger logger, string tenantId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Axis {AxisName} returned only stale or unenrichable hits for tenant {TenantId} — excluding it from fusion")]
+    private static partial void LogAxisDroppedFromFusion(ILogger logger, string axisName, string tenantId);
 }

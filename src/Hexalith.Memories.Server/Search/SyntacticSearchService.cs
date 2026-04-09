@@ -24,6 +24,24 @@ public sealed partial class SyntacticSearchService
 {
     private const int MaxSnippetLength = 200;
 
+    private static readonly HashSet<string> s_naturalLanguageLeadingTerms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "describe",
+        "explain",
+        "find",
+        "how",
+        "list",
+        "show",
+        "summarize",
+        "tell",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+    };
+
     private static readonly string[] _requiredFields = ["content", "sourceUri", "sourceType"];
 
     private readonly IConnectionMultiplexer _redis;
@@ -55,8 +73,8 @@ public sealed partial class SyntacticSearchService
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
 
-        string escapedTerms = EscapeRedisQuery(query.Query);
-        string queryString = BuildQueryString(escapedTerms, query.CaseId);
+        string searchTerms = BuildSearchTermsQuery(query.Query);
+        string queryString = BuildQueryString(searchTerms, query.CaseId);
 
         var redisQuery = new Query(queryString)
             .SetWithScores(true)
@@ -152,6 +170,43 @@ public sealed partial class SyntacticSearchService
         string escapedCaseId = EscapeRedisQuery(caseId);
         return $"@caseId:{{{escapedCaseId}}} {searchTerms}";
     }
+
+    /// <summary>
+    /// Builds a RediSearch-safe token query for natural-language input.
+    /// Multiple terms are combined with OR semantics so sentence-like user queries do not require every token
+    /// to appear in the same document to contribute syntactic signal.
+    /// </summary>
+    /// <param name="input">The raw user query text.</param>
+    /// <returns>An escaped RediSearch query over the input tokens.</returns>
+    internal static string BuildSearchTermsQuery(string input)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(input);
+
+        string[] rawTerms = input
+            .Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
+
+        if (!LooksLikeNaturalLanguageQuery(input, rawTerms))
+        {
+            return EscapeRedisQuery(input);
+        }
+
+        string[] terms = rawTerms
+            .Select(EscapeRedisQuery)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return terms.Length switch
+        {
+            0 => EscapeRedisQuery(input),
+            1 => terms[0],
+            _ => $"({string.Join(" | ", terms)})",
+        };
+    }
+
+    private static bool LooksLikeNaturalLanguageQuery(string input, IReadOnlyList<string> terms)
+        => input.Contains('?')
+        || (terms.Count >= 5 && s_naturalLanguageLeadingTerms.Contains(terms[0]));
 
     /// <summary>Escapes RediSearch special characters in user input to prevent query injection.</summary>
     /// <param name="input">The raw user input.</param>

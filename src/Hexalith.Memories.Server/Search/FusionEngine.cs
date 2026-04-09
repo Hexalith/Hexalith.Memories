@@ -32,9 +32,9 @@ internal static class FusionEngine
         int documentCount,
         double averageDocumentLength)
     {
-        bool hasSyntactic = syntacticResults is { Count: > 0 };
-        bool hasSemantic = semanticResults is { Count: > 0 };
-        bool hasGraph = graphResults is { Count: > 0 };
+        bool hasSyntactic = syntacticResults is not null;
+        bool hasSemantic = semanticResults is not null;
+        bool hasGraph = graphResults is not null;
 
         if (!hasSyntactic && !hasSemantic && !hasGraph)
         {
@@ -79,7 +79,7 @@ internal static class FusionEngine
         foreach (KeyValuePair<string, FusionAccumulator> kvp in accumulators)
         {
             FusionAccumulator acc = kvp.Value;
-            double compositeScore = ComputeCompositeScore(acc, weights);
+            double compositeScore = ComputeCompositeScore(acc, weights, hasSyntactic, hasSemantic, hasGraph);
 
             // All-zero weights for active axes -> skip (no division by zero)
             if (double.IsNaN(compositeScore))
@@ -112,26 +112,31 @@ internal static class FusionEngine
         return fused;
     }
 
-    private static double ComputeCompositeScore(FusionAccumulator acc, FusionWeights weights)
+    private static double ComputeCompositeScore(
+        FusionAccumulator acc,
+        FusionWeights weights,
+        bool hasSyntactic,
+        bool hasSemantic,
+        bool hasGraph)
     {
         double weightedSum = 0.0;
         double activeWeightSum = 0.0;
 
-        if (acc.SyntacticScore.HasValue)
+        if (hasSyntactic)
         {
-            weightedSum += weights.SyntacticWeight * acc.SyntacticScore.Value;
+            weightedSum += weights.SyntacticWeight * (acc.SyntacticScore ?? 0.0);
             activeWeightSum += weights.SyntacticWeight;
         }
 
-        if (acc.SemanticScore.HasValue)
+        if (hasSemantic)
         {
-            weightedSum += weights.SemanticWeight * acc.SemanticScore.Value;
+            weightedSum += weights.SemanticWeight * (acc.SemanticScore ?? 0.0);
             activeWeightSum += weights.SemanticWeight;
         }
 
-        if (acc.GraphScore.HasValue)
+        if (hasGraph)
         {
-            weightedSum += weights.GraphWeight * acc.GraphScore.Value;
+            weightedSum += weights.GraphWeight * (acc.GraphScore ?? 0.0);
             activeWeightSum += weights.GraphWeight;
         }
 
