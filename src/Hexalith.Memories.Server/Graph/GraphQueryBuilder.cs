@@ -79,6 +79,42 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(
+        string caseId, string name, string tenantId, DateTimeOffset createdAt)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        const string query = "MERGE (c:Case {id: $caseId}) SET c.name = $name, c.tenantId = $tenantId, c.createdAt = $createdAt";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["caseId"] = caseId,
+            ["name"] = name,
+            ["tenantId"] = tenantId,
+            ["createdAt"] = createdAt.ToString("o"),
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountCaseMemoryUnits(string caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        const string query = "MATCH (c:Case {id: $caseId})-[:CONTAINS]->(m) RETURN count(m) AS count";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["caseId"] = caseId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildMergeEdge(
         string sourceNodeId,
         string targetNodeId,

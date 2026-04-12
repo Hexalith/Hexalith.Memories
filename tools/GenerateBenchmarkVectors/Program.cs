@@ -188,7 +188,7 @@ for (int idx = 0; idx < units.Length; idx++)
         sourceType = u.SourceType,
         tenantId = TenantId,
         caseId = CaseId,
-        vector = vectors[u.Id].Select(v => Math.Round(v, 6)).ToArray(),
+        vector = RoundAndRenormalize(vectors[u.Id]),
     });
 }
 
@@ -232,4 +232,23 @@ static void Normalize(float[] vec)
             vec[i] = (float)(vec[i] / norm);
         }
     }
+}
+
+static double[] RoundAndRenormalize(float[] vec)
+{
+    double[] rounded = vec.Select(v => Math.Round(v, 6)).ToArray();
+    double norm = 0.0;
+    for (int i = 0; i < rounded.Length; i++)
+    {
+        norm += rounded[i] * rounded[i];
+    }
+    norm = Math.Sqrt(norm);
+    if (norm > 0)
+    {
+        for (int i = 0; i < rounded.Length; i++)
+        {
+            rounded[i] /= norm;
+        }
+    }
+    return rounded;
 }

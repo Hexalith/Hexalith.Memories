@@ -11,6 +11,15 @@ using System.Text.Json.Serialization.Metadata;
 
 /// <summary>Source-generated JSON metadata for commonly exchanged Memories contracts.</summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(Case))]
+[JsonSerializable(typeof(CaseActivityEvent))]
+[JsonSerializable(typeof(CaseActivityEventType))]
+[JsonSerializable(typeof(CaseActivityInput))]
+[JsonSerializable(typeof(CaseStatus))]
+[JsonSerializable(typeof(CaseStatusDetail))]
+[JsonSerializable(typeof(CreateCaseInput))]
+[JsonSerializable(typeof(List<Case>))]
+[JsonSerializable(typeof(List<CaseActivityEvent>))]
 [JsonSerializable(typeof(AxisExplanation))]
 [JsonSerializable(typeof(Dictionary<string, AxisExplanation>))]
 [JsonSerializable(typeof(Dictionary<string, MetadataField>))]

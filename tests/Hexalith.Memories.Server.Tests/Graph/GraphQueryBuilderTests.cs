@@ -61,6 +61,77 @@ public class GraphQueryBuilderTests
         parameters["caseId"].ShouldBe("case-001");
     }
 
+    [Fact]
+    public void BuildMergeCaseNode_WithMetadata_ShouldUseMergeAndSet()
+    {
+        DateTimeOffset createdAt = DateTimeOffset.Parse("2026-04-01T10:00:00+00:00");
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode(
+            "case-001", "Test Case", "tenant-1", createdAt);
+
+        query.ShouldContain("MERGE");
+        query.ShouldContain("SET");
+        query.ShouldContain("$name");
+        query.ShouldContain("$tenantId");
+        query.ShouldContain("$createdAt");
+        parameters["caseId"].ShouldBe("case-001");
+        parameters["name"].ShouldBe("Test Case");
+        parameters["tenantId"].ShouldBe("tenant-1");
+        parameters["createdAt"].ShouldBe(createdAt.ToString("o"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildMergeCaseNode_WithMetadata_NullOrEmptyName_ShouldThrow(string? name)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildMergeCaseNode("case-001", name!, "tenant-1", DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void BuildCountCaseMemoryUnits_ShouldReturnParameterizedCountQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountCaseMemoryUnits("case-001");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("CONTAINS");
+        query.ShouldContain("count(m) AS count");
+        query.ShouldContain("$caseId");
+        parameters["caseId"].ShouldBe("case-001");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildCountCaseMemoryUnits_NullOrEmptyCaseId_ShouldThrow(string? caseId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildCountCaseMemoryUnits(caseId!));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildMergeCaseNodeWithMetadata_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialName = "INJECT'; MATCH (n) DELETE n;--";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode(
+            "case-001", adversarialName, "tenant-1", DateTimeOffset.UtcNow);
+
+        query.ShouldNotContain(adversarialName);
+        parameters["name"].ShouldBe(adversarialName);
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildCountCaseMemoryUnits_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialCaseId = "INJECT_COUNT_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountCaseMemoryUnits(adversarialCaseId);
+
+        query.ShouldNotContain(adversarialCaseId);
+        parameters["caseId"].ShouldBe(adversarialCaseId);
+    }
+
     [Theory]
     [InlineData(EdgeType.CausedBy, "CAUSED_BY")]
     [InlineData(EdgeType.CorrelatedWith, "CORRELATED_WITH")]

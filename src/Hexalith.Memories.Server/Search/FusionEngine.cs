@@ -68,9 +68,15 @@ internal static class FusionEngine
         {
             foreach (ScoredResult result in graphResults!)
             {
-                // Graph scores are already normalized by GraphScopedSearch — take as-is
+                // Graph scores are already normalized by GraphScopedSearch — clamp to [0,1] and reject non-finite
+                double graphScore = result.Score;
+                if (!double.IsFinite(graphScore))
+                {
+                    continue;
+                }
+
                 ref FusionAccumulator acc = ref GetOrAddAccumulator(accumulators, result);
-                acc.GraphScore = result.Score;
+                acc.GraphScore = Math.Clamp(graphScore, 0.0, 1.0);
             }
         }
 

@@ -96,7 +96,7 @@ internal sealed partial class HybridSearchService(
 
         if (enabledAxes.Contains("syntactic"))
         {
-            syntacticTask = ExecuteAxisAsync("syntactic", axisQuery, syntacticSearchFunc, unavailableAxes);
+            syntacticTask = ExecuteAxisAsync("syntactic", axisQuery, syntacticSearchFunc, unavailableAxes, logger);
         }
 
         if (enabledAxes.Contains("semantic"))
@@ -114,7 +114,8 @@ internal sealed partial class HybridSearchService(
                     "semantic",
                     axisQuery,
                     searchQuery => semanticSearchFunc(searchQuery, embeddingConfig, cancellationToken),
-                    unavailableAxes);
+                    unavailableAxes,
+                    logger);
             }
         }
 
@@ -133,7 +134,8 @@ internal sealed partial class HybridSearchService(
                     "graph",
                     axisQuery,
                     searchQuery => graphSearchFunc(searchQuery, graphStartNodeId, graphDepth, cancellationToken),
-                    unavailableAxes);
+                    unavailableAxes,
+                    logger);
             }
         }
 
@@ -254,8 +256,11 @@ internal sealed partial class HybridSearchService(
         string axisName,
         SearchQuery axisQuery,
         Func<SearchQuery, Task<SearchResult>> searchFunc,
-        ConcurrentDictionary<string, byte> unavailableAxes)
+        ConcurrentDictionary<string, byte> unavailableAxes,
+        ILogger logger)
     {
+        const int maxPageIterations = 10;
+
         try
         {
             int targetWindowSize = Math.Clamp(axisQuery.MaxResults, 1, 100);
@@ -265,7 +270,8 @@ internal sealed partial class HybridSearchService(
             SearchResult? firstPage = null;
             List<ScoredResult> collectedResults = [];
 
-            while (collectedResults.Count < targetWindowSize)
+            int iteration;
+            for (iteration = 0; iteration < maxPageIterations && collectedResults.Count < targetWindowSize; iteration++)
             {
                 SearchResult page = await searchFunc(axisQuery with
                 {
@@ -279,7 +285,7 @@ internal sealed partial class HybridSearchService(
 
                 if (!page.HasIndexedMemoryUnits)
                 {
-                    return page;
+                    break;
                 }
 
                 if (page.Results.Count > 0)
@@ -296,6 +302,11 @@ internal sealed partial class HybridSearchService(
                 }
             }
 
+            if (iteration >= maxPageIterations && collectedResults.Count < targetWindowSize)
+            {
+                LogAxisPaginationLimitReached(logger, axisName, iteration, collectedResults.Count, targetWindowSize);
+            }
+
             return firstPage is null
                 ? null
                 : firstPage with
@@ -309,8 +320,9 @@ internal sealed partial class HybridSearchService(
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            LogAxisExecutionFailure(logger, axisName, ex);
             _ = unavailableAxes.TryAdd(axisName, 0);
             return null;
         }
@@ -354,4 +366,10 @@ internal sealed partial class HybridSearchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Axis {AxisName} returned only stale or unenrichable hits for tenant {TenantId} — excluding it from fusion")]
     private static partial void LogAxisDroppedFromFusion(ILogger logger, string axisName, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Axis {AxisName} failed during execution — marking as unavailable")]
+    private static partial void LogAxisExecutionFailure(ILogger logger, string axisName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Axis {AxisName} hit pagination limit ({Iterations} iterations) — collected {Collected}/{Target} results")]
+    private static partial void LogAxisPaginationLimitReached(ILogger logger, string axisName, int iterations, int collected, int target);
 }

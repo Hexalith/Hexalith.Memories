@@ -152,6 +152,23 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 HashSet<string> completedBackends = GetCompletedBackends(syntacticTask, semanticTask, graphTask);
                 await CompensateAsync(context, completedBackends, cleanupInput, compensationRetry, logger, ex);
 
+                try
+                {
+                    await context.CallActivityAsync<bool>(
+                        nameof(RecordCaseActivityActivity),
+                        new CaseActivityInput(
+                            input.TenantId,
+                            input.CaseId,
+                            CaseActivityEventType.IngestionFailed,
+                            input.IngestedBy,
+                            $"Ingestion failed for {input.SourceUri} at stage {currentStage}",
+                            memoryUnitId));
+                }
+                catch
+                {
+                    // Activity recording failure must not mask the original ingestion failure
+                }
+
                 logger.LogInformation(
                     "Indexing failed for {MemoryUnitId}, compensated backends: [{Backends}]",
                     memoryUnitId,
@@ -223,6 +240,23 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
                 AttachFailureDetails(ex, memoryUnitId, currentStage, _mainRetryAttempts, logger);
                 throw;
+            }
+
+            try
+            {
+                await context.CallActivityAsync<bool>(
+                    nameof(RecordCaseActivityActivity),
+                    new CaseActivityInput(
+                        input.TenantId,
+                        input.CaseId,
+                        CaseActivityEventType.MemoryUnitIngested,
+                        input.IngestedBy,
+                        $"Memory unit {memoryUnitId} indexed from {input.SourceUri}",
+                        memoryUnitId));
+            }
+            catch
+            {
+                // Activity recording is best-effort — failure must not affect ingestion result
             }
 
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed);

@@ -32,8 +32,8 @@ public class ErrorResponseSerializationTests
         json.ShouldContain("\"message\":");
         json.ShouldContain("\"suggestion\":");
 
-        json.ShouldNotContain("\"Code\":", Case.Sensitive);
-        json.ShouldNotContain("\"Message\":", Case.Sensitive);
-        json.ShouldNotContain("\"Suggestion\":", Case.Sensitive);
+        json.ShouldNotContain("\"Code\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"Message\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"Suggestion\":", Shouldly.Case.Sensitive);
     }
 }

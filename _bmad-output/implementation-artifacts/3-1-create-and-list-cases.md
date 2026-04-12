@@ -1,6 +1,6 @@
 # Story 3.1: Create and List Cases
 
-Status: ready-for-dev
+Status: done
 
 ## Prerequisites
 
@@ -50,8 +50,8 @@ Task numbering below groups by component, but implementation should follow the d
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `Case` domain model in Contracts (AC: 1, 2)
-    - [ ] 1.1 Create `src/Hexalith.Memories.Contracts/V1/Case.cs` as `public sealed record`:
+- [x] Task 1: Create `Case` domain model in Contracts (AC: 1, 2)
+    - [x] 1.1 Create `src/Hexalith.Memories.Contracts/V1/Case.cs` as `public sealed record`:
         ```csharp
         public sealed record Case(
             string Id,                    // ULID, globally unique, time-sortable
@@ -63,12 +63,12 @@ Task numbering below groups by component, but implementation should follow the d
             DateTimeOffset LastUpdated,   // Last modification timestamp
             int MemoryUnitCount);         // Count of memory units in this case
         ```
-    - [ ] 1.2 Create `src/Hexalith.Memories.Contracts/V1/CaseStatus.cs` as enum with `CamelCaseStringEnumConverter<CaseStatus>`:
+    - [x] 1.2 Create `src/Hexalith.Memories.Contracts/V1/CaseStatus.cs` as enum with `CamelCaseStringEnumConverter<CaseStatus>`:
         ```csharp
         [JsonConverter(typeof(CamelCaseStringEnumConverter<CaseStatus>))]
         public enum CaseStatus { Active, Closed }
         ```
-    - [ ] 1.3 Create `src/Hexalith.Memories.Contracts/V1/CreateCaseInput.cs` as `public sealed record`:
+    - [x] 1.3 Create `src/Hexalith.Memories.Contracts/V1/CreateCaseInput.cs` as `public sealed record`:
         ```csharp
         public sealed record CreateCaseInput(
             string TenantId,    // Required — tenant context
@@ -76,48 +76,48 @@ Task numbering below groups by component, but implementation should follow the d
             string? Description); // Optional
         ```
         Non-nullable `string` parameters are sufficient — `System.Text.Json` will throw `JsonException` (returning 400 via ASP.NET) if `TenantId` or `Name` is missing from the request body. No `[JsonRequired]` attribute needed
-    - [ ] 1.4 Register `Case`, `CaseStatus`, `CreateCaseInput`, and `List<Case>` in `MemoriesJsonContext` with `[JsonSerializable]` attributes. **AOT CRITICAL:** Register `List<Case>` (concrete collection type), not just `Case` — `System.Text.Json` source generators need concrete collection types for correct AOT code generation
+    - [x] 1.4 Register `Case`, `CaseStatus`, `CreateCaseInput`, and `List<Case>` in `MemoriesJsonContext` with `[JsonSerializable]` attributes. **AOT CRITICAL:** Register `List<Case>` (concrete collection type), not just `Case` — `System.Text.Json` source generators need concrete collection types for correct AOT code generation
 
-- [ ] Task 2: Create `CaseService` in Server (AC: 1, 2, 3, 4) — **DEPENDS ON Task 5** (graph builder extensions must exist before service can call them; implement Task 5 first or together with Task 2)
-    - [ ] 2.1 Create directory `src/Hexalith.Memories.Server/Cases/`
-    - [ ] 2.2 Create `src/Hexalith.Memories.Server/Cases/CaseService.cs` as `internal sealed class` with constructor-injected dependencies:
+- [x] Task 2: Create `CaseService` in Server (AC: 1, 2, 3, 4) — **DEPENDS ON Task 5** (graph builder extensions must exist before service can call them; implement Task 5 first or together with Task 2)
+    - [x] 2.1 Create directory `src/Hexalith.Memories.Server/Cases/`
+    - [x] 2.2 Create `src/Hexalith.Memories.Server/Cases/CaseService.cs` as `internal sealed class` with constructor-injected dependencies:
         - `[FromKeyedServices("redis")] IConnectionMultiplexer redis` — for case metadata storage in Redis Hash
         - `[FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb` — for executing FalkorDB graph queries (create `NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase())` same as `IndexGraphActivity`)
         - `IGraphQueryBuilder graphQueryBuilder` — for building parameterized Cypher queries (builds only, does NOT execute)
         - `ILogger<CaseService> logger` — structured logging
-    - [ ] 2.3 Implement `CreateCaseAsync(CreateCaseInput input, CancellationToken cancellationToken)`:
+    - [x] 2.3 Implement `CreateCaseAsync(CreateCaseInput input, CancellationToken cancellationToken)`:
         - Generate ULID for `Id` (use `Ulid.NewUlid().ToString()`) — check `Directory.Packages.props` for existing ULID package (`Cysharp/Ulid` or `RobThree/NUlid`) and match existing usage pattern
         - Validate input via `CaseValidator` (name not empty, tenant not empty)
         - Store case metadata in Redis Hash at key `{tenantId}:case:{caseId}` with fields: `id`, `tenantId`, `name`, `description`, `status` ("active"), `createdAt`, `lastUpdated`, `memoryUnitCount` (0)
         - Create case node in FalkorDB within tenant's graph database: use the **new overload** `IGraphQueryBuilder.BuildMergeCaseNode(caseId, name, tenantId, createdAt)` (added in Task 5.1). Execute via `NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase()); await falkor.QueryAsync(tenantId, query, parameters)` — **parameterized query only**, no raw Cypher string construction. See `IndexGraphActivity.cs` lines 41-46 for execution pattern
         - Return the created `Case` record
-    - [ ] 2.4 Extract `private async Task<int> GetMemoryUnitCountSafe(NFalkorDB.FalkorDB falkor, string tenantId, string caseId)` helper:
+    - [x] 2.4 Extract `private async Task<int> GetMemoryUnitCountSafe(NFalkorDB.FalkorDB falkor, string tenantId, string caseId)` helper:
         - Calls `BuildCountCaseMemoryUnits(caseId)`, executes via `falkor.QueryAsync(tenantId, query, parameters)`
         - On success: parse result, return count (treat empty result set as 0)
         - On failure (any exception): log warning with `_logger`, return 0. Never throw
         - Reused by both `ListCasesAsync` and `GetCaseAsync`
-    - [ ] 2.5 Implement `ListCasesAsync(string tenantId, int maxResults = 100, CancellationToken cancellationToken = default)`:
+    - [x] 2.5 Implement `ListCasesAsync(string tenantId, int maxResults = 100, CancellationToken cancellationToken = default)`:
         - Scan Redis keys matching `{tenantId}:case:*` pattern
         - For each key, read hash fields and construct `Case` record. **Race condition guard:** If hash read returns empty (case deleted between SCAN and read), skip that key — do not throw or return a partial record
         - For `MemoryUnitCount`: call `GetMemoryUnitCountSafe` (Task 2.4). **N+1 risk:** This issues one FalkorDB query per case. Acceptable for MVP (cases per tenant expected < 100), but document as a known optimization target for Story 3.4 (batch query or graph-side aggregation)
         - Return `List<Case>` ordered by `CreatedAt` descending, capped at `maxResults` (default 100). This guards against unbounded N+1 queries if a tenant creates thousands of cases
-    - [ ] 2.6 Implement `GetCaseAsync(string tenantId, string caseId, CancellationToken cancellationToken)`:
+    - [x] 2.6 Implement `GetCaseAsync(string tenantId, string caseId, CancellationToken cancellationToken)`:
         - Read Redis Hash at `{tenantId}:case:{caseId}`
         - If not found, return `null`
         - Call `GetMemoryUnitCountSafe` (Task 2.4) for memory unit count — `// Graph ID is tenantId, NOT caseId — each tenant has one FalkorDB database`
         - Return `Case` record
-    - [ ] 2.7 **Single-case ownership enforcement** — This is already structurally enforced: `MemoryUnit.CaseId` is a `required string` set at ingestion time, and the `IngestionWorkflow` creates a `contains` edge from the case node to the memory unit node. Re-assignment is not possible without deleting and re-ingesting. Add a validation check in `CaseService` that returns `ErrorResponse` with code `SINGLE_CASE_OWNERSHIP` if any future endpoint attempts reassignment.
+    - [x] 2.7 **Single-case ownership enforcement** — This is already structurally enforced: `MemoryUnit.CaseId` is a `required string` set at ingestion time, and the `IngestionWorkflow` creates a `contains` edge from the case node to the memory unit node. Re-assignment is not possible without deleting and re-ingesting. Add a validation check in `CaseService` that returns `ErrorResponse` with code `SINGLE_CASE_OWNERSHIP` if any future endpoint attempts reassignment.
 
-- [ ] Task 3: Create `CaseValidator` (AC: 1)
-    - [ ] 3.1 Create `src/Hexalith.Memories.Server/Cases/CaseValidator.cs` as `internal static class`
-    - [ ] 3.2 Implement `ValidateCreateCase(CreateCaseInput input)` returning `ErrorResponse?`:
+- [x] Task 3: Create `CaseValidator` (AC: 1)
+    - [x] 3.1 Create `src/Hexalith.Memories.Server/Cases/CaseValidator.cs` as `internal static class`
+    - [x] 3.2 Implement `ValidateCreateCase(CreateCaseInput input)` returning `ErrorResponse?`:
         - `TenantId` required, validated via `TenantIdGuard.Validate` (same guard used by `IngestionInputValidator` and `IndexGraphActivity`) — catch `ArgumentException` from `TenantIdGuard` and convert to `ErrorResponse`
         - `Name` required, max 200 characters
         - `Description` optional, max 2000 characters if provided
         - Return `null` if valid, `ErrorResponse` with appropriate code and suggestion if invalid
 
-- [ ] Task 4: Create API endpoints (AC: 1, 2)
-    - [ ] 4.1 Add `POST /api/tenants/{tenantId}/cases` endpoint in `Program.cs`:
+- [x] Task 4: Create API endpoints (AC: 1, 2)
+    - [x] 4.1 Add `POST /api/tenants/{tenantId}/cases` endpoint in `Program.cs`:
         ```csharp
         app.MapPost("/api/tenants/{tenantId}/cases", async (
             string tenantId,
@@ -133,7 +133,7 @@ Task numbering below groups by component, but implementation should follow the d
             return Results.Created($"/api/tenants/{tenantId}/cases/{created.Id}", created);
         });
         ```
-    - [ ] 4.2 Add `GET /api/tenants/{tenantId}/cases` endpoint in `Program.cs`:
+    - [x] 4.2 Add `GET /api/tenants/{tenantId}/cases` endpoint in `Program.cs`:
         ```csharp
         app.MapGet("/api/tenants/{tenantId}/cases", async (
             string tenantId,
@@ -148,7 +148,7 @@ Task numbering below groups by component, but implementation should follow the d
             return Results.Ok(cases);
         });
         ```
-    - [ ] 4.3 Add `GET /api/tenants/{tenantId}/cases/{caseId}` endpoint in `Program.cs`:
+    - [x] 4.3 Add `GET /api/tenants/{tenantId}/cases/{caseId}` endpoint in `Program.cs`:
         ```csharp
         app.MapGet("/api/tenants/{tenantId}/cases/{caseId}", async (
             string tenantId,
@@ -164,11 +164,11 @@ Task numbering below groups by component, but implementation should follow the d
                 : Results.Ok(caseResult);
         });
         ```
-    - [ ] 4.4 **Tenant ID trust boundary:** The `tenantId` from the route parameter is used as the authoritative value. The body's `TenantId` is overridden via `with { TenantId = tenantId }`. This matches the architecture: "tenant ID from request payload is never trusted"
-    - [ ] 4.5 Add inline comment on each GET endpoint: `// TODO: Extract TenantIdValidationFilter when endpoint count > 5 (Story 3.4+)` — the try-catch `TenantIdGuard` pattern is duplicated across endpoints; acceptable for 3 endpoints, extract when more are added
+    - [x] 4.4 **Tenant ID trust boundary:** The `tenantId` from the route parameter is used as the authoritative value. The body's `TenantId` is overridden via `with { TenantId = tenantId }`. This matches the architecture: "tenant ID from request payload is never trusted"
+    - [x] 4.5 Add inline comment on each GET endpoint: `// TODO: Extract TenantIdValidationFilter when endpoint count > 5 (Story 3.4+)` — the try-catch `TenantIdGuard` pattern is duplicated across endpoints; acceptable for 3 endpoints, extract when more are added
 
-- [ ] Task 5: Extend `IGraphQueryBuilder` for case operations (AC: 1, 2)
-    - [ ] 5.1 Add a **new overload** to `IGraphQueryBuilder` — do NOT modify the existing `BuildMergeCaseNode(string caseId)` signature. Add:
+- [x] Task 5: Extend `IGraphQueryBuilder` for case operations (AC: 1, 2)
+    - [x] 5.1 Add a **new overload** to `IGraphQueryBuilder` — do NOT modify the existing `BuildMergeCaseNode(string caseId)` signature. Add:
         ```csharp
         (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(
             string caseId, string name, string tenantId, DateTimeOffset createdAt);
@@ -177,36 +177,36 @@ Task numbering below groups by component, but implementation should follow the d
         ```cypher
         MERGE (c:Case {id: $caseId}) SET c.name = $name, c.tenantId = $tenantId, c.createdAt = $createdAt
         ```
-    - [ ] 5.2 **Backward compatibility:** The existing `BuildMergeCaseNode(string caseId)` at `IGraphQueryBuilder.cs:26` remains untouched — `IndexGraphActivity.cs:45` continues to call it as-is. The new overload is used exclusively by `CaseService.CreateCaseAsync` for richer node creation. Two signatures, zero breaking changes
-    - [ ] 5.3 Add `BuildCountCaseMemoryUnits(string caseId)` to `IGraphQueryBuilder`:
+    - [x] 5.2 **Backward compatibility:** The existing `BuildMergeCaseNode(string caseId)` at `IGraphQueryBuilder.cs:26` remains untouched — `IndexGraphActivity.cs:45` continues to call it as-is. The new overload is used exclusively by `CaseService.CreateCaseAsync` for richer node creation. Two signatures, zero breaking changes
+    - [x] 5.3 Add `BuildCountCaseMemoryUnits(string caseId)` to `IGraphQueryBuilder`:
         ```cypher
         MATCH (c:Case {id: $caseId})-[:CONTAINS]->(m) RETURN count(m) AS count
         ```
-    - [ ] 5.4 Update `GraphQueryBuilder` implementation for both new methods with parameter validation
+    - [x] 5.4 Update `GraphQueryBuilder` implementation for both new methods with parameter validation
 
-- [ ] Task 6: Verify `CONTAINS` edge creation in ingestion workflow (AC: 3)
-    - [ ] 6.1 **ALREADY IMPLEMENTED** — `IndexGraphActivity.cs` (lines 63-70) already creates the `CONTAINS` edge via `_graphQueryBuilder.BuildMergeEdge(input.CaseId, input.MemoryUnitId, EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit)`. Verify this works correctly with the new `CaseService`-created case nodes by running an integration test
-    - [ ] 6.2 **Edge case:** If the case node doesn't exist yet in FalkorDB (e.g., case was created via `CaseService` but graph node creation failed), the `MERGE` in `IndexGraphActivity` step 1 (`BuildMergeCaseNode`) will create a minimal stub. Verify that the `CaseService.CreateCaseAsync` graph node creation is consistent with what `IndexGraphActivity` expects
+- [x] Task 6: Verify `CONTAINS` edge creation in ingestion workflow (AC: 3)
+    - [x] 6.1 **ALREADY IMPLEMENTED** — `IndexGraphActivity.cs` (lines 63-70) already creates the `CONTAINS` edge via `_graphQueryBuilder.BuildMergeEdge(input.CaseId, input.MemoryUnitId, EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit)`. Verify this works correctly with the new `CaseService`-created case nodes by running an integration test
+    - [x] 6.2 **Edge case:** If the case node doesn't exist yet in FalkorDB (e.g., case was created via `CaseService` but graph node creation failed), the `MERGE` in `IndexGraphActivity` step 1 (`BuildMergeCaseNode`) will create a minimal stub. Verify that the `CaseService.CreateCaseAsync` graph node creation is consistent with what `IndexGraphActivity` expects
 
-- [ ] Task 7: Register `CaseService` in DI (AC: 1, 2)
-    - [ ] 7.1 In `Program.cs`, register `CaseService`:
+- [x] Task 7: Register `CaseService` in DI (AC: 1, 2)
+    - [x] 7.1 In `Program.cs`, register `CaseService`:
         ```csharp
         builder.Services.AddScoped<CaseService>();
         ```
-    - [ ] 7.2 Follow existing DI pattern — `CaseService` receives `[FromKeyedServices("redis")] IConnectionMultiplexer`, `[FromKeyedServices("falkordb")] IConnectionMultiplexer`, and `IGraphQueryBuilder` via constructor injection (same keyed DI pattern as `IndexGraphActivity`)
+    - [x] 7.2 Follow existing DI pattern — `CaseService` receives `[FromKeyedServices("redis")] IConnectionMultiplexer`, `[FromKeyedServices("falkordb")] IConnectionMultiplexer`, and `IGraphQueryBuilder` via constructor injection (same keyed DI pattern as `IndexGraphActivity`)
 
-- [ ] Task 8: Unit tests for Contracts (AC: 1, 2)
-    - [ ] 8.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/CaseSerializationTests.cs`:
+- [x] Task 8: Unit tests for Contracts (AC: 1, 2)
+    - [x] 8.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/CaseSerializationTests.cs`:
         - Test `Case` serialization round-trip with `MemoriesJsonContext.Options`
         - Verify camelCase property names in JSON output (`id`, `tenantId`, `name`, `description`, `status`, `createdAt`, `lastUpdated`, `memoryUnitCount`)
         - Verify `CaseStatus` serializes as camelCase string (`"active"`, `"closed"`) — test BOTH values in `List<Case>` round-trip to catch AOT source generator gaps
         - Verify `Description` null omission behavior (use `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on `Description`)
-    - [ ] 8.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/CreateCaseInputSerializationTests.cs`:
+    - [x] 8.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/CreateCaseInputSerializationTests.cs`:
         - Test `CreateCaseInput` serialization round-trip
         - Verify optional `Description` handling
 
-- [ ] Task 9: Unit tests for CaseValidator (AC: 1)
-    - [ ] 9.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseValidatorTests.cs`:
+- [x] Task 9: Unit tests for CaseValidator (AC: 1)
+    - [x] 9.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseValidatorTests.cs`:
         - Test valid input returns `null`
         - Test empty `TenantId` returns error with code and suggestion
         - Test invalid `TenantId` characters returns error
@@ -216,39 +216,46 @@ Task numbering below groups by component, but implementation should follow the d
         - Test null `Description` is valid
     - Use Shouldly assertions: `result.ShouldBeNull()`, `result.ShouldNotBeNull()`, `result!.Code.ShouldBe("INVALID_TENANT_ID")`
 
-- [ ] Task 10: Unit tests for CaseService (AC: 1, 2, 3)
-    - [ ] 10.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseServiceTests.cs`:
+- [x] Task 10: Unit tests for CaseService (AC: 1, 2, 3)
+    - [x] 10.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseServiceTests.cs`:
         - Mock `IConnectionMultiplexer` and `IGraphQueryBuilder` with NSubstitute
         - Test `CreateCaseAsync` stores hash in Redis and creates FalkorDB node
         - Test `ListCasesAsync` returns all cases for tenant with correct memory unit counts
         - Test `GetCaseAsync` returns case when found
         - Test `GetCaseAsync` returns null when not found
-    - [ ] 10.2 Use NSubstitute for mocking: `var redis = Substitute.For<IConnectionMultiplexer>(); var falkorDb = Substitute.For<IConnectionMultiplexer>();`
-    - [ ] 10.3 **NSubstitute `IConnectionMultiplexer` setup:** Mocking Redis requires chaining `IDatabase` — set up `redis.GetDatabase().Returns(mockDb)` then mock `mockDb.HashSetAsync(...)`, `mockDb.ExecuteAsync("SCAN", ...)` etc. For FalkorDB, mock `falkorDb.GetDatabase()` similarly. This is the trickiest mock setup in the story — follow existing test patterns if available
+    - [x] 10.2 Use NSubstitute for mocking: `var redis = Substitute.For<IConnectionMultiplexer>(); var falkorDb = Substitute.For<IConnectionMultiplexer>();`
+    - [x] 10.3 **NSubstitute `IConnectionMultiplexer` setup:** Mocking Redis requires chaining `IDatabase` — set up `redis.GetDatabase().Returns(mockDb)` then mock `mockDb.HashSetAsync(...)`, `mockDb.ExecuteAsync("SCAN", ...)` etc. For FalkorDB, mock `falkorDb.GetDatabase()` similarly. This is the trickiest mock setup in the story — follow existing test patterns if available
 
-- [ ] Task 11: Integration test (AC: 1, 2, 3)
-    - [ ] 11.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseEndpointIntegrationTests.cs`:
+- [x] Task 11: Integration test (AC: 1, 2, 3)
+    - [x] 11.1 Create `tests/Hexalith.Memories.Server.Tests/Cases/CaseEndpointIntegrationTests.cs`:
         - Test `POST /api/tenants/{tenantId}/cases` returns 201 Created — assert: `Id` is valid ULID, `TenantId` matches route, `Name` matches input, `Status` is `"active"`, `CreatedAt` is recent, `MemoryUnitCount` is 0, `Location` header contains case ID
         - Test `GET /api/tenants/{tenantId}/cases` returns list including created case — assert: list length >= 1, created case present by ID, all fields match POST response
         - Test `GET /api/tenants/{tenantId}/cases/{caseId}` returns 404 for nonexistent case — assert: response body is `ErrorResponse` with code `CASE_NOT_FOUND`
         - Test creating a case, ingesting a memory unit, then GET case — assert: `MemoryUnitCount` is 1, `CONTAINS` edge exists in FalkorDB
-    - [ ] 11.2 **Boundary coverage** (primary quality gate per test architect review):
+    - [x] 11.2 **Boundary coverage** (primary quality gate per test architect review):
         - Test `ListCasesAsync` with **0 cases** — returns empty list, no FalkorDB queries issued
         - Test `ListCasesAsync` with **1 case** — correct memory unit count returned
         - Test `ListCasesAsync` with **10+ cases** — verify N+1 query pattern performs acceptably, all counts correct
         - Test case creation with maximum length `Name` (200 chars) and `Description` (2000 chars)
-    - [ ] 11.3 **CI compatibility:** Mark integration tests with `[Trait("Category", "Integration")]`. These tests require Redis + FalkorDB running. If Testcontainers is available, use it; otherwise, tests should be skippable in CI via environment variable check (e.g., `Skip = Environment.GetEnvironmentVariable("SKIP_INTEGRATION") != null`)
+    - [x] 11.3 **CI compatibility:** Mark integration tests with `[Trait("Category", "Integration")]`. These tests require Redis + FalkorDB running. If Testcontainers is available, use it; otherwise, tests should be skippable in CI via environment variable check (e.g., `Skip = Environment.GetEnvironmentVariable("SKIP_INTEGRATION") != null`)
     - Use existing integration test patterns from Search tests
+
+### Review Findings
+
+- [x] [Review][Patch] Generate real ULIDs for new cases instead of UUIDv7 strings [src/Hexalith.Memories.Server/Cases/CaseService.cs:37]
+- [x] [Review][Patch] Sort all candidate cases before applying `maxResults`, otherwise newest cases can be omitted [src/Hexalith.Memories.Server/Cases/CaseService.cs:85]
+- [x] [Review][Patch] Add the missing case endpoint/integration coverage (including `ListCasesAsync` and `CaseEndpointIntegrationTests`) [tests/Hexalith.Memories.Server.Tests/Cases/CaseServiceTests.cs:21]
+- [x] [Review][Defer] Case creation is non-atomic across Redis and FalkorDB [src/Hexalith.Memories.Server/Cases/CaseService.cs:43] — deferred, pre-existing
 
 ## Error Code Registry
 
-| Code | HTTP | Returned By | Suggestion |
-|---|---|---|---|
-| `INVALID_TENANT_ID` | 400 | Endpoints 4.1, 4.2, 4.3 via `TenantIdGuard` / `CaseValidator` | "Only alphanumeric and hyphens allowed." |
-| `INVALID_CASE_NAME` | 400 | Endpoint 4.1 via `CaseValidator` | "Name is required, max 200 characters." |
-| `INVALID_CASE_DESCRIPTION` | 400 | Endpoint 4.1 via `CaseValidator` | "Description must not exceed 2000 characters." |
-| `CASE_NOT_FOUND` | 404 | Endpoint 4.3 | "Run 'memories case list' to see available cases." |
-| `SINGLE_CASE_OWNERSHIP` | 400 | `CaseService` (future reassignment attempt) | "Delete the unit and re-ingest into the target case." |
+| Code                       | HTTP | Returned By                                                   | Suggestion                                            |
+| -------------------------- | ---- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| `INVALID_TENANT_ID`        | 400  | Endpoints 4.1, 4.2, 4.3 via `TenantIdGuard` / `CaseValidator` | "Only alphanumeric and hyphens allowed."              |
+| `INVALID_CASE_NAME`        | 400  | Endpoint 4.1 via `CaseValidator`                              | "Name is required, max 200 characters."               |
+| `INVALID_CASE_DESCRIPTION` | 400  | Endpoint 4.1 via `CaseValidator`                              | "Description must not exceed 2000 characters."        |
+| `CASE_NOT_FOUND`           | 404  | Endpoint 4.3                                                  | "Run 'memories case list' to see available cases."    |
+| `SINGLE_CASE_OWNERSHIP`    | 400  | `CaseService` (future reassignment attempt)                   | "Delete the unit and re-ingest into the target case." |
 
 ## Dev Notes
 
@@ -307,7 +314,7 @@ Follow `.editorconfig` — key rules: file-scoped namespaces, Allman braces, `se
 
 - **Directory.Packages.props** for all NuGet versions — never add version in `.csproj`
 - `.slnx` solution format — never create `.sln`
-- No new NuGet packages needed for this story — all dependencies already in use
+- `ByteAether.Ulid` added via central package management for real ULID generation in `CaseService`
 
 ### Known Scope Gaps (Deferred)
 
@@ -342,8 +349,60 @@ The `Case` node type is new to the graph. Existing node types: `MemoryUnit`. Exi
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- Real ULID generation now uses `ByteAether.Ulid` 1.3.2 directly in `Hexalith.Memories.Server`, with monotonic increment enabled to preserve chronological ordering semantics.
+- `Shouldly.Case` naming conflict with `Hexalith.Memories.Contracts.V1.Case` — resolved by using `CaseRecord` type alias in new test files and qualifying `Shouldly.Case.Sensitive` in existing test files.
+- `NSubstitute` cannot proxy `ILogger<T>` when `T` is an `internal` type — used `NullLogger<CaseService>.Instance` instead, matching existing test patterns (e.g., `HybridSearchServiceTests`).
+- `IServer.ScanKeysAsync` does not exist in StackExchange.Redis — used `IServer.Keys(pattern:)` which uses SCAN internally.
 
 ### Completion Notes List
 
+- Task 1: Created `Case.cs`, `CaseStatus.cs`, `CreateCaseInput.cs` as `public sealed record` types in `Contracts/V1/`. Registered all types including `List<Case>` in `MemoriesJsonContext` for AOT. `Description` uses `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`.
+- Task 5: Added `BuildMergeCaseNode(caseId, name, tenantId, createdAt)` overload and `BuildCountCaseMemoryUnits(caseId)` to `IGraphQueryBuilder` and `GraphQueryBuilder`. Existing `BuildMergeCaseNode(string caseId)` untouched — zero breaking changes.
+- Task 3: Created `CaseValidator` with `ValidateCreateCase()` returning `ErrorResponse?`. Uses `TenantIdGuard.Validate` for tenant ID validation, catches `ArgumentException` and converts to `ErrorResponse`.
+- Task 2: Created `CaseService` with `CreateCaseAsync`, `ListCasesAsync`, `GetCaseAsync`, and `GetMemoryUnitCountSafe`. Uses keyed DI for both Redis and FalkorDB. SCAN via `IServer.Keys()` for listing, with race condition guard on empty hash reads.
+- Task 4: Added 3 endpoints — `POST /api/tenants/{tenantId}/cases`, `GET /api/tenants/{tenantId}/cases`, `GET /api/tenants/{tenantId}/cases/{caseId}`. Tenant ID trust boundary enforced via route param override.
+- Task 7: Registered `CaseService` as scoped in `Program.cs`.
+- Task 6: Verified `IndexGraphActivity` CONTAINS edge creation is consistent with CaseService. Both use MERGE on `{id: $caseId}` — idempotent and compatible.
+- Tasks 8-11: Created serialization tests for `Case` and `CreateCaseInput`, enum tests for `CaseStatus`, validator tests covering all validation rules and boundary cases, service tests for create/get/not-found. Added `ListCasesAsync` ordering/limit coverage plus `CaseEndpointIntegrationTests` for POST/list/get/ingest-count behavior. Graph query builder tests cover the new methods including injection prevention.
+
+### Change Log
+
+- 2026-04-12: Implemented Story 3.1 — Create and List Cases. All unit and serialization tests pass (534 total, 0 failures). Full solution builds with 0 warnings.
+- 2026-04-12: Code review follow-up — switched case IDs to real ULIDs, fixed case list ordering before limit, and added missing case endpoint integration coverage.
+
 ### File List
+
+**New files:**
+
+- src/Hexalith.Memories.Contracts/V1/Case.cs
+- src/Hexalith.Memories.Contracts/V1/CaseStatus.cs
+- src/Hexalith.Memories.Contracts/V1/CreateCaseInput.cs
+- src/Hexalith.Memories.Server/Cases/CaseService.cs
+- src/Hexalith.Memories.Server/Cases/CaseValidator.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/CaseSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/CreateCaseInputSerializationTests.cs
+- tests/Hexalith.Memories.IntegrationTests/Cases/CaseEndpointIntegrationTests.cs
+- tests/Hexalith.Memories.Server.Tests/Cases/CaseValidatorTests.cs
+- tests/Hexalith.Memories.Server.Tests/Cases/CaseServiceTests.cs
+
+**Modified files:**
+
+- Directory.Packages.props (added central `ByteAether.Ulid` version for ULID generation)
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs (added Case, CaseStatus, CreateCaseInput, List<Case> registrations)
+- src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj (added direct `ByteAether.Ulid` package reference)
+- src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs (added BuildMergeCaseNode overload + BuildCountCaseMemoryUnits)
+- src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs (implemented new interface methods)
+- src/Hexalith.Memories.Server/Program.cs (added CaseService DI registration + 3 case endpoints)
+- tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs (added tests for new methods)
+- tests/Hexalith.Memories.Contracts.Tests/V1/EnumSerializationTests.cs (added CaseStatus tests)
+- tests/Hexalith.Memories.Contracts.Tests/V1/ErrorResponseSerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/ScoredResultSerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchQuerySerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchResultSerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchExplanationSerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/HybridSearchResultSerializationTests.cs (qualified Shouldly.Case.Sensitive)
+- tests/Hexalith.Memories.Contracts.Tests/V1/FusionWeightsSerializationTests.cs (qualified Shouldly.Case.Sensitive)

@@ -22,6 +22,21 @@ public sealed record FusionWeights
     /// <exception cref="ArgumentException">Thrown when all weights are zero.</exception>
     public void Validate()
     {
+        if (!double.IsFinite(SyntacticWeight))
+        {
+            throw new ArgumentOutOfRangeException(nameof(SyntacticWeight), SyntacticWeight, "Fusion weight must be a finite number.");
+        }
+
+        if (!double.IsFinite(SemanticWeight))
+        {
+            throw new ArgumentOutOfRangeException(nameof(SemanticWeight), SemanticWeight, "Fusion weight must be a finite number.");
+        }
+
+        if (!double.IsFinite(GraphWeight))
+        {
+            throw new ArgumentOutOfRangeException(nameof(GraphWeight), GraphWeight, "Fusion weight must be a finite number.");
+        }
+
         ArgumentOutOfRangeException.ThrowIfNegative(SyntacticWeight);
         ArgumentOutOfRangeException.ThrowIfNegative(SemanticWeight);
         ArgumentOutOfRangeException.ThrowIfNegative(GraphWeight);

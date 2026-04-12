@@ -42,8 +42,8 @@ public class SearchQuerySerializationTests
         json.ShouldContain("\"maxResults\":");
         json.ShouldContain("\"offset\":");
 
-        json.ShouldNotContain("\"TenantId\":", Case.Sensitive);
-        json.ShouldNotContain("\"Query\":", Case.Sensitive);
+        json.ShouldNotContain("\"TenantId\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"Query\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]

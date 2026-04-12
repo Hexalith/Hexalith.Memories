@@ -4,6 +4,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Hexalith Commons dependencies -->
+    <PackageVersion Include="ByteAether.Ulid" Version="1.3.2" />
+
     <!-- Aspire -->
     <PackageVersion Include="Aspire.Hosting.Testing" Version="13.1.3" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.0.0" />

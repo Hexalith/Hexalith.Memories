@@ -49,8 +49,8 @@ public class ScoredResultSerializationTests
         json.ShouldContain("\"sourceType\":");
         json.ShouldContain("\"axis\":");
 
-        json.ShouldNotContain("\"MemoryUnitId\":", Case.Sensitive);
-        json.ShouldNotContain("\"Score\":", Case.Sensitive);
+        json.ShouldNotContain("\"MemoryUnitId\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"Score\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]

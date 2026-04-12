@@ -7,6 +7,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
@@ -80,6 +81,12 @@ builder.Services.AddSingleton<HybridSearchService>(sp =>
         sp.GetRequiredService<ILogger<HybridSearchService>>());
 });
 
+builder.Services.AddSingleton<CaseActivityService>(sp =>
+    new CaseActivityService(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<ILogger<CaseActivityService>>()));
+builder.Services.AddScoped<CaseService>();
+
 builder.Services.AddDaprWorkflow(options =>
 {
     // Existing activities (Stories 1.3-1.5)
@@ -98,6 +105,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupSyntacticActivity>();
     options.RegisterActivity<CleanupSemanticActivity>();
     options.RegisterActivity<CleanupGraphActivity>();
+    options.RegisterActivity<RecordCaseActivityActivity>();
 });
 
 builder.Services.AddActors(options =>
@@ -206,12 +214,122 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
     }
 });
 
+app.MapPost("/api/tenants/{tenantId}/cases", async (
+    string tenantId,
+    CreateCaseInput input,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    var validatedInput = input with { TenantId = tenantId };
+    ErrorResponse? error = CaseValidator.ValidateCreateCase(validatedInput);
+    if (error is not null)
+    {
+        return Results.BadRequest(error);
+    }
+
+    Case created = await caseService.CreateCaseAsync(validatedInput, cancellationToken);
+    return Results.Created($"/api/tenants/{tenantId}/cases/{created.Id}", created);
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases", async (
+    string tenantId,
+    int? limit,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    // TODO: Extract TenantIdValidationFilter when endpoint count > 5 (Story 3.4+)
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    int effectiveLimit = Math.Clamp(limit ?? 100, 1, 500);
+    List<Case> cases = await caseService.ListCasesAsync(tenantId, effectiveLimit, cancellationToken);
+    return Results.Ok(cases);
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}", async (
+    string tenantId,
+    string caseId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    // TODO: Extract TenantIdValidationFilter when endpoint count > 5 (Story 3.4+)
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    return caseResult is null
+        ? Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."))
+        : Results.Ok(caseResult);
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/status", async (
+    string tenantId,
+    string caseId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    CaseStatusDetail? status = await caseService.GetCaseStatusAsync(tenantId, caseId, cancellationToken);
+    return status is null
+        ? Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."))
+        : Results.Ok(status);
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/activity", async (
+    string tenantId,
+    string caseId,
+    int? limit,
+    CaseService caseService,
+    CaseActivityService activityService,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    int effectiveLimit = Math.Clamp(limit ?? 50, 1, 500);
+    List<CaseActivityEvent> events = await activityService.GetRecentActivityAsync(tenantId, caseId, effectiveLimit, cancellationToken);
+    return Results.Ok(events);
+});
+
 app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,
     GraphScopedSearch graphScopedSearch,
     HybridSearchService hybridSearchService,
     IActorProxyFactory actorProxyFactory,
+    CaseActivityService activityService,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
     [FromQuery] string? caseId,
@@ -225,6 +343,14 @@ app.MapGet("/api/search", async (
     [FromQuery] bool explain = false,
     CancellationToken cancellationToken = default) =>
 {
+    void RecordSearchActivity()
+    {
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            _ = activityService.RecordEventAsync(tenantId, caseId!, CaseActivityEventType.SearchExecuted, "system", $"Search '{query}' via {axis}", null);
+        }
+    }
+
     if (string.IsNullOrWhiteSpace(tenantId))
     {
         return Results.BadRequest(new ErrorResponse(
@@ -283,6 +409,7 @@ app.MapGet("/api/search", async (
                 result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
             }
 
+            RecordSearchActivity();
             return Results.Ok(result);
         }
         catch (TimeoutException)
@@ -378,6 +505,7 @@ app.MapGet("/api/search", async (
             hybridResult = hybridResult with { Explanation = ExplainMetadataBuilder.BuildForHybrid(explanationAxes, weights) };
         }
 
+        RecordSearchActivity();
         return Results.Ok(hybridResult);
     }
 
@@ -425,6 +553,7 @@ app.MapGet("/api/search", async (
                     result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
                 }
 
+                RecordSearchActivity();
                 return Results.Ok(result);
             }
             catch (EmbeddingApiException ex)
@@ -464,6 +593,7 @@ app.MapGet("/api/search", async (
                 syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
             }
 
+            RecordSearchActivity();
             return Results.Ok(syntacticResult);
         }
         catch (TimeoutException)
@@ -491,6 +621,7 @@ app.MapGet("/api/search", async (
                 searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
             }
 
+            RecordSearchActivity();
             return Results.Ok(searchResult);
         }
         catch (EmbeddingApiException ex)
@@ -519,6 +650,7 @@ app.MapGet("/api/search", async (
         syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
     }
 
+    RecordSearchActivity();
     return Results.Ok(syntacticDefault);
 });
 

@@ -45,7 +45,7 @@ public class FusionWeightsSerializationTests
         json.ShouldContain("\"semanticWeight\":");
         json.ShouldContain("\"graphWeight\":");
 
-        json.ShouldNotContain("\"SyntacticWeight\":", Case.Sensitive);
+        json.ShouldNotContain("\"SyntacticWeight\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]

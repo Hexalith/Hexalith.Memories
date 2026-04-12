@@ -25,6 +25,13 @@ public interface IGraphQueryBuilder
     /// <summary>Creates a case node if it doesn't exist (MERGE pattern).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(string caseId);
 
+    /// <summary>Creates or updates a case node with full metadata (used by CaseService).</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(
+        string caseId, string name, string tenantId, DateTimeOffset createdAt);
+
+    /// <summary>Counts memory units linked to a case via CONTAINS edges.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountCaseMemoryUnits(string caseId);
+
     /// <summary>Creates a typed edge between two nodes (idempotent via MERGE).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeEdge(
         string sourceNodeId,

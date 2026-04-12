@@ -20,6 +20,8 @@ internal static class NdcgScorer
     /// <returns>NDCG@k in [0.0, 1.0]. Returns 0.0 if ground truth is empty or IDCG is 0.</returns>
     internal static double ComputeNdcg(IReadOnlyList<string> rankedResults, IReadOnlyList<string> groundTruth, int k = 10)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
+
         if (groundTruth.Count == 0)
         {
             return 0.0;
@@ -41,6 +43,8 @@ internal static class NdcgScorer
     /// <returns>Precision@k in [0.0, 1.0]. If rankedResults has fewer than k items, divides by actual count.</returns>
     internal static double ComputePrecisionAtK(IReadOnlyList<string> rankedResults, IReadOnlyList<string> groundTruth, int k = 3)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
+
         if (rankedResults.Count == 0 || groundTruth.Count == 0)
         {
             return 0.0;

@@ -33,6 +33,18 @@ public class EnumSerializationTests
         => ShouldRejectIntegerTokens<MemoryUnitStatus>(json);
 
     [Theory]
+    [InlineData(CaseStatus.Active, "\"active\"")]
+    [InlineData(CaseStatus.Closed, "\"closed\"")]
+    public void CaseStatus_ShouldRoundTripAsCamelCaseString(CaseStatus value, string expectedJson)
+        => ShouldRoundTripAsCamelCaseString(value, expectedJson);
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    public void CaseStatus_ShouldRejectIntegerTokens(string json)
+        => ShouldRejectIntegerTokens<CaseStatus>(json);
+
+    [Theory]
     [InlineData(EdgeType.CausedBy, "\"causedBy\"")]
     [InlineData(EdgeType.Annotates, "\"annotates\"")]
     public void EdgeType_ShouldRoundTripAsCamelCaseString(EdgeType value, string expectedJson)
@@ -55,6 +67,22 @@ public class EnumSerializationTests
     [InlineData("1")]
     public void MetadataOrigin_ShouldRejectIntegerTokens(string json)
         => ShouldRejectIntegerTokens<MetadataOrigin>(json);
+
+    [Theory]
+    [InlineData(CaseActivityEventType.CaseCreated, "\"caseCreated\"")]
+    [InlineData(CaseActivityEventType.MemoryUnitIngested, "\"memoryUnitIngested\"")]
+    [InlineData(CaseActivityEventType.IngestionFailed, "\"ingestionFailed\"")]
+    [InlineData(CaseActivityEventType.SearchExecuted, "\"searchExecuted\"")]
+    [InlineData(CaseActivityEventType.MemberAdded, "\"memberAdded\"")]
+    [InlineData(CaseActivityEventType.MemberRemoved, "\"memberRemoved\"")]
+    public void CaseActivityEventType_ShouldRoundTripAsCamelCaseString(CaseActivityEventType value, string expectedJson)
+        => ShouldRoundTripAsCamelCaseString(value, expectedJson);
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("5")]
+    public void CaseActivityEventType_ShouldRejectIntegerTokens(string json)
+        => ShouldRejectIntegerTokens<CaseActivityEventType>(json);
 
     [Theory]
     [InlineData(EdgeOrigin.Explicit, "\"explicit\"")]

@@ -51,8 +51,14 @@ public sealed class BenchmarkFixture : IAsyncLifetime
     /// <summary>Gets the benchmark tenant ID.</summary>
     public string BenchmarkTenantId => TenantId;
 
+    private BenchmarkSuiteResult? _cachedBenchmarkResult;
+
     /// <summary>Gets or sets the cached benchmark suite result for this shared test collection.</summary>
-    public BenchmarkSuiteResult? CachedBenchmarkResult { get; set; }
+    public BenchmarkSuiteResult? CachedBenchmarkResult
+    {
+        get => Volatile.Read(ref _cachedBenchmarkResult);
+        set => Volatile.Write(ref _cachedBenchmarkResult, value);
+    }
 
     /// <inheritdoc/>
     public async Task InitializeAsync()

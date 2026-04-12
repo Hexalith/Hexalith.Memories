@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
   </ItemGroup>
 

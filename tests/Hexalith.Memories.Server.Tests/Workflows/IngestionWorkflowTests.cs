@@ -19,6 +19,8 @@ using Microsoft.Extensions.Logging;
 
 using NSubstitute;
 
+using StackExchange.Redis;
+
 using Shouldly;
 
 public class IngestionWorkflowTests
@@ -55,6 +57,7 @@ public class IngestionWorkflowTests
             nameof(IndexGraphActivity),
             nameof(VerifyConsistencyActivity),
             nameof(SaveDedupKeyActivity),
+            nameof(RecordCaseActivityActivity),
         ]);
     }
 
@@ -324,6 +327,66 @@ public class IngestionWorkflowTests
         ex.Data["MemoryUnitId"].ShouldBe(TestGuid.ToString());
     }
 
+    // --- AC: Activity recording resilience ---
+
+    [Fact]
+    public async Task RunAsync_ActivityRecordingFailure_ShouldStillSucceed()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+
+        // Override: activity recording throws
+        context.CallActivityAsync<bool>(
+                nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
+            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused")));
+
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        result.WasDuplicate.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexingFailsAndActivityRecordingFails_ShouldPropagateOriginalException()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        // Indexing fails
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+
+        // Compensation
+        context.CallActivityAsync<bool>(nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        // Activity recording also fails
+        context.CallActivityAsync<bool>(
+                nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
+            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down")));
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        // Original exception propagates, not the activity recording one
+        ex.Message.ShouldBe("Semantic indexing failed");
+    }
+
     // --- AC4: Provenance tracking ---
 
     [Fact]
@@ -522,6 +585,15 @@ public class IngestionWorkflowTests
                 callLog?.Add(nameof(GenerateEmbeddingActivity));
                 return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3));
             });
+
+        // Record activity (best-effort, needed for both success and failure paths)
+        context.CallActivityAsync<bool>(
+                nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(RecordCaseActivityActivity));
+                return Task.FromResult(true);
+            });
     }
 
     private static void SetupHappyPathActivities(
@@ -572,6 +644,15 @@ public class IngestionWorkflowTests
             .Returns(_ =>
             {
                 callLog?.Add(nameof(SaveDedupKeyActivity));
+                return Task.FromResult(true);
+            });
+
+        // Record activity (best-effort, no retry options)
+        context.CallActivityAsync<bool>(
+                nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(RecordCaseActivityActivity));
                 return Task.FromResult(true);
             });
     }

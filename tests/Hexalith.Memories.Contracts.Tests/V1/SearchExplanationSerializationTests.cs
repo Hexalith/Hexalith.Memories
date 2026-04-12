@@ -91,9 +91,9 @@ public class SearchExplanationSerializationTests
         json.ShouldContain("\"normalizationMethod\":");
         json.ShouldContain("\"description\":");
 
-        json.ShouldNotContain("\"Caveat\":", Case.Sensitive);
-        json.ShouldNotContain("\"AxisDetails\":", Case.Sensitive);
-        json.ShouldNotContain("\"NormalizationMethod\":", Case.Sensitive);
+        json.ShouldNotContain("\"Caveat\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"AxisDetails\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"NormalizationMethod\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]

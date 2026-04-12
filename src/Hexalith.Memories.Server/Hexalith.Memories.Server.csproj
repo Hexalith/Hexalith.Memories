@@ -12,10 +12,12 @@
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Redis\Hexalith.Memories.Redis.csproj" />
-    <ProjectReference Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
+    <ProjectReference
+      Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="ByteAether.Ulid" />
     <PackageReference Include="Dapr.AspNetCore" />
     <PackageReference Include="Dapr.Client" />
     <PackageReference Include="Dapr.Workflow" />

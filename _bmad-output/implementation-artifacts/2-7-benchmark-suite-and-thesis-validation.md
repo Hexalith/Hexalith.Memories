@@ -1,6 +1,6 @@
 # Story 2.7: Benchmark Suite & Thesis Validation
 
-Status: in-progress
+Status: done
 
 ## Prerequisites
 
@@ -453,6 +453,12 @@ All files use:
 - **Graded relevance scoring** — Current NDCG uses binary relevance (relevant/not-relevant). Graded relevance (0/1/2/3) would capture "doc A is more relevant than doc B." This is a one-line change to `NdcgScorer` and a ground truth schema change. Consider if binary proves insufficient.
 - **Scale benchmarks** — This corpus (30-50 docs) validates ranking quality, not performance. Scale benchmarks with 10K+ docs are a separate concern for latency validation.
 - **Ground truth iteration** — Ground truth is a living artifact that may need updating after initial results reveal ranking inaccuracies. The corpus and ground truth are embedded resources, so updates require recompilation — acceptable for MVP.
+
+### Review Findings
+
+- [x] [Review][Patch] ExecuteAxisAsync maxPageIterations exhaustion has no logging — add a warning log when the 10-iteration cap is reached so truncated results are visible in diagnostics [`src/Hexalith.Memories.Server/Search/HybridSearchService.cs:273`] — **fixed**
+- [x] [Review][Defer] InternalsVisibleTo in packable library without strong-name key [`src/Hexalith.Memories.Redis/Hexalith.Memories.Redis.csproj`] — deferred, pre-existing project pattern
+- [x] [Review][Defer] FusionEngine non-finite handling asymmetry: graph skips result via continue, syntactic/semantic normalize to 0.0 via ScoreNormalizer — consistent in effect but different in mechanism [`src/Hexalith.Memories.Server/Search/FusionEngine.cs:73`] — deferred, defensible design
 - **Extensible axis model** — `BenchmarkQueryResult` hardcodes `SyntacticNdcg10, SemanticNdcg10, GraphNdcg10` fields rather than using a dictionary keyed by axis name. Acceptable for 3 known axes; refactor to `IReadOnlyDictionary<string, double>` if a 4th axis (e.g., temporal) is added.
 
 ### References
@@ -592,3 +598,22 @@ Modified files:
 - [x] [Review][Patch] Treat stale-only or unindexed axis results as inactive before fusion [src/Hexalith.Memories.Server/Search/HybridSearchService.cs:132]
 - [x] [Review][Patch] Stale-only axis normalization can discard lower-ranked valid hits [src/Hexalith.Memories.Server/Search/HybridSearchService.cs:262]
 - [x] [Review][Patch] OR-token rewrite applies to all multi-term queries instead of only sentence-style prompts [src/Hexalith.Memories.Server/Search/SyntacticSearchService.cs:156]
+
+### Review Findings (2026-04-12, round 2)
+
+#### Decision Needed
+- [x] [Review][Decision] D1: Production code changes (FusionEngine, HybridSearchService, SyntacticSearchService) are bundled in this benchmark story — accepted as benchmark-driven refinements needed to make the benchmark work correctly. Prior round 1 review already validated the fusion and NL rewrite changes individually.
+- [x] [Review][Decision] D2: Graph start node included in ground truth may inflate graph NDCG — accepted as intentional. The start node is a valid graph-axis contribution; including hop-0 reflects how graph-scoped search works in production.
+
+#### Patches
+- [x] [Review][Patch] P1: Infinite loop risk in ExecuteAxisAsync — added iteration cap (maxPageIterations=10) and changed while to bounded for-loop [HybridSearchService.cs:268]
+- [x] [Review][Patch] P2: ExecuteAxisAsync early-returns mid-pagination — changed to break instead of return, preserving accumulated results [HybridSearchService.cs:280]
+- [x] [Review][Patch] P3: Exception swallowed silently in ExecuteAxisAsync — added LogAxisExecutionFailure logging before marking axis unavailable [HybridSearchService.cs:316]
+- [ ] [Review][Patch] P4: NL detection heuristic has a 4-word vs 5-word cliff edge [SyntacticSearchService.cs:207] — skipped, requires design judgment on threshold
+- [ ] [Review][Patch] P5: NL OR semantics includes stopwords (what, the, in) that dilute BM25 scores [SyntacticSearchService.cs:194] — skipped, requires stopword list design decision
+- [x] [Review][Patch] P6: Race condition on CachedBenchmarkResult — added Volatile.Read/Write for thread-safe access [BenchmarkFixture.cs:55]
+- [x] [Review][Patch] P7: NdcgScorer missing k <= 0 guards — added ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k) to both methods [NdcgScorer.cs:22,43]
+- [x] [Review][Patch] P8: FusionEngine NaN/Infinity graph scores — added double.IsFinite guard and Math.Clamp to [0,1] for graph scores [FusionEngine.cs:69]
+- [x] [Review][Patch] P9: FusionWeights.Validate NaN weights — added double.IsFinite checks before ThrowIfNegative [FusionWeights.cs:25]
+- [x] [Review][Patch] P10: Vector rounding normalization — added RoundAndRenormalize helper that re-normalizes after rounding [GenerateBenchmarkVectors/Program.cs:191]
+- [x] [Review][Patch] P11: Missing InternalsVisibleTo for Redis project — added to Hexalith.Memories.Redis.csproj [Hexalith.Memories.Redis.csproj]

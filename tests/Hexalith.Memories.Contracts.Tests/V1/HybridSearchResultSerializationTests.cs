@@ -130,7 +130,7 @@ public class HybridSearchResultSerializationTests
         json.ShouldContain("\"unavailableAxes\":");
         json.ShouldContain("\"query\":");
 
-        json.ShouldNotContain("\"TotalCount\":", Case.Sensitive);
-        json.ShouldNotContain("\"Degraded\":", Case.Sensitive);
+        json.ShouldNotContain("\"TotalCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"Degraded\":", Shouldly.Case.Sensitive);
     }
 }

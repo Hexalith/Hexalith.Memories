@@ -69,9 +69,9 @@ public class SearchResultSerializationTests
         json.ShouldContain("\"hasIndexedMemoryUnits\":");
         json.ShouldContain("\"query\":");
 
-        json.ShouldNotContain("\"Results\":", Case.Sensitive);
-        json.ShouldNotContain("\"TotalCount\":", Case.Sensitive);
-        json.ShouldNotContain("\"HasIndexedMemoryUnits\":", Case.Sensitive);
+        json.ShouldNotContain("\"Results\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"TotalCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"HasIndexedMemoryUnits\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]
