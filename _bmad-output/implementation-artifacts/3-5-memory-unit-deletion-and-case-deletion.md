@@ -12,7 +12,7 @@ so that I can manage knowledge lifecycle and clean up outdated content.
 
 1. **Given** a memory unit in a case, **When** I delete the memory unit (FR35), **Then** it is removed from RediSearch (syntactic index entry) **And** it is removed from Redis Vector (semantic vector) **And** it is removed from FalkorDB (node and all connected edges) **And** a deletion activity event is recorded in the case activity log
 2. **Given** a case with memory units, **When** I delete the case (FR27), **Then** all memory units in the case are deleted from all three backends **And** the case node and all case-scoped edges are removed from FalkorDB **And** the case is removed from the case list **And** the operation completes reliably with status tracking to prevent partial state
-3. **Given** a case deletion is in progress, **When** a new ingestion request targets the case, **Then** the ingestion is rejected with error code `CASE_DELETING` and a suggestion to wait
+3. **Given** a case deletion is initiated, **When** the case status is updated, **Then** the case status is set to `Deleting` with a `deletionStartedAt` timestamp **And** the `Deleting` status is visible via `GET /cases/{caseId}` and `GET /cases/{caseId}/status` **And** the MU deletion endpoint returns 409 `CASE_DELETING` for cases in `Deleting` status (ingestion workflow rejection deferred — see Known Limitations #3)
 4. **Given** a memory unit has graph edges connecting it to other memory units, **When** the memory unit is deleted, **Then** all edges to and from that memory unit are also deleted **And** the connected memory units are not affected
 
 ## Tasks / Subtasks
@@ -20,7 +20,8 @@ so that I can manage knowledge lifecycle and clean up outdated content.
 - [ ] Task 1: Add `Deleting` status and new activity event types (AC: #2, #3)
   - [ ] 1.1 Add `Deleting` value to `CaseStatus` enum in `Contracts/V1/CaseStatus.cs`
   - [ ] 1.2 Add `MemoryUnitDeleted` and `CaseDeleted` values to `CaseActivityEventType` enum in `Contracts/V1/CaseActivityEventType.cs`
-  - [ ] 1.3 Update `ParseCaseFromHash` in `CaseService.cs` to parse `"deleting"` status string to `CaseStatus.Deleting`
+  - [ ] 1.3 Update `ParseCaseFromHash` in `CaseService.cs` to parse `"deleting"` status string to `CaseStatus.Deleting` and read `deletionStartedAt` field
+  - [ ] 1.4 Add optional `DeletionStartedAt` (`DateTimeOffset?`) as 13th parameter to `CaseStatusDetail` record — `JsonIgnore(WhenWritingNull)`. Surface via `GetCaseStatusAsync` (read from case hash, same `Task.WhenAll` block)
 - [ ] Task 2: Add graph query builder methods (AC: #1, #2)
   - [ ] 2.1 Add `BuildListCaseMemoryUnitIds(string caseId)` to `IGraphQueryBuilder` interface
   - [ ] 2.2 Add `BuildDeleteCaseNode(string caseId)` to `IGraphQueryBuilder` interface
@@ -37,7 +38,7 @@ so that I can manage knowledge lifecycle and clean up outdated content.
   - [ ] 4.5 Record `MemoryUnitDeleted` activity event (await pattern, matching `CreateCaseAsync`)
   - [ ] 4.6 Add `DeleteCaseAsync(string tenantId, string caseId, CancellationToken)` — returns `bool` (true=deleted, false=not found)
   - [ ] 4.7 Verify case exists via `KeyExistsAsync` on `{tenantId}:case:{caseId}` (cheaper than `HashGetAllAsync` — we don't need hash contents)
-  - [ ] 4.8 Set case status to `"deleting"` via `HashSetAsync(caseKey, "status", "deleting")` (AC #3 guard)
+  - [ ] 4.8 Set case status to `"deleting"` and `deletionStartedAt` timestamp via `HashSetAsync` batch (AC #3 guard + operational observability)
   - [ ] 4.9 Find all MU IDs via `BuildListCaseMemoryUnitIds` graph query
   - [ ] 4.10 For each MU ID: delete from all 3 backends in parallel (same pattern as 4.4)
   - [ ] 4.11 Delete case node from FalkorDB via `BuildDeleteCaseNode`
@@ -262,8 +263,8 @@ public async Task<bool> DeleteMemoryUnitAsync(
     (string graphQuery, IDictionary<string, object> graphParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
 
     await Task.WhenAll(
-        db.KeyDeleteAsync(muKey).AsTask(),
-        db.KeyDeleteAsync(vecKey).AsTask(),
+        db.KeyDeleteAsync(muKey),
+        db.KeyDeleteAsync(vecKey),
         falkor.QueryAsync(tenantId, graphQuery, graphParams)).ConfigureAwait(false);
 
     // Record deletion activity
@@ -302,8 +303,12 @@ public async Task<bool> DeleteCaseAsync(
         return false;
     }
 
-    // Set status to "deleting" — prevents concurrent ingestion (AC #3)
-    await db.HashSetAsync(caseKey, "status", "deleting").ConfigureAwait(false);
+    // Set status to "deleting" with timestamp — prevents concurrent ingestion (AC #3) + observability
+    await db.HashSetAsync(caseKey,
+    [
+        new HashEntry("status", "deleting"),
+        new HashEntry("deletionStartedAt", DateTimeOffset.UtcNow.ToString("o")),
+    ]).ConfigureAwait(false);
 
     // Find all memory unit IDs from graph
     NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
@@ -318,8 +323,8 @@ public async Task<bool> DeleteCaseAsync(
         (string delQuery, IDictionary<string, object> delParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(muId);
 
         await Task.WhenAll(
-            db.KeyDeleteAsync($"{tenantId}:mu:{muId}").AsTask(),
-            db.KeyDeleteAsync($"{tenantId}:vec:{muId}").AsTask(),
+            db.KeyDeleteAsync($"{tenantId}:mu:{muId}"),
+            db.KeyDeleteAsync($"{tenantId}:vec:{muId}"),
             falkor.QueryAsync(tenantId, delQuery, delParams)).ConfigureAwait(false);
     }
 
@@ -329,9 +334,9 @@ public async Task<bool> DeleteCaseAsync(
 
     // Delete case Redis resources
     await Task.WhenAll(
-        db.KeyDeleteAsync($"{tenantId}:case:{caseId}:members").AsTask(),
-        db.KeyDeleteAsync($"{tenantId}:case:{caseId}:activity").AsTask(),
-        db.KeyDeleteAsync(caseKey).AsTask()).ConfigureAwait(false);
+        db.KeyDeleteAsync($"{tenantId}:case:{caseId}:members"),
+        db.KeyDeleteAsync($"{tenantId}:case:{caseId}:activity"),
+        db.KeyDeleteAsync(caseKey)).ConfigureAwait(false);
 
     _logger.LogInformation(
         "Deleted case {CaseId} with {MemoryUnitCount} memory units from tenant {TenantId}",
@@ -439,6 +444,8 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
 
 **Why `Results.Conflict` (409) for CASE_DELETING:** HTTP 409 Conflict communicates that the request cannot be processed because of the current state of the resource (case is being deleted). This is more semantically correct than 400 Bad Request.
 
+**CLI confirmation note (Epic 7):** The REST API does not include a confirmation step for destructive DELETE operations — this is standard REST practice. When Epic 7 implements the CLI, `memories case delete {caseId}` should display a summary (MU count, member count, case name) and require `--yes` flag or interactive confirmation before calling the DELETE endpoint. The MCP interface should similarly surface a confirmation tool call.
+
 ### Redis Key Cleanup Inventory
 
 When deleting a **memory unit**, delete these keys:
@@ -477,6 +484,8 @@ New codes:
 8. **Do NOT modify the ingestion workflow** to check case deletion status — the `Deleting` enum value is available for ingestion code to check, but modifying `IngestionWorkflow` is outside this story's scope
 9. **Do NOT skip the case ownership check** when deleting a MU — verify `caseId` field in the MU hash matches the URL caseId. Prevents cross-case deletion via path manipulation
 10. **Do NOT use `HashGetAllAsync` to check MU existence** — use `HashGetAsync(muKey, "caseId")` to read only the field needed for ownership verification. Cheaper than loading the full hash
+11. **Do NOT discover MUs via vector keys or graph nodes for deletion** — the syntactic hash (`{tenantId}:mu:{muId}`) is the authoritative existence check. Partially-indexed MUs from failed ingestion (vector + graph written, syntactic failed) are pre-existing consistency issues handled by Epic 8 (consistency verification), not by deletion logic
+12. **Do NOT check `Deleting` status in the DELETE case endpoint** — this is intentional. The MU DELETE endpoint returns 409 for `Deleting` cases (you shouldn't modify a case being torn down). But the case DELETE endpoint must accept `Deleting` cases to allow retry of failed deletions. This asymmetry is by design
 
 ### Architecture Decision Records
 
