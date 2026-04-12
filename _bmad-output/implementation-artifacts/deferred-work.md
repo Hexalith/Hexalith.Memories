@@ -41,3 +41,7 @@
 ## Deferred from: code review of 3-1-create-and-list-cases (2026-04-12)
 
 - **Case creation is non-atomic across Redis and FalkorDB** — `CreateCaseAsync` writes the Redis hash before creating the FalkorDB case node, so a graph failure can leave a Redis-visible phantom case. The story already records this as an accepted MVP gap, so it remains deferred for now.
+
+## Deferred from: code review of 3-2-case-status-and-activity.md (2026-04-12)
+
+- **Case creation is non-atomic across Redis and FalkorDB** — `CreateCaseAsync` still writes the Redis hash before creating the FalkorDB case node, so a graph failure can leave a Redis-visible phantom case. This remains a pre-existing MVP gap from Story 3.1 rather than a regression introduced by Story 3.2.

@@ -72,11 +72,16 @@ public class CaseServiceTests
             createdAt: "2026-04-01T09:00:00+00:00",
             lastUpdated: "2026-04-01T09:00:00+00:00",
             name: "Middle");
+        HashEntry[] activityStreamSentinel =
+        [
+            new("type", "caseCreated"),
+        ];
 
         (IConnectionMultiplexer redis, IDatabase redisDb, IServer _) = CreateMockRedisWithKeys(
             ("tenant-1:case:case-older", olderCase),
             ("tenant-1:case:case-newest", newestCase),
-            ("tenant-1:case:case-middle", middleCase));
+            ("tenant-1:case:case-middle", middleCase),
+            ("tenant-1:case:case-newest:activity", activityStreamSentinel));
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
@@ -89,6 +94,7 @@ public class CaseServiceTests
         result.Select(item => item.Id).ToList().ShouldBe(["case-newest", "case-middle"]);
         builder.Received(2).BuildCountCaseMemoryUnits(Arg.Any<string>());
         await redisDb.Received(3).HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        await redisDb.DidNotReceive().HashGetAllAsync("tenant-1:case:case-newest:activity", Arg.Any<CommandFlags>());
     }
 
     [Fact]

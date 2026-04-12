@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Cases;
 
+using System.Text.Json;
+
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.Logging;
@@ -41,7 +43,7 @@ internal sealed class CaseActivityService
 
             List<NameValueEntry> fields =
             [
-                new NameValueEntry("type", eventType.ToString()),
+                new NameValueEntry("type", JsonNamingPolicy.CamelCase.ConvertName(eventType.ToString())),
                 new NameValueEntry("actor", actor),
                 new NameValueEntry("description", description),
             ];
@@ -67,29 +69,37 @@ internal sealed class CaseActivityService
         int maxEvents = 50,
         CancellationToken cancellationToken = default)
     {
-        maxEvents = Math.Clamp(maxEvents, 1, 500);
-
-        IDatabase db = _redis.GetDatabase();
-        string key = $"{tenantId}:case:{caseId}:activity";
-
-        StreamEntry[] entries = await db.StreamRangeAsync(
-            key,
-            minId: null,
-            maxId: null,
-            count: maxEvents,
-            messageOrder: Order.Descending).ConfigureAwait(false) ?? [];
-
-        List<CaseActivityEvent> events = new(entries.Length);
-        foreach (StreamEntry entry in entries)
+        try
         {
-            CaseActivityEvent? parsed = ParseStreamEntry(entry);
-            if (parsed is not null)
-            {
-                events.Add(parsed);
-            }
-        }
+            maxEvents = Math.Clamp(maxEvents, 1, 500);
 
-        return events;
+            IDatabase db = _redis.GetDatabase();
+            string key = $"{tenantId}:case:{caseId}:activity";
+
+            StreamEntry[] entries = await db.StreamRangeAsync(
+                key,
+                minId: null,
+                maxId: null,
+                count: maxEvents,
+                messageOrder: Order.Descending).ConfigureAwait(false) ?? [];
+
+            List<CaseActivityEvent> events = new(entries.Length);
+            foreach (StreamEntry entry in entries)
+            {
+                CaseActivityEvent? parsed = ParseStreamEntry(entry);
+                if (parsed is not null)
+                {
+                    events.Add(parsed);
+                }
+            }
+
+            return events;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get recent activity for case {CaseId} in tenant {TenantId}", caseId, tenantId);
+            return [];
+        }
     }
 
     public async Task<int> GetFailedCountAsync(

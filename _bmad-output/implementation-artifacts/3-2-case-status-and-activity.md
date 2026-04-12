@@ -1,6 +1,6 @@
 # Story 3.2: Case Status & Activity
 
-Status: review
+Status: done
 
 ## Prerequisites
 
@@ -155,6 +155,7 @@ Task numbering below groups by component, but implementation should follow the d
 
 - [x] Task 4: Create API endpoints (AC: 1, 2, 3)
     - [x] 4.1 Add `GET /api/tenants/{tenantId}/cases/{caseId}/status` endpoint in `Program.cs`:
+
         ```csharp
         app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/status", async (
             string tenantId,
@@ -172,7 +173,9 @@ Task numbering below groups by component, but implementation should follow the d
                 : Results.Ok(status);
         });
         ```
+
     - [x] 4.2 Add `GET /api/tenants/{tenantId}/cases/{caseId}/activity` endpoint in `Program.cs`:
+
         ```csharp
         app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/activity", async (
             string tenantId,
@@ -198,7 +201,9 @@ Task numbering below groups by component, but implementation should follow the d
             return Results.Ok(events);
         });
         ```
+
         **AC #3 clarification:** If the activity list is empty AND the case exists, this indicates the case creation event was not recorded (best-effort recording failed). Return the empty list as-is — do NOT synthesize a fake creation event. AC #3 is aspirational under normal conditions; the system does not guarantee activity recording (per ADR-2)
+
     - [x] 4.3 Place new endpoints AFTER the existing `GET /api/tenants/{tenantId}/cases/{caseId}` endpoint and BEFORE the `app.MapGet("/api/search", ...)` endpoint — maintain logical grouping of case endpoints
 
 - [x] Task 5: Update DI registration (AC: 1, 2)
@@ -230,6 +235,7 @@ Task numbering below groups by component, but implementation should follow the d
 
 - [x] Task 7: Integration — Record ingestion activity in workflow (AC: 2)
     - [x] 7.1 Create `src/Hexalith.Memories.Server/Activities/Ingestion/RecordCaseActivityActivity.cs`:
+
         ```csharp
         internal sealed class RecordCaseActivityActivity : WorkflowActivity<CaseActivityInput, bool>
         {
@@ -252,6 +258,7 @@ Task numbering below groups by component, but implementation should follow the d
             }
         }
         ```
+
     - [x] 7.2 Create `src/Hexalith.Memories.Contracts/V1/CaseActivityInput.cs` as `public sealed record` — **MUST be in Contracts**, not co-located in Server, because DAPR workflow serializes activity inputs via the shared `MemoriesJsonContext`:
         ```csharp
         public sealed record CaseActivityInput(
@@ -404,12 +411,19 @@ Task numbering below groups by component, but implementation should follow the d
         - Assert that the original indexing exception propagates, not the activity recording exception
         - This verifies the try-catch in Task 7.5 correctly masks the activity recording failure
 
+### Review Findings
+
+- [x] [Review][Patch] ListCasesAsync scans activity stream keys as case hashes, which can trigger Redis WRONGTYPE failures once `:activity` streams exist [`src/Hexalith.Memories.Server/Cases/CaseService.cs:98`] — fixed
+- [x] [Review][Patch] GetRecentActivityAsync can still throw on Redis failures even though the story requires CaseActivityService methods to degrade safely [`src/Hexalith.Memories.Server/Cases/CaseActivityService.cs:64`] — fixed
+- [x] [Review][Patch] RecordEventAsync writes PascalCase activity `type` values instead of the story-required camelCase enum strings [`src/Hexalith.Memories.Server/Cases/CaseActivityService.cs:44`] — fixed
+- [x] [Review][Defer] Case creation is non-atomic across Redis and FalkorDB [`src/Hexalith.Memories.Server/Cases/CaseService.cs:53`] — deferred, pre-existing
+
 ## Error Code Registry
 
-| Code | HTTP | Returned By | Suggestion |
-|---|---|---|---|
-| `INVALID_TENANT_ID` | 400 | Endpoints 4.1, 4.2 via `TenantIdGuard` | "Only alphanumeric and hyphens allowed." |
-| `CASE_NOT_FOUND` | 404 | Endpoints 4.1, 4.2 | "Run 'memories case list' to see available cases." |
+| Code                | HTTP | Returned By                            | Suggestion                                         |
+| ------------------- | ---- | -------------------------------------- | -------------------------------------------------- |
+| `INVALID_TENANT_ID` | 400  | Endpoints 4.1, 4.2 via `TenantIdGuard` | "Only alphanumeric and hyphens allowed."           |
+| `CASE_NOT_FOUND`    | 404  | Endpoints 4.1, 4.2                     | "Run 'memories case list' to see available cases." |
 
 ## Dev Notes
 
@@ -519,6 +533,7 @@ foreach (StreamEntry entry in entries)
 ### Previous Story Intelligence (Story 3.1)
 
 **Key learnings from Story 3.1 development:**
+
 - `Guid.CreateVersion7().ToString("N")` is used for ID generation (not ULID — `System.Ulid` is not in .NET 10 BCL)
 - `Shouldly.Case` naming conflict with `Hexalith.Memories.Contracts.V1.Case` — resolved by qualifying `Shouldly.Case.Sensitive`. Watch for the same conflict with `CaseActivityEventType` or `CaseStatusDetail` if any Shouldly assertion method collides
 - `NSubstitute` cannot proxy `ILogger<T>` for internal types — use `NullLogger<T>.Instance` instead
@@ -579,6 +594,7 @@ Claude Opus 4.6 (1M context)
 ### File List
 
 **New files:**
+
 - `src/Hexalith.Memories.Contracts/V1/CaseActivityEventType.cs`
 - `src/Hexalith.Memories.Contracts/V1/CaseActivityEvent.cs`
 - `src/Hexalith.Memories.Contracts/V1/CaseStatusDetail.cs`
@@ -592,6 +608,7 @@ Claude Opus 4.6 (1M context)
 - `tests/Hexalith.Memories.Server.Tests/Cases/RecordCaseActivityActivityTests.cs`
 
 **Modified files:**
+
 - `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` (registered new types)
 - `src/Hexalith.Memories.Server/Cases/CaseService.cs` (added CaseActivityService dependency, GetCaseStatusAsync, activity recording in CreateCaseAsync)
 - `src/Hexalith.Memories.Server/Program.cs` (DI registration, 2 new endpoints, search activity recording)

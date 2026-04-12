@@ -36,7 +36,7 @@ public class CaseActivityServiceTests
         RedisKey key = (RedisKey)call.GetArguments()[0]!;
         key.ToString().ShouldBe("tenant-1:case:case-001:activity");
         NameValueEntry[] entries = (NameValueEntry[])call.GetArguments()[1]!;
-        entries.ShouldContain(e => e.Name == "type");
+        entries.ShouldContain(e => e.Name == "type" && e.Value == "memoryUnitIngested");
         entries.ShouldContain(e => e.Name == "actor" && e.Value == "user-123");
         entries.ShouldContain(e => e.Name == "description" && e.Value == "Unit indexed");
         entries.ShouldContain(e => e.Name == "memoryUnitId" && e.Value == "mu-abc");
@@ -138,6 +138,29 @@ public class CaseActivityServiceTests
             Arg.Any<Order>(),
             Arg.Any<CommandFlags>())
             .Returns(_ => Array.Empty<StreamEntry>());
+
+        CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
+
+        // Act
+        List<CaseActivityEvent> events = await service.GetRecentActivityAsync("tenant-1", "case-001");
+
+        // Assert
+        events.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GetRecentActivityAsync_OnException_ShouldReturnEmptyListAndNotThrow()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.StreamRangeAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<Order>(),
+            Arg.Any<CommandFlags>())
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 

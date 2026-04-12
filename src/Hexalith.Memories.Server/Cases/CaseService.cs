@@ -101,6 +101,11 @@ internal sealed class CaseService
         IServer server = db.Multiplexer.GetServer(db.Multiplexer.GetEndPoints()[0]);
         foreach (RedisKey key in server.Keys(pattern: pattern, pageSize: maxResults))
         {
+            if (key.ToString().EndsWith(":activity", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             HashEntry[] entries = await db.HashGetAllAsync(key).ConfigureAwait(false);
             if (entries.Length == 0)
             {
