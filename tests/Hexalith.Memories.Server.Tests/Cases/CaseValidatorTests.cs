@@ -100,4 +100,147 @@ public class CaseValidatorTests
 
         result.ShouldBeNull();
     }
+
+    // --- ValidateAddMember tests ---
+
+    [Fact]
+    public void ValidateAddMember_ValidInput_ShouldReturnNull()
+    {
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateAddMember_InvalidTenantId_ShouldReturnError()
+    {
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant_bad!", "case-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_TENANT_ID");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("case:inject")]
+    [InlineData("case_underscore")]
+    public void ValidateAddMember_InvalidCaseId_ShouldReturnError(string caseId)
+    {
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", caseId, input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_CASE_ID");
+    }
+
+    [Fact]
+    public void ValidateAddMember_ValidCaseIdWithHyphens_ShouldReturnNull()
+    {
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "my-case-123", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ValidateAddMember_EmptyMemberId_ShouldReturnError(string memberId)
+    {
+        var input = new AddCaseMemberInput(memberId, CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMBER_ID");
+    }
+
+    [Fact]
+    public void ValidateAddMember_MemberIdExceeding200Chars_ShouldReturnError()
+    {
+        string longId = new('a', 201);
+        var input = new AddCaseMemberInput(longId, CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMBER_ID");
+    }
+
+    [Fact]
+    public void ValidateAddMember_MemberIdExactly200Chars_ShouldBeValid()
+    {
+        string maxId = new('a', 200);
+        var input = new AddCaseMemberInput(maxId, CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("user:colon")]
+    [InlineData("user/slash")]
+    [InlineData("user space")]
+    [InlineData("user@at")]
+    public void ValidateAddMember_MemberIdWithInvalidChars_ShouldReturnError(string memberId)
+    {
+        var input = new AddCaseMemberInput(memberId, CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMBER_ID");
+    }
+
+    [Theory]
+    [InlineData("user-alice")]
+    [InlineData("user.alice")]
+    [InlineData("user_alice")]
+    [InlineData("alice123")]
+    [InlineData("ALICE")]
+    [InlineData("user-alice.org_name")]
+    public void ValidateAddMember_MemberIdWithValidChars_ShouldReturnNull(string memberId)
+    {
+        var input = new AddCaseMemberInput(memberId, CaseMemberType.User);
+        ErrorResponse? result = CaseValidator.ValidateAddMember("tenant-1", "case-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    // --- ValidateRemoveMember tests ---
+
+    [Fact]
+    public void ValidateRemoveMember_ValidInput_ShouldReturnNull()
+    {
+        ErrorResponse? result = CaseValidator.ValidateRemoveMember("tenant-1", "case-001", "user-alice");
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateRemoveMember_InvalidTenantId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateRemoveMember("bad!", "case-001", "user-alice");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_TENANT_ID");
+    }
+
+    [Fact]
+    public void ValidateRemoveMember_InvalidCaseId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateRemoveMember("tenant-1", "case:bad", "user-alice");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_CASE_ID");
+    }
+
+    [Fact]
+    public void ValidateRemoveMember_InvalidMemberId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateRemoveMember("tenant-1", "case-001", "user:bad");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMBER_ID");
+    }
 }

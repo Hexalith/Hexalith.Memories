@@ -22,7 +22,8 @@ public class CaseStatusDetailSerializationTests
             MemoryUnitCount: 5,
             LastActivityAt: DateTimeOffset.Parse("2026-04-01T11:30:00+00:00"),
             IndexedCount: 5,
-            FailedCount: 2);
+            FailedCount: 2,
+            MemberCount: 3);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         CaseStatusDetail? deserialized = JsonSerializer.Deserialize<CaseStatusDetail>(json, MemoriesJsonContext.Options);
@@ -37,6 +38,7 @@ public class CaseStatusDetailSerializationTests
         deserialized.LastActivityAt.ShouldBe(DateTimeOffset.Parse("2026-04-01T11:30:00+00:00"));
         deserialized.IndexedCount.ShouldBe(5);
         deserialized.FailedCount.ShouldBe(2);
+        deserialized.MemberCount.ShouldBe(3);
     }
 
     [Fact]
@@ -45,16 +47,18 @@ public class CaseStatusDetailSerializationTests
         var original = new CaseStatusDetail(
             "id", "tid", "name", null, CaseStatus.Active,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            0, null, 0, 0);
+            0, null, 0, 0, 0);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
 
         json.ShouldContain("\"memoryUnitCount\":");
         json.ShouldContain("\"indexedCount\":");
         json.ShouldContain("\"failedCount\":");
+        json.ShouldContain("\"memberCount\":");
         json.ShouldNotContain("\"MemoryUnitCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"IndexedCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"FailedCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"MemberCount\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]
@@ -63,7 +67,7 @@ public class CaseStatusDetailSerializationTests
         var original = new CaseStatusDetail(
             "id", "tid", "name", null, CaseStatus.Active,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            0, null, 0, 0);
+            0, null, 0, 0, 0);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
 
@@ -76,7 +80,7 @@ public class CaseStatusDetailSerializationTests
         var original = new CaseStatusDetail(
             "id", "tid", "name", null, CaseStatus.Active,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            0, LastActivityAt: null, 0, 0);
+            0, LastActivityAt: null, 0, 0, 0);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         CaseStatusDetail? deserialized = JsonSerializer.Deserialize<CaseStatusDetail>(json, MemoriesJsonContext.Options);
@@ -94,7 +98,8 @@ public class CaseStatusDetailSerializationTests
             MemoryUnitCount: 10,
             LastActivityAt: DateTimeOffset.UtcNow,
             IndexedCount: 10,
-            FailedCount: 3);
+            FailedCount: 3,
+            MemberCount: 7);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         CaseStatusDetail? deserialized = JsonSerializer.Deserialize<CaseStatusDetail>(json, MemoriesJsonContext.Options);
@@ -102,5 +107,6 @@ public class CaseStatusDetailSerializationTests
         deserialized.ShouldNotBeNull();
         deserialized.IndexedCount.ShouldBe(10);
         deserialized.FailedCount.ShouldBe(3);
+        deserialized.MemberCount.ShouldBe(7);
     }
 }

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-12 # Story 3.2 review fixes applied
+last_updated: 2026-04-12 # Story 3.3 done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -72,9 +72,9 @@ development_status:
   epic-3: in-progress
   3-1-create-and-list-cases: done
   3-2-case-status-and-activity: done
-  3-3-case-member-management: ready-for-dev
-  3-4-case-scoped-and-cross-case-search: backlog
-  3-5-memory-unit-deletion-and-case-deletion: backlog
+  3-3-case-member-management: done
+  3-4-case-scoped-and-cross-case-search: ready-for-dev
+  3-5-memory-unit-deletion-and-case-deletion: ready-for-dev
   3-6-annotations-and-corrections: backlog
   epic-3-retrospective: optional
 

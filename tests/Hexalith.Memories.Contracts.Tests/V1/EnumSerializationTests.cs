@@ -69,6 +69,18 @@ public class EnumSerializationTests
         => ShouldRejectIntegerTokens<MetadataOrigin>(json);
 
     [Theory]
+    [InlineData(CaseMemberType.User, "\"user\"")]
+    [InlineData(CaseMemberType.Role, "\"role\"")]
+    public void CaseMemberType_ShouldRoundTripAsCamelCaseString(CaseMemberType value, string expectedJson)
+        => ShouldRoundTripAsCamelCaseString(value, expectedJson);
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1")]
+    public void CaseMemberType_ShouldRejectIntegerTokens(string json)
+        => ShouldRejectIntegerTokens<CaseMemberType>(json);
+
+    [Theory]
     [InlineData(CaseActivityEventType.CaseCreated, "\"caseCreated\"")]
     [InlineData(CaseActivityEventType.MemoryUnitIngested, "\"memoryUnitIngested\"")]
     [InlineData(CaseActivityEventType.IngestionFailed, "\"ingestionFailed\"")]

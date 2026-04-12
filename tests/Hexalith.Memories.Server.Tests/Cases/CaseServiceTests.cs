@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Cases;
 
+using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
 
@@ -317,6 +318,413 @@ public class CaseServiceTests
         result.IndexedCount.ShouldBe(result.MemoryUnitCount);
         result.FailedCount.ShouldBe(1);
         result.LastActivityAt.ShouldNotBeNull();
+    }
+
+    // --- Member operation tests ---
+
+    [Fact]
+    public async Task AddMemberAsync_WhenNew_ShouldReturnCreatedTrueAndCallHSETNX()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(0L);
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act
+        (CaseMember member, bool created) = await service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None);
+
+        // Assert
+        created.ShouldBeTrue();
+        member.MemberId.ShouldBe("user-alice");
+        member.MemberType.ShouldBe(CaseMemberType.User);
+
+        await redisDb.Received(1).HashSetAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"),
+            Arg.Is<RedisValue>(f => f.ToString() == "user-alice"),
+            Arg.Any<RedisValue>(),
+            When.NotExists,
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenAlreadyExists_ShouldReturnCreatedFalseAndNoActivity()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(5L);
+        // HSETNX returns false -- member already exists
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns(false);
+
+        string existingJson = "{\"memberId\":\"user-alice\",\"memberType\":\"user\",\"addedAt\":\"2026-04-01T10:00:00+00:00\"}";
+        redisDb.HashGetAsync(Arg.Any<RedisKey>(), Arg.Is<RedisValue>(v => v.ToString() == "user-alice"), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue(existingJson));
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act
+        (CaseMember member, bool created) = await service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None);
+
+        // Assert
+        created.ShouldBeFalse();
+        member.MemberId.ShouldBe("user-alice");
+
+        // No activity event for idempotent add
+        await activityDb.DidNotReceive().StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<bool>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenLimitReached_ShouldThrowInvalidOperationException()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(1000L);
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act & Assert
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None));
+
+        ex.Message.ShouldContain("maximum");
+        ex.Message.ShouldContain("1000");
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenAtLimitButMemberAlreadyExists_ShouldReturnCreatedFalse()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(1000L);
+        redisDb.HashGetAsync(Arg.Any<RedisKey>(), Arg.Is<RedisValue>(v => v.ToString() == "user-alice"), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("{\"memberId\":\"user-alice\",\"memberType\":\"user\",\"addedAt\":\"2026-04-01T10:00:00+00:00\"}"));
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act
+        (CaseMember member, bool created) = await service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None);
+
+        // Assert
+        created.ShouldBeFalse();
+        member.MemberId.ShouldBe("user-alice");
+        await activityDb.DidNotReceive().StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<bool>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenHashSetThrows_ShouldNotRecordActivity()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(0L);
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns<bool>(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection lost"));
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act & Assert
+        _ = await Should.ThrowAsync<RedisConnectionException>(
+            () => service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None));
+
+        // Activity event must NOT be recorded when the write failed
+        await activityDb.DidNotReceive().StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<bool>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenStoredMemberJsonIsCorrupt_ShouldThrowInvalidDataException()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(5L);
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns(false);
+        redisDb.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("{\"memberId\":\"user-alice\"}"));
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act & Assert
+        _ = await Should.ThrowAsync<InvalidDataException>(
+            () => service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenDeleteBetweenCheckRace_ShouldRetryAndReturnCreated()
+    {
+        // Arrange: HSETNX returns false, but HashGet returns null (member deleted between)
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(5L);
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns(false, true);
+        // HashGet returns null -- member was deleted between HSETNX and read
+        redisDb.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act
+        (CaseMember member, bool created) = await service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None);
+
+        // Assert -- retry path: created=true
+        created.ShouldBeTrue();
+        member.MemberId.ShouldBe("user-alice");
+    }
+
+    [Fact]
+    public async Task AddMemberAsync_WhenConcurrentReAddWinsRetry_ShouldReturnExistingMember()
+    {
+        // Arrange: HSETNX returns false, HashGet returns null, retry loses to another writer, second read finds existing.
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, logger);
+
+        redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(5L);
+        redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
+            .Returns(false, false);
+        redisDb.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(
+                RedisValue.Null,
+                new RedisValue("{\"memberId\":\"user-alice\",\"memberType\":\"user\",\"addedAt\":\"2026-04-01T10:00:00+00:00\"}"));
+
+        var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
+
+        // Act
+        (CaseMember member, bool created) = await service.AddMemberAsync("tenant-1", "case-001", input, CancellationToken.None);
+
+        // Assert
+        created.ShouldBeFalse();
+        member.MemberId.ShouldBe("user-alice");
+        await activityDb.DidNotReceive().StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<bool>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenFound_ShouldReturnTrueAndCallHashDelete()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        // Act
+        bool result = await service.RemoveMemberAsync("tenant-1", "case-001", "user-alice", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeTrue();
+        await redisDb.Received(1).HashDeleteAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"),
+            Arg.Is<RedisValue>(v => v.ToString() == "user-alice"),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_WhenNotFound_ShouldReturnFalseAndNoActivity()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, logger);
+
+        redisDb.HashDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
+            .Returns(false);
+
+        // Act
+        bool result = await service.RemoveMemberAsync("tenant-1", "case-001", "user-alice", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeFalse();
+        await activityDb.DidNotReceive().StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<bool>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task ListMembersAsync_WhenEmpty_ShouldReturnEmptyList()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString().EndsWith(":members")), Arg.Any<CommandFlags>())
+            .Returns(Array.Empty<HashEntry>());
+
+        // Act
+        List<CaseMember> result = await service.ListMembersAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ListMembersAsync_WhenPopulated_ShouldReturnOrderedByAddedAt()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        HashEntry[] entries =
+        [
+            new("user-bob", "{\"memberId\":\"user-bob\",\"memberType\":\"user\",\"addedAt\":\"2026-04-02T10:00:00+00:00\"}"),
+            new("user-alice", "{\"memberId\":\"user-alice\",\"memberType\":\"user\",\"addedAt\":\"2026-04-01T10:00:00+00:00\"}"),
+        ];
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString().EndsWith(":members")), Arg.Any<CommandFlags>())
+            .Returns(entries);
+
+        // Act
+        List<CaseMember> result = await service.ListMembersAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        result.Count.ShouldBe(2);
+        result[0].MemberId.ShouldBe("user-alice"); // Earlier AddedAt comes first
+        result[1].MemberId.ShouldBe("user-bob");
+    }
+
+    [Fact]
+    public async Task ListMembersAsync_WhenEntryIsCorrupt_ShouldSkipIt()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        HashEntry[] entries =
+        [
+            new("user-bad", "{\"memberId\":\"user-bad\"}"),
+            new("user-alice", "{\"memberId\":\"user-alice\",\"memberType\":\"user\",\"addedAt\":\"2026-04-01T10:00:00+00:00\"}"),
+        ];
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString().EndsWith(":members")), Arg.Any<CommandFlags>())
+            .Returns(entries);
+
+        // Act
+        List<CaseMember> result = await service.ListMembersAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].MemberId.ShouldBe("user-alice");
+    }
+
+    [Fact]
+    public async Task GetMemberCountAsync_ShouldReturnHashLength()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashLengthAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"), Arg.Any<CommandFlags>())
+            .Returns(42L);
+
+        // Act
+        int count = await service.GetMemberCountAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        count.ShouldBe(42);
     }
 
     private static CaseActivityService CreateMockActivityService()

@@ -5,6 +5,9 @@
 
 namespace Hexalith.Memories.Server.Cases;
 
+using System.IO;
+using System.Text.Json;
+
 using BaUlid = ByteAether.Ulid.Ulid;
 
 using Hexalith.Memories.Contracts.V1;
@@ -17,6 +20,8 @@ using StackExchange.Redis;
 /// <summary>Manages case lifecycle: create, list, and get operations backed by Redis and FalkorDB.</summary>
 internal sealed class CaseService
 {
+    private const int MaxMembersPerCase = 1000;
+
     private static readonly BaUlid.GenerationOptions UlidOptions = new()
     {
         Monotonicity = BaUlid.GenerationOptions.MonotonicityOptions.MonotonicIncrement,
@@ -101,7 +106,9 @@ internal sealed class CaseService
         IServer server = db.Multiplexer.GetServer(db.Multiplexer.GetEndPoints()[0]);
         foreach (RedisKey key in server.Keys(pattern: pattern, pageSize: maxResults))
         {
-            if (key.ToString().EndsWith(":activity", StringComparison.Ordinal))
+            string keyStr = key.ToString();
+            if (keyStr.EndsWith(":activity", StringComparison.Ordinal) ||
+                keyStr.EndsWith(":members", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -172,7 +179,8 @@ internal sealed class CaseService
 
         Task<DateTimeOffset?> lastActivityTask = _activityService.GetLastActivityTimestampAsync(tenantId, caseId, cancellationToken);
         Task<int> failedCountTask = _activityService.GetFailedCountAsync(tenantId, caseId, cancellationToken);
-        await Task.WhenAll(lastActivityTask, failedCountTask).ConfigureAwait(false);
+        Task<int> memberCountTask = GetMemberCountAsync(tenantId, caseId, cancellationToken);
+        await Task.WhenAll(lastActivityTask, failedCountTask, memberCountTask).ConfigureAwait(false);
 
         return new CaseStatusDetail(
             caseResult.Id,
@@ -185,7 +193,237 @@ internal sealed class CaseService
             caseResult.MemoryUnitCount,
             lastActivityTask.Result,
             IndexedCount: caseResult.MemoryUnitCount,
-            FailedCount: failedCountTask.Result);
+            FailedCount: failedCountTask.Result,
+            MemberCount: memberCountTask.Result);
+    }
+
+    /// <summary>Adds a member to a case using atomic HSETNX for idempotency.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="input">The member details.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A tuple of the member and whether it was newly created.</returns>
+    public async Task<(CaseMember Member, bool Created)> AddMemberAsync(
+        string tenantId, string caseId, AddCaseMemberInput input, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string membersKey = $"{tenantId}:case:{caseId}:members";
+
+        // Enforce member count limit before attempting add
+        long currentCount = await db.HashLengthAsync(membersKey).ConfigureAwait(false);
+        if (currentCount >= MaxMembersPerCase)
+        {
+            RedisValue existingAtLimit = await db.HashGetAsync(membersKey, input.MemberId).ConfigureAwait(false);
+            if (existingAtLimit.HasValue)
+            {
+                return (DeserializeStoredMemberOrThrow(existingAtLimit, tenantId, caseId, input.MemberId), false);
+            }
+
+            throw new InvalidOperationException($"Case '{caseId}' has reached the maximum of {MaxMembersPerCase} members.");
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var member = new CaseMember(input.MemberId, input.MemberType, now);
+        string json = JsonSerializer.Serialize(member, MemoriesJsonContext.Options);
+
+        // Atomic idempotent add via HSETNX -- no TOCTOU race
+        bool created = await db.HashSetAsync(membersKey, input.MemberId, json, When.NotExists).ConfigureAwait(false);
+
+        if (created)
+        {
+            // Activity event ONLY for new members -- await to match CreateCaseAsync pattern
+            _ = await _activityService.RecordEventAsync(
+                tenantId, caseId, CaseActivityEventType.MemberAdded, "system",
+                $"Member '{input.MemberId}' ({input.MemberType}) added", null, cancellationToken).ConfigureAwait(false);
+
+            return (member, true);
+        }
+
+        // HSETNX returned false -- member already existed. Read the stored version.
+        // Edge case: member could have been deleted between HSETNX and HashGet (rare race).
+        RedisValue existing = await db.HashGetAsync(membersKey, input.MemberId).ConfigureAwait(false);
+        if (!existing.HasValue)
+        {
+            // Member was deleted between HSETNX check and read. Retry the add.
+            bool retriedCreated = await db.HashSetAsync(membersKey, input.MemberId, json, When.NotExists).ConfigureAwait(false);
+            if (retriedCreated)
+            {
+                _ = await _activityService.RecordEventAsync(
+                    tenantId, caseId, CaseActivityEventType.MemberAdded, "system",
+                    $"Member '{input.MemberId}' ({input.MemberType}) added", null, cancellationToken).ConfigureAwait(false);
+                return (member, true);
+            }
+
+            existing = await db.HashGetAsync(membersKey, input.MemberId).ConfigureAwait(false);
+            if (!existing.HasValue)
+            {
+                throw new InvalidDataException(
+                    $"Stored member '{input.MemberId}' for case '{caseId}' in tenant '{tenantId}' was unavailable during idempotency recovery.");
+            }
+        }
+
+        CaseMember existingMember = DeserializeStoredMemberOrThrow(existing, tenantId, caseId, input.MemberId);
+        return (existingMember, false);
+    }
+
+    /// <summary>Removes a member from a case.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="memberId">The member identifier to remove.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns><see langword="true"/> if the member was removed; <see langword="false"/> if not found.</returns>
+    public async Task<bool> RemoveMemberAsync(
+        string tenantId, string caseId, string memberId, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string membersKey = $"{tenantId}:case:{caseId}:members";
+
+        bool removed = await db.HashDeleteAsync(membersKey, memberId).ConfigureAwait(false);
+        if (removed)
+        {
+            _ = await _activityService.RecordEventAsync(
+                tenantId, caseId, CaseActivityEventType.MemberRemoved, "system",
+                $"Member '{memberId}' removed", null, cancellationToken).ConfigureAwait(false);
+        }
+
+        return removed;
+    }
+
+    /// <summary>Lists all members of a case ordered by when they were added.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The list of case members ordered by <see cref="CaseMember.AddedAt"/>.</returns>
+    public async Task<List<CaseMember>> ListMembersAsync(
+        string tenantId, string caseId, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string membersKey = $"{tenantId}:case:{caseId}:members";
+
+        HashEntry[] entries = await db.HashGetAllAsync(membersKey).ConfigureAwait(false);
+        List<CaseMember> members = new(entries.Length);
+        foreach (HashEntry entry in entries)
+        {
+            if (TryDeserializeStoredMember(entry.Value, tenantId, caseId, entry.Name.ToString(), out CaseMember? parsed) && parsed is not null)
+            {
+                members.Add(parsed);
+            }
+        }
+
+        return members.OrderBy(m => m.AddedAt).ToList();
+    }
+
+    /// <summary>Gets the number of members in a case via HashLengthAsync.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The member count.</returns>
+    public async Task<int> GetMemberCountAsync(
+        string tenantId, string caseId, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string membersKey = $"{tenantId}:case:{caseId}:members";
+        long count = await db.HashLengthAsync(membersKey).ConfigureAwait(false);
+        return (int)count;
+    }
+
+    private CaseMember DeserializeStoredMemberOrThrow(
+        RedisValue value,
+        string tenantId,
+        string caseId,
+        string memberId)
+    {
+        if (TryDeserializeStoredMember(value, tenantId, caseId, memberId, out CaseMember? member) && member is not null)
+        {
+            return member;
+        }
+
+        throw new InvalidDataException(
+            $"Stored member '{memberId}' for case '{caseId}' in tenant '{tenantId}' contains invalid JSON.");
+    }
+
+    private bool TryDeserializeStoredMember(
+        RedisValue value,
+        string tenantId,
+        string caseId,
+        string memberId,
+        out CaseMember? member)
+    {
+        string payload = value.ToString();
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(payload);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !TryGetRequiredJsonString(root, "memberId", out string? storedMemberId) ||
+                !TryGetRequiredJsonString(root, "memberType", out _) ||
+                !TryGetRequiredJsonString(root, "addedAt", out _))
+            {
+                LogCorruptMemberRecord(tenantId, caseId, memberId, "Required properties are missing.");
+                member = null;
+                return false;
+            }
+
+            member = JsonSerializer.Deserialize<CaseMember>(payload, MemoriesJsonContext.Options);
+            if (member is null ||
+                !string.Equals(member.MemberId, storedMemberId, StringComparison.Ordinal) ||
+                !string.Equals(member.MemberId, memberId, StringComparison.Ordinal) ||
+                member.AddedAt == default)
+            {
+                LogCorruptMemberRecord(tenantId, caseId, memberId, "Stored JSON does not match the hash entry.");
+                member = null;
+                return false;
+            }
+
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            LogCorruptMemberRecord(tenantId, caseId, memberId, "Stored JSON is invalid.", ex);
+            member = null;
+            return false;
+        }
+    }
+
+    private void LogCorruptMemberRecord(
+        string tenantId,
+        string caseId,
+        string memberId,
+        string reason,
+        Exception? exception = null)
+    {
+        if (exception is null)
+        {
+            _logger.LogWarning(
+                "Skipping corrupt member record {MemberId} for case {CaseId} in tenant {TenantId}: {Reason}",
+                memberId,
+                caseId,
+                tenantId,
+                reason);
+            return;
+        }
+
+        _logger.LogWarning(
+            exception,
+            "Skipping corrupt member record {MemberId} for case {CaseId} in tenant {TenantId}: {Reason}",
+            memberId,
+            caseId,
+            tenantId,
+            reason);
+    }
+
+    private static bool TryGetRequiredJsonString(JsonElement root, string propertyName, out string? value)
+    {
+        if (root.TryGetProperty(propertyName, out JsonElement property) &&
+            property.ValueKind == JsonValueKind.String)
+        {
+            value = property.GetString();
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        value = null;
+        return false;
     }
 
     private async Task<int> GetMemoryUnitCountSafe(NFalkorDB.FalkorDB falkor, string tenantId, string caseId)

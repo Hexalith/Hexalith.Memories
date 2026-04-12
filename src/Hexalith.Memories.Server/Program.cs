@@ -3,6 +3,8 @@ using Dapr.Actors.Client;
 using Dapr.Client;
 using Dapr.Workflow;
 
+using System.Text.Json;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -321,6 +323,102 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/activity", async (
     int effectiveLimit = Math.Clamp(limit ?? 50, 1, 500);
     List<CaseActivityEvent> events = await activityService.GetRecentActivityAsync(tenantId, caseId, effectiveLimit, cancellationToken);
     return Results.Ok(events);
+});
+
+app.MapPut("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
+    string tenantId,
+    string caseId,
+    string memberId,
+    JsonElement requestBody,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? bodyError = TryDeserializeAddCaseMemberInput(requestBody, out AddCaseMemberInput? input);
+    if (bodyError is not null)
+    {
+        return Results.BadRequest(bodyError);
+    }
+
+    AddCaseMemberInput validatedInput = input! with { MemberId = memberId };
+    ErrorResponse? error = CaseValidator.ValidateAddMember(tenantId, caseId, validatedInput);
+    if (error is not null)
+    {
+        return Results.BadRequest(error);
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    try
+    {
+        (CaseMember member, bool created) = await caseService.AddMemberAsync(tenantId, caseId, validatedInput, cancellationToken);
+        return created
+            ? Results.Created($"/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", member)
+            : Results.Ok(member);
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("maximum"))
+    {
+        return Results.BadRequest(new ErrorResponse("MEMBER_LIMIT_EXCEEDED", ex.Message, "Remove existing members before adding new ones."));
+    }
+});
+
+app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
+    string tenantId,
+    string caseId,
+    string memberId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? error = CaseValidator.ValidateRemoveMember(tenantId, caseId, memberId);
+    if (error is not null)
+    {
+        return Results.BadRequest(error);
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    bool removed = await caseService.RemoveMemberAsync(tenantId, caseId, memberId, cancellationToken);
+    return removed
+        ? Results.NoContent()
+        : Results.NotFound(new ErrorResponse("MEMBER_NOT_FOUND", $"Member '{memberId}' is not in case '{caseId}'.", "Run GET /cases/{caseId}/members to see current members."));
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/members", async (
+    string tenantId,
+    string caseId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? caseIdError = CaseValidator.ValidateCaseId(caseId);
+    if (caseIdError is not null)
+    {
+        return Results.BadRequest(caseIdError);
+    }
+
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    List<CaseMember> members = await caseService.ListMembersAsync(tenantId, caseId, cancellationToken);
+    return Results.Ok(members);
 });
 
 app.MapGet("/api/search", async (
@@ -695,6 +793,68 @@ static ErrorResponse? ValidateTenantId(string tenantId)
             ex.Message,
             "Use only alphanumeric characters and hyphens for tenant identifiers.");
     }
+}
+
+static ErrorResponse? TryDeserializeAddCaseMemberInput(JsonElement requestBody, out AddCaseMemberInput? input)
+{
+    input = null;
+
+    if (requestBody.ValueKind != JsonValueKind.Object)
+    {
+        return new ErrorResponse(
+            "INVALID_MEMBER_INPUT",
+            "Request body must be a JSON object.",
+            "Provide a JSON object with memberType set to 'user' or 'role'.");
+    }
+
+    if (!TryGetJsonPropertyIgnoreCase(requestBody, "memberType", out JsonElement memberTypeElement) ||
+        memberTypeElement.ValueKind != JsonValueKind.String ||
+        string.IsNullOrWhiteSpace(memberTypeElement.GetString()))
+    {
+        return new ErrorResponse(
+            "INVALID_MEMBER_TYPE",
+            "MemberType is required.",
+            "Provide memberType as 'user' or 'role'.");
+    }
+
+    try
+    {
+        input = JsonSerializer.Deserialize<AddCaseMemberInput>(requestBody.GetRawText(), MemoriesJsonContext.Options);
+    }
+    catch (JsonException ex)
+    {
+        return new ErrorResponse(
+            "INVALID_MEMBER_TYPE",
+            ex.Message,
+            "Provide memberType as 'user' or 'role'.");
+    }
+
+    return input is null
+        ? new ErrorResponse(
+            "INVALID_MEMBER_INPUT",
+            "Request body is required.",
+            "Provide a JSON object with memberType set to 'user' or 'role'.")
+        : null;
+}
+
+static bool TryGetJsonPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+{
+    if (element.TryGetProperty(propertyName, out value))
+    {
+        return true;
+    }
+
+    foreach (JsonProperty property in element.EnumerateObject())
+    {
+        if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+        {
+            value = property.Value;
+            return true;
+        }
+    }
+
+    value = default;
+    return false;
 }
 
 static IReadOnlySet<string> DetermineHybridExplanationAxes(

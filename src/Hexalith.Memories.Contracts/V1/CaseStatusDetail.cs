@@ -20,4 +20,5 @@ public sealed record CaseStatusDetail(
     int MemoryUnitCount,
     DateTimeOffset? LastActivityAt,
     int IndexedCount,
-    int FailedCount);
+    int FailedCount,
+    int MemberCount);
