@@ -1,6 +1,10 @@
 namespace Hexalith.Memories.Server.Graph;
 
+using System.Collections;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Reflection;
 
 using Hexalith.Memories.Contracts.V1;
 
@@ -20,6 +24,7 @@ public sealed partial class GraphTraversalService
     private const int MaxSnippetLength = 200;
 
     private readonly IConnectionMultiplexer _falkorDb;
+    private readonly IConnectionMultiplexer _redis;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly ILogger<GraphTraversalService> _logger;
 
@@ -30,6 +35,7 @@ public sealed partial class GraphTraversalService
         ILogger<GraphTraversalService> logger)
     {
         _falkorDb = falkorDb;
+        _redis = redis;
         _graphQueryBuilder = graphQueryBuilder;
         _logger = logger;
     }
@@ -64,8 +70,12 @@ public sealed partial class GraphTraversalService
             nodes = [];
             foreach (Record record in resultSet)
             {
-                TraversalNode node = ParseTraversalNode(record);
-                nodes.Add(node);
+                TraversalNode? node = await ParseTraversalNodeAsync(graphId, record, cancellationToken)
+                    .ConfigureAwait(false);
+                if (node is not null)
+                {
+                    nodes.Add(node);
+                }
             }
         }
         catch (RedisServerException ex) when (IsGraphNotFoundError(ex))
@@ -73,69 +83,365 @@ public sealed partial class GraphTraversalService
             LogGraphNotFound(_logger, tenantId);
             return new TraversalResult(startNodeId, depth, [], 0);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogTraversalError(_logger, tenantId, startNodeId, ex);
+            throw;
+        }
 
-        long elapsedMs = Stopwatch.GetElapsedTime(startTimestamp).Milliseconds;
+        long elapsedMs = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         LogTraversalComplete(_logger, tenantId, startNodeId, depth, nodes.Count, elapsedMs);
 
         return new TraversalResult(startNodeId, depth, nodes, nodes.Count);
     }
 
-    private static TraversalNode ParseTraversalNode(Record record)
-    {
-        string nodeId = record.GetValue<string>("nodeId");
-        string ingestedAtStr = record.GetValue<string>("ingestedAt");
-        string content = record.GetValue<string>("content");
-        string sourceUri = record.GetValue<string>("sourceUri");
-        string sourceTypeStr = record.GetValue<string>("sourceType");
-        long hopDistance = record.GetValue<long>("hopDistance");
-
-        DateTimeOffset ingestedAt = DateTimeOffset.Parse(ingestedAtStr, System.Globalization.CultureInfo.InvariantCulture);
-        SourceType sourceType = ParseSourceType(sourceTypeStr);
-        string snippet = TruncateContent(content);
-
-        List<TraversalEdgeInfo> edges = ParseEdges(record);
-
-        return new TraversalNode(nodeId, snippet, sourceUri, sourceType, ingestedAt, (int)hopDistance, edges);
-    }
-
-    private static List<TraversalEdgeInfo> ParseEdges(Record record)
+    internal static List<TraversalEdgeInfo> ParseEdgeCollection(object? edgesRaw)
     {
         List<TraversalEdgeInfo> edges = [];
 
-        object edgesRaw = record.GetValue<object>("edges");
-        if (edgesRaw is not IEnumerable<object> edgeCollection)
+        if (edgesRaw is null || edgesRaw is string || edgesRaw is not IEnumerable edgeCollection)
         {
             return edges;
         }
 
-        foreach (object edgeObj in edgeCollection)
+        foreach (object? edgeObj in edgeCollection)
         {
-            if (edgeObj is not IDictionary<string, object> edgeMap)
+            if (!TryReadEdgeFields(edgeObj, out string? edgeTypeStr, out float confidence, out string? originStr, out string? connectedId, out string? direction) ||
+                string.IsNullOrWhiteSpace(edgeTypeStr) ||
+                string.IsNullOrWhiteSpace(connectedId) ||
+                string.IsNullOrWhiteSpace(direction) ||
+                !TryParseEdgeType(edgeTypeStr, out EdgeType edgeType))
             {
                 continue;
             }
 
-            string? edgeTypeStr = edgeMap.TryGetValue("edgeType", out object? etVal) ? etVal?.ToString() : null;
-            string? originStr = edgeMap.TryGetValue("origin", out object? orVal) ? orVal?.ToString() : null;
-            string? connectedId = edgeMap.TryGetValue("connectedId", out object? ciVal) ? ciVal?.ToString() : null;
-            string? direction = edgeMap.TryGetValue("direction", out object? dirVal) ? dirVal?.ToString() : null;
-            float confidence = edgeMap.TryGetValue("confidence", out object? confVal) && confVal is double confDbl
-                ? (float)confDbl
-                : 0f;
-
-            if (edgeTypeStr is null || connectedId is null || direction is null)
-            {
-                continue;
-            }
-
-            EdgeType edgeType = ParseEdgeType(edgeTypeStr);
-            EdgeOrigin origin = ParseEdgeOrigin(originStr ?? "explicit");
+            EdgeOrigin origin = TryParseEdgeOrigin(originStr, out EdgeOrigin parsedOrigin)
+                ? parsedOrigin
+                : EdgeOrigin.Explicit;
 
             edges.Add(new TraversalEdgeInfo(edgeType, confidence, origin, connectedId, direction));
         }
 
         return edges;
     }
+
+    private async Task<TraversalNode?> ParseTraversalNodeAsync(
+        string tenantId,
+        Record record,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetRequiredString(record, "nodeId", out string? nodeId))
+        {
+            return null;
+        }
+
+        long hopDistance = TryGetRecordValue(record, "hopDistance", out long parsedHopDistance)
+            ? parsedHopDistance
+            : 0;
+
+        string? content = TryGetOptionalString(record, "content");
+        string? sourceUri = TryGetOptionalString(record, "sourceUri");
+        string? sourceTypeValue = TryGetOptionalString(record, "sourceType");
+        string? ingestedAtValue = TryGetOptionalString(record, "ingestedAt");
+
+        SourceType? sourceType = TryParseSourceType(sourceTypeValue, out SourceType parsedSourceType)
+            ? parsedSourceType
+            : null;
+        DateTimeOffset? ingestedAt = TryParseDateTimeOffset(ingestedAtValue, out DateTimeOffset parsedIngestedAt)
+            ? parsedIngestedAt
+            : null;
+
+        if (string.IsNullOrWhiteSpace(content) ||
+            string.IsNullOrWhiteSpace(sourceUri) ||
+            sourceType is null ||
+            ingestedAt is null)
+        {
+            FallbackTraversalNodeData? fallback = await LoadFallbackTraversalNodeDataAsync(tenantId, nodeId, cancellationToken)
+                .ConfigureAwait(false);
+
+            content = string.IsNullOrWhiteSpace(content) ? fallback?.Content : content;
+            sourceUri = string.IsNullOrWhiteSpace(sourceUri) ? fallback?.SourceUri : sourceUri;
+            sourceType ??= fallback?.SourceType;
+            ingestedAt ??= fallback?.IngestedAt;
+        }
+
+        if (string.IsNullOrWhiteSpace(content) ||
+            string.IsNullOrWhiteSpace(sourceUri) ||
+            sourceType is null ||
+            ingestedAt is null)
+        {
+            LogTraversalNodeSkipped(_logger, tenantId, nodeId);
+            return null;
+        }
+
+        List<TraversalEdgeInfo> edges = TryGetRecordValue(record, "edges", out object? edgesRaw)
+            ? ParseEdgeCollection(edgesRaw)
+            : [];
+
+        return new TraversalNode(
+            nodeId!,
+            TruncateContent(content!),
+            sourceUri!,
+            sourceType.Value,
+            ingestedAt.Value,
+            checked((int)hopDistance),
+            edges);
+    }
+
+    private async Task<FallbackTraversalNodeData?> LoadFallbackTraversalNodeDataAsync(
+        string tenantId,
+        string nodeId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        HashEntry[] entries = await _redis.GetDatabase()
+            .HashGetAllAsync($"{tenantId}:mu:{nodeId}")
+            .ConfigureAwait(false);
+
+        if (entries.Length == 0)
+        {
+            return null;
+        }
+
+        Dictionary<string, string> fields = [];
+        foreach (HashEntry entry in entries)
+        {
+            fields[entry.Name.ToString()] = entry.Value.ToString();
+        }
+
+        SourceType? sourceType = fields.TryGetValue("sourceType", out string? sourceTypeValue) && TryParseSourceType(sourceTypeValue, out SourceType parsedSourceType)
+            ? parsedSourceType
+            : null;
+        DateTimeOffset? ingestedAt = fields.TryGetValue("ingestedAt", out string? ingestedAtValue) && TryParseDateTimeOffset(ingestedAtValue, out DateTimeOffset parsedIngestedAt)
+            ? parsedIngestedAt
+            : null;
+
+        return new FallbackTraversalNodeData(
+            GetNonEmptyField(fields, "content"),
+            GetNonEmptyField(fields, "sourceUri"),
+            sourceType,
+            ingestedAt);
+    }
+
+    private static bool TryGetRecordValue<T>(Record record, string key, out T? value)
+    {
+        try
+        {
+            value = record.GetValue<T>(key);
+            return value is not null;
+        }
+        catch
+        {
+            value = default;
+            return false;
+        }
+    }
+
+    private static bool TryGetRequiredString(Record record, string key, [NotNullWhen(true)] out string? value)
+    {
+        value = TryGetOptionalString(record, key);
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static string? TryGetOptionalString(Record record, string key)
+        => TryGetRecordValue(record, key, out object? value)
+            ? value?.ToString()
+            : null;
+
+    private static bool TryReadEdgeFields(
+        object? edgeValue,
+        out string? edgeType,
+        out float confidence,
+        out string? origin,
+        out string? connectedId,
+        out string? direction)
+    {
+        edgeType = null;
+        origin = null;
+        connectedId = null;
+        direction = null;
+        confidence = 0f;
+
+        if (edgeValue is null || !TryNormalizeEdgeMap(edgeValue, out Dictionary<string, object?> edgeMap))
+        {
+            return false;
+        }
+
+        edgeType = TryGetMapString(edgeMap, "edgeType");
+        origin = TryGetMapString(edgeMap, "origin");
+        connectedId = TryGetMapString(edgeMap, "connectedId");
+        direction = TryGetMapString(edgeMap, "direction");
+        _ = TryConvertToSingle(edgeMap.TryGetValue("confidence", out object? confidenceValue) ? confidenceValue : null, out confidence);
+
+        return true;
+    }
+
+    private static bool TryNormalizeEdgeMap(object edgeValue, out Dictionary<string, object?> edgeMap)
+    {
+        edgeMap = [];
+
+        if (edgeValue is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                string? key = entry.Key?.ToString();
+                if (!string.IsNullOrWhiteSpace(key))
+                {
+                    edgeMap[key] = entry.Value;
+                }
+            }
+
+            return edgeMap.Count > 0;
+        }
+
+        if (edgeValue is IEnumerable sequence && edgeValue is not string)
+        {
+            List<object?> values = [];
+            foreach (object? item in sequence)
+            {
+                values.Add(item);
+            }
+
+            if (TryCreateEdgeMapFromSequence(values, out edgeMap))
+            {
+                return true;
+            }
+        }
+
+        foreach (PropertyInfo property in edgeValue.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (property.GetIndexParameters().Length > 0 || !IsKnownEdgeFieldName(property.Name))
+            {
+                continue;
+            }
+
+            edgeMap[property.Name] = property.GetValue(edgeValue);
+        }
+
+        return edgeMap.Count > 0;
+    }
+
+    private static bool TryCreateEdgeMapFromSequence(
+        IReadOnlyList<object?> values,
+        out Dictionary<string, object?> edgeMap)
+    {
+        edgeMap = [];
+
+        if (values.Count == 5)
+        {
+            edgeMap["edgeType"] = values[0];
+            edgeMap["confidence"] = values[1];
+            edgeMap["origin"] = values[2];
+            edgeMap["connectedId"] = values[3];
+            edgeMap["direction"] = values[4];
+            return true;
+        }
+
+        if (values.Count % 2 != 0)
+        {
+            return false;
+        }
+
+        bool foundKnownField = false;
+        for (int i = 0; i < values.Count; i += 2)
+        {
+            string? key = values[i]?.ToString();
+            if (!string.IsNullOrWhiteSpace(key) && IsKnownEdgeFieldName(key))
+            {
+                edgeMap[key] = values[i + 1];
+                foundKnownField = true;
+            }
+        }
+
+        return foundKnownField;
+    }
+
+    private static bool IsKnownEdgeFieldName(string name)
+        => string.Equals(name, "edgeType", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "confidence", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "origin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "connectedId", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "direction", StringComparison.OrdinalIgnoreCase);
+
+    private static string? TryGetMapString(IReadOnlyDictionary<string, object?> values, string key)
+        => values.TryGetValue(key, out object? value)
+            ? value?.ToString()
+            : null;
+
+    private static bool TryConvertToSingle(object? value, out float result)
+    {
+        switch (value)
+        {
+            case float floatValue:
+                result = floatValue;
+                return true;
+            case double doubleValue:
+                result = (float)doubleValue;
+                return true;
+            case decimal decimalValue:
+                result = (float)decimalValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case long longValue:
+                result = longValue;
+                return true;
+            case RedisValue redisValue when redisValue.HasValue &&
+                float.TryParse(redisValue.ToString(), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float redisParsed):
+                result = redisParsed;
+                return true;
+            case not null when float.TryParse(value.ToString(), NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float parsed):
+                result = parsed;
+                return true;
+            default:
+                result = 0f;
+                return false;
+        }
+    }
+
+    private static bool TryParseDateTimeOffset(string? value, out DateTimeOffset result)
+        => DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out result);
+
+    private static bool TryParseEdgeType(string? value, out EdgeType edgeType)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            edgeType = default;
+            return false;
+        }
+
+        try
+        {
+            edgeType = ParseEdgeType(value);
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            edgeType = default;
+            return false;
+        }
+    }
+
+    private static bool TryParseEdgeOrigin(string? value, out EdgeOrigin origin)
+        => Enum.TryParse(value, ignoreCase: true, out origin)
+        && Enum.IsDefined(origin);
+
+    private static bool TryParseSourceType(string? value, out SourceType sourceType)
+        => Enum.TryParse(value, ignoreCase: true, out sourceType)
+        && Enum.IsDefined(sourceType);
+
+    private static string? GetNonEmptyField(IReadOnlyDictionary<string, string> fields, string fieldName)
+        => fields.TryGetValue(fieldName, out string? value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
+
+    private sealed record FallbackTraversalNodeData(
+        string? Content,
+        string? SourceUri,
+        SourceType? SourceType,
+        DateTimeOffset? IngestedAt);
 
     internal static EdgeType ParseEdgeType(string cypherLabel) => cypherLabel switch
     {
@@ -187,6 +493,9 @@ public sealed partial class GraphTraversalService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "FalkorDB graph not found for tenant {TenantId} — returning empty traversal")]
     private static partial void LogGraphNotFound(ILogger logger, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping traversal node {NodeId} in tenant {TenantId} because required context is missing")]
+    private static partial void LogTraversalNodeSkipped(ILogger logger, string tenantId, string nodeId);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Traversal failed: tenant={TenantId}, startNode={StartNodeId}")]
     private static partial void LogTraversalError(ILogger logger, string tenantId, string startNodeId, Exception exception);

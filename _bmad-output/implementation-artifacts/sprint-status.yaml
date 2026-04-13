@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-13 # Story 3.6 done
+last_updated: 2026-04-13 # Story 4.1 done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -80,9 +80,9 @@ development_status:
 
   # Epic 4: Causal Intelligence & Graph Traversal
   epic-4: in-progress
-  4-1-causal-chain-traversal: review
+  4-1-causal-chain-traversal: done
   4-2-edge-type-filtering-and-taxonomy: ready-for-dev
-  4-3-gap-detection-and-confidence-promotion: backlog
+  4-3-gap-detection-and-confidence-promotion: ready-for-dev
   epic-4-retrospective: optional
 
   # --- Phase: MVP — Gate 2 (Tenant Isolation) ---

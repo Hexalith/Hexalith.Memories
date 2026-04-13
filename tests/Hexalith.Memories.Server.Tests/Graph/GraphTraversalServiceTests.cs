@@ -97,6 +97,63 @@ public class GraphTraversalServiceTests
         Should.Throw<ArgumentOutOfRangeException>(() => GraphTraversalService.ParseEdgeOrigin("unknown"));
     }
 
+    [Fact]
+    public void ParseEdgeCollection_DictionaryShape_ShouldMapEdge()
+    {
+        List<object> edgesRaw =
+        [
+            new Dictionary<string, object?>
+            {
+                ["edgeType"] = "CAUSED_BY",
+                ["confidence"] = 0.75d,
+                ["origin"] = "explicit",
+                ["connectedId"] = "mu-002",
+                ["direction"] = "outgoing",
+            },
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.Count.ShouldBe(1);
+        edges[0].EdgeType.ShouldBe(EdgeType.CausedBy);
+        edges[0].Confidence.ShouldBe(0.75f);
+        edges[0].Origin.ShouldBe(EdgeOrigin.Explicit);
+        edges[0].ConnectedNodeId.ShouldBe("mu-002");
+        edges[0].Direction.ShouldBe("outgoing");
+    }
+
+    [Fact]
+    public void ParseEdgeCollection_RedisValueArrayShape_ShouldMapEdge()
+    {
+        List<object> edgesRaw =
+        [
+            new RedisValue[] { "CORRELATED_WITH", "0.8", "inferred", "mu-003", "incoming" },
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.Count.ShouldBe(1);
+        edges[0].EdgeType.ShouldBe(EdgeType.CorrelatedWith);
+        edges[0].Confidence.ShouldBe(0.8f);
+        edges[0].Origin.ShouldBe(EdgeOrigin.Inferred);
+        edges[0].ConnectedNodeId.ShouldBe("mu-003");
+        edges[0].Direction.ShouldBe("incoming");
+    }
+
+    [Fact]
+    public void ParseEdgeCollection_UnknownOrMalformedEntries_ShouldSkipThem()
+    {
+        List<object> edgesRaw =
+        [
+            new object[] { "UNKNOWN_EDGE", 1.0d, "explicit", "mu-004", "outgoing" },
+            42,
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.ShouldBeEmpty();
+    }
+
     // --- ParseSourceType mapping tests ---
 
     [Theory]

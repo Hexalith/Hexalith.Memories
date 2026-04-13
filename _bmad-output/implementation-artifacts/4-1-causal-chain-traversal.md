@@ -1,6 +1,6 @@
 # Story 4.1: Causal Chain Traversal
 
-Status: review
+Status: done
 
 ## Story
 
@@ -19,89 +19,89 @@ so that I can understand how events, documents, and decisions are causally conne
 ## Tasks / Subtasks
 
 - [x] Task 1: Create traversal response contracts (AC: #1, #2)
-  - [x] 1.1 Create `Contracts/V1/TraversalNode.cs` — sealed record with `MemoryUnitId` (string), `ContentSnippet` (string), `SourceUri` (string), `SourceType` (SourceType), `IngestedAt` (DateTimeOffset), `HopDistance` (int), `Edges` (IReadOnlyList\<TraversalEdgeInfo\>). Use `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on optional fields. `ContentSnippet` is first 200 chars of content (matches `MaxSnippetLength` in GraphScopedSearch)
-  - [x] 1.2 Create `Contracts/V1/TraversalEdgeInfo.cs` — sealed record with `EdgeType` (EdgeType), `Confidence` (float), `Origin` (EdgeOrigin), `ConnectedNodeId` (string), `Direction` (string — "outgoing" or "incoming"). This represents one edge incident on the node. `ConnectedNodeId` is the OTHER node on the edge (not the node itself)
-  - [x] 1.3 Create `Contracts/V1/TraversalResult.cs` — sealed record with `StartNodeId` (string), `Depth` (int), `Nodes` (IReadOnlyList\<TraversalNode\>), `TotalNodeCount` (int). No `Explanation` field for MVP — can add in future
-  - [x] 1.4 Register new types in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(TraversalNode))]`, `[JsonSerializable(typeof(TraversalEdgeInfo))]`, `[JsonSerializable(typeof(TraversalResult))]`, `[JsonSerializable(typeof(IReadOnlyList<TraversalNode>))]`
+    - [x] 1.1 Create `Contracts/V1/TraversalNode.cs` — sealed record with `MemoryUnitId` (string), `ContentSnippet` (string), `SourceUri` (string), `SourceType` (SourceType), `IngestedAt` (DateTimeOffset), `HopDistance` (int), `Edges` (IReadOnlyList\<TraversalEdgeInfo\>). Use `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on optional fields. `ContentSnippet` is first 200 chars of content (matches `MaxSnippetLength` in GraphScopedSearch)
+    - [x] 1.2 Create `Contracts/V1/TraversalEdgeInfo.cs` — sealed record with `EdgeType` (EdgeType), `Confidence` (float), `Origin` (EdgeOrigin), `ConnectedNodeId` (string), `Direction` (string — "outgoing" or "incoming"). This represents one edge incident on the node. `ConnectedNodeId` is the OTHER node on the edge (not the node itself)
+    - [x] 1.3 Create `Contracts/V1/TraversalResult.cs` — sealed record with `StartNodeId` (string), `Depth` (int), `Nodes` (IReadOnlyList\<TraversalNode\>), `TotalNodeCount` (int). No `Explanation` field for MVP — can add in future
+    - [x] 1.4 Register new types in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(TraversalNode))]`, `[JsonSerializable(typeof(TraversalEdgeInfo))]`, `[JsonSerializable(typeof(TraversalResult))]`, `[JsonSerializable(typeof(IReadOnlyList<TraversalNode>))]`
 - [x] Task 2: Add enhanced traversal query to IGraphQueryBuilder (AC: #1, #2, #5)
-  - [x] 2.1 Add `BuildTraverseWithEdges(string startNodeId, int depth, string? caseId)` to `IGraphQueryBuilder` interface — returns `(string Query, IDictionary<string, object> Parameters)`. This is a NEW method that returns both node properties AND edge metadata, unlike the existing `BuildTraverseFromNode` which only returns nodeId + hopDistance
-  - [x] 2.2 Implement in `GraphQueryBuilder`. The Cypher query must return nodes AND relationships. Use this pattern:
-    ```
-    MATCH p = (start:MemoryUnit {id: $startId})-[*0..{depth}]-(n:MemoryUnit)
-    {optional WHERE n.caseId = $caseId}
-    WITH DISTINCT n, min(length(p)) AS hopDistance
-    OPTIONAL MATCH (n)-[r]-(m:MemoryUnit)
-    WHERE m.id <> n.id
-    RETURN n.id AS nodeId,
-           n.ingestedAt AS ingestedAt,
-           n.content AS content,
-           n.sourceUri AS sourceUri,
-           n.sourceType AS sourceType,
-           hopDistance,
-           collect(DISTINCT {edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}) AS edges
-    ORDER BY n.ingestedAt ASC
-    ```
-  - [x] 2.3 Validate inputs: same pattern as existing `BuildTraverseFromNode` — `ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId)`, `ArgumentOutOfRangeException.ThrowIfNegative(depth)`, `ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10)`. Depth literal interpolation (not parameterized — Cypher limitation, same pattern as line 245 of GraphQueryBuilder.cs)
-  - [x] 2.4 Add two-param overload `BuildTraverseWithEdges(string startNodeId, int depth)` that delegates to three-param with `caseId: null` (same pattern as existing `BuildTraverseFromNode` at line 231)
+    - [x] 2.1 Add `BuildTraverseWithEdges(string startNodeId, int depth, string? caseId)` to `IGraphQueryBuilder` interface — returns `(string Query, IDictionary<string, object> Parameters)`. This is a NEW method that returns both node properties AND edge metadata, unlike the existing `BuildTraverseFromNode` which only returns nodeId + hopDistance
+    - [x] 2.2 Implement in `GraphQueryBuilder`. The Cypher query must return nodes AND relationships. Use this pattern:
+        ```
+        MATCH p = (start:MemoryUnit {id: $startId})-[*0..{depth}]-(n:MemoryUnit)
+        {optional WHERE n.caseId = $caseId}
+        WITH DISTINCT n, min(length(p)) AS hopDistance
+        OPTIONAL MATCH (n)-[r]-(m:MemoryUnit)
+        WHERE m.id <> n.id
+        RETURN n.id AS nodeId,
+               n.ingestedAt AS ingestedAt,
+               n.content AS content,
+               n.sourceUri AS sourceUri,
+               n.sourceType AS sourceType,
+               hopDistance,
+               collect(DISTINCT {edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}) AS edges
+        ORDER BY n.ingestedAt ASC
+        ```
+    - [x] 2.3 Validate inputs: same pattern as existing `BuildTraverseFromNode` — `ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId)`, `ArgumentOutOfRangeException.ThrowIfNegative(depth)`, `ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10)`. Depth literal interpolation (not parameterized — Cypher limitation, same pattern as line 245 of GraphQueryBuilder.cs)
+    - [x] 2.4 Add two-param overload `BuildTraverseWithEdges(string startNodeId, int depth)` that delegates to three-param with `caseId: null` (same pattern as existing `BuildTraverseFromNode` at line 231)
 - [x] Task 3: Create GraphTraversalService (AC: #1, #2, #3, #4)
-  - [x] 3.1 Create `Server/Graph/GraphTraversalService.cs` — sealed partial class (partial for LoggerMessage). Follow `GraphScopedSearch` service pattern (singleton, keyed service injection for `falkordb` and `redis`)
-  - [x] 3.2 Constructor: `IConnectionMultiplexer falkorDb` (keyed "falkordb"), `IConnectionMultiplexer redis` (keyed "redis"), `IGraphQueryBuilder graphQueryBuilder`, `ILogger<GraphTraversalService> logger`
-  - [x] 3.3 Main method: `TraverseAsync(string tenantId, string startNodeId, int depth, string? caseId, CancellationToken ct)` returning `TraversalResult`
-  - [x] 3.4 Implementation flow:
-    1. Build query via `_graphQueryBuilder.BuildTraverseWithEdges(startNodeId, depth, caseId)`
-    2. Execute against FalkorDB: `new FalkorDB(_falkorDb.GetDatabase()).QueryAsync(tenantId, query, parameters)` with `.WaitAsync(TimeSpan.FromSeconds(10), ct)` (same timeout as GraphScopedSearch)
-    3. Handle `RedisServerException` when graph not found — return empty result (same pattern as GraphScopedSearch lines 98-108)
-    4. Parse `ResultSet` records: for each record, extract `nodeId`, `ingestedAt`, `content`, `sourceUri`, `sourceType`, `hopDistance`, and `edges` collection. **Defensive parsing for `edges`:** the `collect()` return type depends on the NFalkorDB driver version — do NOT assume `Dictionary<string, object>`. Inspect the actual C# runtime type at debug time. It may be `List<object[]>`, `List<RedisValue[]>`, or a driver-specific collection. Write a small spike first if uncertain. Integration test 9.9 acts as a canary for this.
-    5. For each `edges` collection entry, map to `TraversalEdgeInfo` — parse `edgeType` string (e.g. "CAUSED_BY") back to `EdgeType` enum via reverse mapping, parse `origin` string to `EdgeOrigin` enum, extract `confidence` float, `connectedId` string, `direction` string
-    6. Parse `sourceType` string (e.g. "file", "event") back to `SourceType` enum — same reverse-mapping pattern as edge types. `BuildMergeMemoryUnitNode` stores `sourceType` via `ToCamelCase`, so values are camelCase strings. Add a private static `ParseSourceType(string)` method alongside edge type/origin mappers
-    7. Build `TraversalNode` for each record — truncate content to 200 chars for `ContentSnippet`
-    8. Nodes are already ordered chronologically by `ingestedAt` (from Cypher ORDER BY)
-    9. Return `TraversalResult` with `StartNodeId`, `Depth`, `Nodes` list, `TotalNodeCount`
-  - [x] 3.5 Add edge type reverse mapping: private static method that maps FalkorDB Cypher label strings back to `EdgeType` enum: "CAUSED_BY" -> CausedBy, "CORRELATED_WITH" -> CorrelatedWith, "REFERENCES" -> References, "CONTAINS" -> Contains, "ANNOTATES" -> Annotates. Throw `ArgumentOutOfRangeException` for unknown types
-  - [x] 3.6 Add edge origin reverse mapping: "explicit" -> Explicit, "inferred" -> Inferred (stored as camelCase by `ToCamelCase` in GraphQueryBuilder line 281-288)
-  - [x] 3.7 Add source type reverse mapping: "file" -> File, "url" -> Url, "event" -> Event, "command" -> Command, "projection" -> Projection, "discussion" -> Discussion, "annotation" -> Annotation. Stored as camelCase by `ToCamelCase` in `BuildMergeMemoryUnitNode`. Throw `ArgumentOutOfRangeException` for unknown types
-  - [x] 3.8 Add partial logging methods: `LogTraversalComplete(tenantId, startNodeId, depth, nodeCount, elapsedMs)`, `LogGraphNotFound(tenantId)`, `LogTraversalError(tenantId, startNodeId, exception)` — follow GraphScopedSearch logging pattern
+    - [x] 3.1 Create `Server/Graph/GraphTraversalService.cs` — sealed partial class (partial for LoggerMessage). Follow `GraphScopedSearch` service pattern (singleton, keyed service injection for `falkordb` and `redis`)
+    - [x] 3.2 Constructor: `IConnectionMultiplexer falkorDb` (keyed "falkordb"), `IConnectionMultiplexer redis` (keyed "redis"), `IGraphQueryBuilder graphQueryBuilder`, `ILogger<GraphTraversalService> logger`
+    - [x] 3.3 Main method: `TraverseAsync(string tenantId, string startNodeId, int depth, string? caseId, CancellationToken ct)` returning `TraversalResult`
+    - [x] 3.4 Implementation flow:
+        1. Build query via `_graphQueryBuilder.BuildTraverseWithEdges(startNodeId, depth, caseId)`
+        2. Execute against FalkorDB: `new FalkorDB(_falkorDb.GetDatabase()).QueryAsync(tenantId, query, parameters)` with `.WaitAsync(TimeSpan.FromSeconds(10), ct)` (same timeout as GraphScopedSearch)
+        3. Handle `RedisServerException` when graph not found — return empty result (same pattern as GraphScopedSearch lines 98-108)
+        4. Parse `ResultSet` records: for each record, extract `nodeId`, `ingestedAt`, `content`, `sourceUri`, `sourceType`, `hopDistance`, and `edges` collection. **Defensive parsing for `edges`:** the `collect()` return type depends on the NFalkorDB driver version — do NOT assume `Dictionary<string, object>`. Inspect the actual C# runtime type at debug time. It may be `List<object[]>`, `List<RedisValue[]>`, or a driver-specific collection. Write a small spike first if uncertain. Integration test 9.9 acts as a canary for this.
+        5. For each `edges` collection entry, map to `TraversalEdgeInfo` — parse `edgeType` string (e.g. "CAUSED_BY") back to `EdgeType` enum via reverse mapping, parse `origin` string to `EdgeOrigin` enum, extract `confidence` float, `connectedId` string, `direction` string
+        6. Parse `sourceType` string (e.g. "file", "event") back to `SourceType` enum — same reverse-mapping pattern as edge types. `BuildMergeMemoryUnitNode` stores `sourceType` via `ToCamelCase`, so values are camelCase strings. Add a private static `ParseSourceType(string)` method alongside edge type/origin mappers
+        7. Build `TraversalNode` for each record — truncate content to 200 chars for `ContentSnippet`
+        8. Nodes are already ordered chronologically by `ingestedAt` (from Cypher ORDER BY)
+        9. Return `TraversalResult` with `StartNodeId`, `Depth`, `Nodes` list, `TotalNodeCount`
+    - [x] 3.5 Add edge type reverse mapping: private static method that maps FalkorDB Cypher label strings back to `EdgeType` enum: "CAUSED_BY" -> CausedBy, "CORRELATED_WITH" -> CorrelatedWith, "REFERENCES" -> References, "CONTAINS" -> Contains, "ANNOTATES" -> Annotates. Throw `ArgumentOutOfRangeException` for unknown types
+    - [x] 3.6 Add edge origin reverse mapping: "explicit" -> Explicit, "inferred" -> Inferred (stored as camelCase by `ToCamelCase` in GraphQueryBuilder line 281-288)
+    - [x] 3.7 Add source type reverse mapping: "file" -> File, "url" -> Url, "event" -> Event, "command" -> Command, "projection" -> Projection, "discussion" -> Discussion, "annotation" -> Annotation. Stored as camelCase by `ToCamelCase` in `BuildMergeMemoryUnitNode`. Throw `ArgumentOutOfRangeException` for unknown types
+    - [x] 3.8 Add partial logging methods: `LogTraversalComplete(tenantId, startNodeId, depth, nodeCount, elapsedMs)`, `LogGraphNotFound(tenantId)`, `LogTraversalError(tenantId, startNodeId, exception)` — follow GraphScopedSearch logging pattern
 - [x] Task 4: Register GraphTraversalService in DI (AC: #1)
-  - [x] 4.1 In `Program.cs`, register `GraphTraversalService` as singleton following `GraphScopedSearch` pattern (lines 67-72): `builder.Services.AddSingleton<GraphTraversalService>(sp => new GraphTraversalService(sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"), sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"), sp.GetRequiredService<IGraphQueryBuilder>(), sp.GetRequiredService<ILogger<GraphTraversalService>>()))`
+    - [x] 4.1 In `Program.cs`, register `GraphTraversalService` as singleton following `GraphScopedSearch` pattern (lines 67-72): `builder.Services.AddSingleton<GraphTraversalService>(sp => new GraphTraversalService(sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"), sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"), sp.GetRequiredService<IGraphQueryBuilder>(), sp.GetRequiredService<ILogger<GraphTraversalService>>()))`
 - [x] Task 5: Add traversal endpoint (AC: #1, #2, #3, #4, #5)
-  - [x] 5.1 Add `GET /api/tenants/{tenantId}/traverse` endpoint in `Program.cs` (Minimal API pattern, same file as all other endpoints)
-  - [x] 5.2 Parameters: `{tenantId}` (route), `[FromQuery] string startNodeId` (required), `[FromQuery] int depth = 2` (default 2, clamp 0-10), `[FromQuery] string? caseId = null` (optional)
-  - [x] 5.3 Inject `GraphTraversalService traversalService` into the endpoint delegate
-  - [x] 5.4 Validate `tenantId` not null/empty (return 400), validate `startNodeId` not null/empty (return 400 with message "startNodeId query parameter is required")
-  - [x] 5.5 Clamp depth: `int clampedDepth = Math.Clamp(depth, 0, 10)` — same pattern as search endpoint
-  - [x] 5.6 Call `traversalService.TraverseAsync(tenantId, startNodeId, clampedDepth, caseId, cancellationToken)`
-  - [x] 5.7 Return `Results.Ok(result)` with `TraversalResult` JSON response
-  - [x] 5.8 Handle empty result (no nodes found): return 200 with empty nodes list (not 404 — the query succeeded, there are just no connected nodes)
+    - [x] 5.1 Add `GET /api/tenants/{tenantId}/traverse` endpoint in `Program.cs` (Minimal API pattern, same file as all other endpoints)
+    - [x] 5.2 Parameters: `{tenantId}` (route), `[FromQuery] string startNodeId` (required), `[FromQuery] int depth = 2` (default 2, clamp 0-10), `[FromQuery] string? caseId = null` (optional)
+    - [x] 5.3 Inject `GraphTraversalService traversalService` into the endpoint delegate
+    - [x] 5.4 Validate `tenantId` not null/empty (return 400), validate `startNodeId` not null/empty (return 400 with message "startNodeId query parameter is required")
+    - [x] 5.5 Clamp depth: `int clampedDepth = Math.Clamp(depth, 0, 10)` — same pattern as search endpoint
+    - [x] 5.6 Call `traversalService.TraverseAsync(tenantId, startNodeId, clampedDepth, caseId, cancellationToken)`
+    - [x] 5.7 Return `Results.Ok(result)` with `TraversalResult` JSON response
+    - [x] 5.8 Handle empty result (no nodes found): return 200 with empty nodes list (not 404 — the query succeeded, there are just no connected nodes)
 - [x] Task 6: Contract serialization tests (AC: #1, #2)
-  - [x] 6.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalNodeSerializationTests.cs` — roundtrip JSON tests for `TraversalNode` with edges, verify camelCase serialization, verify `ContentSnippet` and `Edges` serialize correctly
-  - [x] 6.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalEdgeInfoSerializationTests.cs` — roundtrip tests for edge info with EdgeType and EdgeOrigin enums as camelCase strings
-  - [x] 6.3 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalResultSerializationTests.cs` — roundtrip test for full result structure
+    - [x] 6.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalNodeSerializationTests.cs` — roundtrip JSON tests for `TraversalNode` with edges, verify camelCase serialization, verify `ContentSnippet` and `Edges` serialize correctly
+    - [x] 6.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalEdgeInfoSerializationTests.cs` — roundtrip tests for edge info with EdgeType and EdgeOrigin enums as camelCase strings
+    - [x] 6.3 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalResultSerializationTests.cs` — roundtrip test for full result structure
 - [x] Task 7: GraphQueryBuilder unit tests (AC: #5)
-  - [x] 7.1 Add `BuildTraverseWithEdges_ReturnsParameterizedQueryWithEdgeMetadata` to `GraphQueryBuilderTests.cs` — verify query contains `$startId`, `edges`, `hopDistance`, `ingestedAt`, and `ORDER BY`
-  - [x] 7.2 Add `BuildTraverseWithEdges_Depth0_ReturnsValidQuery` — verify `[*0..0]` in query
-  - [x] 7.3 Add `BuildTraverseWithEdges_NegativeDepth_ThrowsArgumentOutOfRange` and `BuildTraverseWithEdges_DepthExceedsMax_ThrowsArgumentOutOfRange` — Theory with `[InlineData(-1)]`, `[InlineData(11)]`
-  - [x] 7.4 Add `BuildTraverseWithEdges_InjectionPrevention` — adversarial startNodeId NOT in query string, IS in parameters dict
-  - [x] 7.5 Add `BuildTraverseWithEdges_WithCaseId_AddsWhereClause` — verify `WHERE n.caseId = $caseId` present and parameter set
-  - [x] 7.6 Add `BuildTraverseWithEdges_WithoutCaseId_NoWhereClause` — verify no WHERE clause
-  - [x] 7.7 Add `BuildTraverseWithEdges_TwoParamOverload_DelegatesToThreeParam` — verify two-param produces same query as three-param with null caseId
+    - [x] 7.1 Add `BuildTraverseWithEdges_ReturnsParameterizedQueryWithEdgeMetadata` to `GraphQueryBuilderTests.cs` — verify query contains `$startId`, `edges`, `hopDistance`, `ingestedAt`, and `ORDER BY`
+    - [x] 7.2 Add `BuildTraverseWithEdges_Depth0_ReturnsValidQuery` — verify `[*0..0]` in query
+    - [x] 7.3 Add `BuildTraverseWithEdges_NegativeDepth_ThrowsArgumentOutOfRange` and `BuildTraverseWithEdges_DepthExceedsMax_ThrowsArgumentOutOfRange` — Theory with `[InlineData(-1)]`, `[InlineData(11)]`
+    - [x] 7.4 Add `BuildTraverseWithEdges_InjectionPrevention` — adversarial startNodeId NOT in query string, IS in parameters dict
+    - [x] 7.5 Add `BuildTraverseWithEdges_WithCaseId_AddsWhereClause` — verify `WHERE n.caseId = $caseId` present and parameter set
+    - [x] 7.6 Add `BuildTraverseWithEdges_WithoutCaseId_NoWhereClause` — verify no WHERE clause
+    - [x] 7.7 Add `BuildTraverseWithEdges_TwoParamOverload_DelegatesToThreeParam` — verify two-param produces same query as three-param with null caseId
 - [x] Task 8: GraphTraversalService unit tests (AC: #1, #2, #3, #4)
-  - [x] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Graph/GraphTraversalServiceTests.cs`
-  - [x] 8.2 Test: `TraverseAsync_ReturnsNodesWithEdgeMetadata` — mock IGraphQueryBuilder + FalkorDB, verify result contains TraversalNodes with edges
-  - [x] 8.3 Test: `TraverseAsync_GraphNotFound_ReturnsEmptyResult` — mock RedisServerException, verify empty TraversalResult
-  - [x] 8.4 Test: `TraverseAsync_Depth0_ReturnsStartNodeOnly` — verify single node returned
-  - [x] 8.5 Test: `TraverseAsync_ResultsOrderedChronologically` — verify IngestedAt ordering
-  - [x] 8.6 Test: `TraverseAsync_ContentTruncatedTo200Chars` — verify snippets are max 200 chars
-  - [x] 8.7 Test: `TraverseAsync_EdgeTypeMapping` — verify CAUSED_BY/CORRELATED_WITH/REFERENCES strings map to correct EdgeType enum values
+    - [x] 8.1 Create `tests/Hexalith.Memories.Server.Tests/Graph/GraphTraversalServiceTests.cs`
+    - [x] 8.2 Test: `TraverseAsync_ReturnsNodesWithEdgeMetadata` — mock IGraphQueryBuilder + FalkorDB, verify result contains TraversalNodes with edges
+    - [x] 8.3 Test: `TraverseAsync_GraphNotFound_ReturnsEmptyResult` — mock RedisServerException, verify empty TraversalResult
+    - [x] 8.4 Test: `TraverseAsync_Depth0_ReturnsStartNodeOnly` — verify single node returned
+    - [x] 8.5 Test: `TraverseAsync_ResultsOrderedChronologically` — verify IngestedAt ordering
+    - [x] 8.6 Test: `TraverseAsync_ContentTruncatedTo200Chars` — verify snippets are max 200 chars
+    - [x] 8.7 Test: `TraverseAsync_EdgeTypeMapping` — verify CAUSED_BY/CORRELATED_WITH/REFERENCES strings map to correct EdgeType enum values
 - [x] Task 9: Integration tests (AC: #1, #2, #3, #4, #5)
-  - [x] 9.1 Add `tests/Hexalith.Memories.IntegrationTests/Graph/TraversalEndpointIntegrationTests.cs`
-  - [x] 9.2 Test: Ingest 3 MUs (A, B, C) with CausationId chain A->B->C, traverse from A with depth=3, verify all 3 returned with correct edge metadata and chronological order. **Latency smoke check:** wrap the HTTP call in a `Stopwatch` and assert elapsed < 2s (NFR4 baseline — not a concurrency test, but catches gross regressions)
-  - [x] 9.3 Test: Traverse with depth=0, verify only starting node returned
-  - [x] 9.4 Test: Traverse from non-existent node, verify 200 with empty nodes list
-  - [x] 9.5 Test: Traverse with caseId scoping — create MUs in two cases, verify only same-case nodes returned
-  - [x] 9.6 Test: Verify edge metadata includes type, confidence, origin, direction for each relationship
-  - [x] 9.7 Test: Verify `startNodeId` parameter is required — omit it, verify 400 response
-  - [x] 9.8 Test: Large graph traversal — ingest ~50 MUs with a mix of `caused_by`, `correlated_with`, and `references` edges forming a connected subgraph, traverse from a central node with depth=5, verify result returns within 2s and contains expected nodes. Catches combinatorial blowup in variable-length path matching that small tests miss
-  - [x] 9.9 Test: Edge collection parsing type assertion — traverse a graph with at least one edge, extract the raw `edges` column from the FalkorDB `ResultSet` record, assert the C# runtime type (e.g., `List<Dictionary<string, object>>` or driver-specific collection). This test acts as a canary if the NFalkorDB driver changes its `collect()` return type
+    - [x] 9.1 Add `tests/Hexalith.Memories.IntegrationTests/Graph/TraversalEndpointIntegrationTests.cs`
+    - [x] 9.2 Test: Ingest 3 MUs (A, B, C) with CausationId chain A->B->C, traverse from A with depth=3, verify all 3 returned with correct edge metadata and chronological order. **Latency smoke check:** wrap the HTTP call in a `Stopwatch` and assert elapsed < 2s (NFR4 baseline — not a concurrency test, but catches gross regressions)
+    - [x] 9.3 Test: Traverse with depth=0, verify only starting node returned
+    - [x] 9.4 Test: Traverse from non-existent node, verify 200 with empty nodes list
+    - [x] 9.5 Test: Traverse with caseId scoping — create MUs in two cases, verify only same-case nodes returned
+    - [x] 9.6 Test: Verify edge metadata includes type, confidence, origin, direction for each relationship
+    - [x] 9.7 Test: Verify `startNodeId` parameter is required — omit it, verify 400 response
+    - [x] 9.8 Test: Large graph traversal — ingest ~50 MUs with a mix of `caused_by`, `correlated_with`, and `references` edges forming a connected subgraph, traverse from a central node with depth=5, verify result returns within 2s and contains expected nodes. Catches combinatorial blowup in variable-length path matching that small tests miss
+    - [x] 9.9 Test: Edge collection parsing type assertion — traverse a graph with at least one edge, extract the raw `edges` column from the FalkorDB `ResultSet` record, assert the C# runtime type (e.g., `List<Dictionary<string, object>>` or driver-specific collection). This test acts as a canary if the NFalkorDB driver changes its `collect()` return type
 
 ## Dev Notes
 
@@ -130,6 +130,7 @@ The new `BuildTraverseWithEdges` query returns all of this in a single Cypher ca
 ### Edge Metadata in FalkorDB
 
 Edges are created by `BuildMergeEdge` (GraphQueryBuilder.cs lines 148-172) with these properties:
+
 - `confidence` (float) — from `EdgeTypeDefaults`
 - `origin` (string) — stored as camelCase via `ToCamelCase` helper (e.g., "explicit", "inferred")
 
@@ -198,31 +199,33 @@ FalkorDB `Record` objects have named columns matching the Cypher RETURN clause. 
 
 ### Key Files to Create
 
-| File | Purpose |
-|------|---------|
-| `Contracts/V1/TraversalNode.cs` | Node in traversal result with summary + edges |
-| `Contracts/V1/TraversalEdgeInfo.cs` | Edge metadata on a traversal node |
-| `Contracts/V1/TraversalResult.cs` | Overall traversal response |
-| `Server/Graph/GraphTraversalService.cs` | Service orchestrating traversal queries |
+| File                                    | Purpose                                       |
+| --------------------------------------- | --------------------------------------------- |
+| `Contracts/V1/TraversalNode.cs`         | Node in traversal result with summary + edges |
+| `Contracts/V1/TraversalEdgeInfo.cs`     | Edge metadata on a traversal node             |
+| `Contracts/V1/TraversalResult.cs`       | Overall traversal response                    |
+| `Server/Graph/GraphTraversalService.cs` | Service orchestrating traversal queries       |
 
 ### Key Files to Modify
 
-| File | Change |
-|------|--------|
-| `Server/Graph/IGraphQueryBuilder.cs` | Add `BuildTraverseWithEdges` methods (2 overloads) |
-| `Server/Graph/GraphQueryBuilder.cs` | Implement `BuildTraverseWithEdges` |
-| `Server/Program.cs` | Add DI registration for GraphTraversalService, add GET /traverse endpoint |
-| `Contracts/V1/MemoriesJsonContext.cs` | Register TraversalNode, TraversalEdgeInfo, TraversalResult |
+| File                                  | Change                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `Server/Graph/IGraphQueryBuilder.cs`  | Add `BuildTraverseWithEdges` methods (2 overloads)                        |
+| `Server/Graph/GraphQueryBuilder.cs`   | Implement `BuildTraverseWithEdges`                                        |
+| `Server/Program.cs`                   | Add DI registration for GraphTraversalService, add GET /traverse endpoint |
+| `Contracts/V1/MemoriesJsonContext.cs` | Register TraversalNode, TraversalEdgeInfo, TraversalResult                |
 
 ### Testing Patterns to Follow
 
 **Unit tests (Shouldly assertions):**
+
 - `query.ShouldContain("$startId")` — verify parameterization
 - `query.ShouldNotContain(adversarialInput)` — injection prevention
 - `parameters["startId"].ShouldBe(expectedValue)` — verify parameter values
 - Theory tests with `[InlineData]` for validation edge cases
 
 **Integration tests:**
+
 - Follow `CaseEndpointIntegrationTests.cs` pattern — use `WebApplicationFactory<Program>`, `HttpClient`, actual Redis + FalkorDB
 - Ingest test data, then traverse and verify results
 - Assert on JSON response structure and content
@@ -230,6 +233,7 @@ FalkorDB `Record` objects have named columns matching the Cypher RETURN clause. 
 ### Previous Story Intelligence
 
 Story 3.6 (Annotations & Corrections) established these patterns relevant to 4.1:
+
 - `BuildMergeStubNode` + `BuildMergeEdge` for creating graph structure
 - Batch Cypher queries (`UNWIND $ids AS muId`) for multi-node operations
 - `_system.` metadata namespace for server-generated fields
@@ -237,6 +241,7 @@ Story 3.6 (Annotations & Corrections) established these patterns relevant to 4.1
 - Search result enrichment via static methods in Program.cs
 
 Story 3.5 (Deletion) established:
+
 - Status guard patterns for case operations
 - Synchronous deletion architecture
 - `DETACH DELETE` for node + relationship cleanup
@@ -301,6 +306,7 @@ Claude Opus 4.6 (1M context)
 ### File List
 
 **New files:**
+
 - src/Hexalith.Memories.Contracts/V1/TraversalNode.cs
 - src/Hexalith.Memories.Contracts/V1/TraversalEdgeInfo.cs
 - src/Hexalith.Memories.Contracts/V1/TraversalResult.cs
@@ -311,9 +317,18 @@ Claude Opus 4.6 (1M context)
 - tests/Hexalith.Memories.Server.Tests/Graph/GraphTraversalServiceTests.cs
 
 **Modified files:**
+
 - src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs (registered new types)
 - src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs (added BuildTraverseWithEdges)
 - src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs (implemented BuildTraverseWithEdges)
 - src/Hexalith.Memories.Server/Program.cs (DI registration + GET /traverse endpoint)
 - tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs (added BuildTraverseWithEdges tests)
-- _bmad-output/implementation-artifacts/sprint-status.yaml (status update)
+- \_bmad-output/implementation-artifacts/sprint-status.yaml (status update)
+
+### Review Findings
+
+- [x] `[Review][Patch]` Make traversal edge parsing defensive for alternate NFalkorDB `collect()` result shapes and numeric confidence values [src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:97]
+- [x] `[Review][Patch]` Guard traversal node parsing against stub or partially indexed `MemoryUnit` nodes that lack graph properties [src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:83]
+- [x] `[Review][Patch]` Tighten `caseId` scoping so traversal paths and returned edge metadata cannot reference out-of-case nodes [src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs:258]
+- [x] `[Review][Patch]` Use total elapsed milliseconds for traversal telemetry instead of the `Milliseconds` component [src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:77]
+- [x] `[Review][Patch]` Make annotation-count enrichment best-effort so search does not fail on graph lookup errors or stalled Falkor queries [src/Hexalith.Memories.Server/Program.cs:1243]

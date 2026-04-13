@@ -271,8 +271,13 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
 
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
-        string whereClause = string.IsNullOrWhiteSpace(caseId) ? "" : " WHERE n.caseId = $caseId";
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r]-(m:MemoryUnit) WHERE m.id <> n.id RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
+        string whereClause = string.IsNullOrWhiteSpace(caseId)
+            ? string.Empty
+            : " WHERE n.caseId = $caseId AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE node.caseId = $caseId)";
+        string edgeWhereClause = string.IsNullOrWhiteSpace(caseId)
+            ? " WHERE m.id <> n.id"
+            : " WHERE m.id <> n.id AND m.caseId = $caseId";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r]-(m:MemoryUnit){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
 
         Dictionary<string, object> parameters = new()
         {

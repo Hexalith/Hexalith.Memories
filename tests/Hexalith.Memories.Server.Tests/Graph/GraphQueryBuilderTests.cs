@@ -667,6 +667,9 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-001", 3, "case-abc");
 
         query.ShouldContain("WHERE n.caseId = $caseId");
+        query.ShouldContain("start.caseId = $caseId");
+        query.ShouldContain("ALL(node IN nodes(p) WHERE node.caseId = $caseId)");
+        query.ShouldContain("m.caseId = $caseId");
         parameters["startId"].ShouldBe("mu-001");
         parameters["caseId"].ShouldBe("case-abc");
     }
@@ -677,6 +680,8 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-001", 3, null);
 
         query.ShouldNotContain("WHERE n.caseId");
+        query.ShouldNotContain("start.caseId = $caseId");
+        query.ShouldNotContain("m.caseId = $caseId");
         parameters.ShouldNotContainKey("caseId");
     }
 

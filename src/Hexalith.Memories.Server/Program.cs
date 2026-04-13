@@ -702,7 +702,7 @@ app.MapGet("/api/search", async (
                 searchQuery, startNodeId, clampedDepth,
                 innerSearch: null, cancellationToken);
             result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId);
+            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
             if (explain)
             {
                 result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
@@ -797,7 +797,7 @@ app.MapGet("/api/search", async (
             cancellationToken);
 
         hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
-        hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId);
+        hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
 
         if (explain)
         {
@@ -855,7 +855,7 @@ app.MapGet("/api/search", async (
                     q => semanticService.SearchAsync(q, config, cancellationToken),
                     cancellationToken);
                 result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-                result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId);
+                result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
                 if (explain)
                 {
                     result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -897,7 +897,7 @@ app.MapGet("/api/search", async (
                 q => syntacticService.SearchAsync(q),
                 cancellationToken);
             syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
-            syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId);
+            syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
             if (explain)
             {
                 syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -927,7 +927,7 @@ app.MapGet("/api/search", async (
             SearchResult searchResult = await semanticService.SearchAsync(
                 mainSearchQuery, config, cancellationToken);
             searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
-            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId);
+            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
             if (explain)
             {
                 searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -958,7 +958,7 @@ app.MapGet("/api/search", async (
 
     SearchResult syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
     syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
-    syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId);
+    syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
     if (explain)
     {
         syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -1244,7 +1244,8 @@ static async Task<SearchResult> EnrichResultWithAnnotationCountsAsync(
     SearchResult result,
     IGraphQueryBuilder graphQueryBuilder,
     IConnectionMultiplexer falkorDb,
-    string tenantId)
+    string tenantId,
+    CancellationToken cancellationToken)
 {
     if (result.Results.Count == 0)
     {
@@ -1257,20 +1258,12 @@ static async Task<SearchResult> EnrichResultWithAnnotationCountsAsync(
         return result;
     }
 
-    (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(muIds);
-    NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
-    NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
-
-    Dictionary<string, int> counts = [];
-    foreach (NFalkorDB.Record record in countResult)
-    {
-        string muId = record.Values[0].ToString() ?? string.Empty;
-        int count = Convert.ToInt32(record.Values[1]);
-        if (!string.IsNullOrEmpty(muId) && count > 0)
-        {
-            counts[muId] = count;
-        }
-    }
+    Dictionary<string, int> counts = await LoadAnnotationCountsAsync(
+        graphQueryBuilder,
+        falkorDb,
+        tenantId,
+        muIds,
+        cancellationToken).ConfigureAwait(false);
 
     if (counts.Count == 0)
     {
@@ -1288,7 +1281,8 @@ static async Task<HybridSearchResult> EnrichHybridResultWithAnnotationCountsAsyn
     HybridSearchResult result,
     IGraphQueryBuilder graphQueryBuilder,
     IConnectionMultiplexer falkorDb,
-    string tenantId)
+    string tenantId,
+    CancellationToken cancellationToken)
 {
     if (result.Results.Count == 0)
     {
@@ -1301,20 +1295,12 @@ static async Task<HybridSearchResult> EnrichHybridResultWithAnnotationCountsAsyn
         return result;
     }
 
-    (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(muIds);
-    NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
-    NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
-
-    Dictionary<string, int> counts = [];
-    foreach (NFalkorDB.Record record in countResult)
-    {
-        string muId = record.Values[0].ToString() ?? string.Empty;
-        int count = Convert.ToInt32(record.Values[1]);
-        if (!string.IsNullOrEmpty(muId) && count > 0)
-        {
-            counts[muId] = count;
-        }
-    }
+    Dictionary<string, int> counts = await LoadAnnotationCountsAsync(
+        graphQueryBuilder,
+        falkorDb,
+        tenantId,
+        muIds,
+        cancellationToken).ConfigureAwait(false);
 
     if (counts.Count == 0)
     {
@@ -1326,6 +1312,69 @@ static async Task<HybridSearchResult> EnrichHybridResultWithAnnotationCountsAsyn
         .ToList();
 
     return result with { Results = enriched };
+}
+
+static async Task<Dictionary<string, int>> LoadAnnotationCountsAsync(
+    IGraphQueryBuilder graphQueryBuilder,
+    IConnectionMultiplexer falkorDb,
+    string tenantId,
+    IReadOnlyList<string> memoryUnitIds,
+    CancellationToken cancellationToken)
+{
+    if (memoryUnitIds.Count == 0)
+    {
+        return [];
+    }
+
+    try
+    {
+        (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(memoryUnitIds);
+        NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
+        NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters)
+            .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
+            .ConfigureAwait(false);
+
+        Dictionary<string, int> counts = [];
+        foreach (NFalkorDB.Record record in countResult)
+        {
+            if (!TryReadAnnotationCount(record, out string? memoryUnitId, out int count) ||
+                string.IsNullOrWhiteSpace(memoryUnitId) ||
+                count <= 0)
+            {
+                continue;
+            }
+
+            counts[memoryUnitId] = count;
+        }
+
+        return counts;
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+    {
+        throw;
+    }
+    catch
+    {
+        return [];
+    }
+}
+
+static bool TryReadAnnotationCount(NFalkorDB.Record record, out string? memoryUnitId, out int count)
+{
+    memoryUnitId = null;
+    count = 0;
+
+    try
+    {
+        memoryUnitId = record.GetValue<string>("muId");
+        long parsedCount = record.GetValue<long>("count");
+        count = checked((int)parsedCount);
+        return !string.IsNullOrWhiteSpace(memoryUnitId);
+    }
+    catch
+    {
+        return false;
+    }
 }
 
 static List<CaseGroupSummary> BuildCaseGroups(
