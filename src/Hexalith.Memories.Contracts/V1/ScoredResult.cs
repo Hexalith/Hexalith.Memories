@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Text.Json.Serialization;
+
 /// <summary>A single search result with relevance score, reusable across all search axes.</summary>
 public sealed record ScoredResult
 {
@@ -25,4 +27,12 @@ public sealed record ScoredResult
 
     /// <summary>Gets the search axis that produced this result (e.g. "syntactic", "semantic", "graph").</summary>
     public string? Axis { get; init; }
+
+    /// <summary>Gets the case identifier of the memory unit, or null if not associated with a case.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CaseId { get; init; }
+
+    /// <summary>Gets the case name of the memory unit, or null if not resolved.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CaseName { get; init; }
 }

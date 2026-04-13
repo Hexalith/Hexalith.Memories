@@ -78,7 +78,7 @@ public sealed partial class SemanticSearchService
 
         // Step 3: Convert vector to bytes and build KNN query
         byte[] queryVectorBytes = MemoryMarshal.AsBytes(queryVector.AsSpan()).ToArray();
-        string queryString = BuildKnnQueryString(maxResults, query.CaseId);
+        string queryString = BuildKnnQueryString(maxResults, query.CaseId, query.SourceTypeFilter);
 
         var redisQuery = new Query(queryString)
             .AddParam("query_vec", queryVectorBytes)
@@ -133,9 +133,9 @@ public sealed partial class SemanticSearchService
             knnResults.Add((memoryUnitId, similarity));
         }
 
-        // Step 6: Enrich from syntactic hashes via pipeline batch
+        // Step 6: Enrich from syntactic hashes via pipeline batch (metadataQuery post-filtered here)
         List<ScoredResult> results = await EnrichResultsAsync(
-            db, query.TenantId, knnResults).ConfigureAwait(false);
+            db, query.TenantId, knnResults, query.MetadataQuery).ConfigureAwait(false);
 
         long searchElapsed = Environment.TickCount64 - searchStart;
         LogSemanticSearchComplete(_logger, results.Count, searchElapsed);
@@ -143,7 +143,7 @@ public sealed partial class SemanticSearchService
         return new Contracts.V1.SearchResult
         {
             Results = results,
-            TotalCount = result.TotalResults,
+            TotalCount = results.Count,
             HasIndexedMemoryUnits = true,
             Query = query.Query,
         };
@@ -155,19 +155,27 @@ public sealed partial class SemanticSearchService
     internal static double ConvertDistanceToSimilarity(double distance)
         => Math.Clamp(1.0 - distance, 0.0, 1.0);
 
-    /// <summary>Builds a KNN query string, optionally scoped to a case ID.</summary>
+    /// <summary>Builds a KNN query string with optional case and source type pre-filters.</summary>
     /// <param name="maxResults">The number of nearest neighbors to return.</param>
     /// <param name="caseId">An optional case identifier for TAG filtering.</param>
+    /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
     /// <returns>The KNN query string for FT.SEARCH.</returns>
-    internal static string BuildKnnQueryString(int maxResults, string? caseId)
+    internal static string BuildKnnQueryString(int maxResults, string? caseId, string? sourceTypeFilter = null)
     {
-        if (string.IsNullOrWhiteSpace(caseId))
+        List<string> filterParts = [];
+
+        if (!string.IsNullOrWhiteSpace(caseId))
         {
-            return $"*=>[KNN {maxResults} @embedding $query_vec AS __vector_score]";
+            filterParts.Add($"@caseId:{{{EscapeTagValue(caseId)}}}");
         }
 
-        string escapedCaseId = EscapeTagValue(caseId);
-        return $"@caseId:{{{escapedCaseId}}}=>[KNN {maxResults} @embedding $query_vec AS __vector_score]";
+        if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
+        {
+            filterParts.Add($"@sourceType:{{{EscapeTagValue(sourceTypeFilter)}}}");
+        }
+
+        string preFilter = filterParts.Count > 0 ? string.Join(" ", filterParts) : "*";
+        return $"{preFilter}=>[KNN {maxResults} @embedding $query_vec AS __vector_score]";
     }
 
     /// <summary>Escapes RediSearch TAG field special characters in a value.</summary>
@@ -212,14 +220,15 @@ public sealed partial class SemanticSearchService
     private async Task<List<ScoredResult>> EnrichResultsAsync(
         IDatabase db,
         string tenantId,
-        List<(string MemoryUnitId, double Similarity)> knnResults)
+        List<(string MemoryUnitId, double Similarity)> knnResults,
+        string? metadataQuery = null)
     {
-        // Pipeline batch: fetch content/sourceUri/sourceType from syntactic hashes
+        // Pipeline batch: fetch content/sourceUri/sourceType/caseId from syntactic hashes
         IBatch batch = db.CreateBatch();
         Task<RedisValue[]>[] tasks = knnResults.Select(r =>
             batch.HashGetAsync(
                 $"{tenantId}:mu:{r.MemoryUnitId}",
-                [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType")])).ToArray();
+                [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType"), new RedisValue("caseId"), new RedisValue("metadataText")])).ToArray();
         batch.Execute();
         RedisValue[][] hashResults = await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -239,6 +248,15 @@ public sealed partial class SemanticSearchService
             string content = (string)fields[0]!;
             string sourceUri = (string)fields[1]!;
             string sourceTypeValue = (string)fields[2]!;
+            string? caseIdValue = fields.Length > 3 && fields[3].HasValue ? (string)fields[3]! : null;
+            string? metadataText = fields.Length > 4 && fields[4].HasValue ? (string)fields[4]! : null;
+
+            // Post-filter: metadataQuery cannot be a KNN pre-filter (TEXT fields unsupported)
+            if (!string.IsNullOrWhiteSpace(metadataQuery)
+                && (string.IsNullOrEmpty(metadataText) || !metadataText.Contains(metadataQuery, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
 
             if (!Enum.TryParse(sourceTypeValue, ignoreCase: true, out SourceType sourceType))
             {
@@ -254,13 +272,14 @@ public sealed partial class SemanticSearchService
                 SourceUri = sourceUri,
                 SourceType = sourceType,
                 Axis = "semantic",
+                CaseId = string.IsNullOrWhiteSpace(caseIdValue) ? null : caseIdValue,
             });
         }
 
         return results;
     }
 
-    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|]")]
+    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|,]")]
     private static partial Regex EscapeRegex();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Semantic search complete: {ResultCount} results in {LatencyMs}ms")]

@@ -25,4 +25,8 @@ public sealed record SearchResult
     /// <summary>Gets the explain-mode metadata describing normalization methods and fusion weights. Null when explain=false.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SearchExplanation? Explanation { get; init; }
+
+    /// <summary>Gets the per-case result distribution summary, or null when no case attribution is available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CaseGroupSummary>? CaseGroups { get; init; }
 }

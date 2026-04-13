@@ -74,13 +74,13 @@ public sealed partial class SyntacticSearchService
         var ft = db.FT();
 
         string searchTerms = BuildSearchTermsQuery(query.Query);
-        string queryString = BuildQueryString(searchTerms, query.CaseId);
+        string queryString = BuildQueryString(searchTerms, query.CaseId, query.SourceTypeFilter, query.MetadataQuery);
 
         var redisQuery = new Query(queryString)
             .SetWithScores(true)
             .Limit(offset, maxResults)
             .Dialect(2)
-            .ReturnFields("content", "sourceUri", "sourceType", "metadataJson", "ingestedBy", "ingestedAt");
+            .ReturnFields("content", "sourceUri", "sourceType", "caseId", "metadataJson", "ingestedBy", "ingestedAt");
 
         string indexName = $"{query.TenantId}:memories:idx";
         RedisSearchResult result;
@@ -142,6 +142,8 @@ public sealed partial class SyntacticSearchService
         string content = (string)doc["content"]!;
         string sourceUri = (string)doc["sourceUri"]!;
         string sourceTypeValue = (string)doc["sourceType"]!;
+        RedisValue caseIdField = doc["caseId"];
+        string? caseIdValue = caseIdField.IsNullOrEmpty ? null : caseIdField.ToString();
 
         _ = Enum.TryParse(sourceTypeValue, ignoreCase: true, out SourceType sourceType);
 
@@ -153,22 +155,37 @@ public sealed partial class SyntacticSearchService
             SourceUri = sourceUri,
             SourceType = sourceType,
             Axis = "syntactic",
+            CaseId = string.IsNullOrWhiteSpace(caseIdValue) ? null : caseIdValue,
         };
     }
 
-    /// <summary>Builds the FT.SEARCH query string, optionally scoped to a case.</summary>
+    /// <summary>Builds the FT.SEARCH query string with optional case, source type, and metadata filters.</summary>
     /// <param name="searchTerms">The escaped search terms.</param>
     /// <param name="caseId">An optional case identifier for TAG filtering.</param>
+    /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
+    /// <param name="metadataQuery">An optional metadata text query for TEXT filtering.</param>
     /// <returns>The query string for FT.SEARCH.</returns>
-    internal static string BuildQueryString(string searchTerms, string? caseId)
+    internal static string BuildQueryString(string searchTerms, string? caseId, string? sourceTypeFilter = null, string? metadataQuery = null)
     {
-        if (string.IsNullOrWhiteSpace(caseId))
+        List<string> parts = [];
+
+        if (!string.IsNullOrWhiteSpace(caseId))
         {
-            return searchTerms;
+            parts.Add($"@caseId:{{{EscapeRedisQuery(caseId)}}}");
         }
 
-        string escapedCaseId = EscapeRedisQuery(caseId);
-        return $"@caseId:{{{escapedCaseId}}} {searchTerms}";
+        if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
+        {
+            parts.Add($"@sourceType:{{{EscapeRedisQuery(sourceTypeFilter)}}}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadataQuery))
+        {
+            parts.Add($"@metadataText:({EscapeRedisQuery(metadataQuery)})");
+        }
+
+        parts.Add(searchTerms);
+        return string.Join(" ", parts);
     }
 
     /// <summary>
@@ -249,7 +266,7 @@ public sealed partial class SyntacticSearchService
         return content[..cutoff] + "...";
     }
 
-    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|]")]
+    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|,]")]
     private static partial Regex EscapeRegex();
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch index {IndexName} not found for tenant {TenantId} — returning empty results")]

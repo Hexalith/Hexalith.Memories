@@ -212,12 +212,78 @@ public class SyntacticSearchServiceTests
         result.ShouldContain(@"\@content");
     }
 
+    [Fact]
+    public void BuildQueryString_WithSourceTypeFilter_ShouldAddTagFilter()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", null, "file");
+
+        result.ShouldBe("@sourceType:{file} terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithMetadataQuery_ShouldAddTextFilter()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", null, null, "important");
+
+        result.ShouldBe("@metadataText:(important) terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithAllFilters_ShouldCombineWithAnd()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", "case-1", "file", "important");
+
+        result.ShouldContain(@"@caseId:{case\-1}");
+        result.ShouldContain("@sourceType:{file}");
+        result.ShouldContain("@metadataText:(important)");
+        result.ShouldContain("terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithCaseIdAndSourceType_ShouldCombineBoth()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", "case-1", "url");
+
+        result.ShouldContain(@"@caseId:{case\-1}");
+        result.ShouldContain("@sourceType:{url}");
+        result.ShouldContain("terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithEmptySourceTypeFilter_ShouldIgnore()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", null, "");
+
+        result.ShouldBe("terms");
+    }
+
+    [Fact]
+    public void MapDocumentToScoredResult_WithCaseId_ShouldSetCaseIdProperty()
+    {
+        Document doc = CreateDocument("tenant1:mu:abc123", 5.0, caseId: "case-abc");
+
+        ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
+
+        result.CaseId.ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void MapDocumentToScoredResult_WithoutCaseId_ShouldHaveNullCaseId()
+    {
+        Document doc = CreateDocument("tenant1:mu:abc123", 5.0);
+
+        ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
+
+        result.CaseId.ShouldBeNull();
+    }
+
     private static Document CreateDocument(
         string id,
         double score,
         string content = "Test content for search",
         string sourceUri = "file:///test.pdf",
-        string sourceType = "file")
+        string sourceType = "file",
+        string? caseId = null)
     {
         var fields = new Dictionary<string, RedisValue>
         {
@@ -228,6 +294,11 @@ public class SyntacticSearchServiceTests
             ["ingestedBy"] = "user@test.com",
             ["ingestedAt"] = "2026-03-31T10:00:00+00:00",
         };
+
+        if (caseId is not null)
+        {
+            fields["caseId"] = caseId;
+        }
 
         return new Document(id, fields, score);
     }

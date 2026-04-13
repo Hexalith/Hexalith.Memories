@@ -199,6 +199,11 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth)
+        => BuildTraverseFromNode(startNodeId, depth, caseId: null);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth, string? caseId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
         ArgumentOutOfRangeException.ThrowIfNegative(depth);
@@ -206,12 +211,18 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
 
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
         // Same pattern as edge type labels in BuildMergeEdge: validated closed set.
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit) RETURN DISTINCT n.id AS nodeId, min(length(p)) AS hopDistance";
+        string whereClause = string.IsNullOrWhiteSpace(caseId) ? "" : " WHERE n.caseId = $caseId";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} RETURN DISTINCT n.id AS nodeId, min(length(p)) AS hopDistance";
 
         Dictionary<string, object> parameters = new()
         {
             ["startId"] = startNodeId,
         };
+
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            parameters["caseId"] = caseId;
+        }
 
         return (query, parameters);
     }

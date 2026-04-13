@@ -93,4 +93,41 @@ public class SearchResultSerializationTests
         deserialized.TotalCount.ShouldBe(0);
         deserialized.HasIndexedMemoryUnits.ShouldBeFalse();
     }
+
+    [Fact]
+    public void CaseGroups_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new SearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = true,
+            Query = "test",
+            CaseGroups = [new CaseGroupSummary("case-1", "Alpha", 5)],
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        SearchResult? deserialized = JsonSerializer.Deserialize<SearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.CaseGroups.ShouldNotBeNull();
+        deserialized.CaseGroups.Count.ShouldBe(1);
+        deserialized.CaseGroups[0].CaseId.ShouldBe("case-1");
+    }
+
+    [Fact]
+    public void CaseGroups_WhenNull_ShouldBeOmittedFromJson()
+    {
+        var original = new SearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = false,
+            Query = "test",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("caseGroups");
+    }
 }

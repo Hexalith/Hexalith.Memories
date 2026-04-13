@@ -6,6 +6,8 @@ using Hexalith.Memories.Contracts.V1;
 
 using Shouldly;
 
+#pragma warning disable SA1402 // File may only contain a single type -- test grouping
+
 public class ScoredResultSerializationTests
 {
     [Fact]
@@ -71,5 +73,45 @@ public class ScoredResultSerializationTests
 
         deserialized.ShouldNotBeNull();
         deserialized.Axis.ShouldBeNull();
+    }
+
+    [Fact]
+    public void CaseId_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new ScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            Score = 5.0,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+            CaseId = "case-abc",
+            CaseName = "Investigation Alpha",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        ScoredResult? deserialized = JsonSerializer.Deserialize<ScoredResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.CaseId.ShouldBe("case-abc");
+        deserialized.CaseName.ShouldBe("Investigation Alpha");
+    }
+
+    [Fact]
+    public void CaseId_WhenNull_ShouldBeOmittedFromJson()
+    {
+        var original = new ScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            Score = 5.0,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("caseId");
+        json.ShouldNotContain("caseName");
     }
 }

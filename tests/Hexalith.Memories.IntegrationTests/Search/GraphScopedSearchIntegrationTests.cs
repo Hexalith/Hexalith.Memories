@@ -272,8 +272,8 @@ public class GraphScopedSearchIntegrationTests
             "mu-A",
             depth: 2);
 
-        // Assert
-        result.TotalCount.ShouldBe(3);
+        // Assert — TotalCount reflects the filtered/enriched result count after offset
+        result.TotalCount.ShouldBe(1);
         result.Results.Count.ShouldBe(1);
         result.Results[0].MemoryUnitId.ShouldBe("mu-B");
     }
@@ -404,9 +404,9 @@ public class GraphScopedSearchIntegrationTests
             new SearchQuery { TenantId = tenantId, Query = string.Empty, MaxResults = 10 },
             "mu-nohash", depth: 0);
 
-        // Assert — node was traversed but skipped in enrichment
-        result.TotalCount.ShouldBe(1); // traversed 1 node
-        result.Results.ShouldBeEmpty(); // but enrichment skipped it
+        // Assert — node was traversed but skipped in enrichment; TotalCount reflects filtered results
+        result.TotalCount.ShouldBe(0); // enrichment skipped it, so filtered count is 0
+        result.Results.ShouldBeEmpty();
     }
 
     [Fact]

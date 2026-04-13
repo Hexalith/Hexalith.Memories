@@ -28,6 +28,10 @@ public sealed record HybridSearchResult
     /// <summary>Gets the explain-mode metadata describing normalization methods and fusion weights. Null when explain=false.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SearchExplanation? Explanation { get; init; }
+
+    /// <summary>Gets the per-case result distribution summary, or null when no case attribution is available.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CaseGroupSummary>? CaseGroups { get; init; }
 }
 
 /// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>
@@ -56,4 +60,12 @@ public sealed record FusedScoredResult
 
     /// <summary>Gets the normalized graph (proximity) score, or null if the axis was not queried or didn't find this unit.</summary>
     public double? GraphScore { get; init; }
+
+    /// <summary>Gets the case identifier of the memory unit, or null if not associated with a case.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CaseId { get; init; }
+
+    /// <summary>Gets the case name of the memory unit, or null if not resolved.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CaseName { get; init; }
 }

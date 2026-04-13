@@ -75,7 +75,7 @@ public sealed partial class GraphScopedSearch
         string graphId = normalizedQuery.TenantId;
 
         (string cypherQuery, IDictionary<string, object> parameters) =
-            _graphQueryBuilder.BuildTraverseFromNode(startNodeId, depth);
+            _graphQueryBuilder.BuildTraverseFromNode(startNodeId, depth, normalizedQuery.CaseId);
 
         List<(string NodeId, int HopDistance)> traversedNodes;
         long traversalElapsedMs;
@@ -146,12 +146,12 @@ public sealed partial class GraphScopedSearch
             .ToList();
 
         List<ScoredResult> results = await EnrichResultsAsync(
-            _redis.GetDatabase(), normalizedQuery.TenantId, sorted).ConfigureAwait(false);
+            _redis.GetDatabase(), normalizedQuery.TenantId, sorted, normalizedQuery.SourceTypeFilter, normalizedQuery.MetadataQuery).ConfigureAwait(false);
 
         return new SearchResult
         {
             Results = results,
-            TotalCount = traversedNodes.Count,
+            TotalCount = results.Count,
             HasIndexedMemoryUnits = true,
             Query = startNodeId,
         };
@@ -278,13 +278,15 @@ public sealed partial class GraphScopedSearch
     private async Task<List<ScoredResult>> EnrichResultsAsync(
         IDatabase db,
         string tenantId,
-        List<(string NodeId, int HopDistance)> nodes)
+        List<(string NodeId, int HopDistance)> nodes,
+        string? sourceTypeFilter = null,
+        string? metadataQuery = null)
     {
         IBatch batch = db.CreateBatch();
         Task<RedisValue[]>[] tasks = nodes.Select(n =>
             batch.HashGetAsync(
                 $"{tenantId}:mu:{n.NodeId}",
-                [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType")])).ToArray();
+                [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType"), new RedisValue("caseId"), new RedisValue("metadataText")])).ToArray();
         batch.Execute();
         RedisValue[][] hashResults = await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -303,10 +305,26 @@ public sealed partial class GraphScopedSearch
             string content = (string)fields[0]!;
             string sourceUri = (string)fields[1]!;
             string sourceTypeValue = (string)fields[2]!;
+            string? caseIdValue = fields.Length > 3 && fields[3].HasValue ? (string)fields[3]! : null;
+            string? metadataText = fields.Length > 4 && fields[4].HasValue ? (string)fields[4]! : null;
 
             if (!Enum.TryParse(sourceTypeValue, ignoreCase: true, out SourceType sourceType))
             {
                 LogEnrichmentSkipped(_logger, nodeId, $"invalid sourceType '{sourceTypeValue}'");
+                continue;
+            }
+
+            // Post-filter: sourceTypeFilter on already-enriched SourceType field
+            if (!string.IsNullOrWhiteSpace(sourceTypeFilter)
+                && !string.Equals(sourceTypeValue, sourceTypeFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // Post-filter: metadataQuery on already-enriched metadataText field
+            if (!string.IsNullOrWhiteSpace(metadataQuery)
+                && (string.IsNullOrEmpty(metadataText) || !metadataText.Contains(metadataQuery, StringComparison.OrdinalIgnoreCase)))
+            {
                 continue;
             }
 
@@ -318,6 +336,7 @@ public sealed partial class GraphScopedSearch
                 SourceUri = sourceUri,
                 SourceType = sourceType,
                 Axis = "graph",
+                CaseId = string.IsNullOrWhiteSpace(caseIdValue) ? null : caseIdValue,
             });
         }
 
