@@ -1,6 +1,6 @@
 # Story 4.3: Gap Detection & Confidence Promotion
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -18,155 +18,163 @@ so that I can trust the completeness of causal chains and contribute human verif
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create gap marker contract and extend TraversalResult (AC: #1, #2)
-  - [ ] 1.1 Create `Contracts/V1/TraversalGapMarker.cs` — sealed record with `MissingNodeId` (string), `HopDistance` (int), `Edges` (IReadOnlyList\<TraversalEdgeInfo\>). Same edge metadata shape as TraversalNode, showing which edges reference the missing stub. This represents a node found during traversal that has no content — a stub created by `BuildMergeStubNode` during a prior ingestion where CausationId or CorrelationId pointed to a not-yet-ingested memory unit
-  - [ ] 1.2 Modify `Contracts/V1/TraversalResult.cs` — add a non-positional init property: `public IReadOnlyList<TraversalGapMarker> GapMarkers { get; init; } = [];`. This is non-breaking: existing `new TraversalResult(startId, depth, nodes, count)` still works, and callers that care about gaps use `new TraversalResult(...) { GapMarkers = gaps }`. Do NOT change the positional constructor signature — that would break Story 4.1's code and tests
-  - [ ] 1.3 Register new types in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(TraversalGapMarker))]`, `[JsonSerializable(typeof(IReadOnlyList<TraversalGapMarker>))]`
+- [x] Task 1: Create gap marker contract and extend TraversalResult (AC: #1, #2)
+    - [x] 1.1 Create `Contracts/V1/TraversalGapMarker.cs` — sealed record with `MissingNodeId` (string), `HopDistance` (int), `Edges` (IReadOnlyList\<TraversalEdgeInfo\>). Same edge metadata shape as TraversalNode, showing which edges reference the missing stub. This represents a node found during traversal that has no content — a stub created by `BuildMergeStubNode` during a prior ingestion where CausationId or CorrelationId pointed to a not-yet-ingested memory unit
+    - [x] 1.2 Modify `Contracts/V1/TraversalResult.cs` — add a non-positional init property: `public IReadOnlyList<TraversalGapMarker> GapMarkers { get; init; } = [];`. This is non-breaking: existing `new TraversalResult(startId, depth, nodes, count)` still works, and callers that care about gaps use `new TraversalResult(...) { GapMarkers = gaps }`. Do NOT change the positional constructor signature — that would break Story 4.1's code and tests
+    - [x] 1.3 Register new types in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(TraversalGapMarker))]`, `[JsonSerializable(typeof(IReadOnlyList<TraversalGapMarker>))]`
 
-- [ ] Task 2: Create confidence promotion contracts (AC: #3, #4)
-  - [ ] 2.1 Create `Contracts/V1/ConfidencePromotionRequest.cs` — sealed record with `SourceNodeId` (string), `TargetNodeId` (string), `EdgeType` (EdgeType), `NewConfidence` (float), `VerifiedBy` (string). `SourceNodeId` and `TargetNodeId` identify the directed edge: (source)-[r:TYPE]->(target). `VerifiedBy` is a free-form identity string (e.g., user ID, email) — no format validation beyond non-empty
-  - [ ] 2.2 Create `Contracts/V1/ConfidencePromotionResult.cs` — sealed record with `SourceNodeId` (string), `TargetNodeId` (string), `EdgeType` (EdgeType), `PreviousConfidence` (float), `NewConfidence` (float), `VerifiedBy` (string). `PreviousConfidence` is the value before promotion, stored on the edge for audit traceability (AC #4)
-  - [ ] 2.3 Register in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(ConfidencePromotionRequest))]`, `[JsonSerializable(typeof(ConfidencePromotionResult))]`
+- [x] Task 2: Create confidence promotion contracts (AC: #3, #4)
+    - [x] 2.1 Create `Contracts/V1/ConfidencePromotionRequest.cs` — sealed record with `SourceNodeId` (string), `TargetNodeId` (string), `EdgeType` (EdgeType), `NewConfidence` (float), `VerifiedBy` (string). `SourceNodeId` and `TargetNodeId` identify the directed edge: (source)-[r:TYPE]->(target). `VerifiedBy` is a free-form identity string (e.g., user ID, email) — no format validation beyond non-empty
+    - [x] 2.2 Create `Contracts/V1/ConfidencePromotionResult.cs` — sealed record with `SourceNodeId` (string), `TargetNodeId` (string), `EdgeType` (EdgeType), `PreviousConfidence` (float), `NewConfidence` (float), `VerifiedBy` (string). `PreviousConfidence` is the value before promotion, stored on the edge for audit traceability (AC #4)
+    - [x] 2.3 Register in `MemoriesJsonContext.cs`: `[JsonSerializable(typeof(ConfidencePromotionRequest))]`, `[JsonSerializable(typeof(ConfidencePromotionResult))]`
 
-- [ ] Task 3: Extend TraversalEdgeInfo with audit fields (AC: #3, #4)
-  - [ ] 3.1 Add non-positional init properties to `Contracts/V1/TraversalEdgeInfo.cs`: `public string? VerifiedBy { get; init; }` and `public float? PreviousConfidence { get; init; }`. Non-breaking — existing positional construction still works, and the fields are null by default (JSON: omitted when null via `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`)
-  - [ ] 3.2 Add `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on both new properties to keep traversal responses clean when edges are not promoted. **Import needed:** `using System.Text.Json.Serialization;` (check if already present in file)
-  - [ ] 3.3 Update the edge collection map in the Cypher query of `BuildTraverseWithEdges` (GraphQueryBuilder.cs:275) — add `verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence` to the `collect(DISTINCT {...})` map. These properties will be null on edges that were never promoted, which is the correct behavior
-  - [ ] 3.4 Update `ParseEdges` in GraphTraversalService.cs to extract `verifiedBy` and `previousConfidence` from the edge map. Pattern: `string? verifiedBy = edgeMap.TryGetValue("verifiedBy", out object? vbVal) ? vbVal?.ToString() : null;` and `float? previousConfidence = edgeMap.TryGetValue("previousConfidence", out object? pcVal) && pcVal is double pcDbl ? (float)pcDbl : null;`. Pass these to the `TraversalEdgeInfo` constructor via init syntax: `new TraversalEdgeInfo(...) { VerifiedBy = verifiedBy, PreviousConfidence = previousConfidence }`
+- [x] Task 3: Extend TraversalEdgeInfo with audit fields (AC: #3, #4)
+    - [x] 3.1 Add non-positional init properties to `Contracts/V1/TraversalEdgeInfo.cs`: `public string? VerifiedBy { get; init; }` and `public float? PreviousConfidence { get; init; }`. Non-breaking — existing positional construction still works, and the fields are null by default (JSON: omitted when null via `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]`)
+    - [x] 3.2 Add `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on both new properties to keep traversal responses clean when edges are not promoted. **Import needed:** `using System.Text.Json.Serialization;` (check if already present in file)
+    - [x] 3.3 Update the edge collection map in the Cypher query of `BuildTraverseWithEdges` (GraphQueryBuilder.cs:275) — add `verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence` to the `collect(DISTINCT {...})` map. These properties will be null on edges that were never promoted, which is the correct behavior
+    - [x] 3.4 Update `ParseEdges` in GraphTraversalService.cs to extract `verifiedBy` and `previousConfidence` from the edge map. Pattern: `string? verifiedBy = edgeMap.TryGetValue("verifiedBy", out object? vbVal) ? vbVal?.ToString() : null;` and `float? previousConfidence = edgeMap.TryGetValue("previousConfidence", out object? pcVal) && pcVal is double pcDbl ? (float)pcDbl : null;`. Pass these to the `TraversalEdgeInfo` constructor via init syntax: `new TraversalEdgeInfo(...) { VerifiedBy = verifiedBy, PreviousConfidence = previousConfidence }`
 
-- [ ] Task 4: Gap detection in GraphTraversalService (AC: #1, #2, #5)
-  - [ ] 4.1 Modify `TraverseAsync` in GraphTraversalService.cs (lines 56-80) to detect stub nodes and separate them into gap markers. **Detection mechanism:** stub nodes created by `BuildMergeStubNode` (GraphQueryBuilder.cs:175-187) have ONLY the `id` property — `content`, `ingestedAt`, `sourceUri`, `sourceType` are all absent/null. When the traversal query returns `n.content AS content`, it will be null for stubs. Check content nullity to distinguish stubs from full nodes:
-    ```csharp
-    List<TraversalNode> nodes = [];
-    List<TraversalGapMarker> gapMarkers = [];
-    foreach (Record record in resultSet)
-    {
-        string nodeId = record.GetValue<string>("nodeId");
-        object? contentRaw = record.GetValue<object>("content");
-        if (contentRaw is null or "")
+- [x] Task 4: Gap detection in GraphTraversalService (AC: #1, #2, #5)
+    - [x] 4.1 Modify `TraverseAsync` in GraphTraversalService.cs (lines 56-80) to detect stub nodes and separate them into gap markers. **Detection mechanism:** stub nodes created by `BuildMergeStubNode` (GraphQueryBuilder.cs:175-187) have ONLY the `id` property — `content`, `ingestedAt`, `sourceUri`, `sourceType` are all absent/null. When the traversal query returns `n.content AS content`, it will be null for stubs. Check content nullity to distinguish stubs from full nodes:
+        ```csharp
+        List<TraversalNode> nodes = [];
+        List<TraversalGapMarker> gapMarkers = [];
+        foreach (Record record in resultSet)
         {
-            // Stub node — gap marker (FR49)
-            long hopDistance = record.GetValue<long>("hopDistance");
-            List<TraversalEdgeInfo> edges = ParseEdges(record);
-            gapMarkers.Add(new TraversalGapMarker(nodeId, (int)hopDistance, edges));
+            string nodeId = record.GetValue<string>("nodeId");
+            object? contentRaw = record.GetValue<object>("content");
+            if (contentRaw is null or "")
+            {
+                // Stub node — gap marker (FR49)
+                long hopDistance = record.GetValue<long>("hopDistance");
+                List<TraversalEdgeInfo> edges = ParseEdges(record);
+                gapMarkers.Add(new TraversalGapMarker(nodeId, (int)hopDistance, edges));
+            }
+            else
+            {
+                TraversalNode node = ParseTraversalNode(record);
+                nodes.Add(node);
+            }
         }
-        else
-        {
-            TraversalNode node = ParseTraversalNode(record);
-            nodes.Add(node);
-        }
-    }
-    ```
-  - [ ] 4.2 Update the return statement to include gap markers: `return new TraversalResult(startNodeId, depth, nodes, nodes.Count) { GapMarkers = gapMarkers };`. Note: `TotalNodeCount` should be `nodes.Count` (only full nodes), NOT `nodes.Count + gapMarkers.Count` — gap markers are explicitly NOT counted as real nodes. This distinction matters for consumers that use TotalNodeCount to allocate or paginate
-  - [ ] 4.3 Update the graph-not-found return: `return new TraversalResult(startNodeId, depth, [], 0);` — GapMarkers defaults to `[]` via init property, so no change needed here
-  - [ ] 4.4 **Retroactive gap resolution (AC #5):** No new code needed. When the missing node is eventually ingested, `BuildMergeMemoryUnitNode` (GraphQueryBuilder.cs:22-64) uses `MERGE (m:MemoryUnit {id: $id}) SET m.content = ...` — this finds the existing stub and fills in all properties. The next traversal will see `content != null` and classify it as a full node, not a gap. **Integration test 12.3 verifies this end-to-end.**
-  - [ ] 4.5 Refactor `ParseTraversalNode` to receive the raw content string as parameter instead of reading it from the record again. This avoids double-reading the same record value. Signature: `ParseTraversalNode(Record record, string content)` where content is the already-validated non-null string from the stub check
+        ```
+    - [x] 4.2 Update the return statement to include gap markers: `return new TraversalResult(startNodeId, depth, nodes, nodes.Count) { GapMarkers = gapMarkers };`. Note: `TotalNodeCount` should be `nodes.Count` (only full nodes), NOT `nodes.Count + gapMarkers.Count` — gap markers are explicitly NOT counted as real nodes. This distinction matters for consumers that use TotalNodeCount to allocate or paginate
+    - [x] 4.3 Update the graph-not-found return: `return new TraversalResult(startNodeId, depth, [], 0);` — GapMarkers defaults to `[]` via init property, so no change needed here
+    - [x] 4.4 **Retroactive gap resolution (AC #5):** No new code needed. When the missing node is eventually ingested, `BuildMergeMemoryUnitNode` (GraphQueryBuilder.cs:22-64) uses `MERGE (m:MemoryUnit {id: $id}) SET m.content = ...` — this finds the existing stub and fills in all properties. The next traversal will see `content != null` and classify it as a full node, not a gap. **Integration test 12.3 verifies this end-to-end.**
+    - [x] 4.5 Refactor `ParseTraversalNode` to receive the raw content string as parameter instead of reading it from the record again. This avoids double-reading the same record value. Signature: `ParseTraversalNode(Record record, string content)` where content is the already-validated non-null string from the stub check
 
-- [ ] Task 5: Confidence promotion query in GraphQueryBuilder (AC: #3, #4)
-  - [ ] 5.1 Add `BuildUpdateEdgeConfidence(string sourceNodeId, string targetNodeId, EdgeType edgeType, float newConfidence, string verifiedBy)` to `IGraphQueryBuilder` interface. Returns `(string Query, IDictionary<string, object> Parameters)`. The Cypher query uses MATCH (not MERGE) because the edge must already exist — creating edges on promotion is wrong
-  - [ ] 5.2 Implement in `GraphQueryBuilder`:
-    - Input validation: `ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId)`, same for targetNodeId and verifiedBy. `ArgumentOutOfRangeException.ThrowIfLessThan(newConfidence, 0f)`, `ArgumentOutOfRangeException.ThrowIfGreaterThan(newConfidence, 1f)`
-    - Resolve labels: `(string sourceLabel, string targetLabel) = GetNodeLabels(edgeType);` — reuse existing method (line 349-354). This correctly handles CONTAINS edges (Case→MemoryUnit) vs all other edges (MemoryUnit→MemoryUnit)
-    - Convert edge type: `string edgeLabel = ToUpperSnakeCase(edgeType);` — reuse existing method (line 339-347)
-    - Cypher query:
-      ```
-      MATCH (s:{sourceLabel} {id: $sourceId})-[r:{edgeLabel}]->(t:{targetLabel} {id: $targetId})
-      SET r.previousConfidence = r.confidence, r.confidence = $newConfidence, r.verifiedBy = $verifiedBy
-      RETURN r.confidence AS newConfidence, r.previousConfidence AS previousConfidence
-      ```
-    - Edge label is interpolated (not parameterized) — safe because derived from closed EdgeType enum via validated ToUpperSnakeCase switch. Same safety pattern as BuildMergeEdge (line 158-161). Document in code comment
-    - `previousConfidence` is set to the CURRENT `r.confidence` BEFORE updating to newConfidence. This means: first promotion stores original default, subsequent promotions store the previous promoted value. Both are audit-useful
-  - [ ] 5.3 Parameters dict: `sourceId`, `targetId`, `newConfidence`, `verifiedBy`. Edge label and node labels NOT in parameters (interpolated from closed enum — same pattern as all other edge queries)
+- [x] Task 5: Confidence promotion query in GraphQueryBuilder (AC: #3, #4)
+    - [x] 5.1 Add `BuildUpdateEdgeConfidence(string sourceNodeId, string targetNodeId, EdgeType edgeType, float newConfidence, string verifiedBy)` to `IGraphQueryBuilder` interface. Returns `(string Query, IDictionary<string, object> Parameters)`. The Cypher query uses MATCH (not MERGE) because the edge must already exist — creating edges on promotion is wrong
+    - [x] 5.2 Implement in `GraphQueryBuilder`:
+        - Input validation: `ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId)`, same for targetNodeId and verifiedBy. `ArgumentOutOfRangeException.ThrowIfLessThan(newConfidence, 0f)`, `ArgumentOutOfRangeException.ThrowIfGreaterThan(newConfidence, 1f)`
+        - Resolve labels: `(string sourceLabel, string targetLabel) = GetNodeLabels(edgeType);` — reuse existing method (line 349-354). This correctly handles CONTAINS edges (Case→MemoryUnit) vs all other edges (MemoryUnit→MemoryUnit)
+        - Convert edge type: `string edgeLabel = ToUpperSnakeCase(edgeType);` — reuse existing method (line 339-347)
+        - Cypher query:
+            ```
+            MATCH (s:{sourceLabel} {id: $sourceId})-[r:{edgeLabel}]->(t:{targetLabel} {id: $targetId})
+            SET r.previousConfidence = r.confidence, r.confidence = $newConfidence, r.verifiedBy = $verifiedBy
+            RETURN r.confidence AS newConfidence, r.previousConfidence AS previousConfidence
+            ```
+        - Edge label is interpolated (not parameterized) — safe because derived from closed EdgeType enum via validated ToUpperSnakeCase switch. Same safety pattern as BuildMergeEdge (line 158-161). Document in code comment
+        - `previousConfidence` is set to the CURRENT `r.confidence` BEFORE updating to newConfidence. This means: first promotion stores original default, subsequent promotions store the previous promoted value. Both are audit-useful
+    - [x] 5.3 Parameters dict: `sourceId`, `targetId`, `newConfidence`, `verifiedBy`. Edge label and node labels NOT in parameters (interpolated from closed enum — same pattern as all other edge queries)
 
-- [ ] Task 6: Confidence promotion in GraphTraversalService (AC: #3, #4)
-  - [ ] 6.1 Add `PromoteEdgeConfidenceAsync(string tenantId, ConfidencePromotionRequest request, CancellationToken ct)` to GraphTraversalService. Returns `ConfidencePromotionResult?` — null means edge not found
-  - [ ] 6.2 Implementation:
-    1. Validate tenantId: `ArgumentException.ThrowIfNullOrWhiteSpace(tenantId)`
-    2. Build query: `_graphQueryBuilder.BuildUpdateEdgeConfidence(request.SourceNodeId, request.TargetNodeId, request.EdgeType, request.NewConfidence, request.VerifiedBy)`
-    3. Execute: `await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout, ct)`
-    4. Handle graph-not-found: catch `RedisServerException` via `IsGraphNotFoundError` — return null (edge can't exist if graph doesn't exist)
-    5. Check result: if `ResultSet` has no records, return null (edge not found)
-    6. If result has a record: extract `newConfidence` and `previousConfidence` from the record, return `ConfidencePromotionResult(request.SourceNodeId, request.TargetNodeId, request.EdgeType, previousConfidence, newConfidence, request.VerifiedBy)`
-  - [ ] 6.3 Add logging: `LogConfidencePromoted(tenantId, sourceNodeId, targetNodeId, edgeType, previousConfidence, newConfidence, verifiedBy)` at Information level. `LogEdgeNotFound(tenantId, sourceNodeId, targetNodeId, edgeType)` at Warning level. Follow existing LoggerMessage pattern (lines 185-192)
+- [x] Task 6: Confidence promotion in GraphTraversalService (AC: #3, #4)
+    - [x] 6.1 Add `PromoteEdgeConfidenceAsync(string tenantId, ConfidencePromotionRequest request, CancellationToken ct)` to GraphTraversalService. Returns `ConfidencePromotionResult?` — null means edge not found
+    - [x] 6.2 Implementation:
+        1. Validate tenantId: `ArgumentException.ThrowIfNullOrWhiteSpace(tenantId)`
+        2. Build query: `_graphQueryBuilder.BuildUpdateEdgeConfidence(request.SourceNodeId, request.TargetNodeId, request.EdgeType, request.NewConfidence, request.VerifiedBy)`
+        3. Execute: `await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout, ct)`
+        4. Handle graph-not-found: catch `RedisServerException` via `IsGraphNotFoundError` — return null (edge can't exist if graph doesn't exist)
+        5. Check result: if `ResultSet` has no records, return null (edge not found)
+        6. If result has a record: extract `newConfidence` and `previousConfidence` from the record, return `ConfidencePromotionResult(request.SourceNodeId, request.TargetNodeId, request.EdgeType, previousConfidence, newConfidence, request.VerifiedBy)`
+    - [x] 6.3 Add logging: `LogConfidencePromoted(tenantId, sourceNodeId, targetNodeId, edgeType, previousConfidence, newConfidence, verifiedBy)` at Information level. `LogEdgeNotFound(tenantId, sourceNodeId, targetNodeId, edgeType)` at Warning level. Follow existing LoggerMessage pattern (lines 185-192)
 
-- [ ] Task 7: Confidence promotion endpoint (AC: #3, #4)
-  - [ ] 7.1 Add `PATCH /api/tenants/{tenantId}/edges/confidence` endpoint in `Program.cs`. Place it after the existing traverse endpoint (line 1002) and before `app.Run()` (line 1004). Follow existing Minimal API pattern
-  - [ ] 7.2 Parameters: `{tenantId}` (route), `ConfidencePromotionRequest request` (from body — JSON deserialized)
-  - [ ] 7.3 Inject `GraphTraversalService traversalService` into the endpoint delegate
-  - [ ] 7.4 Validation sequence:
-    1. TenantId validation: `ValidateTenantId(tenantId)` — reuse existing helper (same as traverse endpoint)
-    2. SourceNodeId: if null/empty → 400 with `ErrorResponse("MISSING_SOURCE_NODE", "sourceNodeId is required.", "Provide the source node ID of the edge to promote.")`
-    3. TargetNodeId: if null/empty → 400 with `ErrorResponse("MISSING_TARGET_NODE", "targetNodeId is required.", "Provide the target node ID of the edge to promote.")`
-    4. VerifiedBy: if null/empty → 400 with `ErrorResponse("MISSING_VERIFIED_BY", "verifiedBy is required.", "Provide the identity of the person verifying the relationship.")`
-    5. NewConfidence: if `< 0f` or `> 1f` → 400 with `ErrorResponse("INVALID_CONFIDENCE", $"Confidence must be between 0.0 and 1.0, got {request.NewConfidence}.", "Provide a confidence value in the range [0.0, 1.0].")`. **Boundary values 0.0 and 1.0 are valid.** Use `request.NewConfidence < 0f || request.NewConfidence > 1f` (strict inequality) — must match the query builder validation in Task 5.2 which uses `ThrowIfLessThan(0f)` and `ThrowIfGreaterThan(1f)` (both inclusive of boundaries)
-  - [ ] 7.5 Call service: `var result = await traversalService.PromoteEdgeConfidenceAsync(tenantId, request, cancellationToken)`
-  - [ ] 7.6 If result is null → return 404 with `ErrorResponse("EDGE_NOT_FOUND", $"No {request.EdgeType} edge found from '{request.SourceNodeId}' to '{request.TargetNodeId}'.", "Verify the edge exists by traversing from either node. Note: edges are directed — sourceNodeId must be the relationship origin (e.g., for causedBy, the CausationId is the source).")`
-  - [ ] 7.7 Return `Results.Ok(result)` — 200 OK with `ConfidencePromotionResult` JSON body (not 204 No Content, because the response includes the previous/new confidence values the caller needs for confirmation)
+- [x] Task 7: Confidence promotion endpoint (AC: #3, #4)
+    - [x] 7.1 Add `PATCH /api/tenants/{tenantId}/edges/confidence` endpoint in `Program.cs`. Place it after the existing traverse endpoint (line 1002) and before `app.Run()` (line 1004). Follow existing Minimal API pattern
+    - [x] 7.2 Parameters: `{tenantId}` (route), `ConfidencePromotionRequest request` (from body — JSON deserialized)
+    - [x] 7.3 Inject `GraphTraversalService traversalService` into the endpoint delegate
+    - [x] 7.4 Validation sequence:
+        1. TenantId validation: `ValidateTenantId(tenantId)` — reuse existing helper (same as traverse endpoint)
+        2. SourceNodeId: if null/empty → 400 with `ErrorResponse("MISSING_SOURCE_NODE", "sourceNodeId is required.", "Provide the source node ID of the edge to promote.")`
+        3. TargetNodeId: if null/empty → 400 with `ErrorResponse("MISSING_TARGET_NODE", "targetNodeId is required.", "Provide the target node ID of the edge to promote.")`
+        4. VerifiedBy: if null/empty → 400 with `ErrorResponse("MISSING_VERIFIED_BY", "verifiedBy is required.", "Provide the identity of the person verifying the relationship.")`
+        5. NewConfidence: if `< 0f` or `> 1f` → 400 with `ErrorResponse("INVALID_CONFIDENCE", $"Confidence must be between 0.0 and 1.0, got {request.NewConfidence}.", "Provide a confidence value in the range [0.0, 1.0].")`. **Boundary values 0.0 and 1.0 are valid.** Use `request.NewConfidence < 0f || request.NewConfidence > 1f` (strict inequality) — must match the query builder validation in Task 5.2 which uses `ThrowIfLessThan(0f)` and `ThrowIfGreaterThan(1f)` (both inclusive of boundaries)
+    - [x] 7.5 Call service: `var result = await traversalService.PromoteEdgeConfidenceAsync(tenantId, request, cancellationToken)`
+    - [x] 7.6 If result is null → return 404 with `ErrorResponse("EDGE_NOT_FOUND", $"No {request.EdgeType} edge found from '{request.SourceNodeId}' to '{request.TargetNodeId}'.", "Verify the edge exists by traversing from either node. Note: edges are directed — sourceNodeId must be the relationship origin (e.g., for causedBy, the CausationId is the source).")`
+    - [x] 7.7 Return `Results.Ok(result)` — 200 OK with `ConfidencePromotionResult` JSON body (not 204 No Content, because the response includes the previous/new confidence values the caller needs for confirmation)
 
-- [ ] Task 8: Contract serialization tests (AC: #1, #2, #3, #4)
-  - [ ] 8.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalGapMarkerSerializationTests.cs` — roundtrip JSON test: serialize/deserialize TraversalGapMarker with MissingNodeId, HopDistance, and Edges list containing edge info. Verify camelCase: `missingNodeId`, `hopDistance`, `edges`
-  - [ ] 8.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionRequestSerializationTests.cs` — roundtrip test with all fields, verify camelCase and EdgeType enum serialized as camelCase string
-  - [ ] 8.3 Create `tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionResultSerializationTests.cs` — roundtrip test with all fields including PreviousConfidence
-  - [ ] 8.4 Add to existing `TraversalResultSerializationTests.cs`: test that TraversalResult with GapMarkers serializes/deserializes correctly. Verify empty GapMarkers `[]` appears in JSON (not omitted)
-  - [ ] 8.5 Add to existing `TraversalEdgeInfoSerializationTests.cs`: test that VerifiedBy and PreviousConfidence serialize when present, and are omitted from JSON when null (WhenWritingNull behavior)
+- [x] Task 8: Contract serialization tests (AC: #1, #2, #3, #4)
+    - [x] 8.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalGapMarkerSerializationTests.cs` — roundtrip JSON test: serialize/deserialize TraversalGapMarker with MissingNodeId, HopDistance, and Edges list containing edge info. Verify camelCase: `missingNodeId`, `hopDistance`, `edges`
+    - [x] 8.2 Create `tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionRequestSerializationTests.cs` — roundtrip test with all fields, verify camelCase and EdgeType enum serialized as camelCase string
+    - [x] 8.3 Create `tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionResultSerializationTests.cs` — roundtrip test with all fields including PreviousConfidence
+    - [x] 8.4 Add to existing `TraversalResultSerializationTests.cs`: test that TraversalResult with GapMarkers serializes/deserializes correctly. Verify empty GapMarkers `[]` appears in JSON (not omitted)
+    - [x] 8.5 Add to existing `TraversalEdgeInfoSerializationTests.cs`: test that VerifiedBy and PreviousConfidence serialize when present, and are omitted from JSON when null (WhenWritingNull behavior)
 
-- [ ] Task 9: Gap detection unit tests (AC: #1, #2, #5)
-  - [ ] 9.1 Add to `GraphTraversalServiceTests.cs`:
-    - `TraverseAsync_StubNodeDetectedAsGapMarker` — mock FalkorDB to return a record with null content. Verify the result has 0 nodes and 1 gap marker with the correct MissingNodeId
-    - `TraverseAsync_FullNodeNotFlaggedAsGap` — mock record with non-null content. Verify 1 node, 0 gap markers
-    - `TraverseAsync_MixedStubsAndFullNodes_SeparatedCorrectly` — mock 3 records: full, stub, full. Verify 2 nodes and 1 gap marker with correct IDs
-    - `TraverseAsync_GapMarkerHasCorrectHopDistanceAndEdges` — mock stub with hopDistance=2 and edges. Verify gap marker properties match
-    - `TraverseAsync_TotalNodeCountExcludesGapMarkers` — mock 2 full nodes + 1 stub. Verify TotalNodeCount=2 (not 3)
+- [x] Task 9: Gap detection unit tests (AC: #1, #2, #5)
+    - [x] 9.1 Add to `GraphTraversalServiceTests.cs`:
+        - `TraverseAsync_StubNodeDetectedAsGapMarker` — mock FalkorDB to return a record with null content. Verify the result has 0 nodes and 1 gap marker with the correct MissingNodeId
+        - `TraverseAsync_FullNodeNotFlaggedAsGap` — mock record with non-null content. Verify 1 node, 0 gap markers
+        - `TraverseAsync_MixedStubsAndFullNodes_SeparatedCorrectly` — mock 3 records: full, stub, full. Verify 2 nodes and 1 gap marker with correct IDs
+        - `TraverseAsync_GapMarkerHasCorrectHopDistanceAndEdges` — mock stub with hopDistance=2 and edges. Verify gap marker properties match
+        - `TraverseAsync_TotalNodeCountExcludesGapMarkers` — mock 2 full nodes + 1 stub. Verify TotalNodeCount=2 (not 3)
 
-- [ ] Task 10: Confidence promotion unit tests (AC: #3, #4)
-  - [ ] 10.1 Add to `GraphQueryBuilderTests.cs`:
-    - `BuildUpdateEdgeConfidence_GeneratesCorrectCypher` — verify query contains MATCH, SET with previousConfidence and verifiedBy, RETURN
-    - `BuildUpdateEdgeConfidence_UsesCorrectEdgeLabel` — Theory with all 5 EdgeType values, verify UPPER_SNAKE_CASE label in query
-    - `BuildUpdateEdgeConfidence_UsesCorrectNodeLabels` — verify Contains uses (Case, MemoryUnit), others use (MemoryUnit, MemoryUnit)
-    - `BuildUpdateEdgeConfidence_ParameterizesValues` — verify $sourceId, $targetId, $newConfidence, $verifiedBy in parameters dict, edge label NOT parameterized
-    - `BuildUpdateEdgeConfidence_NullSourceNodeId_Throws` — ArgumentException
-    - `BuildUpdateEdgeConfidence_NegativeConfidence_Throws` — ArgumentOutOfRangeException
-    - `BuildUpdateEdgeConfidence_ConfidenceAboveOne_Throws` — ArgumentOutOfRangeException
-    - `BuildUpdateEdgeConfidence_InjectionPrevention` — adversarial sourceNodeId NOT in query string, IS in parameters
-  - [ ] 10.2 Add to `GraphTraversalServiceTests.cs`:
-    - `PromoteEdgeConfidenceAsync_CallsQueryBuilder` — mock IGraphQueryBuilder, verify BuildUpdateEdgeConfidence called with correct args
-    - `PromoteEdgeConfidenceAsync_EdgeNotFound_ReturnsNull` — mock empty ResultSet, verify null returned
-    - `PromoteEdgeConfidenceAsync_GraphNotFound_ReturnsNull` — mock RedisServerException, verify null returned
-    - `PromoteEdgeConfidenceAsync_Success_ReturnsResult` — mock ResultSet with record, verify ConfidencePromotionResult fields
+- [x] Task 10: Confidence promotion unit tests (AC: #3, #4)
+    - [x] 10.1 Add to `GraphQueryBuilderTests.cs`:
+        - `BuildUpdateEdgeConfidence_GeneratesCorrectCypher` — verify query contains MATCH, SET with previousConfidence and verifiedBy, RETURN
+        - `BuildUpdateEdgeConfidence_UsesCorrectEdgeLabel` — Theory with all 5 EdgeType values, verify UPPER_SNAKE_CASE label in query
+        - `BuildUpdateEdgeConfidence_UsesCorrectNodeLabels` — verify Contains uses (Case, MemoryUnit), others use (MemoryUnit, MemoryUnit)
+        - `BuildUpdateEdgeConfidence_ParameterizesValues` — verify $sourceId, $targetId, $newConfidence, $verifiedBy in parameters dict, edge label NOT parameterized
+        - `BuildUpdateEdgeConfidence_NullSourceNodeId_Throws` — ArgumentException
+        - `BuildUpdateEdgeConfidence_NegativeConfidence_Throws` — ArgumentOutOfRangeException
+        - `BuildUpdateEdgeConfidence_ConfidenceAboveOne_Throws` — ArgumentOutOfRangeException
+        - `BuildUpdateEdgeConfidence_InjectionPrevention` — adversarial sourceNodeId NOT in query string, IS in parameters
+    - [x] 10.2 Add to `GraphTraversalServiceTests.cs`:
+        - `PromoteEdgeConfidenceAsync_CallsQueryBuilder` — mock IGraphQueryBuilder, verify BuildUpdateEdgeConfidence called with correct args
+        - `PromoteEdgeConfidenceAsync_EdgeNotFound_ReturnsNull` — mock empty ResultSet, verify null returned
+        - `PromoteEdgeConfidenceAsync_GraphNotFound_ReturnsNull` — mock RedisServerException, verify null returned
+        - `PromoteEdgeConfidenceAsync_Success_ReturnsResult` — mock ResultSet with record, verify ConfidencePromotionResult fields
 
-- [ ] Task 11: Edge audit field tests (AC: #3, #4)
-  - [ ] 11.1 Add to `GraphQueryBuilderTests.cs`:
-    - `BuildTraverseWithEdges_IncludesVerifiedByInEdgeMap` — verify Cypher query contains `verifiedBy: r.verifiedBy` in the collect() expression
-    - `BuildTraverseWithEdges_IncludesPreviousConfidenceInEdgeMap` — verify Cypher query contains `previousConfidence: r.previousConfidence`
-  - [ ] 11.2 Add to `GraphTraversalServiceTests.cs`:
-    - `ParseEdges_WithVerifiedBy_SetsProperty` — mock edge map with verifiedBy value, verify TraversalEdgeInfo.VerifiedBy is set
-    - `ParseEdges_WithoutVerifiedBy_PropertyIsNull` — mock edge map without verifiedBy, verify null
-    - `ParseEdges_WithPreviousConfidence_SetsProperty` — mock edge map with previousConfidence, verify float? value
-    - `ParseEdges_WithoutPreviousConfidence_PropertyIsNull` — verify null when absent
+- [x] Task 11: Edge audit field tests (AC: #3, #4)
+    - [x] 11.1 Add to `GraphQueryBuilderTests.cs`:
+        - `BuildTraverseWithEdges_IncludesVerifiedByInEdgeMap` — verify Cypher query contains `verifiedBy: r.verifiedBy` in the collect() expression
+        - `BuildTraverseWithEdges_IncludesPreviousConfidenceInEdgeMap` — verify Cypher query contains `previousConfidence: r.previousConfidence`
+    - [x] 11.2 Add to `GraphTraversalServiceTests.cs`:
+        - `ParseEdges_WithVerifiedBy_SetsProperty` — mock edge map with verifiedBy value, verify TraversalEdgeInfo.VerifiedBy is set
+        - `ParseEdges_WithoutVerifiedBy_PropertyIsNull` — mock edge map without verifiedBy, verify null
+        - `ParseEdges_WithPreviousConfidence_SetsProperty` — mock edge map with previousConfidence, verify float? value
+        - `ParseEdges_WithoutPreviousConfidence_PropertyIsNull` — verify null when absent
 
-- [ ] Task 12: Integration tests (AC: #1, #2, #3, #4, #5)
-  - [ ] 12.1 Create `tests/Hexalith.Memories.IntegrationTests/Graph/GapDetectionIntegrationTests.cs`. **Test data setup:** Use `IGraphQueryBuilder` directly to create nodes and edges (same pattern as Story 4.1 integration tests). Create full nodes via `BuildMergeMemoryUnitNode` and stub nodes via `BuildMergeStubNode`, then edges via `BuildMergeEdge`
-  - [ ] 12.2 Test: **Single gap detection.** Create full MU-A (ingested), stub MU-B (not ingested), full MU-C (ingested). Create edges: B→A via CAUSED_BY, B→C via CAUSED_BY. Traverse from A with depth=3. Verify: A and C appear in `Nodes`, B appears in `GapMarkers` with `MissingNodeId = "MU-B"`. Verify TotalNodeCount=2 (excludes gap)
-  - [ ] 12.3 Test: **Multiple gaps.** Chain: A(full) ← B(stub) → C(stub) → D(full). Traverse from A with depth=5. Verify: A and D in Nodes, B and C in GapMarkers
-  - [ ] 12.4 Test: **Retroactive gap resolution (AC #5).** Step 1: Create full A, stub B, edge B→A. Traverse from A → 1 node (A), 1 gap marker (B). Step 2: Now ingest B fully via `BuildMergeMemoryUnitNode` (MERGE fills stub properties). Traverse from A again → 2 nodes (A, B), 0 gap markers. Proves the MERGE-based fill resolves the gap without manual intervention
-  - [ ] 12.5 Test: **No false gaps.** Ingest A and B fully, create B→A edge. Traverse from A. Verify 2 nodes, 0 gap markers. Full nodes must never be flagged as gaps
-  - [ ] 12.6 Test: **Gap marker has edges.** Stub B with edges to A and C. Traverse, verify B's gap marker contains edge metadata (type, confidence, direction) for both edges
-  - [ ] 12.7 Create `tests/Hexalith.Memories.IntegrationTests/Graph/ConfidencePromotionIntegrationTests.cs`
-  - [ ] 12.8 Test: **Promote inferred edge.** Create A→B edge with confidence=0.5, origin=inferred. PATCH /edges/confidence with newConfidence=1.0, verifiedBy="user@test.com". Verify: 200 response, previousConfidence=0.5, newConfidence=1.0. Traverse from A, verify B's edge shows confidence=1.0, verifiedBy="user@test.com", previousConfidence=0.5
-  - [ ] 12.9 Test: **Promote explicit edge (AC #4).** Create CausedBy edge with confidence=1.0, origin=explicit. Promote to confidence=0.9, verifiedBy="auditor". Verify: operation succeeds, previousConfidence=1.0, origin remains "explicit" (not changed to "inferred")
-  - [ ] 12.10 Test: **Double promotion preserves audit chain.** Promote edge from 0.5→0.8 (verifiedBy=user1). Then promote from 0.8→1.0 (verifiedBy=user2). Verify: previousConfidence=0.8 (from first promotion), verifiedBy="user2" (latest promoter). Note: only the most recent promotion audit is stored — full history requires a log (future work)
-  - [ ] 12.11 Test: **Edge not found returns 404.** PATCH with nonexistent source/target IDs. Verify 404 response with `EDGE_NOT_FOUND` error code
-  - [ ] 12.12 Test: **Invalid confidence returns 400.** PATCH with newConfidence=1.5. Verify 400 response with `INVALID_CONFIDENCE` error code
-  - [ ] 12.13 Test: **Missing verifiedBy returns 400.** PATCH with empty verifiedBy. Verify 400 with `MISSING_VERIFIED_BY`
-  - [ ] 12.14 Test: **Structural edge promotion.** Create CONTAINS edge (Case→MU) with confidence=1.0. Promote to confidence=0.7, verifiedBy="auditor". Verify: operation succeeds, MATCH uses `(Case)-[:CONTAINS]->(MemoryUnit)` node labels. Proves structural edges are promotable via the same API
-  - [ ] 12.15 Test: **Gap marker edge direction correctness.** Stub B with incoming edge from A (A←B via CAUSED_BY, meaning B→A) and outgoing edge to C (B→C via CAUSED_BY). Traverse from A, verify B's gap marker edges show correct `direction` values relative to B. If `startNode(r)` behaves differently for stubs vs full nodes in FalkorDB, this test catches it
-  - [ ] 12.16 *(Optional, nice-to-have)* Test: **Gap detection on traversal with edge type filter.** If Story 4.2 is implemented, verify gap detection still works when `edgeTypes` query parameter is used. Stub B with only CAUSED_BY edges — filter by causedBy should still detect the gap. **Skip if 4.2 is not yet implemented.**
+- [x] Task 12: Integration tests (AC: #1, #2, #3, #4, #5)
+    - [x] 12.1 Create `tests/Hexalith.Memories.IntegrationTests/Graph/GapDetectionIntegrationTests.cs`. **Test data setup:** Use `IGraphQueryBuilder` directly to create nodes and edges (same pattern as Story 4.1 integration tests). Create full nodes via `BuildMergeMemoryUnitNode` and stub nodes via `BuildMergeStubNode`, then edges via `BuildMergeEdge`
+    - [x] 12.2 Test: **Single gap detection.** Create full MU-A (ingested), stub MU-B (not ingested), full MU-C (ingested). Create edges: B→A via CAUSED_BY, B→C via CAUSED_BY. Traverse from A with depth=3. Verify: A and C appear in `Nodes`, B appears in `GapMarkers` with `MissingNodeId = "MU-B"`. Verify TotalNodeCount=2 (excludes gap)
+    - [x] 12.3 Test: **Multiple gaps.** Chain: A(full) ← B(stub) → C(stub) → D(full). Traverse from A with depth=5. Verify: A and D in Nodes, B and C in GapMarkers
+    - [x] 12.4 Test: **Retroactive gap resolution (AC #5).** Step 1: Create full A, stub B, edge B→A. Traverse from A → 1 node (A), 1 gap marker (B). Step 2: Now ingest B fully via `BuildMergeMemoryUnitNode` (MERGE fills stub properties). Traverse from A again → 2 nodes (A, B), 0 gap markers. Proves the MERGE-based fill resolves the gap without manual intervention
+    - [x] 12.5 Test: **No false gaps.** Ingest A and B fully, create B→A edge. Traverse from A. Verify 2 nodes, 0 gap markers. Full nodes must never be flagged as gaps
+    - [x] 12.6 Test: **Gap marker has edges.** Stub B with edges to A and C. Traverse, verify B's gap marker contains edge metadata (type, confidence, direction) for both edges
+    - [x] 12.7 Create `tests/Hexalith.Memories.IntegrationTests/Graph/ConfidencePromotionIntegrationTests.cs`
+    - [x] 12.8 Test: **Promote inferred edge.** Create A→B edge with confidence=0.5, origin=inferred. PATCH /edges/confidence with newConfidence=1.0, verifiedBy="user@test.com". Verify: 200 response, previousConfidence=0.5, newConfidence=1.0. Traverse from A, verify B's edge shows confidence=1.0, verifiedBy="user@test.com", previousConfidence=0.5
+    - [x] 12.9 Test: **Promote explicit edge (AC #4).** Create CausedBy edge with confidence=1.0, origin=explicit. Promote to confidence=0.9, verifiedBy="auditor". Verify: operation succeeds, previousConfidence=1.0, origin remains "explicit" (not changed to "inferred")
+    - [x] 12.10 Test: **Double promotion preserves audit chain.** Promote edge from 0.5→0.8 (verifiedBy=user1). Then promote from 0.8→1.0 (verifiedBy=user2). Verify: previousConfidence=0.8 (from first promotion), verifiedBy="user2" (latest promoter). Note: only the most recent promotion audit is stored — full history requires a log (future work)
+    - [x] 12.11 Test: **Edge not found returns 404.** PATCH with nonexistent source/target IDs. Verify 404 response with `EDGE_NOT_FOUND` error code
+    - [x] 12.12 Test: **Invalid confidence returns 400.** PATCH with newConfidence=1.5. Verify 400 response with `INVALID_CONFIDENCE` error code
+    - [x] 12.13 Test: **Missing verifiedBy returns 400.** PATCH with empty verifiedBy. Verify 400 with `MISSING_VERIFIED_BY`
+    - [x] 12.14 Test: **Structural edge promotion.** Create CONTAINS edge (Case→MU) with confidence=1.0. Promote to confidence=0.7, verifiedBy="auditor". Verify: operation succeeds, MATCH uses `(Case)-[:CONTAINS]->(MemoryUnit)` node labels. Proves structural edges are promotable via the same API
+    - [x] 12.15 Test: **Gap marker edge direction correctness.** Stub B with incoming edge from A (A←B via CAUSED_BY, meaning B→A) and outgoing edge to C (B→C via CAUSED_BY). Traverse from A, verify B's gap marker edges show correct `direction` values relative to B. If `startNode(r)` behaves differently for stubs vs full nodes in FalkorDB, this test catches it
+    - [x] 12.16 _(Optional, nice-to-have)_ Test: **Gap detection on traversal with edge type filter.** If Story 4.2 is implemented, verify gap detection still works when `edgeTypes` query parameter is used. Stub B with only CAUSED_BY edges — filter by causedBy should still detect the gap. **Skip if 4.2 is not yet implemented.**
+
+### Review Findings
+
+- [x] [Review][Patch] Case-filtered traversal drops stub nodes before gap detection [src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs:291]
+- [x] [Review][Patch] PATCH /edges/confidence accepts missing value-type fields as valid defaults [src/Hexalith.Memories.Server/Program.cs:1028]
+- [x] [Review][Patch] Traversal no longer uses Redis content fallback before classifying gaps [src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs:81]
+- [x] [Review][Patch] Story 4.3 tests still miss key traversal and promotion assertions [tests/Hexalith.Memories.IntegrationTests/Graph/ConfidencePromotionIntegrationTests.cs:68]
 
 ## Dev Notes
 
 ### Critical Dependency: Story 4.1 Must Be Implemented First
 
 This story extends the traversal infrastructure created in Story 4.1. All changes modify files and methods from 4.1:
+
 - `GraphTraversalService.cs` — modify TraverseAsync, ParseEdges, add PromoteEdgeConfidenceAsync
 - `TraversalNode.cs`, `TraversalEdgeInfo.cs`, `TraversalResult.cs` — extend contracts
 - `BuildTraverseWithEdges` in `GraphQueryBuilder.cs` — update Cypher edge collection map
@@ -193,6 +201,7 @@ Recommended order: **12.2** (canary) → **9.1-9.5** (unit gap detection) → **
 ### Gap Detection: How It Works
 
 **The stub node pattern is the key insight.** During ingestion (IndexGraphActivity.cs:72-100), when a memory unit A has CausationId=B:
+
 1. `BuildMergeStubNode(B)` creates a bare node: `MERGE (m:MemoryUnit {id: $id})` — ONLY the `id` property is set
 2. `BuildMergeEdge(B, A, CausedBy, 1.0, Explicit)` creates the edge
 
@@ -213,6 +222,7 @@ After implementing Task 3.1 (`TraversalEdgeInfo` init properties with `WhenWriti
 ### Retroactive Gap Resolution: Zero New Code
 
 When the missing event eventually arrives and is ingested:
+
 1. `BuildMergeMemoryUnitNode` uses `MERGE (m:MemoryUnit {id: $id}) SET m.content = $content, ...` (GraphQueryBuilder.cs:44)
 2. The MERGE finds the existing stub node by `id` and fills in all properties via SET
 3. The next traversal sees `content != null` → classified as full node, not a gap
@@ -232,6 +242,7 @@ FalkorDB stores edge properties as key-value pairs on relationships. The `SET r.
 The confidence promotion endpoint requires `sourceNodeId` and `targetNodeId` because edges in FalkorDB are directed: `(source)-[r:TYPE]->(target)`. The Cypher MATCH uses `->` (directed match). If the developer gets the direction wrong, the edge won't be found → 404.
 
 **Reference for edge direction in ingestion:**
+
 - CausedBy: `(causationId)-[:CAUSED_BY]->(memoryUnitId)` — "causationId caused memoryUnitId" (IndexGraphActivity.cs:78-84)
 - CorrelatedWith: `(correlationId)-[:CORRELATED_WITH]->(memoryUnitId)` (IndexGraphActivity.cs:93-99)
 - Contains: `(caseId)-[:CONTAINS]->(memoryUnitId)` (IndexGraphActivity.cs:64-70)
@@ -246,51 +257,54 @@ The `BuildUpdateEdgeConfidence` method reuses `GetNodeLabels(EdgeType)` which ma
 ### TraversalResult Non-Breaking Extension
 
 The `GapMarkers` property is added as a non-positional init property with default `[]`. This means:
+
 - Existing code: `new TraversalResult("id", 2, nodes, 5)` → still compiles, GapMarkers defaults to `[]`
 - New code: `new TraversalResult("id", 2, nodes, 5) { GapMarkers = gapMarkers }` → sets gap markers
 - JSON serialization: `gapMarkers` always appears in response (empty array `[]` when no gaps)
 
 Similarly, `TraversalEdgeInfo` new properties are non-positional init with null defaults:
+
 - Existing code: `new TraversalEdgeInfo(EdgeType.CausedBy, 1.0f, EdgeOrigin.Explicit, "id", "outgoing")` → still works, VerifiedBy and PreviousConfidence are null
 - JSON serialization: `verifiedBy` and `previousConfidence` omitted from JSON when null (via `WhenWritingNull`)
 
 ### Existing Infrastructure Reuse
 
-| What to reuse | Where | Why |
-|--------------|-------|-----|
-| `ToUpperSnakeCase(EdgeType)` | GraphQueryBuilder.cs:339-347 | Convert EdgeType to Cypher label for promotion query |
-| `GetNodeLabels(EdgeType)` | GraphQueryBuilder.cs:349-354 | Source/target labels for promotion MATCH pattern |
-| `IsGraphNotFoundError()` | GraphTraversalService.cs:181-183 | Handle missing graph in promotion |
-| `TenantIdGuard.Validate()` | Program.cs:984 | Reuse in promotion endpoint |
-| `ValidateTenantId()` helper | Program.cs | Reuse for 400 validation response |
-| `ErrorResponse` pattern | Contracts/V1/ErrorResponse.cs | Standard 400/404 response shape |
-| `ParseEdges()` method | GraphTraversalService.cs:101-138 | Extend for verifiedBy/previousConfidence |
-| `BuildMergeStubNode()` | GraphQueryBuilder.cs:174-187 | Understanding stub node shape for gap detection |
-| `GraphOperationTimeout` | GraphTraversalService.cs:19 | Reuse for promotion timeout |
+| What to reuse                | Where                            | Why                                                  |
+| ---------------------------- | -------------------------------- | ---------------------------------------------------- |
+| `ToUpperSnakeCase(EdgeType)` | GraphQueryBuilder.cs:339-347     | Convert EdgeType to Cypher label for promotion query |
+| `GetNodeLabels(EdgeType)`    | GraphQueryBuilder.cs:349-354     | Source/target labels for promotion MATCH pattern     |
+| `IsGraphNotFoundError()`     | GraphTraversalService.cs:181-183 | Handle missing graph in promotion                    |
+| `TenantIdGuard.Validate()`   | Program.cs:984                   | Reuse in promotion endpoint                          |
+| `ValidateTenantId()` helper  | Program.cs                       | Reuse for 400 validation response                    |
+| `ErrorResponse` pattern      | Contracts/V1/ErrorResponse.cs    | Standard 400/404 response shape                      |
+| `ParseEdges()` method        | GraphTraversalService.cs:101-138 | Extend for verifiedBy/previousConfidence             |
+| `BuildMergeStubNode()`       | GraphQueryBuilder.cs:174-187     | Understanding stub node shape for gap detection      |
+| `GraphOperationTimeout`      | GraphTraversalService.cs:19      | Reuse for promotion timeout                          |
 
 ### Key Files to Modify
 
-| File | Change |
-|------|--------|
-| `Contracts/V1/TraversalResult.cs` | Add `GapMarkers` init property |
-| `Contracts/V1/TraversalEdgeInfo.cs` | Add `VerifiedBy`, `PreviousConfidence` init properties |
-| `Contracts/V1/MemoriesJsonContext.cs` | Register new types |
-| `Server/Graph/IGraphQueryBuilder.cs` | Add `BuildUpdateEdgeConfidence` method |
-| `Server/Graph/GraphQueryBuilder.cs` | Implement `BuildUpdateEdgeConfidence`, update Cypher edge map in `BuildTraverseWithEdges` |
-| `Server/Graph/GraphTraversalService.cs` | Gap detection in TraverseAsync, add PromoteEdgeConfidenceAsync, extend ParseEdges |
-| `Server/Program.cs` | Add PATCH /edges/confidence endpoint |
+| File                                    | Change                                                                                    |
+| --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `Contracts/V1/TraversalResult.cs`       | Add `GapMarkers` init property                                                            |
+| `Contracts/V1/TraversalEdgeInfo.cs`     | Add `VerifiedBy`, `PreviousConfidence` init properties                                    |
+| `Contracts/V1/MemoriesJsonContext.cs`   | Register new types                                                                        |
+| `Server/Graph/IGraphQueryBuilder.cs`    | Add `BuildUpdateEdgeConfidence` method                                                    |
+| `Server/Graph/GraphQueryBuilder.cs`     | Implement `BuildUpdateEdgeConfidence`, update Cypher edge map in `BuildTraverseWithEdges` |
+| `Server/Graph/GraphTraversalService.cs` | Gap detection in TraverseAsync, add PromoteEdgeConfidenceAsync, extend ParseEdges         |
+| `Server/Program.cs`                     | Add PATCH /edges/confidence endpoint                                                      |
 
 ### Key Files to Create
 
-| File | Purpose |
-|------|---------|
-| `Contracts/V1/TraversalGapMarker.cs` | Gap marker contract for missing nodes |
+| File                                         | Purpose                               |
+| -------------------------------------------- | ------------------------------------- |
+| `Contracts/V1/TraversalGapMarker.cs`         | Gap marker contract for missing nodes |
 | `Contracts/V1/ConfidencePromotionRequest.cs` | Request body for confidence promotion |
-| `Contracts/V1/ConfidencePromotionResult.cs` | Response for confidence promotion |
+| `Contracts/V1/ConfidencePromotionResult.cs`  | Response for confidence promotion     |
 
 ### Testing Patterns to Follow
 
 **Unit tests (Shouldly assertions, same as GraphQueryBuilderTests.cs):**
+
 - `query.ShouldContain("previousConfidence")` — verify audit field in query
 - `query.ShouldContain("verifiedBy")` — verify audit field in query
 - `result.GapMarkers.Count.ShouldBe(1)` — verify gap detection
@@ -298,6 +312,7 @@ Similarly, `TraversalEdgeInfo` new properties are non-positional init with null 
 - Theory tests with `[InlineData]` for edge type variations
 
 **Integration tests:**
+
 - Follow `TraversalEndpointIntegrationTests.cs` pattern from Story 4.1
 - Use `BuildMergeStubNode` + `BuildMergeMemoryUnitNode` + `BuildMergeEdge` for precise graph setup
 - HTTP client calls to traverse and promote endpoints
@@ -313,6 +328,7 @@ Similarly, `TraversalEdgeInfo` new properties are non-positional init with null 
 ### Previous Story Intelligence
 
 Story 4.1 established:
+
 - `BuildTraverseWithEdges` query pattern with MATCH path + OPTIONAL MATCH for edges + collect()
 - Reverse mapping methods for EdgeType/EdgeOrigin/SourceType strings from FalkorDB
 - `GraphTraversalService` access pattern (singleton, keyed FalkorDB connection)
@@ -321,12 +337,14 @@ Story 4.1 established:
 - Content truncation at 200 chars with word boundary
 
 Story 4.2 (if implemented) established:
+
 - `EdgeTypeCategory` enum (Structural, Semantic) and `EdgeTypeTaxonomy` static helpers
 - 4-param `BuildTraverseWithEdges` overload with edgeTypes filtering
 - `edgeTypes` query parameter on traverse endpoint
 - Pipe-separated edge type labels in Cypher: `[:CAUSED_BY|CORRELATED_WITH*0..{depth}]`
 
 Story 3.6 established:
+
 - `BuildMergeStubNode` + `BuildMergeEdge` pattern for annotation edges
 - Compensation pattern for graph cleanup on failure
 
@@ -370,8 +388,54 @@ Recent commits show pattern: contracts first, then service logic, then endpoint,
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- All unit tests pass: 218 contract tests, 631+ server unit tests
+- All builds succeed with 0 warnings, 0 errors
+- Story 4.2 confirmed implemented — both 3-param and 4-param BuildTraverseWithEdges overloads updated with verifiedBy/previousConfidence edge map fields
+- Content-null heuristic validated: stub nodes created by BuildMergeStubNode have only `id` property; content is null in FalkorDB for stubs
+- ParseTraversalNodeAsync refactored to accept content parameter — avoids double-reading record values and enables gap detection before fallback
 
 ### Completion Notes List
 
+- **Task 1:** Created `TraversalGapMarker` contract, added `GapMarkers` init property to `TraversalResult` (non-breaking), registered types in `MemoriesJsonContext`
+- **Task 2:** Created `ConfidencePromotionRequest` and `ConfidencePromotionResult` contracts, registered in JSON context
+- **Task 3:** Extended `TraversalEdgeInfo` with `VerifiedBy` and `PreviousConfidence` nullable init properties with `WhenWritingNull` serialization. Updated Cypher edge collection map in `BuildTraverseWithEdges`. Updated `ParseEdgeCollection` to extract and pass audit fields. Updated `TryCreateEdgeMapFromSequence` to handle 7-element arrays and `IsKnownEdgeFieldName` for new field names
+- **Task 4:** Modified `TraverseAsync` to detect stub nodes (null content) and classify them as gap markers instead of skipping. Refactored `ParseTraversalNodeAsync` to accept pre-validated content string parameter. Gap markers include edge metadata. TotalNodeCount excludes gap markers
+- **Task 5:** Added `BuildUpdateEdgeConfidence` to `IGraphQueryBuilder` and implemented in `GraphQueryBuilder` with full input validation and parameterized Cypher using `SET r.previousConfidence = r.confidence` for atomic audit trail
+- **Task 6:** Added `PromoteEdgeConfidenceAsync` to `GraphTraversalService` with graph-not-found handling and LoggerMessage logging
+- **Task 7:** Added `PATCH /api/tenants/{tenantId}/edges/confidence` endpoint with full validation (tenant, source/target/verifiedBy, confidence range), 404 for edge not found, 200 OK with result body
+- **Tasks 8-12:** Created 3 new serialization test files, extended 2 existing. Added unit tests for gap detection, confidence promotion, edge audit fields. Created 2 integration test files for gap detection (6 tests) and confidence promotion (7 tests)
+
 ### File List
+
+**New files:**
+
+- src/Hexalith.Memories.Contracts/V1/TraversalGapMarker.cs
+- src/Hexalith.Memories.Contracts/V1/ConfidencePromotionRequest.cs
+- src/Hexalith.Memories.Contracts/V1/ConfidencePromotionResult.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TraversalGapMarkerSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionRequestSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/ConfidencePromotionResultSerializationTests.cs
+- tests/Hexalith.Memories.IntegrationTests/Graph/GapDetectionIntegrationTests.cs
+- tests/Hexalith.Memories.IntegrationTests/Graph/ConfidencePromotionIntegrationTests.cs
+
+**Modified files:**
+
+- src/Hexalith.Memories.Contracts/V1/TraversalResult.cs
+- src/Hexalith.Memories.Contracts/V1/TraversalEdgeInfo.cs
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs
+- src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs
+- src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs
+- src/Hexalith.Memories.Server/Graph/GraphTraversalService.cs
+- src/Hexalith.Memories.Server/Program.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TraversalResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TraversalEdgeInfoSerializationTests.cs
+- tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs
+- tests/Hexalith.Memories.Server.Tests/Graph/GraphTraversalServiceTests.cs
+
+## Change Log
+
+- 2026-04-13: Story 4.3 implementation complete — gap detection via content-null heuristic on stub nodes, confidence promotion with audit trail (previousConfidence, verifiedBy), PATCH endpoint, comprehensive unit and integration tests

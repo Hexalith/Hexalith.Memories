@@ -74,4 +74,35 @@ public class TraversalResultSerializationTests
         deserialized.Nodes.ShouldBeEmpty();
         deserialized.TotalNodeCount.ShouldBe(0);
     }
+
+    [Fact]
+    public void WithGapMarkers_ShouldSerializeAndDeserializeCorrectly()
+    {
+        var original = new TraversalResult("mu-start", 3, [], 0)
+        {
+            GapMarkers =
+            [
+                new TraversalGapMarker("mu-missing-1", 1, [new TraversalEdgeInfo(EdgeType.CausedBy, 1.0f, EdgeOrigin.Explicit, "mu-start", "incoming")]),
+                new TraversalGapMarker("mu-missing-2", 2, []),
+            ],
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TraversalResult? deserialized = JsonSerializer.Deserialize<TraversalResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.GapMarkers.Count.ShouldBe(2);
+        deserialized.GapMarkers[0].MissingNodeId.ShouldBe("mu-missing-1");
+        deserialized.GapMarkers[1].MissingNodeId.ShouldBe("mu-missing-2");
+    }
+
+    [Fact]
+    public void EmptyGapMarkers_ShouldAppearInJson()
+    {
+        var original = new TraversalResult("mu-start", 2, [], 0);
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"gapMarkers\":[]");
+    }
 }

@@ -75,4 +75,44 @@ public class TraversalEdgeInfoSerializationTests
 
         json.ShouldContain("\"inferred\"");
     }
+
+    [Fact]
+    public void VerifiedByAndPreviousConfidence_WhenSet_ShouldSerialize()
+    {
+        var original = new TraversalEdgeInfo(
+            EdgeType.CausedBy,
+            1.0f,
+            EdgeOrigin.Explicit,
+            "mu-002",
+            "outgoing")
+        {
+            VerifiedBy = "user@test.com",
+            PreviousConfidence = 0.5f,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TraversalEdgeInfo? deserialized = JsonSerializer.Deserialize<TraversalEdgeInfo>(json, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"verifiedBy\":");
+        json.ShouldContain("\"previousConfidence\":");
+        deserialized.ShouldNotBeNull();
+        deserialized.VerifiedBy.ShouldBe("user@test.com");
+        deserialized.PreviousConfidence.ShouldBe(0.5f);
+    }
+
+    [Fact]
+    public void VerifiedByAndPreviousConfidence_WhenNull_ShouldBeOmittedFromJson()
+    {
+        var original = new TraversalEdgeInfo(
+            EdgeType.CausedBy,
+            1.0f,
+            EdgeOrigin.Explicit,
+            "mu-002",
+            "outgoing");
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("verifiedBy");
+        json.ShouldNotContain("previousConfidence");
+    }
 }

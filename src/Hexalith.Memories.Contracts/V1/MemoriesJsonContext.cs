@@ -31,6 +31,8 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(AxisExplanation))]
 [JsonSerializable(typeof(Dictionary<string, AxisExplanation>))]
 [JsonSerializable(typeof(Dictionary<string, MetadataField>))]
+[JsonSerializable(typeof(ConfidencePromotionRequest))]
+[JsonSerializable(typeof(ConfidencePromotionResult))]
 [JsonSerializable(typeof(EdgeTypeCategory))]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(ExtractionInput))]
@@ -54,6 +56,8 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(TenantEmbeddingConfig))]
 [JsonSerializable(typeof(TraversalNode))]
 [JsonSerializable(typeof(TraversalEdgeInfo))]
+[JsonSerializable(typeof(TraversalGapMarker))]
+[JsonSerializable(typeof(IReadOnlyList<TraversalGapMarker>))]
 [JsonSerializable(typeof(TraversalResult))]
 [JsonSerializable(typeof(IReadOnlyList<TraversalNode>))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;

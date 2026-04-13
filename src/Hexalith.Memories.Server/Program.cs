@@ -1025,6 +1025,70 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     return Results.Ok(result);
 });
 
+app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (
+    string tenantId,
+    JsonElement requestBody,
+    GraphTraversalService traversalService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? requestBodyError = TryReadConfidencePromotionRequest(requestBody, out ConfidencePromotionRequest? request);
+    if (requestBodyError is not null)
+    {
+        return Results.BadRequest(requestBodyError);
+    }
+
+    if (string.IsNullOrWhiteSpace(request!.SourceNodeId))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "MISSING_SOURCE_NODE",
+            "sourceNodeId is required.",
+            "Provide the source node ID of the edge to promote."));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.TargetNodeId))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "MISSING_TARGET_NODE",
+            "targetNodeId is required.",
+            "Provide the target node ID of the edge to promote."));
+    }
+
+    if (string.IsNullOrWhiteSpace(request.VerifiedBy))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "MISSING_VERIFIED_BY",
+            "verifiedBy is required.",
+            "Provide the identity of the person verifying the relationship."));
+    }
+
+    if (!float.IsFinite(request.NewConfidence) || request.NewConfidence < 0f || request.NewConfidence > 1f)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_CONFIDENCE",
+            $"Confidence must be between 0.0 and 1.0, got {request.NewConfidence}.",
+            "Provide a confidence value in the range [0.0, 1.0]."));
+    }
+
+    ConfidencePromotionResult? result = await traversalService.PromoteEdgeConfidenceAsync(
+        tenantId, request, cancellationToken);
+
+    if (result is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "EDGE_NOT_FOUND",
+            $"No {request.EdgeType} edge found from '{request.SourceNodeId}' to '{request.TargetNodeId}'.",
+            "Verify the edge exists by traversing from either node. Note: edges are directed — sourceNodeId must be the relationship origin (e.g., for causedBy, the CausationId is the source)."));
+    }
+
+    return Results.Ok(result);
+});
+
 app.Run();
 
 static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
@@ -1066,6 +1130,56 @@ static ErrorResponse? ValidateTenantId(string tenantId)
             ex.Message,
             "Use only alphanumeric characters and hyphens for tenant identifiers.");
     }
+}
+
+static ErrorResponse? TryReadConfidencePromotionRequest(
+    JsonElement requestBody,
+    out ConfidencePromotionRequest? request)
+{
+    request = null;
+
+    if (requestBody.ValueKind != JsonValueKind.Object)
+    {
+        return new ErrorResponse(
+            "INVALID_REQUEST_BODY",
+            "Request body must be a JSON object.",
+            "Provide a valid confidence promotion request payload.");
+    }
+
+    if (!requestBody.TryGetProperty("edgeType", out _))
+    {
+        return new ErrorResponse(
+            "MISSING_EDGE_TYPE",
+            "edgeType is required.",
+            "Provide the relationship type of the edge to promote.");
+    }
+
+    if (!requestBody.TryGetProperty("newConfidence", out _))
+    {
+        return new ErrorResponse(
+            "MISSING_NEW_CONFIDENCE",
+            "newConfidence is required.",
+            "Provide the new confidence value in the range [0.0, 1.0].");
+    }
+
+    try
+    {
+        request = JsonSerializer.Deserialize<ConfidencePromotionRequest>(requestBody.GetRawText(), MemoriesJsonContext.Options);
+    }
+    catch (JsonException ex)
+    {
+        return new ErrorResponse(
+            "INVALID_REQUEST_BODY",
+            ex.Message,
+            "Provide a valid confidence promotion request payload.");
+    }
+
+    return request is null
+        ? new ErrorResponse(
+            "INVALID_REQUEST_BODY",
+            "Request body could not be deserialized.",
+            "Provide a valid confidence promotion request payload.")
+        : null;
 }
 
 static ErrorResponse? TryDeserializeAddCaseMemberInput(JsonElement requestBody, out AddCaseMemberInput? input)

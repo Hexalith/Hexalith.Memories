@@ -210,6 +210,69 @@ public class GraphTraversalServiceTests
         result.ShouldBe(new string('x', 200) + "...");
     }
 
+    // --- ParseEdgeCollection: verifiedBy/previousConfidence extraction (Story 4.3) ---
+
+    [Fact]
+    public void ParseEdgeCollection_DictionaryWithVerifiedBy_SetsProperty()
+    {
+        List<object> edgesRaw =
+        [
+            new Dictionary<string, object?>
+            {
+                ["edgeType"] = "CAUSED_BY",
+                ["confidence"] = 0.75d,
+                ["origin"] = "explicit",
+                ["connectedId"] = "mu-002",
+                ["direction"] = "outgoing",
+                ["verifiedBy"] = "user@test.com",
+                ["previousConfidence"] = 0.5d,
+            },
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.Count.ShouldBe(1);
+        edges[0].VerifiedBy.ShouldBe("user@test.com");
+        edges[0].PreviousConfidence.ShouldBe(0.5f);
+    }
+
+    [Fact]
+    public void ParseEdgeCollection_DictionaryWithoutVerifiedBy_PropertyIsNull()
+    {
+        List<object> edgesRaw =
+        [
+            new Dictionary<string, object?>
+            {
+                ["edgeType"] = "CAUSED_BY",
+                ["confidence"] = 1.0d,
+                ["origin"] = "explicit",
+                ["connectedId"] = "mu-002",
+                ["direction"] = "outgoing",
+            },
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.Count.ShouldBe(1);
+        edges[0].VerifiedBy.ShouldBeNull();
+        edges[0].PreviousConfidence.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ParseEdgeCollection_SevenElementSequence_SetsVerifiedByAndPreviousConfidence()
+    {
+        List<object> edgesRaw =
+        [
+            new RedisValue[] { "CAUSED_BY", "1.0", "explicit", "mu-002", "outgoing", "user@test.com", "0.5" },
+        ];
+
+        List<TraversalEdgeInfo> edges = GraphTraversalService.ParseEdgeCollection(edgesRaw);
+
+        edges.Count.ShouldBe(1);
+        edges[0].VerifiedBy.ShouldBe("user@test.com");
+        edges[0].PreviousConfidence.ShouldBe(0.5f);
+    }
+
     // --- EdgeType forwarding tests (Story 4.2) ---
 
     [Fact]

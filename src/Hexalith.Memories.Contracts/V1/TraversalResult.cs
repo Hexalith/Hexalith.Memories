@@ -5,4 +5,8 @@ public sealed record TraversalResult(
     string StartNodeId,
     int Depth,
     IReadOnlyList<TraversalNode> Nodes,
-    int TotalNodeCount);
+    int TotalNodeCount)
+{
+    /// <summary>Gets the gap markers for missing nodes detected during traversal (FR49).</summary>
+    public IReadOnlyList<TraversalGapMarker> GapMarkers { get; init; } = [];
+}

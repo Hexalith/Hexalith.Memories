@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-13 # Story 4.2 done
+last_updated: 2026-04-13 # Story 4.3 done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -82,7 +82,7 @@ development_status:
   epic-4: in-progress
   4-1-causal-chain-traversal: done
   4-2-edge-type-filtering-and-taxonomy: done
-  4-3-gap-detection-and-confidence-promotion: ready-for-dev
+  4-3-gap-detection-and-confidence-promotion: done
   epic-4-retrospective: optional
 
   # --- Phase: MVP — Gate 2 (Tenant Isolation) ---
@@ -90,7 +90,7 @@ development_status:
   # Epic 5: Tenant Isolation & Multi-Tenancy
   epic-5: in-progress
   5-1-tenant-provisioning-workflow: ready-for-dev
-  5-2-tenant-deletion-workflow: backlog
+  5-2-tenant-deletion-workflow: ready-for-dev
   5-3-tenant-isolation-verification: backlog
   5-4-tenant-context-enforcement: backlog
   5-5-tenant-configuration-and-listing: backlog

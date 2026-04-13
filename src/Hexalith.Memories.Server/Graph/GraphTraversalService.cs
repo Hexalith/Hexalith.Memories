@@ -62,6 +62,7 @@ public sealed partial class GraphTraversalService
 
         long startTimestamp = Stopwatch.GetTimestamp();
         List<TraversalNode> nodes;
+        List<TraversalGapMarker> gapMarkers;
         try
         {
             ResultSet resultSet = await falkor.QueryAsync(graphId, query, parameters)
@@ -69,13 +70,49 @@ public sealed partial class GraphTraversalService
                 .ConfigureAwait(false);
 
             nodes = [];
+            gapMarkers = [];
             foreach (Record record in resultSet)
             {
-                TraversalNode? node = await ParseTraversalNodeAsync(graphId, record, cancellationToken)
-                    .ConfigureAwait(false);
-                if (node is not null)
+                if (!TryGetRequiredString(record, "nodeId", out string? nodeId))
                 {
-                    nodes.Add(node);
+                    continue;
+                }
+
+                string? contentRaw = TryGetOptionalString(record, "content");
+                if (string.IsNullOrWhiteSpace(contentRaw))
+                {
+                    FallbackTraversalNodeData? fallback = await LoadFallbackTraversalNodeDataAsync(graphId, nodeId, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (!string.IsNullOrWhiteSpace(fallback?.Content))
+                    {
+                        TraversalNode? node = await ParseTraversalNodeAsync(graphId, record, fallback.Content, cancellationToken, fallback)
+                            .ConfigureAwait(false);
+                        if (node is not null)
+                        {
+                            nodes.Add(node);
+                            continue;
+                        }
+                    }
+
+                    // Stub node — gap marker (FR49). Stub nodes created by BuildMergeStubNode
+                    // have ONLY the id property; content is absent/null in FalkorDB.
+                    long gapHop = TryGetRecordValue(record, "hopDistance", out long parsedGapHop)
+                        ? parsedGapHop
+                        : 0;
+                    List<TraversalEdgeInfo> gapEdges = TryGetRecordValue(record, "edges", out object? gapEdgesRaw)
+                        ? ParseEdgeCollection(gapEdgesRaw)
+                        : [];
+                    gapMarkers.Add(new TraversalGapMarker(nodeId, checked((int)gapHop), gapEdges));
+                }
+                else
+                {
+                    TraversalNode? node = await ParseTraversalNodeAsync(graphId, record, contentRaw, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (node is not null)
+                    {
+                        nodes.Add(node);
+                    }
                 }
             }
         }
@@ -93,7 +130,63 @@ public sealed partial class GraphTraversalService
         long elapsedMs = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         LogTraversalComplete(_logger, tenantId, startNodeId, depth, nodes.Count, elapsedMs);
 
-        return new TraversalResult(startNodeId, depth, nodes, nodes.Count);
+        return new TraversalResult(startNodeId, depth, nodes, nodes.Count) { GapMarkers = gapMarkers };
+    }
+
+    /// <summary>
+    /// Promotes the confidence of an existing edge in the knowledge graph (FR51).
+    /// Returns null if the edge or graph does not exist.
+    /// </summary>
+    public async Task<ConfidencePromotionResult?> PromoteEdgeConfidenceAsync(
+        string tenantId,
+        ConfidencePromotionRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(request);
+
+        FalkorDB falkor = new(_falkorDb.GetDatabase());
+        string graphId = tenantId;
+
+        (string query, IDictionary<string, object> parameters) =
+            _graphQueryBuilder.BuildUpdateEdgeConfidence(
+                request.SourceNodeId,
+                request.TargetNodeId,
+                request.EdgeType,
+                request.NewConfidence,
+                request.VerifiedBy);
+
+        ResultSet resultSet;
+        try
+        {
+            resultSet = await falkor.QueryAsync(graphId, query, parameters)
+                .WaitAsync(GraphOperationTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (RedisServerException ex) when (IsGraphNotFoundError(ex))
+        {
+            LogEdgeNotFound(_logger, tenantId, request.SourceNodeId, request.TargetNodeId, request.EdgeType);
+            return null;
+        }
+
+        foreach (Record record in resultSet)
+        {
+            if (TryConvertToSingle(TryGetRecordValueOrDefault<object>(record, "previousConfidence"), out float previousConfidence) &&
+                TryConvertToSingle(TryGetRecordValueOrDefault<object>(record, "newConfidence"), out float newConfidence))
+            {
+                LogConfidencePromoted(_logger, tenantId, request.SourceNodeId, request.TargetNodeId, request.EdgeType, previousConfidence, newConfidence, request.VerifiedBy);
+                return new ConfidencePromotionResult(
+                    request.SourceNodeId,
+                    request.TargetNodeId,
+                    request.EdgeType,
+                    previousConfidence,
+                    newConfidence,
+                    request.VerifiedBy);
+            }
+        }
+
+        LogEdgeNotFound(_logger, tenantId, request.SourceNodeId, request.TargetNodeId, request.EdgeType);
+        return null;
     }
 
     internal static List<TraversalEdgeInfo> ParseEdgeCollection(object? edgesRaw)
@@ -107,7 +200,7 @@ public sealed partial class GraphTraversalService
 
         foreach (object? edgeObj in edgeCollection)
         {
-            if (!TryReadEdgeFields(edgeObj, out string? edgeTypeStr, out float confidence, out string? originStr, out string? connectedId, out string? direction) ||
+            if (!TryReadEdgeFields(edgeObj, out string? edgeTypeStr, out float confidence, out string? originStr, out string? connectedId, out string? direction, out string? verifiedBy, out float? previousConfidence) ||
                 string.IsNullOrWhiteSpace(edgeTypeStr) ||
                 string.IsNullOrWhiteSpace(connectedId) ||
                 string.IsNullOrWhiteSpace(direction) ||
@@ -120,7 +213,11 @@ public sealed partial class GraphTraversalService
                 ? parsedOrigin
                 : EdgeOrigin.Explicit;
 
-            edges.Add(new TraversalEdgeInfo(edgeType, confidence, origin, connectedId, direction));
+            edges.Add(new TraversalEdgeInfo(edgeType, confidence, origin, connectedId, direction)
+            {
+                VerifiedBy = verifiedBy,
+                PreviousConfidence = previousConfidence,
+            });
         }
 
         return edges;
@@ -129,7 +226,9 @@ public sealed partial class GraphTraversalService
     private async Task<TraversalNode?> ParseTraversalNodeAsync(
         string tenantId,
         Record record,
-        CancellationToken cancellationToken)
+        string content,
+        CancellationToken cancellationToken,
+        FallbackTraversalNodeData? fallbackData = null)
     {
         if (!TryGetRequiredString(record, "nodeId", out string? nodeId))
         {
@@ -140,7 +239,6 @@ public sealed partial class GraphTraversalService
             ? parsedHopDistance
             : 0;
 
-        string? content = TryGetOptionalString(record, "content");
         string? sourceUri = TryGetOptionalString(record, "sourceUri");
         string? sourceTypeValue = TryGetOptionalString(record, "sourceType");
         string? ingestedAtValue = TryGetOptionalString(record, "ingestedAt");
@@ -152,22 +250,19 @@ public sealed partial class GraphTraversalService
             ? parsedIngestedAt
             : null;
 
-        if (string.IsNullOrWhiteSpace(content) ||
-            string.IsNullOrWhiteSpace(sourceUri) ||
+        if (string.IsNullOrWhiteSpace(sourceUri) ||
             sourceType is null ||
             ingestedAt is null)
         {
-            FallbackTraversalNodeData? fallback = await LoadFallbackTraversalNodeDataAsync(tenantId, nodeId, cancellationToken)
+            FallbackTraversalNodeData? fallback = fallbackData ?? await LoadFallbackTraversalNodeDataAsync(tenantId, nodeId, cancellationToken)
                 .ConfigureAwait(false);
 
-            content = string.IsNullOrWhiteSpace(content) ? fallback?.Content : content;
             sourceUri = string.IsNullOrWhiteSpace(sourceUri) ? fallback?.SourceUri : sourceUri;
             sourceType ??= fallback?.SourceType;
             ingestedAt ??= fallback?.IngestedAt;
         }
 
-        if (string.IsNullOrWhiteSpace(content) ||
-            string.IsNullOrWhiteSpace(sourceUri) ||
+        if (string.IsNullOrWhiteSpace(sourceUri) ||
             sourceType is null ||
             ingestedAt is null)
         {
@@ -181,7 +276,7 @@ public sealed partial class GraphTraversalService
 
         return new TraversalNode(
             nodeId!,
-            TruncateContent(content!),
+            TruncateContent(content),
             sourceUri!,
             sourceType.Value,
             ingestedAt.Value,
@@ -225,6 +320,9 @@ public sealed partial class GraphTraversalService
             ingestedAt);
     }
 
+    private static T? TryGetRecordValueOrDefault<T>(Record record, string key)
+        => TryGetRecordValue(record, key, out T? value) ? value : default;
+
     private static bool TryGetRecordValue<T>(Record record, string key, out T? value)
     {
         try
@@ -256,12 +354,16 @@ public sealed partial class GraphTraversalService
         out float confidence,
         out string? origin,
         out string? connectedId,
-        out string? direction)
+        out string? direction,
+        out string? verifiedBy,
+        out float? previousConfidence)
     {
         edgeType = null;
         origin = null;
         connectedId = null;
         direction = null;
+        verifiedBy = null;
+        previousConfidence = null;
         confidence = 0f;
 
         if (edgeValue is null || !TryNormalizeEdgeMap(edgeValue, out Dictionary<string, object?> edgeMap))
@@ -273,7 +375,12 @@ public sealed partial class GraphTraversalService
         origin = TryGetMapString(edgeMap, "origin");
         connectedId = TryGetMapString(edgeMap, "connectedId");
         direction = TryGetMapString(edgeMap, "direction");
+        verifiedBy = TryGetMapString(edgeMap, "verifiedBy");
         _ = TryConvertToSingle(edgeMap.TryGetValue("confidence", out object? confidenceValue) ? confidenceValue : null, out confidence);
+        if (TryConvertToSingle(edgeMap.TryGetValue("previousConfidence", out object? pcValue) ? pcValue : null, out float pcFloat))
+        {
+            previousConfidence = pcFloat;
+        }
 
         return true;
     }
@@ -329,6 +436,18 @@ public sealed partial class GraphTraversalService
     {
         edgeMap = [];
 
+        if (values.Count == 7)
+        {
+            edgeMap["edgeType"] = values[0];
+            edgeMap["confidence"] = values[1];
+            edgeMap["origin"] = values[2];
+            edgeMap["connectedId"] = values[3];
+            edgeMap["direction"] = values[4];
+            edgeMap["verifiedBy"] = values[5];
+            edgeMap["previousConfidence"] = values[6];
+            return true;
+        }
+
         if (values.Count == 5)
         {
             edgeMap["edgeType"] = values[0];
@@ -363,7 +482,9 @@ public sealed partial class GraphTraversalService
         || string.Equals(name, "confidence", StringComparison.OrdinalIgnoreCase)
         || string.Equals(name, "origin", StringComparison.OrdinalIgnoreCase)
         || string.Equals(name, "connectedId", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(name, "direction", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(name, "direction", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "verifiedBy", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "previousConfidence", StringComparison.OrdinalIgnoreCase);
 
     private static string? TryGetMapString(IReadOnlyDictionary<string, object?> values, string key)
         => values.TryGetValue(key, out object? value)
@@ -500,4 +621,10 @@ public sealed partial class GraphTraversalService
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Traversal failed: tenant={TenantId}, startNode={StartNodeId}")]
     private static partial void LogTraversalError(ILogger logger, string tenantId, string startNodeId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Confidence promoted: tenant={TenantId}, source={SourceNodeId}, target={TargetNodeId}, edgeType={EdgeType}, {PreviousConfidence} → {NewConfidence}, verifiedBy={VerifiedBy}")]
+    private static partial void LogConfidencePromoted(ILogger logger, string tenantId, string sourceNodeId, string targetNodeId, EdgeType edgeType, float previousConfidence, float newConfidence, string verifiedBy);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Edge not found for confidence promotion: tenant={TenantId}, source={SourceNodeId}, target={TargetNodeId}, edgeType={EdgeType}")]
+    private static partial void LogEdgeNotFound(ILogger logger, string tenantId, string sourceNodeId, string targetNodeId, EdgeType edgeType);
 }

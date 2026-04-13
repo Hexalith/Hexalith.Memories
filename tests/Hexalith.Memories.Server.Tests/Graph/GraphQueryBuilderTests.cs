@@ -668,10 +668,10 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-001", 3, "case-abc");
 
-        query.ShouldContain("WHERE n.caseId = $caseId");
+        query.ShouldContain("WHERE (n.caseId = $caseId OR n.content IS NULL)");
         query.ShouldContain("start.caseId = $caseId");
-        query.ShouldContain("(node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId)");
-        query.ShouldContain("(m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId)");
+        query.ShouldContain("(node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId)");
+        query.ShouldContain("(m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL)) OR (m:Case AND m.id = $caseId)");
         parameters["startId"].ShouldBe("mu-001");
         parameters["caseId"].ShouldBe("case-abc");
     }
@@ -767,8 +767,8 @@ public class GraphQueryBuilderTests
             "mu-001", 3, "case-abc", [EdgeType.Contains]);
 
         query.ShouldContain("[:CONTAINS*0..3]");
-        query.ShouldContain("(node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId)");
-        query.ShouldContain("(m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId)");
+        query.ShouldContain("(node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId)");
+        query.ShouldContain("(m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL)) OR (m:Case AND m.id = $caseId)");
         parameters["caseId"].ShouldBe("case-abc");
     }
 
@@ -806,8 +806,19 @@ public class GraphQueryBuilderTests
             "mu-001", 3, "case-abc", [EdgeType.CausedBy, EdgeType.CorrelatedWith]);
 
         query.ShouldContain("CAUSED_BY|CORRELATED_WITH");
-        query.ShouldContain("WHERE n.caseId = $caseId");
+        query.ShouldContain("WHERE (n.caseId = $caseId OR n.content IS NULL)");
         parameters["caseId"].ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithCaseId_AllowsStubNodesInPathAndEdges()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, "case-abc", [EdgeType.CausedBy]);
+
+        query.ShouldContain("(n.caseId = $caseId OR n.content IS NULL)");
+        query.ShouldContain("(node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL))");
+        query.ShouldContain("(m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL))");
     }
 
     [Fact]
@@ -829,5 +840,140 @@ public class GraphQueryBuilderTests
 
         queryThree.ShouldBe(queryFour);
         paramsThree["startId"].ShouldBe(paramsFour["startId"]);
+    }
+
+    // --- BuildUpdateEdgeConfidence tests (Story 4.3) ---
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_GeneratesCorrectCypher()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildUpdateEdgeConfidence(
+            "mu-source", "mu-target", EdgeType.CausedBy, 1.0f, "user@test.com");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("SET r.previousConfidence = r.confidence");
+        query.ShouldContain("r.confidence = $newConfidence");
+        query.ShouldContain("r.verifiedBy = $verifiedBy");
+        query.ShouldContain("RETURN r.confidence AS newConfidence");
+        query.ShouldContain("r.previousConfidence AS previousConfidence");
+    }
+
+    [Theory]
+    [InlineData(EdgeType.CausedBy, "CAUSED_BY")]
+    [InlineData(EdgeType.CorrelatedWith, "CORRELATED_WITH")]
+    [InlineData(EdgeType.References, "REFERENCES")]
+    [InlineData(EdgeType.Contains, "CONTAINS")]
+    [InlineData(EdgeType.Annotates, "ANNOTATES")]
+    public void BuildUpdateEdgeConfidence_UsesCorrectEdgeLabel(EdgeType edgeType, string expectedLabel)
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildUpdateEdgeConfidence(
+            "mu-source", "mu-target", edgeType, 1.0f, "user@test.com");
+
+        query.ShouldContain($"[r:{expectedLabel}]");
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_ContainsUsesCorrectNodeLabels()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildUpdateEdgeConfidence(
+            "case-001", "mu-target", EdgeType.Contains, 1.0f, "user");
+
+        query.ShouldContain("(s:Case");
+        query.ShouldContain("(t:MemoryUnit");
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_CausedByUsesMemoryUnitLabels()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildUpdateEdgeConfidence(
+            "mu-source", "mu-target", EdgeType.CausedBy, 1.0f, "user");
+
+        query.ShouldContain("(s:MemoryUnit");
+        query.ShouldContain("(t:MemoryUnit");
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_ParameterizesValues()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildUpdateEdgeConfidence(
+            "mu-source", "mu-target", EdgeType.CausedBy, 0.8f, "user@test.com");
+
+        parameters["sourceId"].ShouldBe("mu-source");
+        parameters["targetId"].ShouldBe("mu-target");
+        parameters["newConfidence"].ShouldBe(0.8f);
+        parameters["verifiedBy"].ShouldBe("user@test.com");
+        // Edge label NOT in parameters — interpolated from closed enum
+        parameters.ShouldNotContainKey("edgeLabel");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildUpdateEdgeConfidence_NullSourceNodeId_Throws(string? sourceNodeId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildUpdateEdgeConfidence(
+            sourceNodeId!, "target", EdgeType.CausedBy, 1.0f, "user"));
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_NegativeConfidence_Throws()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildUpdateEdgeConfidence(
+            "source", "target", EdgeType.CausedBy, -0.1f, "user"));
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_NaNConfidence_Throws()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildUpdateEdgeConfidence(
+            "source", "target", EdgeType.CausedBy, float.NaN, "user"));
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_ConfidenceAboveOne_Throws()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildUpdateEdgeConfidence(
+            "source", "target", EdgeType.CausedBy, 1.1f, "user"));
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_BoundaryValuesAccepted()
+    {
+        // 0.0 and 1.0 are valid boundary values
+        Should.NotThrow(() => _builder.BuildUpdateEdgeConfidence(
+            "source", "target", EdgeType.CausedBy, 0.0f, "user"));
+        Should.NotThrow(() => _builder.BuildUpdateEdgeConfidence(
+            "source", "target", EdgeType.CausedBy, 1.0f, "user"));
+    }
+
+    [Fact]
+    public void BuildUpdateEdgeConfidence_InjectionPrevention()
+    {
+        const string adversarialSource = "INJECT'; MATCH (n) DELETE n;--";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildUpdateEdgeConfidence(
+            adversarialSource, "target", EdgeType.CausedBy, 1.0f, "user");
+
+        query.ShouldNotContain(adversarialSource);
+        parameters["sourceId"].ShouldBe(adversarialSource);
+    }
+
+    // --- BuildTraverseWithEdges: verifiedBy/previousConfidence in edge map (Story 4.3) ---
+
+    [Fact]
+    public void BuildTraverseWithEdges_IncludesVerifiedByInEdgeMap()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges("mu-001", 3);
+
+        query.ShouldContain("verifiedBy: r.verifiedBy");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_IncludesPreviousConfidenceInEdgeMap()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges("mu-001", 3);
+
+        query.ShouldContain("previousConfidence: r.previousConfidence");
     }
 }

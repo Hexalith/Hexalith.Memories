@@ -288,11 +288,11 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
         string whereClause = string.IsNullOrWhiteSpace(caseId)
             ? string.Empty
-            : " WHERE n.caseId = $caseId AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId))";
+            : " WHERE (n.caseId = $caseId OR n.content IS NULL) AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId))";
         string edgeWhereClause = string.IsNullOrWhiteSpace(caseId)
             ? " WHERE m.id <> n.id"
-            : " WHERE m.id <> n.id AND ((m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId))";
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
+            : " WHERE m.id <> n.id AND ((m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL)) OR (m:Case AND m.id = $caseId))";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END, verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence}}) AS edges ORDER BY n.ingestedAt ASC";
 
         Dictionary<string, object> parameters = new()
         {
@@ -303,6 +303,43 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         {
             parameters["caseId"] = caseId;
         }
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildUpdateEdgeConfidence(
+        string sourceNodeId,
+        string targetNodeId,
+        EdgeType edgeType,
+        float newConfidence,
+        string verifiedBy)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(verifiedBy);
+        if (!float.IsFinite(newConfidence))
+        {
+            throw new ArgumentOutOfRangeException(nameof(newConfidence), newConfidence, "Confidence must be a finite value.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(newConfidence, 0f);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(newConfidence, 1f);
+
+        // Edge label is interpolated — safe because derived from the closed EdgeType enum
+        // via the validated ToUpperSnakeCase switch. Same safety pattern as BuildMergeEdge.
+        string edgeLabel = ToUpperSnakeCase(edgeType);
+        (string sourceLabel, string targetLabel) = GetNodeLabels(edgeType);
+
+        string query = $"MATCH (s:{sourceLabel} {{id: $sourceId}})-[r:{edgeLabel}]->(t:{targetLabel} {{id: $targetId}}) SET r.previousConfidence = r.confidence, r.confidence = $newConfidence, r.verifiedBy = $verifiedBy RETURN r.confidence AS newConfidence, r.previousConfidence AS previousConfidence";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["sourceId"] = sourceNodeId,
+            ["targetId"] = targetNodeId,
+            ["newConfidence"] = newConfidence,
+            ["verifiedBy"] = verifiedBy,
+        };
 
         return (query, parameters);
     }
