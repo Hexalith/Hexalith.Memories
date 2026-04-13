@@ -313,6 +313,36 @@ internal sealed class CaseService
         return members.OrderBy(m => m.AddedAt).ToList();
     }
 
+    /// <summary>Batch-resolves case names from Redis hashes for a set of case IDs.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseIds">The case IDs to resolve.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A dictionary mapping each case ID to its name (falls back to case ID if name is missing).</returns>
+    public async Task<Dictionary<string, string>> ResolveNamesAsync(
+        string tenantId, IEnumerable<string> caseIds, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        List<string> uniqueIds = caseIds.Distinct().ToList();
+        if (uniqueIds.Count == 0)
+        {
+            return [];
+        }
+
+        IBatch batch = db.CreateBatch();
+        Task<RedisValue>[] tasks = uniqueIds.Select(id =>
+            batch.HashGetAsync($"{tenantId}:case:{id}", "name")).ToArray();
+        batch.Execute();
+        RedisValue[] names = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        Dictionary<string, string> result = new(uniqueIds.Count);
+        for (int i = 0; i < uniqueIds.Count; i++)
+        {
+            result[uniqueIds[i]] = names[i].HasValue ? (string)names[i]! : uniqueIds[i];
+        }
+
+        return result;
+    }
+
     /// <summary>Gets the number of members in a case via HashLengthAsync.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="caseId">The case identifier.</param>

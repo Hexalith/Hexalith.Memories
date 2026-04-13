@@ -55,4 +55,8 @@ public interface IGraphQueryBuilder
     /// <summary>Builds a bidirectional graph traversal query from a starting node up to depth.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth);
+
+    /// <summary>Builds a bidirectional graph traversal query with optional case scoping.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth, string? caseId);
 }

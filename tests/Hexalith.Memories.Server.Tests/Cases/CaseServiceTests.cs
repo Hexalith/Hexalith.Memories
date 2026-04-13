@@ -727,6 +727,95 @@ public class CaseServiceTests
         count.ShouldBe(42);
     }
 
+    [Fact]
+    public async Task ResolveNamesAsync_WithMultipleCaseIds_ShouldReturnAllNames()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        IBatch batch = Substitute.For<IBatch>();
+        redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
+        batch.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-1"), Arg.Is<RedisValue>(v => v.ToString() == "name"), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(new RedisValue("Alpha")));
+        batch.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-2"), Arg.Is<RedisValue>(v => v.ToString() == "name"), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(new RedisValue("Beta")));
+
+        // Act
+        Dictionary<string, string> result = await service.ResolveNamesAsync("tenant-1", ["case-1", "case-2"], CancellationToken.None);
+
+        // Assert
+        result.Count.ShouldBe(2);
+        result["case-1"].ShouldBe("Alpha");
+        result["case-2"].ShouldBe("Beta");
+    }
+
+    [Fact]
+    public async Task ResolveNamesAsync_WithUnknownCaseId_ShouldFallBackToCaseId()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        IBatch batch = Substitute.For<IBatch>();
+        redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
+        batch.HashGetAsync(Arg.Any<RedisKey>(), Arg.Is<RedisValue>(v => v.ToString() == "name"), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(RedisValue.Null));
+
+        // Act
+        Dictionary<string, string> result = await service.ResolveNamesAsync("tenant-1", ["unknown-case"], CancellationToken.None);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result["unknown-case"].ShouldBe("unknown-case");
+    }
+
+    [Fact]
+    public async Task ResolveNamesAsync_WithEmptyInput_ShouldReturnEmptyDictionary()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, _) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        // Act
+        Dictionary<string, string> result = await service.ResolveNamesAsync("tenant-1", [], CancellationToken.None);
+
+        // Assert
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task ResolveNamesAsync_WithDuplicateCaseIds_ShouldDeduplicateAndResolve()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        IBatch batch = Substitute.For<IBatch>();
+        redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
+        batch.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-1"), Arg.Is<RedisValue>(v => v.ToString() == "name"), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(new RedisValue("Alpha")));
+
+        // Act
+        Dictionary<string, string> result = await service.ResolveNamesAsync("tenant-1", ["case-1", "case-1", "case-1"], CancellationToken.None);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result["case-1"].ShouldBe("Alpha");
+    }
+
     private static CaseActivityService CreateMockActivityService()
     {
         (IConnectionMultiplexer activityRedis, _) = CreateMockRedis();

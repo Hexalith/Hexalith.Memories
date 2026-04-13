@@ -383,4 +383,56 @@ public class GraphQueryBuilderTests
         query.ShouldNotContain(adversarialId);
         parameters["id"].ShouldBe(adversarialId);
     }
+
+    [Fact]
+    public void BuildTraverseFromNode_WithCaseId_ShouldIncludeWhereClause()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, "case-abc");
+
+        query.ShouldContain("WHERE n.caseId = $caseId");
+        query.ShouldContain("$startId");
+        query.ShouldContain("[*0..3]");
+        parameters["startId"].ShouldBe("mu-start-001");
+        parameters["caseId"].ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_WithNullCaseId_ShouldNotIncludeWhereClause()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, null);
+
+        query.ShouldNotContain("WHERE");
+        query.ShouldNotContain("caseId");
+        parameters.ShouldNotContainKey("caseId");
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_WithEmptyCaseId_ShouldNotIncludeWhereClause()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, "");
+
+        query.ShouldNotContain("WHERE");
+        parameters.ShouldNotContainKey("caseId");
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_TwoParamOverload_ShouldDelegateToThreeParam()
+    {
+        (string queryTwo, IDictionary<string, object> paramsTwo) = _builder.BuildTraverseFromNode("mu-001", 2);
+        (string queryThree, IDictionary<string, object> paramsThree) = _builder.BuildTraverseFromNode("mu-001", 2, null);
+
+        queryTwo.ShouldBe(queryThree);
+        paramsTwo["startId"].ShouldBe(paramsThree["startId"]);
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildTraverseFromNode_WithCaseId_ShouldNeverContainRawCaseIdInQuery()
+    {
+        const string adversarialCaseId = "INJECT_CASE_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-001", 3, adversarialCaseId);
+
+        query.ShouldNotContain(adversarialCaseId);
+        parameters["caseId"].ShouldBe(adversarialCaseId);
+    }
 }

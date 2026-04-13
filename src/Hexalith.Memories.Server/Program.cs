@@ -428,9 +428,12 @@ app.MapGet("/api/search", async (
     HybridSearchService hybridSearchService,
     IActorProxyFactory actorProxyFactory,
     CaseActivityService activityService,
+    CaseService caseService,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
     [FromQuery] string? caseId,
+    [FromQuery] string? sourceType = null,
+    [FromQuery] string? metadataQuery = null,
     [FromQuery] int maxResults = 10,
     [FromQuery] int offset = 0,
     [FromQuery] string axis = "syntactic",
@@ -463,6 +466,28 @@ app.MapGet("/api/search", async (
         return Results.BadRequest(tenantValidationError);
     }
 
+    // Validate caseId exists before executing search
+    if (!string.IsNullOrWhiteSpace(caseId))
+    {
+        Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+        if (targetCase is null)
+        {
+            return Results.NotFound(new ErrorResponse(
+                "CASE_NOT_FOUND",
+                $"Case '{caseId}' not found in tenant '{tenantId}'.",
+                $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+        }
+    }
+
+    // Validate sourceType is a known enum value
+    if (!string.IsNullOrWhiteSpace(sourceType) && !Enum.TryParse<SourceType>(sourceType, ignoreCase: true, out _))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_SOURCE_TYPE",
+            $"Source type '{sourceType}' is not recognized.",
+            "Valid values: file, url, event, command, projection, discussion."));
+    }
+
     // Validate axis BEFORE query — axis determines whether query is required
     if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
@@ -493,6 +518,8 @@ app.MapGet("/api/search", async (
             TenantId = tenantId,
             Query = query ?? string.Empty,
             CaseId = caseId,
+            SourceTypeFilter = sourceType,
+            MetadataQuery = metadataQuery,
             MaxResults = clampedMaxResults,
             Offset = Math.Max(offset, 0),
         };
@@ -502,6 +529,7 @@ app.MapGet("/api/search", async (
             SearchResult result = await graphScopedSearch.SearchAsync(
                 searchQuery, startNodeId, clampedDepth,
                 innerSearch: null, cancellationToken);
+            result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
             if (explain)
             {
                 result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
@@ -552,6 +580,8 @@ app.MapGet("/api/search", async (
             TenantId = tenantId,
             Query = query,
             CaseId = caseId,
+            SourceTypeFilter = sourceType,
+            MetadataQuery = metadataQuery,
             MaxResults = Math.Clamp(maxResults, 1, 100),
             Offset = Math.Max(offset, 0),
         };
@@ -593,6 +623,8 @@ app.MapGet("/api/search", async (
             preUnavailableAxes,
             cancellationToken);
 
+        hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
+
         if (explain)
         {
             IReadOnlySet<string> explanationAxes = DetermineHybridExplanationAxes(
@@ -623,6 +655,8 @@ app.MapGet("/api/search", async (
         TenantId = tenantId,
         Query = query,
         CaseId = caseId,
+        SourceTypeFilter = sourceType,
+        MetadataQuery = metadataQuery,
         MaxResults = clampedMax,
         Offset = clampedOff,
     };
@@ -646,6 +680,7 @@ app.MapGet("/api/search", async (
                     mainSearchQuery, startNodeId, clampedDepth,
                     q => semanticService.SearchAsync(q, config, cancellationToken),
                     cancellationToken);
+                result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
                 if (explain)
                 {
                     result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -686,6 +721,7 @@ app.MapGet("/api/search", async (
                 mainSearchQuery, startNodeId, clampedDepth,
                 q => syntacticService.SearchAsync(q),
                 cancellationToken);
+            syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
             if (explain)
             {
                 syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -714,6 +750,7 @@ app.MapGet("/api/search", async (
             TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
             SearchResult searchResult = await semanticService.SearchAsync(
                 mainSearchQuery, config, cancellationToken);
+            searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
             if (explain)
             {
                 searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -743,6 +780,7 @@ app.MapGet("/api/search", async (
     }
 
     SearchResult syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
+    syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
     if (explain)
     {
         syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -906,4 +944,98 @@ static object CreateEmbeddingConfigConflictResponse(
         proposedConfig,
         affectedFields,
     };
+}
+
+static async Task<SearchResult> EnrichResultWithCaseAttributionAsync(
+    SearchResult result,
+    CaseService caseService,
+    string tenantId,
+    CancellationToken cancellationToken)
+{
+    if (result.Results.Count == 0)
+    {
+        return result;
+    }
+
+    List<string> caseIds = result.Results
+        .Where(r => r.CaseId is not null)
+        .Select(r => r.CaseId!)
+        .Distinct()
+        .ToList();
+
+    if (caseIds.Count == 0)
+    {
+        return result;
+    }
+
+    Dictionary<string, string> caseNames = await caseService.ResolveNamesAsync(tenantId, caseIds, cancellationToken);
+
+    List<ScoredResult> enrichedResults = result.Results
+        .Select(r => r.CaseId is not null && caseNames.TryGetValue(r.CaseId, out string? name)
+            ? r with { CaseName = name }
+            : r)
+        .ToList();
+
+    List<CaseGroupSummary> caseGroups = BuildCaseGroups(enrichedResults, caseNames);
+
+    return result with
+    {
+        Results = enrichedResults,
+        CaseGroups = caseGroups.Count > 0 ? caseGroups : null,
+    };
+}
+
+static async Task<HybridSearchResult> EnrichHybridResultWithCaseAttributionAsync(
+    HybridSearchResult result,
+    CaseService caseService,
+    string tenantId,
+    CancellationToken cancellationToken)
+{
+    if (result.Results.Count == 0)
+    {
+        return result;
+    }
+
+    List<string> caseIds = result.Results
+        .Where(r => r.CaseId is not null)
+        .Select(r => r.CaseId!)
+        .Distinct()
+        .ToList();
+
+    if (caseIds.Count == 0)
+    {
+        return result;
+    }
+
+    Dictionary<string, string> caseNames = await caseService.ResolveNamesAsync(tenantId, caseIds, cancellationToken);
+
+    List<FusedScoredResult> enrichedResults = result.Results
+        .Select(r => r.CaseId is not null && caseNames.TryGetValue(r.CaseId, out string? name)
+            ? r with { CaseName = name }
+            : r)
+        .ToList();
+
+    List<CaseGroupSummary> caseGroups = enrichedResults
+        .Where(r => r.CaseId is not null)
+        .GroupBy(r => r.CaseId!)
+        .Select(g => new CaseGroupSummary(g.Key, caseNames.GetValueOrDefault(g.Key, g.Key), g.Count()))
+        .OrderByDescending(c => c.ResultCount)
+        .ToList();
+
+    return result with
+    {
+        Results = enrichedResults,
+        CaseGroups = caseGroups.Count > 0 ? caseGroups : null,
+    };
+}
+
+static List<CaseGroupSummary> BuildCaseGroups(
+    IReadOnlyList<ScoredResult> results, Dictionary<string, string> caseNames)
+{
+    return results
+        .Where(r => r.CaseId is not null)
+        .GroupBy(r => r.CaseId!)
+        .Select(g => new CaseGroupSummary(g.Key, caseNames.GetValueOrDefault(g.Key, g.Key), g.Count()))
+        .OrderByDescending(c => c.ResultCount)
+        .ToList();
 }

@@ -17,6 +17,12 @@ public sealed record SearchQuery
     /// <summary>Gets an optional case identifier to further scope results.</summary>
     public string? CaseId { get; init; }
 
+    /// <summary>Gets an optional source type filter to restrict results (e.g., "file", "url", "text", "api").</summary>
+    public string? SourceTypeFilter { get; init; }
+
+    /// <summary>Gets an optional metadata text query to filter results by metadata content.</summary>
+    public string? MetadataQuery { get; init; }
+
     /// <summary>Gets the maximum number of results to return (default 10).</summary>
     public int MaxResults { get; init; } = 10;
 

@@ -161,4 +161,47 @@ public class SemanticSearchServiceTests
 
         result.ShouldBeFalse();
     }
+
+    [Fact]
+    public void BuildKnnQueryString_WithSourceTypeFilter_ShouldAddTagFilter()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(10, null, "file");
+
+        result.ShouldBe("@sourceType:{file}=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Fact]
+    public void BuildKnnQueryString_WithCaseIdAndSourceType_ShouldCombineFilters()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(10, "case-1", "file");
+
+        result.ShouldContain(@"@caseId:{case\-1}");
+        result.ShouldContain("@sourceType:{file}");
+        result.ShouldContain("=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Fact]
+    public void BuildKnnQueryString_WithEmptySourceType_ShouldIgnore()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(10, null, "");
+
+        result.ShouldBe("*=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Fact]
+    public void BuildKnnQueryString_WithSourceTypeContainingSpecialChars_ShouldEscape()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(10, null, "file-type");
+
+        result.ShouldContain(@"@sourceType:{file\-type}");
+    }
+
+    [Fact]
+    public void HasRequiredEnrichmentFields_WithExtraFields_ShouldStillReturnTrue()
+    {
+        bool result = SemanticSearchService.HasRequiredEnrichmentFields(
+            [new RedisValue("content"), new RedisValue("file:///doc.txt"), new RedisValue("file"), new RedisValue("case-1"), new RedisValue("metadata text")]);
+
+        result.ShouldBeTrue();
+    }
 }

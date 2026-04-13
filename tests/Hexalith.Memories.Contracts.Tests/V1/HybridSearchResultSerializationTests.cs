@@ -133,4 +133,82 @@ public class HybridSearchResultSerializationTests
         json.ShouldNotContain("\"TotalCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"Degraded\":", Shouldly.Case.Sensitive);
     }
+
+    [Fact]
+    public void FusedScoredResult_CaseId_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new FusedScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            CompositeScore = 0.82,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+            CaseId = "case-abc",
+            CaseName = "Investigation Alpha",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        FusedScoredResult? deserialized = JsonSerializer.Deserialize<FusedScoredResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.CaseId.ShouldBe("case-abc");
+        deserialized.CaseName.ShouldBe("Investigation Alpha");
+    }
+
+    [Fact]
+    public void FusedScoredResult_CaseId_WhenNull_ShouldBeOmittedFromJson()
+    {
+        var original = new FusedScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            CompositeScore = 0.82,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("caseId");
+        json.ShouldNotContain("caseName");
+    }
+
+    [Fact]
+    public void HybridSearchResult_CaseGroups_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "test",
+            CaseGroups = [new CaseGroupSummary("case-1", "Alpha", 5), new CaseGroupSummary("case-2", "Beta", 3)],
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        HybridSearchResult? deserialized = JsonSerializer.Deserialize<HybridSearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.CaseGroups.ShouldNotBeNull();
+        deserialized.CaseGroups.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void HybridSearchResult_CaseGroups_WhenNull_ShouldBeOmittedFromJson()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "test",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("caseGroups");
+    }
 }
