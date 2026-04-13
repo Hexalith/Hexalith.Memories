@@ -265,19 +265,34 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
         string startNodeId, int depth, string? caseId)
+        => BuildTraverseWithEdges(startNodeId, depth, caseId, edgeTypes: null);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
         ArgumentOutOfRangeException.ThrowIfNegative(depth);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
 
+        // Default to semantic types when no filter specified (AC #4).
+        IReadOnlyList<EdgeType> effectiveTypes = (edgeTypes is null || edgeTypes.Count == 0)
+            ? EdgeTypeTaxonomy.SemanticTypes
+            : edgeTypes.Distinct().ToList();
+
+        // Edge type labels are interpolated as literals — Cypher does not support parameterized
+        // relationship types. This is safe because labels are derived from the closed EdgeType enum
+        // via the validated ToUpperSnakeCase switch. Same safety pattern as BuildMergeEdge.
+        string edgeLabels = string.Join("|", effectiveTypes.Select(ToUpperSnakeCase));
+
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
         string whereClause = string.IsNullOrWhiteSpace(caseId)
             ? string.Empty
-            : " WHERE n.caseId = $caseId AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE node.caseId = $caseId)";
+            : " WHERE n.caseId = $caseId AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId))";
         string edgeWhereClause = string.IsNullOrWhiteSpace(caseId)
             ? " WHERE m.id <> n.id"
-            : " WHERE m.id <> n.id AND m.caseId = $caseId";
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r]-(m:MemoryUnit){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
+            : " WHERE m.id <> n.id AND ((m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId))";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
 
         Dictionary<string, object> parameters = new()
         {

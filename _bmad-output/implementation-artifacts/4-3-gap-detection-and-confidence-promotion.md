@@ -100,8 +100,8 @@ so that I can trust the completeness of causal chains and contribute human verif
     4. VerifiedBy: if null/empty → 400 with `ErrorResponse("MISSING_VERIFIED_BY", "verifiedBy is required.", "Provide the identity of the person verifying the relationship.")`
     5. NewConfidence: if `< 0f` or `> 1f` → 400 with `ErrorResponse("INVALID_CONFIDENCE", $"Confidence must be between 0.0 and 1.0, got {request.NewConfidence}.", "Provide a confidence value in the range [0.0, 1.0].")`. **Boundary values 0.0 and 1.0 are valid.** Use `request.NewConfidence < 0f || request.NewConfidence > 1f` (strict inequality) — must match the query builder validation in Task 5.2 which uses `ThrowIfLessThan(0f)` and `ThrowIfGreaterThan(1f)` (both inclusive of boundaries)
   - [ ] 7.5 Call service: `var result = await traversalService.PromoteEdgeConfidenceAsync(tenantId, request, cancellationToken)`
-  - [ ] 7.6 If result is null → return 404 with `ErrorResponse("EDGE_NOT_FOUND", $"No {request.EdgeType} edge found from '{request.SourceNodeId}' to '{request.TargetNodeId}'.", "Verify the edge exists by traversing from either node.")`
-  - [ ] 7.7 Return `Results.Ok(result)` with `ConfidencePromotionResult`
+  - [ ] 7.6 If result is null → return 404 with `ErrorResponse("EDGE_NOT_FOUND", $"No {request.EdgeType} edge found from '{request.SourceNodeId}' to '{request.TargetNodeId}'.", "Verify the edge exists by traversing from either node. Note: edges are directed — sourceNodeId must be the relationship origin (e.g., for causedBy, the CausationId is the source).")`
+  - [ ] 7.7 Return `Results.Ok(result)` — 200 OK with `ConfidencePromotionResult` JSON body (not 204 No Content, because the response includes the previous/new confidence values the caller needs for confirmation)
 
 - [ ] Task 8: Contract serialization tests (AC: #1, #2, #3, #4)
   - [ ] 8.1 Create `tests/Hexalith.Memories.Contracts.Tests/V1/TraversalGapMarkerSerializationTests.cs` — roundtrip JSON test: serialize/deserialize TraversalGapMarker with MissingNodeId, HopDistance, and Edges list containing edge info. Verify camelCase: `missingNodeId`, `hopDistance`, `edges`
@@ -204,6 +204,8 @@ The stub for B exists in the graph but has NO content, sourceUri, sourceType, or
 
 **Known assumption:** This heuristic assumes `content == null` always means stub. Today this holds — `BuildMergeMemoryUnitNode` validates content as non-null at line 37. If a future story introduces a node type that legitimately has no content (e.g., a metadata-only unit), this heuristic breaks silently. The explicit `isStub` flag is the escape hatch — defer until needed.
 
+**Canary test fallback plan:** If integration test 12.2 fails because FalkorDB returns an unexpected value for absent properties (not null, not empty string — e.g., a driver-specific sentinel), abandon the content-null heuristic and switch to an explicit `isStub` property: modify `BuildMergeStubNode` to `MERGE (m:MemoryUnit {id: $id}) SET m._stub = true` and `BuildMergeMemoryUnitNode` to `SET m._stub = false`. Detect via `n._stub AS isStub` in the traversal query. This is more invasive (touches two existing methods) but guaranteed reliable regardless of driver behavior. Only use this fallback if the canary fails.
+
 ### Source-Generated JSON Verification
 
 After implementing Task 3.1 (`TraversalEdgeInfo` init properties with `WhenWritingNull`), run a quick compile + serialization test (Task 8.5) BEFORE writing further tests. The `MemoriesJsonContext` source generator should pick up attributes on non-positional init properties, but verify this produces the expected JSON shape (fields omitted when null, present when set). If the source generator doesn't handle it, switch to a `[JsonExtensionData]` approach or add the properties to the positional constructor as nullable parameters.
@@ -223,7 +225,7 @@ FalkorDB stores edge properties as key-value pairs on relationships. The `SET r.
 
 **Concurrent promotion behavior (last-writer-wins):** If two PATCH requests hit the same edge simultaneously, both read the same `r.confidence`, both set `previousConfidence` to the same value, and one overwrites the other's promotion. The last writer wins. This is acceptable for MVP — confidence promotion is a low-frequency human action, not a high-concurrency path. Integration test 12.10 (double promotion) documents the sequential behavior; concurrent race conditions are a known accepted edge case.
 
-**Audit limitation:** Only the MOST RECENT promotion is tracked (previousConfidence stores the value before the last promotion, not the full history). Full audit history would require an external log — out of scope for MVP. The dev note in ConfidencePromotionResult should document this.
+**Audit limitation:** Only the MOST RECENT promotion is tracked (previousConfidence stores the value before the last promotion, not the full history). Full audit history would require an append-only structure (e.g., Redis Stream keyed by edge identity, or a dedicated event log) — not edge properties, which are mutable registers. Out of scope for MVP. The dev note in ConfidencePromotionResult should document this single-level limitation.
 
 ### Edge Direction Matters for Promotion
 

@@ -31,6 +31,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(AxisExplanation))]
 [JsonSerializable(typeof(Dictionary<string, AxisExplanation>))]
 [JsonSerializable(typeof(Dictionary<string, MetadataField>))]
+[JsonSerializable(typeof(EdgeTypeCategory))]
 [JsonSerializable(typeof(ErrorResponse))]
 [JsonSerializable(typeof(ExtractionInput))]
 [JsonSerializable(typeof(FusedScoredResult))]

@@ -974,6 +974,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     [FromQuery] string? startNodeId,
     [FromQuery] int depth = 2,
     [FromQuery] string? caseId = null,
+    [FromQuery] string? edgeTypes = null,
     CancellationToken cancellationToken = default) =>
 {
     if (string.IsNullOrWhiteSpace(tenantId))
@@ -995,9 +996,32 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
             "Provide startNodeId=<memoryUnitId> to specify the traversal starting point."));
     }
 
+    // Parse edgeTypes: null/empty/whitespace means "use default semantic types".
+    IReadOnlyList<EdgeType>? parsedEdgeTypes = null;
+    if (!string.IsNullOrWhiteSpace(edgeTypes))
+    {
+        List<EdgeType> types = [];
+        string[] parts = edgeTypes.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        string validTypesString = string.Join(", ", Enum.GetValues<EdgeType>().Select(e => char.ToLowerInvariant(e.ToString()[0]) + e.ToString()[1..]));
+        foreach (string part in parts)
+        {
+            if (!Enum.TryParse<EdgeType>(part, ignoreCase: true, out EdgeType et) || !Enum.IsDefined(et))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "INVALID_EDGE_TYPE",
+                    $"Unknown edge type: '{part}'. Valid types: {validTypesString}",
+                    "Use comma-separated camelCase edge type names (not underscore format)."));
+            }
+
+            types.Add(et);
+        }
+
+        parsedEdgeTypes = types;
+    }
+
     int clampedDepth = Math.Clamp(depth, 0, 10);
     TraversalResult result = await traversalService.TraverseAsync(
-        tenantId, startNodeId, clampedDepth, caseId, cancellationToken);
+        tenantId, startNodeId, clampedDepth, caseId, parsedEdgeTypes, cancellationToken);
     return Results.Ok(result);
 });
 

@@ -33,7 +33,7 @@ public class GraphTraversalServiceTests
             .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
 
         // Act
-        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 3, null, CancellationToken.None);
+        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 3, null, null, CancellationToken.None);
 
         // Assert
         result.StartNodeId.ShouldBe("mu-001");
@@ -53,7 +53,7 @@ public class GraphTraversalServiceTests
         GraphTraversalService service = new(falkorDb, redis, builder, logger);
 
         // Act
-        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 0, null, CancellationToken.None);
+        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 0, null, null, CancellationToken.None);
 
         // Assert
         result.StartNodeId.ShouldBe("mu-001");
@@ -208,6 +208,60 @@ public class GraphTraversalServiceTests
         string result = GraphTraversalService.TruncateContent(content);
 
         result.ShouldBe(new string('x', 200) + "...");
+    }
+
+    // --- EdgeType forwarding tests (Story 4.2) ---
+
+    [Fact]
+    public async Task TraverseAsync_WithEdgeTypes_PassesToQueryBuilder()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+
+        List<EdgeType> edgeTypes = [EdgeType.CausedBy, EdgeType.CorrelatedWith];
+        builder.BuildTraverseWithEdges("mu-001", 3, null, edgeTypes)
+            .Returns(("MATCH p = (start:MemoryUnit {id: $startId}) RETURN start", new Dictionary<string, object> { ["startId"] = "mu-001" }));
+
+        // Simulate graph-not-found to short-circuit execution
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+
+        // Act
+        _ = await service.TraverseAsync("tenant-1", "mu-001", 3, null, edgeTypes, CancellationToken.None);
+
+        // Assert — verify the 4-param overload was called with the correct edge types
+        builder.Received(1).BuildTraverseWithEdges("mu-001", 3, null, edgeTypes);
+    }
+
+    [Fact]
+    public async Task TraverseAsync_WithNullEdgeTypes_PassesNullToQueryBuilder()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+
+        builder.BuildTraverseWithEdges("mu-001", 3, null, null)
+            .Returns(("MATCH p = (start:MemoryUnit {id: $startId}) RETURN start", new Dictionary<string, object> { ["startId"] = "mu-001" }));
+
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+
+        // Act
+        _ = await service.TraverseAsync("tenant-1", "mu-001", 3, null, null, CancellationToken.None);
+
+        // Assert — null forwarded, not default-resolved at service level
+        builder.Received(1).BuildTraverseWithEdges("mu-001", 3, null, null);
     }
 
     // --- Helpers ---

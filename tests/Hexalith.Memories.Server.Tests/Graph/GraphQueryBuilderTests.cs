@@ -627,7 +627,8 @@ public class GraphQueryBuilderTests
         query.ShouldContain("hopDistance");
         query.ShouldContain("ingestedAt");
         query.ShouldContain("ORDER BY");
-        query.ShouldContain("[*0..3]");
+        // Default overload uses semantic-only edge types (AC #4 from Story 4.2)
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH|REFERENCES*0..3]");
         query.ShouldContain("content");
         query.ShouldContain("sourceUri");
         query.ShouldContain("sourceType");
@@ -639,7 +640,8 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges("mu-001", 0);
 
-        query.ShouldContain("[*0..0]");
+        // Default overload uses semantic-only edge types
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH|REFERENCES*0..0]");
     }
 
     [Theory]
@@ -668,8 +670,8 @@ public class GraphQueryBuilderTests
 
         query.ShouldContain("WHERE n.caseId = $caseId");
         query.ShouldContain("start.caseId = $caseId");
-        query.ShouldContain("ALL(node IN nodes(p) WHERE node.caseId = $caseId)");
-        query.ShouldContain("m.caseId = $caseId");
+        query.ShouldContain("(node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId)");
+        query.ShouldContain("(m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId)");
         parameters["startId"].ShouldBe("mu-001");
         parameters["caseId"].ShouldBe("case-abc");
     }
@@ -702,5 +704,130 @@ public class GraphQueryBuilderTests
     public void BuildTraverseWithEdges_NullOrEmptyStartNodeId_ShouldThrow(string? startNodeId)
     {
         Should.Throw<ArgumentException>(() => _builder.BuildTraverseWithEdges(startNodeId!, 2));
+    }
+
+    // --- BuildTraverseWithEdges edge type filtering tests (Story 4.2) ---
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithSingleEdgeType_FiltersPathByType()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, [EdgeType.CausedBy]);
+
+        query.ShouldContain("[:CAUSED_BY*0..3]");
+        query.ShouldContain("[r:CAUSED_BY]-(m)");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithMultipleEdgeTypes_PipeSeparated()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, [EdgeType.CausedBy, EdgeType.CorrelatedWith]);
+
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH");
+        query.ShouldContain("[r:CAUSED_BY|CORRELATED_WITH]");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithNullEdgeTypes_DefaultsToSemanticTypes()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, null);
+
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH|REFERENCES");
+        query.ShouldNotContain("CONTAINS");
+        query.ShouldNotContain("ANNOTATES");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithEmptyEdgeTypes_DefaultsToSemanticTypes()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, []);
+
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH|REFERENCES");
+        query.ShouldNotContain("CONTAINS");
+        query.ShouldNotContain("ANNOTATES");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithStructuralEdgeType_Allowed()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, [EdgeType.Contains]);
+
+        query.ShouldContain("[:CONTAINS*0..3]");
+        query.ShouldContain("[r:CONTAINS]-(m)");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithContainsAndCaseId_AllowsCaseBoundaryNodes()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, "case-abc", [EdgeType.Contains]);
+
+        query.ShouldContain("[:CONTAINS*0..3]");
+        query.ShouldContain("(node:MemoryUnit AND node.caseId = $caseId) OR (node:Case AND node.id = $caseId)");
+        query.ShouldContain("(m:MemoryUnit AND m.caseId = $caseId) OR (m:Case AND m.id = $caseId)");
+        parameters["caseId"].ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithAllFiveTypes_AllIncluded()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null,
+            [EdgeType.CausedBy, EdgeType.CorrelatedWith, EdgeType.References, EdgeType.Contains, EdgeType.Annotates]);
+
+        query.ShouldContain("CAUSED_BY");
+        query.ShouldContain("CORRELATED_WITH");
+        query.ShouldContain("REFERENCES");
+        query.ShouldContain("CONTAINS");
+        query.ShouldContain("ANNOTATES");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithEdgeTypes_StillParameterizesStartId()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, [EdgeType.CausedBy]);
+
+        query.ShouldContain("$startId");
+        parameters.ShouldContainKey("startId");
+        parameters["startId"].ShouldBe("mu-001");
+        // Edge type labels are NOT in parameters — interpolated as validated literals
+        parameters.ShouldNotContainKey("edgeTypes");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithEdgeTypesAndCaseId_BothApplied()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, "case-abc", [EdgeType.CausedBy, EdgeType.CorrelatedWith]);
+
+        query.ShouldContain("CAUSED_BY|CORRELATED_WITH");
+        query.ShouldContain("WHERE n.caseId = $caseId");
+        parameters["caseId"].ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithDuplicateEdgeTypes_Deduplicated()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges(
+            "mu-001", 3, null, [EdgeType.CausedBy, EdgeType.CausedBy]);
+
+        // Should contain single CAUSED_BY, not CAUSED_BY|CAUSED_BY
+        query.ShouldContain("[:CAUSED_BY*0..3]");
+        query.ShouldNotContain("CAUSED_BY|CAUSED_BY");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_ThreeParamOverload_DelegatesToFourParamWithNullEdgeTypes()
+    {
+        (string queryThree, IDictionary<string, object> paramsThree) = _builder.BuildTraverseWithEdges("mu-001", 2, null);
+        (string queryFour, IDictionary<string, object> paramsFour) = _builder.BuildTraverseWithEdges("mu-001", 2, null, null);
+
+        queryThree.ShouldBe(queryFour);
+        paramsThree["startId"].ShouldBe(paramsFour["startId"]);
     }
 }

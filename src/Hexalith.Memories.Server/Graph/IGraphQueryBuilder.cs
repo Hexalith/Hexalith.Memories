@@ -74,6 +74,10 @@ public interface IGraphQueryBuilder
     (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
         string startNodeId, int depth, string? caseId);
 
+    /// <summary>Builds a traversal query filtered by edge types, with optional case scoping.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes);
+
     /// <summary>Counts annotations linked to a memory unit via ANNOTATES edges.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCountAnnotations(string memoryUnitId);
 

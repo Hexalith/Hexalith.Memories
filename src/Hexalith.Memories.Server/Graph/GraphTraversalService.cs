@@ -48,6 +48,7 @@ public sealed partial class GraphTraversalService
         string startNodeId,
         int depth,
         string? caseId,
+        IReadOnlyList<EdgeType>? edgeTypes,
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
@@ -57,7 +58,7 @@ public sealed partial class GraphTraversalService
         string graphId = tenantId;
 
         (string query, IDictionary<string, object> parameters) =
-            _graphQueryBuilder.BuildTraverseWithEdges(startNodeId, depth, caseId);
+            _graphQueryBuilder.BuildTraverseWithEdges(startNodeId, depth, caseId, edgeTypes);
 
         long startTimestamp = Stopwatch.GetTimestamp();
         List<TraversalNode> nodes;
