@@ -421,6 +421,72 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/members", async (
     return Results.Ok(members);
 });
 
+app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}", async (
+    string tenantId,
+    string caseId,
+    string memoryUnitId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? validationError = CaseValidator.ValidateDeleteMemoryUnit(tenantId, caseId, memoryUnitId);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(validationError);
+    }
+
+    Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (targetCase is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "CASE_NOT_FOUND",
+            $"Case '{caseId}' not found in tenant '{tenantId}'.",
+            $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+    }
+
+    if (targetCase.Status == CaseStatus.Deleting)
+    {
+        return Results.Conflict(new ErrorResponse(
+            "CASE_DELETING",
+            $"Case '{caseId}' is being deleted.",
+            "Wait for deletion to complete or retry later."));
+    }
+
+    bool deleted = await caseService.DeleteMemoryUnitAsync(tenantId, caseId, memoryUnitId, cancellationToken);
+    return deleted
+        ? Results.NoContent()
+        : Results.NotFound(new ErrorResponse(
+            "MEMORY_UNIT_NOT_FOUND",
+            $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
+            $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+});
+
+app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
+    string tenantId,
+    string caseId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantError = CaseValidator.ValidateTenantId(tenantId);
+    if (tenantError is not null)
+    {
+        return Results.BadRequest(tenantError);
+    }
+
+    ErrorResponse? caseError = CaseValidator.ValidateCaseId(caseId);
+    if (caseError is not null)
+    {
+        return Results.BadRequest(caseError);
+    }
+
+    bool deleted = await caseService.DeleteCaseAsync(tenantId, caseId, cancellationToken);
+    return deleted
+        ? Results.NoContent()
+        : Results.NotFound(new ErrorResponse(
+            "CASE_NOT_FOUND",
+            $"Case '{caseId}' not found in tenant '{tenantId}'.",
+            $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+});
+
 app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,

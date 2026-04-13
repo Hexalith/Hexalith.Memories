@@ -115,6 +115,36 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildListCaseMemoryUnitIds(string caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        const string query = "MATCH (c:Case {id: $caseId})-[:CONTAINS]->(m:MemoryUnit) RETURN m.id AS memoryUnitId";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["caseId"] = caseId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildDeleteCaseNode(string caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        const string query = "MATCH (c:Case {id: $caseId}) DETACH DELETE c";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["caseId"] = caseId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildMergeEdge(
         string sourceNodeId,
         string targetNodeId,

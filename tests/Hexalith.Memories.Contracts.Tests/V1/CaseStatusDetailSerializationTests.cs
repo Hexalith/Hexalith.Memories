@@ -109,4 +109,35 @@ public class CaseStatusDetailSerializationTests
         deserialized.FailedCount.ShouldBe(3);
         deserialized.MemberCount.ShouldBe(7);
     }
+
+    [Fact]
+    public void DeletionStartedAt_ShouldRoundTrip()
+    {
+        DateTimeOffset deletionTime = DateTimeOffset.Parse("2026-04-13T09:00:00+00:00");
+        var original = new CaseStatusDetail(
+            "id", "tid", "name", null, CaseStatus.Deleting,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            0, null, 0, 0, 0,
+            DeletionStartedAt: deletionTime);
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        CaseStatusDetail? deserialized = JsonSerializer.Deserialize<CaseStatusDetail>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.DeletionStartedAt.ShouldBe(deletionTime);
+        deserialized.Status.ShouldBe(CaseStatus.Deleting);
+    }
+
+    [Fact]
+    public void NullDeletionStartedAt_ShouldBeOmitted()
+    {
+        var original = new CaseStatusDetail(
+            "id", "tid", "name", null, CaseStatus.Active,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            0, null, 0, 0, 0);
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("\"deletionStartedAt\":");
+    }
 }

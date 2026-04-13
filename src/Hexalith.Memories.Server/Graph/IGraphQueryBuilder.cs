@@ -46,6 +46,12 @@ public interface IGraphQueryBuilder
     /// <summary>Checks whether a memory unit node exists in the graph.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCheckMemoryUnitExists(string memoryUnitId);
 
+    /// <summary>Lists all memory unit IDs linked to a case via CONTAINS edges.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildListCaseMemoryUnitIds(string caseId);
+
+    /// <summary>Deletes a case node and all its remaining relationships.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildDeleteCaseNode(string caseId);
+
     /// <summary>Deletes a memory unit node and all its relationships (compensation).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildDeleteMemoryUnitNode(string memoryUnitId);
 

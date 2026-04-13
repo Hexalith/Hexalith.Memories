@@ -17,4 +17,6 @@ public enum CaseActivityEventType
     SearchExecuted,
     MemberAdded,
     MemberRemoved,
+    MemoryUnitDeleted,
+    CaseDeleted,
 }

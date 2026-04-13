@@ -320,6 +320,40 @@ public class CaseServiceTests
         result.LastActivityAt.ShouldNotBeNull();
     }
 
+    [Fact]
+    public async Task GetCaseStatusAsync_WhenDeleting_ShouldReturnDeletionStartedAtFromSameSnapshot()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        DateTimeOffset deletionStartedAt = DateTimeOffset.Parse("2026-04-13T09:00:00+00:00");
+
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), logger);
+
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new HashEntry("id", "case-123"),
+                new HashEntry("tenantId", "tenant-1"),
+                new HashEntry("name", "Deleting Case"),
+                new HashEntry("description", "desc"),
+                new HashEntry("status", "deleting"),
+                new HashEntry("createdAt", "2026-04-01T10:00:00+00:00"),
+                new HashEntry("lastUpdated", "2026-04-13T09:00:00+00:00"),
+                new HashEntry("deletionStartedAt", deletionStartedAt.ToString("o")),
+            ]);
+
+        // Act
+        CaseStatusDetail? result = await service.GetCaseStatusAsync("tenant-1", "case-123", CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Status.ShouldBe(CaseStatus.Deleting);
+        result.DeletionStartedAt.ShouldBe(deletionStartedAt);
+    }
+
     // --- Member operation tests ---
 
     [Fact]
@@ -816,6 +850,209 @@ public class CaseServiceTests
         result["case-1"].ShouldBe("Alpha");
     }
 
+    // --- DeleteMemoryUnitAsync tests ---
+
+    [Fact]
+    public async Task DeleteMemoryUnitAsync_MuFoundAndDeleted_ShouldReturnTrue()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("case-001"));
+
+        // Act
+        bool result = await service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-001", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeTrue();
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
+        builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
+        IEnumerable<NSubstitute.Core.ICall> activityCalls = activityDb.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == "StreamAddAsync");
+        activityCalls.Count().ShouldBe(1);
+        NSubstitute.Core.ICall activityCall = activityCalls.First();
+        ((RedisKey)activityCall.GetArguments()[0]!).ToString().ShouldBe("tenant-1:case:case-001:activity");
+        NameValueEntry[] entries = (NameValueEntry[])activityCall.GetArguments()[1]!;
+        entries.ShouldContain(e => e.Name == "type" && e.Value == "memoryUnitDeleted");
+        entries.ShouldContain(e => e.Name == "memoryUnitId" && e.Value == "mu-001");
+    }
+
+    [Fact]
+    public async Task DeleteMemoryUnitAsync_WhenVectorDeleteFails_ShouldKeepSyntacticHashForRetry()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("case-001"));
+        redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
+
+        // Act / Assert
+        _ = await Should.ThrowAsync<RedisConnectionException>(
+            () => service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-001", CancellationToken.None));
+
+        await redisDb.DidNotReceive().KeyDeleteAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task DeleteMemoryUnitAsync_MuNotFound_ShouldReturnFalse()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-missing"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+
+        // Act
+        bool result = await service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-missing", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeFalse();
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString().Contains("mu-missing")), Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task DeleteMemoryUnitAsync_MuWrongCase_ShouldReturnFalse()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("case-OTHER"));
+
+        // Act
+        bool result = await service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-001", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeFalse();
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString().Contains("mu-001")), Arg.Any<CommandFlags>());
+    }
+
+    // --- DeleteCaseAsync tests ---
+
+    [Fact]
+    public async Task DeleteCaseAsync_CaseNotFound_ShouldReturnFalse()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-missing"), Arg.Any<CommandFlags>())
+            .Returns(false);
+
+        // Act
+        bool result = await service.DeleteCaseAsync("tenant-1", "case-missing", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeFalse();
+        await redisDb.DidNotReceive().HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task DeleteCaseAsync_CaseWithZeroMus_ShouldDeleteCaseResources()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        builder.BuildListCaseMemoryUnitIds(Arg.Any<string>())
+            .Returns(("MATCH query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
+        builder.BuildDeleteCaseNode(Arg.Any<string>())
+            .Returns(("DELETE query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        // Act
+        bool result = await service.DeleteCaseAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeTrue();
+
+        // Verify status set to "deleting"
+        await redisDb.Received().HashSetAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"),
+            Arg.Is<HashEntry[]>(entries =>
+                entries.Any(e => e.Name.ToString() == "status" && e.Value.ToString() == "deleting") &&
+                entries.Any(e => e.Name.ToString() == "deletionStartedAt")),
+            Arg.Any<CommandFlags>());
+
+        // Verify case graph node deleted
+        builder.Received(1).BuildDeleteCaseNode("case-001");
+
+        // Verify all 3 case Redis keys deleted
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:activity"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task DeleteCaseAsync_CaseWithThreeMus_ShouldDeleteAllMuBackendsAndCaseResources()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, IDatabase falkorDbDb) = CreateMockFalkorDbWithMuIds("mu-001", "mu-002", "mu-003");
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        builder.BuildListCaseMemoryUnitIds(Arg.Any<string>())
+            .Returns(("LIST query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(callInfo => ($"DELETE MU {callInfo.Arg<string>()}", new Dictionary<string, object> { ["id"] = callInfo.Arg<string>() }));
+        builder.BuildDeleteCaseNode(Arg.Any<string>())
+            .Returns(("DELETE CASE", new Dictionary<string, object> { ["caseId"] = "case-001" }));
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), NullLogger<CaseService>.Instance);
+
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        // Act
+        bool result = await service.DeleteCaseAsync("tenant-1", "case-001", CancellationToken.None);
+
+        // Assert
+        result.ShouldBeTrue();
+
+        // Verify BuildDeleteMemoryUnitNode called for each MU
+        builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
+        builder.Received(1).BuildDeleteMemoryUnitNode("mu-002");
+        builder.Received(1).BuildDeleteMemoryUnitNode("mu-003");
+
+        // Verify Redis keys deleted for each MU (syntactic + vector)
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-002"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-002"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-003"), Arg.Any<CommandFlags>());
+        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-003"), Arg.Any<CommandFlags>());
+
+        // Verify case graph node deleted
+        builder.Received(1).BuildDeleteCaseNode("case-001");
+    }
+
     private static CaseActivityService CreateMockActivityService()
     {
         (IConnectionMultiplexer activityRedis, _) = CreateMockRedis();
@@ -828,19 +1065,7 @@ public class CaseServiceTests
         IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
         falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
 
-        RedisResult fakeGraphResult = RedisResult.Create(
-        [
-            RedisResult.Create(Array.Empty<RedisResult>()),
-            RedisResult.Create(Array.Empty<RedisResult>()),
-            RedisResult.Create(
-            [
-                RedisResult.Create(new RedisValue("Nodes created: 0")),
-                RedisResult.Create(new RedisValue("Properties set: 0")),
-                RedisResult.Create(new RedisValue("Relationships created: 0")),
-                RedisResult.Create(new RedisValue("Cached execution: 0")),
-                RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
-            ]),
-        ]);
+        RedisResult fakeGraphResult = CreateEmptyFalkorDbResult();
 
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
             .Returns(fakeGraphResult);
@@ -848,6 +1073,73 @@ public class CaseServiceTests
             .Returns(fakeGraphResult);
 
         return (falkorDb, db);
+    }
+
+    private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDbWithMuIds(params string[] muIds)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
+        falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        // First call returns MU IDs (for BuildListCaseMemoryUnitIds), subsequent calls return empty
+        RedisResult listResult = CreateFalkorDbResultWithMuIds(muIds);
+        RedisResult emptyResult = CreateEmptyFalkorDbResult();
+
+        int callCount = 0;
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(callInfo => Interlocked.Increment(ref callCount) == 1 ? listResult : emptyResult);
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(callInfo => Interlocked.Increment(ref callCount) == 1 ? listResult : emptyResult);
+
+        return (falkorDb, db);
+    }
+
+    private static RedisResult CreateEmptyFalkorDbResult() => RedisResult.Create(
+    [
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("Nodes created: 0")),
+            RedisResult.Create(new RedisValue("Properties set: 0")),
+            RedisResult.Create(new RedisValue("Relationships created: 0")),
+            RedisResult.Create(new RedisValue("Cached execution: 0")),
+            RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+        ]),
+    ]);
+
+    private static RedisResult CreateFalkorDbResultWithMuIds(string[] muIds)
+    {
+        // FalkorDB compact format: [headers, data_rows, statistics]
+        // Header: [[1, "memoryUnitId"]] (1=COLUMN_SCALAR)
+        // Data row cell: [2, "mu-id"] (2=SI_STRING)
+        RedisResult headers = RedisResult.Create(
+        [
+            RedisResult.Create(
+            [
+                RedisResult.Create((RedisValue)1),
+                RedisResult.Create(new RedisValue("memoryUnitId")),
+            ]),
+        ]);
+
+        RedisResult[] dataRows = muIds.Select(id => RedisResult.Create(new[]
+        {
+            RedisResult.Create(
+            [
+                RedisResult.Create((RedisValue)2),
+                RedisResult.Create(new RedisValue(id)),
+            ]),
+        })).ToArray();
+
+        RedisResult data = RedisResult.Create(dataRows);
+
+        RedisResult stats = RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("Cached execution: 0")),
+            RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+        ]);
+
+        return RedisResult.Create([headers, data, stats]);
     }
 
     private static HashEntry[] CreateCaseHash(

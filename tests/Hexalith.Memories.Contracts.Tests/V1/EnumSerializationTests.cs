@@ -35,6 +35,7 @@ public class EnumSerializationTests
     [Theory]
     [InlineData(CaseStatus.Active, "\"active\"")]
     [InlineData(CaseStatus.Closed, "\"closed\"")]
+    [InlineData(CaseStatus.Deleting, "\"deleting\"")]
     public void CaseStatus_ShouldRoundTripAsCamelCaseString(CaseStatus value, string expectedJson)
         => ShouldRoundTripAsCamelCaseString(value, expectedJson);
 
@@ -87,6 +88,8 @@ public class EnumSerializationTests
     [InlineData(CaseActivityEventType.SearchExecuted, "\"searchExecuted\"")]
     [InlineData(CaseActivityEventType.MemberAdded, "\"memberAdded\"")]
     [InlineData(CaseActivityEventType.MemberRemoved, "\"memberRemoved\"")]
+    [InlineData(CaseActivityEventType.MemoryUnitDeleted, "\"memoryUnitDeleted\"")]
+    [InlineData(CaseActivityEventType.CaseDeleted, "\"caseDeleted\"")]
     public void CaseActivityEventType_ShouldRoundTripAsCamelCaseString(CaseActivityEventType value, string expectedJson)
         => ShouldRoundTripAsCamelCaseString(value, expectedJson);
 

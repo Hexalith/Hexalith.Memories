@@ -100,6 +100,60 @@ internal static partial class CaseValidator
         return ValidateMemberId(memberId);
     }
 
+    /// <summary>Validates a memory unit identifier for safe use in Redis key construction.</summary>
+    /// <param name="memoryUnitId">The memory unit identifier to validate.</param>
+    /// <returns>An <see cref="ErrorResponse"/> if validation fails; otherwise <see langword="null"/>.</returns>
+    public static ErrorResponse? ValidateMemoryUnitId(string memoryUnitId)
+    {
+        if (string.IsNullOrWhiteSpace(memoryUnitId))
+        {
+            return new ErrorResponse(
+                "INVALID_MEMORY_UNIT_ID",
+                "MemoryUnitId is required.",
+                "Provide a valid memory unit identifier.");
+        }
+
+        if (memoryUnitId.Length > 200)
+        {
+            return new ErrorResponse(
+                "INVALID_MEMORY_UNIT_ID",
+                "MemoryUnitId must not exceed 200 characters.",
+                "Provide a shorter identifier.");
+        }
+
+        if (!SafeCaseIdRegex().IsMatch(memoryUnitId))
+        {
+            return new ErrorResponse(
+                "INVALID_MEMORY_UNIT_ID",
+                "MemoryUnitId contains invalid characters.",
+                "Only alphanumeric characters and hyphens are allowed.");
+        }
+
+        return null;
+    }
+
+    /// <summary>Validates input for deleting a memory unit from a case.</summary>
+    /// <param name="tenantId">The tenant identifier from the route.</param>
+    /// <param name="caseId">The case identifier from the route.</param>
+    /// <param name="memoryUnitId">The memory unit identifier from the route.</param>
+    /// <returns>An <see cref="ErrorResponse"/> if validation fails; otherwise <see langword="null"/>.</returns>
+    public static ErrorResponse? ValidateDeleteMemoryUnit(string tenantId, string caseId, string memoryUnitId)
+    {
+        ErrorResponse? tenantError = ValidateTenantId(tenantId);
+        if (tenantError is not null)
+        {
+            return tenantError;
+        }
+
+        ErrorResponse? caseError = ValidateCaseId(caseId);
+        if (caseError is not null)
+        {
+            return caseError;
+        }
+
+        return ValidateMemoryUnitId(memoryUnitId);
+    }
+
     /// <summary>Validates a case identifier for safe use in Redis key construction.</summary>
     /// <param name="caseId">The case identifier to validate.</param>
     /// <returns>An <see cref="ErrorResponse"/> if validation fails; otherwise <see langword="null"/>.</returns>
@@ -116,7 +170,7 @@ internal static partial class CaseValidator
         return null;
     }
 
-    private static ErrorResponse? ValidateTenantId(string tenantId)
+    public static ErrorResponse? ValidateTenantId(string tenantId)
     {
         try
         {

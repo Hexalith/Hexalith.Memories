@@ -171,11 +171,25 @@ internal sealed class CaseService
 
     public async Task<CaseStatusDetail?> GetCaseStatusAsync(string tenantId, string caseId, CancellationToken cancellationToken)
     {
-        Case? caseResult = await GetCaseAsync(tenantId, caseId, cancellationToken).ConfigureAwait(false);
-        if (caseResult is null)
+        IDatabase db = _redis.GetDatabase();
+        string caseKey = $"{tenantId}:case:{caseId}";
+        HashEntry[] entries = await db.HashGetAllAsync(caseKey).ConfigureAwait(false);
+        if (entries.Length == 0)
         {
             return null;
         }
+
+        Case? parsedCase = ParseCaseFromHash(entries, tenantId);
+        if (parsedCase is null)
+        {
+            return null;
+        }
+
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        Case caseResult = parsedCase with
+        {
+            MemoryUnitCount = await GetMemoryUnitCountSafe(falkor, tenantId, caseId).ConfigureAwait(false),
+        };
 
         Task<DateTimeOffset?> lastActivityTask = _activityService.GetLastActivityTimestampAsync(tenantId, caseId, cancellationToken);
         Task<int> failedCountTask = _activityService.GetFailedCountAsync(tenantId, caseId, cancellationToken);
@@ -194,7 +208,8 @@ internal sealed class CaseService
             lastActivityTask.Result,
             IndexedCount: caseResult.MemoryUnitCount,
             FailedCount: failedCountTask.Result,
-            MemberCount: memberCountTask.Result);
+            MemberCount: memberCountTask.Result,
+                DeletionStartedAt: ReadOptionalDateTimeOffset(entries, "deletionStartedAt"));
     }
 
     /// <summary>Adds a member to a case using atomic HSETNX for idempotency.</summary>
@@ -357,6 +372,140 @@ internal sealed class CaseService
         return (int)count;
     }
 
+    /// <summary>Deletes a memory unit from all three backends and records an activity event.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="memoryUnitId">The memory unit identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns><see langword="true"/> if the memory unit was found and deleted; <see langword="false"/> if not found or belongs to a different case.</returns>
+    public async Task<bool> DeleteMemoryUnitAsync(
+        string tenantId, string caseId, string memoryUnitId, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+
+        // Verify MU exists by checking the syntactic hash key
+        RedisValue storedCaseId = await db.HashGetAsync(muKey, "caseId").ConfigureAwait(false);
+        if (!storedCaseId.HasValue)
+        {
+            return false;
+        }
+
+        // Verify MU belongs to the specified case
+        if (!string.Equals(storedCaseId.ToString(), caseId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Delete from all 3 backends in parallel
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        await DeleteMemoryUnitKeepingHashForRetryAsync(db, falkor, tenantId, memoryUnitId).ConfigureAwait(false);
+
+        // Record deletion activity
+        _ = await _activityService.RecordEventAsync(
+            tenantId, caseId, CaseActivityEventType.MemoryUnitDeleted, "system",
+            $"Memory unit '{memoryUnitId}' deleted", memoryUnitId, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Deleted memory unit {MemoryUnitId} from case {CaseId} in tenant {TenantId}",
+            memoryUnitId, caseId, tenantId);
+
+        return true;
+    }
+
+    /// <summary>Deletes a case and all its memory units from all backends.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns><see langword="true"/> if the case was found and deleted; <see langword="false"/> if not found.</returns>
+    public async Task<bool> DeleteCaseAsync(
+        string tenantId, string caseId, CancellationToken cancellationToken)
+    {
+        IDatabase db = _redis.GetDatabase();
+        string caseKey = $"{tenantId}:case:{caseId}";
+
+        // Verify case exists
+        bool exists = await db.KeyExistsAsync(caseKey).ConfigureAwait(false);
+        if (!exists)
+        {
+            return false;
+        }
+
+        // Set status to "deleting" with timestamp — prevents concurrent ingestion (AC #3) + observability
+        await db.HashSetAsync(caseKey,
+        [
+            new HashEntry("status", "deleting"),
+            new HashEntry("deletionStartedAt", DateTimeOffset.UtcNow.ToString("o")),
+        ]).ConfigureAwait(false);
+
+        // Find all memory unit IDs from graph
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        (string listQuery, IDictionary<string, object> listParams) = _graphQueryBuilder.BuildListCaseMemoryUnitIds(caseId);
+        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, listQuery, listParams).ConfigureAwait(false);
+        List<string> memoryUnitIds = result
+            .Select(record => record.Values[0].ToString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.Ordinal)
+            .Select(value => value!)
+            .ToList();
+
+        // Delete each MU from all 3 backends
+        foreach (string muId in memoryUnitIds)
+        {
+            await DeleteMemoryUnitKeepingGraphForRetryAsync(db, falkor, tenantId, muId).ConfigureAwait(false);
+        }
+
+        // Delete case node from FalkorDB (DETACH DELETE handles any remaining edges)
+        (string caseDelQuery, IDictionary<string, object> caseDelParams) = _graphQueryBuilder.BuildDeleteCaseNode(caseId);
+        await falkor.QueryAsync(tenantId, caseDelQuery, caseDelParams).ConfigureAwait(false);
+
+        // Delete case Redis resources
+        await Task.WhenAll(
+            db.KeyDeleteAsync($"{tenantId}:case:{caseId}:members"),
+            db.KeyDeleteAsync($"{tenantId}:case:{caseId}:activity"),
+            db.KeyDeleteAsync(caseKey)).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Deleted case {CaseId} with {MemoryUnitCount} memory units from tenant {TenantId}",
+            caseId, memoryUnitIds.Count, tenantId);
+
+        return true;
+    }
+
+    private async Task DeleteMemoryUnitKeepingHashForRetryAsync(
+        IDatabase db,
+        NFalkorDB.FalkorDB falkor,
+        string tenantId,
+        string memoryUnitId)
+    {
+        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        string vecKey = $"{tenantId}:vec:{memoryUnitId}";
+        (string graphQuery, IDictionary<string, object> graphParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
+
+        await Task.WhenAll(
+            db.KeyDeleteAsync(vecKey),
+            falkor.QueryAsync(tenantId, graphQuery, graphParams)).ConfigureAwait(false);
+
+        await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
+    }
+
+    private async Task DeleteMemoryUnitKeepingGraphForRetryAsync(
+        IDatabase db,
+        NFalkorDB.FalkorDB falkor,
+        string tenantId,
+        string memoryUnitId)
+    {
+        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        string vecKey = $"{tenantId}:vec:{memoryUnitId}";
+        (string graphQuery, IDictionary<string, object> graphParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
+
+        await Task.WhenAll(
+            db.KeyDeleteAsync(muKey),
+            db.KeyDeleteAsync(vecKey)).ConfigureAwait(false);
+
+        await falkor.QueryAsync(tenantId, graphQuery, graphParams).ConfigureAwait(false);
+    }
+
     private CaseMember DeserializeStoredMemberOrThrow(
         RedisValue value,
         string tenantId,
@@ -497,9 +646,12 @@ internal sealed class CaseService
         _ = fields.TryGetValue("createdAt", out string? createdAtStr);
         _ = fields.TryGetValue("lastUpdated", out string? lastUpdatedStr);
 
-        CaseStatus status = string.Equals(statusStr, "closed", StringComparison.OrdinalIgnoreCase)
-            ? CaseStatus.Closed
-            : CaseStatus.Active;
+        CaseStatus status = statusStr switch
+        {
+            _ when string.Equals(statusStr, "deleting", StringComparison.OrdinalIgnoreCase) => CaseStatus.Deleting,
+            _ when string.Equals(statusStr, "closed", StringComparison.OrdinalIgnoreCase) => CaseStatus.Closed,
+            _ => CaseStatus.Active,
+        };
 
         _ = DateTimeOffset.TryParse(createdAtStr, out DateTimeOffset createdAt);
         _ = DateTimeOffset.TryParse(lastUpdatedStr, out DateTimeOffset lastUpdated);
@@ -513,5 +665,22 @@ internal sealed class CaseService
             createdAt,
             lastUpdated,
             MemoryUnitCount: 0);
+    }
+
+    private static DateTimeOffset? ReadOptionalDateTimeOffset(HashEntry[] entries, string fieldName)
+    {
+        foreach (HashEntry entry in entries)
+        {
+            if (!string.Equals(entry.Name.ToString(), fieldName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            return DateTimeOffset.TryParse(entry.Value.ToString(), out DateTimeOffset parsed)
+                ? parsed
+                : null;
+        }
+
+        return null;
     }
 }

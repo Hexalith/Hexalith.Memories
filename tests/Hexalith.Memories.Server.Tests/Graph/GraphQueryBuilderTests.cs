@@ -435,4 +435,68 @@ public class GraphQueryBuilderTests
         query.ShouldNotContain(adversarialCaseId);
         parameters["caseId"].ShouldBe(adversarialCaseId);
     }
+
+    [Fact]
+    public void BuildListCaseMemoryUnitIds_ShouldReturnParameterizedQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildListCaseMemoryUnitIds("case-001");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("CONTAINS");
+        query.ShouldContain("m.id AS memoryUnitId");
+        query.ShouldContain("$caseId");
+        parameters["caseId"].ShouldBe("case-001");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildListCaseMemoryUnitIds_NullOrEmptyCaseId_ShouldThrow(string? caseId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildListCaseMemoryUnitIds(caseId!));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildListCaseMemoryUnitIds_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialCaseId = "INJECT_LIST_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildListCaseMemoryUnitIds(adversarialCaseId);
+
+        query.ShouldNotContain(adversarialCaseId);
+        parameters["caseId"].ShouldBe(adversarialCaseId);
+    }
+
+    [Fact]
+    public void BuildDeleteCaseNode_ShouldReturnDetachDeleteQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildDeleteCaseNode("case-001");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("Case");
+        query.ShouldContain("DETACH DELETE");
+        query.ShouldContain("$caseId");
+        parameters["caseId"].ShouldBe("case-001");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildDeleteCaseNode_NullOrEmptyCaseId_ShouldThrow(string? caseId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildDeleteCaseNode(caseId!));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildDeleteCaseNode_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialCaseId = "INJECT_DELETE_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildDeleteCaseNode(adversarialCaseId);
+
+        query.ShouldNotContain(adversarialCaseId);
+        parameters["caseId"].ShouldBe(adversarialCaseId);
+    }
 }

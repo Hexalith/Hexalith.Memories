@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-12 # Story 3.4 done
+last_updated: 2026-04-13 # Story 3.5 done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -74,13 +74,13 @@ development_status:
   3-2-case-status-and-activity: done
   3-3-case-member-management: done
   3-4-case-scoped-and-cross-case-search: done
-  3-5-memory-unit-deletion-and-case-deletion: ready-for-dev
-  3-6-annotations-and-corrections: backlog
+  3-5-memory-unit-deletion-and-case-deletion: done
+  3-6-annotations-and-corrections: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: Causal Intelligence & Graph Traversal
-  epic-4: backlog
-  4-1-causal-chain-traversal: backlog
+  epic-4: in-progress
+  4-1-causal-chain-traversal: ready-for-dev
   4-2-edge-type-filtering-and-taxonomy: backlog
   4-3-gap-detection-and-confidence-promotion: backlog
   epic-4-retrospective: optional

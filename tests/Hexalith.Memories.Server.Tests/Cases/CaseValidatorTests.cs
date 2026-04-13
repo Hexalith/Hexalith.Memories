@@ -243,4 +243,102 @@ public class CaseValidatorTests
         result.ShouldNotBeNull();
         result!.Code.ShouldBe("INVALID_MEMBER_ID");
     }
+
+    // --- ValidateMemoryUnitId tests ---
+
+    [Theory]
+    [InlineData("01JQWXYZ1234567890ABCDEF")]
+    [InlineData("mu-001")]
+    [InlineData("simple123")]
+    public void ValidateMemoryUnitId_ValidId_ShouldReturnNull(string memoryUnitId)
+    {
+        ErrorResponse? result = CaseValidator.ValidateMemoryUnitId(memoryUnitId);
+
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ValidateMemoryUnitId_NullOrEmpty_ShouldReturnError(string? memoryUnitId)
+    {
+        ErrorResponse? result = CaseValidator.ValidateMemoryUnitId(memoryUnitId!);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+        result.Message.ShouldContain("required");
+    }
+
+    [Theory]
+    [InlineData("mu:colon")]
+    [InlineData("mu/slash")]
+    [InlineData("mu space")]
+    [InlineData("mu@at")]
+    [InlineData("mu_underscore")]
+    public void ValidateMemoryUnitId_InvalidChars_ShouldReturnError(string memoryUnitId)
+    {
+        ErrorResponse? result = CaseValidator.ValidateMemoryUnitId(memoryUnitId);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+        result.Message.ShouldContain("invalid characters");
+    }
+
+    [Fact]
+    public void ValidateMemoryUnitId_Exceeding200Chars_ShouldReturnError()
+    {
+        string longId = new('a', 201);
+        ErrorResponse? result = CaseValidator.ValidateMemoryUnitId(longId);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+        result.Message.ShouldContain("200");
+    }
+
+    [Fact]
+    public void ValidateMemoryUnitId_Exactly200Chars_ShouldReturnNull()
+    {
+        string maxId = new('a', 200);
+        ErrorResponse? result = CaseValidator.ValidateMemoryUnitId(maxId);
+
+        result.ShouldBeNull();
+    }
+
+    // --- ValidateDeleteMemoryUnit tests ---
+
+    [Fact]
+    public void ValidateDeleteMemoryUnit_ValidInput_ShouldReturnNull()
+    {
+        ErrorResponse? result = CaseValidator.ValidateDeleteMemoryUnit("tenant-1", "case-001", "mu-001");
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateDeleteMemoryUnit_InvalidTenantId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateDeleteMemoryUnit("bad!", "case-001", "mu-001");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_TENANT_ID");
+    }
+
+    [Fact]
+    public void ValidateDeleteMemoryUnit_InvalidCaseId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateDeleteMemoryUnit("tenant-1", "case:bad", "mu-001");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_CASE_ID");
+    }
+
+    [Fact]
+    public void ValidateDeleteMemoryUnit_InvalidMemoryUnitId_ShouldReturnError()
+    {
+        ErrorResponse? result = CaseValidator.ValidateDeleteMemoryUnit("tenant-1", "case-001", "mu:bad");
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+    }
 }
