@@ -19,4 +19,5 @@ public enum CaseActivityEventType
     MemberRemoved,
     MemoryUnitDeleted,
     CaseDeleted,
+    AnnotationCreated,
 }

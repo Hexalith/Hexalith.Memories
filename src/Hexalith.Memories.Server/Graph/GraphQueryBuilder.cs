@@ -257,6 +257,81 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         return (query, parameters);
     }
 
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth)
+        => BuildTraverseWithEdges(startNodeId, depth, caseId: null);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
+        ArgumentOutOfRangeException.ThrowIfNegative(depth);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
+
+        // Depth is interpolated as literal — Cypher does not support parameterized path length.
+        string whereClause = string.IsNullOrWhiteSpace(caseId) ? "" : " WHERE n.caseId = $caseId";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r]-(m:MemoryUnit) WHERE m.id <> n.id RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END}}) AS edges ORDER BY n.ingestedAt ASC";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["startId"] = startNodeId,
+        };
+
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            parameters["caseId"] = caseId;
+        }
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountAnnotations(string memoryUnitId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        const string query = "MATCH (a:MemoryUnit)-[:ANNOTATES]->(m:MemoryUnit {id: $memoryUnitId}) RETURN count(a) AS count";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["memoryUnitId"] = memoryUnitId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildListAnnotationIds(string memoryUnitId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        const string query = "MATCH (a:MemoryUnit)-[:ANNOTATES]->(m:MemoryUnit {id: $memoryUnitId}) RETURN a.id AS annotationId";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["memoryUnitId"] = memoryUnitId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildBatchCountAnnotations(IReadOnlyList<string> memoryUnitIds)
+    {
+        ArgumentNullException.ThrowIfNull(memoryUnitIds);
+
+        const string query = "UNWIND $ids AS muId OPTIONAL MATCH (a:MemoryUnit)-[:ANNOTATES]->(m:MemoryUnit {id: muId}) RETURN muId, count(a) AS count";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["ids"] = memoryUnitIds,
+        };
+
+        return (query, parameters);
+    }
+
     /// <summary>
     /// Converts an <see cref="EdgeType"/> enum value to UPPER_SNAKE_CASE Cypher relationship label.
     /// Uses an explicit switch expression on the closed set — no regex, no ToString interpolation.

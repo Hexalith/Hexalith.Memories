@@ -6,12 +6,16 @@
 namespace Hexalith.Memories.Server.Cases;
 
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 using BaUlid = ByteAether.Ulid.Ulid;
 
+using Dapr.Workflow;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
 
@@ -31,6 +35,7 @@ internal sealed class CaseService
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly CaseActivityService _activityService;
+    private readonly DaprWorkflowClient _workflowClient;
     private readonly ILogger<CaseService> _logger;
 
     public CaseService(
@@ -38,12 +43,14 @@ internal sealed class CaseService
         [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
         IGraphQueryBuilder graphQueryBuilder,
         CaseActivityService activityService,
+        DaprWorkflowClient workflowClient,
         ILogger<CaseService> logger)
     {
         _redis = redis;
         _falkorDb = falkorDb;
         _graphQueryBuilder = graphQueryBuilder;
         _activityService = activityService;
+        _workflowClient = workflowClient;
         _logger = logger;
     }
 
@@ -95,6 +102,181 @@ internal sealed class CaseService
             now,
             now,
             MemoryUnitCount: 0);
+    }
+
+    /// <summary>Creates an annotation on an existing memory unit by scheduling an ingestion workflow.</summary>
+    /// <param name="input">The annotation creation input.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A tuple of the annotation MemoryUnit (status: Queued) and the workflow instance ID, or null if the target MU was not found/invalid.</returns>
+    public async Task<(MemoryUnit Annotation, string WorkflowInstanceId)?> CreateAnnotationAsync(
+        CreateAnnotationInput input, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        MemoryUnit? targetMemoryUnit = await GetMemoryUnitAsync(
+            input.TenantId,
+            input.TargetMemoryUnitId,
+            cancellationToken).ConfigureAwait(false);
+        if (targetMemoryUnit is null)
+        {
+            return null;
+        }
+
+        if (!string.Equals(targetMemoryUnit.CaseId, input.CaseId, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (!await IsMemoryUnitIndexedAsync(input.TenantId, input.TargetMemoryUnitId, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("MEMORY_UNIT_NOT_INDEXED");
+        }
+
+        ErrorResponse? nestedError = CaseValidator.ValidateNotNestedAnnotation(targetMemoryUnit.Metadata);
+        if (nestedError is not null)
+        {
+            throw new InvalidOperationException("NESTED_ANNOTATION_NOT_ALLOWED");
+        }
+
+        // Generate annotation MU ID
+        string annotationMuId = BaUlid.New(UlidOptions).ToString();
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        string sourceUri = BuildAnnotationSourceUri(input.TargetMemoryUnitId, annotationMuId);
+
+        // Build annotation metadata
+        Dictionary<string, MetadataField> metadata = new()
+        {
+            ["_system.annotation_target"] = new MetadataField(input.TargetMemoryUnitId, MetadataOrigin.Human, 1.0f),
+        };
+
+        if (input.AnnotationType is not null)
+        {
+            metadata["_system.annotation_type"] = new MetadataField(input.AnnotationType, MetadataOrigin.Human, 1.0f);
+        }
+
+        // Create stub node + ANNOTATES edge in FalkorDB before scheduling workflow
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        (string stubQuery, IDictionary<string, object> stubParams) = _graphQueryBuilder.BuildMergeStubNode(annotationMuId);
+        await falkor.QueryAsync(input.TenantId, stubQuery, stubParams).ConfigureAwait(false);
+
+        (string edgeQuery, IDictionary<string, object> edgeParams) = _graphQueryBuilder.BuildMergeEdge(
+            annotationMuId, input.TargetMemoryUnitId, EdgeType.Annotates, EdgeTypeDefaults.Annotates, EdgeOrigin.Explicit);
+        await falkor.QueryAsync(input.TenantId, edgeQuery, edgeParams).ConfigureAwait(false);
+
+        // Schedule IngestionWorkflow with annotation content — wrap in try/catch for compensation
+        string workflowInstanceId;
+        try
+        {
+            var ingestionInput = new IngestionInput
+            {
+                TenantId = input.TenantId,
+                CaseId = input.CaseId,
+                SourceUri = sourceUri,
+                ContentBytes = Encoding.UTF8.GetBytes(input.Content),
+                ContentType = "text/plain",
+                SourceType = SourceType.Annotation,
+                IngestedBy = input.IngestedBy,
+                Metadata = metadata,
+                CausationId = input.TargetMemoryUnitId,
+            };
+
+            workflowInstanceId = await _workflowClient.ScheduleNewWorkflowAsync(
+                nameof(IngestionWorkflow), instanceId: annotationMuId, input: ingestionInput).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Compensation: clean up stub node + edge on workflow scheduling failure
+            (string cleanupQuery, IDictionary<string, object> cleanupParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(annotationMuId);
+            await falkor.QueryAsync(input.TenantId, cleanupQuery, cleanupParams).ConfigureAwait(false);
+            throw;
+        }
+
+        // Record activity event
+        _ = await _activityService.RecordEventAsync(
+            input.TenantId, input.CaseId, CaseActivityEventType.AnnotationCreated, "system",
+            $"Annotation created on memory unit '{input.TargetMemoryUnitId}'", annotationMuId, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Created annotation {AnnotationMuId} on memory unit {TargetMuId} in case {CaseId} tenant {TenantId}",
+            annotationMuId, input.TargetMemoryUnitId, input.CaseId, input.TenantId);
+
+        var annotationMu = new MemoryUnit
+        {
+            Id = annotationMuId,
+            TenantId = input.TenantId,
+            CaseId = input.CaseId,
+            Content = input.Content,
+            ContentHash = string.Empty,
+            SourceUri = sourceUri,
+            SourceType = SourceType.Annotation,
+            IngestedBy = input.IngestedBy,
+            IngestedAt = now,
+            LastUpdated = now,
+            Status = MemoryUnitStatus.Queued,
+            Metadata = metadata,
+        };
+
+        return (annotationMu, workflowInstanceId);
+    }
+
+    /// <summary>Gets a memory unit from the syntactic Redis hash store.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory unit identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The parsed <see cref="MemoryUnit"/>, or <see langword="null"/> when not found.</returns>
+    public async Task<MemoryUnit?> GetMemoryUnitAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IDatabase db = _redis.GetDatabase();
+        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        HashEntry[] entries = await db.HashGetAllAsync(muKey).ConfigureAwait(false);
+
+        return entries.Length == 0
+            ? null
+            : ParseMemoryUnitFromHash(entries, tenantId, memoryUnitId);
+    }
+
+    /// <summary>Lists annotation memory units for a given target memory unit.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The target memory unit identifier.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A list of annotation MemoryUnit records.</returns>
+    public async Task<List<MemoryUnit>> ListAnnotationsAsync(
+        string tenantId, string memoryUnitId, CancellationToken cancellationToken)
+    {
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListAnnotationIds(memoryUnitId);
+        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+
+        List<string> annotationIds = result
+            .Select(record => record.Values[0].ToString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .ToList();
+
+        if (annotationIds.Count == 0)
+        {
+            return [];
+        }
+
+        IDatabase db = _redis.GetDatabase();
+        List<MemoryUnit> annotations = [];
+        foreach (string annotationId in annotationIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            MemoryUnit? mu = await GetMemoryUnitAsync(tenantId, annotationId, cancellationToken).ConfigureAwait(false);
+            if (mu is not null)
+            {
+                annotations.Add(mu);
+            }
+        }
+
+        return annotations;
     }
 
     public async Task<List<Case>> ListCasesAsync(string tenantId, int maxResults = 100, CancellationToken cancellationToken = default)
@@ -397,14 +579,29 @@ internal sealed class CaseService
             return false;
         }
 
-        // Delete from all 3 backends in parallel
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+
+        // Cascade: delete annotations before deleting the target MU
+        (string listQuery, IDictionary<string, object> listParams) = _graphQueryBuilder.BuildListAnnotationIds(memoryUnitId);
+        NFalkorDB.ResultSet annotationResult = await falkor.QueryAsync(tenantId, listQuery, listParams).ConfigureAwait(false);
+        List<string> annotationIds = annotationResult
+            .Select(record => record.Values[0].ToString())
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .ToList();
+
+        foreach (string annotationId in annotationIds)
+        {
+            await DeleteMemoryUnitKeepingHashForRetryAsync(db, falkor, tenantId, annotationId).ConfigureAwait(false);
+        }
+
+        // Delete target MU from all 3 backends (DETACH DELETE cleans up ANNOTATES edges)
         await DeleteMemoryUnitKeepingHashForRetryAsync(db, falkor, tenantId, memoryUnitId).ConfigureAwait(false);
 
         // Record deletion activity
         _ = await _activityService.RecordEventAsync(
             tenantId, caseId, CaseActivityEventType.MemoryUnitDeleted, "system",
-            $"Memory unit '{memoryUnitId}' deleted", memoryUnitId, cancellationToken).ConfigureAwait(false);
+            $"Memory unit '{memoryUnitId}' deleted (with {annotationIds.Count} annotation(s))", memoryUnitId, cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Deleted memory unit {MemoryUnitId} from case {CaseId} in tenant {TenantId}",
@@ -626,6 +823,36 @@ internal sealed class CaseService
         }
     }
 
+    private async Task<bool> IsMemoryUnitIndexedAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IDatabase db = _redis.GetDatabase();
+        bool semanticExists = await db.KeyExistsAsync($"{tenantId}:vec:{memoryUnitId}").ConfigureAwait(false);
+        if (!semanticExists)
+        {
+            return false;
+        }
+
+        return await MemoryUnitGraphNodeExistsAsync(tenantId, memoryUnitId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> MemoryUnitGraphNodeExistsAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildCheckMemoryUnitExists(memoryUnitId);
+        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+        return result.Count > 0;
+    }
+
     private static Case? ParseCaseFromHash(HashEntry[] entries, string tenantId)
     {
         Dictionary<string, string> fields = [];
@@ -666,6 +893,86 @@ internal sealed class CaseService
             lastUpdated,
             MemoryUnitCount: 0);
     }
+
+    private static MemoryUnit? ParseMemoryUnitFromHash(HashEntry[] entries, string tenantId, string fallbackId)
+    {
+        Dictionary<string, string> fields = [];
+        foreach (HashEntry entry in entries)
+        {
+            fields[entry.Name!] = entry.Value!;
+        }
+
+        string id = fields.TryGetValue("id", out string? storedId) && !string.IsNullOrWhiteSpace(storedId)
+            ? storedId
+            : fallbackId;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        _ = fields.TryGetValue("caseId", out string? caseId);
+        _ = fields.TryGetValue("content", out string? content);
+        _ = fields.TryGetValue("contentHash", out string? contentHash);
+        _ = fields.TryGetValue("sourceUri", out string? sourceUri);
+        _ = fields.TryGetValue("sourceType", out string? sourceTypeStr);
+        _ = fields.TryGetValue("ingestedBy", out string? ingestedBy);
+        _ = fields.TryGetValue("ingestedAt", out string? ingestedAtStr);
+        _ = fields.TryGetValue("lastUpdated", out string? lastUpdatedStr);
+        _ = fields.TryGetValue("status", out string? statusStr);
+        _ = fields.TryGetValue("metadataJson", out string? metadataJson);
+        _ = fields.TryGetValue("embeddingProvider", out string? embeddingProvider);
+        _ = fields.TryGetValue("embeddingDimensions", out string? embeddingDimensionsStr);
+
+        _ = Enum.TryParse(sourceTypeStr, ignoreCase: true, out SourceType sourceType);
+        MemoryUnitStatus status = Enum.TryParse(statusStr, ignoreCase: true, out MemoryUnitStatus parsedStatus)
+            ? parsedStatus
+            : MemoryUnitStatus.Indexed;
+        _ = DateTimeOffset.TryParse(ingestedAtStr, out DateTimeOffset ingestedAt);
+        _ = DateTimeOffset.TryParse(lastUpdatedStr, out DateTimeOffset lastUpdated);
+        int? embeddingDimensions = int.TryParse(embeddingDimensionsStr, out int parsedDimensions)
+            ? parsedDimensions
+            : null;
+
+        return new MemoryUnit
+        {
+            Id = id,
+            TenantId = tenantId,
+            CaseId = caseId ?? string.Empty,
+            Content = content ?? string.Empty,
+            ContentHash = contentHash ?? string.Empty,
+            SourceUri = sourceUri ?? string.Empty,
+            SourceType = sourceType,
+            IngestedBy = ingestedBy ?? string.Empty,
+            IngestedAt = ingestedAt,
+            LastUpdated = lastUpdated,
+            Status = status,
+            Metadata = ParseMetadata(metadataJson),
+            EmbeddingProvider = string.IsNullOrWhiteSpace(embeddingProvider) ? null : embeddingProvider,
+            EmbeddingDimensions = embeddingDimensions,
+        };
+    }
+
+    private static Dictionary<string, MetadataField> ParseMetadata(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, MetadataField>>(
+                metadataJson,
+                MemoriesJsonContext.Options) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static string BuildAnnotationSourceUri(string targetMemoryUnitId, string annotationMemoryUnitId)
+        => $"annotation:{targetMemoryUnitId}:{annotationMemoryUnitId}";
 
     private static DateTimeOffset? ReadOptionalDateTimeOffset(HashEntry[] entries, string fieldName)
     {

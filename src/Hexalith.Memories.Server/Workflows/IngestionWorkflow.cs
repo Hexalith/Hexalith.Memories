@@ -28,7 +28,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         IngestionInput input)
     {
         var logger = context.CreateReplaySafeLogger<IngestionWorkflow>();
-        string memoryUnitId = context.NewGuid().ToString();
+        string memoryUnitId = string.IsNullOrWhiteSpace(context.InstanceId)
+            ? context.NewGuid().ToString()
+            : context.InstanceId;
         DateTimeOffset ingestedAt = new(context.CurrentUtcDateTime, TimeSpan.Zero);
         string currentStage = "queued";
         MemoryUnitStatus currentStatus = MemoryUnitStatus.Queued;

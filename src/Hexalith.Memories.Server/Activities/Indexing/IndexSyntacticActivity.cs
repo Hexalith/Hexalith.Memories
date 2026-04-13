@@ -72,6 +72,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         await db.HashSetAsync(
             hashKey,
             [
+                new HashEntry("id", input.MemoryUnitId),
                 new HashEntry("content", input.Content),
                 new HashEntry("sourceUri", input.SourceUri),
                 new HashEntry("sourceUriText", input.SourceUri),

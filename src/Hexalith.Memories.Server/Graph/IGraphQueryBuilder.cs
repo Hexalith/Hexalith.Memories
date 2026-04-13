@@ -65,4 +65,21 @@ public interface IGraphQueryBuilder
     /// <summary>Builds a bidirectional graph traversal query with optional case scoping.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth, string? caseId);
+
+    /// <summary>Builds a traversal query that returns both node properties and edge metadata.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth);
+
+    /// <summary>Builds a traversal query that returns both node properties and edge metadata, with optional case scoping.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId);
+
+    /// <summary>Counts annotations linked to a memory unit via ANNOTATES edges.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountAnnotations(string memoryUnitId);
+
+    /// <summary>Lists annotation memory unit IDs linked to a memory unit via ANNOTATES edges.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildListAnnotationIds(string memoryUnitId);
+
+    /// <summary>Batch-counts annotations for multiple memory units in a single query.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildBatchCountAnnotations(IReadOnlyList<string> memoryUnitIds);
 }

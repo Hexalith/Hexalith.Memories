@@ -12,4 +12,5 @@ public enum SourceType
     Command,
     Projection,
     Discussion,
+    Annotation,
 }

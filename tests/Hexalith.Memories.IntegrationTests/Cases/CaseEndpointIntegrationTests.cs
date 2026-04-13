@@ -8,6 +8,7 @@ namespace Hexalith.Memories.IntegrationTests.Cases;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Contracts.V1;
@@ -475,6 +476,153 @@ public sealed partial class CaseEndpointIntegrationTests
         memberAddedCount.ShouldBe(1);
     }
 
+    // --- Annotation integration tests ---
+
+    [Fact]
+    public async Task PostAnnotation_WhenTargetNotFullyIndexed_ShouldReturn400()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        CreateCaseInput caseInput = new("ignored", "Annotation Validation Test", null);
+
+        using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases",
+            caseInput,
+            MemoriesJsonContext.Options);
+        createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
+        createdCase.ShouldNotBeNull();
+
+        string targetMuId = $"mu-{Guid.NewGuid():N}";
+        await _fixture.RedisConnection.GetDatabase().HashSetAsync(
+            $"{tenantId}:mu:{targetMuId}",
+            [
+                new HashEntry("caseId", createdCase.Id),
+                new HashEntry("metadataJson", "{}"),
+            ]);
+
+        CreateAnnotationInput annotationInput = new(
+            "ignored",
+            "ignored",
+            "ignored",
+            "Pending target annotation",
+            "annotator@test.local",
+            "correction");
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{targetMuId}/annotations",
+            annotationInput,
+            MemoriesJsonContext.Options);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("MEMORY_UNIT_NOT_INDEXED");
+    }
+
+    [Fact]
+    public async Task PostAnnotation_ThenList_ShouldReturnStoredAnnotationWithMetadata()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Roundtrip Case", "annotation-roundtrip");
+        string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
+
+        CreateAnnotationInput annotationInput = new(
+            "ignored",
+            "ignored",
+            "ignored",
+            "This is a correction annotation",
+            "annotator@test.local",
+            "correction");
+
+        using HttpResponseMessage createAnnotationResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            annotationInput,
+            MemoriesJsonContext.Options);
+
+        createAnnotationResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        (MemoryUnit acceptedAnnotation, string instanceId) = await ReadAcceptedAnnotationAsync(createAnnotationResponse.Content);
+        instanceId.ShouldBe(acceptedAnnotation.Id);
+
+        List<MemoryUnit> annotations = await WaitForAnnotationsAsync(tenantId, caseId, targetMuId, expectedCount: 1);
+        MemoryUnit stored = annotations.Single();
+        stored.Id.ShouldBe(acceptedAnnotation.Id);
+        stored.CaseId.ShouldBe(caseId);
+        stored.SourceType.ShouldBe(SourceType.Annotation);
+        stored.Metadata["_system.annotation_target"].Value.ShouldBe(targetMuId);
+        stored.Metadata["_system.annotation_type"].Value.ShouldBe("correction");
+        stored.Content.ShouldContain("correction annotation");
+    }
+
+    [Fact]
+    public async Task PostAnnotation_TwiceOnSameTarget_ShouldListTwoDistinctAnnotations()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Multiplicity Case", "annotation-multi");
+        string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
+
+        CreateAnnotationInput firstAnnotation = new(
+            "ignored",
+            "ignored",
+            "ignored",
+            "First correction for the target memory unit",
+            "annotator@test.local",
+            "correction");
+        CreateAnnotationInput secondAnnotation = new(
+            "ignored",
+            "ignored",
+            "ignored",
+            "Second clarification for the same target memory unit",
+            "annotator@test.local",
+            "clarification");
+
+        using HttpResponseMessage firstResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            firstAnnotation,
+            MemoriesJsonContext.Options);
+        using HttpResponseMessage secondResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            secondAnnotation,
+            MemoriesJsonContext.Options);
+
+        firstResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        secondResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        List<MemoryUnit> annotations = await WaitForAnnotationsAsync(tenantId, caseId, targetMuId, expectedCount: 2);
+        annotations.Select(a => a.Id).Distinct().Count().ShouldBe(2);
+        annotations.ShouldContain(a => a.Content.Contains("First correction", StringComparison.Ordinal));
+        annotations.ShouldContain(a => a.Content.Contains("Second clarification", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetAnnotations_WhenMemoryUnitMissingOrWrongCase_ShouldReturn404()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Missing Target Case", "annotation-missing");
+        string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
+
+        using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases",
+            new CreateCaseInput("ignored", "Other Annotation Case", null),
+            MemoriesJsonContext.Options);
+        createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        CaseRecord? otherCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
+        otherCase.ShouldNotBeNull();
+
+        using HttpResponseMessage missingResponse = await _fixture.MemoriesClient.GetAsync(
+            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/missing-annotation-target/annotations");
+        missingResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? missingError = await missingResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        missingError.ShouldNotBeNull();
+        missingError.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
+
+        using HttpResponseMessage wrongCaseResponse = await _fixture.MemoriesClient.GetAsync(
+            $"/api/tenants/{tenantId}/cases/{otherCase.Id}/memory-units/{targetMuId}/annotations");
+        wrongCaseResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? wrongCaseError = await wrongCaseResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        wrongCaseError.ShouldNotBeNull();
+        wrongCaseError.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
+    }
+
     // --- Deletion integration tests ---
 
     [Fact]
@@ -877,6 +1025,79 @@ public sealed partial class CaseEndpointIntegrationTests
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
         ResultSet result = await falkor.QueryAsync(tenantId, query, parameters);
         return ReadCount(result);
+    }
+
+    private async Task<string> CreateIndexedMemoryUnitAsync(string tenantId, string caseName, string searchToken)
+    {
+        using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            $"/api/tenants/{tenantId}/cases",
+            new CreateCaseInput("ignored", caseName, null),
+            MemoriesJsonContext.Options);
+        createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+        CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
+        createdCase.ShouldNotBeNull();
+
+        IngestionInput ingestionInput = new()
+        {
+            TenantId = tenantId,
+            CaseId = createdCase.Id,
+            SourceUri = $"file:///{Guid.NewGuid():N}.txt",
+            ContentBytes = Encoding.UTF8.GetBytes($"{searchToken}-{Guid.NewGuid():N} content"),
+            ContentType = "text/plain",
+            SourceType = SourceType.File,
+            IngestedBy = "integration@test.local",
+        };
+
+        using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            "/api/ingest",
+            ingestionInput,
+            MemoriesJsonContext.Options);
+        ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        await WaitForContainsEdgeAsync(tenantId, createdCase.Id);
+        return await GetFirstMemoryUnitIdAsync(tenantId, createdCase.Id);
+    }
+
+    private async Task<string> GetCaseIdForMemoryUnitAsync(string tenantId, string memoryUnitId)
+    {
+        RedisValue caseId = await _fixture.RedisConnection.GetDatabase().HashGetAsync($"{tenantId}:mu:{memoryUnitId}", "caseId");
+        caseId.HasValue.ShouldBeTrue();
+        return caseId.ToString();
+    }
+
+    private async Task<List<MemoryUnit>> WaitForAnnotationsAsync(string tenantId, string caseId, string memoryUnitId, int expectedCount)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+                $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations");
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+            List<MemoryUnit>? annotations = await response.Content.ReadFromJsonAsync<List<MemoryUnit>>(MemoriesJsonContext.Options);
+            annotations.ShouldNotBeNull();
+            if (annotations.Count == expectedCount)
+            {
+                return annotations;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Annotations for memory unit '{memoryUnitId}' did not reach count {expectedCount} in time.");
+    }
+
+    private static async Task<(MemoryUnit MemoryUnit, string InstanceId)> ReadAcceptedAnnotationAsync(HttpContent content)
+    {
+        using JsonDocument document = JsonDocument.Parse(await content.ReadAsStringAsync().ConfigureAwait(false));
+        JsonElement root = document.RootElement;
+        MemoryUnit? memoryUnit = root.GetProperty("memoryUnit").Deserialize<MemoryUnit>(MemoriesJsonContext.Options);
+        string? instanceId = root.GetProperty("instanceId").GetString();
+
+        memoryUnit.ShouldNotBeNull();
+        instanceId.ShouldNotBeNullOrWhiteSpace();
+        return (memoryUnit, instanceId!);
     }
 
     private async Task WaitForContainsEdgeAsync(string tenantId, string caseId)

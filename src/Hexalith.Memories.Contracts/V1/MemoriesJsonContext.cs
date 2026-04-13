@@ -12,6 +12,8 @@ using System.Text.Json.Serialization.Metadata;
 /// <summary>Source-generated JSON metadata for commonly exchanged Memories contracts.</summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(AddCaseMemberInput))]
+[JsonSerializable(typeof(CreateAnnotationInput))]
+[JsonSerializable(typeof(List<MemoryUnit>))]
 [JsonSerializable(typeof(Case))]
 [JsonSerializable(typeof(CaseActivityEvent))]
 [JsonSerializable(typeof(CaseGroupSummary))]
@@ -49,6 +51,10 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(SearchQuery))]
 [JsonSerializable(typeof(SearchResult))]
 [JsonSerializable(typeof(TenantEmbeddingConfig))]
+[JsonSerializable(typeof(TraversalNode))]
+[JsonSerializable(typeof(TraversalEdgeInfo))]
+[JsonSerializable(typeof(TraversalResult))]
+[JsonSerializable(typeof(IReadOnlyList<TraversalNode>))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

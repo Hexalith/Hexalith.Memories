@@ -11,6 +11,7 @@ public class EnumSerializationTests
     [Theory]
     [InlineData(SourceType.File, "\"file\"")]
     [InlineData(SourceType.Discussion, "\"discussion\"")]
+    [InlineData(SourceType.Annotation, "\"annotation\"")]
     public void SourceType_ShouldRoundTripAsCamelCaseString(SourceType value, string expectedJson)
         => ShouldRoundTripAsCamelCaseString(value, expectedJson);
 
@@ -90,6 +91,7 @@ public class EnumSerializationTests
     [InlineData(CaseActivityEventType.MemberRemoved, "\"memberRemoved\"")]
     [InlineData(CaseActivityEventType.MemoryUnitDeleted, "\"memoryUnitDeleted\"")]
     [InlineData(CaseActivityEventType.CaseDeleted, "\"caseDeleted\"")]
+    [InlineData(CaseActivityEventType.AnnotationCreated, "\"annotationCreated\"")]
     public void CaseActivityEventType_ShouldRoundTripAsCamelCaseString(CaseActivityEventType value, string expectedJson)
         => ShouldRoundTripAsCamelCaseString(value, expectedJson);
 

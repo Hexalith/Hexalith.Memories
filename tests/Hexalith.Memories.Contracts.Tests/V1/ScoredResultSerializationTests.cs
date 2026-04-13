@@ -114,4 +114,43 @@ public class ScoredResultSerializationTests
         json.ShouldNotContain("caseId");
         json.ShouldNotContain("caseName");
     }
+
+    [Fact]
+    public void AnnotationsCount_WhenZero_ShouldBeOmittedFromJson()
+    {
+        var original = new ScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            Score = 5.0,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+            AnnotationsCount = 0,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("annotationsCount");
+    }
+
+    [Fact]
+    public void AnnotationsCount_WhenNonZero_ShouldBeIncludedInJson()
+    {
+        var original = new ScoredResult
+        {
+            MemoryUnitId = "mu-001",
+            Score = 5.0,
+            ContentSnippet = "snippet",
+            SourceUri = "file:///test",
+            SourceType = SourceType.File,
+            AnnotationsCount = 3,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        ScoredResult? deserialized = JsonSerializer.Deserialize<ScoredResult>(json, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"annotationsCount\":3");
+        deserialized.ShouldNotBeNull();
+        deserialized.AnnotationsCount.ShouldBe(3);
+    }
 }

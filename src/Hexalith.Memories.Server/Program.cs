@@ -70,6 +70,12 @@ builder.Services.AddSingleton<GraphScopedSearch>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<IGraphQueryBuilder>(),
         sp.GetRequiredService<ILogger<GraphScopedSearch>>()));
+builder.Services.AddSingleton<GraphTraversalService>(sp =>
+    new GraphTraversalService(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<IGraphQueryBuilder>(),
+        sp.GetRequiredService<ILogger<GraphTraversalService>>()));
 builder.Services.AddSingleton<HybridSearchService>(sp =>
 {
     var syntactic = sp.GetRequiredService<SyntacticSearchService>();
@@ -487,6 +493,104 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
             $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
 });
 
+app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations", async (
+    string tenantId,
+    string caseId,
+    string memoryUnitId,
+    CreateAnnotationInput input,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    var validatedInput = input with { TenantId = tenantId, CaseId = caseId, TargetMemoryUnitId = memoryUnitId };
+    ErrorResponse? validationError = CaseValidator.ValidateCreateAnnotation(tenantId, caseId, memoryUnitId, validatedInput);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(validationError);
+    }
+
+    Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (targetCase is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "CASE_NOT_FOUND",
+            $"Case '{caseId}' not found in tenant '{tenantId}'.",
+            $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+    }
+
+    if (targetCase.Status == CaseStatus.Deleting)
+    {
+        return Results.Conflict(new ErrorResponse(
+            "CASE_DELETING",
+            $"Case '{caseId}' is being deleted.",
+            "Wait for deletion to complete or retry later."));
+    }
+
+    try
+    {
+        var result = await caseService.CreateAnnotationAsync(validatedInput, cancellationToken);
+        if (result is null)
+        {
+            return Results.NotFound(new ErrorResponse(
+                "MEMORY_UNIT_NOT_FOUND",
+                $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
+                $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+        }
+
+        return Results.Accepted(
+            $"/api/ingest/{result.Value.WorkflowInstanceId}",
+            new { memoryUnit = result.Value.Annotation, instanceId = result.Value.WorkflowInstanceId });
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "MEMORY_UNIT_NOT_INDEXED")
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "MEMORY_UNIT_NOT_INDEXED",
+            $"Memory unit '{memoryUnitId}' is not yet indexed.",
+            "Wait for ingestion to complete before annotating."));
+    }
+    catch (InvalidOperationException ex) when (ex.Message == "NESTED_ANNOTATION_NOT_ALLOWED")
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "NESTED_ANNOTATION_NOT_ALLOWED",
+            "Cannot annotate an annotation. The target memory unit is itself an annotation.",
+            "Annotate the original memory unit instead."));
+    }
+});
+
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations", async (
+    string tenantId,
+    string caseId,
+    string memoryUnitId,
+    CaseService caseService,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? validationError = CaseValidator.ValidateDeleteMemoryUnit(tenantId, caseId, memoryUnitId);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(validationError);
+    }
+
+    Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (targetCase is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "CASE_NOT_FOUND",
+            $"Case '{caseId}' not found in tenant '{tenantId}'.",
+            $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+    }
+
+    MemoryUnit? targetMemoryUnit = await caseService.GetMemoryUnitAsync(tenantId, memoryUnitId, cancellationToken);
+    if (targetMemoryUnit is null || !string.Equals(targetMemoryUnit.CaseId, caseId, StringComparison.Ordinal))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "MEMORY_UNIT_NOT_FOUND",
+            $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
+            $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+    }
+
+    List<MemoryUnit> annotations = await caseService.ListAnnotationsAsync(tenantId, memoryUnitId, cancellationToken);
+    return Results.Ok(annotations);
+});
+
 app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,
@@ -495,6 +599,8 @@ app.MapGet("/api/search", async (
     IActorProxyFactory actorProxyFactory,
     CaseActivityService activityService,
     CaseService caseService,
+    IGraphQueryBuilder graphQueryBuilder,
+    [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
     [FromQuery] string? caseId,
@@ -551,7 +657,7 @@ app.MapGet("/api/search", async (
         return Results.BadRequest(new ErrorResponse(
             "INVALID_SOURCE_TYPE",
             $"Source type '{sourceType}' is not recognized.",
-            "Valid values: file, url, event, command, projection, discussion."));
+            "Valid values: file, url, event, command, projection, discussion, annotation."));
     }
 
     // Validate axis BEFORE query — axis determines whether query is required
@@ -596,6 +702,7 @@ app.MapGet("/api/search", async (
                 searchQuery, startNodeId, clampedDepth,
                 innerSearch: null, cancellationToken);
             result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId);
             if (explain)
             {
                 result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
@@ -690,6 +797,7 @@ app.MapGet("/api/search", async (
             cancellationToken);
 
         hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
+        hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId);
 
         if (explain)
         {
@@ -747,6 +855,7 @@ app.MapGet("/api/search", async (
                     q => semanticService.SearchAsync(q, config, cancellationToken),
                     cancellationToken);
                 result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+                result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId);
                 if (explain)
                 {
                     result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -788,6 +897,7 @@ app.MapGet("/api/search", async (
                 q => syntacticService.SearchAsync(q),
                 cancellationToken);
             syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
+            syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId);
             if (explain)
             {
                 syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -817,6 +927,7 @@ app.MapGet("/api/search", async (
             SearchResult searchResult = await semanticService.SearchAsync(
                 mainSearchQuery, config, cancellationToken);
             searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId);
             if (explain)
             {
                 searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
@@ -847,6 +958,7 @@ app.MapGet("/api/search", async (
 
     SearchResult syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
     syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
+    syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId);
     if (explain)
     {
         syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
@@ -854,6 +966,39 @@ app.MapGet("/api/search", async (
 
     RecordSearchActivity();
     return Results.Ok(syntacticDefault);
+});
+
+app.MapGet("/api/tenants/{tenantId}/traverse", async (
+    string tenantId,
+    GraphTraversalService traversalService,
+    [FromQuery] string? startNodeId,
+    [FromQuery] int depth = 2,
+    [FromQuery] string? caseId = null,
+    CancellationToken cancellationToken = default) =>
+{
+    if (string.IsNullOrWhiteSpace(tenantId))
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId is required.", "Provide a valid tenantId."));
+    }
+
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    if (string.IsNullOrWhiteSpace(startNodeId))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "MISSING_START_NODE",
+            "startNodeId query parameter is required.",
+            "Provide startNodeId=<memoryUnitId> to specify the traversal starting point."));
+    }
+
+    int clampedDepth = Math.Clamp(depth, 0, 10);
+    TraversalResult result = await traversalService.TraverseAsync(
+        tenantId, startNodeId, clampedDepth, caseId, cancellationToken);
+    return Results.Ok(result);
 });
 
 app.Run();
@@ -1093,6 +1238,94 @@ static async Task<HybridSearchResult> EnrichHybridResultWithCaseAttributionAsync
         Results = enrichedResults,
         CaseGroups = caseGroups.Count > 0 ? caseGroups : null,
     };
+}
+
+static async Task<SearchResult> EnrichResultWithAnnotationCountsAsync(
+    SearchResult result,
+    IGraphQueryBuilder graphQueryBuilder,
+    IConnectionMultiplexer falkorDb,
+    string tenantId)
+{
+    if (result.Results.Count == 0)
+    {
+        return result;
+    }
+
+    List<string> muIds = result.Results.Select(r => r.MemoryUnitId).Distinct().ToList();
+    if (muIds.Count == 0)
+    {
+        return result;
+    }
+
+    (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(muIds);
+    NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
+    NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+
+    Dictionary<string, int> counts = [];
+    foreach (NFalkorDB.Record record in countResult)
+    {
+        string muId = record.Values[0].ToString() ?? string.Empty;
+        int count = Convert.ToInt32(record.Values[1]);
+        if (!string.IsNullOrEmpty(muId) && count > 0)
+        {
+            counts[muId] = count;
+        }
+    }
+
+    if (counts.Count == 0)
+    {
+        return result;
+    }
+
+    List<ScoredResult> enriched = result.Results
+        .Select(r => counts.TryGetValue(r.MemoryUnitId, out int count) ? r with { AnnotationsCount = count } : r)
+        .ToList();
+
+    return result with { Results = enriched };
+}
+
+static async Task<HybridSearchResult> EnrichHybridResultWithAnnotationCountsAsync(
+    HybridSearchResult result,
+    IGraphQueryBuilder graphQueryBuilder,
+    IConnectionMultiplexer falkorDb,
+    string tenantId)
+{
+    if (result.Results.Count == 0)
+    {
+        return result;
+    }
+
+    List<string> muIds = result.Results.Select(r => r.MemoryUnitId).Distinct().ToList();
+    if (muIds.Count == 0)
+    {
+        return result;
+    }
+
+    (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(muIds);
+    NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
+    NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+
+    Dictionary<string, int> counts = [];
+    foreach (NFalkorDB.Record record in countResult)
+    {
+        string muId = record.Values[0].ToString() ?? string.Empty;
+        int count = Convert.ToInt32(record.Values[1]);
+        if (!string.IsNullOrEmpty(muId) && count > 0)
+        {
+            counts[muId] = count;
+        }
+    }
+
+    if (counts.Count == 0)
+    {
+        return result;
+    }
+
+    List<FusedScoredResult> enriched = result.Results
+        .Select(r => counts.TryGetValue(r.MemoryUnitId, out int count) ? r with { AnnotationsCount = count } : r)
+        .ToList();
+
+    return result with { Results = enriched };
 }
 
 static List<CaseGroupSummary> BuildCaseGroups(

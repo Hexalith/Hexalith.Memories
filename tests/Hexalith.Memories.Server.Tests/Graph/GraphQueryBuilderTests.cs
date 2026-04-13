@@ -499,4 +499,203 @@ public class GraphQueryBuilderTests
         query.ShouldNotContain(adversarialCaseId);
         parameters["caseId"].ShouldBe(adversarialCaseId);
     }
+
+    // --- BuildCountAnnotations tests ---
+
+    [Fact]
+    public void BuildCountAnnotations_ShouldReturnParameterizedQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountAnnotations("mu-001");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("ANNOTATES");
+        query.ShouldContain("count(a) AS count");
+        query.ShouldContain("$memoryUnitId");
+        parameters["memoryUnitId"].ShouldBe("mu-001");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildCountAnnotations_NullOrEmptyId_ShouldThrow(string? memoryUnitId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildCountAnnotations(memoryUnitId!));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildCountAnnotations_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialId = "INJECT_COUNT_ANNOTATIONS_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountAnnotations(adversarialId);
+
+        query.ShouldNotContain(adversarialId);
+        parameters["memoryUnitId"].ShouldBe(adversarialId);
+    }
+
+    // --- BuildListAnnotationIds tests ---
+
+    [Fact]
+    public void BuildListAnnotationIds_ShouldReturnParameterizedQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildListAnnotationIds("mu-001");
+
+        query.ShouldContain("MATCH");
+        query.ShouldContain("ANNOTATES");
+        query.ShouldContain("a.id AS annotationId");
+        query.ShouldContain("$memoryUnitId");
+        parameters["memoryUnitId"].ShouldBe("mu-001");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildListAnnotationIds_NullOrEmptyId_ShouldThrow(string? memoryUnitId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildListAnnotationIds(memoryUnitId!));
+    }
+
+    [Fact]
+    public void InjectionPrevention_BuildListAnnotationIds_ShouldNeverContainRawInputInQuery()
+    {
+        const string adversarialId = "INJECT_LIST_ANNOTATIONS_12345";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildListAnnotationIds(adversarialId);
+
+        query.ShouldNotContain(adversarialId);
+        parameters["memoryUnitId"].ShouldBe(adversarialId);
+    }
+
+    // --- BuildBatchCountAnnotations tests ---
+
+    [Fact]
+    public void BuildBatchCountAnnotations_EmptyList_ShouldReturnQueryWithEmptyParameter()
+    {
+        List<string> ids = [];
+        (string query, IDictionary<string, object> parameters) = _builder.BuildBatchCountAnnotations(ids);
+
+        query.ShouldContain("UNWIND $ids");
+        query.ShouldContain("OPTIONAL MATCH");
+        query.ShouldContain("ANNOTATES");
+        query.ShouldContain("count(a) AS count");
+        parameters["ids"].ShouldBe(ids);
+    }
+
+    [Fact]
+    public void BuildBatchCountAnnotations_SingleId_ShouldReturnParameterizedQuery()
+    {
+        List<string> ids = ["mu-001"];
+        (string query, IDictionary<string, object> parameters) = _builder.BuildBatchCountAnnotations(ids);
+
+        query.ShouldContain("UNWIND $ids");
+        query.ShouldContain("muId");
+        var paramIds = parameters["ids"] as IReadOnlyList<string>;
+        paramIds.ShouldNotBeNull();
+        paramIds.Count.ShouldBe(1);
+        paramIds[0].ShouldBe("mu-001");
+    }
+
+    [Fact]
+    public void BuildBatchCountAnnotations_MultipleIds_ShouldReturnParameterizedQuery()
+    {
+        List<string> ids = ["mu-001", "mu-002", "mu-003"];
+        (string query, IDictionary<string, object> parameters) = _builder.BuildBatchCountAnnotations(ids);
+
+        query.ShouldContain("UNWIND $ids");
+        var paramIds = parameters["ids"] as IReadOnlyList<string>;
+        paramIds.ShouldNotBeNull();
+        paramIds.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public void BuildBatchCountAnnotations_NullList_ShouldThrow()
+    {
+        Should.Throw<ArgumentNullException>(() => _builder.BuildBatchCountAnnotations(null!));
+    }
+
+    // --- BuildTraverseWithEdges tests ---
+
+    [Fact]
+    public void BuildTraverseWithEdges_ReturnsParameterizedQueryWithEdgeMetadata()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-start-001", 3);
+
+        query.ShouldContain("$startId");
+        query.ShouldContain("edges");
+        query.ShouldContain("hopDistance");
+        query.ShouldContain("ingestedAt");
+        query.ShouldContain("ORDER BY");
+        query.ShouldContain("[*0..3]");
+        query.ShouldContain("content");
+        query.ShouldContain("sourceUri");
+        query.ShouldContain("sourceType");
+        parameters["startId"].ShouldBe("mu-start-001");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_Depth0_ReturnsValidQuery()
+    {
+        (string query, IDictionary<string, object> _) = _builder.BuildTraverseWithEdges("mu-001", 0);
+
+        query.ShouldContain("[*0..0]");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(11)]
+    public void BuildTraverseWithEdges_InvalidDepth_ThrowsArgumentOutOfRange(int depth)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseWithEdges("mu-001", depth));
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_InjectionPrevention()
+    {
+        const string adversarialId = "INJECT'; MATCH (n) DELETE n;--";
+
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges(adversarialId, 3);
+
+        query.ShouldNotContain(adversarialId);
+        parameters["startId"].ShouldBe(adversarialId);
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithCaseId_AddsWhereClause()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-001", 3, "case-abc");
+
+        query.ShouldContain("WHERE n.caseId = $caseId");
+        parameters["startId"].ShouldBe("mu-001");
+        parameters["caseId"].ShouldBe("case-abc");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithoutCaseId_NoWhereClause()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseWithEdges("mu-001", 3, null);
+
+        query.ShouldNotContain("WHERE n.caseId");
+        parameters.ShouldNotContainKey("caseId");
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_TwoParamOverload_DelegatesToThreeParam()
+    {
+        (string queryTwo, IDictionary<string, object> paramsTwo) = _builder.BuildTraverseWithEdges("mu-001", 2);
+        (string queryThree, IDictionary<string, object> paramsThree) = _builder.BuildTraverseWithEdges("mu-001", 2, null);
+
+        queryTwo.ShouldBe(queryThree);
+        paramsTwo["startId"].ShouldBe(paramsThree["startId"]);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void BuildTraverseWithEdges_NullOrEmptyStartNodeId_ShouldThrow(string? startNodeId)
+    {
+        Should.Throw<ArgumentException>(() => _builder.BuildTraverseWithEdges(startNodeId!, 2));
+    }
 }

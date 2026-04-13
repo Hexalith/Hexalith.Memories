@@ -1,0 +1,194 @@
+namespace Hexalith.Memories.Server.Tests.Graph;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
+
+using Shouldly;
+
+using StackExchange.Redis;
+
+public class GraphTraversalServiceTests
+{
+    // --- TraverseAsync: graph-not-found returns empty ---
+
+    [Fact]
+    public async Task TraverseAsync_GraphNotFound_ReturnsEmptyResult()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = new GraphQueryBuilder();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+
+        // Simulate graph-not-found error
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+
+        // Act
+        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 3, null, CancellationToken.None);
+
+        // Assert
+        result.StartNodeId.ShouldBe("mu-001");
+        result.Depth.ShouldBe(3);
+        result.Nodes.ShouldBeEmpty();
+        result.TotalNodeCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task TraverseAsync_EmptyGraph_ReturnsEmptyResult()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase _) = CreateMockFalkorDbWithEmptyResult();
+        IGraphQueryBuilder builder = new GraphQueryBuilder();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+
+        // Act
+        TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 0, null, CancellationToken.None);
+
+        // Assert
+        result.StartNodeId.ShouldBe("mu-001");
+        result.Depth.ShouldBe(0);
+        result.Nodes.ShouldBeEmpty();
+        result.TotalNodeCount.ShouldBe(0);
+    }
+
+    // --- ParseEdgeType mapping tests ---
+
+    [Theory]
+    [InlineData("CAUSED_BY", EdgeType.CausedBy)]
+    [InlineData("CORRELATED_WITH", EdgeType.CorrelatedWith)]
+    [InlineData("REFERENCES", EdgeType.References)]
+    [InlineData("CONTAINS", EdgeType.Contains)]
+    [InlineData("ANNOTATES", EdgeType.Annotates)]
+    public void ParseEdgeType_KnownLabels_ShouldMapCorrectly(string cypherLabel, EdgeType expected)
+    {
+        GraphTraversalService.ParseEdgeType(cypherLabel).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ParseEdgeType_UnknownLabel_ShouldThrow()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => GraphTraversalService.ParseEdgeType("UNKNOWN_TYPE"));
+    }
+
+    // --- ParseEdgeOrigin mapping tests ---
+
+    [Theory]
+    [InlineData("explicit", EdgeOrigin.Explicit)]
+    [InlineData("inferred", EdgeOrigin.Inferred)]
+    public void ParseEdgeOrigin_KnownValues_ShouldMapCorrectly(string value, EdgeOrigin expected)
+    {
+        GraphTraversalService.ParseEdgeOrigin(value).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ParseEdgeOrigin_UnknownValue_ShouldThrow()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => GraphTraversalService.ParseEdgeOrigin("unknown"));
+    }
+
+    // --- ParseSourceType mapping tests ---
+
+    [Theory]
+    [InlineData("file", SourceType.File)]
+    [InlineData("url", SourceType.Url)]
+    [InlineData("event", SourceType.Event)]
+    [InlineData("command", SourceType.Command)]
+    [InlineData("projection", SourceType.Projection)]
+    [InlineData("discussion", SourceType.Discussion)]
+    [InlineData("annotation", SourceType.Annotation)]
+    public void ParseSourceType_KnownValues_ShouldMapCorrectly(string value, SourceType expected)
+    {
+        GraphTraversalService.ParseSourceType(value).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void ParseSourceType_UnknownValue_ShouldThrow()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => GraphTraversalService.ParseSourceType("unknown"));
+    }
+
+    // --- TruncateContent tests ---
+
+    [Fact]
+    public void TruncateContent_ShortContent_ShouldReturnAsIs()
+    {
+        string content = "Short content under 200 chars";
+        GraphTraversalService.TruncateContent(content).ShouldBe(content);
+    }
+
+    [Fact]
+    public void TruncateContent_Exactly200Chars_ShouldReturnAsIs()
+    {
+        string content = new('x', 200);
+        GraphTraversalService.TruncateContent(content).ShouldBe(content);
+    }
+
+    [Fact]
+    public void TruncateContent_LongContent_ShouldTruncateAtWordBoundary()
+    {
+        string content = new string('a', 150) + " " + new string('b', 100);
+        string result = GraphTraversalService.TruncateContent(content);
+
+        result.Length.ShouldBeLessThanOrEqualTo(204); // 200 + "..."
+        result.ShouldEndWith("...");
+    }
+
+    [Fact]
+    public void TruncateContent_LongContentNoSpaces_ShouldTruncateAt200()
+    {
+        string content = new('x', 300);
+        string result = GraphTraversalService.TruncateContent(content);
+
+        result.ShouldBe(new string('x', 200) + "...");
+    }
+
+    // --- Helpers ---
+
+    private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDb()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
+        falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return (falkorDb, db);
+    }
+
+    private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDbWithEmptyResult()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
+        falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        RedisResult emptyResult = CreateEmptyFalkorDbResult();
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(emptyResult);
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(emptyResult);
+
+        return (falkorDb, db);
+    }
+
+    private static RedisResult CreateEmptyFalkorDbResult() => RedisResult.Create(
+    [
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("Nodes created: 0")),
+            RedisResult.Create(new RedisValue("Properties set: 0")),
+            RedisResult.Create(new RedisValue("Relationships created: 0")),
+            RedisResult.Create(new RedisValue("Cached execution: 0")),
+            RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+        ]),
+    ]);
+}

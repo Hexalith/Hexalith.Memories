@@ -14,6 +14,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 internal static partial class CaseValidator
 {
     private const int MaxMemberIdLength = 200;
+    private const int MaxIngestedByLength = 200;
 
     public static ErrorResponse? ValidateCreateCase(CreateCaseInput input)
     {
@@ -182,6 +183,98 @@ internal static partial class CaseValidator
                 "INVALID_TENANT_ID",
                 "TenantId contains invalid characters.",
                 "Only alphanumeric and hyphens allowed.");
+        }
+
+        return null;
+    }
+
+    private static readonly HashSet<string> AllowedAnnotationTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "correction",
+        "clarification",
+        "enrichment",
+    };
+
+    /// <summary>Validates input for creating an annotation on a memory unit.</summary>
+    /// <param name="tenantId">The tenant identifier from the route.</param>
+    /// <param name="caseId">The case identifier from the route.</param>
+    /// <param name="targetMemoryUnitId">The target memory unit identifier from the route.</param>
+    /// <param name="input">The annotation creation payload.</param>
+    /// <returns>An <see cref="ErrorResponse"/> if validation fails; otherwise <see langword="null"/>.</returns>
+    public static ErrorResponse? ValidateCreateAnnotation(string tenantId, string caseId, string targetMemoryUnitId, CreateAnnotationInput input)
+    {
+        ErrorResponse? tenantError = ValidateTenantId(tenantId);
+        if (tenantError is not null)
+        {
+            return tenantError;
+        }
+
+        ErrorResponse? caseError = ValidateCaseId(caseId);
+        if (caseError is not null)
+        {
+            return caseError;
+        }
+
+        ErrorResponse? muError = ValidateMemoryUnitId(targetMemoryUnitId);
+        if (muError is not null)
+        {
+            return muError;
+        }
+
+        if (string.IsNullOrWhiteSpace(input.Content))
+        {
+            return new ErrorResponse(
+                "INVALID_ANNOTATION_CONTENT",
+                "Annotation content is required.",
+                "Provide non-empty content for the annotation.");
+        }
+
+        if (input.Content.Length > 50000)
+        {
+            return new ErrorResponse(
+                "INVALID_ANNOTATION_CONTENT",
+                "Annotation content must not exceed 50000 characters.",
+                "Reduce the content length to 50000 characters or less.");
+        }
+
+        if (string.IsNullOrWhiteSpace(input.IngestedBy))
+        {
+            return new ErrorResponse(
+                "INVALID_INGESTED_BY",
+                "IngestedBy is required.",
+                "Provide a non-empty ingestedBy value.");
+        }
+
+        if (input.IngestedBy.Length > MaxIngestedByLength)
+        {
+            return new ErrorResponse(
+                "INVALID_INGESTED_BY",
+                $"IngestedBy must not exceed {MaxIngestedByLength} characters.",
+                "Provide a shorter ingestedBy value.");
+        }
+
+        if (input.AnnotationType is not null && !AllowedAnnotationTypes.Contains(input.AnnotationType))
+        {
+            return new ErrorResponse(
+                "INVALID_ANNOTATION_TYPE",
+                $"Annotation type '{input.AnnotationType}' is not recognized.",
+                "Valid values: correction, clarification, enrichment.");
+        }
+
+        return null;
+    }
+
+    /// <summary>Validates that a target memory unit is not itself an annotation (prevents nested annotations).</summary>
+    /// <param name="metadata">The metadata dictionary of the target memory unit.</param>
+    /// <returns>An <see cref="ErrorResponse"/> if the target is an annotation; otherwise <see langword="null"/>.</returns>
+    public static ErrorResponse? ValidateNotNestedAnnotation(IDictionary<string, MetadataField>? metadata)
+    {
+        if (metadata is not null && metadata.ContainsKey("_system.annotation_target"))
+        {
+            return new ErrorResponse(
+                "NESTED_ANNOTATION_NOT_ALLOWED",
+                "Cannot annotate an annotation. The target memory unit is itself an annotation.",
+                "Annotate the original memory unit instead.");
         }
 
         return null;

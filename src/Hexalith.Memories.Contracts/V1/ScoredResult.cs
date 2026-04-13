@@ -35,4 +35,8 @@ public sealed record ScoredResult
     /// <summary>Gets the case name of the memory unit, or null if not resolved.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CaseName { get; init; }
+
+    /// <summary>Gets the number of annotations linked to this memory unit.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int AnnotationsCount { get; init; }
 }

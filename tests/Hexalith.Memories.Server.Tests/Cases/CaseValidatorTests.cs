@@ -341,4 +341,181 @@ public class CaseValidatorTests
         result.ShouldNotBeNull();
         result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
     }
+
+    // --- ValidateCreateAnnotation tests ---
+
+    [Fact]
+    public void ValidateCreateAnnotation_ValidInput_ShouldReturnNull()
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "This is an annotation", "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_WithValidAnnotationType_ShouldReturnNull()
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "This is a correction", "user@example.com", "correction");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_InvalidTenantId_ShouldReturnError()
+    {
+        var input = new CreateAnnotationInput("bad!", "case-001", "mu-001", "content", "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("bad!", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_TENANT_ID");
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_InvalidCaseId_ShouldReturnError()
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case:bad", "mu-001", "content", "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case:bad", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_CASE_ID");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ValidateCreateAnnotation_EmptyTargetMuId_ShouldReturnError(string? targetMuId)
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", targetMuId!, "content", "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", targetMuId!, input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ValidateCreateAnnotation_EmptyContent_ShouldReturnError(string content)
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", content, "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_ANNOTATION_CONTENT");
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_ContentExceeding50000Chars_ShouldReturnError()
+    {
+        string longContent = new('A', 50001);
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", longContent, "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_ANNOTATION_CONTENT");
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_ContentExactly50000Chars_ShouldBeValid()
+    {
+        string maxContent = new('A', 50000);
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", maxContent, "user@example.com");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ValidateCreateAnnotation_EmptyIngestedBy_ShouldReturnError(string ingestedBy)
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "content", ingestedBy);
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_INGESTED_BY");
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_IngestedByExceeding200Chars_ShouldReturnError()
+    {
+        string longIngestedBy = new('u', 201);
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "content", longIngestedBy);
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_INGESTED_BY");
+    }
+
+    [Fact]
+    public void ValidateCreateAnnotation_InvalidAnnotationType_ShouldReturnError()
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "content", "user@example.com", "unknown-type");
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("INVALID_ANNOTATION_TYPE");
+    }
+
+    [Theory]
+    [InlineData("correction")]
+    [InlineData("clarification")]
+    [InlineData("enrichment")]
+    [InlineData("Correction")]
+    [InlineData("CLARIFICATION")]
+    public void ValidateCreateAnnotation_AllowedAnnotationTypes_ShouldReturnNull(string annotationType)
+    {
+        var input = new CreateAnnotationInput("tenant-1", "case-001", "mu-001", "content", "user@example.com", annotationType);
+        ErrorResponse? result = CaseValidator.ValidateCreateAnnotation("tenant-1", "case-001", "mu-001", input);
+
+        result.ShouldBeNull();
+    }
+
+    // --- ValidateNotNestedAnnotation tests ---
+
+    [Fact]
+    public void ValidateNotNestedAnnotation_NullMetadata_ShouldReturnNull()
+    {
+        ErrorResponse? result = CaseValidator.ValidateNotNestedAnnotation(null);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateNotNestedAnnotation_EmptyMetadata_ShouldReturnNull()
+    {
+        var metadata = new Dictionary<string, MetadataField>();
+        ErrorResponse? result = CaseValidator.ValidateNotNestedAnnotation(metadata);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateNotNestedAnnotation_MetadataWithoutAnnotationTarget_ShouldReturnNull()
+    {
+        var metadata = new Dictionary<string, MetadataField>
+        {
+            ["some_key"] = new MetadataField("value", MetadataOrigin.Human, 1.0f),
+        };
+        ErrorResponse? result = CaseValidator.ValidateNotNestedAnnotation(metadata);
+
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ValidateNotNestedAnnotation_MetadataWithAnnotationTarget_ShouldReturnError()
+    {
+        var metadata = new Dictionary<string, MetadataField>
+        {
+            ["_system.annotation_target"] = new MetadataField("mu-original", MetadataOrigin.Human, 1.0f),
+        };
+        ErrorResponse? result = CaseValidator.ValidateNotNestedAnnotation(metadata);
+
+        result.ShouldNotBeNull();
+        result!.Code.ShouldBe("NESTED_ANNOTATION_NOT_ALLOWED");
+    }
 }
