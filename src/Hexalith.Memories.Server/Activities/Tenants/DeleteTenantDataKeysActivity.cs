@@ -1,0 +1,75 @@
+// <copyright file="DeleteTenantDataKeysActivity.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Activities.Tenants;
+
+using Dapr.Workflow;
+
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.Logging;
+
+using StackExchange.Redis;
+
+/// <summary>Tenant deletion activity that cleans up Redis data keys not covered by FT.DROPINDEX DD (case and dedup keys).</summary>
+public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<TenantDeletionInput, bool>
+{
+    private readonly IConnectionMultiplexer _redis;
+    private readonly ILogger<DeleteTenantDataKeysActivity> _logger;
+
+    /// <summary>Initializes a new instance of the <see cref="DeleteTenantDataKeysActivity"/> class.</summary>
+    /// <param name="redis">The Redis connection multiplexer.</param>
+    /// <param name="logger">The logger instance.</param>
+    public DeleteTenantDataKeysActivity(
+        [FromKeyedServices("redis")] IConnectionMultiplexer redis,
+        ILogger<DeleteTenantDataKeysActivity> logger)
+    {
+        _redis = redis;
+        _logger = logger;
+    }
+
+    /// <inheritdoc/>
+    public override async Task<bool> RunAsync(WorkflowActivityContext context, TenantDeletionInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        IDatabase db = _redis.GetDatabase();
+        IServer server = _redis.GetServers().FirstOrDefault(static s => s.IsConnected)
+            ?? throw new InvalidOperationException("No Redis server is available for tenant data cleanup.");
+
+        long totalDeleted = 0;
+        totalDeleted += await ScanAndDeleteAsync(server, db, $"{input.TenantId}:case:*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, $"dedup:{input.TenantId}:*").ConfigureAwait(false);
+
+        LogKeysDeleted(_logger, input.TenantId, totalDeleted);
+        return true;
+    }
+
+    private static async Task<long> ScanAndDeleteAsync(IServer server, IDatabase db, string pattern)
+    {
+        long deleted = 0;
+        List<RedisKey> batch = new(1000);
+
+        await foreach (RedisKey key in server.KeysAsync(database: db.Database, pattern: pattern, pageSize: 1000).ConfigureAwait(false))
+        {
+            batch.Add(key);
+
+            if (batch.Count >= 1000)
+            {
+                deleted += await db.KeyDeleteAsync([.. batch]).ConfigureAwait(false);
+                batch.Clear();
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            deleted += await db.KeyDeleteAsync([.. batch]).ConfigureAwait(false);
+        }
+
+        return deleted;
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} data keys for tenant '{TenantId}'")]
+    private static partial void LogKeysDeleted(ILogger logger, string tenantId, long count);
+}

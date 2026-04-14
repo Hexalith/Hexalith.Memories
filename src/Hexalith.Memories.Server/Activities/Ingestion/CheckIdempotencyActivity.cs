@@ -5,17 +5,18 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
-using Dapr.Client;
 using Dapr.Workflow;
+
+using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that checks whether a source has already been ingested (dedup).</summary>
 public sealed class CheckIdempotencyActivity : WorkflowActivity<IdempotencyInput, IdempotencyResult>
 {
-    private readonly DaprClient _daprClient;
+    private readonly IConnectionMultiplexer _redis;
 
-    public CheckIdempotencyActivity(DaprClient daprClient)
+    public CheckIdempotencyActivity([FromKeyedServices("redis")] IConnectionMultiplexer redis)
     {
-        _daprClient = daprClient;
+        _redis = redis;
     }
 
     /// <inheritdoc/>
@@ -29,10 +30,11 @@ public sealed class CheckIdempotencyActivity : WorkflowActivity<IdempotencyInput
         ArgumentException.ThrowIfNullOrWhiteSpace(input.CaseId);
 
         string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
-        string? existing = await _daprClient.GetStateAsync<string>("statestore", dedupKey).ConfigureAwait(false);
+        IDatabase db = _redis.GetDatabase();
+        RedisValue existing = await db.StringGetAsync(dedupKey).ConfigureAwait(false);
 
-        return !string.IsNullOrEmpty(existing)
-            ? new IdempotencyResult(true, existing)
+        return existing.HasValue
+            ? new IdempotencyResult(true, existing.ToString())
             : new IdempotencyResult(false, null);
     }
 }

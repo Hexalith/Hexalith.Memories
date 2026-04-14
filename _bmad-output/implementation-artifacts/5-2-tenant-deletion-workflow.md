@@ -1,6 +1,6 @@
 # Story 5.2: Tenant Deletion Workflow
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,180 +37,189 @@ so that I can fulfill erasure requirements and reclaim resources.
 
 ### Task 1: Create tenant deletion contracts (AC #1, #3, #4)
 
-- [ ] 1.1 `Contracts/V1/TenantDeletionInput.cs` -- sealed record: `TenantId` (positional). Validate via `TenantIdGuard.Validate()`.
-- [ ] 1.2 `Contracts/V1/TenantDeletionResult.cs` -- sealed record: `TenantId` (positional), `Status` (positional, `TenantStatus`), `Message` (positional), `DeletedBackends` (init, `IReadOnlyList<string>?`, nullable).
-- [ ] 1.3 `Contracts/V1/BatchedGraphDeletionInput.cs` -- sealed record: `TenantId` (positional), `BatchSize` (positional, int, default 500), `BatchNumber` (positional, int).
-- [ ] 1.4 `Contracts/V1/BatchedGraphDeletionResult.cs` -- sealed record: `RemainingNodes` (positional, long), `DeletedInBatch` (positional, int), `IsComplete` (positional, bool).
-- [ ] 1.5 Register all new types in `MemoriesJsonContext.cs` with `[JsonSerializable(...)]` attributes.
+- [x] 1.1 `Contracts/V1/TenantDeletionInput.cs` -- sealed record: `TenantId` (positional). Validate via `TenantIdGuard.Validate()`.
+- [x] 1.2 `Contracts/V1/TenantDeletionResult.cs` -- sealed record: `TenantId` (positional), `Status` (positional, `TenantStatus`), `Message` (positional), `DeletedBackends` (init, `IReadOnlyList<string>?`, nullable).
+- [x] 1.3 `Contracts/V1/BatchedGraphDeletionInput.cs` -- sealed record: `TenantId` (positional), `BatchSize` (positional, int, default 500), `BatchNumber` (positional, int).
+- [x] 1.4 `Contracts/V1/BatchedGraphDeletionResult.cs` -- sealed record: `RemainingNodes` (positional, long), `DeletedInBatch` (positional, int), `IsComplete` (positional, bool).
+- [x] 1.5 Register all new types in `MemoriesJsonContext.cs` with `[JsonSerializable(...)]` attributes.
 
 ### Task 2: Create deletion activities (AC #1, #2)
 
 > **REUSE:** Story 5-1 creates `DeleteRediSearchIndexActivity`, `DeleteRedisVectorIndexActivity`, and `DeleteFalkorDbGraphActivity` as compensation activities. These handle single-index drops. Story 5-2 extends these with batched graph deletion for large tenants.
 
-- [ ] 2.1 `Server/Activities/Tenants/DeleteRediSearchActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Drops `{tenantId}:memories:idx` via `FT.DROPINDEX {tenantId}:memories:idx DD` (the `DD` flag deletes associated document hashes under `{tenantId}:mu:*` prefix). Swallow "Unknown index" `RedisServerException`. Inject `IConnectionMultiplexer` (keyed `"redis"`). Idempotent: success even if index already gone.
-- [ ] 2.2 `Server/Activities/Tenants/DeleteRedisVectorActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Drops `{tenantId}:memories:vec` via `FT.DROPINDEX {tenantId}:memories:vec DD` (the `DD` flag deletes associated vector hashes under `{tenantId}:vec:*` prefix). Same idempotency as 2.1.
-- [ ] 2.3 `Server/Activities/Tenants/DeleteFalkorDbBatchActivity.cs` -- extends `WorkflowActivity<BatchedGraphDeletionInput, BatchedGraphDeletionResult>`. Executes batched node deletion on the tenant's FalkorDB graph:
-  - Count remaining nodes: `MATCH (n) RETURN count(n)` on graph `{tenantId}`
-  - If count == 0, return `IsComplete = true`
-  - Delete batch: `MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n RETURN count(n)` (parameterized via `IGraphQueryBuilder`)
-  - Return `BatchedGraphDeletionResult` with remaining count and batch stats
-  - Inject `IConnectionMultiplexer` (keyed `"falkordb"`)
-  - Handle `RedisServerException` for graph-not-found gracefully (return `IsComplete = true`)
-- [ ] 2.4 `Server/Activities/Tenants/DeleteFalkorDbGraphFinalizerActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Deletes the empty FalkorDB graph itself after all nodes are batched out. Executes `GRAPH.DELETE {tenantId}`. Swallow graph-not-found errors. Idempotent.
-- [ ] 2.5 `Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Deletes remaining Redis data keys NOT covered by `FT.DROPINDEX DD` (which handles `mu:*` and `vec:*` hashes):
-  - Scan for `{tenantId}:case:*` keys (case hashes, members lists, activity logs) via `SCAN` with `COUNT 1000`
-  - Scan for `{tenantId}:dedup:*` keys (dedup entries) via `SCAN` with `COUNT 1000`
-  - Delete in batches of 1000 via `KeyDeleteAsync`
-  - Return true when all scans complete with zero remaining keys
-  - Inject `IConnectionMultiplexer` (keyed `"redis"`)
+- [x] 2.1 `Server/Activities/Tenants/DeleteRediSearchActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Drops `{tenantId}:memories:idx` via `FT.DROPINDEX {tenantId}:memories:idx DD` (the `DD` flag deletes associated document hashes under `{tenantId}:mu:*` prefix). Swallow "Unknown index" `RedisServerException`. Inject `IConnectionMultiplexer` (keyed `"redis"`). Idempotent: success even if index already gone.
+- [x] 2.2 `Server/Activities/Tenants/DeleteRedisVectorActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Drops `{tenantId}:memories:vec` via `FT.DROPINDEX {tenantId}:memories:vec DD` (the `DD` flag deletes associated vector hashes under `{tenantId}:vec:*` prefix). Same idempotency as 2.1.
+- [x] 2.3 `Server/Activities/Tenants/DeleteFalkorDbBatchActivity.cs` -- extends `WorkflowActivity<BatchedGraphDeletionInput, BatchedGraphDeletionResult>`. Executes batched node deletion on the tenant's FalkorDB graph:
+    - Count remaining nodes: `MATCH (n) RETURN count(n)` on graph `{tenantId}`
+    - If count == 0, return `IsComplete = true`
+    - Delete batch: `MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n RETURN count(n)` (parameterized via `IGraphQueryBuilder`)
+    - Return `BatchedGraphDeletionResult` with remaining count and batch stats
+    - Inject `IConnectionMultiplexer` (keyed `"falkordb"`)
+    - Handle `RedisServerException` for graph-not-found gracefully (return `IsComplete = true`)
+- [x] 2.4 `Server/Activities/Tenants/DeleteFalkorDbGraphFinalizerActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Deletes the empty FalkorDB graph itself after all nodes are batched out. Executes `GRAPH.DELETE {tenantId}`. Swallow graph-not-found errors. Idempotent.
+- [x] 2.5 `Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs` -- extends `WorkflowActivity<TenantDeletionInput, bool>`. Deletes remaining Redis data keys NOT covered by `FT.DROPINDEX DD` (which handles `mu:*` and `vec:*` hashes):
+    - Scan for `{tenantId}:case:*` keys (case hashes, members lists, activity logs) via `SCAN` with `COUNT 1000`
+    - Scan for `{tenantId}:dedup:*` keys (dedup entries) via `SCAN` with `COUNT 1000`
+    - Delete in batches of 1000 via `KeyDeleteAsync`
+    - Return true when all scans complete with zero remaining keys
+    - Inject `IConnectionMultiplexer` (keyed `"redis"`)
 
 ### Task 3: Add graph query builder methods for batched deletion (AC #2)
 
-- [ ] 3.1 Add to `IGraphQueryBuilder`:
-  - `BuildCountAllNodes()` -- returns `(string Query, IDictionary<string, object> Parameters)` for `MATCH (n) RETURN count(n)`
-  - `BuildBatchDeleteNodes(int batchSize)` -- returns parameterized query: `MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n RETURN count(n)`
-- [ ] 3.2 Implement in `GraphQueryBuilder` with parameterized queries (no raw string interpolation for batchSize -- use `$batchSize` parameter).
+- [x] 3.1 Add to `IGraphQueryBuilder`:
+    - `BuildCountAllNodes()` -- returns `(string Query, IDictionary<string, object> Parameters)` for `MATCH (n) RETURN count(n)`
+    - `BuildBatchDeleteNodes(int batchSize)` -- returns parameterized query: `MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n RETURN count(n)`
+- [x] 3.2 Implement in `GraphQueryBuilder` with parameterized queries (no raw string interpolation for batchSize -- use `$batchSize` parameter).
 
 ### Task 4: Create TenantDeletionWorkflow (AC #1, #2, #3, #4)
 
-- [ ] 4.1 Create `Server/Workflows/TenantDeletionWorkflow.cs` -- extends `Workflow<TenantDeletionInput, TenantDeletionResult>`.
-- [ ] 4.2 Orchestration logic:
-  1. Validate input via `TenantIdGuard.Validate()`
-  2. Call `GetTenantRegistryActivity` -- retrieve `TenantInfo`. Handle by status:
-     - **null (not found):** Tenant was already fully deleted (e.g., DAPR replay after successful deletion). Return success result: `TenantDeletionResult(tenantId, TenantStatus.Active, "Tenant already deleted.")`. Do NOT return error.
-     - **Deleting:** Log idempotent re-entry and continue from step 4 (DAPR replay safety -- re-executes all cleanup activities; already-completed activities return immediately since they are idempotent).
-     - **Provisioning:** Return error result with `TENANT_PROVISIONING`.
-     - **Active / Failed / CompensationFailed:** Proceed normally to step 3.
-  3. Call `UpdateTenantStatusActivity` -- set status to `TenantStatus.Deleting` (prevents concurrent operations)
-  4. Sequential backend cleanup (intentionally sequential, not parallel -- simpler to reason about for MVP; RediSearch and RedisVector drops could be parallelized as a future optimization):
-     - Call `DeleteRediSearchActivity` (drop syntactic index)
-     - Call `DeleteRedisVectorActivity` (drop semantic index)
-     - Batched FalkorDB deletion loop:
-       - `batchNumber = 0`
-       - Compute `maxBatches` safety valve: if initial count is available, `(initialCount / batchSize * 2) + 10`; otherwise default to 10000. This prevents infinite loops if FalkorDB returns non-zero count but deletes zero nodes.
-       - Loop: Call `DeleteFalkorDbBatchActivity` with `BatchedGraphDeletionInput(tenantId, batchSize: 500, batchNumber++)`
-       - Continue until `BatchedGraphDeletionResult.IsComplete == true` OR `batchNumber >= maxBatches`
-       - If loop exits via maxBatches: set status to `TenantStatus.Failed` with message "Batch loop exceeded maximum iterations ({maxBatches}). {RemainingNodes} nodes remain. Re-trigger deletion to retry."
-       - Then call `DeleteFalkorDbGraphFinalizerActivity` to delete the empty graph
-     - Call `DeleteTenantDataKeysActivity` (clean up Redis hash data, dedup keys, case keys)
-  5. Call `RemoveTenantRegistryActivity` -- remove tenant from registry and index
-  6. Return success result with list of deleted backends
-- [ ] 4.3 Retry policy: `maxAttempts=5, firstInterval=2s, backoff=2.0, maxInterval=5min` (same as provisioning)
-- [ ] 4.4 Compensation: Deletion is destructive and non-reversible. On partial failure, update status to `TenantStatus.Failed` with message listing which backends were successfully cleaned and which remain. Operator can re-trigger deletion to resume (idempotent activities handle already-deleted backends). **Note:** If `UpdateTenantStatusActivity` (step 3) itself fails after all retries, the workflow fails cleanly -- tenant remains in its original state, no cleanup was attempted, no data loss.
-- [ ] 4.5 Use `context.CreateReplaySafeLogger<TenantDeletionWorkflow>()` for logging. Log: `DeletionStarted`, `BackendDeleted(backendName)`, `GraphBatchCompleted(batchNumber, remainingNodes)`, `DeletionCompleted`, `DeletionFailed`.
-- [ ] 4.6 Create `GetTenantRegistryActivity` -- extends `WorkflowActivity<string, TenantInfo?>`. Calls `TenantRegistryService.GetTenantAsync(tenantId)`. Returns null if not found.
+- [x] 4.1 Create `Server/Workflows/TenantDeletionWorkflow.cs` -- extends `Workflow<TenantDeletionInput, TenantDeletionResult>`.
+- [x] 4.2 Orchestration logic:
+    1. Validate input via `TenantIdGuard.Validate()`
+    2. Call `GetTenantRegistryActivity` -- retrieve `TenantInfo`. Handle by status:
+        - **null (not found):** Tenant was already fully deleted (e.g., DAPR replay after successful deletion). Return success result: `TenantDeletionResult(tenantId, TenantStatus.Active, "Tenant already deleted.")`. Do NOT return error.
+        - **Deleting:** Log idempotent re-entry and continue from step 4 (DAPR replay safety -- re-executes all cleanup activities; already-completed activities return immediately since they are idempotent).
+        - **Provisioning:** Return error result with `TENANT_PROVISIONING`.
+        - **Active / Failed / CompensationFailed:** Proceed normally to step 3.
+    3. Call `UpdateTenantStatusActivity` -- set status to `TenantStatus.Deleting` (prevents concurrent operations)
+    4. Sequential backend cleanup (intentionally sequential, not parallel -- simpler to reason about for MVP; RediSearch and RedisVector drops could be parallelized as a future optimization):
+        - Call `DeleteRediSearchActivity` (drop syntactic index)
+        - Call `DeleteRedisVectorActivity` (drop semantic index)
+        - Batched FalkorDB deletion loop:
+            - `batchNumber = 0`
+            - Compute `maxBatches` safety valve: if initial count is available, `(initialCount / batchSize * 2) + 10`; otherwise default to 10000. This prevents infinite loops if FalkorDB returns non-zero count but deletes zero nodes.
+            - Loop: Call `DeleteFalkorDbBatchActivity` with `BatchedGraphDeletionInput(tenantId, batchSize: 500, batchNumber++)`
+            - Continue until `BatchedGraphDeletionResult.IsComplete == true` OR `batchNumber >= maxBatches`
+            - If loop exits via maxBatches: set status to `TenantStatus.Failed` with message "Batch loop exceeded maximum iterations ({maxBatches}). {RemainingNodes} nodes remain. Re-trigger deletion to retry."
+            - Then call `DeleteFalkorDbGraphFinalizerActivity` to delete the empty graph
+        - Call `DeleteTenantDataKeysActivity` (clean up Redis hash data, dedup keys, case keys)
+    5. Call `RemoveTenantRegistryActivity` -- remove tenant from registry and index
+    6. Return success result with list of deleted backends
+- [x] 4.3 Retry policy: `maxAttempts=5, firstInterval=2s, backoff=2.0, maxInterval=5min` (same as provisioning)
+- [x] 4.4 Compensation: Deletion is destructive and non-reversible. On partial failure, update status to `TenantStatus.Failed` with message listing which backends were successfully cleaned and which remain. Operator can re-trigger deletion to resume (idempotent activities handle already-deleted backends). **Note:** If `UpdateTenantStatusActivity` (step 3) itself fails after all retries, the workflow fails cleanly -- tenant remains in its original state, no cleanup was attempted, no data loss.
+- [x] 4.5 Use `context.CreateReplaySafeLogger<TenantDeletionWorkflow>()` for logging. Log: `DeletionStarted`, `BackendDeleted(backendName)`, `GraphBatchCompleted(batchNumber, remainingNodes)`, `DeletionCompleted`, `DeletionFailed`.
+- [x] 4.6 Create `GetTenantRegistryActivity` -- extends `WorkflowActivity<string, TenantInfo?>`. Calls `TenantRegistryService.GetTenantAsync(tenantId)`. Returns null if not found.
 
 ### Task 5: Add tenant status guard to existing endpoints (AC #3)
 
 > **SCOPE NOTE:** This task implements the deletion-specific subset of Story 5-4's tenant context enforcement. Story 5-4 should reference this work and avoid duplicating these guards.
 
-- [ ] 5.1 Create `Server/Tenants/TenantStatusGuard.cs` -- sealed class (instance service, not static) with constructor dependency on `TenantRegistryService`:
-  - `ValidateTenantActiveAsync(string tenantId, CancellationToken ct)` -> `Task<ErrorResponse?>`
-  - Internally calls `TenantRegistryService.GetTenantAsync(tenantId, ct)` to resolve tenant
-  - Returns `TENANT_NOT_FOUND` if tenant is null
-  - Returns `TENANT_DELETING` (HTTP 409 Conflict) if status is `Deleting`
-  - Returns `TENANT_PROVISIONING` (HTTP 409 Conflict) if status is `Provisioning`
-  - Returns `TENANT_FAILED` (HTTP 409 Conflict) if status is `Failed` or `CompensationFailed`
-  - Returns null if `Active`
-  - Register as singleton in DI (Task 7)
-  - **Rationale:** Instance service encapsulates registry lookup, reducing each endpoint from 3 lines (fetch + validate + check) to 1 line. Natural stepping stone to Story 5-4's `TenantAuthorizationMiddleware` which can delegate to this service.
-- [ ] 5.2 Add tenant status checks to ingestion endpoint (`POST /api/ingest`):
-  - Inject `TenantStatusGuard` into endpoint delegate
-  - Call `guard.ValidateTenantActiveAsync(tenantId, ct)`
-  - Return 409 Conflict with appropriate error code if not active
-- [ ] 5.3 Add tenant status checks to search endpoints:
-  - `POST /api/search` -- inject guard, validate tenant active before searching
-  - `GET /api/tenants/{tenantId}/cases/{caseId}/search` -- inject guard, validate tenant active
-- [ ] 5.4 Add tenant status checks to case management endpoints:
-  - `POST /api/tenants/{tenantId}/cases` -- validate before creating case
-  - `DELETE /api/tenants/{tenantId}/cases/{caseId}` -- validate before deleting
-  - `DELETE /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}` -- validate before deleting MU
-  - `POST /api/tenants/{tenantId}/cases/{caseId}/ingest` -- validate before ingesting
+- [x] 5.1 Create `Server/Tenants/TenantStatusGuard.cs` -- sealed class (instance service, not static) with constructor dependency on `TenantRegistryService`:
+    - `ValidateTenantActiveAsync(string tenantId, CancellationToken ct)` -> `Task<ErrorResponse?>`
+    - Internally calls `TenantRegistryService.GetTenantAsync(tenantId, ct)` to resolve tenant
+    - Returns `TENANT_NOT_FOUND` if tenant is null
+    - Returns `TENANT_DELETING` (HTTP 409 Conflict) if status is `Deleting`
+    - Returns `TENANT_PROVISIONING` (HTTP 409 Conflict) if status is `Provisioning`
+    - Returns `TENANT_FAILED` (HTTP 409 Conflict) if status is `Failed` or `CompensationFailed`
+    - Returns null if `Active`
+    - Register as singleton in DI (Task 7)
+    - **Rationale:** Instance service encapsulates registry lookup, reducing each endpoint from 3 lines (fetch + validate + check) to 1 line. Natural stepping stone to Story 5-4's `TenantAuthorizationMiddleware` which can delegate to this service.
+- [x] 5.2 Add tenant status checks to ingestion endpoint (`POST /api/ingest`):
+    - Inject `TenantStatusGuard` into endpoint delegate
+    - Call `guard.ValidateTenantActiveAsync(tenantId, ct)`
+    - Return 409 Conflict with appropriate error code if not active
+- [x] 5.3 Add tenant status checks to search endpoints:
+    - `POST /api/search` -- inject guard, validate tenant active before searching
+    - `GET /api/tenants/{tenantId}/cases/{caseId}/search` -- inject guard, validate tenant active
+- [x] 5.4 Add tenant status checks to case management endpoints:
+    - `POST /api/tenants/{tenantId}/cases` -- validate before creating case
+    - `DELETE /api/tenants/{tenantId}/cases/{caseId}` -- validate before deleting
+    - `DELETE /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}` -- validate before deleting MU
+    - `POST /api/tenants/{tenantId}/cases/{caseId}/ingest` -- validate before ingesting
 
 ### Task 6: Add tenant deletion endpoint (AC #1, #4)
 
-- [ ] 6.1 Add `DELETE /api/tenants/{tenantId}` endpoint (Minimal API in `Program.cs`):
-  - **Note:** This endpoint does NOT use `TenantStatusGuard` -- it has custom logic to accept `Deleting` status (returns 202) rather than rejecting it. The guard is for endpoints that require an Active tenant.
-  - Validate `tenantId` via `TenantIdGuard.Validate()`
-  - Check tenant exists via `TenantRegistryService.GetTenantAsync()`
-  - If not found, return 404 with `TENANT_NOT_FOUND`
-  - If already `Deleting`, return 202 Accepted with message "Deletion already in progress"
-  - Schedule `TenantDeletionWorkflow` with instance ID `delete-{tenantId}-{guid}` (non-deterministic for retry support)
-  - Return 202 Accepted with `workflowInstanceId`
-  - Catch `DaprException` and return 503 with `DAPR_UNAVAILABLE`
-- [ ] 6.2 Add `GET /api/tenants/{tenantId}/deletion-status/{instanceId}` endpoint:
-  - Query workflow status via `DaprWorkflowClient.GetWorkflowStateAsync(instanceId)`
-  - Return workflow state or 404
+- [x] 6.1 Add `DELETE /api/tenants/{tenantId}` endpoint (Minimal API in `Program.cs`):
+    - **Note:** This endpoint does NOT use `TenantStatusGuard` -- it has custom logic to accept `Deleting` status (returns 202) rather than rejecting it. The guard is for endpoints that require an Active tenant.
+    - Validate `tenantId` via `TenantIdGuard.Validate()`
+    - Check tenant exists via `TenantRegistryService.GetTenantAsync()`
+    - If not found, return 404 with `TENANT_NOT_FOUND`
+    - If already `Deleting`, return 202 Accepted with message "Deletion already in progress"
+    - Schedule `TenantDeletionWorkflow` with instance ID `delete-{tenantId}-{guid}` (non-deterministic for retry support)
+    - Return 202 Accepted with `workflowInstanceId`
+    - Catch `DaprException` and return 503 with `DAPR_UNAVAILABLE`
+- [x] 6.2 Add `GET /api/tenants/{tenantId}/deletion-status/{instanceId}` endpoint:
+    - Query workflow status via `DaprWorkflowClient.GetWorkflowStateAsync(instanceId)`
+    - Return workflow state or 404
 
 ### Task 7: Register workflow, activities, and services in DI (AC #1)
 
-- [ ] 7.1 In `Program.cs` within `AddDaprWorkflow(options => { ... })`:
-  - `options.RegisterWorkflow<TenantDeletionWorkflow>()`
-  - `options.RegisterActivity<DeleteRediSearchActivity>()`
-  - `options.RegisterActivity<DeleteRedisVectorActivity>()`
-  - `options.RegisterActivity<DeleteFalkorDbBatchActivity>()`
-  - `options.RegisterActivity<DeleteFalkorDbGraphFinalizerActivity>()`
-  - `options.RegisterActivity<DeleteTenantDataKeysActivity>()`
-  - `options.RegisterActivity<GetTenantRegistryActivity>()`
-  - Verify `UpdateTenantStatusActivity` and `RemoveTenantRegistryActivity` are registered (created by Story 5-1). If not, register them here.
-- [ ] 7.2 Ensure `TenantRegistryService` is registered as singleton (done in Story 5-1, verify only).
-- [ ] 7.3 Register `TenantStatusGuard` as singleton: `builder.Services.AddSingleton<TenantStatusGuard>()`.
+- [x] 7.1 In `Program.cs` within `AddDaprWorkflow(options => { ... })`:
+    - `options.RegisterWorkflow<TenantDeletionWorkflow>()`
+    - `options.RegisterActivity<DeleteRediSearchActivity>()`
+    - `options.RegisterActivity<DeleteRedisVectorActivity>()`
+    - `options.RegisterActivity<DeleteFalkorDbBatchActivity>()`
+    - `options.RegisterActivity<DeleteFalkorDbGraphFinalizerActivity>()`
+    - `options.RegisterActivity<DeleteTenantDataKeysActivity>()`
+    - `options.RegisterActivity<GetTenantRegistryActivity>()`
+    - Verify `UpdateTenantStatusActivity` and `RemoveTenantRegistryActivity` are registered (created by Story 5-1). If not, register them here.
+- [x] 7.2 Ensure `TenantRegistryService` is registered as singleton (done in Story 5-1, verify only).
+- [x] 7.3 Register `TenantStatusGuard` as singleton: `builder.Services.AddSingleton<TenantStatusGuard>()`.
 
 ### Task 8: Contract serialization tests (AC #1)
 
-- [ ] 8.1 `TenantDeletionInputSerializationTests` -- roundtrip JSON, camelCase properties
-- [ ] 8.2 `TenantDeletionResultSerializationTests` -- roundtrip, verify `DeletedBackends` omitted when null
-- [ ] 8.3 `BatchedGraphDeletionInputSerializationTests` -- roundtrip with default values
-- [ ] 8.4 `BatchedGraphDeletionResultSerializationTests` -- roundtrip, verify `IsComplete` serialization
+- [x] 8.1 `TenantDeletionInputSerializationTests` -- roundtrip JSON, camelCase properties
+- [x] 8.2 `TenantDeletionResultSerializationTests` -- roundtrip, verify `DeletedBackends` omitted when null
+- [x] 8.3 `BatchedGraphDeletionInputSerializationTests` -- roundtrip with default values
+- [x] 8.4 `BatchedGraphDeletionResultSerializationTests` -- roundtrip, verify `IsComplete` serialization
 
 ### Task 9: Activity unit tests (AC #1, #2)
 
-- [ ] 9.1 `DeleteRediSearchActivityTests` -- verify `FT.DROPINDEX` called; verify idempotent on "Unknown index"
-- [ ] 9.2 `DeleteRedisVectorActivityTests` -- same pattern as 9.1
-- [ ] 9.3 `DeleteFalkorDbBatchActivityTests`:
-  - Verify count query executes on correct graph
-  - Verify batch delete with parameterized `$batchSize`
-  - Verify `IsComplete = true` when count == 0
-  - Verify graceful handling of graph-not-found `RedisServerException`
-- [ ] 9.4 `DeleteFalkorDbGraphFinalizerActivityTests` -- verify `GRAPH.DELETE` called; idempotent on not-found
-- [ ] 9.5 `DeleteTenantDataKeysActivityTests`:
-  - Verify SCAN pattern matches `{tenantId}:case:*` and `{tenantId}:dedup:*` only (mu:* and vec:* are handled by `FT.DROPINDEX DD`)
-  - Verify batched deletion via `KeyDeleteAsync`
-- [ ] 9.6 `GetTenantRegistryActivityTests` -- verify returns TenantInfo or null
-- [ ] 9.7 `GraphQueryBuilderTests` -- test `BuildCountAllNodes()` and `BuildBatchDeleteNodes(batchSize)` produce correct parameterized Cypher
+- [x] 9.1 `DeleteRediSearchActivityTests` -- verify `FT.DROPINDEX` called; verify idempotent on "Unknown index"
+- [x] 9.2 `DeleteRedisVectorActivityTests` -- same pattern as 9.1
+- [x] 9.3 `DeleteFalkorDbBatchActivityTests`:
+    - Verify count query executes on correct graph
+    - Verify batch delete with parameterized `$batchSize`
+    - Verify `IsComplete = true` when count == 0
+    - Verify graceful handling of graph-not-found `RedisServerException`
+- [x] 9.4 `DeleteFalkorDbGraphFinalizerActivityTests` -- verify `GRAPH.DELETE` called; idempotent on not-found
+- [x] 9.5 `DeleteTenantDataKeysActivityTests`:
+    - Verify SCAN pattern matches `{tenantId}:case:*` and `{tenantId}:dedup:*` only (mu:_ and vec:_ are handled by `FT.DROPINDEX DD`)
+    - Verify batched deletion via `KeyDeleteAsync`
+- [x] 9.6 `GetTenantRegistryActivityTests` -- verify returns TenantInfo or null
+- [x] 9.7 `GraphQueryBuilderTests` -- test `BuildCountAllNodes()` and `BuildBatchDeleteNodes(batchSize)` produce correct parameterized Cypher
 
 ### Task 10: TenantStatusGuard unit tests (AC #3)
 
-- [ ] 10.1 `TenantStatusGuardTests` -- mock `TenantRegistryService` via NSubstitute:
-  - `ValidateTenantActiveAsync_TenantNotFound_ReturnsTenantNotFound` -- registry returns null
-  - `ValidateTenantActiveAsync_ActiveTenant_ReturnsNull` -- registry returns Active tenant
-  - `ValidateTenantActiveAsync_DeletingTenant_ReturnsTenantDeleting` -- registry returns Deleting tenant
-  - `ValidateTenantActiveAsync_ProvisioningTenant_ReturnsTenantProvisioning` -- registry returns Provisioning tenant
-  - `ValidateTenantActiveAsync_FailedTenant_ReturnsTenantFailed` -- registry returns Failed tenant
+- [x] 10.1 `TenantStatusGuardTests` -- mock `TenantRegistryService` via NSubstitute:
+    - `ValidateTenantActiveAsync_TenantNotFound_ReturnsTenantNotFound` -- registry returns null
+    - `ValidateTenantActiveAsync_ActiveTenant_ReturnsNull` -- registry returns Active tenant
+    - `ValidateTenantActiveAsync_DeletingTenant_ReturnsTenantDeleting` -- registry returns Deleting tenant
+    - `ValidateTenantActiveAsync_ProvisioningTenant_ReturnsTenantProvisioning` -- registry returns Provisioning tenant
+    - `ValidateTenantActiveAsync_FailedTenant_ReturnsTenantFailed` -- registry returns Failed tenant
 
 ### Task 12: Workflow orchestration unit tests (AC #1, #2, #4)
 
-- [ ] 12.1 Create `Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs`
-- [ ] 12.2 `DeletionWorkflow_HappyPath_CallsAllActivitiesInOrder` -- verify sequential activity calls: GetTenantRegistry -> UpdateStatus(Deleting) -> DeleteRediSearch -> DeleteRedisVector -> batched FalkorDb loop -> GraphFinalizer -> DeleteDataKeys -> RemoveRegistry
-- [ ] 12.3 `DeletionWorkflow_TenantNotFound_ReturnsSuccess` -- verify workflow returns success result ("Tenant already deleted") without calling any deletion activities (handles DAPR replay after completed deletion)
-- [ ] 12.4 `DeletionWorkflow_BatchedLoop_TerminatesWhenComplete` -- mock `DeleteFalkorDbBatchActivity` to return `IsComplete=false` for 3 batches then `IsComplete=true`, verify loop calls activity exactly 4 times then calls finalizer
-- [ ] 12.5 `DeletionWorkflow_PartialFailure_SetsStatusToFailed` -- mock one activity to throw, verify `UpdateTenantStatusActivity` called with `TenantStatus.Failed`
-- [ ] 12.6 `DeletionWorkflow_AlreadyDeleting_ContinuesIdempotently` -- mock `GetTenantRegistryActivity` returning tenant with `Deleting` status, verify workflow continues (replay safety)
-- [ ] 12.7 `DeletionWorkflow_ProvisioningTenant_ReturnsError` -- verify workflow rejects deletion of a tenant still provisioning
+- [x] 12.1 Create `Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs`
+- [x] 12.2 `DeletionWorkflow_HappyPath_CallsAllActivitiesInOrder` -- verify sequential activity calls: GetTenantRegistry -> UpdateStatus(Deleting) -> DeleteRediSearch -> DeleteRedisVector -> batched FalkorDb loop -> GraphFinalizer -> DeleteDataKeys -> RemoveRegistry
+- [x] 12.3 `DeletionWorkflow_TenantNotFound_ReturnsSuccess` -- verify workflow returns success result ("Tenant already deleted") without calling any deletion activities (handles DAPR replay after completed deletion)
+- [x] 12.4 `DeletionWorkflow_BatchedLoop_TerminatesWhenComplete` -- mock `DeleteFalkorDbBatchActivity` to return `IsComplete=false` for 3 batches then `IsComplete=true`, verify loop calls activity exactly 4 times then calls finalizer
+- [x] 12.5 `DeletionWorkflow_PartialFailure_SetsStatusToFailed` -- mock one activity to throw, verify `UpdateTenantStatusActivity` called with `TenantStatus.Failed`
+- [x] 12.6 `DeletionWorkflow_AlreadyDeleting_ContinuesIdempotently` -- mock `GetTenantRegistryActivity` returning tenant with `Deleting` status, verify workflow continues (replay safety)
+- [x] 12.7 `DeletionWorkflow_ProvisioningTenant_ReturnsError` -- verify workflow rejects deletion of a tenant still provisioning
 
 ### Task 11: Integration tests (AC #1, #2, #3, #4)
 
-- [ ] 11.1 Create `Hexalith.Memories.IntegrationTests/Tenants/TenantDeletionIntegrationTests.cs`
-- [ ] 11.2 `DeleteTenant_DropsAllThreeBackendIndexes` -- provision tenant, ingest data, delete, verify all indexes gone
-- [ ] 11.3 `DeleteTenant_NonExistent_Returns404`
-- [ ] 11.4 `DeleteTenant_AlreadyDeleting_Returns202WithMessage`
-- [ ] 11.5 `BatchedGraphDeletion_LargeTenant_CompletesInBatches` -- create tenant with >500 graph nodes, verify batched deletion completes
-- [ ] 11.6 `DeleteTenant_RemovedFromRegistry` -- after deletion, `GET /api/tenants` does not include deleted tenant
-- [ ] 11.7 `DeleteTenant_SearchReturnsZero` -- after deletion, search across all axes returns empty
-- [ ] 11.8 `TenantStatusGuard_RejectsDeletingTenant` -- ingestion and search requests return 409 during deletion
-- [ ] 11.9 `DeleteTenant_IdempotentRerun` -- trigger deletion twice, second run completes without errors
-- [ ] 11.10 `DropIndexDD_OnlyDeletesIndexedKeys` -- provision tenant, ingest data (creates mu:* and vec:* keys), also create case keys; drop RediSearch index with DD; verify mu:* keys are deleted AND case:*/dedup:* keys survive
-- [ ] 11.11 `BatchLoop_MaxIterations_FailsSafely` -- mock or configure a scenario where batch deletion stalls, verify workflow exits loop and sets status to Failed
+- [x] 11.1 Create `Hexalith.Memories.IntegrationTests/Tenants/TenantDeletionIntegrationTests.cs`
+- [x] 11.2 `DeleteTenant_DropsAllThreeBackendIndexes` -- provision tenant, ingest data, delete, verify all indexes gone
+- [x] 11.3 `DeleteTenant_NonExistent_Returns404`
+- [x] 11.4 `DeleteTenant_AlreadyDeleting_Returns202WithMessage`
+- [x] 11.5 `BatchedGraphDeletion_LargeTenant_CompletesInBatches` -- create tenant with >500 graph nodes, verify batched deletion completes
+- [x] 11.6 `DeleteTenant_RemovedFromRegistry` -- after deletion, `GET /api/tenants` does not include deleted tenant
+- [x] 11.7 `DeleteTenant_SearchReturnsZero` -- after deletion, search across all axes returns empty
+- [x] 11.8 `TenantStatusGuard_RejectsDeletingTenant` -- ingestion and search requests return 409 during deletion
+- [x] 11.9 `DeleteTenant_IdempotentRerun` -- trigger deletion twice, second run completes without errors
+- [x] 11.10 `DropIndexDD_OnlyDeletesIndexedKeys` -- provision tenant, ingest data (creates mu:_ and vec:_ keys), also create case keys; drop RediSearch index with DD; verify mu:_ keys are deleted AND case:_/dedup:\* keys survive
+- [x] 11.11 `BatchLoop_MaxIterations_FailsSafely` -- mock or configure a scenario where batch deletion stalls, verify workflow exits loop and sets status to Failed
+
+### Review Findings
+
+- [x] [Review][Decision] Search-after-delete behavior conflicts with AC4 — resolved 2026-04-14: keep the stricter `TENANT_NOT_FOUND`/409 contract after tenant deletion; the current implementation and tests remain intentional. Evidence: `src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs:59`, `src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs:23`, `src/Hexalith.Memories.Server/Program.cs:940`
+
+- [x] [Review][Patch] Provisioning tenants are flipped to `Deleting` before the workflow can reject them [src/Hexalith.Memories.Server/Program.cs:419] — fixed
+- [x] [Review][Patch] Retry-from-deleting can overwrite `WorkflowInstanceId` and spawn duplicate/orphaned deletion workflows [src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs:176] — fixed
+- [x] [Review][Patch] Tenant deletion logging misses the resumed, single-batch, and max-iterations failure paths required by the story [src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs:68] — fixed
+- [x] [Review][Patch] Falkor batch deletion treats unreadable count results as zero remaining nodes and can report false completion [src/Hexalith.Memories.Server/Activities/Tenants/DeleteFalkorDbBatchActivity.cs:53] — fixed
 
 ## Dev Notes
 
@@ -218,17 +227,17 @@ so that I can fulfill erasure requirements and reclaim resources.
 
 Story 5-2 depends on the following components created by Story 5-1 (tenant provisioning):
 
-| Component | Location | What 5-2 Reuses |
-|---|---|---|
-| `TenantStatus` enum | `Contracts/V1/TenantStatus.cs` | `Deleting` status value |
-| `TenantInfo` record | `Contracts/V1/TenantInfo.cs` | Tenant registry lookup |
-| `TenantRegistryService` | `Server/Tenants/TenantRegistryService.cs` | `GetTenantAsync`, `UpdateTenantStatusAsync`, `RemoveTenantAsync`, `ListTenantsAsync` |
-| `UpdateTenantStatusActivity` | `Server/Activities/Tenants/UpdateTenantStatusActivity.cs` | Status transition to `Deleting` |
-| `RemoveTenantRegistryActivity` | `Server/Activities/Tenants/RemoveTenantRegistryActivity.cs` | Remove tenant from registry after cleanup |
-| `TenantStatusUpdateInput` | `Contracts/V1/TenantStatusUpdateInput.cs` | Activity input |
-| `IndexSchemaDefinitions` | `Server/Infrastructure/IndexSchemaDefinitions.cs` | Index naming patterns for drop commands |
-| `TenantIdGuard` | `Server/Activities/Indexing/TenantIdGuard.cs` | Tenant ID validation (already exists) |
-| Tenant listing endpoints | `Program.cs` | `GET /api/tenants`, `GET /api/tenants/{tenantId}` |
+| Component                      | Location                                                    | What 5-2 Reuses                                                                      |
+| ------------------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `TenantStatus` enum            | `Contracts/V1/TenantStatus.cs`                              | `Deleting` status value                                                              |
+| `TenantInfo` record            | `Contracts/V1/TenantInfo.cs`                                | Tenant registry lookup                                                               |
+| `TenantRegistryService`        | `Server/Tenants/TenantRegistryService.cs`                   | `GetTenantAsync`, `UpdateTenantStatusAsync`, `RemoveTenantAsync`, `ListTenantsAsync` |
+| `UpdateTenantStatusActivity`   | `Server/Activities/Tenants/UpdateTenantStatusActivity.cs`   | Status transition to `Deleting`                                                      |
+| `RemoveTenantRegistryActivity` | `Server/Activities/Tenants/RemoveTenantRegistryActivity.cs` | Remove tenant from registry after cleanup                                            |
+| `TenantStatusUpdateInput`      | `Contracts/V1/TenantStatusUpdateInput.cs`                   | Activity input                                                                       |
+| `IndexSchemaDefinitions`       | `Server/Infrastructure/IndexSchemaDefinitions.cs`           | Index naming patterns for drop commands                                              |
+| `TenantIdGuard`                | `Server/Activities/Indexing/TenantIdGuard.cs`               | Tenant ID validation (already exists)                                                |
+| Tenant listing endpoints       | `Program.cs`                                                | `GET /api/tenants`, `GET /api/tenants/{tenantId}`                                    |
 
 **If Story 5-1 is NOT complete**, the dev agent must implement its Task 1 (contracts), Task 1b (index schema definitions), Task 2 (registry service), and Task 4.5 (registry activities) first.
 
@@ -241,6 +250,7 @@ Architecture mandates DAPR Workflow for all multi-step orchestrations. `TenantDe
 Architecture explicitly states: "Tenant deletion at scale is a potentially blocking operation -- async deletion with progress tracking required; graph deletion must not block other tenants' queries (batched deletion: delete N nodes per transaction, yield between batches)."
 
 Implementation approach:
+
 - Workflow calls `DeleteFalkorDbBatchActivity` in a loop
 - Each invocation deletes up to 500 nodes via `MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n`
 - `DETACH DELETE` removes the node AND all its edges (same as case deletion in Story 3-5)
@@ -248,6 +258,7 @@ Implementation approach:
 - After all nodes deleted, `DeleteFalkorDbGraphFinalizerActivity` drops the empty graph via `GRAPH.DELETE`
 
 Why sequential activities instead of a single long-running query:
+
 1. FalkorDB holds a global lock during write operations -- large deletes block ALL tenants
 2. DAPR Workflow activity boundaries create natural yield points
 3. Progress tracking via `BatchedGraphDeletionResult.RemainingNodes`
@@ -256,6 +267,7 @@ Why sequential activities instead of a single long-running query:
 ### Deletion is Non-Reversible -- No Compensation
 
 Unlike provisioning (which has saga rollback), deletion is destructive and non-reversible. If deletion fails partway:
+
 1. Tenant status stays `Deleting` (prevents new operations via `TenantStatusGuard`)
 2. `TenantDeletionResult.Message` lists which backends were cleaned and which remain
 3. Operator re-triggers `DELETE /api/tenants/{tenantId}` to resume
@@ -268,6 +280,7 @@ Dropping a RediSearch index via `FT.DROPINDEX` does NOT delete the underlying ha
 **Decision**: Use `FT.DROPINDEX {index} DD` for both RediSearch and Redis Vector. The `DD` flag drops the index AND deletes all document hashes matching the index prefix. This eliminates the need to separately SCAN and delete `{tenantId}:mu:*` and `{tenantId}:vec:*` keys.
 
 **However**, `FT.DROPINDEX DD` does not clean up:
+
 - Case hash keys (`{tenantId}:case:*`, `{tenantId}:case:*:members`, `{tenantId}:case:*:activity`)
 - Dedup keys (`{tenantId}:dedup:*`)
 
@@ -300,26 +313,27 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
 ### Endpoint Pattern Reference
 
 Follow exact patterns from `Program.cs`:
+
 - Async workflow scheduling: return 202 Accepted with `workflowInstanceId` (same as `POST /api/ingest`)
 - Workflow status polling: `DaprWorkflowClient.GetWorkflowStateAsync(instanceId)` (same as `GET /api/ingest/{instanceId}`)
 - Error responses: return `Results.BadRequest(errorResponse)` for validation, `Results.Conflict(errorResponse)` for status guards, `Results.NotFound()` for missing tenants
 
 ### Existing Code to Reuse
 
-| Component | Location | Reuse |
-|---|---|---|
-| `TenantIdGuard.Validate()` | `Server/Activities/Indexing/TenantIdGuard.cs` | Tenant ID format validation |
-| `TenantRegistryService` | `Server/Tenants/TenantRegistryService.cs` (from 5-1) | Registry CRUD operations |
-| `UpdateTenantStatusActivity` | `Server/Activities/Tenants/` (from 5-1) | Status transitions |
-| `RemoveTenantRegistryActivity` | `Server/Activities/Tenants/` (from 5-1) | Registry cleanup |
-| `GetTenantRegistryActivity` | New in this story but follows 5-1 activity pattern | Registry lookup in workflow |
-| `ErrorResponse` | `Contracts/V1/ErrorResponse.cs` | Structured error responses |
-| `IngestionWorkflow` | `Server/Workflows/IngestionWorkflow.cs` | Workflow pattern, retry policies, replay-safe logging |
-| `IGraphQueryBuilder` | `Server/Graph/IGraphQueryBuilder.cs` | Parameterized Cypher query builder |
-| `GraphQueryBuilder` | `Server/Graph/GraphQueryBuilder.cs` | Add `BuildCountAllNodes()` and `BuildBatchDeleteNodes()` |
-| `MemoriesJsonContext` | `Contracts/V1/MemoriesJsonContext.cs` | JSON serialization registration |
-| Case deletion patterns | `Server/Cases/CaseService.cs` lines 618-700 | `DETACH DELETE` pattern, multi-backend cleanup |
-| `CaseValidator` pattern | `Server/Cases/CaseValidator.cs` | Static validation pattern (TenantStatusGuard differs: instance service with DI, since it needs I/O) |
+| Component                      | Location                                             | Reuse                                                                                               |
+| ------------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `TenantIdGuard.Validate()`     | `Server/Activities/Indexing/TenantIdGuard.cs`        | Tenant ID format validation                                                                         |
+| `TenantRegistryService`        | `Server/Tenants/TenantRegistryService.cs` (from 5-1) | Registry CRUD operations                                                                            |
+| `UpdateTenantStatusActivity`   | `Server/Activities/Tenants/` (from 5-1)              | Status transitions                                                                                  |
+| `RemoveTenantRegistryActivity` | `Server/Activities/Tenants/` (from 5-1)              | Registry cleanup                                                                                    |
+| `GetTenantRegistryActivity`    | New in this story but follows 5-1 activity pattern   | Registry lookup in workflow                                                                         |
+| `ErrorResponse`                | `Contracts/V1/ErrorResponse.cs`                      | Structured error responses                                                                          |
+| `IngestionWorkflow`            | `Server/Workflows/IngestionWorkflow.cs`              | Workflow pattern, retry policies, replay-safe logging                                               |
+| `IGraphQueryBuilder`           | `Server/Graph/IGraphQueryBuilder.cs`                 | Parameterized Cypher query builder                                                                  |
+| `GraphQueryBuilder`            | `Server/Graph/GraphQueryBuilder.cs`                  | Add `BuildCountAllNodes()` and `BuildBatchDeleteNodes()`                                            |
+| `MemoriesJsonContext`          | `Contracts/V1/MemoriesJsonContext.cs`                | JSON serialization registration                                                                     |
+| Case deletion patterns         | `Server/Cases/CaseService.cs` lines 618-700          | `DETACH DELETE` pattern, multi-backend cleanup                                                      |
+| `CaseValidator` pattern        | `Server/Cases/CaseValidator.cs`                      | Static validation pattern (TenantStatusGuard differs: instance service with DI, since it needs I/O) |
 
 ### Known Limitations (MVP-Acceptable)
 
@@ -344,6 +358,7 @@ Follow exact patterns from `Program.cs`:
 ### Previous Story Intelligence
 
 **From Story 5-1 (Tenant Provisioning):**
+
 - `TenantRegistryService` uses DAPR state store with two-key pattern: individual tenant entry + tenant index list
 - Concurrency handled via ETags for optimistic concurrency on index key
 - `InitializeTenantRegistryActivity` provides atomic check-and-register pattern
@@ -353,16 +368,19 @@ Follow exact patterns from `Program.cs`:
 - **Verify:** `RemoveTenantRegistryActivity` must handle ETag conflicts on the `tenant-registry-index` key with retry (compare-and-swap loop). If 5-1's implementation doesn't retry, this is a bug that could leave ghost entries in the tenant list.
 
 **From Story 3-5 (Memory Unit & Case Deletion):**
+
 - `DETACH DELETE` removes node AND all relationships (edges)
 - Case deletion sets status to `Deleting` before cleanup (status guard pattern)
 - Multi-backend deletion runs in parallel per memory unit via `Task.WhenAll()`
 - `BuildDeleteMemoryUnitNode` and `BuildDeleteCaseNode` in `GraphQueryBuilder` use parameterized `$id` queries
 
 **From Story 4-1/4-2 (Causal Chain Traversal):**
+
 - FalkorDB `RedisServerException` for graph-not-found must be caught gracefully
 - `Stopwatch.Elapsed.TotalMilliseconds` (not `.Milliseconds`) for telemetry
 
 **From IngestionWorkflow:**
+
 - `context.CreateReplaySafeLogger<T>()` for logging inside workflows
 - `WorkflowRetryPolicy` with backoff coefficient for retry
 - `WorkflowTaskOptions` wraps retry policy
@@ -383,23 +401,24 @@ Follow exact patterns from `Program.cs`:
 
 New files follow existing feature-based namespace organization:
 
-| Namespace | New Files |
-|---|---|
-| `Hexalith.Memories.Contracts.V1` | `TenantDeletionInput.cs`, `TenantDeletionResult.cs`, `BatchedGraphDeletionInput.cs`, `BatchedGraphDeletionResult.cs` |
+| Namespace                                     | New Files                                                                                                                                                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Hexalith.Memories.Contracts.V1`              | `TenantDeletionInput.cs`, `TenantDeletionResult.cs`, `BatchedGraphDeletionInput.cs`, `BatchedGraphDeletionResult.cs`                                                                                          |
 | `Hexalith.Memories.Server.Activities.Tenants` | `DeleteRediSearchActivity.cs`, `DeleteRedisVectorActivity.cs`, `DeleteFalkorDbBatchActivity.cs`, `DeleteFalkorDbGraphFinalizerActivity.cs`, `DeleteTenantDataKeysActivity.cs`, `GetTenantRegistryActivity.cs` |
-| `Hexalith.Memories.Server.Workflows` | `TenantDeletionWorkflow.cs` |
-| `Hexalith.Memories.Server.Tenants` | `TenantStatusGuard.cs` |
+| `Hexalith.Memories.Server.Workflows`          | `TenantDeletionWorkflow.cs`                                                                                                                                                                                   |
+| `Hexalith.Memories.Server.Tenants`            | `TenantStatusGuard.cs`                                                                                                                                                                                        |
 
 Files to modify:
 
-| File | Change |
-|---|---|
-| `Contracts/V1/MemoriesJsonContext.cs` | Register 4 new contract types |
-| `Server/Graph/IGraphQueryBuilder.cs` | Add `BuildCountAllNodes()`, `BuildBatchDeleteNodes(int)` |
-| `Server/Graph/GraphQueryBuilder.cs` | Implement new methods |
-| `Server/Program.cs` | Register workflow + 6 activities, add 2 endpoints, add status guards to existing endpoints |
+| File                                  | Change                                                                                     |
+| ------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `Contracts/V1/MemoriesJsonContext.cs` | Register 4 new contract types                                                              |
+| `Server/Graph/IGraphQueryBuilder.cs`  | Add `BuildCountAllNodes()`, `BuildBatchDeleteNodes(int)`                                   |
+| `Server/Graph/GraphQueryBuilder.cs`   | Implement new methods                                                                      |
+| `Server/Program.cs`                   | Register workflow + 6 activities, add 2 endpoints, add status guards to existing endpoints |
 
 Tests follow existing structure:
+
 - `Contracts.Tests/V1/` for serialization tests
 - `Server.Tests/Activities/Tenants/` for activity tests
 - `Server.Tests/Tenants/` for TenantStatusGuard tests
@@ -424,8 +443,80 @@ Tests follow existing structure:
 
 ### Agent Model Used
 
+Claude Opus 4.6 (1M context)
+
 ### Debug Log References
+
+- Build error: NFalkorDB `ResultSet` does not support indexing — fixed by using `FirstOrDefault()` + `Values[0]` pattern
+- Build error: NSubstitute ambiguous `.Returns(_ => throw ...)` on async — fixed with `.Returns<RedisResult>(_ => throw ...)`
+- Build error: `WorkflowTaskFailedException` no public constructor — fixed with `RuntimeHelpers.GetUninitializedObject`
 
 ### Completion Notes List
 
+- All tasks (1-12) complete; all story acceptance criteria satisfied
+- Task 9.3 (`DeleteFalkorDbBatchActivityTests`) implemented with 6 unit tests by constructing FalkorDB compact-format RedisResult mocks (scalar integer encoding) and mocking both `IDatabase.ExecuteAsync` overloads
+- Task 11.5 (`BatchedGraphDeletion_LargeTenant_CompletesInBatches`) creates 600 graph nodes and verifies batched deletion removes them all
+- Task 11.7 (`DeleteTenant_SearchReturnsZero`) verifies search returns 409 TENANT_NOT_FOUND after deletion and backend indexes are dropped
+- Task 11.8 (`TenantStatusGuard_RejectsDeletingTenant`) verifies ingestion and search requests return 409 immediately after deletion starts (before workflow completes)
+- Task 11.10 (`DropIndexDD_OnlyDeletesIndexedKeys`) drops RediSearch index with DD and verifies mu:_ keys are deleted while case:_/dedup:\* keys survive
+- Task 11.11 (`BatchLoop_MaxIterations_FailsSafely`) implemented as workflow unit test: mock batch activity to never return IsComplete=true, verify workflow exits loop and sets status to Failed
+- TenantStatusGuard added to: POST /api/ingest, GET /api/search, POST /api/tenants/{tenantId}/cases, DELETE /api/tenants/{tenantId}/cases/{caseId}, DELETE /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}
+- Endpoints POST /api/tenants/{tenantId}/cases/{caseId}/ingest and GET /api/tenants/{tenantId}/cases/{caseId}/search referenced in story do not exist — guarded the actual endpoints that serve these functions
+- Full validation passes: 262 contract tests, 706 server tests (including 6 new batch activity tests + 1 new workflow test), and 7 integration tests (4 new)
+
 ### File List
+
+**New files:**
+
+- src/Hexalith.Memories.Contracts/V1/TenantDeletionInput.cs
+- src/Hexalith.Memories.Contracts/V1/TenantDeletionResult.cs
+- src/Hexalith.Memories.Contracts/V1/BatchedGraphDeletionInput.cs
+- src/Hexalith.Memories.Contracts/V1/BatchedGraphDeletionResult.cs
+- src/Hexalith.Memories.Contracts/V1/TenantIdContractValidator.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteRediSearchActivity.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteRedisVectorActivity.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteFalkorDbBatchActivity.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteFalkorDbGraphFinalizerActivity.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs
+- src/Hexalith.Memories.Server/Activities/Tenants/GetTenantRegistryActivity.cs
+- src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs
+- src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TenantDeletionInputSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TenantDeletionResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/BatchedGraphDeletionInputSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/BatchedGraphDeletionResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TenantDeletionInputValidationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/BatchedGraphDeletionInputValidationTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteRediSearchActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteRedisVectorActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteTenantDataKeysActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteFalkorDbGraphFinalizerActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteFalkorDbBatchActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/GetTenantRegistryActivityTests.cs
+- tests/Hexalith.Memories.Server.Tests/Tenants/TenantStatusGuardTests.cs
+- tests/Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs
+- tests/Hexalith.Memories.IntegrationTests/Tenants/TenantDeletionIntegrationTests.cs
+
+**Modified files:**
+
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs (registered 4 new contract types)
+- src/Hexalith.Memories.Contracts/V1/TenantDeletionInput.cs (added constructor validation)
+- src/Hexalith.Memories.Contracts/V1/BatchedGraphDeletionInput.cs (added constructor and batch-argument validation)
+- src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs (added BuildCountAllNodes, BuildBatchDeleteNodes)
+- src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs (implemented new methods)
+- src/Hexalith.Memories.Server/Program.cs (registered workflow + 6 activities, TenantStatusGuard, 2 deletion endpoints, tenant status guards on 5 endpoints, atomic delete claim/retry-safe scheduling)
+- src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs (added atomic begin-deletion claim with ETag compare-and-save)
+- src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs (returns TENANT_FAILED for failed tenant states)
+- src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs (uses connected Redis server selection and correct dedup prefix)
+- src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs (logs BackendDeleted events and surfaces CompensationFailed when fallback status update fails)
+- tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteTenantDataKeysActivityTests.cs (covers case/dedup key deletion and disconnected-server failure)
+- tests/Hexalith.Memories.Server.Tests/Tenants/TenantRegistryServiceTests.cs (covers active→deleting claims and retry ownership)
+- tests/Hexalith.Memories.Server.Tests/Tenants/TenantStatusGuardTests.cs (asserts TENANT_FAILED code)
+- tests/Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs (covers compensation-failed fallback, added max iterations safety valve test)
+- tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs (added 4 tests for new methods)
+- tests/Hexalith.Memories.IntegrationTests/Tenants/TenantDeletionIntegrationTests.cs (added 4 integration tests: batched large-tenant, search-returns-zero, status guard rejection, DropIndexDD key scope)
+
+### Change Log
+
+- 2026-04-14: Implemented Story 5.2 — Tenant Deletion Workflow with all contracts, activities, workflow, TenantStatusGuard, endpoints, DI registrations, and comprehensive unit + workflow tests
+- 2026-04-14: Completed remaining tests — Task 9.3 (DeleteFalkorDbBatchActivityTests: 6 unit tests), Task 11.5-11.8/11.10-11.11 (4 integration tests + 1 workflow unit test for max iterations safety valve). All 968 unit tests pass, 0 failures.

@@ -18,6 +18,7 @@ public sealed partial class TenantRegistryService
     private const string IndexKey = "tenant-registry-index";
     private const int MaxIndexRetries = 3;
     private const int MaxTenantRegistrationRetries = 3;
+    private const int MaxDeletionStartRetries = 3;
 
     private readonly DaprClient _daprClient;
     private readonly ILogger<TenantRegistryService> _logger;
@@ -164,6 +165,76 @@ public sealed partial class TenantRegistryService
         await _daprClient.SaveStateAsync(StoreName, stateKey, updatedEntry, cancellationToken: ct).ConfigureAwait(false);
 
         LogTenantStatusUpdated(_logger, tenantId, status);
+    }
+
+    /// <summary>Claims deletion ownership for a tenant and marks it as deleting.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="workflowInstanceId">The workflow instance that owns the deletion.</param>
+    /// <param name="allowRetryFromDeleting">Whether an existing deleting tenant can be re-claimed for a retry.</param>
+    /// <param name="expectedWorkflowInstanceId">The workflow instance currently expected to own deletion, if any.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The current tenant registry entry after the claim attempt, or null when the tenant does not exist.</returns>
+    public async Task<TenantRegistryEntry?> BeginTenantDeletionAsync(
+        string tenantId,
+        string workflowInstanceId,
+        bool allowRetryFromDeleting,
+        string? expectedWorkflowInstanceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
+
+        string stateKey = GetTenantStateKey(tenantId);
+
+        for (int attempt = 0; attempt < MaxDeletionStartRetries; attempt++)
+        {
+            (TenantRegistryEntry? existing, string etag) = await _daprClient
+                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                LogTenantNotFound(_logger, tenantId);
+                return null;
+            }
+
+            if (existing.Tenant.Status == TenantStatus.Provisioning)
+            {
+                return existing;
+            }
+
+            if (existing.Tenant.Status == TenantStatus.Deleting && !allowRetryFromDeleting)
+            {
+                return existing;
+            }
+
+            if (existing.Tenant.Status == TenantStatus.Deleting
+                && allowRetryFromDeleting
+                && !string.Equals(existing.WorkflowInstanceId, expectedWorkflowInstanceId, StringComparison.Ordinal))
+            {
+                return existing;
+            }
+
+            TenantRegistryEntry updated = existing with
+            {
+                Tenant = existing.Tenant with { Status = TenantStatus.Deleting },
+                WorkflowInstanceId = workflowInstanceId,
+            };
+
+            bool saved = await _daprClient
+                .TrySaveStateAsync(StoreName, stateKey, updated, etag, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (saved)
+            {
+                LogTenantStatusUpdated(_logger, tenantId, TenantStatus.Deleting);
+                return updated;
+            }
+        }
+
+        return await _daprClient
+            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Lists all registered tenants.</summary>

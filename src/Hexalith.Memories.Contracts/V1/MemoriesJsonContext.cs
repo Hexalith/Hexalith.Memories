@@ -65,6 +65,10 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(TenantProvisioningInput))]
 [JsonSerializable(typeof(TenantProvisioningResult))]
 [JsonSerializable(typeof(TenantStatusUpdateInput))]
+[JsonSerializable(typeof(TenantDeletionInput))]
+[JsonSerializable(typeof(TenantDeletionResult))]
+[JsonSerializable(typeof(BatchedGraphDeletionInput))]
+[JsonSerializable(typeof(BatchedGraphDeletionResult))]
 [JsonSerializable(typeof(IReadOnlyList<TenantInfo>))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 

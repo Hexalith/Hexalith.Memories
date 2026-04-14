@@ -1,0 +1,45 @@
+namespace Hexalith.Memories.Contracts.Tests.V1;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+public class BatchedGraphDeletionResultSerializationTests
+{
+    [Fact]
+    public void RoundTrip_ShouldProduceIdenticalJson()
+    {
+        var original = new BatchedGraphDeletionResult(1500, 500, false);
+        string json1 = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        BatchedGraphDeletionResult? deserialized = JsonSerializer.Deserialize<BatchedGraphDeletionResult>(json1, MemoriesJsonContext.Options);
+        string json2 = JsonSerializer.Serialize(deserialized, MemoriesJsonContext.Options);
+
+        json2.ShouldBe(json1);
+    }
+
+    [Fact]
+    public void IsComplete_True_ShouldSerialize()
+    {
+        var original = new BatchedGraphDeletionResult(0, 50, true);
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        BatchedGraphDeletionResult? deserialized = JsonSerializer.Deserialize<BatchedGraphDeletionResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.IsComplete.ShouldBeTrue();
+        deserialized.RemainingNodes.ShouldBe(0);
+        deserialized.DeletedInBatch.ShouldBe(50);
+    }
+
+    [Fact]
+    public void PropertyNames_ShouldBeCamelCase()
+    {
+        var original = new BatchedGraphDeletionResult(100, 500, false);
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"remainingNodes\":");
+        json.ShouldContain("\"deletedInBatch\":");
+        json.ShouldContain("\"isComplete\":");
+    }
+}

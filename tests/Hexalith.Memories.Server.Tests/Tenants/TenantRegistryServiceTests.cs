@@ -156,6 +156,113 @@ public class TenantRegistryServiceTests
     }
 
     [Fact]
+    public async Task BeginTenantDeletionAsync_ActiveTenant_TransitionsToDeletingAndStoresWorkflowId()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Active);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+        daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-tenant-1-abc", false, null, CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.Tenant.Status.ShouldBe(TenantStatus.Deleting);
+        result.WorkflowInstanceId.ShouldBe("delete-tenant-1-abc");
+        await daprClient.Received(1).TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Is<TenantRegistryEntry>(t => t.Tenant.Status == TenantStatus.Deleting && t.WorkflowInstanceId == "delete-tenant-1-abc"),
+            "etag-1",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task BeginTenantDeletionAsync_DeletingTenantWithoutRetry_ReturnsExistingOwner()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-existing");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-new", false, "delete-existing", CancellationToken.None);
+
+        result.ShouldBe(existing);
+        await daprClient.DidNotReceive().TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            Arg.Any<string>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task BeginTenantDeletionAsync_ProvisioningTenant_ReturnsExistingEntryWithoutSaving()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Provisioning, "provision-1");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-new", false, existing.WorkflowInstanceId, CancellationToken.None);
+
+        result.ShouldBe(existing);
+        await daprClient.DidNotReceive().TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            Arg.Any<string>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task BeginTenantDeletionAsync_DeletingTenantWithRetry_ReassignsWorkflowId()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-old");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+        daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-new", true, "delete-old", CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.Tenant.Status.ShouldBe(TenantStatus.Deleting);
+        result.WorkflowInstanceId.ShouldBe("delete-new");
+    }
+
+    [Fact]
+    public async Task BeginTenantDeletionAsync_DeletingTenantWithRetry_WhenOwnerChanged_ReturnsCurrentOwner()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-current");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-new", true, "delete-old", CancellationToken.None);
+
+        result.ShouldBe(existing);
+        await daprClient.DidNotReceive().TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            Arg.Any<string>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ListTenantsAsync_ReturnsAllRegisteredTenants()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();

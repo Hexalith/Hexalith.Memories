@@ -375,6 +375,31 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountAllNodes()
+    {
+        const string query = "MATCH (n) RETURN count(n) AS count";
+
+        Dictionary<string, object> parameters = [];
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildBatchDeleteNodes(int batchSize)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
+
+        const string query = "MATCH (n) WITH n LIMIT $batchSize DETACH DELETE n RETURN count(n) AS deleted";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["batchSize"] = batchSize,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildBatchCountAnnotations(IReadOnlyList<string> memoryUnitIds)
     {
         ArgumentNullException.ThrowIfNull(memoryUnitIds);

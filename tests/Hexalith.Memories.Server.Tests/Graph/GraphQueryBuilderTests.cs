@@ -976,4 +976,37 @@ public class GraphQueryBuilderTests
 
         query.ShouldContain("previousConfidence: r.previousConfidence");
     }
+
+    [Fact]
+    public void BuildCountAllNodes_ShouldReturnMatchCountQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildCountAllNodes();
+
+        query.ShouldContain("MATCH (n)");
+        query.ShouldContain("count(n)");
+        parameters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void BuildBatchDeleteNodes_ShouldReturnParameterizedQuery()
+    {
+        (string query, IDictionary<string, object> parameters) = _builder.BuildBatchDeleteNodes(500);
+
+        query.ShouldContain("MATCH (n)");
+        query.ShouldContain("LIMIT $batchSize");
+        query.ShouldContain("DETACH DELETE n");
+        parameters["batchSize"].ShouldBe(500);
+    }
+
+    [Fact]
+    public void BuildBatchDeleteNodes_ZeroBatchSize_ShouldThrow()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildBatchDeleteNodes(0));
+    }
+
+    [Fact]
+    public void BuildBatchDeleteNodes_NegativeBatchSize_ShouldThrow()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildBatchDeleteNodes(-1));
+    }
 }

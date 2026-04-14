@@ -94,4 +94,10 @@ public interface IGraphQueryBuilder
 
     /// <summary>Batch-counts annotations for multiple memory units in a single query.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildBatchCountAnnotations(IReadOnlyList<string> memoryUnitIds);
+
+    /// <summary>Counts all nodes in the tenant graph (used by batched tenant deletion).</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountAllNodes();
+
+    /// <summary>Deletes a batch of nodes with DETACH DELETE and returns the count deleted (used by batched tenant deletion).</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildBatchDeleteNodes(int batchSize);
 }

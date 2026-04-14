@@ -5,17 +5,18 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
-using Dapr.Client;
 using Dapr.Workflow;
 
-/// <summary>DAPR Workflow activity that persists a dedup key to the state store after successful ingestion.</summary>
+using StackExchange.Redis;
+
+/// <summary>DAPR Workflow activity that persists a dedup key to Redis after successful ingestion.</summary>
 public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
 {
-    private readonly DaprClient _daprClient;
+    private readonly IConnectionMultiplexer _redis;
 
-    public SaveDedupKeyActivity(DaprClient daprClient)
+    public SaveDedupKeyActivity([FromKeyedServices("redis")] IConnectionMultiplexer redis)
     {
-        _daprClient = daprClient;
+        _redis = redis;
     }
 
     /// <inheritdoc/>
@@ -27,7 +28,8 @@ public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
         ArgumentException.ThrowIfNullOrWhiteSpace(input.DedupKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
-        await _daprClient.SaveStateAsync("statestore", input.DedupKey, input.MemoryUnitId).ConfigureAwait(false);
+        IDatabase db = _redis.GetDatabase();
+        await db.StringSetAsync(input.DedupKey, input.MemoryUnitId).ConfigureAwait(false);
         return true;
     }
 }

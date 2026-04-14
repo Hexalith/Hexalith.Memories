@@ -5,7 +5,6 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
-using Dapr.Client;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -15,26 +14,28 @@ using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 public class SaveDedupKeyActivityTests
 {
     [Fact]
-    public async Task RunAsync_ShouldSaveStateWithCorrectKeyAndValue()
+    public async Task RunAsync_ShouldSaveRedisValueWithCorrectKeyAndValue()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        SaveDedupKeyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        SaveDedupKeyActivity activity = new(redis);
 
         await activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
             new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
 
-        await daprClient.Received(1).SaveStateAsync("statestore", "dedup:tenant-1:case-1:abc123", "mu-001");
+        await db.Received(1).StringSetAsync("dedup:tenant-1:case-1:abc123", "mu-001", Arg.Any<TimeSpan?>(), Arg.Any<bool>(), Arg.Any<When>(), Arg.Any<CommandFlags>());
     }
 
     [Fact]
     public async Task RunAsync_ShouldReturnTrue()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        SaveDedupKeyActivity activity = new(daprClient);
+        (IDatabase _, IConnectionMultiplexer redis) = CreateRedis();
+        SaveDedupKeyActivity activity = new(redis);
 
         bool result = await activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
@@ -44,16 +45,24 @@ public class SaveDedupKeyActivityTests
     }
 
     [Fact]
-    public async Task RunAsync_StateStoreUnavailable_ShouldPropagateException()
+    public async Task RunAsync_RedisUnavailable_ShouldPropagateException()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.SaveStateAsync("statestore", Arg.Any<string>(), Arg.Any<string>())
-            .ThrowsAsync(new InvalidOperationException("State store unavailable"));
-        SaveDedupKeyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<bool>(), Arg.Any<When>(), Arg.Any<CommandFlags>())
+            .ThrowsAsync(new InvalidOperationException("Redis unavailable"));
+        SaveDedupKeyActivity activity = new(redis);
 
         await Should.ThrowAsync<InvalidOperationException>(
             () => activity.RunAsync(
                 Substitute.For<WorkflowActivityContext>(),
                 new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001")));
+    }
+
+    private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return (db, redis);
     }
 }

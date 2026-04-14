@@ -97,6 +97,7 @@ builder.Services.AddSingleton<CaseActivityService>(sp =>
         sp.GetRequiredService<ILogger<CaseActivityService>>()));
 builder.Services.AddScoped<CaseService>();
 builder.Services.AddSingleton<TenantRegistryService>();
+builder.Services.AddSingleton<TenantStatusGuard>();
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -130,6 +131,15 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<InitializeTenantRegistryActivity>();
     options.RegisterActivity<UpdateTenantStatusActivity>();
     options.RegisterActivity<RemoveTenantRegistryActivity>();
+
+    // Story 5.2: Tenant deletion workflow + activities
+    options.RegisterWorkflow<TenantDeletionWorkflow>();
+    options.RegisterActivity<DeleteRediSearchActivity>();
+    options.RegisterActivity<DeleteRedisVectorActivity>();
+    options.RegisterActivity<DeleteFalkorDbBatchActivity>();
+    options.RegisterActivity<DeleteFalkorDbGraphFinalizerActivity>();
+    options.RegisterActivity<DeleteTenantDataKeysActivity>();
+    options.RegisterActivity<GetTenantRegistryActivity>();
 });
 
 builder.Services.AddActors(options =>
@@ -153,12 +163,18 @@ WebApplication app = builder.Build();
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
 
-app.MapPost("/api/ingest", async (DaprWorkflowClient workflowClient, IngestionInput input) =>
+app.MapPost("/api/ingest", async (DaprWorkflowClient workflowClient, TenantStatusGuard tenantGuard, IngestionInput input) =>
 {
     ErrorResponse? validationError = ValidateIngestionRequest(input);
     if (validationError is not null)
     {
         return Results.BadRequest(validationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(input.TenantId, CancellationToken.None);
+    if (tenantStatusError is not null)
+    {
+        return Results.Conflict(tenantStatusError);
     }
 
     string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
@@ -350,10 +366,161 @@ app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, str
         : Results.Ok(tenant);
 });
 
+// Story 5.2: Tenant deletion endpoints
+app.MapDelete("/api/tenants/{tenantId}", async (
+    DaprWorkflowClient workflowClient,
+    TenantRegistryService registry,
+    string tenantId) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    TenantRegistryEntry? tenantEntry = await registry.GetTenantEntryAsync(tenantId, CancellationToken.None);
+    if (tenantEntry is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "TENANT_NOT_FOUND",
+            $"Tenant '{tenantId}' not found.",
+            "Use GET /api/tenants to list available tenants."));
+    }
+
+    if (tenantEntry.Tenant.Status == TenantStatus.Provisioning)
+    {
+        return Results.Conflict(new ErrorResponse(
+            "TENANT_PROVISIONING",
+            $"Tenant '{tenantId}' is still provisioning.",
+            "Wait for provisioning to complete."));
+    }
+
+    if (tenantEntry.Tenant.Status == TenantStatus.Deleting &&
+        !string.IsNullOrWhiteSpace(tenantEntry.WorkflowInstanceId))
+    {
+        try
+        {
+            WorkflowState? existingState = await workflowClient.GetWorkflowStateAsync(tenantEntry.WorkflowInstanceId);
+            if (existingState?.Exists == true && !existingState.IsWorkflowCompleted)
+            {
+                return Results.Accepted(
+                    $"/api/tenants/{tenantId}/deletion-status/{tenantEntry.WorkflowInstanceId}",
+                    new
+                    {
+                        workflowInstanceId = tenantEntry.WorkflowInstanceId,
+                        message = "Deletion already in progress.",
+                    });
+            }
+        }
+        catch (Dapr.DaprException)
+        {
+            return Results.Json(
+                new ErrorResponse(
+                    "DAPR_UNAVAILABLE",
+                    "DAPR sidecar is not ready.",
+                    "Check service health via /healthz and retry."),
+                statusCode: 503);
+        }
+    }
+
+    string instanceId = $"delete-{tenantId}-{Guid.NewGuid():N}";
+    TenantRegistryEntry? deletionClaim = await registry.BeginTenantDeletionAsync(
+        tenantId,
+        instanceId,
+        allowRetryFromDeleting: tenantEntry.Tenant.Status == TenantStatus.Deleting,
+        tenantEntry.WorkflowInstanceId,
+        CancellationToken.None);
+
+    if (deletionClaim is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "TENANT_NOT_FOUND",
+            $"Tenant '{tenantId}' not found.",
+            "Use GET /api/tenants to list available tenants."));
+    }
+
+    if (deletionClaim.Tenant.Status == TenantStatus.Provisioning)
+    {
+        return Results.Conflict(new ErrorResponse(
+            "TENANT_PROVISIONING",
+            $"Tenant '{tenantId}' is still provisioning.",
+            "Wait for provisioning to complete."));
+    }
+
+    if (!string.Equals(deletionClaim.WorkflowInstanceId, instanceId, StringComparison.Ordinal))
+    {
+        return Results.Accepted(
+            $"/api/tenants/{tenantId}/deletion-status/{deletionClaim.WorkflowInstanceId}",
+            new
+            {
+                workflowInstanceId = deletionClaim.WorkflowInstanceId,
+                message = "Deletion already in progress.",
+            });
+    }
+
+    try
+    {
+        await workflowClient.ScheduleNewWorkflowAsync(
+            nameof(TenantDeletionWorkflow), instanceId, new TenantDeletionInput(tenantId));
+    }
+    catch (Dapr.DaprException)
+    {
+        if (tenantEntry.Tenant.Status != TenantStatus.Deleting)
+        {
+            try
+            {
+                await registry.UpdateTenantStatusAsync(
+                    tenantId,
+                    tenantEntry.Tenant.Status,
+                    CancellationToken.None,
+                    tenantEntry.WorkflowInstanceId);
+            }
+            catch (InvalidOperationException)
+            {
+                // Best effort rollback only — the original Dapr error is more actionable to callers.
+            }
+        }
+
+        return Results.Json(
+            new ErrorResponse(
+                "DAPR_UNAVAILABLE",
+                "DAPR sidecar is not ready.",
+                "Check service health via /healthz and retry."),
+            statusCode: 503);
+    }
+
+    return Results.Accepted($"/api/tenants/{tenantId}/deletion-status/{instanceId}",
+        new { workflowInstanceId = instanceId });
+});
+
+app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
+    DaprWorkflowClient workflowClient,
+    string tenantId,
+    string instanceId) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    if (!instanceId.StartsWith($"delete-{tenantId}-", StringComparison.Ordinal))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "DELETION_STATUS_NOT_FOUND",
+            $"Deletion workflow '{instanceId}' was not found for tenant '{tenantId}'.",
+            "Use the workflowInstanceId returned by DELETE /api/tenants/{tenantId} for the same tenant."));
+    }
+
+    WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
+    return state is null ? Results.NotFound() : Results.Ok(state);
+});
+
 app.MapPost("/api/tenants/{tenantId}/cases", async (
     string tenantId,
     CreateCaseInput input,
     CaseService caseService,
+    TenantStatusGuard tenantGuard,
     CancellationToken cancellationToken) =>
 {
     var validatedInput = input with { TenantId = tenantId };
@@ -361,6 +528,12 @@ app.MapPost("/api/tenants/{tenantId}/cases", async (
     if (error is not null)
     {
         return Results.BadRequest(error);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return Results.Conflict(tenantStatusError);
     }
 
     Case created = await caseService.CreateCaseAsync(validatedInput, cancellationToken);
@@ -560,12 +733,19 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId
     string caseId,
     string memoryUnitId,
     CaseService caseService,
+    TenantStatusGuard tenantGuard,
     CancellationToken cancellationToken) =>
 {
     ErrorResponse? validationError = CaseValidator.ValidateDeleteMemoryUnit(tenantId, caseId, memoryUnitId);
     if (validationError is not null)
     {
         return Results.BadRequest(validationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return Results.Conflict(tenantStatusError);
     }
 
     Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
@@ -598,6 +778,7 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
     string tenantId,
     string caseId,
     CaseService caseService,
+    TenantStatusGuard tenantGuard,
     CancellationToken cancellationToken) =>
 {
     ErrorResponse? tenantError = CaseValidator.ValidateTenantId(tenantId);
@@ -610,6 +791,12 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
     if (caseError is not null)
     {
         return Results.BadRequest(caseError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return Results.Conflict(tenantStatusError);
     }
 
     bool deleted = await caseService.DeleteCaseAsync(tenantId, caseId, cancellationToken);
@@ -727,6 +914,7 @@ app.MapGet("/api/search", async (
     IActorProxyFactory actorProxyFactory,
     CaseActivityService activityService,
     CaseService caseService,
+    TenantStatusGuard tenantGuard,
     IGraphQueryBuilder graphQueryBuilder,
     [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
     [FromQuery] string tenantId,
@@ -764,6 +952,12 @@ app.MapGet("/api/search", async (
     if (tenantValidationError is not null)
     {
         return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return Results.Conflict(tenantStatusError);
     }
 
     // Validate caseId exists before executing search

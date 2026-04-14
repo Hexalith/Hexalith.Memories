@@ -5,7 +5,6 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
-using Dapr.Client;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -15,15 +14,17 @@ using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 public class CheckIdempotencyActivityTests
 {
     [Fact]
     public async Task RunAsync_NewSource_ShouldReturnIsDuplicateFalse()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
-            .Returns(Task.FromResult<string>(null!));
-        CheckIdempotencyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        CheckIdempotencyActivity activity = new(redis);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         IdempotencyResult result = await activity.RunAsync(
@@ -37,10 +38,10 @@ public class CheckIdempotencyActivityTests
     [Fact]
     public async Task RunAsync_ExistingSource_ShouldReturnIsDuplicateTrue()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
-            .Returns("mu-existing-id");
-        CheckIdempotencyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)"mu-existing-id");
+        CheckIdempotencyActivity activity = new(redis);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         IdempotencyResult result = await activity.RunAsync(
@@ -54,10 +55,10 @@ public class CheckIdempotencyActivityTests
     [Fact]
     public async Task RunAsync_DedupKeyFormat_ShouldUseTenantCaseSourceUriHash()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
-            .Returns(Task.FromResult<string>(null!));
-        CheckIdempotencyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        CheckIdempotencyActivity activity = new(redis);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         string sourceUri = "file:///doc.pdf";
@@ -67,21 +68,29 @@ public class CheckIdempotencyActivityTests
             context,
             new IdempotencyInput(sourceUri, "tenant-1", "case-1"));
 
-        await daprClient.Received(1).GetStateAsync<string>("statestore", expectedKey);
+        await db.Received(1).StringGetAsync(expectedKey, Arg.Any<CommandFlags>());
     }
 
     [Fact]
-    public async Task RunAsync_StateStoreUnavailable_ShouldPropagateException()
+    public async Task RunAsync_RedisUnavailable_ShouldPropagateException()
     {
-        DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<string>("statestore", Arg.Any<string>())
-            .ThrowsAsync(new InvalidOperationException("State store unavailable"));
-        CheckIdempotencyActivity activity = new(daprClient);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .ThrowsAsync(new InvalidOperationException("Redis unavailable"));
+        CheckIdempotencyActivity activity = new(redis);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         await Should.ThrowAsync<InvalidOperationException>(
             () => activity.RunAsync(
                 context,
                 new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1")));
+    }
+
+    private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return (db, redis);
     }
 }
