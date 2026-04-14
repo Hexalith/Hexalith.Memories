@@ -70,6 +70,8 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(BatchedGraphDeletionInput))]
 [JsonSerializable(typeof(BatchedGraphDeletionResult))]
 [JsonSerializable(typeof(IReadOnlyList<TenantInfo>))]
+[JsonSerializable(typeof(TenantIsolationCheckResult))]
+[JsonSerializable(typeof(TenantIsolationVerificationResult))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

@@ -98,6 +98,12 @@ builder.Services.AddSingleton<CaseActivityService>(sp =>
 builder.Services.AddScoped<CaseService>();
 builder.Services.AddSingleton<TenantRegistryService>();
 builder.Services.AddSingleton<TenantStatusGuard>();
+builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
+    new TenantIsolationVerifier(
+        sp.GetRequiredService<TenantRegistryService>(),
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),
+        sp.GetRequiredService<ILogger<TenantIsolationVerifier>>()));
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -514,6 +520,47 @@ app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
 
     WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
     return state is null ? Results.NotFound() : Results.Ok(state);
+});
+
+// Story 5.3: Tenant isolation verification
+app.MapPost("/api/tenants/{tenantId}/verify", async (
+    TenantIsolationVerifier verifier,
+    TenantRegistryService registry,
+    string tenantId,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    try
+    {
+        TenantInfo? tenant = await registry.GetTenantAsync(tenantId, cancellationToken);
+        if (tenant is null)
+        {
+            return Results.NotFound(new ErrorResponse(
+                "TENANT_NOT_FOUND",
+                $"Tenant '{tenantId}' not found.",
+                "Use GET /api/tenants to list available tenants."));
+        }
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync(tenantId, cancellationToken);
+        return Results.Ok(result);
+    }
+    catch (Dapr.DaprException ex)
+    {
+        return Results.Json(
+            new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
+            statusCode: 503);
+    }
+    catch (RedisException ex)
+    {
+        return Results.Json(
+            new ErrorResponse("BACKEND_UNAVAILABLE", $"Backend unavailable: {ex.Message}", "Check Redis/FalkorDB connectivity and retry."),
+            statusCode: 503);
+    }
 });
 
 app.MapPost("/api/tenants/{tenantId}/cases", async (
