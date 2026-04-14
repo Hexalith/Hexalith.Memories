@@ -236,6 +236,27 @@ public class TenantMetricsServiceTests
     // GetMemoryUnitCountAsync
 
     [Fact]
+    public async Task GetMemoryUnitCountAsync_WhenKeysExist_ReturnsCount()
+    {
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        server.KeysAsync(pattern: $"{TenantId}:mu:*", pageSize: 1000)
+            .Returns(EnumerateKeys(
+                $"{TenantId}:mu:mu-001",
+                $"{TenantId}:mu:mu-002",
+                $"{TenantId}:mu:mu-003"));
+
+        IConnectionMultiplexer redis = CreateRedis(redisDb, server);
+        IConnectionMultiplexer falkor = CreateFalkorDown();
+        TenantMetricsService service = new(redis, falkor, NullLogger());
+
+        long? count = await service.GetMemoryUnitCountAsync(TenantId, CancellationToken.None);
+
+        count.ShouldBe(3);
+    }
+
+    [Fact]
     public async Task GetMemoryUnitCountAsync_WhenRedisUnavailable_ReturnsNull()
     {
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
@@ -270,15 +291,24 @@ public class TenantMetricsServiceTests
         }
     }
 
-    private static IConnectionMultiplexer CreateRedis(IDatabase db)
+    private static IConnectionMultiplexer CreateRedis(IDatabase db, IServer? server = null)
     {
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         redis.GetEndPoints(Arg.Any<bool>()).Returns([new DnsEndPoint("localhost", 6379)]);
-        IServer server = Substitute.For<IServer>();
+        server ??= Substitute.For<IServer>();
         server.IsConnected.Returns(true);
         redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
         return redis;
+    }
+
+    private static async IAsyncEnumerable<RedisKey> EnumerateKeys(params string[] keys)
+    {
+        foreach (string key in keys)
+        {
+            yield return key;
+            await Task.Yield();
+        }
     }
 
     private static IConnectionMultiplexer CreateFalkorDown()

@@ -27,6 +27,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         string sourceUri,
         SourceType sourceType,
         string embeddingProvider,
+        string embeddingModel,
         int embeddingDimensions,
         string ingestedBy,
         DateTimeOffset ingestedAt,
@@ -38,10 +39,11 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
         ArgumentException.ThrowIfNullOrWhiteSpace(embeddingProvider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(embeddingModel);
         ArgumentException.ThrowIfNullOrWhiteSpace(ingestedBy);
         ArgumentException.ThrowIfNullOrWhiteSpace(metadataJson);
 
-        const string query = "MERGE (m:MemoryUnit {id: $id}) SET m.caseId = $caseId, m.content = $content, m.contentHash = $contentHash, m.sourceUri = $sourceUri, m.sourceType = $sourceType, m.embeddingProvider = $provider, m.embeddingDimensions = $dims, m.indexedAt = $indexedAt, m.ingestedBy = $ingestedBy, m.ingestedAt = $ingestedAt, m.lastUpdated = $lastUpdated, m.metadataJson = $metadataJson";
+        const string query = "MERGE (m:MemoryUnit {id: $id}) SET m.caseId = $caseId, m.content = $content, m.contentHash = $contentHash, m.sourceUri = $sourceUri, m.sourceType = $sourceType, m.embeddingProvider = $provider, m.embeddingModel = $model, m.embeddingDimensions = $dims, m.indexedAt = $indexedAt, m.ingestedBy = $ingestedBy, m.ingestedAt = $ingestedAt, m.lastUpdated = $lastUpdated, m.metadataJson = $metadataJson";
 
         Dictionary<string, object> parameters = new()
         {
@@ -52,6 +54,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
             ["sourceUri"] = sourceUri,
             ["sourceType"] = ToCamelCase(sourceType),
             ["provider"] = embeddingProvider,
+            ["model"] = embeddingModel,
             ["dims"] = embeddingDimensions,
             ["indexedAt"] = ingestedAt.ToString("o"),
             ["ingestedBy"] = ingestedBy,

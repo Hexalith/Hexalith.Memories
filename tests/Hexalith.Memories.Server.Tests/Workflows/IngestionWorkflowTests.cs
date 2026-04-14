@@ -423,6 +423,25 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_WhenEmbeddingResultModelMissing_ShouldDeriveModelFromCompoundProvider()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<EmbeddingResult>(
+                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:gemini-embedding-001", 3)));
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(i => i.EmbeddingModel == "gemini-embedding-001"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_ShouldPropagateProvenanceToIndexActivities()
     {
         IngestionInput input = IngestionInputFactory.Create(ingestedBy: "reviewer@example.com");

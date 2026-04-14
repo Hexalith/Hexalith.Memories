@@ -44,6 +44,7 @@ public class IndexGraphActivityTests
             builder.BuildMergeMemoryUnitNode(
                 input.MemoryUnitId, input.CaseId, input.Content, input.ContentHash,
                 input.SourceUri, input.SourceType, input.EmbeddingProvider,
+                input.EmbeddingModel,
                 input.EmbeddingDimensions, input.IngestedBy, input.IngestedAt,
                 JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options));
             builder.BuildMergeEdge(input.CaseId, input.MemoryUnitId, EdgeType.Contains, Arg.Any<float>(), EdgeOrigin.Explicit);
@@ -227,6 +228,7 @@ public class IndexGraphActivityTests
         builder.BuildMergeMemoryUnitNode(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
                 Arg.Any<string>(), Arg.Any<SourceType>(), Arg.Any<string>(),
+            Arg.Any<string>(),
             Arg.Any<int>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>(), Arg.Any<string>())
             .Returns(("MERGE (m:MemoryUnit {id: $id})", new Dictionary<string, object> { ["id"] = "mock" }));
 

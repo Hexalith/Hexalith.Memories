@@ -287,6 +287,7 @@ public sealed partial class TenantRegistryService
         CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actor);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
         string stateKey = GetTenantStateKey(tenantId);
@@ -303,6 +304,11 @@ public sealed partial class TenantRegistryService
             {
                 LogTenantNotFound(_logger, tenantId);
                 throw new InvalidOperationException($"Tenant '{tenantId}' not found in registry.");
+            }
+
+            if (existing.Tenant.Status != TenantStatus.Active)
+            {
+                throw new InvalidOperationException($"Tenant '{tenantId}' is not active.");
             }
 
             string oldValue = existing.Tenant.DisplayName;

@@ -15,6 +15,7 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeMemoryUnitNode(
             "mu-001", "case-001", "test content", "hash123",
             "file:///test.txt", SourceType.File, "google:text-embedding-004",
+            "gemini-embedding-001",
             768, "user@example.com", DateTimeOffset.UtcNow, "{}");
 
         query.ShouldContain("MERGE");
@@ -29,6 +30,7 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeMemoryUnitNode(
             "mu-001", "case-001", "test content", "hash123",
             "file:///test.txt", SourceType.File, "google:text-embedding-004",
+            "gemini-embedding-001",
             768, "user@example.com", ingestedAt, "{\"priority\":{\"value\":\"high\"}}");
 
         query.ShouldContain("$id");
@@ -37,6 +39,7 @@ public class GraphQueryBuilderTests
         query.ShouldContain("$ingestedBy");
         query.ShouldContain("$ingestedAt");
         query.ShouldContain("$metadataJson");
+        query.ShouldContain("$model");
         parameters["id"].ShouldBe("mu-001");
         parameters["caseId"].ShouldBe("case-001");
         parameters["content"].ShouldBe("test content");
@@ -44,6 +47,7 @@ public class GraphQueryBuilderTests
         parameters["sourceUri"].ShouldBe("file:///test.txt");
         parameters["sourceType"].ShouldBe("file");
         parameters["provider"].ShouldBe("google:text-embedding-004");
+        parameters["model"].ShouldBe("gemini-embedding-001");
         parameters["dims"].ShouldBe(768);
         parameters["ingestedBy"].ShouldBe("user@example.com");
         parameters["ingestedAt"].ShouldBe(ingestedAt.ToString("o"));
@@ -231,7 +235,7 @@ public class GraphQueryBuilderTests
     {
         Should.Throw<ArgumentException>(() => _builder.BuildMergeMemoryUnitNode(
             memoryUnitId!, "case", "content", "hash",
-            "uri", SourceType.File, "provider", 768, "user@example.com", DateTimeOffset.UtcNow, "{}"));
+            "uri", SourceType.File, "provider", "model", 768, "user@example.com", DateTimeOffset.UtcNow, "{}"));
     }
 
     [Theory]
@@ -278,6 +282,7 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeMemoryUnitNode(
             adversarialId, "case-inject", adversarialContent, "hash-inject",
             "file:///inject.txt", SourceType.File, "inject-provider",
+            "inject-model",
             768, "user@example.com", DateTimeOffset.UtcNow, "{}");
 
         query.ShouldNotContain(adversarialId);

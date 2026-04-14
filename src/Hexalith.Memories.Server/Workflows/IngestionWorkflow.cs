@@ -129,8 +129,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 // Story 5.5 FR70: thread the model through from EmbeddingResult so it lands in
                 // the Redis hash (see IndexSyntacticActivity) and is readable via GET memory-unit.
                 // Historical replayed EmbeddingResult payloads may lack the field — fall back to
-                // the compound provider string so downstream indexing always has something to write.
-                EmbeddingModel = embedding.Model ?? embedding.Provider,
+                // parsing the compound provider string (provider:model) so the durable field still
+                // stores only the model identifier rather than the full compound value.
+                EmbeddingModel = GetEmbeddingModelIdentifier(embedding),
                 EmbeddingDimensions = embedding.Dimensions,
                 Metadata = input.Metadata,
                 CausationId = input.CausationId,
@@ -401,6 +402,22 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
     private static bool HasFailureDetails(Exception exception)
         => exception.Data.Contains(nameof(FailureDetails));
+
+    private static string GetEmbeddingModelIdentifier(EmbeddingResult embedding)
+    {
+        ArgumentNullException.ThrowIfNull(embedding);
+
+        if (!string.IsNullOrWhiteSpace(embedding.Model))
+        {
+            return embedding.Model;
+        }
+
+        string provider = embedding.Provider;
+        int separatorIndex = provider.IndexOf(':', StringComparison.Ordinal);
+        return separatorIndex >= 0 && separatorIndex < provider.Length - 1
+            ? provider[(separatorIndex + 1)..]
+            : provider;
+    }
 
     private static void LogCurrentStatus(ILogger logger, string memoryUnitId, MemoryUnitStatus status)
         => logger.LogInformation("Memory unit {MemoryUnitId} status is {Status}", memoryUnitId, status);

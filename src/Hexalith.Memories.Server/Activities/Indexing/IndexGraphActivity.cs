@@ -54,6 +54,7 @@ public sealed class IndexGraphActivity : WorkflowActivity<IndexInput, IndexResul
             input.SourceUri,
             input.SourceType,
             input.EmbeddingProvider,
+            input.EmbeddingModel,
             input.EmbeddingDimensions,
             input.IngestedBy,
             input.IngestedAt,

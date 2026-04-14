@@ -17,6 +17,7 @@ public interface IGraphQueryBuilder
         string sourceUri,
         SourceType sourceType,
         string embeddingProvider,
+        string embeddingModel,
         int embeddingDimensions,
         string ingestedBy,
         DateTimeOffset ingestedAt,
