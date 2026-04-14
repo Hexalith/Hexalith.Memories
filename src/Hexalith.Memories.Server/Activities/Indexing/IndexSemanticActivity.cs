@@ -5,12 +5,11 @@ using System.Runtime.InteropServices;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
 using NRedisStack.RedisStackCommands;
-using NRedisStack.Search;
-using NRedisStack.Search.Literals.Enums;
 
 using StackExchange.Redis;
 
@@ -51,28 +50,15 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
 
-        string indexName = $"{input.TenantId}:memories:vec";
+        string indexName = IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId);
         string hashKey = $"{input.TenantId}:vec:{input.MemoryUnitId}";
 
         try
         {
             ft.Create(
                 indexName,
-                new FTCreateParams()
-                    .On(IndexDataType.HASH)
-                    .Prefix($"{input.TenantId}:vec:"),
-                new Schema()
-                    .AddVectorField(
-                        "embedding",
-                        Schema.VectorField.VectorAlgo.HNSW,
-                        new Dictionary<string, object>()
-                        {
-                            ["TYPE"] = "FLOAT32",
-                            ["DIM"] = input.EmbeddingDimensions.ToString(),
-                            ["DISTANCE_METRIC"] = "COSINE",
-                        })
-                    .AddTagField("memoryUnitId")
-                    .AddTagField("caseId"));
+                IndexSchemaDefinitions.CreateSemanticParams(input.TenantId),
+                IndexSchemaDefinitions.CreateSemanticSchema(input.EmbeddingDimensions));
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
         {

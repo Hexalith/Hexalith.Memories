@@ -5,12 +5,11 @@ using System.Text.Json;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
 using NRedisStack.RedisStackCommands;
-using NRedisStack.Search;
-using NRedisStack.Search.Literals.Enums;
 
 using StackExchange.Redis;
 
@@ -43,26 +42,15 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         string metadataJson = JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options);
         string ingestedAt = input.IngestedAt.ToString("o");
 
-        string indexName = $"{input.TenantId}:memories:idx";
+        string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);
         string hashKey = $"{input.TenantId}:mu:{input.MemoryUnitId}";
 
         try
         {
             ft.Create(
                 indexName,
-                new FTCreateParams()
-                    .On(IndexDataType.HASH)
-                    .Prefix($"{input.TenantId}:mu:"),
-                new Schema()
-                    .AddTextField("content", 1.0)
-                    .AddTextField("sourceUriText", 0.25)
-                    .AddTextField("sourceTypeText", 0.25)
-                    .AddTextField("metadataText", 0.25)
-                    .AddTagField("sourceUri")
-                    .AddTagField("sourceType")
-                    .AddTagField("contentHash")
-                    .AddTagField("caseId")
-                    .AddTagField("embeddingProvider"));
+                IndexSchemaDefinitions.CreateSyntacticParams(input.TenantId),
+                IndexSchemaDefinitions.CreateSyntacticSchema());
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
         {

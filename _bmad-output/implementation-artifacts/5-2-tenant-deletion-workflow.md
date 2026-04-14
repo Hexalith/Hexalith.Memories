@@ -76,7 +76,11 @@ so that I can fulfill erasure requirements and reclaim resources.
 - [ ] 4.1 Create `Server/Workflows/TenantDeletionWorkflow.cs` -- extends `Workflow<TenantDeletionInput, TenantDeletionResult>`.
 - [ ] 4.2 Orchestration logic:
   1. Validate input via `TenantIdGuard.Validate()`
-  2. Call `GetTenantRegistryActivity` -- retrieve `TenantInfo`. If not found, return error result with `TENANT_NOT_FOUND`. If status is `Deleting`, log idempotent re-entry and continue from step 4 (DAPR replay safety -- re-executes all cleanup activities; already-completed activities return immediately since they are idempotent). If status is `Provisioning`, return error `TENANT_PROVISIONING`.
+  2. Call `GetTenantRegistryActivity` -- retrieve `TenantInfo`. Handle by status:
+     - **null (not found):** Tenant was already fully deleted (e.g., DAPR replay after successful deletion). Return success result: `TenantDeletionResult(tenantId, TenantStatus.Active, "Tenant already deleted.")`. Do NOT return error.
+     - **Deleting:** Log idempotent re-entry and continue from step 4 (DAPR replay safety -- re-executes all cleanup activities; already-completed activities return immediately since they are idempotent).
+     - **Provisioning:** Return error result with `TENANT_PROVISIONING`.
+     - **Active / Failed / CompensationFailed:** Proceed normally to step 3.
   3. Call `UpdateTenantStatusActivity` -- set status to `TenantStatus.Deleting` (prevents concurrent operations)
   4. Sequential backend cleanup (intentionally sequential, not parallel -- simpler to reason about for MVP; RediSearch and RedisVector drops could be parallelized as a future optimization):
      - Call `DeleteRediSearchActivity` (drop syntactic index)
@@ -92,7 +96,7 @@ so that I can fulfill erasure requirements and reclaim resources.
   5. Call `RemoveTenantRegistryActivity` -- remove tenant from registry and index
   6. Return success result with list of deleted backends
 - [ ] 4.3 Retry policy: `maxAttempts=5, firstInterval=2s, backoff=2.0, maxInterval=5min` (same as provisioning)
-- [ ] 4.4 Compensation: Deletion is destructive and non-reversible. On partial failure, update status to `TenantStatus.Failed` with message listing which backends were successfully cleaned and which remain. Operator can re-trigger deletion to resume (idempotent activities handle already-deleted backends).
+- [ ] 4.4 Compensation: Deletion is destructive and non-reversible. On partial failure, update status to `TenantStatus.Failed` with message listing which backends were successfully cleaned and which remain. Operator can re-trigger deletion to resume (idempotent activities handle already-deleted backends). **Note:** If `UpdateTenantStatusActivity` (step 3) itself fails after all retries, the workflow fails cleanly -- tenant remains in its original state, no cleanup was attempted, no data loss.
 - [ ] 4.5 Use `context.CreateReplaySafeLogger<TenantDeletionWorkflow>()` for logging. Log: `DeletionStarted`, `BackendDeleted(backendName)`, `GraphBatchCompleted(batchNumber, remainingNodes)`, `DeletionCompleted`, `DeletionFailed`.
 - [ ] 4.6 Create `GetTenantRegistryActivity` -- extends `WorkflowActivity<string, TenantInfo?>`. Calls `TenantRegistryService.GetTenantAsync(tenantId)`. Returns null if not found.
 
@@ -126,6 +130,7 @@ so that I can fulfill erasure requirements and reclaim resources.
 ### Task 6: Add tenant deletion endpoint (AC #1, #4)
 
 - [ ] 6.1 Add `DELETE /api/tenants/{tenantId}` endpoint (Minimal API in `Program.cs`):
+  - **Note:** This endpoint does NOT use `TenantStatusGuard` -- it has custom logic to accept `Deleting` status (returns 202) rather than rejecting it. The guard is for endpoints that require an Active tenant.
   - Validate `tenantId` via `TenantIdGuard.Validate()`
   - Check tenant exists via `TenantRegistryService.GetTenantAsync()`
   - If not found, return 404 with `TENANT_NOT_FOUND`
@@ -187,7 +192,7 @@ so that I can fulfill erasure requirements and reclaim resources.
 
 - [ ] 12.1 Create `Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs`
 - [ ] 12.2 `DeletionWorkflow_HappyPath_CallsAllActivitiesInOrder` -- verify sequential activity calls: GetTenantRegistry -> UpdateStatus(Deleting) -> DeleteRediSearch -> DeleteRedisVector -> batched FalkorDb loop -> GraphFinalizer -> DeleteDataKeys -> RemoveRegistry
-- [ ] 12.3 `DeletionWorkflow_TenantNotFound_ReturnsError` -- verify workflow returns error result without calling any deletion activities
+- [ ] 12.3 `DeletionWorkflow_TenantNotFound_ReturnsSuccess` -- verify workflow returns success result ("Tenant already deleted") without calling any deletion activities (handles DAPR replay after completed deletion)
 - [ ] 12.4 `DeletionWorkflow_BatchedLoop_TerminatesWhenComplete` -- mock `DeleteFalkorDbBatchActivity` to return `IsComplete=false` for 3 batches then `IsComplete=true`, verify loop calls activity exactly 4 times then calls finalizer
 - [ ] 12.5 `DeletionWorkflow_PartialFailure_SetsStatusToFailed` -- mock one activity to throw, verify `UpdateTenantStatusActivity` called with `TenantStatus.Failed`
 - [ ] 12.6 `DeletionWorkflow_AlreadyDeleting_ContinuesIdempotently` -- mock `GetTenantRegistryActivity` returning tenant with `Deleting` status, verify workflow continues (replay safety)
@@ -315,6 +320,14 @@ Follow exact patterns from `Program.cs`:
 | `MemoriesJsonContext` | `Contracts/V1/MemoriesJsonContext.cs` | JSON serialization registration |
 | Case deletion patterns | `Server/Cases/CaseService.cs` lines 618-700 | `DETACH DELETE` pattern, multi-backend cleanup |
 | `CaseValidator` pattern | `Server/Cases/CaseValidator.cs` | Static validation pattern (TenantStatusGuard differs: instance service with DI, since it needs I/O) |
+
+### Known Limitations (MVP-Acceptable)
+
+1. **DAPR actor state is orphaned after deletion.** `TenantConfigurationActor`, `CorpusStatisticsActor`, and `EmbeddingRateLimiterActor` store per-tenant state in the DAPR state store (actor IDs: `{actorType}-{tenantId}`). This state is metadata (config, stats, rate counters), not user data, so it does not violate erasure requirements. Add cleanup in a future story if state store bloat becomes a concern. Completed DAPR workflow instances for this tenant are also not purged.
+
+2. **`DeleteTenantDataKeysActivity` is unbounded for very large key sets.** A tenant with 100K+ cases could have 300K+ Redis keys to SCAN and delete. For MVP this is acceptable since SCAN is non-blocking and deletion is batched. If performance becomes an issue, consider splitting into a batched activity loop (like FalkorDB deletion).
+
+3. **Future pub/sub event handlers (Epic 9) must check tenant status.** The current status guard protects REST endpoints only. When DAPR pub/sub subscribers are added for event-driven ingestion, they must also call `TenantStatusGuard.ValidateTenantActiveAsync()` before processing events for a tenant.
 
 ### Anti-Patterns to Avoid
 

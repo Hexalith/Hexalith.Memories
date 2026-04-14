@@ -8,12 +8,14 @@ using System.Text.Json;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
+using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.ServiceDefaults;
 
@@ -94,6 +96,7 @@ builder.Services.AddSingleton<CaseActivityService>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<ILogger<CaseActivityService>>()));
 builder.Services.AddScoped<CaseService>();
+builder.Services.AddSingleton<TenantRegistryService>();
 
 builder.Services.AddDaprWorkflow(options =>
 {
@@ -114,6 +117,19 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupSemanticActivity>();
     options.RegisterActivity<CleanupGraphActivity>();
     options.RegisterActivity<RecordCaseActivityActivity>();
+
+    // Story 5.1: Tenant provisioning workflow + activities
+    options.RegisterWorkflow<TenantProvisioningWorkflow>();
+    options.RegisterActivity<ProvisionRediSearchActivity>();
+    options.RegisterActivity<ProvisionRedisVectorActivity>();
+    options.RegisterActivity<ProvisionFalkorDbActivity>();
+    options.RegisterActivity<VerifyTenantActivity>();
+    options.RegisterActivity<DeleteRediSearchIndexActivity>();
+    options.RegisterActivity<DeleteRedisVectorIndexActivity>();
+    options.RegisterActivity<DeleteFalkorDbGraphActivity>();
+    options.RegisterActivity<InitializeTenantRegistryActivity>();
+    options.RegisterActivity<UpdateTenantStatusActivity>();
+    options.RegisterActivity<RemoveTenantRegistryActivity>();
 });
 
 builder.Services.AddActors(options =>
@@ -220,6 +236,118 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 
         throw;
     }
+});
+
+// Story 5.1: Tenant provisioning endpoints
+app.MapPost("/api/tenants", async (
+    DaprWorkflowClient workflowClient,
+    IActorProxyFactory actorProxyFactory,
+    TenantProvisioningInput input,
+    ILogger<Program> logger) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(input.TenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    if (string.IsNullOrWhiteSpace(input.DisplayName))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "DisplayName is required.",
+            "Provide a non-empty display name for the tenant."));
+    }
+
+    // Resolve vector dimensions from TenantConfigurationActor or default to 768
+    int resolvedDimensions = EmbeddingProviderDefaults.Google().Dimensions;
+    try
+    {
+        ITenantConfigurationActor actor = actorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(new ActorId(input.TenantId), nameof(TenantConfigurationActor));
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+        resolvedDimensions = config.Dimensions;
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Could not resolve embedding config for tenant {TenantId} — defaulting to {Dimensions} dimensions",
+            input.TenantId, resolvedDimensions);
+    }
+
+    if (resolvedDimensions < 1 || resolvedDimensions > 4096)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_DIMENSIONS",
+            $"Vector dimensions {resolvedDimensions} must be between 1 and 4096.",
+            "Check the embedding provider configuration for this tenant."));
+    }
+
+    input = input with { VectorDimensions = resolvedDimensions };
+
+    string instanceId = $"provision-{input.TenantId}-{Guid.NewGuid():N}";
+    try
+    {
+        await workflowClient.ScheduleNewWorkflowAsync(
+            nameof(TenantProvisioningWorkflow), instanceId, input);
+    }
+    catch (Dapr.DaprException)
+    {
+        return Results.Json(
+            new ErrorResponse(
+                "DAPR_UNAVAILABLE",
+                "DAPR sidecar is not ready.",
+                "Check service health via /healthz and retry."),
+            statusCode: 503);
+    }
+
+    return Results.Accepted($"/api/tenants/{input.TenantId}/provision-status/{instanceId}",
+        new { workflowInstanceId = instanceId });
+});
+
+app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
+    DaprWorkflowClient workflowClient,
+    string tenantId,
+    string instanceId) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    if (!instanceId.StartsWith($"provision-{tenantId}-", StringComparison.Ordinal))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "PROVISIONING_STATUS_NOT_FOUND",
+            $"Provisioning workflow '{instanceId}' was not found for tenant '{tenantId}'.",
+            "Use the workflowInstanceId returned by POST /api/tenants for the same tenant."));
+    }
+
+    WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
+    return state is null ? Results.NotFound() : Results.Ok(state);
+});
+
+app.MapGet("/api/tenants", async (TenantRegistryService registry) =>
+{
+    IReadOnlyList<TenantInfo> tenants = await registry.ListTenantsAsync(CancellationToken.None);
+    return Results.Ok(tenants);
+});
+
+app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, string tenantId) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    TenantInfo? tenant = await registry.GetTenantAsync(tenantId, CancellationToken.None);
+    return tenant is null
+        ? Results.NotFound(new ErrorResponse(
+            "TENANT_NOT_FOUND",
+            $"Tenant '{tenantId}' not found.",
+            "Use GET /api/tenants to list available tenants."))
+        : Results.Ok(tenant);
 });
 
 app.MapPost("/api/tenants/{tenantId}/cases", async (

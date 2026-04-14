@@ -60,6 +60,12 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IReadOnlyList<TraversalGapMarker>))]
 [JsonSerializable(typeof(TraversalResult))]
 [JsonSerializable(typeof(IReadOnlyList<TraversalNode>))]
+[JsonSerializable(typeof(TenantStatus))]
+[JsonSerializable(typeof(TenantInfo))]
+[JsonSerializable(typeof(TenantProvisioningInput))]
+[JsonSerializable(typeof(TenantProvisioningResult))]
+[JsonSerializable(typeof(TenantStatusUpdateInput))]
+[JsonSerializable(typeof(IReadOnlyList<TenantInfo>))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>
