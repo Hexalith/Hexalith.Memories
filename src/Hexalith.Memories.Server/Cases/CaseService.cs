@@ -15,6 +15,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
@@ -220,10 +221,17 @@ internal sealed class CaseService
     }
 
     /// <summary>Gets a memory unit from the syntactic Redis hash store.</summary>
+    /// <remarks>
+    /// Story 5.4 AC2 — tertiary tenant-mismatch detection: after the hash is parsed, the record's
+    /// stored <c>tenantId</c> field is compared to the requested <paramref name="tenantId"/>. A mismatch
+    /// indicates data corruption or isolation breach; it is logged at Critical via
+    /// <see cref="TenantMismatchMonitor"/> and the method returns <see langword="null"/> so the
+    /// caller surfaces a standard 404 with no internal-state leakage.
+    /// </remarks>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="memoryUnitId">The memory unit identifier.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    /// <returns>The parsed <see cref="MemoryUnit"/>, or <see langword="null"/> when not found.</returns>
+    /// <returns>The parsed <see cref="MemoryUnit"/>, or <see langword="null"/> when not found or tenant mismatched.</returns>
     public async Task<MemoryUnit?> GetMemoryUnitAsync(
         string tenantId,
         string memoryUnitId,
@@ -235,9 +243,19 @@ internal sealed class CaseService
         string muKey = $"{tenantId}:mu:{memoryUnitId}";
         HashEntry[] entries = await db.HashGetAllAsync(muKey).ConfigureAwait(false);
 
-        return entries.Length == 0
-            ? null
-            : ParseMemoryUnitFromHash(entries, tenantId, memoryUnitId);
+        if (entries.Length == 0)
+        {
+            return null;
+        }
+
+        string? storedTenantId = ReadStoredTenantId(entries);
+        if (storedTenantId is not null && !string.Equals(storedTenantId, tenantId, StringComparison.Ordinal))
+        {
+            TenantMismatchMonitor.RecordMismatch(_logger, tenantId, storedTenantId, nameof(MemoryUnit), memoryUnitId);
+            return null;
+        }
+
+        return ParseMemoryUnitFromHash(entries, tenantId, memoryUnitId);
     }
 
     /// <summary>Lists annotation memory units for a given target memory unit.</summary>
@@ -301,6 +319,13 @@ internal sealed class CaseService
                 continue;
             }
 
+            string? storedTenantId = ReadStoredTenantId(entries);
+            if (storedTenantId is not null && !string.Equals(storedTenantId, tenantId, StringComparison.Ordinal))
+            {
+                TenantMismatchMonitor.RecordMismatch(_logger, tenantId, storedTenantId, nameof(Case), keyStr);
+                continue;
+            }
+
             Case? parsed = ParseCaseFromHash(entries, tenantId);
             if (parsed is not null)
             {
@@ -331,6 +356,13 @@ internal sealed class CaseService
         return orderedCases;
     }
 
+    /// <summary>Gets a case from the Redis hash store.</summary>
+    /// <remarks>
+    /// Story 5.4 AC2 — tertiary tenant-mismatch detection: after the hash is loaded, the record's
+    /// stored <c>tenantId</c> field is compared to the requested <paramref name="tenantId"/>. A mismatch
+    /// is logged Critical via <see cref="TenantMismatchMonitor"/> and the method returns
+    /// <see langword="null"/> so callers return a standard 404.
+    /// </remarks>
     public async Task<Case?> GetCaseAsync(string tenantId, string caseId, CancellationToken cancellationToken)
     {
         IDatabase db = _redis.GetDatabase();
@@ -339,6 +371,13 @@ internal sealed class CaseService
 
         if (entries.Length == 0)
         {
+            return null;
+        }
+
+        string? storedTenantId = ReadStoredTenantId(entries);
+        if (storedTenantId is not null && !string.Equals(storedTenantId, tenantId, StringComparison.Ordinal))
+        {
+            TenantMismatchMonitor.RecordMismatch(_logger, tenantId, storedTenantId, nameof(Case), caseId);
             return null;
         }
 
@@ -358,6 +397,13 @@ internal sealed class CaseService
         HashEntry[] entries = await db.HashGetAllAsync(caseKey).ConfigureAwait(false);
         if (entries.Length == 0)
         {
+            return null;
+        }
+
+        string? storedTenantId = ReadStoredTenantId(entries);
+        if (storedTenantId is not null && !string.Equals(storedTenantId, tenantId, StringComparison.Ordinal))
+        {
+            TenantMismatchMonitor.RecordMismatch(_logger, tenantId, storedTenantId, nameof(Case), caseId);
             return null;
         }
 
@@ -973,6 +1019,25 @@ internal sealed class CaseService
 
     private static string BuildAnnotationSourceUri(string targetMemoryUnitId, string annotationMemoryUnitId)
         => $"annotation:{targetMemoryUnitId}:{annotationMemoryUnitId}";
+
+    /// <summary>Reads the <c>tenantId</c> field from a parsed hash, or returns <see langword="null"/>
+    /// when the field is absent (legacy records written before Story 5.4) or empty.
+    /// Used by mismatch detection in <see cref="GetMemoryUnitAsync"/> and <see cref="GetCaseAsync"/>.</summary>
+    private static string? ReadStoredTenantId(HashEntry[] entries)
+    {
+        foreach (HashEntry entry in entries)
+        {
+            if (!string.Equals(entry.Name.ToString(), "tenantId", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string value = entry.Value.ToString();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        return null;
+    }
 
     private static DateTimeOffset? ReadOptionalDateTimeOffset(HashEntry[] entries, string fieldName)
     {

@@ -61,6 +61,9 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             hashKey,
             [
                 new HashEntry("id", input.MemoryUnitId),
+                // Story 5.4 AC2: tenantId persisted on the MU hash to enable tertiary
+                // mismatch detection in CaseService (primary defense is the key prefix).
+                new HashEntry("tenantId", input.TenantId),
                 new HashEntry("content", input.Content),
                 new HashEntry("sourceUri", input.SourceUri),
                 new HashEntry("sourceUriText", input.SourceUri),

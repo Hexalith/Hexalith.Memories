@@ -180,7 +180,7 @@ app.MapPost("/api/ingest", async (DaprWorkflowClient workflowClient, TenantStatu
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(input.TenantId, CancellationToken.None);
     if (tenantStatusError is not null)
     {
-        return Results.Conflict(tenantStatusError);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
@@ -194,12 +194,22 @@ app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient,
     return state is null ? Results.NotFound() : Results.Ok(state);
 });
 
-app.MapGet("/api/tenants/{tenantId}/embedding-config", async (IActorProxyFactory actorProxyFactory, string tenantId) =>
+app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
+    IActorProxyFactory actorProxyFactory,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    CancellationToken cancellationToken) =>
 {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
         return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     ITenantConfigurationActor actor = actorProxyFactory
@@ -209,12 +219,24 @@ app.MapGet("/api/tenants/{tenantId}/embedding-config", async (IActorProxyFactory
 });
 
 app.MapPut("/api/tenants/{tenantId}/embedding-config",
-    async (IActorProxyFactory actorProxyFactory, string tenantId, TenantEmbeddingConfig config, bool forceReindex = false) =>
+    async (
+        IActorProxyFactory actorProxyFactory,
+        TenantStatusGuard tenantGuard,
+        string tenantId,
+        TenantEmbeddingConfig config,
+        CancellationToken cancellationToken,
+        bool forceReindex = false) =>
 {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
         return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     try
@@ -328,13 +350,21 @@ app.MapPost("/api/tenants", async (
 
 app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
     DaprWorkflowClient workflowClient,
+    TenantStatusGuard tenantGuard,
     string tenantId,
-    string instanceId) =>
+    string instanceId,
+    CancellationToken cancellationToken) =>
 {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
         return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
     }
 
     if (!instanceId.StartsWith($"provision-{tenantId}-", StringComparison.Ordinal))
@@ -501,13 +531,21 @@ app.MapDelete("/api/tenants/{tenantId}", async (
 
 app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
     DaprWorkflowClient workflowClient,
+    TenantStatusGuard tenantGuard,
     string tenantId,
-    string instanceId) =>
+    string instanceId,
+    CancellationToken cancellationToken) =>
 {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
         return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
     }
 
     if (!instanceId.StartsWith($"delete-{tenantId}-", StringComparison.Ordinal))
@@ -525,7 +563,7 @@ app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
 // Story 5.3: Tenant isolation verification
 app.MapPost("/api/tenants/{tenantId}/verify", async (
     TenantIsolationVerifier verifier,
-    TenantRegistryService registry,
+    TenantStatusGuard tenantGuard,
     string tenantId,
     CancellationToken cancellationToken) =>
 {
@@ -535,17 +573,16 @@ app.MapPost("/api/tenants/{tenantId}/verify", async (
         return Results.BadRequest(tenantValidationError);
     }
 
+    // Verification is diagnostic — allow it on non-Active tenants (Provisioning, Deleting, Failed)
+    // as long as the tenant exists in the registry. Existence-only check is correct here.
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
     try
     {
-        TenantInfo? tenant = await registry.GetTenantAsync(tenantId, cancellationToken);
-        if (tenant is null)
-        {
-            return Results.NotFound(new ErrorResponse(
-                "TENANT_NOT_FOUND",
-                $"Tenant '{tenantId}' not found.",
-                "Use GET /api/tenants to list available tenants."));
-        }
-
         TenantIsolationVerificationResult result = await verifier.VerifyAsync(tenantId, cancellationToken);
         return Results.Ok(result);
     }
@@ -580,7 +617,7 @@ app.MapPost("/api/tenants/{tenantId}/cases", async (
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
-        return Results.Conflict(tenantStatusError);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     Case created = await caseService.CreateCaseAsync(validatedInput, cancellationToken);
@@ -792,7 +829,7 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
-        return Results.Conflict(tenantStatusError);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
@@ -843,7 +880,7 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
-        return Results.Conflict(tenantStatusError);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     bool deleted = await caseService.DeleteCaseAsync(tenantId, caseId, cancellationToken);
@@ -1004,7 +1041,7 @@ app.MapGet("/api/search", async (
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
-        return Results.Conflict(tenantStatusError);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     // Validate caseId exists before executing search

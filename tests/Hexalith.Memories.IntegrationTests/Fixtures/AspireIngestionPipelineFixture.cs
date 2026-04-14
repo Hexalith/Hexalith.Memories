@@ -23,9 +23,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private string? _previousAspNetCoreEnvironment;
     private string? _previousDotNetEnvironment;
     private string? _previousFakeEmbedding;
+    private readonly TestLogProvider _logProvider = new();
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
     public HttpClient MemoriesClient { get; private set; } = null!;
+
+    /// <summary>Gets the fixed DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
+    public Uri DaprSidecarHttpEndpoint { get; } = new("http://127.0.0.1:3500");
+
+    /// <summary>Gets the number of captured log entries.</summary>
+    public int LogEntryCount => _logProvider.Count;
 
     /// <summary>Gets the Redis Stack connection for backend verification.</summary>
     public IConnectionMultiplexer RedisConnection { get; private set; } = null!;
@@ -54,6 +61,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             _ = logging.SetMinimumLevel(LogLevel.Warning);
             _ = logging.AddFilter("Aspire.", LogLevel.Warning);
+            _ = logging.AddProvider(_logProvider);
         });
 
         _app = await _builder.BuildAsync().ConfigureAwait(false);
@@ -80,6 +88,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         RedisConnection = await ConnectionMultiplexer.ConnectAsync(redisEndpoint.Authority).ConfigureAwait(false);
         FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(falkorEndpoint.Authority).ConfigureAwait(false);
     }
+
+    /// <summary>Returns a snapshot of log entries captured since the specified starting index.</summary>
+    /// <param name="startIndex">The 0-based index from which to read newly-captured log entries.</param>
+    /// <returns>The captured log entries after the starting index.</returns>
+    public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
 
     /// <inheritdoc/>
     public async Task DisposeAsync()
@@ -148,6 +161,65 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             $"Endpoint '{url}' did not become ready within {timeout}. " +
             $"Last status: {lastStatusCode?.ToString() ?? "n/a"}. " +
             $"Last error: {lastException?.Message ?? "n/a"}.");
+    }
+
+    /// <summary>Represents a captured integration-test log entry.</summary>
+    public sealed record CapturedLogEntry(LogLevel Level, string Category, string Message);
+
+    private sealed class TestLogProvider : ILoggerProvider
+    {
+        private readonly object _gate = new();
+        private readonly List<CapturedLogEntry> _entries = [];
+
+        public int Count
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _entries.Count;
+                }
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) => new TestLogger(categoryName, this);
+
+        public void Dispose()
+        {
+        }
+
+        public IReadOnlyList<CapturedLogEntry> GetEntriesSince(int startIndex)
+        {
+            lock (_gate)
+            {
+                int effectiveIndex = Math.Clamp(startIndex, 0, _entries.Count);
+                return _entries.Skip(effectiveIndex).ToList();
+            }
+        }
+
+        private void Add(CapturedLogEntry entry)
+        {
+            lock (_gate)
+            {
+                _entries.Add(entry);
+            }
+        }
+
+        private sealed class TestLogger(string categoryName, TestLogProvider owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+                => owner.Add(new CapturedLogEntry(logLevel, categoryName, formatter(state, exception)));
+        }
     }
 }
 

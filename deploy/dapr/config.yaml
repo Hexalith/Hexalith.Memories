@@ -1,0 +1,29 @@
+# DAPR Configuration (Story 5.4 — AC3)
+#
+# This file defines the DAPR Configuration resource for the Memories Server app. It scopes access to
+# the local-file secret store so only the embedding-api-key and llm-secret entries are readable.
+#
+# NOTE: DAPR API token authentication is NOT configured here — tokens are injected via environment
+# variables on both the application (APP_API_TOKEN) and the DAPR sidecar (DAPR_API_TOKEN). The
+# `api.allowed` block in a DAPR Configuration controls access-control policy (which APIs are callable)
+# and is a separate mechanism from token authentication. Do not conflate the two.
+#
+# Production deployment guidance:
+#   - Inject APP_API_TOKEN and DAPR_API_TOKEN via Kubernetes Secrets or the platform's secret manager.
+#   - Use a rotation policy that matches your operational risk tolerance.
+#   - NEVER expose the application port externally. All external traffic must terminate at the DAPR
+#     sidecar so the token check is enforced. Direct access to the app port bypasses authentication;
+#     Story D8 (Phase 1.5) will add an application-level TenantAuthorizationMiddleware for external
+#     callers.
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: memories-config
+spec:
+  secrets:
+    scopes:
+      - storeName: secretstore
+        defaultAccess: deny
+        allowedSecrets:
+          - embedding-api-key
+          - llm-secret
