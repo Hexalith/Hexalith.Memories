@@ -311,6 +311,135 @@ public class TenantRegistryServiceTests
             cancellationToken: Arg.Any<CancellationToken>());
     }
 
+    // Story 5.5 AC3: UpdateTenantDisplayNameAsync — ETag CAS, operational log, not-found path.
+    [Fact]
+    public async Task UpdateTenantDisplayNameAsync_UpdatesDisplayName_AndEmitsLog()
+    {
+        TenantRegistryEntry existing = CreateEntry("acme", "Old Name", TenantStatus.Active);
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-acme",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)existing, "etag-42"));
+        daprClient.TrySaveStateAsync(
+                "statestore",
+                "tenant-registry-acme",
+                Arg.Any<TenantRegistryEntry>(),
+                "etag-42",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        List<(LogLevel Level, EventId EventId, string Message)> logs = [];
+        ILogger<TenantRegistryService> logger = new ListLogger<TenantRegistryService>(logs);
+        TenantRegistryService service = new(daprClient, logger);
+
+        TenantInfo result = await service.UpdateTenantDisplayNameAsync(
+            "acme",
+            "operator@127.0.0.1",
+            "Acme Inc",
+            CancellationToken.None);
+
+        result.DisplayName.ShouldBe("Acme Inc");
+
+        await daprClient.Received(1).TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-acme",
+            Arg.Is<TenantRegistryEntry>(e => e.Tenant.DisplayName == "Acme Inc"),
+            "etag-42",
+            cancellationToken: Arg.Any<CancellationToken>());
+
+        logs.ShouldContain(l => l.EventId.Id == 5501 && l.Level == LogLevel.Information && l.Message.Contains("field=displayName") && l.Message.Contains("oldValue=Old Name") && l.Message.Contains("newValue=Acme Inc") && l.Message.Contains("actor=operator@127.0.0.1"));
+    }
+
+    [Fact]
+    public async Task UpdateTenantDisplayNameAsync_WhenTenantMissing_Throws()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-missing",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.UpdateTenantDisplayNameAsync("missing", "actor@1.2.3.4", "New", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UpdateTenantDisplayNameAsync_WhenSameValue_LogsAndReturns_WithoutSave()
+    {
+        TenantRegistryEntry existing = CreateEntry("acme", "Acme Corp", TenantStatus.Active);
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-acme",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)existing, "etag-x"));
+
+        List<(LogLevel Level, EventId EventId, string Message)> logs = [];
+        ILogger<TenantRegistryService> logger = new ListLogger<TenantRegistryService>(logs);
+        TenantRegistryService service = new(daprClient, logger);
+
+        TenantInfo result = await service.UpdateTenantDisplayNameAsync(
+            "acme",
+            "actor@1.2.3.4",
+            "Acme Corp",
+            CancellationToken.None);
+
+        result.DisplayName.ShouldBe("Acme Corp");
+
+        await daprClient.DidNotReceive().TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-acme",
+            Arg.Any<TenantRegistryEntry>(),
+            Arg.Any<string>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+
+        logs.ShouldContain(l => l.EventId.Id == 5501);
+    }
+
+    [Fact]
+    public async Task UpdateTenantDisplayNameAsync_RetriesOnConcurrentWrite_UntilBudgetExhausted()
+    {
+        TenantRegistryEntry existing = CreateEntry("acme", "Old", TenantStatus.Active);
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-acme",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)existing, "etag-1"));
+        daprClient.TrySaveStateAsync(
+                "statestore",
+                "tenant-registry-acme",
+                Arg.Any<TenantRegistryEntry>(),
+                Arg.Any<string>(),
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.UpdateTenantDisplayNameAsync("acme", "actor@x", "New", CancellationToken.None));
+    }
+
+    private sealed class ListLogger<TCategory>(List<(LogLevel Level, EventId EventId, string Message)> sink) : ILogger<TCategory>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => sink.Add((logLevel, eventId, formatter(state, exception)));
+    }
+
     private static TenantRegistryEntry CreateEntry(string tenantId, string displayName, TenantStatus status, string? workflowInstanceId = null)
         => new(new TenantInfo(tenantId, displayName, status, DateTimeOffset.UtcNow), workflowInstanceId);
 

@@ -67,6 +67,9 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
             .GenerateAsync(input.ContentText, input.TenantId, config, CancellationToken.None)
             .ConfigureAwait(false);
 
-        return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions);
+        return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions)
+        {
+            Model = config.Model,
+        };
     }
 }

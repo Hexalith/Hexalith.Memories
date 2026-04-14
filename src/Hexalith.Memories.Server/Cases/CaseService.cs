@@ -967,6 +967,9 @@ internal sealed class CaseService
         _ = fields.TryGetValue("status", out string? statusStr);
         _ = fields.TryGetValue("metadataJson", out string? metadataJson);
         _ = fields.TryGetValue("embeddingProvider", out string? embeddingProvider);
+        // Story 5.5 FR70: memory units indexed before 5.5 have no embeddingModel field;
+        // missing → null (not a mismatch — legacy data pre-dates the field).
+        _ = fields.TryGetValue("embeddingModel", out string? embeddingModel);
         _ = fields.TryGetValue("embeddingDimensions", out string? embeddingDimensionsStr);
 
         _ = Enum.TryParse(sourceTypeStr, ignoreCase: true, out SourceType sourceType);
@@ -994,6 +997,7 @@ internal sealed class CaseService
             Status = status,
             Metadata = ParseMetadata(metadataJson),
             EmbeddingProvider = string.IsNullOrWhiteSpace(embeddingProvider) ? null : embeddingProvider,
+            EmbeddingModel = string.IsNullOrWhiteSpace(embeddingModel) ? null : embeddingModel,
             EmbeddingDimensions = embeddingDimensions,
         };
     }

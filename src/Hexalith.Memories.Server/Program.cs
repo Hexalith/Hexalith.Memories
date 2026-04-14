@@ -98,6 +98,8 @@ builder.Services.AddSingleton<CaseActivityService>(sp =>
 builder.Services.AddScoped<CaseService>();
 builder.Services.AddSingleton<TenantRegistryService>();
 builder.Services.AddSingleton<TenantStatusGuard>();
+// Story 5.5: per-tenant operational metrics for GET /api/tenants and GET /configuration.
+builder.Services.AddSingleton<TenantMetricsService>();
 builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
     new TenantIsolationVerifier(
         sp.GetRequiredService<TenantRegistryService>(),
@@ -379,10 +381,24 @@ app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
     return state is null ? Results.NotFound() : Results.Ok(state);
 });
 
-app.MapGet("/api/tenants", async (TenantRegistryService registry) =>
+// Story 5.5 AC1 / FR41: enriched tenant listing — per-tenant counts + index health + activity.
+// Contract change (pre-Gate-2): now returns TenantSummary[] instead of TenantInfo[].
+app.MapGet("/api/tenants", async (
+    TenantRegistryService registry,
+    TenantMetricsService metrics,
+    IActorProxyFactory actorProxyFactory,
+    CancellationToken cancellationToken) =>
 {
-    IReadOnlyList<TenantInfo> tenants = await registry.ListTenantsAsync(CancellationToken.None);
-    return Results.Ok(tenants);
+    IReadOnlyList<TenantInfo> tenants = await registry.ListTenantsAsync(cancellationToken);
+    // Parallel per-tenant enrichment. Each tenant has a distinct TenantConfigurationActor instance
+    // (actor id = tenant id), so concurrent proxy calls do not serialize against each other.
+    // Per-tenant failure is swallowed — a tenant whose metrics cannot be fetched still appears
+    // with nulls / IndexHealth.Unknown.
+    Task<TenantSummary>[] tasks = tenants
+        .Select(tenant => BuildTenantSummaryAsync(tenant, metrics, actorProxyFactory, cancellationToken))
+        .ToArray();
+    TenantSummary[] summaries = await Task.WhenAll(tasks);
+    return Results.Ok(summaries);
 });
 
 app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, string tenantId) =>
@@ -400,6 +416,138 @@ app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, str
             $"Tenant '{tenantId}' not found.",
             "Use GET /api/tenants to list available tenants."))
         : Results.Ok(tenant);
+});
+
+// Story 5.5 AC2 / FR45: composed configuration view (embedding + metrics + health).
+app.MapGet("/api/tenants/{tenantId}/configuration", async (
+    TenantRegistryService registry,
+    TenantStatusGuard tenantGuard,
+    TenantMetricsService metrics,
+    IActorProxyFactory actorProxyFactory,
+    string tenantId,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    TenantInfo tenant = (await registry.GetTenantAsync(tenantId, cancellationToken))!;
+
+    ITenantConfigurationActor actor = actorProxyFactory
+        .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenantId), nameof(TenantConfigurationActor));
+    TenantEmbeddingConfig embeddingConfig = await actor.GetEmbeddingConfigAsync();
+
+    Task<(TenantIndexSizes Sizes, TenantIndexStatus Status)> sizesTask = metrics.GetIndexSizesAsync(tenantId, cancellationToken);
+    Task<long?> countTask = metrics.GetMemoryUnitCountAsync(tenantId, cancellationToken);
+    Task<DateTimeOffset?> activityTask = metrics.GetLastActivityAtAsync(tenantId, cancellationToken);
+    await Task.WhenAll(sizesTask, countTask, activityTask);
+
+    TenantConfigurationView view = new()
+    {
+        Id = tenant.Id,
+        DisplayName = tenant.DisplayName,
+        Status = tenant.Status,
+        CreatedAt = tenant.CreatedAt,
+        LastActivityAt = activityTask.Result,
+        MemoryUnitCount = countTask.Result,
+        EmbeddingConfig = embeddingConfig,
+        IndexStatus = sizesTask.Result.Status,
+    };
+    return Results.Ok(view);
+});
+
+// Story 5.5 AC3 / FR42: PATCH display name (rate-limit updates go through PUT /embedding-config).
+app.MapPatch("/api/tenants/{tenantId}", async (
+    TenantRegistryService registry,
+    TenantStatusGuard tenantGuard,
+    TenantMetricsService metrics,
+    IActorProxyFactory actorProxyFactory,
+    HttpContext httpContext,
+    ILoggerFactory loggerFactory,
+    string tenantId,
+    TenantUpdateInput? body,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    if (body is null)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "Request body is required.",
+            "Provide a JSON object with a non-empty displayName field."));
+    }
+
+    if (string.IsNullOrWhiteSpace(body.DisplayName))
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "DisplayName must not be empty or whitespace.",
+            "Provide a non-empty displayName value."));
+    }
+
+    if (body.DisplayName.Length > 100)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "DisplayName must be 100 characters or fewer.",
+            "Shorten the displayName and retry."));
+    }
+
+    foreach (char c in body.DisplayName)
+    {
+        if (char.IsControl(c))
+        {
+            return Results.BadRequest(new ErrorResponse(
+                "INVALID_INPUT",
+                "DisplayName must not contain control characters.",
+                "Remove any control characters from the displayName."));
+        }
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+    }
+
+    // Amendment R: weak attribution — "operator@{remoteIp}". Identity middleware (Phase 1.5)
+    // replaces this with a real principal without changing the log signature.
+    string remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    string actor = $"operator@{remoteIp}";
+
+    try
+    {
+        TenantInfo updated = await registry.UpdateTenantDisplayNameAsync(
+            tenantId,
+            actor,
+            body.DisplayName,
+            cancellationToken);
+
+        TenantSummary summary = await BuildTenantSummaryAsync(updated, metrics, actorProxyFactory, cancellationToken);
+        return Results.Ok(summary);
+    }
+    catch (Dapr.DaprException)
+    {
+        return Results.Json(
+            new ErrorResponse(
+                "DAPR_UNAVAILABLE",
+                "DAPR sidecar is not ready.",
+                "Check service health via /healthz and retry."),
+            statusCode: 503);
+    }
 });
 
 // Story 5.2: Tenant deletion endpoints
@@ -1677,6 +1825,50 @@ static IReadOnlySet<string> DetermineHybridExplanationAxes(
     }
 
     return explanationAxes;
+}
+
+// Story 5.5 AC1: builds the enriched TenantSummary for a single tenant. Tolerant to per-tenant
+// enrichment failure — a tenant whose metrics cannot be fetched still appears with nulls / Unknown.
+static async Task<TenantSummary> BuildTenantSummaryAsync(
+    TenantInfo tenant,
+    TenantMetricsService metrics,
+    IActorProxyFactory actorProxyFactory,
+    CancellationToken cancellationToken)
+{
+    Task<(TenantIndexSizes Sizes, TenantIndexStatus Status)> sizesTask = metrics.GetIndexSizesAsync(tenant.Id, cancellationToken);
+    Task<long?> countTask = metrics.GetMemoryUnitCountAsync(tenant.Id, cancellationToken);
+    Task<DateTimeOffset?> activityTask = metrics.GetLastActivityAtAsync(tenant.Id, cancellationToken);
+
+    // Fetch embedding config via actor proxy. Each tenant has a distinct actor (id = tenantId),
+    // so cross-tenant concurrent calls do not serialize against each other.
+    // Per-tenant failure is swallowed — reindexRequired defaults to false.
+    bool reindexRequired = false;
+    try
+    {
+        ITenantConfigurationActor configActor = actorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenant.Id), nameof(TenantConfigurationActor));
+        TenantEmbeddingConfig config = await configActor.GetEmbeddingConfigAsync();
+        reindexRequired = config.ReindexRequired;
+    }
+    catch (Exception)
+    {
+        // Tolerate: tenant remains in the list with reindexRequired=false.
+    }
+
+    await Task.WhenAll(sizesTask, countTask, activityTask);
+
+    return new TenantSummary
+    {
+        Id = tenant.Id,
+        DisplayName = tenant.DisplayName,
+        Status = tenant.Status,
+        CreatedAt = tenant.CreatedAt,
+        MemoryUnitCount = countTask.Result,
+        IndexSizes = sizesTask.Result.Sizes,
+        IndexStatus = sizesTask.Result.Status,
+        ReindexRequired = reindexRequired,
+        LastActivityAt = activityTask.Result,
+    };
 }
 
 static object CreateEmbeddingConfigConflictResponse(

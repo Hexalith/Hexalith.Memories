@@ -284,6 +284,7 @@ public class IndexGraphActivityTests
         IngestedAt = DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
         EmbeddingVector = new float[] { 0.1f, 0.2f, 0.3f },
         EmbeddingProvider = "google:text-embedding-004",
+        EmbeddingModel = "gemini-embedding-001",
         EmbeddingDimensions = 3,
     };
 

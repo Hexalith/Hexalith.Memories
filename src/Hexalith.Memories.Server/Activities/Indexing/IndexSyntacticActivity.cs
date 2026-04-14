@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Globalization;
 using System.Text.Json;
 
 using Dapr.Workflow;
@@ -74,10 +75,34 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
                 new HashEntry("contentHash", input.ContentHash),
                 new HashEntry("caseId", input.CaseId),
                 new HashEntry("embeddingProvider", input.EmbeddingProvider),
+                // Story 5.5 FR70: persist the embedding model so future audits can attribute
+                // vectors to the (provider, model) pair that generated them.
+                new HashEntry("embeddingModel", input.EmbeddingModel),
                 new HashEntry("ingestedBy", input.IngestedBy),
                 new HashEntry("ingestedAt", ingestedAt),
                 new HashEntry("lastUpdated", ingestedAt),
             ]).ConfigureAwait(false);
+
+        // Story 5.5 AC1 / Amendment A + L + T: stamp last-activity AFTER the hash write succeeds
+        // (ordering L: never advertise activity that never happened). Fire-and-forget because a
+        // stale timestamp is acceptable; a failed ingest is not. Deploy-doc TODO: the
+        // {tenantId}:metadata hash field requires a noeviction (or volatile-*) maxmemory-policy
+        // so it is not silently lost under memory pressure (Amendment T).
+        try
+        {
+            _ = db.HashSetAsync(
+                $"{input.TenantId}:metadata",
+                "lastActivityAt",
+                input.IngestedAt.UtcDateTime.Ticks.ToString(CultureInfo.InvariantCulture),
+                flags: CommandFlags.FireAndForget);
+        }
+        catch (RedisException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to stamp lastActivityAt for tenant {TenantId}; ingest continues",
+                input.TenantId);
+        }
 
         _logger.LogInformation(
             "Indexed memory unit {MemoryUnitId} in RediSearch for tenant {TenantId}",

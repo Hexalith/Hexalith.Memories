@@ -858,6 +858,72 @@ public class CaseServiceTests
         result["case-1"].ShouldBe("Alpha");
     }
 
+    // Story 5.5 AC6 / FR70: memory unit hash with embeddingModel field populates MemoryUnit.EmbeddingModel.
+    [Fact]
+    public async Task GetMemoryUnitAsync_WhenHashHasEmbeddingModel_PopulatesMemoryUnitField()
+    {
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new HashEntry("id", "mu-001"),
+                new HashEntry("caseId", "case-001"),
+                new HashEntry("content", "hi"),
+                new HashEntry("contentHash", "h"),
+                new HashEntry("sourceUri", "file:///x.txt"),
+                new HashEntry("sourceType", "file"),
+                new HashEntry("ingestedBy", "u@x"),
+                new HashEntry("ingestedAt", "2026-04-14T10:00:00+00:00"),
+                new HashEntry("lastUpdated", "2026-04-14T10:00:00+00:00"),
+                new HashEntry("embeddingProvider", "google:gemini-embedding-001"),
+                new HashEntry("embeddingModel", "gemini-embedding-001"),
+                new HashEntry("embeddingDimensions", "768"),
+            ]);
+
+        MemoryUnit? result = await service.GetMemoryUnitAsync("tenant-1", "mu-001", CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.EmbeddingProvider.ShouldBe("google:gemini-embedding-001");
+        result.EmbeddingModel.ShouldBe("gemini-embedding-001");
+        result.EmbeddingDimensions.ShouldBe(768);
+    }
+
+    // Story 5.5 AC6 / FR70: legacy memory unit hash without embeddingModel returns null for that field.
+    [Fact]
+    public async Task GetMemoryUnitAsync_WhenHashLacksEmbeddingModel_ReturnsNullForField()
+    {
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:legacy-mu"), Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new HashEntry("id", "legacy-mu"),
+                new HashEntry("caseId", "case-001"),
+                new HashEntry("content", "pre-5.5 memory unit"),
+                new HashEntry("contentHash", "h"),
+                new HashEntry("sourceUri", "file:///x.txt"),
+                new HashEntry("sourceType", "file"),
+                new HashEntry("ingestedBy", "u@x"),
+                new HashEntry("ingestedAt", "2026-03-01T10:00:00+00:00"),
+                new HashEntry("lastUpdated", "2026-03-01T10:00:00+00:00"),
+                new HashEntry("embeddingProvider", "google:gemini-embedding-001"),
+                // No embeddingModel — pre-FR70 data.
+            ]);
+
+        MemoryUnit? result = await service.GetMemoryUnitAsync("tenant-1", "legacy-mu", CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.EmbeddingProvider.ShouldBe("google:gemini-embedding-001");
+        result.EmbeddingModel.ShouldBeNull();
+    }
+
     [Fact]
     public async Task GetMemoryUnitAsync_WhenHashLacksId_ShouldUseRequestedIdAndDeserializeMetadata()
     {

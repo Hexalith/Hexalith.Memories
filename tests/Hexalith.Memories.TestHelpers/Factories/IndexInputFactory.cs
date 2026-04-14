@@ -22,6 +22,7 @@ public static class IndexInputFactory
         DateTimeOffset? ingestedAt = null,
         float[]? embeddingVector = null,
         string? embeddingProvider = null,
+        string? embeddingModel = null,
         int? embeddingDimensions = null,
         string? causationId = null,
         string? correlationId = null)
@@ -41,6 +42,7 @@ public static class IndexInputFactory
             IngestedAt = ingestedAt ?? DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
             EmbeddingVector = embeddingVector ?? CreateDefaultVector(),
             EmbeddingProvider = embeddingProvider ?? "google:text-embedding-004",
+            EmbeddingModel = embeddingModel ?? "gemini-embedding-001",
             EmbeddingDimensions = embeddingDimensions ?? 3,
             CausationId = causationId,
             CorrelationId = correlationId,

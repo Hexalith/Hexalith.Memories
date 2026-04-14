@@ -95,6 +95,7 @@ public class IndexInputSerializationTests
         IngestedAt = DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
         EmbeddingVector = [0.1f, 0.2f, 0.3f],
         EmbeddingProvider = "google:text-embedding-004",
+        EmbeddingModel = "gemini-embedding-001",
         EmbeddingDimensions = 3,
         CausationId = "mu-cause-001",
         CorrelationId = "mu-corr-001",

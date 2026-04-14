@@ -126,6 +126,11 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 IngestedAt = ingestedAt,
                 EmbeddingVector = embedding.Vector,
                 EmbeddingProvider = embedding.Provider,
+                // Story 5.5 FR70: thread the model through from EmbeddingResult so it lands in
+                // the Redis hash (see IndexSyntacticActivity) and is readable via GET memory-unit.
+                // Historical replayed EmbeddingResult payloads may lack the field — fall back to
+                // the compound provider string so downstream indexing always has something to write.
+                EmbeddingModel = embedding.Model ?? embedding.Provider,
                 EmbeddingDimensions = embedding.Dimensions,
                 Metadata = input.Metadata,
                 CausationId = input.CausationId,

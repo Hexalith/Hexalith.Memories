@@ -115,6 +115,49 @@ public class GenerateEmbeddingActivityTests
         await Should.ThrowAsync<ArgumentException>(() => activity.RunAsync(context, input));
     }
 
+    // Story 5.5 AC5 / FR69 — per-tenant rate-limit ceiling propagates from TenantConfigurationActor
+    // to the EmbeddingRateLimiterActor on every activity invocation (pull-on-next-embedding).
+    [Fact]
+    public async Task RunAsync_PropagatesConfiguredRateLimitCeilingToRateLimiter()
+    {
+        float[] vector = new float[768];
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(
+            EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 });
+        rateLimiter.TryConsumeAsync().Returns(true);
+
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        _ = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
+
+        await rateLimiter.Received(1).SetCeilingAsync(500);
+        await rateLimiter.Received(1).TryConsumeAsync();
+    }
+
+    // Story 5.5 AC6 / FR70 — EmbeddingResult carries the model identifier so the ingestion
+    // workflow can thread it through to IndexInput/IndexSyntacticActivity.
+    [Fact]
+    public async Task RunAsync_PopulatesEmbeddingResultModelFromConfig()
+    {
+        float[] vector = new float[768];
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true);
+
+        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        EmbeddingResult result = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
+
+        result.Model.ShouldBe(EmbeddingProviderDefaults.GoogleModelName);
+    }
+
     [Fact]
     public async Task RunAsync_UsesCorrectActorIdFromTenantId()
     {

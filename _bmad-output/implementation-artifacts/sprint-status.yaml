@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-14 # Story 5.4 code review fixes applied; tenant context enforcement done
+last_updated: 2026-04-14 # Story 5.5 implementation complete, moved to review
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -93,7 +93,7 @@ development_status:
   5-2-tenant-deletion-workflow: done
   5-3-tenant-isolation-verification: done
   5-4-tenant-context-enforcement: done
-  5-5-tenant-configuration-and-listing: ready-for-dev
+  5-5-tenant-configuration-and-listing: review
   5-6-graceful-degradation-on-backend-failure: backlog
   epic-5-retrospective: optional
 

@@ -402,6 +402,26 @@ public class IngestionWorkflowTests
         result.IngestedAt.UtcDateTime.ShouldBe(TestTimestamp);
     }
 
+    // Story 5.5 AC6 / FR70 — unit-level fallback for the FR70 golden-path integration test
+    // (per Task 6.1 integration-tests deferral pattern): asserts that the ingestion workflow
+    // threads EmbeddingResult.Model through to IndexInput.EmbeddingModel so IndexSyntacticActivity
+    // can persist it to Redis.
+    [Fact]
+    public async Task RunAsync_ShouldPropagateEmbeddingModelFromEmbeddingResultToIndexInput()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(i => i.EmbeddingModel == "gemini-embedding-001"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
     [Fact]
     public async Task RunAsync_ShouldPropagateProvenanceToIndexActivities()
     {
@@ -583,7 +603,10 @@ public class IngestionWorkflowTests
             .Returns(_ =>
             {
                 callLog?.Add(nameof(GenerateEmbeddingActivity));
-                return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3));
+                return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3)
+                {
+                    Model = "gemini-embedding-001",
+                });
             });
 
         // Record activity (best-effort, needed for both success and failure paths)

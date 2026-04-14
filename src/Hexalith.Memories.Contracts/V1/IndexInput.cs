@@ -25,6 +25,9 @@ public sealed record IndexInput
 
     public required string EmbeddingProvider { get; init; }
 
+    /// <summary>The embedding model identifier (e.g. "gemini-embedding-001"). Required: every new ingestion must supply the model that generated the vector (FR70, Story 5.5).</summary>
+    public required string EmbeddingModel { get; init; }
+
     public required int EmbeddingDimensions { get; init; }
 
     public Dictionary<string, MetadataField> Metadata

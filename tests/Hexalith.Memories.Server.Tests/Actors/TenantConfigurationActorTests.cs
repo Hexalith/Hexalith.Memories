@@ -156,6 +156,20 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
+    // Story 5.5 Task 5.3 — protect AC3's rate-limit update path by asserting that the breaking-
+    // fields contract does not include rateLimitPerMinute. If it ever did, PUT /embedding-config
+    // rate-limit-only updates would start throwing 409 by accident.
+    [Fact]
+    public void GetBreakingChangeFields_RateLimitOnlyDelta_ShouldReturnEmptyList()
+    {
+        TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig proposed = current with { RateLimitPerMinute = current.RateLimitPerMinute + 500 };
+
+        string[] affected = EmbeddingProviderDefaults.GetBreakingChangeFields(current, proposed);
+
+        affected.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task SetEmbeddingConfigAsync_NonBreakingChange_ShouldPreserveExistingReindexFlag()
     {

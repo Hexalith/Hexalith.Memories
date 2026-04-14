@@ -72,6 +72,15 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IReadOnlyList<TenantInfo>))]
 [JsonSerializable(typeof(TenantIsolationCheckResult))]
 [JsonSerializable(typeof(TenantIsolationVerificationResult))]
+// Story 5.5: tenant configuration & listing contracts.
+[JsonSerializable(typeof(TenantSummary))]
+[JsonSerializable(typeof(IReadOnlyList<TenantSummary>))]
+[JsonSerializable(typeof(List<TenantSummary>))]
+[JsonSerializable(typeof(TenantIndexSizes))]
+[JsonSerializable(typeof(TenantIndexStatus))]
+[JsonSerializable(typeof(IndexHealth))]
+[JsonSerializable(typeof(TenantConfigurationView))]
+[JsonSerializable(typeof(TenantUpdateInput))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

@@ -16,6 +16,12 @@ public sealed record TenantEmbeddingConfig
 
     public required int RateLimitPerMinute { get; init; }
 
+    /// <summary>
+    /// The <em>name / identifier</em> of the secret that stores the provider API key
+    /// (e.g. <c>"google-embedding-api-key"</c>) — NOT the secret value itself.
+    /// The server resolves the secret via the configured DAPR secret store at embedding time;
+    /// the name is safe to return in public-facing configuration responses (see Story 5.5 AC2).
+    /// </summary>
     public required string ApiSecretKeyName { get; init; }
 
     public bool ReindexRequired { get; init; }

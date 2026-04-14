@@ -33,6 +33,12 @@ public sealed record MemoryUnit
 
     public string? EmbeddingProvider { get; init; }
 
+    /// <summary>
+    /// The embedding model identifier (e.g. "gemini-embedding-001") used to generate this memory unit's vector.
+    /// Nullable because memory units indexed before FR70 (Story 5.5) do not carry this field; legacy reads return null.
+    /// </summary>
+    public string? EmbeddingModel { get; init; }
+
     public int? EmbeddingDimensions { get; init; }
 
     public string? Classification { get; init; }

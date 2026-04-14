@@ -111,6 +111,28 @@ public class IndexSyntacticActivityTests
             () => activity.RunAsync(context, input));
     }
 
+    // Story 5.5 AC6 / FR70 — persist the embedding model alongside the existing provider entry.
+    [Fact]
+    public async Task RunAsync_ShouldPersistEmbeddingModelHashField()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db);
+        ILogger<IndexSyntacticActivity> logger = Substitute.For<ILogger<IndexSyntacticActivity>>();
+        IndexInput input = CreateTestInput() with { EmbeddingModel = "gemini-embedding-001" };
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IndexSyntacticActivity activity = new(redis, logger);
+
+        await activity.RunAsync(context, input);
+
+        await db.Received(1).HashSetAsync(
+            $"{input.TenantId}:mu:{input.MemoryUnitId}",
+            Arg.Is<HashEntry[]>(entries =>
+                HasEntry(entries, "embeddingModel", "gemini-embedding-001")
+                && HasEntry(entries, "embeddingProvider", input.EmbeddingProvider)),
+            Arg.Any<CommandFlags>());
+    }
+
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)
     {
         // SearchCommands.Create() calls db.Execute("FT.CREATE", ...) internally.
@@ -152,6 +174,7 @@ public class IndexSyntacticActivityTests
         IngestedAt = DateTimeOffset.Parse("2026-03-29T10:00:00+00:00"),
         EmbeddingVector = new float[] { 0.1f, 0.2f, 0.3f },
         EmbeddingProvider = "google:text-embedding-004",
+        EmbeddingModel = "gemini-embedding-001",
         EmbeddingDimensions = 3,
         Metadata = new Dictionary<string, MetadataField>
         {

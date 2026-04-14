@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tenants;
 
+using System.Diagnostics;
+
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
@@ -264,6 +266,85 @@ public sealed partial class TenantRegistryService
         return tenants;
     }
 
+    /// <summary>
+    /// Updates the display name of an existing tenant (Story 5.5 AC3 / FR42).
+    /// Uses the ETag CAS retry pattern (mirrors <see cref="RegisterOrGetTenantEntryAsync"/>) and
+    /// emits an <see cref="LogLevel.Information"/> operational-log event with the pinned field
+    /// names (<c>tenantId</c>, <c>field</c>, <c>oldValue</c>, <c>newValue</c>, <c>actor</c>,
+    /// <c>occurredAt</c>, <c>durationMs</c>) so migration to a Phase 2 audit store is a one-for-one
+    /// remap (Amendment J).
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="actor">Attribution for the caller (MVP: <c>"operator@{remoteIp}"</c> per Amendment R; Phase 1.5 replaces with authenticated principal).</param>
+    /// <param name="displayName">The new display name (already validated at the endpoint boundary).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated tenant info.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the tenant does not exist, or ETag CAS fails after the retry budget.</exception>
+    public async Task<TenantInfo> UpdateTenantDisplayNameAsync(
+        string tenantId,
+        string actor,
+        string displayName,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        string stateKey = GetTenantStateKey(tenantId);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        DateTimeOffset occurredAt = DateTimeOffset.UtcNow;
+
+        for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
+        {
+            (TenantRegistryEntry? existing, string etag) = await _daprClient
+                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                LogTenantNotFound(_logger, tenantId);
+                throw new InvalidOperationException($"Tenant '{tenantId}' not found in registry.");
+            }
+
+            string oldValue = existing.Tenant.DisplayName;
+            if (string.Equals(oldValue, displayName, StringComparison.Ordinal))
+            {
+                // No-op at value level, but still emit a log entry (observability over silence).
+                LogTenantFieldUpdated(
+                    _logger,
+                    tenantId,
+                    "displayName",
+                    oldValue,
+                    displayName,
+                    actor,
+                    occurredAt,
+                    (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+                return existing.Tenant;
+            }
+
+            TenantRegistryEntry updated = existing with { Tenant = existing.Tenant with { DisplayName = displayName } };
+            bool saved = await _daprClient
+                .TrySaveStateAsync(StoreName, stateKey, updated, etag, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (saved)
+            {
+                LogTenantFieldUpdated(
+                    _logger,
+                    tenantId,
+                    "displayName",
+                    oldValue,
+                    displayName,
+                    actor,
+                    occurredAt,
+                    (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+                return updated.Tenant;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to update tenant '{tenantId}' display name after {MaxTenantRegistrationRetries} attempts due to concurrent updates.");
+    }
+
     /// <summary>Checks whether a tenant exists in the registry.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -342,4 +423,18 @@ public sealed partial class TenantRegistryService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Tenant '{TenantId}' already exists in registry")]
     private static partial void LogTenantAlreadyExists(ILogger logger, string tenantId);
+
+    // Story 5.5 AC3 / FR42: operational log for tenant field updates. Field names are pinned
+    // to the anticipated Phase 2 audit event contract so migration is a one-to-one remap.
+    [LoggerMessage(EventId = 5501, Level = LogLevel.Information,
+        Message = "Tenant operational log: {TenantId} field={Field} oldValue={OldValue} newValue={NewValue} actor={Actor} occurredAt={OccurredAt:o} durationMs={DurationMs}")]
+    private static partial void LogTenantFieldUpdated(
+        ILogger logger,
+        string tenantId,
+        string field,
+        string oldValue,
+        string newValue,
+        string actor,
+        DateTimeOffset occurredAt,
+        long durationMs);
 }
