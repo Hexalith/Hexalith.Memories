@@ -21,23 +21,21 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
 ## Tasks / Subtasks
 
 - [ ] Task 1: Systematic tenant registry validation on all endpoints (AC: #1)
-  - [ ] 1.1 Audit `Program.cs` and identify all tenant-scoped endpoints that call `ValidateTenantId()` but NOT `TenantStatusGuard.ValidateTenantActiveAsync()`. Currently these endpoints only check format (regex + reserved names) but not registry existence:
-    - `GET /api/tenants/{tenantId}/embedding-config` (line ~197)
-    - `PUT /api/tenants/{tenantId}/embedding-config` (line ~212)
-    - `POST /api/tenants/{tenantId}/provision-status/{instanceId}` (line ~332)
-    - `GET /api/tenants/{tenantId}/deletion-status/{instanceId}` (line ~505)
-    - `POST /api/tenants/{tenantId}/verify` (line ~529)
-  - [ ] 1.2 Add `TenantStatusGuard.ValidateTenantActiveAsync()` calls to all identified endpoints. Use the same pattern as `/api/ingest` and `/api/search`:
+  - [ ] 1.1 Add `ValidateTenantExistsAsync(string tenantId, CancellationToken ct)` method to `TenantStatusGuard`. Checks existence only (not active status). Returns `TENANT_NOT_FOUND` (404) for missing tenants but allows any status. Keeps validation responsibility centralized in `TenantStatusGuard` rather than scattering `TenantRegistryService.GetTenantAsync()` calls across endpoints.
+  - [ ] 1.2 **Status-code-aware response pattern:** `TenantStatusGuard` returns `ErrorResponse` but the HTTP status differs by error code. Use this helper pattern (or apply inline):
     ```csharp
-    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
-    if (tenantStatusError is not null)
-    {
-        return Results.Conflict(tenantStatusError);
-    }
+    // TENANT_NOT_FOUND -> 404, all other tenant status errors (DELETING, PROVISIONING, FAILED) -> 409
+    static IResult ToHttpResult(ErrorResponse error) =>
+        error.Code == "TENANT_NOT_FOUND" ? Results.NotFound(error) : Results.Conflict(error);
     ```
-  - [ ] 1.3 Exception: The `POST /api/tenants/{tenantId}/verify` endpoint should allow non-Active tenants (verification should work on Provisioning, Failed, etc.) -- use the new `TenantStatusGuard.ValidateTenantExistsAsync()` method (see Task 1.4) for existence-only check without status enforcement.
-  - [ ] 1.4 Exception: The `GET /api/tenants/{tenantId}/deletion-status/{instanceId}` endpoint must work for Deleting tenants. Add a new method `ValidateTenantExistsAsync(string tenantId, CancellationToken ct)` on `TenantStatusGuard` that checks existence only (not active status), returning `TENANT_NOT_FOUND` for missing tenants but allowing any status. This keeps validation responsibility centralized in `TenantStatusGuard` rather than scattering `TenantRegistryService.GetTenantAsync()` calls across endpoints. Use this same method for the verify endpoint (Task 1.3).
-  - [ ] 1.5 Inject `TenantStatusGuard` into endpoint delegates where not already present. Some endpoints already have it (`/api/ingest`, `/api/search`, case endpoints). Only add to the 5 identified endpoints above.
+    **Pre-existing bug:** Some endpoints currently use `Results.Conflict(tenantStatusError)` for all `TenantStatusGuard` responses, which incorrectly returns 409 for `TENANT_NOT_FOUND` (should be 404). Fix this during implementation.
+  - [ ] 1.3 Update each partially-protected endpoint with its specific guard method (per-endpoint to prevent misapplication):
+    - `GET /api/tenants/{tenantId}/embedding-config` -- add `ValidateTenantActiveAsync()` (tenant must be Active to read config)
+    - `PUT /api/tenants/{tenantId}/embedding-config` -- add `ValidateTenantActiveAsync()` (tenant must be Active to update config)
+    - `POST /api/tenants/{tenantId}/provision-status/{instanceId}` -- add `ValidateTenantExistsAsync()` (must work for Provisioning tenants -- that's the endpoint's purpose)
+    - `GET /api/tenants/{tenantId}/deletion-status/{instanceId}` -- add `ValidateTenantExistsAsync()` (must work for Deleting tenants -- that's the endpoint's purpose)
+    - `POST /api/tenants/{tenantId}/verify` -- add `ValidateTenantExistsAsync()` (should work on any existing tenant regardless of status, useful for diagnosing Failed tenants)
+  - [ ] 1.4 Inject `TenantStatusGuard` into endpoint delegates where not already present. Only add to the 5 endpoints above.
 
 - [ ] Task 2: Cross-tenant access mismatch detection (AC: #2)
   - [ ] 2.1 Identify cross-tenant mismatch vectors in the current API surface:
@@ -46,13 +44,18 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
     - **Memory unit access:** `GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}` -- the memory unit's `TenantId` field could differ from the path tenantId if data corruption exists. The current code already validates via `caseService.GetMemoryUnitAsync(tenantId, ...)` which scopes by tenant.
     - **Search:** `GET /api/search?tenantId=...` -- single source, no mismatch.
     - **Graph traversal:** Search with `startNodeId` -- graph queries already scoped to tenant-specific FalkorDB database (AC4). No mismatch vector.
-  - [ ] 2.2 Add `TENANT_MISMATCH` detection for the one remaining vector: **memory unit tenant ownership validation**. When a memory unit is retrieved and its `TenantId` field does not match the path/request tenantId, return:
-    ```json
-    {"code": "TENANT_MISMATCH", "message": "Memory unit '{id}' belongs to tenant '{actualTenantId}', not '{requestTenantId}'.", "suggestion": "Verify the tenant ID in your request."}
-    ```
-    This is a defense-in-depth check -- if the physical isolation is working, this should never trigger. But if it does, it prevents data leakage.
-  - [ ] 2.3 Add `TENANT_MISMATCH` validation in `CaseService` methods that retrieve data: after fetching a `Case` or `MemoryUnit` by ID, verify its `TenantId` matches the requested tenant. Return null (treated as not-found) or throw if mismatch is detected. Log a `Critical` level message since this indicates an isolation breach. **Pre-check:** Verify that `MemoryUnit` record includes a `TenantId` field -- if it doesn't, the mismatch check has nothing to compare against and the field must be added to the contract first.
-  - [ ] 2.4 Register error code `TENANT_MISMATCH` in the error response conventions documentation (inline comment in `Program.cs` alongside existing error codes).
+  - [ ] 2.2 Add **triple-defense** mismatch detection for the memory unit vector. `TENANT_MISMATCH` is an **internal observability label** (log + metric), NOT a user-facing error response. Rationale: under the physical isolation model, mismatch is structurally impossible at the request boundary -- it can only happen from data corruption. Returning a distinct error code to the user would leak information about internal state; returning a standard `MEMORY_UNIT_NOT_FOUND` (404) hides the anomaly from callers while the log/metric surfaces it to operators.
+
+    **Defense layering:** Redis key prefixing (`{tenantId}:mu:...`) is the **primary** defense -- data from another tenant should not even be retrievable by key. Story 5.3's verifier is the **secondary** data-integrity detector. This task adds a **tertiary** runtime check in the data-access path so corruption is caught on first access rather than waiting for a verification run.
+
+    **Design rationale (documented here to prevent future "refactoring"):** Mismatch checks live inline in `CaseService` methods rather than in a decorator wrapping `CaseService`. A decorator would be cleaner abstractionally but violates anti-pattern #6 (no new abstractions for one-time operations) and adds a layer of indirection that makes the data path harder to audit. See Comparative Analysis Matrix scoring in the story's elicitation history.
+  - [ ] 2.3 In `CaseService` methods that retrieve data (`GetMemoryUnitAsync`, `GetCaseAsync`): after fetching, compare the returned record's `TenantId` field against the requested tenantId. On mismatch:
+    - **Return null** (treated as 404 by the endpoint -- no special response path needed). Do NOT throw -- throwing could be weaponized as a DoS vector if the mismatch is attacker-triggerable.
+    - **Log at `Critical` level** with structured fields: `requestedTenantId`, `actualTenantId`, `resourceType`, `resourceId`. Use `[LoggerMessage]` source generator for zero-alloc logging.
+    - **Increment a metric** (if metrics infrastructure exists) named `tenant_mismatch_detected_total` with tags `{resourceType}`. If no metrics infrastructure exists yet, a counter on a static class or simple log-based counting is acceptable for MVP -- do NOT add a full metrics library for this one signal.
+
+    **Pre-check:** Verify that `MemoryUnit` record includes a `TenantId` field. If it doesn't, the mismatch check has nothing to compare against and the field must be added to the contract first. Same for `Case` record.
+  - [ ] 2.4 Document `TENANT_MISMATCH` in the story's Error Codes section (this file) as an internal-only label. Also document it in `CaseService` XML docs where the check lives.
 
 - [ ] Task 3: DAPR API token authentication (AC: #3)
   - [ ] 3.1 Create `deploy/dapr/config.yaml` with secret scoping (NOT access control policy -- that's a separate DAPR mechanism):
@@ -78,6 +81,8 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
   - [ ] 3.3 Document the DAPR API token configuration in inline comments. For production: tokens injected via environment variables or Kubernetes secrets. For development: use a fixed dev token via Aspire configuration.
   - [ ] 3.4 **Scope:** This task configures DAPR-level token authentication (sidecar rejects unauthenticated requests). It does NOT implement application-level `TenantAuthorizationMiddleware` (that's Phase 1.5, architecture decision D8). MVP validates that DAPR API tokens are configured and documented.
   - [ ] 3.5 **Testability note:** AC3 is fundamentally untestable in unit tests -- DAPR API token validation is handled by the DAPR runtime, not application code. Validation requires either Aspire integration tests (verify sidecar rejects unauthenticated requests) or manual verification. Document this gap explicitly.
+  - [ ] 3.6 **Sidecar-only access:** Document in the AppHost comments that the application port must NOT be exposed externally -- all external access must go through the DAPR sidecar. Direct access to the app port bypasses the token check. Phase 1.5's `TenantAuthorizationMiddleware` (D8) will address external access properly.
+  - [ ] 3.7 **Test backward compatibility:** Configure DAPR API tokens ONLY for production/staging profiles, NOT for the test Aspire AppHost fixture. Alternatively, ensure test infrastructure injects the token into requests. Verify all 39+ existing integration tests still pass after token configuration. Breaking the test suite is a non-starter.
 
 - [ ] Task 4: FalkorDB query scoping audit (AC: #4)
   - [ ] 4.1 Audit all FalkorDB query paths to confirm tenant database scoping. All callers must use `tenantId` as the FalkorDB graph/database name:
@@ -89,8 +94,7 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
     - `CleanupGraphActivity` -- uses tenantId as graph ID
     - `DeleteFalkorDbBatchActivity` -- uses tenantId as graph ID
   - [ ] 4.2 Confirm all Cypher queries go through `IGraphQueryBuilder` / `GraphQueryBuilder` -- no raw Cypher string construction. Grep for `GRAPH.QUERY` calls and verify they use builder-generated queries only. Known exception: `TenantIsolationVerifier` uses `GRAPH.LIST` and `GRAPH.QUERY` directly for infrastructure-level isolation testing (not application data queries) -- this is acceptable per D9.
-  - [ ] 4.3 If any violations are found, fix them. If all paths are already compliant, document the audit results in a comment block in the story file's Dev Agent Record section.
-  - [ ] 4.4 Add a code comment in `GraphQueryBuilder.cs` header referencing this audit and D9 compliance: `// All Cypher queries must go through this builder (D9). Audited in Story 5.4.`
+  - [ ] 4.3 If any violations are found, fix them. If all paths are already compliant, document the audit results (file list audited, findings) in this story's Dev Agent Record section -- not in source code comments. The `IGraphQueryBuilder` interface contract is already the architectural enforcement mechanism; story IDs in comments age poorly.
 
 - [ ] Task 5: Unit tests for tenant context enforcement (AC: #1, #2)
   - [ ] 5.1 `tests/Hexalith.Memories.Server.Tests/Tenants/TenantContextEnforcementTests.cs`
@@ -104,7 +108,19 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
   - [ ] 5.3 Test cases for AC2 (mismatch detection):
     - CaseService returns null when memory unit TenantId mismatches requested tenant
     - CaseService logs Critical when tenant mismatch detected (isolation breach indicator)
+    - CaseService increments mismatch counter/metric on detection
     - Endpoint returns 404 (not data leakage) when memory unit belongs to different tenant
+
+    **How to construct mismatch scenarios in unit tests:** Use NSubstitute to mock `IConnectionMultiplexer` / `IDatabase`. Configure `HashGetAsync` to return crafted `HashEntry[]` values where the `tenantId` field contains a different tenant ID than the one requested. Assert that `CaseService` returns null and that the `ILogger` received a Critical log call (use NSubstitute's `logger.Received(1).Log(...)` verification). Example pattern:
+    ```csharp
+    // Arrange: mock returns a memory unit with tenantId="tenant-b" when queried under "tenant-a"
+    _database.HashGetAsync("tenant-a:mu:xyz", Arg.Any<RedisValue[]>())
+        .Returns(CraftMemoryUnitHash(tenantIdField: "tenant-b"));
+    // Act & Assert
+    var result = await caseService.GetMemoryUnitAsync("tenant-a", "xyz", ct);
+    result.ShouldBeNull();
+    _logger.Received(1).Log(LogLevel.Critical, ...);
+    ```
   - [ ] 5.4 Test cases for AC4 (graph scoping):
     - GraphScopedSearch uses tenantId as FalkorDB database name (verify via mock)
     - **Note:** "GraphQueryBuilder produces parameterized queries" is an audit finding (Task 4), not a unit test -- you cannot unit test the absence of string interpolation. Verify via code review in Task 4.
@@ -113,13 +129,32 @@ so that cross-tenant requests are structurally impossible, not just policy-prohi
 - [ ] Task 6: Integration tests for tenant context enforcement (AC: #1, #2, #3)
   - [ ] 6.1 `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantContextEnforcementIntegrationTests.cs`
   - [ ] 6.2 Test cases:
-    - Request with unknown tenantId returns 409 with `TENANT_NOT_FOUND` on data endpoints
+    - Request with unknown tenantId returns 404 with `TENANT_NOT_FOUND` on data endpoints
+    - Request with non-Active tenantId (Deleting/Provisioning/Failed) returns 409 with appropriate status code
     - Request targeting tenant A's case from tenant B's context returns 404 (not data leakage)
     - DAPR sidecar rejects requests without API token (if configurable in test environment)
     - Search scoped to tenant A returns zero results from tenant B's indexes
+    - **Mismatch detection end-to-end:** manually plant a corrupted memory unit (tenant A's Redis key, tenant B's tenantId field) via direct Redis hash write, call the memory unit GET endpoint, assert 404 response AND assert Critical log entry emitted with `TENANT_MISMATCH` label. This validates the tertiary defense layer works end-to-end.
   - [ ] 6.3 Integration tests may use `[Fact(Skip = "Requires Aspire AppHost fixture")]` consistent with 5-1, 5-2, 5-3 deferral pattern. Required before Gate 2 sign-off.
 
 ## Dev Notes
+
+### First Principles Framing
+
+**What this story IS:** Closing deferred hardening gaps where existing tenant isolation could be bypassed or rendered ineffective by garbage input.
+
+**What this story IS NOT:** Building tenant isolation from scratch. Isolation is already enforced physically:
+- Redis keys are prefixed `{tenantId}:...` (RediSearch, Vector, Hash) -- cross-tenant reads by key are structurally impossible
+- FalkorDB uses a separate database per tenant -- cross-tenant graph queries are impossible at the connection level
+- DAPR actors use `{actorType}-{tenantId}` IDs -- cross-tenant actor state is impossible
+
+**Mental model for the dev agent:**
+- AC1 (registry validation) = *early-failure hygiene*, not isolation enforcement. Rejects garbage input before it wastes resources.
+- AC2 (mismatch detection) = *corruption detection*, not access control. Catches the impossible-if-isolation-works case.
+- AC3 (DAPR tokens) = *channel security*, not tenant scoping. Prevents unauthenticated sidecar-to-app calls.
+- AC4 (FalkorDB scoping) = *audit of existing correct behavior*, confirming what's already built.
+
+**If you find yourself building a new abstraction, middleware, or ambient context -- STOP.** You're going beyond the story's scope. The story closes specific, enumerated gaps. It does not redesign the isolation model.
 
 ### Dependencies
 
@@ -151,7 +186,7 @@ Implement in this order to satisfy ACs incrementally:
 | `TenantStatusGuard` | `Server/Tenants/TenantStatusGuard.cs` | `ValidateTenantActiveAsync()` -- add to unprotected endpoints |
 | `TenantRegistryService` | `Server/Tenants/TenantRegistryService.cs` | `GetTenantAsync()` for existence-only checks |
 | `TenantIdGuard` | `Server/Activities/Indexing/TenantIdGuard.cs` | Already used via `ValidateTenantId()` helper -- no changes needed |
-| `ValidateTenantId()` | `Program.cs` (static helper, line ~1487) | Format validation -- already called on all endpoints. Keep as-is. |
+| `ValidateTenantId()` | `Program.cs` (static helper at bottom of file) | Format validation -- already called on all endpoints. Keep as-is. |
 | `ErrorResponse` | `Contracts/V1/ErrorResponse.cs` | Standard error response format |
 | `IGraphQueryBuilder` | `Server/Graph/IGraphQueryBuilder.cs` | Parameterized Cypher queries -- audit only, no changes expected |
 | `GraphQueryBuilder` | `Server/Graph/GraphQueryBuilder.cs` | Implementation -- audit for raw Cypher violations |
@@ -192,8 +227,8 @@ Existing tenant error codes:
 - `TENANT_FAILED` (409) -- tenant in failed state
 - `TENANT_UNAVAILABLE` (409) -- tenant in unknown non-active state
 
-New error code for this story:
-- `TENANT_MISMATCH` (403) -- data belongs to a different tenant than the request context. **This is a critical security event -- log at Critical level.** Should never occur if physical isolation is working correctly.
+New label for this story (internal observability only, NOT a user-facing response code):
+- `TENANT_MISMATCH` -- logged at `Critical` level and emitted as a metric when `CaseService` detects a record whose `TenantId` field mismatches the requested tenant. The user-facing response is a standard 404 (`MEMORY_UNIT_NOT_FOUND` / `CASE_NOT_FOUND`); the mismatch label is an operator signal of possible data corruption or isolation breach. Under correct physical isolation, this label should never be emitted.
 
 ### Code Conventions
 
@@ -253,6 +288,8 @@ Gate 2 sign-off for this story requires ALL of the following:
 - **No identity-based authorization:** MVP validates tenant IDs against the registry but does not map authenticated identities to tenant sets. Any caller that provides a valid tenant ID can access that tenant's data. `TenantAuthorizationMiddleware` (D8) addresses this in Phase 1.5.
 - **DAPR API token is not per-tenant:** The API token authenticates the sidecar-to-application channel, not individual tenant access. It prevents external parties from directly calling the DAPR sidecar but does not provide tenant-level access control.
 - **No audit trail for tenant access:** Access telemetry is structured logging only in MVP (search activity logging exists in `CaseActivityService`). Dedicated audit store is Phase 2.
+- **TOCTOU race condition:** A small time-of-check-time-of-use window exists between `TenantStatusGuard` validation and the actual data operation. If a tenant is deleted in this window (milliseconds), the operation may hit a missing index and return a 404 or empty result. Not a data leakage vector -- the worst case is an unhandled-looking error. Tenant deletion is operator-initiated, not a concurrent attack vector. Acceptable for MVP; re-evaluate if automated tenant lifecycle management is added later.
+- **App port must not be externally exposed:** The DAPR API token authentication protects the sidecar channel. If the application port is exposed directly (bypassing the sidecar), the token check is bypassed. Deployment guidance must enforce sidecar-only external access. Phase 1.5's `TenantAuthorizationMiddleware` (D8) addresses this properly.
 
 ### Project Structure Notes
 
