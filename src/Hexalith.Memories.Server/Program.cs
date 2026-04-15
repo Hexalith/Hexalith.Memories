@@ -1019,6 +1019,8 @@ app.MapGet("/api/search", async (
     TenantStatusGuard tenantGuard,
     IGraphQueryBuilder graphQueryBuilder,
     [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
+    ILogger<Program> logger,
+    HttpContext httpContext,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
     [FromQuery] string? caseId,
@@ -1120,27 +1122,42 @@ app.MapGet("/api/search", async (
             Offset = Math.Max(offset, 0),
         };
 
+        SearchResult result;
         try
         {
-            SearchResult result = await graphScopedSearch.SearchAsync(
+            result = await graphScopedSearch.SearchAsync(
                 searchQuery, startNodeId, clampedDepth,
                 innerSearch: null, cancellationToken);
-            result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-            if (explain)
-            {
-                result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
-            }
-
-            RecordSearchActivity();
-            return Results.Ok(result);
+        }
+        catch (RedisConnectionException ex)
+        {
+            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+        }
+        catch (RedisTimeoutException ex)
+        {
+            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+        }
+        catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+        {
+            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
         }
         catch (TimeoutException)
         {
-            return Results.Json(
-                new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
-                statusCode: 504);
+            // TimeoutException (504 GRAPH_TIMEOUT) is semantically distinct from RedisTimeoutException (503):
+            // 504 = live FalkorDB, query exceeded deadline → caller should reduce depth.
+            // 503 = multiplexer command-layer timeout → caller should retry.
+            return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
         }
+
+        result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+        result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+        if (explain)
+        {
+            result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
+        }
+
+        RecordSearchActivity();
+        return Results.Ok(result);
     }
 
     // --- axis=hybrid: multi-axis fusion ---
@@ -1220,6 +1237,19 @@ app.MapGet("/api/search", async (
             preUnavailableAxes,
             cancellationToken);
 
+        if (hybridResult.AllEnabledAxesUnavailable == true)
+        {
+            // Total failure: every attempted axis landed in unavailableAxes. Promote to 503
+            // rather than the misleading "200 OK { results: [], degraded: true }" shape that would
+            // otherwise be returned.
+            return SearchEndpointDegradationResponses.BuildAllBackendsUnavailableResponse(
+                httpContext,
+                logger,
+                tenantId,
+                hybridResult.UnavailableAxes,
+                enabledAxes.ToArray());
+        }
+
         hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
         hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
 
@@ -1270,23 +1300,25 @@ app.MapGet("/api/search", async (
                 .CreateActorProxy<ITenantConfigurationActor>(
                     new ActorId(tenantId), nameof(TenantConfigurationActor));
 
+            // Task 2.3 Option A: flip innerSearchStarted=true at the top of the inner-search lambda.
+            // A transient exception thrown BEFORE the inner callback fires is graph-origin
+            // (FalkorDB traversal failure) → GRAPH_UNAVAILABLE. After the callback fires, a transient
+            // exception is redis-origin → BACKEND_UNAVAILABLE.
+            bool innerSearchStarted = false;
+
+            TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+            SearchResult result;
+
             try
             {
-                TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
-
-                SearchResult result = await graphScopedSearch.SearchAsync(
+                result = await graphScopedSearch.SearchAsync(
                     mainSearchQuery, startNodeId, clampedDepth,
-                    q => semanticService.SearchAsync(q, config, cancellationToken),
+                    q =>
+                    {
+                        innerSearchStarted = true;
+                        return semanticService.SearchAsync(q, config, cancellationToken);
+                    },
                     cancellationToken);
-                result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-                result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-                if (explain)
-                {
-                    result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
-                }
-
-                RecordSearchActivity();
-                return Results.Ok(result);
             }
             catch (EmbeddingApiException ex)
             {
@@ -1306,36 +1338,119 @@ app.MapGet("/api/search", async (
                     SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
                     statusCode: 500);
             }
+            catch (RedisConnectionException ex)
+            {
+                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                    httpContext,
+                    logger,
+                    "semantic",
+                    tenantId,
+                    startNodeId,
+                    innerSearchStarted,
+                    ex);
+            }
+            catch (RedisTimeoutException ex)
+            {
+                // Must precede TimeoutException (base class) — RedisTimeoutException is a multiplexer
+                // command-layer timeout → 503, whereas TimeoutException from WaitAsync is the
+                // graph-query deadline → 504 GRAPH_TIMEOUT.
+                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                    httpContext,
+                    logger,
+                    "semantic",
+                    tenantId,
+                    startNodeId,
+                    innerSearchStarted,
+                    ex);
+            }
+            catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+            {
+                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                    httpContext,
+                    logger,
+                    "semantic",
+                    tenantId,
+                    startNodeId,
+                    innerSearchStarted,
+                    ex);
+            }
             catch (TimeoutException)
             {
-                return Results.Json(
-                    new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
-                    statusCode: 504);
+                return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
             }
-        }
 
-        try
-        {
-            SearchResult syntacticResult = await graphScopedSearch.SearchAsync(
-                mainSearchQuery, startNodeId, clampedDepth,
-                q => syntacticService.SearchAsync(q),
-                cancellationToken);
-            syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
-            syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+            result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
             if (explain)
             {
-                syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+                result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
             }
 
             RecordSearchActivity();
-            return Results.Ok(syntacticResult);
+            return Results.Ok(result);
+        }
+
+        bool innerSyntacticStarted = false;
+        SearchResult syntacticResult;
+        try
+        {
+            syntacticResult = await graphScopedSearch.SearchAsync(
+                mainSearchQuery, startNodeId, clampedDepth,
+                q =>
+                {
+                    innerSyntacticStarted = true;
+                    return syntacticService.SearchAsync(q);
+                },
+                cancellationToken);
+        }
+        catch (RedisConnectionException ex)
+        {
+            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                httpContext,
+                logger,
+                "syntactic",
+                tenantId,
+                startNodeId,
+                innerSyntacticStarted,
+                ex);
+        }
+        catch (RedisTimeoutException ex)
+        {
+            // Must precede TimeoutException (base class).
+            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                httpContext,
+                logger,
+                "syntactic",
+                tenantId,
+                startNodeId,
+                innerSyntacticStarted,
+                ex);
+        }
+        catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+        {
+            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                httpContext,
+                logger,
+                "syntactic",
+                tenantId,
+                startNodeId,
+                innerSyntacticStarted,
+                ex);
         }
         catch (TimeoutException)
         {
-            return Results.Json(
-                new ErrorResponse("GRAPH_TIMEOUT", "Graph traversal timed out. The graph may be too dense for the requested depth.", "Try a smaller depth value."),
-                statusCode: 504);
+            return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
         }
+
+        syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
+        syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+        if (explain)
+        {
+            syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+        }
+
+        RecordSearchActivity();
+        return Results.Ok(syntacticResult);
     }
 
     // --- Existing routing for syntactic/semantic without graph scope ---
@@ -1345,20 +1460,12 @@ app.MapGet("/api/search", async (
             .CreateActorProxy<ITenantConfigurationActor>(
                 new ActorId(tenantId), nameof(TenantConfigurationActor));
 
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+        SearchResult searchResult;
         try
         {
-            TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
-            SearchResult searchResult = await semanticService.SearchAsync(
+            searchResult = await semanticService.SearchAsync(
                 mainSearchQuery, config, cancellationToken);
-            searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
-            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-            if (explain)
-            {
-                searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
-            }
-
-            RecordSearchActivity();
-            return Results.Ok(searchResult);
         }
         catch (EmbeddingApiException ex)
         {
@@ -1378,9 +1485,48 @@ app.MapGet("/api/search", async (
                 SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
                 statusCode: 500);
         }
+        catch (RedisConnectionException ex)
+        {
+            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
+        }
+        catch (RedisTimeoutException ex)
+        {
+            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
+        }
+        catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+        {
+            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
+        }
+
+        searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+        searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+        if (explain)
+        {
+            searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
+        }
+
+        RecordSearchActivity();
+        return Results.Ok(searchResult);
     }
 
-    SearchResult syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
+    SearchResult syntacticDefault;
+    try
+    {
+        syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
+    }
+    catch (RedisConnectionException ex)
+    {
+        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
+    }
+    catch (RedisTimeoutException ex)
+    {
+        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
+    }
+    catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+    {
+        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
+    }
+
     syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
     syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
     if (explain)
@@ -1395,6 +1541,8 @@ app.MapGet("/api/search", async (
 app.MapGet("/api/tenants/{tenantId}/traverse", async (
     string tenantId,
     GraphTraversalService traversalService,
+    ILogger<Program> logger,
+    HttpContext httpContext,
     [FromQuery] string? startNodeId,
     [FromQuery] int depth = 2,
     [FromQuery] string? caseId = null,
@@ -1444,9 +1592,24 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     }
 
     int clampedDepth = Math.Clamp(depth, 0, 10);
-    TraversalResult result = await traversalService.TraverseAsync(
-        tenantId, startNodeId, clampedDepth, caseId, parsedEdgeTypes, cancellationToken);
-    return Results.Ok(result);
+    try
+    {
+        TraversalResult result = await traversalService.TraverseAsync(
+            tenantId, startNodeId, clampedDepth, caseId, parsedEdgeTypes, cancellationToken);
+        return Results.Ok(result);
+    }
+    catch (RedisConnectionException ex)
+    {
+        return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+    }
+    catch (RedisTimeoutException ex)
+    {
+        return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+    }
+    catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+    {
+        return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+    }
 });
 
 app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (

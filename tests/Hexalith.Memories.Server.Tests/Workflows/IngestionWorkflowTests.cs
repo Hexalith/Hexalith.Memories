@@ -12,6 +12,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.TestHelpers.Factories;
 
@@ -697,5 +698,103 @@ public class IngestionWorkflowTests
                 callLog?.Add(nameof(RecordCaseActivityActivity));
                 return Task.FromResult(true);
             });
+    }
+
+    // ==================================================================================
+    // Story 5.6 AC5 — Retry policy regression guard (NFR22).
+    // These tests pin retry values so a future diff cannot silently weaken the policy.
+    // ==================================================================================
+
+    [Fact]
+    public void IngestionWorkflow_MainRetryAttempts_ShouldBePinnedAtFive()
+    {
+        System.Reflection.FieldInfo? field = typeof(IngestionWorkflow).GetField(
+            "_mainRetryAttempts",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        field.ShouldNotBeNull();
+        field!.GetRawConstantValue().ShouldBe(5);
+    }
+
+    [Fact]
+    public void IngestionWorkflow_CompensationRetryAttempts_ShouldBePinnedAtThree()
+    {
+        System.Reflection.FieldInfo? field = typeof(IngestionWorkflow).GetField(
+            "_compensationRetryAttempts",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        field.ShouldNotBeNull();
+        field!.GetRawConstantValue().ShouldBe(3);
+    }
+
+    [Fact]
+    public void IngestionWorkflow_MainRetryPolicy_ShouldPinIntervalsAndCoefficient()
+    {
+        // Invokes the internal CreateMainRetry() helper introduced by Story 5.6 and asserts the
+        // WorkflowRetryPolicy values. If this fails, NFR22 has been silently weakened.
+        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
+            "CreateMainRetry",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        method.ShouldNotBeNull();
+        object? options = method!.Invoke(null, null);
+        options.ShouldNotBeNull();
+
+        WorkflowTaskOptions taskOptions = (WorkflowTaskOptions)options!;
+        taskOptions.RetryPolicy.ShouldNotBeNull();
+
+        WorkflowRetryPolicy policy = taskOptions.RetryPolicy!;
+        policy.MaxNumberOfAttempts.ShouldBe(5);
+        policy.FirstRetryInterval.ShouldBe(TimeSpan.FromSeconds(2));
+        policy.BackoffCoefficient.ShouldBe(1.5);
+        policy.MaxRetryInterval.ShouldBe(TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public void IngestionWorkflow_CompensationRetryPolicy_ShouldPinIntervalsAndCoefficient()
+    {
+        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
+            "CreateCompensationRetry",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        method.ShouldNotBeNull();
+        WorkflowTaskOptions taskOptions = (WorkflowTaskOptions)method!.Invoke(null, null)!;
+        WorkflowRetryPolicy policy = taskOptions.RetryPolicy!;
+
+        policy.MaxNumberOfAttempts.ShouldBe(3);
+        policy.FirstRetryInterval.ShouldBe(TimeSpan.FromSeconds(1));
+        policy.BackoffCoefficient.ShouldBe(2.0);
+        policy.MaxRetryInterval.ShouldBe(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
+    public async Task RunAsync_DimensionMismatchFailure_ShouldStillUseMainRetryPolicy()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<EmbeddingResult>(
+                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<EmbeddingResult>(new SemanticSearchDimensionMismatchException(384, 768)));
+
+        IngestionWorkflow workflow = new();
+
+        SemanticSearchDimensionMismatchException ex = await Should.ThrowAsync<SemanticSearchDimensionMismatchException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.Stage.ShouldBe("embedding");
+        details.RetryCount.ShouldBe(5);
+
+        await context.Received().CallActivityAsync<EmbeddingResult>(
+            nameof(GenerateEmbeddingActivity),
+            Arg.Any<EmbeddingInput>(),
+            Arg.Is<WorkflowTaskOptions>(options =>
+                options.RetryPolicy != null
+                && options.RetryPolicy.MaxNumberOfAttempts == 5
+                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
+                && options.RetryPolicy.BackoffCoefficient == 1.5
+                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromMinutes(5)));
     }
 }

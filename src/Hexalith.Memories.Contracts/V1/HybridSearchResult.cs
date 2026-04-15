@@ -22,6 +22,16 @@ public sealed record HybridSearchResult
     /// <summary>Gets the list of axis names that were enabled but failed (e.g., <c>["graph"]</c>).</summary>
     public required IReadOnlyList<string> UnavailableAxes { get; init; }
 
+    /// <summary>
+    /// Gets a value indicating whether every enabled-and-attempted axis landed in
+    /// <see cref="UnavailableAxes"/>. <c>true</c> = total failure (endpoint should return 503);
+    /// <c>false</c> = at least one axis produced a result (endpoint returns 200, possibly degraded);
+    /// <c>null</c> = no axis was attempted (all skipped due to caller misconfiguration, endpoint
+    /// returns 200 with empty results). Orthogonal to <see cref="Degraded"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AllEnabledAxesUnavailable { get; init; }
+
     /// <summary>Gets the original query string echoed back for correlation.</summary>
     public required string Query { get; init; }
 

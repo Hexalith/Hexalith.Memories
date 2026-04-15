@@ -352,6 +352,30 @@ public class HybridSearchServiceTests
 
         result.Degraded.ShouldBeTrue();
         result.UnavailableAxes.ShouldContain("semantic");
+        result.AllEnabledAxesUnavailable.ShouldBe(false);
+        await semantic.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SearchAsync_PreUnavailableOnlyAxis_ShouldNotPromoteTotalFailure()
+    {
+        var (service, _, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["semantic"];
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(),
+            embeddingConfig: null,
+            graphStartNodeId: null,
+            2,
+            DefaultWeights,
+            axes,
+            preUnavailableAxes: ["semantic"],
+            CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("semantic");
+        result.AllEnabledAxesUnavailable.ShouldBeNull();
+        result.Results.ShouldBeEmpty();
         await semantic.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
     }
 
@@ -374,5 +398,177 @@ public class HybridSearchServiceTests
             DefaultWeights,
             axes,
             cts.Token));
+    }
+
+    // ==================================================================================
+    // Story 5.6 — AllEnabledAxesUnavailable signal (AC1, AC2, AC3)
+    // ==================================================================================
+
+    [Fact]
+    public async Task SearchAsync_SemanticFails_OthersSucceed_ShouldReportNotAllUnavailable()
+    {
+        var (service, syntactic, semantic, graph, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic", "graph"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Semantic down"));
+        graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult(MakeResult("mu-1", 0.5, "graph")));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("semantic");
+        result.AllEnabledAxesUnavailable.ShouldBe(false);
+        result.Results.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_GraphFails_OthersSucceed_ShouldReportNotAllUnavailable()
+    {
+        var (service, syntactic, semantic, graph, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic", "graph"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult(MakeResult("mu-1", 0.85, "semantic")));
+        graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Graph down"));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("graph");
+        result.AllEnabledAxesUnavailable.ShouldBe(false);
+        result.Results.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_AllAxesFail_ShouldReportAllEnabledAxesUnavailable()
+    {
+        var (service, syntactic, semantic, graph, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic", "graph"];
+
+        syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
+            StackExchange.Redis.ConnectionFailureType.SocketFailure, "Syntactic down"));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Semantic down"));
+        graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Graph down"));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.AllEnabledAxesUnavailable.ShouldBe(true);
+        result.UnavailableAxes.ShouldContain("syntactic");
+        result.UnavailableAxes.ShouldContain("semantic");
+        result.UnavailableAxes.ShouldContain("graph");
+    }
+
+    [Fact]
+    public async Task SearchAsync_SkippedAxesNotAttempted_ShouldNotBeCountedAsFailed()
+    {
+        // AC3.4 edge: enabled axes skipped for missing inputs are NOT attempted → do not count toward total failure.
+        var (service, syntactic, _, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic", "graph"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(),
+            embeddingConfig: null, // semantic skipped
+            graphStartNodeId: null, // graph skipped
+            2,
+            DefaultWeights,
+            axes,
+            CancellationToken.None);
+
+        result.Degraded.ShouldBeFalse();
+        result.AllEnabledAxesUnavailable.ShouldBe(false);
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_AllAxesSkipped_ShouldReportAllEnabledAxesUnavailableNull()
+    {
+        // AC3.4 edge: if no axis is attempted (all skipped), AllEnabledAxesUnavailable is null.
+        var (service, _, _, _, _) = CreateService();
+        HashSet<string> axes = ["semantic", "graph"];
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(),
+            embeddingConfig: null, // semantic skipped
+            graphStartNodeId: null, // graph skipped
+            2,
+            DefaultWeights,
+            axes,
+            CancellationToken.None);
+
+        result.AllEnabledAxesUnavailable.ShouldBeNull();
+        result.Degraded.ShouldBeFalse();
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchAsync_TransientThenSuccess_SecondCallShouldNotBeDegraded()
+    {
+        // AC4: auto-recovery — once the mock stops throwing, the next call is a clean success.
+        var (service, _, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["semantic"];
+
+        int callCount = 0;
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                callCount++;
+                return callCount == 1
+                    ? throw new StackExchange.Redis.RedisConnectionException(
+                        StackExchange.Redis.ConnectionFailureType.SocketFailure, "transient")
+                    : Task.FromResult(MakeSearchResult(MakeResult("mu-1", 0.85, "semantic")));
+            });
+
+        HybridSearchResult first = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+        HybridSearchResult second = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        first.Degraded.ShouldBeTrue();
+        first.UnavailableAxes.ShouldContain("semantic");
+        first.AllEnabledAxesUnavailable.ShouldBe(true);
+
+        second.Degraded.ShouldBeFalse();
+        second.UnavailableAxes.ShouldBeEmpty();
+        second.AllEnabledAxesUnavailable.ShouldBe(false);
+        second.Results.ShouldNotBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("LOADING Redis is loading the dataset in memory")]
+    [InlineData("BUSY Redis is busy running a script. You can only call SCRIPT KILL or SHUTDOWN NOSAVE.")]
+    [InlineData("OOM command not allowed when used memory > 'maxmemory'.")]
+    public async Task SearchAsync_TransientRedisServerException_ShouldMarkAxisUnavailable(string redisMessage)
+    {
+        // Task 5.4: LOADING / BUSY / OOM must be classified as backend-unavailable, not missing-data.
+        var (service, syntactic, _, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic"];
+
+        syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisServerException(redisMessage));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), null, null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("syntactic");
+        result.AllEnabledAxesUnavailable.ShouldBe(true);
     }
 }

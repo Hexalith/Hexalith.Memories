@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-14 # Story 5.5 done after code review follow-up
+# last_updated: 2026-04-15 # Story 5.6 review fixes applied, moved to done
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-14 # Story 5.5 done after code review follow-up
+last_updated: 2026-04-15 # Story 5.6 review fixes applied, moved to done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -94,14 +94,14 @@ development_status:
   5-3-tenant-isolation-verification: done
   5-4-tenant-context-enforcement: done
   5-5-tenant-configuration-and-listing: done
-  5-6-graceful-degradation-on-backend-failure: ready-for-dev
+  5-6-graceful-degradation-on-backend-failure: done
   epic-5-retrospective: optional
 
   # --- Phase: MVP — Gate 3 (Developer Experience) ---
 
   # Epic 6: Ingestion Pipeline Resilience & Operations
-  epic-6: backlog
-  6-1-url-and-directory-ingestion: backlog
+  epic-6: in-progress
+  6-1-url-and-directory-ingestion: ready-for-dev
   6-2-per-tenant-load-management-and-rate-limiting: backlog
   6-3-retry-failure-visibility-and-re-ingestion: backlog
   6-4-pipeline-state-persistence-and-zero-data-loss: backlog

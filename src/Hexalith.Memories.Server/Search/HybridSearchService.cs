@@ -89,6 +89,9 @@ internal sealed partial class HybridSearchService(
         ConcurrentDictionary<string, byte> unavailableAxes = CreateUnavailableAxes(preUnavailableAxes);
         SearchQuery axisQuery = CreateAxisQuery(query);
 
+        // Track which enabled axes actually ran (skipped-for-missing-inputs is NOT attempted).
+        HashSet<string> attemptedAxes = new(StringComparer.OrdinalIgnoreCase);
+
         // Build tasks for enabled axes
         Task<SearchResult?>? syntacticTask = null;
         Task<SearchResult?>? semanticTask = null;
@@ -96,6 +99,7 @@ internal sealed partial class HybridSearchService(
 
         if (enabledAxes.Contains("syntactic"))
         {
+            _ = attemptedAxes.Add("syntactic");
             syntacticTask = ExecuteAxisAsync("syntactic", axisQuery, syntacticSearchFunc, unavailableAxes, logger);
         }
 
@@ -110,6 +114,7 @@ internal sealed partial class HybridSearchService(
             }
             else
             {
+                _ = attemptedAxes.Add("semantic");
                 semanticTask = ExecuteAxisAsync(
                     "semantic",
                     axisQuery,
@@ -130,6 +135,7 @@ internal sealed partial class HybridSearchService(
             }
             else
             {
+                _ = attemptedAxes.Add("graph");
                 graphTask = ExecuteAxisAsync(
                     "graph",
                     axisQuery,
@@ -138,6 +144,11 @@ internal sealed partial class HybridSearchService(
                     logger);
             }
         }
+
+        // Pre-unavailable axes are NOT automatically treated as attempted. In current endpoint
+        // usage they represent unavailable prerequisites (for example, tenant config actor lookup
+        // failure) rather than a backend call that actually ran. Counting them as attempted would
+        // incorrectly promote semantic-only requests to ALL_BACKENDS_UNAVAILABLE.
 
         // Execute all enabled axes in parallel
         await Task.WhenAll(
@@ -198,6 +209,30 @@ internal sealed partial class HybridSearchService(
 
         List<string> unavailableAxisList = [.. unavailableAxes.Keys.OrderBy(static axis => axis, StringComparer.Ordinal)];
 
+        // AllEnabledAxesUnavailable:
+        //   null = nothing was attempted (caller misconfiguration — no axes to fail)
+        //   true = every attempted axis ended up in unavailableAxes (total failure)
+        //   false = at least one attempted axis produced a result
+        bool? allEnabledAxesUnavailable;
+        if (attemptedAxes.Count == 0)
+        {
+            allEnabledAxesUnavailable = null;
+        }
+        else
+        {
+            bool anyAttemptedSucceeded = false;
+            foreach (string axis in attemptedAxes)
+            {
+                if (!unavailableAxes.ContainsKey(axis))
+                {
+                    anyAttemptedSucceeded = true;
+                    break;
+                }
+            }
+
+            allEnabledAxesUnavailable = !anyAttemptedSucceeded;
+        }
+
         return new HybridSearchResult
         {
             Results = paginatedResults,
@@ -205,6 +240,7 @@ internal sealed partial class HybridSearchService(
             Degraded = unavailableAxisList.Count > 0,
             UnavailableAxes = unavailableAxisList,
             Query = query.Query,
+            AllEnabledAxesUnavailable = allEnabledAxesUnavailable,
         };
     }
 

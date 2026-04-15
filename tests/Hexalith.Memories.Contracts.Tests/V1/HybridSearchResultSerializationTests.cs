@@ -211,4 +211,47 @@ public class HybridSearchResultSerializationTests
 
         json.ShouldNotContain("caseGroups");
     }
+
+    // Story 5.6: AllEnabledAxesUnavailable signal serialization.
+    [Fact]
+    public void HybridSearchResult_AllEnabledAxesUnavailable_True_ShouldRoundTrip()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = true,
+            UnavailableAxes = ["syntactic", "semantic", "graph"],
+            Query = "test query",
+            AllEnabledAxesUnavailable = true,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        HybridSearchResult? deserialized = JsonSerializer.Deserialize<HybridSearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.AllEnabledAxesUnavailable.ShouldBe(true);
+        json.ShouldContain("\"allEnabledAxesUnavailable\":true");
+    }
+
+    [Fact]
+    public void HybridSearchResult_AllEnabledAxesUnavailable_Null_ShouldBeOmittedFromJson()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "test",
+            AllEnabledAxesUnavailable = null,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        HybridSearchResult? deserialized = JsonSerializer.Deserialize<HybridSearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.AllEnabledAxesUnavailable.ShouldBeNull();
+        json.ShouldNotContain("allEnabledAxesUnavailable");
+    }
 }

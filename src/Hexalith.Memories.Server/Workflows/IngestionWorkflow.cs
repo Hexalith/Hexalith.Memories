@@ -37,12 +37,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
         LogCurrentStatus(logger, memoryUnitId, currentStatus);
 
-        var retryOptions = new WorkflowTaskOptions(
-            new WorkflowRetryPolicy(
-                maxNumberOfAttempts: _mainRetryAttempts,
-                firstRetryInterval: TimeSpan.FromSeconds(2),
-                backoffCoefficient: 2.0,
-                maxRetryInterval: TimeSpan.FromMinutes(5)));
+        WorkflowTaskOptions retryOptions = CreateMainRetry();
         WorkflowTaskOptions compensationRetry = CreateCompensationRetry();
         CleanupInput cleanupInput = new(memoryUnitId, input.TenantId);
 
@@ -283,7 +278,20 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         }
     }
 
-    private static WorkflowTaskOptions CreateCompensationRetry() => new(
+    /// <summary>
+    /// Builds the retry policy for main pipeline activities. Story 5.6 AC5 pins these values
+    /// (maxNumberOfAttempts=5, firstRetryInterval=2s, backoffCoefficient=1.5, maxRetryInterval=5min).
+    /// Worst-case total wait on retry exhaustion: 2 + 3 + 4.5 + 6.75 + 10.125 ≈ 26.4 s per attempt
+    /// window. Do NOT lower the retry count or shorten intervals without amending NFR22.
+    /// </summary>
+    internal static WorkflowTaskOptions CreateMainRetry() => new(
+        new WorkflowRetryPolicy(
+            maxNumberOfAttempts: _mainRetryAttempts,
+            firstRetryInterval: TimeSpan.FromSeconds(2),
+            backoffCoefficient: 1.5,
+            maxRetryInterval: TimeSpan.FromMinutes(5)));
+
+    internal static WorkflowTaskOptions CreateCompensationRetry() => new(
         new WorkflowRetryPolicy(
             maxNumberOfAttempts: _compensationRetryAttempts,
             firstRetryInterval: TimeSpan.FromSeconds(1),
