@@ -26,4 +26,13 @@ public interface IEmbeddingRateLimiterActor : IActor
     /// <param name="ceiling">The new ceiling value.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task SetCeilingAsync(int ceiling);
+
+    /// <summary>Reports a provider 429 so the actor pauses consumption until the Retry-After window elapses.</summary>
+    /// <param name="retryAfterSeconds">
+    /// Seconds until the provider should be retried (from the Retry-After response header, or a default).
+    /// Implementations MUST clamp the value to the inclusive range [1, 3600]; values outside the range
+    /// indicate caller error and are coerced rather than rejected so a misbehaving provider cannot crash the actor.
+    /// </param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task ReportRateLimitedAsync(int retryAfterSeconds);
 }

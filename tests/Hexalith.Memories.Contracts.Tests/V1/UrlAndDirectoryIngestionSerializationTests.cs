@@ -58,7 +58,7 @@ public class UrlAndDirectoryIngestionSerializationTests
     [Fact]
     public void FetchUrlInput_RoundTrips()
     {
-        FetchUrlInput original = new("https://example.com/x", "mu-1");
+        FetchUrlInput original = new("https://example.com/x", "mu-1", "tenant-a");
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         FetchUrlInput? back = JsonSerializer.Deserialize<FetchUrlInput>(json, MemoriesJsonContext.Options);
@@ -66,6 +66,20 @@ public class UrlAndDirectoryIngestionSerializationTests
         back.ShouldNotBeNull();
         back.Url.ShouldBe(original.Url);
         back.MemoryUnitId.ShouldBe(original.MemoryUnitId);
+        back.TenantId.ShouldBe("tenant-a");
+    }
+
+    [Fact]
+    public void FetchUrlInput_DeserializeLegacyPayload_DefaultsTenantIdToEmptyString()
+    {
+        string legacyJson = "{\"url\":\"https://example.com/x\",\"memoryUnitId\":\"mu-1\"}";
+
+        FetchUrlInput? back = JsonSerializer.Deserialize<FetchUrlInput>(legacyJson, MemoriesJsonContext.Options);
+
+        back.ShouldNotBeNull();
+        back.Url.ShouldBe("https://example.com/x");
+        back.MemoryUnitId.ShouldBe("mu-1");
+        back.TenantId.ShouldBe(string.Empty);
     }
 
     [Fact]

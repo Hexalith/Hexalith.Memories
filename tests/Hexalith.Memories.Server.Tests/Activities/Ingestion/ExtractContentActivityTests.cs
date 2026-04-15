@@ -8,6 +8,9 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
 
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 
@@ -28,7 +31,7 @@ public class ExtractContentActivityTests
 
         client.ExtractAsync(input, Arg.Any<CancellationToken>()).Returns(expected);
 
-        ExtractContentActivity activity = new(client);
+        ExtractContentActivity activity = new(client, CreateGate());
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         // Act
@@ -49,7 +52,7 @@ public class ExtractContentActivityTests
         client.ExtractAsync(input, Arg.Any<CancellationToken>())
             .ThrowsAsync(new IOException("Kreuzberg native crash"));
 
-        ExtractContentActivity activity = new(client);
+        ExtractContentActivity activity = new(client, CreateGate());
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         // Act & Assert
@@ -67,12 +70,29 @@ public class ExtractContentActivityTests
         client.ExtractAsync(input, Arg.Any<CancellationToken>())
             .ThrowsAsync(new InvalidOperationException("Empty content"));
 
-        ExtractContentActivity activity = new(client);
+        ExtractContentActivity activity = new(client, CreateGate());
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         // Act & Assert
         await Should.ThrowAsync<InvalidOperationException>(
             () => activity.RunAsync(context, input));
+    }
+
+    [Fact]
+    public async Task RunAsync_MissingTenantId_ThrowsArgumentException()
+    {
+        IContentExtractionClient client = Substitute.For<IContentExtractionClient>();
+        ExtractionInput input = new(
+            "file:///test.txt",
+            Encoding.UTF8.GetBytes("test content"),
+            "text/plain",
+            SourceType.File,
+            string.Empty);
+
+        ExtractContentActivity activity = new(client, CreateGate());
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await Should.ThrowAsync<ArgumentException>(() => activity.RunAsync(context, input));
     }
 
     private static ExtractionInput CreateTestInput()
@@ -81,6 +101,19 @@ public class ExtractContentActivityTests
             "file:///test.txt",
             Encoding.UTF8.GetBytes("test content"),
             "text/plain",
-            SourceType.File);
+            SourceType.File,
+            "test-tenant");
+    }
+
+    private static PerTenantConcurrencyGate CreateGate()
+    {
+        IngestionSettings settings = new()
+        {
+            PerTenantExtractionConcurrency = 4,
+            ExtractionGateAcquireTimeoutSeconds = 10,
+        };
+        return new PerTenantConcurrencyGate(
+            Options.Create(settings),
+            NullLogger<PerTenantConcurrencyGate>.Instance);
     }
 }

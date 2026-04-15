@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using System.Collections.Concurrent;
+
 using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Workflow;
@@ -13,19 +15,41 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
 
+using Microsoft.Extensions.Logging;
+
 /// <summary>DAPR Workflow activity that generates embeddings via configurable provider API with per-tenant rate limiting.</summary>
 public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput, EmbeddingResult>
 {
+    private static readonly ConcurrentDictionary<string, DateTimeOffset> RetryTrackingKeys = new(StringComparer.Ordinal);
+    private static readonly TimeSpan RetryTrackingTtl = TimeSpan.FromHours(1);
+
+    private const int DefaultRetryAfterSecondsOn429 = 30;
+    private const int JitterMaxExclusiveMilliseconds = 500;
+
     private readonly IActorProxyFactory _actorProxyFactory;
     private readonly EmbeddingClient _embeddingClient;
+    private readonly IJitterSource _jitterSource;
+    private readonly ILogger<GenerateEmbeddingActivity> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateEmbeddingActivity"/> class.</summary>
     /// <param name="embeddingClient">The embedding client for provider API calls.</param>
     /// <param name="actorProxyFactory">The factory for creating DAPR actor proxies.</param>
-    public GenerateEmbeddingActivity(EmbeddingClient embeddingClient, IActorProxyFactory actorProxyFactory)
+    /// <param name="jitterSource">Jitter source providing the pre-call retry delay (Story 6.2).</param>
+    /// <param name="logger">Logger for structured rate-limit events (6201-6203).</param>
+    public GenerateEmbeddingActivity(
+        EmbeddingClient embeddingClient,
+        IActorProxyFactory actorProxyFactory,
+        IJitterSource jitterSource,
+        ILogger<GenerateEmbeddingActivity> logger)
     {
+        ArgumentNullException.ThrowIfNull(embeddingClient);
+        ArgumentNullException.ThrowIfNull(actorProxyFactory);
+        ArgumentNullException.ThrowIfNull(jitterSource);
+        ArgumentNullException.ThrowIfNull(logger);
         _embeddingClient = embeddingClient;
         _actorProxyFactory = actorProxyFactory;
+        _jitterSource = jitterSource;
+        _logger = logger;
     }
 
     /// <inheritdoc/>
@@ -60,16 +84,85 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
         bool allowed = await rateLimiter.TryConsumeAsync().ConfigureAwait(false);
         if (!allowed)
         {
+            RateLimitingLog.LogRateLimitExceededLocally(_logger, input.TenantId);
             throw new EmbeddingRateLimitException(input.TenantId);
         }
 
-        float[] vector = await _embeddingClient
-            .GenerateAsync(input.ContentText, input.TenantId, config, CancellationToken.None)
-            .ConfigureAwait(false);
-
-        return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions)
+        // Dapr.Workflow 1.17.6 exposes InstanceId/TaskExecutionKey but no retry-attempt counter on
+        // WorkflowActivityContext. This workflow invokes GenerateEmbeddingActivity at most once per
+        // workflow instance, so repeated executions for the same instance are retry attempts.
+        if (ShouldApplyRetryJitter(context))
         {
-            Model = config.Model,
-        };
+            int jitterMs = _jitterSource.NextMilliseconds(JitterMaxExclusiveMilliseconds);
+            if (jitterMs > 0)
+            {
+                await Task.Delay(jitterMs, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        try
+        {
+            float[] vector = await _embeddingClient
+                .GenerateAsync(input.ContentText, input.TenantId, config, CancellationToken.None)
+                .ConfigureAwait(false);
+
+            ClearRetryTracking(context);
+
+            return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions)
+            {
+                Model = config.Model,
+            };
+        }
+        catch (EmbeddingRateLimitException ex)
+        {
+            int retryAfter = ex.RetryAfterSeconds > 0 ? ex.RetryAfterSeconds : DefaultRetryAfterSecondsOn429;
+            RateLimitingLog.LogProviderRateLimitReceived(_logger, input.TenantId, retryAfter);
+            await rateLimiter.ReportRateLimitedAsync(retryAfter).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static void ClearRetryTracking(WorkflowActivityContext context)
+    {
+        string? trackingKey = GetRetryTrackingKey(context);
+        if (!string.IsNullOrWhiteSpace(trackingKey))
+        {
+            RetryTrackingKeys.TryRemove(trackingKey, out _);
+        }
+    }
+
+    private static string? GetRetryTrackingKey(WorkflowActivityContext context)
+        => !string.IsNullOrWhiteSpace(context.InstanceId)
+            ? context.InstanceId
+            : !string.IsNullOrWhiteSpace(context.TaskExecutionKey)
+                ? context.TaskExecutionKey
+                : null;
+
+    private static bool ShouldApplyRetryJitter(WorkflowActivityContext context)
+    {
+        CleanupExpiredRetryTrackingEntries();
+
+        string? trackingKey = GetRetryTrackingKey(context);
+        if (string.IsNullOrWhiteSpace(trackingKey))
+        {
+            return false;
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        bool isRetryAttempt = !RetryTrackingKeys.TryAdd(trackingKey, now);
+        RetryTrackingKeys[trackingKey] = now;
+        return isRetryAttempt;
+    }
+
+    private static void CleanupExpiredRetryTrackingEntries()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow - RetryTrackingTtl;
+        foreach ((string trackingKey, DateTimeOffset seenAt) in RetryTrackingKeys)
+        {
+            if (seenAt < cutoff)
+            {
+                RetryTrackingKeys.TryRemove(trackingKey, out _);
+            }
+        }
     }
 }

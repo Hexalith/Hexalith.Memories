@@ -169,4 +169,105 @@ public class RateLimiterLogicTests
         updatedState.CeilingPerMinute.ShouldBe(500);
         updatedState.Remaining.ShouldBe(500);
     }
+
+    [Theory]
+    [InlineData(30, 30)]
+    [InlineData(0, 1)]
+    [InlineData(-1, 1)]
+    [InlineData(-500, 1)]
+    [InlineData(10000, 3600)]
+    [InlineData(3600, 3600)]
+    [InlineData(1, 1)]
+    public void ReportRateLimited_ClampsRetryAfterToRange(int retryAfter, int expectedClamped)
+    {
+        // Arrange
+        DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        FakeTimeProvider timeProvider = new(baseTime);
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState();
+
+        // Act
+        RateLimitState newState = logic.ReportRateLimited(state, retryAfter);
+
+        // Assert
+        newState.Remaining.ShouldBe(0, "Remaining should be zero-floored after 429 feedback.");
+        newState.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(expectedClamped));
+        newState.CeilingPerMinute.ShouldBe(state.CeilingPerMinute);
+    }
+
+    [Fact]
+    public void TryConsume_InsidePausedWindow_ReturnsFalse()
+    {
+        // Arrange
+        DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        FakeTimeProvider timeProvider = new(baseTime);
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState();
+
+        state = logic.ReportRateLimited(state, 30);
+
+        // Act — advance 29 s (still inside paused window)
+        timeProvider.Advance(TimeSpan.FromSeconds(29));
+        (bool allowed, RateLimitState newState) = logic.TryConsume(state);
+
+        // Assert
+        allowed.ShouldBeFalse();
+        newState.Remaining.ShouldBe(0);
+    }
+
+    [Fact]
+    public void TryConsume_AfterPausedWindowPlusFullDuration_RefillsBudget()
+    {
+        // Arrange
+        DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        FakeTimeProvider timeProvider = new(baseTime);
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState();
+
+        state = logic.ReportRateLimited(state, 30);
+
+        // Advance past windowOpen + 1 min (refill condition: now - WindowStart >= 1 min).
+        timeProvider.Advance(TimeSpan.FromSeconds(30 + 61));
+
+        // Act
+        (bool allowed, RateLimitState newState) = logic.TryConsume(state);
+
+        // Assert
+        allowed.ShouldBeTrue();
+        newState.Remaining.ShouldBe(state.CeilingPerMinute - 1);
+    }
+
+    [Fact]
+    public void ReportRateLimited_ThenTryConsume_FollowsSerializedOrdering()
+    {
+        // Ordering test: a TryConsume observed before ReportRateLimited is NOT retroactively throttled;
+        // the next TryConsume after the report fails fast; once the refill window elapses, budget returns.
+        // Arrange
+        DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        FakeTimeProvider timeProvider = new(baseTime);
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState() with { Remaining = 100, CeilingPerMinute = 100 };
+
+        // Act — TryConsume at T=0
+        (bool allowed0, state) = logic.TryConsume(state);
+        allowed0.ShouldBeTrue();
+        state.Remaining.ShouldBe(99);
+
+        // ReportRateLimited(30) at T=1s
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        state = logic.ReportRateLimited(state, 30);
+        state.Remaining.ShouldBe(0);
+        state.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(31));
+
+        // TryConsume at T=2s — still paused
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        (bool allowed2, state) = logic.TryConsume(state);
+        allowed2.ShouldBeFalse();
+
+        // TryConsume at windowOpen + 61s — window refilled
+        timeProvider.Advance(TimeSpan.FromSeconds(31 + 58)); // total: baseTime + 31s + 61s
+        (bool allowed3, state) = logic.TryConsume(state);
+        allowed3.ShouldBeTrue();
+        state.Remaining.ShouldBe(99);
+    }
 }

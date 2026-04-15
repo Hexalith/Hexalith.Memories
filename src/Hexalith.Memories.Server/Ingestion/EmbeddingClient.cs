@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Ingestion;
 
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -139,7 +140,8 @@ public class EmbeddingClient
     {
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            throw new EmbeddingRateLimitException(tenantId);
+            int retryAfter = ParseRetryAfterSeconds(response.Headers.RetryAfter);
+            throw new EmbeddingRateLimitException(tenantId) { RetryAfterSeconds = retryAfter };
         }
 
         string responseBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -150,6 +152,33 @@ public class EmbeddingClient
         }
 
         return ParseEmbeddingResponse(responseBody, tenantId, expectedDimensions);
+    }
+
+    /// <summary>Parses the <c>Retry-After</c> header per RFC 9110 §10.2.3 — either a delta-seconds value
+    /// or an HTTP-date. Returns <c>0</c> when the header is absent, malformed, or points at a past date,
+    /// so the caller can fall back to its own default. Positive results are clamped to <c>[1, 3600]</c>.</summary>
+    internal static int ParseRetryAfterSeconds(RetryConditionHeaderValue? header)
+    {
+        if (header is null)
+        {
+            return 0;
+        }
+
+        if (header.Delta.HasValue)
+        {
+            double seconds = header.Delta.Value.TotalSeconds;
+            return seconds > 0
+                ? (int)Math.Clamp(seconds, 1, 3600)
+                : 1;
+        }
+
+        if (header.Date.HasValue)
+        {
+            double seconds = (header.Date.Value - DateTimeOffset.UtcNow).TotalSeconds;
+            return seconds > 0 ? (int)Math.Clamp(seconds, 1, 3600) : 0;
+        }
+
+        return 0;
     }
 
     private async Task<string> GetApiKeyAsync(string tenantId, string apiSecretKeyName, CancellationToken ct)

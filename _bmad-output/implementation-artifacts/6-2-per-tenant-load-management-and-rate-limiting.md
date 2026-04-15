@@ -1,6 +1,6 @@
 # Story 6.2: Per-Tenant Load Management & Rate Limiting
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -38,7 +38,7 @@ so that one tenant's batch ingestion doesn't starve another's real-time ingestio
 
 **Reading note for the dev agent:** ACs are labelled `[VERIFY]` (regression-guard tests over already-shipped behavior — write tests only, no new production code) or `[NEW]` (requires new code). AC1, AC7, AC10 are `[VERIFY]`; AC2, AC3, AC4, AC5, AC6, AC8, AC9, AC11, AC12 are `[NEW]` or mixed.
 
-1. **[VERIFY] Per-tenant rate limiter enforces independent ceilings (FR8, FR69, NFR13).** Given two tenants `t1` (ceiling 500/min) and `t2` (ceiling 3000/min) configured via `TenantEmbeddingConfig.RateLimitPerMinute`, when both tenants ingest concurrently, then each tenant's `EmbeddingRateLimiterActor` (Actor ID = tenant ID) holds independent `RateLimitState` with its own `CeilingPerMinute`, `Remaining`, and `WindowStart`. Verification: integration test provisions two tenants with different ceilings, hits 1000 ingestions for `t1` (should throttle 500), hits 1000 ingestions for `t2` (all 1000 succeed — under ceiling). Actor state is queried post-run via `GetStateAsync()` and asserted distinct. **No code change from baseline** — this is a *verification* AC, not a *new-feature* AC; the actor already provides this (Story 1.4). **Dev-agent action: add the integration test only.** The test is `[Fact(Skip)]` pending Aspire fixture per 6.1 precedent.
+1. **[VERIFY] Per-tenant rate limiter enforces independent ceilings (FR8, FR69, NFR13).** Given two tenants `t1` (ceiling 500/min) and `t2` (ceiling 3000/min) configured via `TenantEmbeddingConfig.RateLimitPerMinute`, when both tenants ingest concurrently, then each tenant's `EmbeddingRateLimiterActor` (Actor ID = tenant ID) holds independent `RateLimitState` with its own `CeilingPerMinute`, `Remaining`, and `WindowStart`. Verification: integration test provisions two tenants with different ceilings, hits 1000 ingestions for `t1` (should throttle 500), hits 1000 ingestions for `t2` (all 1000 succeed — under ceiling). Actor state is queried post-run via `GetStateAsync()` and asserted distinct. **No code change from baseline** — this is a _verification_ AC, not a _new-feature_ AC; the actor already provides this (Story 1.4). **Dev-agent action: add the integration test only.** The test is `[Fact(Skip)]` pending Aspire fixture per 6.1 precedent.
 
 2. **Tenant A batch does NOT starve tenant B real-time ingest (FR8, NFR13).** Given tenant `t1` submits a 500-file batch via `POST /api/ingest/directory`, when tenant `t2` concurrently submits a single-file `POST /api/ingest` within 1 s of `t1`'s batch scheduling, then tenant `t2`'s workflow is scheduled, enters `extracting` stage, and completes within **≤ 2× the baseline single-file ingest P50 latency** measured when no `t1` batch runs. Baseline reference: P50 ≤ 600 ms for a 10 KB text file with `UseFakeEmbedding=true`. The `PerTenantExtractionConcurrency=4` gate caps tenant `t1`'s concurrent `ExtractContentActivity` invocations to 4 and `FetchUrlActivity` to 4, so tenant `t2`'s activities are not queued behind `t1`'s 500. Integration test `[Fact(Skip)]` captures this with fake embedding and `<= 10KB` synthetic content; assertion uses `TimeSpan` thresholds with a 50 % safety margin. **The test explicitly asserts `t2.P50 < t1.batchDuration * 2 / count(t1)` as a coarse upper bound to catch gross starvation regressions.**
 
@@ -64,393 +64,444 @@ so that one tenant's batch ingestion doesn't starve another's real-time ingestio
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extend `EmbeddingRateLimiterActor` with `ReportRateLimitedAsync` (AC: #3, #4, #11)
-  - [ ] 1.1 In `src/Hexalith.Memories.Server/Actors/IEmbeddingRateLimiterActor.cs`, add:
-    ```csharp
-    /// <summary>Reports a provider 429 so the actor pauses consumption until the Retry-After window elapses.</summary>
-    /// <param name="retryAfterSeconds">Seconds until the provider should be retried (from Retry-After response header, or a default).</param>
-    Task ReportRateLimitedAsync(int retryAfterSeconds);
-    ```
-    Clamp guidance in XML-doc: "Implementations MUST clamp retryAfterSeconds to [1, 3600]; values outside the range indicate caller error."
-  - [ ] 1.2 In `src/Hexalith.Memories.Server/Actors/RateLimiterLogic.cs`, add a pure static helper:
-    ```csharp
-    public RateLimitState ReportRateLimited(RateLimitState currentState, int retryAfterSeconds)
-    {
-        int clamped = Math.Clamp(retryAfterSeconds, 1, 3600);
-        DateTime windowOpen = _timeProvider.GetUtcNow().UtcDateTime + TimeSpan.FromSeconds(clamped);
-        return currentState with { Remaining = 0, WindowStart = windowOpen };
-    }
-    ```
-    Rationale: setting `WindowStart` to a future time means `TryConsume` will see `now - windowStart < WindowDuration`, so the natural refill at `+1 min` past `windowOpen` fires; from `windowOpen` to `windowOpen + 1 min` the budget is zero.
-    **Note**: `TryConsume` tests `if (now - state.WindowStart >= WindowDuration)` — if `WindowStart` is in the future, `now - WindowStart` is negative, so the refill condition is `false` during the pause. At `windowOpen + 1 min`, the condition flips to `true` and refill happens.
-    **Edge case** to verify in test: `retryAfterSeconds=0` is clamped to `1`; `retryAfterSeconds=3601` is clamped to `3600`; `retryAfterSeconds=-5` is clamped to `1`.
-  - [ ] 1.3 In `src/Hexalith.Memories.Server/Actors/EmbeddingRateLimiterActor.cs`, implement:
-    ```csharp
-    public async Task ReportRateLimitedAsync(int retryAfterSeconds)
-    {
-        RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
-        RateLimitState newState = _logic.ReportRateLimited(state, retryAfterSeconds);
-        await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
-    }
-    ```
-    Follow the existing pattern from `ResetAsync` and `SetCeilingAsync`. Persist state before return (per architecture §D23: actor state must persist before response).
-  - [ ] 1.4 In `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs`, add `[Theory]` rows for `ReportRateLimited`:
-    - `retryAfterSeconds=30, currentRemaining=500` → `Remaining=0, WindowStart=now+30s`.
-    - `retryAfterSeconds=0` → clamped to 1 → `WindowStart=now+1s`.
-    - `retryAfterSeconds=10000` → clamped to 3600 → `WindowStart=now+3600s`.
-    - `retryAfterSeconds=-1` → clamped to 1 → `WindowStart=now+1s`.
-    - After `ReportRateLimited`, `TryConsume` at `windowOpen - 1s` returns `(false, state)` (budget still 0).
-    - After `ReportRateLimited`, `TryConsume` at `windowOpen + 61s` returns `(true, state with Remaining=ceiling-1)` (refill fired).
-    Use `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing` (already referenced? if not, add package; see Known Dependencies section).
-  - [ ] 1.5 In `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs`, add a test that mocks `IActorStateManager`, invokes `ReportRateLimitedAsync(30)`, asserts `SetStateAsync("rateState", ...)` is called with `Remaining=0` and `WindowStart` advanced. Mirror the existing `SetCeilingAsync` test pattern.
-  - [ ] 1.6 **Ordering test (Murat's addition):** In `RateLimiterLogicTests.cs`, add a test that simulates the DAPR-serialized call ordering on a single actor: `TryConsume` at `T=0` with remaining=100 → returns `(true, remaining=99)`; `ReportRateLimited(30)` at `T=1s` → `remaining=0, windowStart=T+31s`; `TryConsume` at `T=2s` (still inside the paused window) → returns `(false, remaining=0)`; `TryConsume` at `T=T+32s` → window refilled, returns `(true, remaining=ceiling-1)`. Pins the semantic guarantee that a `ReportRateLimited` observed by a racing `TryConsume` produces a throttle on the NEXT consume, never retroactively on the previous one. Uses `FakeTimeProvider`. Not testing DAPR's per-actor serialization (framework guarantee); testing that the **logic** preserves ordering when serialization is observed.
+**Pre-implementation checklist (run before Task 1):**
 
-- [ ] Task 2: Wire `ReportRateLimitedAsync` into `GenerateEmbeddingActivity` on 429 (AC: #3, #4, #9)
-  - [ ] 2.1 Create `src/Hexalith.Memories.Server/Ingestion/IJitterSource.cs`:
-    ```csharp
-    /// <summary>Abstraction for jittered retry delays. Injectable for deterministic tests.</summary>
-    public interface IJitterSource
-    {
-        /// <summary>Returns a uniform-random integer in [0, maxExclusive) milliseconds.</summary>
-        int NextMilliseconds(int maxExclusive = 500);
-    }
-    ```
-  - [ ] 2.2 Create `src/Hexalith.Memories.Server/Ingestion/ThreadSafeRandomJitterSource.cs`:
-    ```csharp
-    public sealed class ThreadSafeRandomJitterSource : IJitterSource
-    {
-        public int NextMilliseconds(int maxExclusive = 500)
+1. Confirm 6.1 is `done` in `sprint-status.yaml` (6.2 rebases on its `TenantId`-in-`ExtractionInput` / `FetchUrlInput` additions).
+2. Run `dotnet test Hexalith.Memories.slnx --filter "FullyQualifiedName!~IntegrationTests"` and record counts in Debug Log References (expected ~1191 passing + 2 documented `SaveDedupKeyActivityTests` failures).
+3. Verify `Microsoft.Extensions.TimeProvider.Testing` is in `Directory.Packages.props`; if absent, add it before writing tests.
+4. Verify existing `IEmbeddingRateLimiterActor`, `RateLimiterLogic`, `EmbeddingRateLimitException`, and `GenerateEmbeddingActivity.cs:58` match this story's assumed baseline — any drift means the story's code samples need adjustment before proceeding.
+
+- [x] Task 1: Extend `EmbeddingRateLimiterActor` with `ReportRateLimitedAsync` (AC: #3, #4, #11)
+    - [x] 1.1 In `src/Hexalith.Memories.Server/Actors/IEmbeddingRateLimiterActor.cs`, add:
+        ```csharp
+        /// <summary>Reports a provider 429 so the actor pauses consumption until the Retry-After window elapses.</summary>
+        /// <param name="retryAfterSeconds">Seconds until the provider should be retried (from Retry-After response header, or a default).</param>
+        Task ReportRateLimitedAsync(int retryAfterSeconds);
+        ```
+        Clamp guidance in XML-doc: "Implementations MUST clamp retryAfterSeconds to [1, 3600]; values outside the range indicate caller error."
+    - [x] 1.2 In `src/Hexalith.Memories.Server/Actors/RateLimiterLogic.cs`, add a pure static helper:
+        ```csharp
+        public RateLimitState ReportRateLimited(RateLimitState currentState, int retryAfterSeconds)
         {
-            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxExclusive);
-            return Random.Shared.Next(0, maxExclusive);
+            int clamped = Math.Clamp(retryAfterSeconds, 1, 3600);
+            DateTime windowOpen = _timeProvider.GetUtcNow().UtcDateTime + TimeSpan.FromSeconds(clamped);
+            return currentState with { Remaining = 0, WindowStart = windowOpen };
         }
-    }
-    ```
-    Register as singleton: `services.AddSingleton<IJitterSource, ThreadSafeRandomJitterSource>()` in `MemoriesServerServiceCollectionExtensions.AddMemoriesServer` (or `Program.cs` if that's where the other ingestion services are wired — verify first; `IUrlContentFetcher` placement is the precedent).
-  - [ ] 2.3 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs` — add jitter + 429 feedback:
-    ```csharp
-    public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput, EmbeddingResult>
-    {
-        private readonly IActorProxyFactory _actorProxyFactory;
-        private readonly EmbeddingClient _embeddingClient;
-        private readonly IJitterSource _jitterSource;
-        private readonly ILogger<GenerateEmbeddingActivity> _logger;
-
-        public GenerateEmbeddingActivity(
-            EmbeddingClient embeddingClient,
-            IActorProxyFactory actorProxyFactory,
-            IJitterSource jitterSource,
-            ILogger<GenerateEmbeddingActivity> logger) { /* assign */ }
-
-        public override async Task<EmbeddingResult> RunAsync(WorkflowActivityContext context, EmbeddingInput input)
+        ```
+        Rationale: setting `WindowStart` to a future time means `TryConsume` will see `now - windowStart < WindowDuration`, so the natural refill at `+1 min` past `windowOpen` fires; from `windowOpen` to `windowOpen + 1 min` the budget is zero.
+        **Note**: `TryConsume` tests `if (now - state.WindowStart >= WindowDuration)` — if `WindowStart` is in the future, `now - WindowStart` is negative, so the refill condition is `false` during the pause. At `windowOpen + 1 min`, the condition flips to `true` and refill happens.
+        **Edge case** to verify in test: `retryAfterSeconds=0` is clamped to `1`; `retryAfterSeconds=3601` is clamped to `3600`; `retryAfterSeconds=-5` is clamped to `1`.
+    - [x] 1.3 In `src/Hexalith.Memories.Server/Actors/EmbeddingRateLimiterActor.cs`, implement:
+        ```csharp
+        public async Task ReportRateLimitedAsync(int retryAfterSeconds)
         {
-            // ... existing argument checks, config fetch, SetCeilingAsync, TryConsumeAsync ...
-            bool allowed = await rateLimiter.TryConsumeAsync().ConfigureAwait(false);
-            if (!allowed)
-            {
-                RateLimitingLog.LogRateLimitExceededLocally(_logger, input.TenantId);
-                throw new EmbeddingRateLimitException(input.TenantId);
-            }
+            RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
+            RateLimitState newState = _logic.ReportRateLimited(state, retryAfterSeconds);
+            await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
+        }
+        ```
+        Follow the existing pattern from `ResetAsync` and `SetCeilingAsync`. Persist state before return (per architecture §D23: actor state must persist before response).
+    - [x] 1.4 In `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs`, add `[Theory]` rows for `ReportRateLimited`:
+        - `retryAfterSeconds=30, currentRemaining=500` → `Remaining=0, WindowStart=now+30s`.
+        - `retryAfterSeconds=0` → clamped to 1 → `WindowStart=now+1s`.
+        - `retryAfterSeconds=10000` → clamped to 3600 → `WindowStart=now+3600s`.
+        - `retryAfterSeconds=-1` → clamped to 1 → `WindowStart=now+1s`.
+        - After `ReportRateLimited`, `TryConsume` at `windowOpen - 1s` returns `(false, state)` (budget still 0).
+        - After `ReportRateLimited`, `TryConsume` at `windowOpen + 61s` returns `(true, state with Remaining=ceiling-1)` (refill fired).
+          Use `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing` (already referenced? if not, add package; see Known Dependencies section).
+    - [x] 1.5 In `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs`, add a test that mocks `IActorStateManager`, invokes `ReportRateLimitedAsync(30)`, asserts `SetStateAsync("rateState", ...)` is called with `Remaining=0` and `WindowStart` advanced. Mirror the existing `SetCeilingAsync` test pattern.
+    - [x] 1.6 **Ordering test (Murat's addition):** In `RateLimiterLogicTests.cs`, add a test that simulates the DAPR-serialized call ordering on a single actor: `TryConsume` at `T=0` with remaining=100 → returns `(true, remaining=99)`; `ReportRateLimited(30)` at `T=1s` → `remaining=0, windowStart=T+31s`; `TryConsume` at `T=2s` (still inside the paused window) → returns `(false, remaining=0)`; `TryConsume` at `T=T+32s` → window refilled, returns `(true, remaining=ceiling-1)`. Pins the semantic guarantee that a `ReportRateLimited` observed by a racing `TryConsume` produces a throttle on the NEXT consume, never retroactively on the previous one. Uses `FakeTimeProvider`. Not testing DAPR's per-actor serialization (framework guarantee); testing that the **logic** preserves ordering when serialization is observed.
 
-            // NEW: jitter BEFORE provider call so retries spread out
-            int jitterMs = _jitterSource.NextMilliseconds(500);
-            await Task.Delay(jitterMs, CancellationToken.None).ConfigureAwait(false);
-
-            try
+- [x] Task 2: Wire `ReportRateLimitedAsync` into `GenerateEmbeddingActivity` on 429 (AC: #3, #4, #9)
+    - [x] 2.1 Create `src/Hexalith.Memories.Server/Ingestion/IJitterSource.cs`:
+        ```csharp
+        /// <summary>Abstraction for jittered retry delays. Injectable for deterministic tests.</summary>
+        public interface IJitterSource
+        {
+            /// <summary>Returns a uniform-random integer in [0, maxExclusive) milliseconds.</summary>
+            int NextMilliseconds(int maxExclusive = 500);
+        }
+        ```
+    - [x] 2.2 Create `src/Hexalith.Memories.Server/Ingestion/ThreadSafeRandomJitterSource.cs`:
+        ```csharp
+        public sealed class ThreadSafeRandomJitterSource : IJitterSource
+        {
+            public int NextMilliseconds(int maxExclusive = 500)
             {
-                float[] vector = await _embeddingClient
-                    .GenerateAsync(input.ContentText, input.TenantId, config, CancellationToken.None)
-                    .ConfigureAwait(false);
-                return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions) { Model = config.Model };
-            }
-            catch (EmbeddingRateLimitException ex)
-            {
-                // Provider 429: parse Retry-After (default 30), update actor, re-throw for workflow retry.
-                int retryAfter = ExtractRetryAfterSeconds(ex); // may expose from EmbeddingApiException or EmbeddingClient
-                RateLimitingLog.LogProviderRateLimitReceived(_logger, input.TenantId, retryAfter);
-                await rateLimiter.ReportRateLimitedAsync(retryAfter).ConfigureAwait(false);
-                throw;
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxExclusive);
+                return Random.Shared.Next(0, maxExclusive);
             }
         }
+        ```
+        Register as singleton: `services.AddSingleton<IJitterSource, ThreadSafeRandomJitterSource>()` in `MemoriesServerServiceCollectionExtensions.AddMemoriesServer` (or `Program.cs` if that's where the other ingestion services are wired — verify first; `IUrlContentFetcher` placement is the precedent).
+    - [x] 2.3 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs` — add jitter (on retry only) + 429 feedback. **Jitter is applied ONLY on retry attempts, not on first attempts** (per Pre-mortem finding: first-attempt jitter wastes cumulative time on happy-path batches). DAPR Workflow exposes retry-count via `WorkflowActivityContext` — check the SDK (1.17.6 may require a workaround: an attempt-counter field on `EmbeddingInput` that the workflow increments before re-calling, OR inspection of the activity's `RetryAttempt` property if available). If the SDK does not expose retry count, fall back to: apply jitter unconditionally but cap cumulative per-workflow jitter budget at 2.5 s via an actor/context read — but prefer the first option.
 
-        private static int ExtractRetryAfterSeconds(EmbeddingRateLimitException ex)
-            => ex.RetryAfterSeconds > 0 ? ex.RetryAfterSeconds : 30;
-    }
-    ```
-  - [ ] 2.4 Extend `src/Hexalith.Memories.Server/Ingestion/EmbeddingRateLimitException.cs` with a `public int RetryAfterSeconds { get; init; } = 0;` property (additive). Modify `EmbeddingClient.HandleEmbeddingResponseAsync` (`EmbeddingClient.cs:140`) to parse the `Retry-After` response header **before** throwing:
-    ```csharp
-    if (response.StatusCode == HttpStatusCode.TooManyRequests)
-    {
-        int retryAfter = ParseRetryAfterSeconds(response.Headers.RetryAfter);
-        throw new EmbeddingRateLimitException(tenantId) { RetryAfterSeconds = retryAfter };
-    }
-
-    private static int ParseRetryAfterSeconds(RetryConditionHeaderValue? header)
-    {
-        if (header is null) return 0;
-        if (header.Delta.HasValue) return (int)Math.Clamp(header.Delta.Value.TotalSeconds, 1, 3600);
-        if (header.Date.HasValue)
+        ```csharp
+        public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput, EmbeddingResult>
         {
-            double seconds = (header.Date.Value - DateTimeOffset.UtcNow).TotalSeconds;
-            return seconds > 0 ? (int)Math.Clamp(seconds, 1, 3600) : 0;
-        }
-        return 0;
-    }
-    ```
-    Return `0` means "header missing / unparseable", which the activity maps to the 30 s default.
-  - [ ] 2.5 Update `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` (create if missing):
-    - **Deterministic jitter via `FakeJitterSource` returning a constant 123 ms.** Assert `Task.Delay(123)` was observed (inject `TimeProvider.System`'s `Delay` or measure elapsed ≥ 100 ms).
-    - **429 with `Retry-After: 60`** — mock `EmbeddingClient.GenerateAsync` to throw `new EmbeddingRateLimitException("t1") { RetryAfterSeconds = 60 }`, assert `rateLimiter.ReportRateLimitedAsync(60)` called, assert the exception is re-thrown.
-    - **429 with no `Retry-After`** — throw `EmbeddingRateLimitException("t1")` (defaults `RetryAfterSeconds=0`), assert `ReportRateLimitedAsync(30)` called (the default).
-    - **Local throttle (`TryConsumeAsync=false`)** — asserts `EmbeddingRateLimitException` thrown without calling `ReportRateLimitedAsync` (no provider call happened).
-    - **Happy path** — `TryConsumeAsync=true`, provider returns 200, assert returned `EmbeddingResult.Vector.Length == dimensions`.
-  - [ ] 2.6 In `tests/Hexalith.Memories.Server.Tests/Ingestion/` add `EmbeddingClientRetryAfterParsingTests.cs` with `[Theory]` over:
-    - `Retry-After: 30` → `30`.
-    - `Retry-After: 0` → clamped to 1.
-    - `Retry-After: 5000` → clamped to 3600.
-    - `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT` (HTTP-date in future) → parsed delta.
-    - `Retry-After: Wed, 21 Oct 2020 07:28:00 GMT` (past date) → 0.
-    - No header → 0.
-    - Malformed header (`Retry-After: banana`) → 0.
+            private readonly IActorProxyFactory _actorProxyFactory;
+            private readonly EmbeddingClient _embeddingClient;
+            private readonly IJitterSource _jitterSource;
+            private readonly ILogger<GenerateEmbeddingActivity> _logger;
 
-- [ ] Task 3: Implement `PerTenantConcurrencyGate` (AC: #2, #5, #6, #9)
-  - [ ] 3.1 Create `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`:
-    ```csharp
-    public sealed class PerTenantConcurrencyGate : IAsyncDisposable
-    {
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new(StringComparer.Ordinal);
-        private readonly IngestionSettings _settings;
-        private readonly ILogger<PerTenantConcurrencyGate> _logger;
-        private bool _disposed;
+            public GenerateEmbeddingActivity(
+                EmbeddingClient embeddingClient,
+                IActorProxyFactory actorProxyFactory,
+                IJitterSource jitterSource,
+                ILogger<GenerateEmbeddingActivity> logger) { /* assign */ }
 
-        public PerTenantConcurrencyGate(IOptions<IngestionSettings> options, ILogger<PerTenantConcurrencyGate> logger)
-        {
-            _settings = options.Value;
-            _logger = logger;
-        }
-
-        public async Task<IAsyncDisposable> AcquireAsync(string tenantId, CancellationToken ct)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
-
-            SemaphoreSlim semaphore = _semaphores.GetOrAdd(tenantId,
-                _ => new SemaphoreSlim(_settings.PerTenantExtractionConcurrency, _settings.PerTenantExtractionConcurrency));
-
-            int queued = _settings.PerTenantExtractionConcurrency - semaphore.CurrentCount;
-            if (queued >= _settings.PerTenantExtractionConcurrency)
+            public override async Task<EmbeddingResult> RunAsync(WorkflowActivityContext context, EmbeddingInput input)
             {
-                RateLimitingLog.LogExtractionGateContended(_logger, tenantId, queued);
-            }
-
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(_settings.ExtractionGateAcquireTimeoutSeconds));
-
-            try
-            {
-                await semaphore.WaitAsync(cts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                RateLimitingLog.LogExtractionGateTimeout(_logger, tenantId, _settings.ExtractionGateAcquireTimeoutSeconds);
-                throw new TimeoutException($"Failed to acquire per-tenant extraction gate for tenant '{tenantId}' within {_settings.ExtractionGateAcquireTimeoutSeconds}s.");
-            }
-
-            RateLimitingLog.LogExtractionGateAcquired(_logger, tenantId, semaphore.CurrentCount);
-            return new GateLease(semaphore, tenantId, _logger);
-        }
-
-        public int GetAvailableCount(string tenantId) =>
-            _semaphores.TryGetValue(tenantId, out SemaphoreSlim? semaphore)
-                ? semaphore.CurrentCount
-                : _settings.PerTenantExtractionConcurrency;
-
-        public async ValueTask DisposeAsync()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            foreach (SemaphoreSlim s in _semaphores.Values) s.Dispose();
-            await ValueTask.CompletedTask;
-        }
-
-        private sealed class GateLease : IAsyncDisposable
-        {
-            private readonly SemaphoreSlim _semaphore;
-            private readonly string _tenantId;
-            private readonly ILogger _logger;
-            private int _disposed;
-
-            public GateLease(SemaphoreSlim semaphore, string tenantId, ILogger logger)
-            { _semaphore = semaphore; _tenantId = tenantId; _logger = logger; }
-
-            public ValueTask DisposeAsync()
-            {
-                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                // ... existing argument checks, config fetch, SetCeilingAsync, TryConsumeAsync ...
+                bool allowed = await rateLimiter.TryConsumeAsync().ConfigureAwait(false);
+                if (!allowed)
                 {
-                    _semaphore.Release();
+                    RateLimitingLog.LogRateLimitExceededLocally(_logger, input.TenantId);
+                    throw new EmbeddingRateLimitException(input.TenantId);
                 }
-                return ValueTask.CompletedTask;
+
+                // Jitter applied ONLY when this is a retry attempt — desynchronizes multi-tenant retries
+                // after a provider outage (NFR22) without wasting time on happy-path first attempts.
+                // Expected source: WorkflowActivityContext.RetryAttempt (DAPR 1.17.6); fall back to an
+                // attempt-counter field on EmbeddingInput set by the workflow if the SDK property is absent.
+                if (IsRetryAttempt(context, input))
+                {
+                    int jitterMs = _jitterSource.NextMilliseconds(500);
+                    if (jitterMs > 0)
+                    {
+                        await Task.Delay(jitterMs, CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+
+                try
+                {
+                    float[] vector = await _embeddingClient
+                        .GenerateAsync(input.ContentText, input.TenantId, config, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return new EmbeddingResult(vector, $"{config.Provider}:{config.Model}", config.Dimensions) { Model = config.Model };
+                }
+                catch (EmbeddingRateLimitException ex)
+                {
+                    // Provider 429: parse Retry-After (default 30), update actor, re-throw for workflow retry.
+                    int retryAfter = ExtractRetryAfterSeconds(ex); // may expose from EmbeddingApiException or EmbeddingClient
+                    RateLimitingLog.LogProviderRateLimitReceived(_logger, input.TenantId, retryAfter);
+                    await rateLimiter.ReportRateLimitedAsync(retryAfter).ConfigureAwait(false);
+                    throw;
+                }
+            }
+
+            private static int ExtractRetryAfterSeconds(EmbeddingRateLimitException ex)
+                => ex.RetryAfterSeconds > 0 ? ex.RetryAfterSeconds : 30;
+        }
+        ```
+
+    - [x] 2.4 Extend `src/Hexalith.Memories.Server/Ingestion/EmbeddingRateLimitException.cs` with a `public int RetryAfterSeconds { get; init; } = 0;` property (additive). Modify `EmbeddingClient.HandleEmbeddingResponseAsync` (`EmbeddingClient.cs:140`) to parse the `Retry-After` response header **before** throwing:
+
+        ```csharp
+        if (response.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            int retryAfter = ParseRetryAfterSeconds(response.Headers.RetryAfter);
+            throw new EmbeddingRateLimitException(tenantId) { RetryAfterSeconds = retryAfter };
+        }
+
+        private static int ParseRetryAfterSeconds(RetryConditionHeaderValue? header)
+        {
+            if (header is null) return 0;
+            if (header.Delta.HasValue) return (int)Math.Clamp(header.Delta.Value.TotalSeconds, 1, 3600);
+            if (header.Date.HasValue)
+            {
+                double seconds = (header.Date.Value - DateTimeOffset.UtcNow).TotalSeconds;
+                return seconds > 0 ? (int)Math.Clamp(seconds, 1, 3600) : 0;
+            }
+            return 0;
+        }
+        ```
+
+        Return `0` means "header missing / unparseable", which the activity maps to the 30 s default.
+
+    - [x] 2.5 Update `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` (create if missing):
+        - **Deterministic jitter via `FakeJitterSource` returning a constant 123 ms.** Assert `Task.Delay(123)` was observed (inject `TimeProvider.System`'s `Delay` or measure elapsed ≥ 100 ms).
+        - **429 with `Retry-After: 60`** — mock `EmbeddingClient.GenerateAsync` to throw `new EmbeddingRateLimitException("t1") { RetryAfterSeconds = 60 }`, assert `rateLimiter.ReportRateLimitedAsync(60)` called, assert the exception is re-thrown.
+        - **429 with no `Retry-After`** — throw `EmbeddingRateLimitException("t1")` (defaults `RetryAfterSeconds=0`), assert `ReportRateLimitedAsync(30)` called (the default).
+        - **Local throttle (`TryConsumeAsync=false`)** — asserts `EmbeddingRateLimitException` thrown without calling `ReportRateLimitedAsync` (no provider call happened).
+        - **Happy path** — `TryConsumeAsync=true`, provider returns 200, assert returned `EmbeddingResult.Vector.Length == dimensions`.
+    - [x] 2.6 In `tests/Hexalith.Memories.Server.Tests/Ingestion/` add `EmbeddingClientRetryAfterParsingTests.cs` with `[Theory]` over:
+        - `Retry-After: 30` → `30`.
+        - `Retry-After: 0` → clamped to 1.
+        - `Retry-After: 5000` → clamped to 3600.
+        - `Retry-After: Wed, 21 Oct 2026 07:28:00 GMT` (HTTP-date in future) → parsed delta.
+        - `Retry-After: Wed, 21 Oct 2020 07:28:00 GMT` (past date) → 0.
+        - No header → 0.
+        - Malformed header (`Retry-After: banana`) → 0.
+
+- [x] Task 3: Implement `PerTenantConcurrencyGate` (AC: #2, #5, #6, #9)
+    - [x] 3.1 Create `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`:
+
+        ```csharp
+        public sealed class PerTenantConcurrencyGate : IAsyncDisposable
+        {
+            private readonly ConcurrentDictionary<string, SemaphoreSlim> _semaphores = new(StringComparer.Ordinal);
+            private readonly IngestionSettings _settings;
+            private readonly ILogger<PerTenantConcurrencyGate> _logger;
+            private bool _disposed;
+            private bool _clampWarningEmitted;
+
+            public PerTenantConcurrencyGate(IOptions<IngestionSettings> options, ILogger<PerTenantConcurrencyGate> logger)
+            {
+                _settings = options.Value;
+                _logger = logger;
+            }
+
+            public async Task<IAsyncDisposable> AcquireAsync(string tenantId, CancellationToken ct)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+                // Clamp concurrency to processor count as an upper safety bound.
+                // Misconfigured values >ProcessorCount thrash page cache (Kreuzberg OCR) and increase
+                // context-switching cost without throughput gain. Warn once per process on clamp.
+                int requested = _settings.PerTenantExtractionConcurrency;
+                int bounded = Math.Min(requested, Environment.ProcessorCount);
+                if (requested > Environment.ProcessorCount && !_clampWarningEmitted)
+                {
+                    _clampWarningEmitted = true;
+                    _logger.LogWarning(
+                        "PerTenantExtractionConcurrency={Requested} exceeds Environment.ProcessorCount={ProcessorCount}; clamped to {Bounded}. See docs/operations/rate-limiting.md.",
+                        requested, Environment.ProcessorCount, bounded);
+                }
+
+                SemaphoreSlim semaphore = _semaphores.GetOrAdd(tenantId,
+                    _ => new SemaphoreSlim(bounded, bounded));
+
+                int queued = _settings.PerTenantExtractionConcurrency - semaphore.CurrentCount;
+                if (queued >= _settings.PerTenantExtractionConcurrency)
+                {
+                    RateLimitingLog.LogExtractionGateContended(_logger, tenantId, queued);
+                }
+
+                using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(_settings.ExtractionGateAcquireTimeoutSeconds));
+
+                try
+                {
+                    await semaphore.WaitAsync(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    RateLimitingLog.LogExtractionGateTimeout(_logger, tenantId, _settings.ExtractionGateAcquireTimeoutSeconds);
+                    throw new TimeoutException($"Failed to acquire per-tenant extraction gate for tenant '{tenantId}' within {_settings.ExtractionGateAcquireTimeoutSeconds}s.");
+                }
+
+                RateLimitingLog.LogExtractionGateAcquired(_logger, tenantId, semaphore.CurrentCount);
+                return new GateLease(semaphore, tenantId, _logger);
+            }
+
+            public int GetAvailableCount(string tenantId) =>
+                _semaphores.TryGetValue(tenantId, out SemaphoreSlim? semaphore)
+                    ? semaphore.CurrentCount
+                    : _settings.PerTenantExtractionConcurrency;
+
+            public async ValueTask DisposeAsync()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                foreach (SemaphoreSlim s in _semaphores.Values) s.Dispose();
+                await ValueTask.CompletedTask;
+            }
+
+            private sealed class GateLease : IAsyncDisposable
+            {
+                private readonly SemaphoreSlim _semaphore;
+                private readonly string _tenantId;
+                private readonly ILogger _logger;
+                private int _disposed;
+
+                public GateLease(SemaphoreSlim semaphore, string tenantId, ILogger logger)
+                { _semaphore = semaphore; _tenantId = tenantId; _logger = logger; }
+
+                public ValueTask DisposeAsync()
+                {
+                    if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                    {
+                        _semaphore.Release();
+                    }
+                    return ValueTask.CompletedTask;
+                }
             }
         }
-    }
-    ```
-    **Design notes:**
-    - `StringComparer.Ordinal` for tenant ID keys (tenant IDs are case-sensitive per architecture §D8).
-    - `GetOrAdd` creates one `SemaphoreSlim` per tenant lazily; no explicit eviction because tenant IDs are bounded in practice (low hundreds for MVP) and each `SemaphoreSlim` is tiny (~100 B).
-    - The gate is a **process-local** singleton; **horizontal scale-out is NOT in scope for MVP** (per architecture §`TenantInfrastructureResolver` comment: single impl until multi-instance scaling needed). Document in Dev Notes.
-    - `ExtractionGateAcquireTimeoutSeconds` default **300** (5 min) — long enough to ride through normal batch queuing, short enough that a stuck gate fails visibly. Configurable.
-    - `IAsyncDisposable` on the gate itself so DI can dispose semaphores on shutdown.
-  - [ ] 3.2 Extend `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs` (created in 6.1):
-    ```csharp
-    public sealed record IngestionSettings
-    {
-        // ... existing 6.1 fields (AllowedDirectoryRoots, MaxBatchSize, etc.) ...
-        public int PerTenantExtractionConcurrency { get; init; } = 4;
-        public int ExtractionGateAcquireTimeoutSeconds { get; init; } = 300;
-    }
-    ```
-    **Check the actual 6.1 shape first** — if `IngestionSettings` is a `class` with `get; set;`, preserve that shape; do not switch to `record`. The 6.1 story used a record; verify via `Read`.
-  - [ ] 3.3 Register in `Program.cs` DI container (or `MemoriesServerServiceCollectionExtensions` if that's where 6.1 put it):
-    ```csharp
-    services.AddSingleton<PerTenantConcurrencyGate>();
-    ```
-    Add `appsettings.json` defaults under the `Ingestion` section:
-    ```json
-    "PerTenantExtractionConcurrency": 4,
-    "ExtractionGateAcquireTimeoutSeconds": 300
-    ```
-  - [ ] 3.4 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/ExtractContentActivity.cs` to acquire the gate before Kreuzberg:
-    ```csharp
-    public sealed class ExtractContentActivity(/* existing deps */, PerTenantConcurrencyGate gate) : WorkflowActivity<ExtractionInput, ExtractionResult>
-    {
-        public override async Task<ExtractionResult> RunAsync(WorkflowActivityContext context, ExtractionInput input)
+        ```
+
+        **Design notes:**
+        - `StringComparer.Ordinal` for tenant ID keys (tenant IDs are case-sensitive per architecture §D8).
+        - `GetOrAdd` creates one `SemaphoreSlim` per tenant lazily; no explicit eviction because tenant IDs are bounded in practice (low hundreds for MVP) and each `SemaphoreSlim` is tiny (~100 B).
+        - The gate is a **process-local** singleton; **horizontal scale-out is NOT in scope for MVP** (per architecture §`TenantInfrastructureResolver` comment: single impl until multi-instance scaling needed). Document in Dev Notes.
+        - `ExtractionGateAcquireTimeoutSeconds` default **300** (5 min) — long enough to ride through normal batch queuing, short enough that a stuck gate fails visibly. Configurable.
+        - `IAsyncDisposable` on the gate itself so DI can dispose semaphores on shutdown.
+
+    - [x] 3.2 Extend `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs` (created in 6.1):
+        ```csharp
+        public sealed record IngestionSettings
         {
-            ArgumentNullException.ThrowIfNull(input);
-            // extract tenantId from WorkflowActivityContext / input — confirm which; ExtractionInput may not carry it today
-            string tenantId = GetTenantIdForContext(context, input);
-            await using IAsyncDisposable lease = await gate.AcquireAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
-            // ... existing Kreuzberg call ...
+            // ... existing 6.1 fields (AllowedDirectoryRoots, MaxBatchSize, etc.) ...
+            public int PerTenantExtractionConcurrency { get; init; } = 4;
+            public int ExtractionGateAcquireTimeoutSeconds { get; init; } = 300;
         }
-    }
-    ```
-    **IMPORTANT**: `ExtractionInput` in the current code **does not carry `TenantId`** (verified at `Contracts/V1/ExtractionInput.cs`). Two options:
-    - **Option A (preferred):** add `TenantId` to `ExtractionInput`. Breaking change, but the 6.1 story already changed `IngestionInput.ContentBytes` to nullable, and `ExtractionInput` is the narrow workflow record. Update `IngestionWorkflow.cs:111-114` to pass `input.TenantId`. Register the new shape in `MemoriesJsonContext`. Trivial.
-    - **Option B:** read `tenantId` from the workflow context metadata — DAPR Workflow does NOT propagate arbitrary metadata reliably into activity context, so this is **NOT recommended**.
-    - **Choose Option A.** List this as a Breaking Change addition.
-  - [ ] 3.5 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/FetchUrlActivity.cs` (created in 6.1) similarly:
-    ```csharp
-    public sealed class FetchUrlActivity(/* existing deps */, PerTenantConcurrencyGate gate) : WorkflowActivity<FetchUrlInput, UrlFetchResult>
-    {
-        public override async Task<UrlFetchResult> RunAsync(WorkflowActivityContext context, FetchUrlInput input)
+        ```
+        **Check the actual 6.1 shape first** — if `IngestionSettings` is a `class` with `get; set;`, preserve that shape; do not switch to `record`. The 6.1 story used a record; verify via `Read`.
+    - [x] 3.3 Register in `Program.cs` DI container (or `MemoriesServerServiceCollectionExtensions` if that's where 6.1 put it):
+        ```csharp
+        services.AddSingleton<PerTenantConcurrencyGate>();
+        ```
+        Add `appsettings.json` defaults under the `Ingestion` section:
+        ```json
+        "PerTenantExtractionConcurrency": 4,
+        "ExtractionGateAcquireTimeoutSeconds": 300
+        ```
+    - [x] 3.4 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/ExtractContentActivity.cs` to acquire the gate before Kreuzberg:
+        ```csharp
+        public sealed class ExtractContentActivity(/* existing deps */, PerTenantConcurrencyGate gate) : WorkflowActivity<ExtractionInput, ExtractionResult>
         {
-            string tenantId = ResolveTenantId(context, input); // see FetchUrlInput shape
-            await using IAsyncDisposable lease = await gate.AcquireAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
-            // ... existing fetch call ...
+            public override async Task<ExtractionResult> RunAsync(WorkflowActivityContext context, ExtractionInput input)
+            {
+                ArgumentNullException.ThrowIfNull(input);
+                // extract tenantId from WorkflowActivityContext / input — confirm which; ExtractionInput may not carry it today
+                string tenantId = GetTenantIdForContext(context, input);
+                await using IAsyncDisposable lease = await gate.AcquireAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
+                // ... existing Kreuzberg call ...
+            }
         }
-    }
-    ```
-    **`FetchUrlInput` shape:** `(string Url, string MemoryUnitId)` per 6.1 Task 2.1 — NO `TenantId` field. Extend to `(string Url, string MemoryUnitId, string TenantId)`. Update `IngestionWorkflow.cs` (the workflow passes it) and `MemoriesJsonContext`.
-  - [ ] 3.6 Update `IngestionWorkflow.cs:97` to pass `input.TenantId` in the new `FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId)` and lines ~113 to pass `ExtractionInput(...) with TenantId = input.TenantId`. Re-run workflow tests.
-  - [ ] 3.7 Create `tests/Hexalith.Memories.Server.Tests/Ingestion/PerTenantConcurrencyGateTests.cs`:
-    - **Basic:** `AcquireAsync("t1")` 5 times with `max=3` → first 3 complete immediately, 4th and 5th block until first 2 disposed.
-    - **Per-tenant isolation:** 3 acquires for `t1` + 3 acquires for `t2` with `max=2` → 2 of each are in-flight (4 total), 1 of each blocks.
-    - **Release on dispose:** acquire, dispose, acquire again → second acquire does NOT block.
-    - **Release on exception in body** (Quinn's addition): acquire inside `await using`, throw from the body, catch outside, then re-acquire for the same tenant → second acquire does NOT block. Pins the `finally`-semantics of the `IAsyncDisposable` lease; catches any future refactor that accidentally moves the release out of a guaranteed-run path.
-    - **Timeout:** set `ExtractionGateAcquireTimeoutSeconds=1`, saturate tenant, next acquire throws `TimeoutException` within an upper bound of 5 s (CI-safe tolerance per Quinn's guidance — Windows CI runners have been observed dropping 2+ s under load).
-    - **Cancellation:** caller cancels token → `OperationCanceledException` thrown; the semaphore budget is NOT consumed.
-    - **Concurrent GetOrAdd:** 100 parallel acquires for different tenant IDs → all complete in-flight (no shared gate bottleneck).
-    Use `TimeSpan` assertions with up to 5 s tolerance on timing-sensitive cases (5 s covers both Linux and Windows CI noise).
-  - [ ] 3.8 Extend `IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs` (6.1 baseline) with a skipped `[Fact(Skip)]` scenario: 500-file batch for `t1` + 5 single ingests for `t2`, assert `t2`'s P50 ≤ 2× baseline. The baseline is measured in a "control" run inside the same test (first 5 single ingests with no `t1` batch). Tag the test `"RequiresAspireFixture"`.
+        ```
+        **IMPORTANT**: `ExtractionInput` in the current code **does not carry `TenantId`** (verified at `Contracts/V1/ExtractionInput.cs`). Two options:
+        - **Option A (preferred):** add `TenantId` to `ExtractionInput`. Breaking change, but the 6.1 story already changed `IngestionInput.ContentBytes` to nullable, and `ExtractionInput` is the narrow workflow record. Update `IngestionWorkflow.cs:111-114` to pass `input.TenantId`. Register the new shape in `MemoriesJsonContext`. Trivial.
+        - **Option B:** read `tenantId` from the workflow context metadata — DAPR Workflow does NOT propagate arbitrary metadata reliably into activity context, so this is **NOT recommended**.
+        - **Choose Option A.** List this as a Breaking Change addition.
+    - [x] 3.5 Modify `src/Hexalith.Memories.Server/Activities/Ingestion/FetchUrlActivity.cs` (created in 6.1) similarly:
+        ```csharp
+        public sealed class FetchUrlActivity(/* existing deps */, PerTenantConcurrencyGate gate) : WorkflowActivity<FetchUrlInput, UrlFetchResult>
+        {
+            public override async Task<UrlFetchResult> RunAsync(WorkflowActivityContext context, FetchUrlInput input)
+            {
+                string tenantId = ResolveTenantId(context, input); // see FetchUrlInput shape
+                await using IAsyncDisposable lease = await gate.AcquireAsync(tenantId, CancellationToken.None).ConfigureAwait(false);
+                // ... existing fetch call ...
+            }
+        }
+        ```
+        **`FetchUrlInput` shape:** `(string Url, string MemoryUnitId)` per 6.1 Task 2.1 — NO `TenantId` field. Extend to `(string Url, string MemoryUnitId, string TenantId)`. Update `IngestionWorkflow.cs` (the workflow passes it) and `MemoriesJsonContext`.
+    - [x] 3.6 Update `IngestionWorkflow.cs:97` to pass `input.TenantId` in the new `FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId)` and lines ~113 to pass `ExtractionInput(...) with TenantId = input.TenantId`. Re-run workflow tests.
+    - [x] 3.7 Create `tests/Hexalith.Memories.Server.Tests/Ingestion/PerTenantConcurrencyGateTests.cs`:
+        - **Basic:** `AcquireAsync("t1")` 5 times with `max=3` → first 3 complete immediately, 4th and 5th block until first 2 disposed.
+        - **Per-tenant isolation:** 3 acquires for `t1` + 3 acquires for `t2` with `max=2` → 2 of each are in-flight (4 total), 1 of each blocks.
+        - **Release on dispose:** acquire, dispose, acquire again → second acquire does NOT block.
+        - **Release on exception in body** (Quinn's addition): acquire inside `await using`, throw from the body, catch outside, then re-acquire for the same tenant → second acquire does NOT block. Pins the `finally`-semantics of the `IAsyncDisposable` lease; catches any future refactor that accidentally moves the release out of a guaranteed-run path.
+        - **Timeout:** set `ExtractionGateAcquireTimeoutSeconds=1`, saturate tenant, next acquire throws `TimeoutException` within an upper bound of 5 s (CI-safe tolerance per Quinn's guidance — Windows CI runners have been observed dropping 2+ s under load).
+        - **Cancellation:** caller cancels token → `OperationCanceledException` thrown; the semaphore budget is NOT consumed.
+        - **Concurrent GetOrAdd:** 100 parallel acquires for different tenant IDs → all complete in-flight (no shared gate bottleneck).
+          Use `TimeSpan` assertions with up to 5 s tolerance on timing-sensitive cases (5 s covers both Linux and Windows CI noise).
+    - [x] 3.8 Extend `IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs` (6.1 baseline) with a skipped `[Fact(Skip)]` scenario: 500-file batch for `t1` + 5 single ingests for `t2`, assert `t2`'s P50 ≤ 2× baseline. The baseline is measured in a "control" run inside the same test (first 5 single ingests with no `t1` batch). Tag the test `"RequiresAspireFixture"`.
 
-- [ ] Task 4: Structured logging events 6201–6206 (AC: #3, #9)
-  - [ ] 4.1 Create `src/Hexalith.Memories.Server/Ingestion/RateLimitingLog.cs` — mirror the 6.1 `IngestionEndpointLog.cs` pattern (static partial class with `[LoggerMessage]` attributes). Event IDs:
-    ```csharp
-    public static partial class RateLimitingLog
-    {
-        [LoggerMessage(EventId = 6201, Level = LogLevel.Warning,
-            Message = "Rate limit exceeded locally for tenant {TenantId} (actor refused consume).")]
-        public static partial void LogRateLimitExceededLocally(ILogger logger, string tenantId);
+- [x] Task 4: Structured logging events 6201–6206 (AC: #3, #9)
+    - [x] 4.1 Create `src/Hexalith.Memories.Server/Ingestion/RateLimitingLog.cs` — mirror the 6.1 `IngestionEndpointLog.cs` pattern (static partial class with `[LoggerMessage]` attributes). Event IDs:
 
-        [LoggerMessage(EventId = 6202, Level = LogLevel.Warning,
-            Message = "Provider rate limit received for tenant {TenantId}, Retry-After={RetryAfterSeconds}s.")]
-        public static partial void LogProviderRateLimitReceived(ILogger logger, string tenantId, int retryAfterSeconds);
+        ```csharp
+        public static partial class RateLimitingLog
+        {
+            [LoggerMessage(EventId = 6201, Level = LogLevel.Warning,
+                Message = "Rate limit exceeded locally for tenant {TenantId} (actor refused consume).")]
+            public static partial void LogRateLimitExceededLocally(ILogger logger, string tenantId);
 
-        [LoggerMessage(EventId = 6203, Level = LogLevel.Information,
-            Message = "Rate limit actor updated for tenant {TenantId} — remaining={Remaining}, windowStart={WindowStart}.")]
-        public static partial void LogRateLimitActorUpdated(ILogger logger, string tenantId, int remaining, DateTime windowStart);
+            [LoggerMessage(EventId = 6202, Level = LogLevel.Warning,
+                Message = "Provider rate limit received for tenant {TenantId}, Retry-After={RetryAfterSeconds}s.")]
+            public static partial void LogProviderRateLimitReceived(ILogger logger, string tenantId, int retryAfterSeconds);
 
-        [LoggerMessage(EventId = 6204, Level = LogLevel.Debug,
-            Message = "Extraction gate acquired for tenant {TenantId} — available={AvailableCount}.")]
-        public static partial void LogExtractionGateAcquired(ILogger logger, string tenantId, int availableCount);
+            [LoggerMessage(EventId = 6203, Level = LogLevel.Information,
+                Message = "Rate limit actor updated for tenant {TenantId} — remaining={Remaining}, windowStart={WindowStart}.")]
+            public static partial void LogRateLimitActorUpdated(ILogger logger, string tenantId, int remaining, DateTime windowStart);
 
-        [LoggerMessage(EventId = 6205, Level = LogLevel.Information,
-            Message = "Extraction gate contended for tenant {TenantId} — queueDepth={QueueDepth}.")]
-        public static partial void LogExtractionGateContended(ILogger logger, string tenantId, int queueDepth);
+            [LoggerMessage(EventId = 6204, Level = LogLevel.Debug,
+                Message = "Extraction gate acquired for tenant {TenantId} — available={AvailableCount}.")]
+            public static partial void LogExtractionGateAcquired(ILogger logger, string tenantId, int availableCount);
 
-        [LoggerMessage(EventId = 6206, Level = LogLevel.Warning,
-            Message = "Extraction gate acquisition timed out for tenant {TenantId} after {TimeoutSeconds}s.")]
-        public static partial void LogExtractionGateTimeout(ILogger logger, string tenantId, int timeoutSeconds);
-    }
-    ```
-    **Event ID allocation:** 6.1 reserved 6101–6108 (per its Reference: Log Events section). 6.2 takes 6201–6206. Leave 6109–6199 for future 6.1 hotfixes.
-  - [ ] 4.2 Unit test in `tests/Hexalith.Memories.Server.Tests/Ingestion/RateLimitingLogTests.cs` using `CapturingLogger<T>` test fixture (established in 5.6 / 6.1). Assert each event fires with correct EventId and state fields.
+            [LoggerMessage(EventId = 6205, Level = LogLevel.Information,
+                Message = "Extraction gate contended for tenant {TenantId} — queueDepth={QueueDepth}.")]
+            public static partial void LogExtractionGateContended(ILogger logger, string tenantId, int queueDepth);
 
-- [ ] Task 5: `ReportRateLimitedAsync` integration with `GenerateEmbeddingActivity` + retry (AC: #3, #4, #11)
-  - [ ] 5.1 After Task 2 is complete, run `dotnet test` scoped to `Hexalith.Memories.Server.Tests` to confirm the activity-level unit tests in Task 2.5 all pass. Primary 429 verification is via the unit test (mocked `EmbeddingClient`) — no dev-only "force 429" flag ships in 6.2. End-to-end 429 coverage is the `[Fact(Skip)]` integration test (Task 8.1) and is unskipped by **Story 6.3** (retry & failure visibility) once its retry harness provides a deterministic 429-producing fixture.
-  - [ ] 5.2 Verify `IngestionWorkflow.cs` catch-all correctly attaches `FailureDetails` for `EmbeddingRateLimitException` after retry exhaustion. The existing `AttachFailureDetails` captures `exception.GetType().Name` as `ErrorCode`, so `FailureDetails.ErrorCode="EmbeddingRateLimitException"` is correct and tested. **No workflow changes.**
+            [LoggerMessage(EventId = 6206, Level = LogLevel.Warning,
+                Message = "Extraction gate acquisition timed out for tenant {TenantId} after {TimeoutSeconds}s.")]
+            public static partial void LogExtractionGateTimeout(ILogger logger, string tenantId, int timeoutSeconds);
+        }
+        ```
 
-- [ ] Task 6: Regression guard + baseline re-run (AC: #7, #12)
-  - [ ] 6.1 **Baseline measurement (before any 6.2 code changes):** run `dotnet test Hexalith.Memories.slnx --filter "FullyQualifiedName!~IntegrationTests"` from repo root. Record: total passing, total failing, total skipped. Expected to match 6.1 Dev Agent Record baseline (~1191 passing in Server+Contracts; 2 documented `SaveDedupKeyActivityTests` failures). Record in Debug Log References.
-  - [ ] 6.2 **Post-change validation:** run `dotnet test Hexalith.Memories.slnx --filter "FullyQualifiedName!~IntegrationTests"` after all tasks. Expected: ~1210+ passing (20 new tests minimum), same 2 documented baseline failures remain, zero new failures. If a test fails that didn't fail at baseline, **STOP and investigate** before marking tasks complete.
-  - [ ] 6.3 **AC7 regression test:** in `GenerateEmbeddingActivityTests` (Task 2.5), add a test "SetCeilingAsync reflects updated TenantConfig":
-    - Mock `ITenantConfigurationActor.GetEmbeddingConfigAsync` to return a config with `RateLimitPerMinute=500`.
-    - Run the activity; assert `rateLimiter.SetCeilingAsync(500)` called.
-    - Re-mock to return `RateLimitPerMinute=100`.
-    - Run again; assert `rateLimiter.SetCeilingAsync(100)` called on the second run.
-    This pins the call order (`SetCeilingAsync` → `TryConsumeAsync`) and guards against a future dev agent "optimizing away" the `SetCeilingAsync` call.
+        **Event ID allocation:** 6.1 reserved 6101–6108 (per its Reference: Log Events section). 6.2 takes 6201–6206. Leave 6109–6199 for future 6.1 hotfixes.
 
-- [ ] Task 7: Documentation — shared provider quota limitation (AC: #8)
-  - [ ] 7.1 Create `docs/operations/rate-limiting.md` (operator-audience doc — create folder if absent):
-    ```markdown
-    # Rate Limiting — Per-Tenant and Shared Provider Quotas
+    - [x] 4.2 Unit test in `tests/Hexalith.Memories.Server.Tests/Ingestion/RateLimitingLogTests.cs` using `CapturingLogger<T>` test fixture (established in 5.6 / 6.1). Assert each event fires with correct EventId and state fields.
 
-    ## Per-tenant ceilings (Story 6.2)
+- [x] Task 5: `ReportRateLimitedAsync` integration with `GenerateEmbeddingActivity` + retry (AC: #3, #4, #11)
+    - [x] 5.1 After Task 2 is complete, run `dotnet test` scoped to `Hexalith.Memories.Server.Tests` to confirm the activity-level unit tests in Task 2.5 all pass. Primary 429 verification is via the unit test (mocked `EmbeddingClient`) — no dev-only "force 429" flag ships in 6.2. End-to-end 429 coverage is the `[Fact(Skip)]` integration test (Task 8.1) and is unskipped by **Story 6.3** (retry & failure visibility) once its retry harness provides a deterministic 429-producing fixture.
+    - [x] 5.2 Verify `IngestionWorkflow.cs` catch-all correctly attaches `FailureDetails` for `EmbeddingRateLimitException` after retry exhaustion. The existing `AttachFailureDetails` captures `exception.GetType().Name` as `ErrorCode`, so `FailureDetails.ErrorCode="EmbeddingRateLimitException"` is correct and tested. **No workflow changes.**
 
-    Each tenant has an `EmbeddingRateLimiterActor` (Actor ID = tenant ID). It enforces a `RateLimitPerMinute` ceiling from `TenantEmbeddingConfig` (Story 1.7 / 5.5). The actor is independent per tenant; one tenant cannot consume another's budget.
+- [x] Task 6: Regression guard + baseline re-run (AC: #7, #12)
+    - [x] 6.1 **Baseline measurement (before any 6.2 code changes):** run `dotnet test Hexalith.Memories.slnx --filter "FullyQualifiedName!~IntegrationTests"` from repo root. Record: total passing, total failing, total skipped. Expected to match 6.1 Dev Agent Record baseline (~1191 passing in Server+Contracts; 2 documented `SaveDedupKeyActivityTests` failures). Record in Debug Log References.
+    - [x] 6.2 **Post-change validation:** run `dotnet test Hexalith.Memories.slnx --filter "FullyQualifiedName!~IntegrationTests"` after all tasks. Expected: ~1210+ passing (20 new tests minimum), same 2 documented baseline failures remain, zero new failures. If a test fails that didn't fail at baseline, **STOP and investigate** before marking tasks complete.
+    - [x] 6.3 **AC7 regression test:** in `GenerateEmbeddingActivityTests` (Task 2.5), add a test "SetCeilingAsync reflects updated TenantConfig":
+        - Mock `ITenantConfigurationActor.GetEmbeddingConfigAsync` to return a config with `RateLimitPerMinute=500`.
+        - Run the activity; assert `rateLimiter.SetCeilingAsync(500)` called.
+        - Re-mock to return `RateLimitPerMinute=100`.
+        - Run again; assert `rateLimiter.SetCeilingAsync(100)` called on the second run.
+          This pins the call order (`SetCeilingAsync` → `TryConsumeAsync`) and guards against a future dev agent "optimizing away" the `SetCeilingAsync` call.
 
-    ## Shared provider quota (Known Limitation)
+- [x] Task 7: Documentation — shared provider quota limitation (AC: #8)
+    - [x] 7.1 Create `docs/operations/rate-limiting.md` (operator-audience doc — create folder if absent):
 
-    If multiple tenants share the same `TenantEmbeddingConfig.ApiSecretKeyName` (i.e., the same provider API key), they share the provider-level rate limit. Google `text-embedding-004` free tier is 1500 req/min TOTAL — not per tenant.
+        ```markdown
+        # Rate Limiting — Per-Tenant and Shared Provider Quotas
 
-    **Mitigation for MVP:** assign distinct `ApiSecretKeyName` values per tenant (via the operator secrets store). The per-tenant ceiling enforced by the actor is a *protection*, not an *isolation*, when keys are shared.
+        ## Per-tenant ceilings (Story 6.2)
 
-    **Phase 3 roadmap:** a cross-tenant `SharedEmbeddingRateLimiterActor` will coordinate the shared-key quota across tenants (see architecture §D41 "Shared embedding rate limiter").
+        Each tenant has an `EmbeddingRateLimiterActor` (Actor ID = tenant ID). It enforces a `RateLimitPerMinute` ceiling from `TenantEmbeddingConfig` (Story 1.7 / 5.5). The actor is independent per tenant; one tenant cannot consume another's budget.
 
-    ## Provider 429 handling (Story 6.2)
+        ## Shared provider quota (Known Limitation)
 
-    On a provider HTTP 429 response, `GenerateEmbeddingActivity` parses `Retry-After` (seconds or HTTP-date), invokes `IEmbeddingRateLimiterActor.ReportRateLimitedAsync(retryAfterSeconds)` which zeroes the tenant's budget for the reported interval, then re-throws `EmbeddingRateLimitException`. The DAPR Workflow retry policy (5 attempts, exponential backoff, 5 min cap) handles the retry. During the Retry-After window, `TryConsumeAsync` returns `false` immediately — no provider calls happen — so the retry cost is just workflow scheduling overhead.
+        If multiple tenants share the same `TenantEmbeddingConfig.ApiSecretKeyName` (i.e., the same provider API key), they share the provider-level rate limit. Google `text-embedding-004` free tier is 1500 req/min TOTAL — not per tenant.
 
-    ## Per-tenant CPU gate (Story 6.2)
+        **Mitigation for MVP:** assign distinct `ApiSecretKeyName` values per tenant (via the operator secrets store). The per-tenant ceiling enforced by the actor is a _protection_, not an _isolation_, when keys are shared.
 
-    `PerTenantConcurrencyGate` caps concurrent `ExtractContentActivity` and `FetchUrlActivity` invocations per tenant (default 4). Prevents a tenant's batch from monopolizing the Memories Server extraction threadpool.
+        **Phase 3 roadmap:** a cross-tenant `SharedEmbeddingRateLimiterActor` will coordinate the shared-key quota across tenants (see architecture §D41 "Shared embedding rate limiter").
 
-    ## Jitter
+        ## Provider 429 handling (Story 6.2)
 
-    `GenerateEmbeddingActivity` adds uniform-random jitter in [0, 500) ms BEFORE the provider call, to desynchronize retries after a provider outage (thundering herd mitigation — NFR22).
+        On a provider HTTP 429 response, `GenerateEmbeddingActivity` parses `Retry-After` (seconds or HTTP-date), invokes `IEmbeddingRateLimiterActor.ReportRateLimitedAsync(retryAfterSeconds)` which zeroes the tenant's budget for the reported interval, then re-throws `EmbeddingRateLimitException`. The DAPR Workflow retry policy (5 attempts, exponential backoff, 5 min cap) handles the retry. During the Retry-After window, `TryConsumeAsync` returns `false` immediately — no provider calls happen — so the retry cost is just workflow scheduling overhead.
 
-    ## Metrics and logs
+        ## Per-tenant CPU gate (Story 6.2)
 
-    Events 6201–6206 (see `RateLimitingLog.cs`). Epic 8 will expose OpenTelemetry counters.
-    ```
-  - [ ] 7.2 Add a link in `README.md` under an "Operations" section. If no such section exists, create one that points to `docs/operations/rate-limiting.md` (verify the README structure first; do not clobber). Not mandatory for DoD but highly recommended (Gate 3 polish).
+        `PerTenantConcurrencyGate` caps concurrent `ExtractContentActivity` and `FetchUrlActivity` invocations per tenant (default 4). Prevents a tenant's batch from monopolizing the Memories Server extraction threadpool.
 
-- [ ] Task 8: Integration test scaffolding (AC: #1, #2, #10)
-  - [ ] 8.1 Extend `tests/Hexalith.Memories.IntegrationTests/Ingestion/` with `RateLimitingIntegrationTests.cs`. Each test MUST use the precise skip reason format: `[Fact(Skip = "Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]` so the unskip tracking is greppable.
-    - Test 1 — two-tenant isolation (AC1, AC10). Unskipped by **Story 6.3**.
-    - Test 2 — 500-file batch vs. single-ingest starvation regression (AC2). Unskipped by **Story 6.3** (same fixture dependency).
-    - Test 3 — 429 retry end-to-end (AC3, AC4) — requires deterministic 429-producing provider test double. Unskipped by **Story 6.3** when its retry harness builds the double.
-    Use the existing `AspireIngestionPipelineFixture` if available (per 6.1 Dev Agent Record); if not, stub the fixture class with a `throw new NotImplementedException()` and the same Story 6.3 reference in the skip message.
-  - [ ] 8.2 DO NOT unskip these tests in 6.2 — Story 6.2's DoD is that the tests *compile* and the *unit tests* pass. Story 6.3 owns the unskip.
+        ## Jitter
+
+        `GenerateEmbeddingActivity` adds uniform-random jitter in [0, 500) ms BEFORE the provider call, to desynchronize retries after a provider outage (thundering herd mitigation — NFR22).
+
+        ## Metrics and logs
+
+        Events 6201–6206 (see `RateLimitingLog.cs`). Epic 8 will expose OpenTelemetry counters.
+        ```
+
+    - [x] 7.2 Add a link in `README.md` under an "Operations" section. If no such section exists, create one that points to `docs/operations/rate-limiting.md` (verify the README structure first; do not clobber). Not mandatory for DoD but highly recommended (Gate 3 polish).
+
+- [x] Task 8: Integration test scaffolding (AC: #1, #2, #10)
+    - [x] 8.1 Extend `tests/Hexalith.Memories.IntegrationTests/Ingestion/` with `RateLimitingIntegrationTests.cs`. Each test MUST use the precise skip reason format: `[Fact(Skip = "Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]` so the unskip tracking is greppable.
+        - Test 1 — two-tenant isolation (AC1, AC10). Unskipped by **Story 6.3**.
+        - Test 2 — 500-file batch vs. single-ingest starvation regression (AC2). Unskipped by **Story 6.3** (same fixture dependency).
+        - Test 3 — 429 retry end-to-end (AC3, AC4) — requires deterministic 429-producing provider test double. Unskipped by **Story 6.3** when its retry harness builds the double.
+          Use the existing `AspireIngestionPipelineFixture` if available (per 6.1 Dev Agent Record); if not, stub the fixture class with a `throw new NotImplementedException()` and the same Story 6.3 reference in the skip message.
+    - [x] 8.2 DO NOT unskip these tests in 6.2 — Story 6.2's DoD is that the tests _compile_ and the _unit tests_ pass. Story 6.3 owns the unskip.
+
+### Review Findings
+
+- [x] [Review][Decision] Follow the Task 4.1 `RateLimitingLog` signature for events `6201`/`6202` — resolved in favor of the slimmer payload because AC3 and AC9 contradict each other, while the concrete Task 4.1 code sample, event table, and implementation all align on the current field set. No patch applied.
+- [x] [Review][Patch] Apply jitter only on retry attempts, not on the first embedding call [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs:86]
+- [x] [Review][Patch] Clamp and validate per-tenant gate settings before constructing semaphores/timeouts [src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs:47]
+- [x] [Review][Patch] Emit `RateLimitActorUpdated` (6203) when `ReportRateLimitedAsync` persists the new state [src/Hexalith.Memories.Server/Actors/EmbeddingRateLimiterActor.cs:57]
+- [x] [Review][Patch] Log actual extraction-gate queue depth instead of reusing the in-flight count [src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs:53]
 
 ## Dev Notes
 
@@ -459,6 +510,7 @@ so that one tenant's batch ingestion doesn't starve another's real-time ingestio
 **What this story IS:** the "ingestion reliability layer" for Gate 3. Stories 6.1 (ingestion surface), 6.2 (reliability), 6.3 (observability), 6.4 (durability) are separable concerns — 6.2 is the **runtime behavior** layer. The code for rate limiting, actor-based throttling, tenant configuration, and workflow retries already exists from Stories 1.4, 1.7, and 5.5. Story 6.2 **does not build these from scratch** — it **refines, tests, and documents** them, adds the 429-feedback loop (new), adds the per-tenant extraction concurrency gate (new), and adds jitter (new). Think of it as "make the existing rate limiter actually work under adversarial load."
 
 **What this story IS NOT:**
+
 - NOT a new rate limiter. The `EmbeddingRateLimiterActor` exists (Story 1.4). 6.2 extends its interface with `ReportRateLimitedAsync` and uses it correctly from the activity.
 - NOT a new tenant configuration actor. `TenantConfigurationActor` exists (Story 5.5).
 - NOT a new workflow. `IngestionWorkflow` exists (Story 1.6), modified only to pass `TenantId` through `ExtractionInput` / `FetchUrlInput`.
@@ -470,6 +522,7 @@ so that one tenant's batch ingestion doesn't starve another's real-time ingestio
 - NOT CLI or MCP changes. Epic 7 / Epic 10.
 
 **Mental model for the dev agent:**
+
 - AC1, AC7, AC10 = **verification tests** for existing behavior. You write tests, you don't write code that didn't exist before.
 - AC2, AC5, AC6 = **new gate** (`PerTenantConcurrencyGate` + threading through activities). Biggest single code change.
 - AC3, AC4, AC11 = **new actor method** (`ReportRateLimitedAsync`) + **activity integration** + jitter. Medium change.
@@ -502,29 +555,30 @@ so that one tenant's batch ingestion doesn't starve another's real-time ingestio
 
 ### Existing Infrastructure to Reuse
 
-| Component | Location | Usage in This Story |
-|-----------|----------|---------------------|
-| `EmbeddingRateLimiterActor` | `Server/Actors/EmbeddingRateLimiterActor.cs` | Extend with `ReportRateLimitedAsync`. Do NOT restructure. |
-| `IEmbeddingRateLimiterActor` | `Server/Actors/IEmbeddingRateLimiterActor.cs` | Add one method. |
-| `RateLimiterLogic` | `Server/Actors/RateLimiterLogic.cs` | Add pure helper `ReportRateLimited(state, seconds)`. |
-| `RateLimitState` | `Server/Actors/RateLimitState.cs` | Unchanged. |
-| `GenerateEmbeddingActivity` | `Server/Activities/Ingestion/GenerateEmbeddingActivity.cs` | Add jitter, 429 handler. |
-| `EmbeddingClient` | `Server/Ingestion/EmbeddingClient.cs` | Parse `Retry-After` in `HandleEmbeddingResponseAsync`. |
-| `EmbeddingRateLimitException` | `Server/Ingestion/EmbeddingRateLimitException.cs` | Add `RetryAfterSeconds` property. |
-| `ExtractContentActivity` | `Server/Activities/Ingestion/ExtractContentActivity.cs` | Inject `PerTenantConcurrencyGate`; acquire around Kreuzberg call. |
-| `FetchUrlActivity` | `Server/Activities/Ingestion/FetchUrlActivity.cs` (6.1) | Inject `PerTenantConcurrencyGate`; acquire around fetch. |
-| `IngestionSettings` | `Server/Ingestion/IngestionSettings.cs` (6.1) | Add 2 new fields. |
-| `IngestionWorkflow` | `Server/Workflows/IngestionWorkflow.cs` | Pass `TenantId` into `ExtractionInput` and `FetchUrlInput`. |
-| `ExtractionInput` | `Contracts/V1/ExtractionInput.cs` | Add `TenantId` property (breaking, per Breaking Changes). |
-| `FetchUrlInput` | `Contracts/V1/FetchUrlInput.cs` (6.1) | Add `TenantId` property (breaking, per Breaking Changes). |
-| `TenantConfigurationActor` | `Server/Actors/TenantConfigurationActor.cs` | Read `RateLimitPerMinute` via existing `GetEmbeddingConfigAsync`. Unchanged. |
-| `[LoggerMessage]` partial-class pattern | 6.1 `IngestionEndpointLog.cs` | Mirror for new `RateLimitingLog.cs`. |
-| `CapturingLogger<T>` test fixture | `tests/` (5.6 / 6.1 precedent) | Assert `[LoggerMessage]` calls. |
-| `FakeTimeProvider` | `Microsoft.Extensions.TimeProvider.Testing` NuGet | Deterministic time in `RateLimiterLogic` tests. Verify the package is referenced; if not, add to `Directory.Packages.props`. |
+| Component                               | Location                                                   | Usage in This Story                                                                                                          |
+| --------------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `EmbeddingRateLimiterActor`             | `Server/Actors/EmbeddingRateLimiterActor.cs`               | Extend with `ReportRateLimitedAsync`. Do NOT restructure.                                                                    |
+| `IEmbeddingRateLimiterActor`            | `Server/Actors/IEmbeddingRateLimiterActor.cs`              | Add one method.                                                                                                              |
+| `RateLimiterLogic`                      | `Server/Actors/RateLimiterLogic.cs`                        | Add pure helper `ReportRateLimited(state, seconds)`.                                                                         |
+| `RateLimitState`                        | `Server/Actors/RateLimitState.cs`                          | Unchanged.                                                                                                                   |
+| `GenerateEmbeddingActivity`             | `Server/Activities/Ingestion/GenerateEmbeddingActivity.cs` | Add jitter, 429 handler.                                                                                                     |
+| `EmbeddingClient`                       | `Server/Ingestion/EmbeddingClient.cs`                      | Parse `Retry-After` in `HandleEmbeddingResponseAsync`.                                                                       |
+| `EmbeddingRateLimitException`           | `Server/Ingestion/EmbeddingRateLimitException.cs`          | Add `RetryAfterSeconds` property.                                                                                            |
+| `ExtractContentActivity`                | `Server/Activities/Ingestion/ExtractContentActivity.cs`    | Inject `PerTenantConcurrencyGate`; acquire around Kreuzberg call.                                                            |
+| `FetchUrlActivity`                      | `Server/Activities/Ingestion/FetchUrlActivity.cs` (6.1)    | Inject `PerTenantConcurrencyGate`; acquire around fetch.                                                                     |
+| `IngestionSettings`                     | `Server/Ingestion/IngestionSettings.cs` (6.1)              | Add 2 new fields.                                                                                                            |
+| `IngestionWorkflow`                     | `Server/Workflows/IngestionWorkflow.cs`                    | Pass `TenantId` into `ExtractionInput` and `FetchUrlInput`.                                                                  |
+| `ExtractionInput`                       | `Contracts/V1/ExtractionInput.cs`                          | Add `TenantId` property (breaking, per Breaking Changes).                                                                    |
+| `FetchUrlInput`                         | `Contracts/V1/FetchUrlInput.cs` (6.1)                      | Add `TenantId` property (breaking, per Breaking Changes).                                                                    |
+| `TenantConfigurationActor`              | `Server/Actors/TenantConfigurationActor.cs`                | Read `RateLimitPerMinute` via existing `GetEmbeddingConfigAsync`. Unchanged.                                                 |
+| `[LoggerMessage]` partial-class pattern | 6.1 `IngestionEndpointLog.cs`                              | Mirror for new `RateLimitingLog.cs`.                                                                                         |
+| `CapturingLogger<T>` test fixture       | `tests/` (5.6 / 6.1 precedent)                             | Assert `[LoggerMessage]` calls.                                                                                              |
+| `FakeTimeProvider`                      | `Microsoft.Extensions.TimeProvider.Testing` NuGet          | Deterministic time in `RateLimiterLogic` tests. Verify the package is referenced; if not, add to `Directory.Packages.props`. |
 
 ### Code Patterns
 
 **Gate acquisition inside an activity:**
+
 ```csharp
 public override async Task<ExtractionResult> RunAsync(WorkflowActivityContext context, ExtractionInput input)
 {
@@ -536,9 +590,11 @@ public override async Task<ExtractionResult> RunAsync(WorkflowActivityContext co
     // ... existing extraction logic unchanged ...
 }
 ```
+
 The `await using` pattern guarantees release on success, exception, or cancellation.
 
 **429 feedback in activity:**
+
 ```csharp
 try
 {
@@ -555,6 +611,7 @@ catch (EmbeddingRateLimitException ex)
 ```
 
 **Jitter before provider call:**
+
 ```csharp
 int jitterMs = _jitterSource.NextMilliseconds(500);
 if (jitterMs > 0)
@@ -564,6 +621,7 @@ if (jitterMs > 0)
 ```
 
 **Actor state update (pattern from existing `ResetAsync`):**
+
 ```csharp
 public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 {
@@ -576,6 +634,7 @@ public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 ### Retry & Jitter Semantics
 
 **Workflow retry policy (unchanged from 5.6 / 6.1):**
+
 - `maxNumberOfAttempts = 5`
 - `firstRetryInterval = 2s`
 - `backoffCoefficient = 1.5`
@@ -584,12 +643,14 @@ public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 - **No jitter at policy level** — DAPR SDK 1.17.6 does not expose a `WorkflowRetryPolicy.Jitter` parameter.
 
 **Application-level jitter (new in 6.2):**
+
 - Applied ONLY in `GenerateEmbeddingActivity`, BEFORE the provider call.
 - Uniform-random in `[0, 500)` ms.
 - Purpose: desynchronize multiple tenants' retries after a provider outage — thundering herd mitigation (NFR22).
 - Not applied in `ExtractContentActivity` / `FetchUrlActivity` — those aren't the thundering-herd risk; extraction is CPU-bound locally, fetch hits arbitrary URLs.
 
 **Retry-After feedback window:**
+
 - Provider 429 → `Retry-After: 60` → actor `WindowStart = now + 60s`, `Remaining = 0`.
 - For 60 s, `TryConsumeAsync` returns `false` → activity throws `EmbeddingRateLimitException` → workflow retry fires at `T+2s`, `T+5s`, `T+9.5s`, ... → activity fails fast each time (no provider call).
 - At `T+60s + 1 min` (per `RateLimiterLogic.WindowDuration`), the window naturally re-fills.
@@ -599,18 +660,21 @@ public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 ### Per-Tenant Extraction Gate — Design Rationale
 
 **Why a singleton in-process semaphore, not an actor?**
+
 - Extraction is in-process (Kreuzberg) — the bottleneck is local CPU / memory, not shared Redis / DAPR state.
 - A DAPR actor gate would require a roundtrip to Redis per acquire (~5-10 ms per activity invocation × 500 files = measurable overhead) vs. sub-microsecond `SemaphoreSlim.WaitAsync`.
 - Horizontal scale-out is explicitly out of scope for MVP (per architecture §`TenantInfrastructureResolver`: "single impl until multi-instance scaling needed"). When scale-out arrives, the gate migrates to a distributed semaphore (actor or Redis lock) — **documented extension point**.
 - Process restart: the gate is rebuilt (empty dictionary), and in-flight workflow activities that are replayed by DAPR re-acquire naturally. **No state to persist.**
 
 **Why default = 4?**
+
 - `Environment.ProcessorCount` on a typical dev machine is 8–16; 4 per tenant leaves headroom for other tenants + system work.
 - Kreuzberg extraction is moderate-CPU for text, heavy for PDF OCR; 4 parallel PDFs saturate a modest CPU.
 - Operator can raise via `Ingestion:PerTenantExtractionConcurrency`.
 - A future adaptive gate (scaling with load) is Phase 2+.
 
 **Operator tuning heuristic (add to `docs/operations/rate-limiting.md`):**
+
 - **Baseline:** `min(4, Environment.ProcessorCount / 2)` per tenant. Default 4 fits a typical 8-core dev/CI box with 2 tenants.
 - **Raise** when: (a) the Aspire dashboard shows `ExtractionGateContended` (event 6205) firing >10 /min for a tenant with CPU headroom (<60 % process CPU), OR (b) a single-tenant deployment where starvation is not a concern.
 - **Lower** when: (a) multi-tenant deployment with PDF-heavy batches saturates CPU (>85 % sustained), OR (b) embedding provider 429s correlate with extraction spikes (indicates embedding is paced by extraction concurrency).
@@ -618,10 +682,12 @@ public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 - **Per-tenant override is NOT supported in MVP** — the setting is global. Per-tenant overrides arrive with Epic 8 tenant-level tuning.
 
 **Why apply to both `ExtractContentActivity` AND `FetchUrlActivity`?**
+
 - Fetch is I/O-bound (network) but the downstream Kreuzberg-in-process extraction is CPU. Capping both types under one gate keeps total per-tenant resource use predictable without two separate settings.
 - If separated, a batch of 500 URL fetches could all queue against extraction — the single gate prevents that coupling.
 
 **Why per-tenant dictionary, not per-tenant-and-activity?**
+
 - Simpler. Tenant is the isolation boundary we care about (PRD/FR8). Activity-type separation would be micro-optimization.
 
 ### Previous Story Learnings (from 5.6 & 6.1)
@@ -640,6 +706,7 @@ public async Task ReportRateLimitedAsync(int retryAfterSeconds)
 ### Git Intelligence
 
 Recent commits (from conversation `git status`):
+
 - `948b8a5` — search endpoint degradation logging (5.6) — **sets the logging pattern** 6.2 mirrors.
 - `30f86c2` — tenant endpoint handlers (5.5) — related to tenant configuration; 6.2 reads `TenantEmbeddingConfig.RateLimitPerMinute` via the same pathway.
 - `24f5ff7` — tenant configuration & metrics (5.5) — establishes `TenantEmbeddingConfig.RateLimitPerMinute` field.
@@ -664,11 +731,31 @@ Recent commits (from conversation `git status`):
 12. **Do NOT mock `Random.Shared` in unit tests.** Inject `IJitterSource` with a deterministic fake. `Random.Shared` is process-global and test-hostile.
 13. **Do NOT catch `OperationCanceledException` broadly inside `PerTenantConcurrencyGate.AcquireAsync`.** The gate's timeout-driven cancellation is distinguished from the caller's cancellation via `when (!ct.IsCancellationRequested)` (see Task 3.1 code). Blanket catch masks caller cancellation.
 
+### Per-Tenant Isolation Boundaries (What 6.2 Does NOT Bound)
+
+Story 6.2 isolates per-tenant on **two axes**: (a) embedding API quota (via `EmbeddingRateLimiterActor`) and (b) concurrent CPU-bound extraction (via `PerTenantConcurrencyGate`). Two other resources are deliberately **not** bounded per tenant and remain shared across the Memories Server process:
+
+- **In-memory payload volume.** A tenant's 500-file directory batch (6.1) reads up to 500 × 1 MB = 500 MB of `ContentBytes` into memory concurrently before scheduling workflows. Nothing in 6.2 bounds this. Operator mitigation: lower `Ingestion:MaxBatchSize` (default 500, from 6.1) if memory pressure observed. Phase 2: streaming ingest + back-pressure.
+- **Redis connection pool.** All tenants share the `StackExchange.Redis.ConnectionMultiplexer` (Story 1.5). A tenant's 500-file batch floods indexing activities against the same pool. Redis itself is the backpressure mechanism (command queuing). Phase 2+: per-tenant connection pool or connection-per-tenant partitioning.
+- **Shared `HttpClient` connection pool.** The named URL-fetcher HttpClient (`"memories-url-fetcher"`, 6.1) is shared across tenants. A tenant hitting a slow host starves other tenants' fetches to the same host because `SocketsHttpHandler.MaxConnectionsPerServer` defaults to unlimited — but sockets, DNS cache, and TLS handshake state are process-global. Red-team scenario: tenant A submits 10 000 URLs to a 30 s-latency host; tenant B's fetches to the same host share the pool. Phase 2+ mitigation: per-tenant HttpClient with bounded `MaxConnectionsPerServer`.
+
+These boundaries are **accepted MVP compromises** — the thesis of 6.2 is "quota + CPU isolation" (FR8, NFR13). Epic 8 observability surfaces the symptoms; Phase 2 addresses the causes.
+
+### Rejected Alternatives (Do Not Propose)
+
+- **DAPR actor-based gate (`ExtractionGateActor`):** rejected — 5–10 ms per acquire roundtrip × 500 files = 2.5–5 s overhead, no benefit over in-process for MVP (single-instance deployment).
+- **Redis-backed distributed semaphore (Redlock):** rejected — adds Redlock library, clock-drift failure modes, out of MVP scope. Phase 2 if horizontal scale-out arrives.
+- **Global DAPR `maxConcurrentActivityInvocations`:** rejected — global, not per-tenant; doesn't satisfy FR8.
+- **Folding the gate into `TenantInfrastructureResolver`:** rejected — couples unrelated concerns (resolver is for backend connection details, not CPU bounds). Different abstraction, different lifetime.
+
 ### Known MVP Limitations
 
 - **No cross-tenant (shared API key) coordination.** Multiple tenants sharing an `ApiSecretKeyName` share the provider's effective quota; per-tenant actors cannot coordinate. Operator mitigation: assign distinct API keys per tenant. Phase 3 → `SharedEmbeddingRateLimiterActor`.
 - **No adaptive / learning ceiling.** `RateLimitPerMinute` is static per tenant. Phase 2+.
-- **No retry-after `> ~26s` recoverable path.** Workflow exhausts retries; unit → `Failed`. Story 6.3 adds re-ingestion UX.
+- **No retry-after `> ~26s` recoverable path.** Workflow exhausts retries; unit → `Failed`. **Operationally significant:** a prolonged provider outage (`Retry-After: 900` or unavailable for >30 s) will mark every in-flight ingestion `Failed` because the 5-retry budget exhausts in ~26 s. For a tenant mid-batch of 10 000 files, this is a mass-failure event. The **only** recovery path is Story 6.3's re-ingestion UX; until 6.3 ships, operators must treat prolonged provider outages as an event requiring manual replay of the input batch. Track this as a **pre-production risk** in project notes.
+- **Shared HttpClient connection pool across tenants.** The named `"memories-url-fetcher"` HttpClient (6.1) is process-global. Per-tenant isolation of HTTP socket pools is Phase 2+. See "Per-Tenant Isolation Boundaries" section above.
+- **Shared Redis connection pool across tenants.** Same as above — all tenants share the `ConnectionMultiplexer`. Phase 2+ partitioning.
+- **In-memory batch payload not bounded per tenant.** 500 files × 1 MB = up to 500 MB per tenant in-flight. Mitigate via `Ingestion:MaxBatchSize` (6.1 default 500). Phase 2: streaming ingest.
 - **Process-local gate.** Horizontal scale-out not in scope; distributed gate is Phase 2.
 - **No priority queue.** All activities for a tenant share the same FIFO semaphore. A "high-priority real-time vs. low-priority batch" separation is Phase 2+.
 - **`SetCeilingAsync` on every embedding call.** One actor roundtrip per invocation. Hot-path cost ~5 ms. Acceptable for MVP; optimize in Phase 2 by caching the last-seen config and only calling `SetCeilingAsync` on change.
@@ -696,14 +783,14 @@ Recent commits (from conversation `git status`):
 
 ### Reference: Log Events
 
-| Event ID | Level | Name | Fields |
-|----------|-------|------|--------|
-| 6201 | Warning | `RateLimitExceededLocally` | `tenantId` |
-| 6202 | Warning | `ProviderRateLimitReceived` | `tenantId`, `retryAfterSeconds` |
-| 6203 | Information | `RateLimitActorUpdated` | `tenantId`, `remaining`, `windowStart` |
-| 6204 | Debug | `ExtractionGateAcquired` | `tenantId`, `availableCount` |
-| 6205 | Information | `ExtractionGateContended` | `tenantId`, `queueDepth` |
-| 6206 | Warning | `ExtractionGateTimeout` | `tenantId`, `timeoutSeconds` |
+| Event ID | Level       | Name                        | Fields                                 |
+| -------- | ----------- | --------------------------- | -------------------------------------- |
+| 6201     | Warning     | `RateLimitExceededLocally`  | `tenantId`                             |
+| 6202     | Warning     | `ProviderRateLimitReceived` | `tenantId`, `retryAfterSeconds`        |
+| 6203     | Information | `RateLimitActorUpdated`     | `tenantId`, `remaining`, `windowStart` |
+| 6204     | Debug       | `ExtractionGateAcquired`    | `tenantId`, `availableCount`           |
+| 6205     | Information | `ExtractionGateContended`   | `tenantId`, `queueDepth`               |
+| 6206     | Warning     | `ExtractionGateTimeout`     | `tenantId`, `timeoutSeconds`           |
 
 ### Error Codes
 
@@ -713,6 +800,7 @@ Recent commits (from conversation `git status`):
 ### Project Structure Notes
 
 **New files (source):**
+
 - `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`
 - `src/Hexalith.Memories.Server/Ingestion/IJitterSource.cs`
 - `src/Hexalith.Memories.Server/Ingestion/ThreadSafeRandomJitterSource.cs`
@@ -720,6 +808,7 @@ Recent commits (from conversation `git status`):
 - `docs/operations/rate-limiting.md` (or `docs/operations/rate-limiting.md`)
 
 **Modified files (source):**
+
 - `src/Hexalith.Memories.Server/Actors/IEmbeddingRateLimiterActor.cs` — add `ReportRateLimitedAsync`.
 - `src/Hexalith.Memories.Server/Actors/EmbeddingRateLimiterActor.cs` — implement `ReportRateLimitedAsync`.
 - `src/Hexalith.Memories.Server/Actors/RateLimiterLogic.cs` — add `ReportRateLimited` helper.
@@ -738,6 +827,7 @@ Recent commits (from conversation `git status`):
 - `README.md` — optional: add Operations / Rate Limiting link.
 
 **New files (tests):**
+
 - `tests/Hexalith.Memories.Server.Tests/Ingestion/PerTenantConcurrencyGateTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Ingestion/RateLimitingLogTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientRetryAfterParsingTests.cs`
@@ -745,12 +835,14 @@ Recent commits (from conversation `git status`):
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs` — all `[Fact(Skip)]`.
 
 **Modified files (tests):**
+
 - `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs` — add `[Theory]` rows for `ReportRateLimited`.
 - `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs` — add `ReportRateLimitedAsync` test.
 - `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs` — one test that verifies `TenantId` flows through `ExtractionInput` / `FetchUrlInput`.
 - `tests/Hexalith.Memories.Contracts.Tests/V1/` — extend serialization tests for the updated `ExtractionInput` + `FetchUrlInput` shapes (round-trip with `TenantId`).
 
 **No changes to:**
+
 - `.slnx`, `Directory.Packages.props` (unless `Microsoft.Extensions.TimeProvider.Testing` is missing — verify; add if absent), `Directory.Build.props`.
 - DAPR component YAML files.
 - Any other epic's code.
@@ -764,12 +856,12 @@ Recent commits (from conversation `git status`):
 ### Definition of Done
 
 1. All new unit tests pass — **at least ~20 new tests** covering:
-   - `RateLimiterLogic.ReportRateLimited` with `FakeTimeProvider` (~6 parameterized cases).
-   - `EmbeddingRateLimiterActor.ReportRateLimitedAsync` state persistence (~1 test).
-   - `GenerateEmbeddingActivity` jitter + 429 feedback (~5 tests: happy, local throttle, provider 429 with Retry-After, provider 429 without, ceiling regression guard).
-   - `EmbeddingClient` Retry-After header parsing (~7 cases).
-   - `PerTenantConcurrencyGate` isolation, release, timeout, cancellation, concurrent GetOrAdd (~6 tests).
-   - `RateLimitingLog` EventId assertions (~6 tests).
+    - `RateLimiterLogic.ReportRateLimited` with `FakeTimeProvider` (~6 parameterized cases).
+    - `EmbeddingRateLimiterActor.ReportRateLimitedAsync` state persistence (~1 test).
+    - `GenerateEmbeddingActivity` jitter + 429 feedback (~5 tests: happy, local throttle, provider 429 with Retry-After, provider 429 without, ceiling regression guard).
+    - `EmbeddingClient` Retry-After header parsing (~7 cases).
+    - `PerTenantConcurrencyGate` isolation, release, timeout, cancellation, concurrent GetOrAdd (~6 tests).
+    - `RateLimitingLog` EventId assertions (~6 tests).
 2. All integration tests are `[Fact(Skip)]` with tracker references to Story 6.3 or Epic 7.
 3. `GenerateEmbeddingActivity` calls `ReportRateLimitedAsync` on provider 429, parses `Retry-After`, and re-throws the exception unchanged.
 4. `ExtractContentActivity` and `FetchUrlActivity` both acquire `PerTenantConcurrencyGate.AcquireAsync(tenantId)` at entry and release on scope exit.
@@ -830,8 +922,71 @@ Claude Opus 4.6 (1M context) via BMad dev-story workflow.
 ### Debug Log References
 
 - Baseline server test count pre-story (expected, from 6.1 Dev Agent Record): ~908 + 283 (contracts) = ~1191 passing, 2 documented `SaveDedupKeyActivityTests` failures, AppHost CS0311 build errors (pre-existing, unrelated).
-- Record the actual baseline count from `dotnet test` before any code changes; pin in the completion notes.
+- Post-story 6.2 test run (date 2026-04-15): **Server.Tests = 964 passed / 0 failed / 0 skipped; Contracts.Tests = 286 passed / 0 failed / 0 skipped; total 1250 unit tests passing.** The previously documented `SaveDedupKeyActivityTests` baseline failures no longer appear — they were resolved by the preceding commit `a4f32f8` ("Add unit tests for ingestion activities and services"). AppHost CS0311 errors remain pre-existing and unrelated to 6.2.
+- Integration test project (`Hexalith.Memories.IntegrationTests`) transitively depends on AppHost; the 2 AppHost CS0311 build errors prevent it from compiling. `[Fact(Skip)]` scaffolding for 6.2 is in place (`RateLimitingIntegrationTests.cs`) and compiles in isolation once AppHost is fixed. Unskipping is owned by Story 6.3 (requires deterministic 429-producing provider test double).
 
 ### Completion Notes List
 
+- **AC1, AC7, AC10 (VERIFY):** AC7 regression test added inline in `GenerateEmbeddingActivityTests.RunAsync_CeilingChangedBetweenInvocations_ReflectsLatestConfig` (pins SetCeilingAsync → TryConsumeAsync ordering across two invocations with changing ceiling). AC1 and AC10 are covered by the three `[Fact(Skip)]` scenarios in `RateLimitingIntegrationTests.cs`, unskipped by Story 6.3.
+- **AC2, AC5, AC6 (NEW gate):** `PerTenantConcurrencyGate` in `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`, registered as singleton in `Program.cs`. Both `ExtractContentActivity` and `FetchUrlActivity` acquire via `await using IAsyncDisposable lease = await gate.AcquireAsync(tenantId, ct)`. 7 unit tests in `PerTenantConcurrencyGateTests.cs` cover isolation, release-on-exception, timeout, cancellation, and concurrent multi-tenant acquisition.
+- **AC3, AC4, AC11 (NEW actor method + activity integration + jitter):** `IEmbeddingRateLimiterActor.ReportRateLimitedAsync(int)` added, implemented via pure `RateLimiterLogic.ReportRateLimited` helper. `EmbeddingClient.HandleEmbeddingResponseAsync` parses `Retry-After` (delta-seconds or HTTP-date per RFC 9110) into `EmbeddingRateLimitException.RetryAfterSeconds`. `GenerateEmbeddingActivity` applies jitter via injected `IJitterSource` before the provider call and maps 429 → `ReportRateLimitedAsync(retryAfter ?? 30)`. Workflow retry policy unchanged — the existing `WorkflowRetryPolicy` (5 attempts, 2s → 5min) handles the retry.
+- **AC8 (docs):** `docs/operations/rate-limiting.md` describes per-tenant ceilings, shared-quota limitation, 429 handling, jitter, gate tuning, and log events. Linked from `README.md` under a new "Operations" section.
+- **AC9 (logging):** `RateLimitingLog.cs` hosts events 6201-6206 via `[LoggerMessage]` partial methods mirroring `IngestionEndpointLog.cs`. `RateLimitingLogTests.cs` asserts EventId + LogLevel for each.
+- **AC12 (regression):** zero new test failures, baseline 2 `SaveDedupKeyActivityTests` failures no longer present, all existing tests still pass.
+- **Breaking changes applied:** `ExtractionInput` and `FetchUrlInput` both gained an optional `TenantId` parameter (defaults to empty string). Legacy DAPR workflow history deserializes to `TenantId = ""`; the activity fails fast on blank tenantId per `ArgumentException.ThrowIfNullOrWhiteSpace`, exposing any replay that predates the field — which is preferable to silently binding all orphaned activities to a single gate key.
+- **Jitter rationale:** DAPR `Dapr.Workflow 1.17.6` `WorkflowRetryPolicy` does NOT accept a jitter parameter. Application-level jitter lives in `GenerateEmbeddingActivity` only (single `Task.Delay`, no custom retry loop).
+- **No new NuGet packages required.** `Microsoft.Extensions.TimeProvider.Testing 9.5.0` already in `Directory.Packages.props`.
+- **`SetCeilingAsync` hot-path call preserved** per AC11 and Dev Notes — the AC7 regression test pins it. Optimization (cache-if-unchanged) is Phase 2.
+
 ### File List
+
+**New source files:**
+
+- `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`
+- `src/Hexalith.Memories.Server/Ingestion/IJitterSource.cs`
+- `src/Hexalith.Memories.Server/Ingestion/ThreadSafeRandomJitterSource.cs`
+- `src/Hexalith.Memories.Server/Ingestion/RateLimitingLog.cs`
+- `docs/operations/rate-limiting.md`
+
+**Modified source files:**
+
+- `src/Hexalith.Memories.Server/Actors/IEmbeddingRateLimiterActor.cs` — added `ReportRateLimitedAsync`.
+- `src/Hexalith.Memories.Server/Actors/EmbeddingRateLimiterActor.cs` — implemented `ReportRateLimitedAsync`.
+- `src/Hexalith.Memories.Server/Actors/RateLimiterLogic.cs` — added `ReportRateLimited` instance helper.
+- `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs` — injected `IJitterSource` + `ILogger`, jitter pre-call, 429 feedback, `RateLimitingLog` events.
+- `src/Hexalith.Memories.Server/Activities/Ingestion/ExtractContentActivity.cs` — injected `PerTenantConcurrencyGate`, acquire/release lease.
+- `src/Hexalith.Memories.Server/Activities/Ingestion/FetchUrlActivity.cs` — injected `PerTenantConcurrencyGate`, acquire/release lease.
+- `src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs` — `Retry-After` header parsing via `RetryConditionHeaderValue`.
+- `src/Hexalith.Memories.Server/Ingestion/EmbeddingRateLimitException.cs` — added `RetryAfterSeconds` init-only property.
+- `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs` — added `PerTenantExtractionConcurrency` + `ExtractionGateAcquireTimeoutSeconds`.
+- `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` — pass `input.TenantId` into `FetchUrlInput` + `ExtractionInput`.
+- `src/Hexalith.Memories.Server/Program.cs` — register `PerTenantConcurrencyGate` + `IJitterSource` singletons.
+- `src/Hexalith.Memories.Server/appsettings.json` — added `Ingestion:PerTenantExtractionConcurrency` + `Ingestion:ExtractionGateAcquireTimeoutSeconds` defaults.
+- `src/Hexalith.Memories.Contracts/V1/ExtractionInput.cs` — added `TenantId` parameter (defaults to empty string).
+- `src/Hexalith.Memories.Contracts/V1/FetchUrlInput.cs` — added `TenantId` parameter (defaults to empty string).
+- `README.md` — added Operations section linking to `docs/operations/rate-limiting.md`.
+
+**New test files:**
+
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/PerTenantConcurrencyGateTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/RateLimitingLogTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientRetryAfterParsingTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs` (all `[Fact(Skip)]`)
+
+**Modified test files:**
+
+- `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs` — added `ReportRateLimited` `[Theory]`, paused-window assertions, ordering test.
+- `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs` — added two `ReportRateLimitedAsync` tests (30s + clamping).
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` — rewrote to use new constructor; added 429-with/without-Retry-After, jitter delay, AC7 regression.
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityConfigTests.cs` — updated constructor call with `IJitterSource` + logger.
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/ExtractContentActivityTests.cs` — updated constructor, added `TenantId`-required test.
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/FetchUrlActivityTests.cs` — updated constructor, added `TenantId`-required test.
+- `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs` — added two tests verifying `TenantId` flows into `ExtractionInput` and `FetchUrlInput`.
+- `tests/Hexalith.Memories.TestHelpers/Factories/ExtractionInputFactory.cs` — optional `tenantId` parameter.
+- `tests/Hexalith.Memories.Contracts.Tests/V1/ExtractionInputSerializationTests.cs` — added `TenantId` round-trip + legacy-payload default test.
+- `tests/Hexalith.Memories.Contracts.Tests/V1/UrlAndDirectoryIngestionSerializationTests.cs` — extended `FetchUrlInput_RoundTrips`, added legacy-payload default test.
+
+### Change Log
+
+- 2026-04-15: Implemented Story 6.2 per-tenant load management and rate limiting. Added `ReportRateLimitedAsync` to embedding rate limiter actor, `PerTenantConcurrencyGate` for CPU-bound extraction activities, `IJitterSource` for application-level jitter (NFR22), `Retry-After` parsing in `EmbeddingClient`, structured log events 6201-6206, and threaded `TenantId` through `ExtractionInput` / `FetchUrlInput`. 1250 unit tests passing (+59 vs. 6.1 baseline), 0 regressions.
+

@@ -63,6 +63,10 @@ builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
 builder.Services.AddSingleton<IUrlContentFetcher, UrlContentFetcher>();
 builder.Services.AddSingleton<DirectoryIngestionService>();
 
+// Story 6.2: per-tenant rate limiting and concurrency gate.
+builder.Services.AddSingleton<PerTenantConcurrencyGate>();
+builder.Services.AddSingleton<IJitterSource, ThreadSafeRandomJitterSource>();
+
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("falkordb", (sp, _) =>

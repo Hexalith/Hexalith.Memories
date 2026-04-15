@@ -524,6 +524,47 @@ public class IngestionWorkflowTests
             nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
+    // Story 6.2: the workflow must propagate TenantId into ExtractionInput so the
+    // PerTenantConcurrencyGate receives the correct key.
+    [Fact]
+    public async Task RunAsync_ShouldPassTenantIdIntoExtractionInput()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<ExtractionResult>(
+            nameof(ExtractContentActivity),
+            Arg.Is<ExtractionInput>(ei => ei.TenantId == input.TenantId),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    // Story 6.2: the workflow must propagate TenantId into FetchUrlInput for URL-sourced ingestions.
+    [Fact]
+    public async Task RunAsync_UrlSource_ShouldPassTenantIdIntoFetchUrlInput()
+    {
+        IngestionInput input = IngestionInputFactory.Create(
+            sourceType: SourceType.Url,
+            sourceUri: "https://example.com/doc",
+            contentBytes: null);
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<UrlFetchResult>(
+                nameof(FetchUrlActivity), Arg.Any<FetchUrlInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new UrlFetchResult([0x01], "text/plain", 1, "https://example.com/doc", 200));
+
+        IngestionWorkflow workflow = new();
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<UrlFetchResult>(
+            nameof(FetchUrlActivity),
+            Arg.Is<FetchUrlInput>(fi => fi.TenantId == input.TenantId),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
     [Fact]
     public async Task RunAsync_SaveDedupKeyFailure_ShouldRollbackAllIndexedBackends()
     {

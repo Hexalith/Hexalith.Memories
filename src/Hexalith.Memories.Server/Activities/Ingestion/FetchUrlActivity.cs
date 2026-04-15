@@ -21,13 +21,19 @@ using Microsoft.Extensions.Logging;
 public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchResult>
 {
     private readonly IUrlContentFetcher _fetcher;
+    private readonly PerTenantConcurrencyGate _gate;
     private readonly ILogger<FetchUrlActivity> _logger;
 
-    public FetchUrlActivity(IUrlContentFetcher fetcher, ILogger<FetchUrlActivity> logger)
+    public FetchUrlActivity(
+        IUrlContentFetcher fetcher,
+        PerTenantConcurrencyGate gate,
+        ILogger<FetchUrlActivity> logger)
     {
         ArgumentNullException.ThrowIfNull(fetcher);
+        ArgumentNullException.ThrowIfNull(gate);
         ArgumentNullException.ThrowIfNull(logger);
         _fetcher = fetcher;
+        _gate = gate;
         _logger = logger;
     }
 
@@ -35,6 +41,7 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
     public override async Task<UrlFetchResult> RunAsync(WorkflowActivityContext context, FetchUrlInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);
 
         if (!Uri.TryCreate(input.Url, UriKind.Absolute, out Uri? uri))
         {
@@ -43,6 +50,10 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
 
         string redacted = IngestionEndpointLog.RedactUrl(uri);
         IngestionEndpointLog.LogUrlFetchStarted(_logger, input.MemoryUnitId, redacted);
+
+        await using IAsyncDisposable lease = await _gate
+            .AcquireAsync(input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         try

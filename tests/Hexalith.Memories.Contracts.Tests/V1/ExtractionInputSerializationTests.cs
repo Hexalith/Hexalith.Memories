@@ -51,6 +51,36 @@ public class ExtractionInputSerializationTests
         json.ShouldContain("\"sourceType\":\"file\"");
     }
 
+    [Fact]
+    public void RoundTrip_WithTenantId_PreservesTenantIdField()
+    {
+        ExtractionInput input = new(
+            "file:///doc.pdf",
+            [0x01, 0x02],
+            "application/pdf",
+            SourceType.File,
+            "tenant-42");
+
+        string json = JsonSerializer.Serialize(input, MemoriesJsonContext.Options);
+        json.ShouldContain("\"tenantId\":\"tenant-42\"");
+
+        ExtractionInput? deserialized = JsonSerializer.Deserialize<ExtractionInput>(json, MemoriesJsonContext.Options);
+        deserialized.ShouldNotBeNull();
+        deserialized.TenantId.ShouldBe("tenant-42");
+    }
+
+    [Fact]
+    public void Deserialize_LegacyPayloadWithoutTenantId_DefaultsToEmptyString()
+    {
+        // Story 6.2 Breaking Changes: legacy history predating the TenantId field must still deserialize.
+        string legacyJson = "{\"sourceUri\":\"file:///old.txt\",\"contentBytes\":\"AQI=\",\"contentType\":\"text/plain\",\"sourceType\":\"file\"}";
+
+        ExtractionInput? deserialized = JsonSerializer.Deserialize<ExtractionInput>(legacyJson, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.TenantId.ShouldBe(string.Empty);
+    }
+
     private static ExtractionInput CreateTestInput()
     {
         return new ExtractionInput(

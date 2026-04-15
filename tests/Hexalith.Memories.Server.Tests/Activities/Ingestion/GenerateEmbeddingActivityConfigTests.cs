@@ -16,6 +16,7 @@ using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
 
@@ -132,8 +133,17 @@ public class GenerateEmbeddingActivityConfigTests
         actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>())
             .Returns(rateLimiter);
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        GenerateEmbeddingActivity activity = new(
+            embeddingClient,
+            actorProxyFactory,
+            new ZeroJitterSource(),
+            NullLogger<GenerateEmbeddingActivity>.Instance);
         return (activity, embeddingClient, rateLimiter);
+    }
+
+    private sealed class ZeroJitterSource : IJitterSource
+    {
+        public int NextMilliseconds(int maxExclusive = 500) => 0;
     }
 
     private static IConfiguration CreateConfiguration()

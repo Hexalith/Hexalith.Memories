@@ -95,7 +95,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 currentStage = "fetching";
                 urlFetch = await context.CallActivityAsync<UrlFetchResult>(
                     nameof(FetchUrlActivity),
-                    new FetchUrlInput(input.SourceUri, memoryUnitId),
+                    new FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId),
                     retryOptions);
                 contentBytes = urlFetch.ContentBytes;
                 if (!string.IsNullOrWhiteSpace(urlFetch.ContentType))
@@ -111,7 +111,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
             ExtractionResult extraction = await context.CallActivityAsync<ExtractionResult>(
                 nameof(ExtractContentActivity),
-                new ExtractionInput(input.SourceUri, contentBytes, contentType, input.SourceType),
+                new ExtractionInput(input.SourceUri, contentBytes, contentType, input.SourceType, input.TenantId),
                 retryOptions);
 
             logger.LogInformation(

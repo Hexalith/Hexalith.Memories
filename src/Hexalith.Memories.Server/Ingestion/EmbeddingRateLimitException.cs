@@ -34,4 +34,10 @@ public class EmbeddingRateLimitException : Exception
 
     /// <summary>Gets the tenant identifier that hit the rate limit.</summary>
     public string TenantId { get; }
+
+    /// <summary>Gets the value parsed from the provider's <c>Retry-After</c> response header (Story 6.2).
+    /// <c>0</c> means the header was absent, unparseable, or referred to a past HTTP-date — in which case
+    /// the activity defaults to a 30 s pause. Positive values are already clamped to <c>[1, 3600]</c> at
+    /// the HTTP boundary.</summary>
+    public int RetryAfterSeconds { get; init; }
 }

@@ -15,7 +15,8 @@ public static class ExtractionInputFactory
         string? sourceUri = null,
         byte[]? contentBytes = null,
         string? contentType = null,
-        SourceType? sourceType = null)
+        SourceType? sourceType = null,
+        string? tenantId = null)
     {
         int id = Interlocked.Increment(ref _counter);
 
@@ -23,6 +24,7 @@ public static class ExtractionInputFactory
             sourceUri ?? $"file:///document-{id}.txt",
             contentBytes ?? Encoding.UTF8.GetBytes($"Sample document content {id}"),
             contentType ?? "text/plain",
-            sourceType ?? SourceType.File);
+            sourceType ?? SourceType.File,
+            tenantId ?? $"tenant-{id}");
     }
 }

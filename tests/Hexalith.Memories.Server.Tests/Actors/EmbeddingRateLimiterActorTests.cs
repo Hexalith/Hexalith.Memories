@@ -7,6 +7,9 @@ using Dapr.Actors.Runtime;
 
 using Hexalith.Memories.Server.Actors;
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
 using NSubstitute;
 
 using Shouldly;
@@ -144,6 +147,72 @@ public class EmbeddingRateLimiterActorTests
     }
 
     [Fact]
+    public async Task ReportRateLimitedAsync_ShouldZeroFloorRemainingAndAdvanceWindow()
+    {
+        // Arrange
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+
+        RateLimitState currentState = new(Remaining: 500, WindowStart: DateTime.UtcNow, CeilingPerMinute: 1500);
+        SetupExistingState(stateManager, currentState);
+
+        DateTime before = DateTime.UtcNow;
+
+        // Act
+        await actor.ReportRateLimitedAsync(30);
+
+        // Assert — Remaining zeroed, WindowStart in the future (~30 s from now), ceiling preserved.
+        await stateManager.Received().SetStateAsync(
+            "rateState",
+            Arg.Is<RateLimitState>(s =>
+                s.Remaining == 0 &&
+                s.CeilingPerMinute == 1500 &&
+                s.WindowStart >= before.AddSeconds(29) &&
+                s.WindowStart <= DateTime.UtcNow.AddSeconds(31)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReportRateLimitedAsync_ClampsNegativeRetryAfterToOneSecond()
+    {
+        // Arrange
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+
+        RateLimitState currentState = new(Remaining: 100, WindowStart: DateTime.UtcNow, CeilingPerMinute: 500);
+        SetupExistingState(stateManager, currentState);
+
+        DateTime before = DateTime.UtcNow;
+
+        // Act
+        await actor.ReportRateLimitedAsync(-5);
+
+        // Assert — clamped to 1 s.
+        await stateManager.Received().SetStateAsync(
+            "rateState",
+            Arg.Is<RateLimitState>(s =>
+                s.Remaining == 0 &&
+                s.WindowStart >= before &&
+                s.WindowStart <= DateTime.UtcNow.AddSeconds(2)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReportRateLimitedAsync_ShouldLogRateLimitActorUpdated()
+    {
+        CapturingLogger logger = new();
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState(logger);
+
+        RateLimitState currentState = new(Remaining: 25, WindowStart: DateTime.UtcNow, CeilingPerMinute: 200);
+        SetupExistingState(stateManager, currentState);
+
+        await actor.ReportRateLimitedAsync(30);
+
+        logger.Entries.ShouldContain(entry =>
+            entry.EventId.Id == 6203 &&
+            entry.Level == LogLevel.Information &&
+            entry.Message.Contains("test-tenant-001", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SetCeilingAsync_ZeroCeiling_ShouldThrow()
     {
         // Arrange
@@ -157,14 +226,15 @@ public class EmbeddingRateLimiterActorTests
             () => actor.SetCeilingAsync(0));
     }
 
-    private static (EmbeddingRateLimiterActor Actor, IActorStateManager StateManager) CreateActorWithMockState()
+    private static (EmbeddingRateLimiterActor Actor, IActorStateManager StateManager) CreateActorWithMockState(
+        ILogger<EmbeddingRateLimiterActor>? logger = null)
     {
         IActorStateManager stateManager = Substitute.For<IActorStateManager>();
 
         ActorHost host = ActorHost.CreateForTest<EmbeddingRateLimiterActor>(
             new ActorTestOptions { ActorId = new ActorId("test-tenant-001") });
 
-        EmbeddingRateLimiterActor actor = new(host);
+        EmbeddingRateLimiterActor actor = new(host, logger ?? NullLogger<EmbeddingRateLimiterActor>.Instance);
 
         // Set the mock state manager via reflection (DAPR runtime normally sets this)
         PropertyInfo? prop = typeof(Actor).GetProperty("StateManager", BindingFlags.Public | BindingFlags.Instance);
@@ -183,5 +253,23 @@ public class EmbeddingRateLimiterActorTests
     {
         stateManager.TryGetStateAsync<RateLimitState>("rateState", Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<RateLimitState>(true, state));
+    }
+
+    private sealed class CapturingLogger : ILogger<EmbeddingRateLimiterActor>
+    {
+        public List<(LogLevel Level, EventId EventId, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, eventId, formatter(state, exception)));
     }
 }

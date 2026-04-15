@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using System.Diagnostics;
+
 using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Workflow;
@@ -16,6 +18,7 @@ using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -30,7 +33,6 @@ public class GenerateEmbeddingActivityTests
     [Fact]
     public async Task RunAsync_SuccessfulEmbedding_ReturnsCorrectResult()
     {
-        // Arrange
         float[] expectedVector = new float[768];
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(expectedVector);
@@ -39,62 +41,119 @@ public class GenerateEmbeddingActivityTests
         ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
         rateLimiter.TryConsumeAsync().Returns(true);
-        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(
-            Arg.Any<ActorId>(),
-            Arg.Any<string>())
-            .Returns(rateLimiter);
-        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
-            Arg.Any<ActorId>(),
-            Arg.Any<string>())
-            .Returns(tenantConfigActor);
-        EmbeddingInput input = new(TenantId, TestText);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        EmbeddingResult result = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
 
-        // Act
-        EmbeddingResult result = await activity.RunAsync(context, input);
-
-        // Assert
         result.Vector.ShouldBe(expectedVector);
         result.Provider.ShouldBe("google:gemini-embedding-001");
         result.Dimensions.ShouldBe(768);
     }
 
     [Fact]
-    public async Task RunAsync_RateLimitExhausted_ThrowsEmbeddingRateLimitException()
+    public async Task RunAsync_LocalRateLimitRefused_ThrowsAndDoesNotReportToActor()
     {
-        // Arrange
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
-        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: false);
-        EmbeddingInput input = new(TenantId, TestText);
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: false, out IEmbeddingRateLimiterActor rateLimiter);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
-
-        // Act & Assert
         EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
-            () => activity.RunAsync(context, input));
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
+
         ex.TenantId.ShouldBe(TenantId);
+        await rateLimiter.DidNotReceive().ReportRateLimitedAsync(Arg.Any<int>());
+        await embeddingClient.DidNotReceive().GenerateAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task RunAsync_EmbeddingClientThrows_ExceptionPropagates()
+    public async Task RunAsync_EmbeddingClientThrowsNon429_ExceptionPropagates()
     {
-        // Arrange
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
         embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new EmbeddingApiException(500, "internal error", TenantId));
 
-        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true);
-        EmbeddingInput input = new(TenantId, TestText);
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true, out IEmbeddingRateLimiterActor rateLimiter);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
-
-        // Act & Assert
         await Should.ThrowAsync<EmbeddingApiException>(
-            () => activity.RunAsync(context, input));
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
+
+        await rateLimiter.DidNotReceive().ReportRateLimitedAsync(Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task RunAsync_Provider429WithRetryAfter_CallsReportRateLimitedWithValue()
+    {
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
+        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new EmbeddingRateLimitException(TenantId) { RetryAfterSeconds = 60 });
+
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true, out IEmbeddingRateLimiterActor rateLimiter);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
+
+        await rateLimiter.Received(1).ReportRateLimitedAsync(60);
+    }
+
+    [Fact]
+    public async Task RunAsync_Provider429WithoutRetryAfter_DefaultsToThirtySeconds()
+    {
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
+        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new EmbeddingRateLimitException(TenantId)); // RetryAfterSeconds = 0 (default)
+
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true, out IEmbeddingRateLimiterActor rateLimiter);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
+
+        await rateLimiter.Received(1).ReportRateLimitedAsync(30);
+    }
+
+    [Fact]
+    public async Task RunAsync_RetryAttempt_DelaysBeforeProviderCall()
+    {
+        float[] expectedVector = new float[768];
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
+        embeddingClient.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromException<float[]>(new EmbeddingRateLimitException(TenantId) { RetryAfterSeconds = 30 }),
+                Task.FromResult(expectedVector));
+
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true, out IEmbeddingRateLimiterActor rateLimiter);
+        FixedJitterSource jitter = new(123);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory, jitter);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+        context.InstanceId.Returns("workflow-1");
+
+        await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
+
+        jitter.CallCount.ShouldBe(0);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        EmbeddingResult result = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
+        stopwatch.Stop();
+
+        result.Vector.ShouldBe(expectedVector);
+        jitter.CallCount.ShouldBe(1);
+        stopwatch.ElapsedMilliseconds.ShouldBeGreaterThanOrEqualTo(100);
+        await rateLimiter.Received(1).ReportRateLimitedAsync(30);
     }
 
     [Theory]
@@ -103,20 +162,16 @@ public class GenerateEmbeddingActivityTests
     [InlineData("   ")]
     public async Task RunAsync_InvalidTenantId_ThrowsArgumentException(string? tenantId)
     {
-        // Arrange
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(new float[768]);
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
-        EmbeddingInput input = new(tenantId!, TestText);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
-
-        // Act & Assert
-        await Should.ThrowAsync<ArgumentException>(() => activity.RunAsync(context, input));
+        await Should.ThrowAsync<ArgumentException>(
+            () => activity.RunAsync(context, new EmbeddingInput(tenantId!, TestText)));
     }
 
-    // Story 5.5 AC5 / FR69 — per-tenant rate-limit ceiling propagates from TenantConfigurationActor
-    // to the EmbeddingRateLimiterActor on every activity invocation (pull-on-next-embedding).
+    // Story 5.5 AC5 / FR69 — ceiling is pulled per invocation.
     [Fact]
     public async Task RunAsync_PropagatesConfiguredRateLimitCeilingToRateLimiter()
     {
@@ -132,7 +187,7 @@ public class GenerateEmbeddingActivityTests
         actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
         actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         _ = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
@@ -141,16 +196,45 @@ public class GenerateEmbeddingActivityTests
         await rateLimiter.Received(1).TryConsumeAsync();
     }
 
-    // Story 5.5 AC6 / FR70 — EmbeddingResult carries the model identifier so the ingestion
-    // workflow can thread it through to IndexInput/IndexSyntacticActivity.
+    // Story 6.2 AC7 regression guard — updated tenant config must be reflected on each activity run.
+    [Fact]
+    public async Task RunAsync_CeilingChangedBetweenInvocations_ReflectsLatestConfig()
+    {
+        float[] vector = new float[768];
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(
+            EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 },
+            EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 100 });
+        rateLimiter.TryConsumeAsync().Returns(true);
+
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
+        await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
+
+        Received.InOrder(() =>
+        {
+            rateLimiter.SetCeilingAsync(500);
+            rateLimiter.TryConsumeAsync();
+            rateLimiter.SetCeilingAsync(100);
+            rateLimiter.TryConsumeAsync();
+        });
+    }
+
     [Fact]
     public async Task RunAsync_PopulatesEmbeddingResultModelFromConfig()
     {
         float[] vector = new float[768];
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
-        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true);
-
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        IActorProxyFactory actorProxyFactory = CreateMockActorProxyFactory(allowed: true, out _);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         EmbeddingResult result = await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
@@ -161,7 +245,6 @@ public class GenerateEmbeddingActivityTests
     [Fact]
     public async Task RunAsync_UsesCorrectActorIdFromTenantId()
     {
-        // Arrange
         float[] vector = new float[768];
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
@@ -170,24 +253,14 @@ public class GenerateEmbeddingActivityTests
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
         rateLimiter.TryConsumeAsync().Returns(true);
 
-        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(
-                Arg.Any<ActorId>(),
-                Arg.Any<string>())
-            .Returns(rateLimiter);
-        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
-                Arg.Any<ActorId>(),
-                Arg.Any<string>())
-            .Returns(tenantConfigActor);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
 
-        EmbeddingInput input = new(TenantId, TestText);
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        GenerateEmbeddingActivity activity = new(embeddingClient, actorProxyFactory);
+        await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
 
-        // Act
-        await activity.RunAsync(context, input);
-
-        // Assert
         actorProxyFactory.Received(1).CreateActorProxy<IEmbeddingRateLimiterActor>(
             Arg.Is<ActorId>(id => id.ToString() == TenantId),
             "EmbeddingRateLimiterActor");
@@ -195,6 +268,16 @@ public class GenerateEmbeddingActivityTests
             Arg.Is<ActorId>(id => id.ToString() == TenantId),
             "TenantConfigurationActor");
     }
+
+    private static GenerateEmbeddingActivity CreateActivity(
+        EmbeddingClient embeddingClient,
+        IActorProxyFactory actorProxyFactory,
+        IJitterSource? jitterSource = null)
+        => new(
+            embeddingClient,
+            actorProxyFactory,
+            jitterSource ?? new FixedJitterSource(0),
+            NullLogger<GenerateEmbeddingActivity>.Instance);
 
     private static EmbeddingClient CreateMockEmbeddingClient(float[] vectorToReturn)
     {
@@ -225,23 +308,32 @@ public class GenerateEmbeddingActivityTests
         return hostEnvironment;
     }
 
-    private static IActorProxyFactory CreateMockActorProxyFactory(bool allowed)
+    private static IActorProxyFactory CreateMockActorProxyFactory(bool allowed, out IEmbeddingRateLimiterActor rateLimiter)
     {
         IActorProxyFactory factory = Substitute.For<IActorProxyFactory>();
-        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
         ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
         rateLimiter.TryConsumeAsync().Returns(allowed);
 
-        factory.CreateActorProxy<IEmbeddingRateLimiterActor>(
-                Arg.Any<ActorId>(),
-                Arg.Any<string>())
-            .Returns(rateLimiter);
-        factory.CreateActorProxy<ITenantConfigurationActor>(
-                Arg.Any<ActorId>(),
-                Arg.Any<string>())
-            .Returns(tenantConfigActor);
+        factory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        factory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
 
         return factory;
+    }
+
+    private sealed class FixedJitterSource : IJitterSource
+    {
+        private readonly int _value;
+
+        public FixedJitterSource(int value) => _value = value;
+
+        public int CallCount { get; private set; }
+
+        public int NextMilliseconds(int maxExclusive = 500)
+        {
+            CallCount++;
+            return _value;
+        }
     }
 }

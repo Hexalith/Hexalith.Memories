@@ -37,3 +37,7 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 - `http://localhost:5000/health`
 - `http://localhost:5000/alive`
 - `http://localhost:5000/ready`
+
+## Operations
+
+- [Rate limiting — per-tenant ceilings, 429 handling, extraction gate](docs/operations/rate-limiting.md)

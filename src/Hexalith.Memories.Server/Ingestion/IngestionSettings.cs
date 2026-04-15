@@ -40,6 +40,18 @@ public sealed class IngestionSettings
         ".epub",
     ];
 
+    /// <summary>Gets or sets the maximum number of concurrent <c>ExtractContentActivity</c> + <c>FetchUrlActivity</c>
+    /// invocations allowed per tenant (Story 6.2 <see cref="PerTenantConcurrencyGate"/>). Defaults to 4 — leaves
+    /// headroom for other tenants and system work on an 8-core box. Raise only after confirming CPU headroom
+    /// and <c>ExtractionGateContended</c> (event 6205) firing.</summary>
+    public int PerTenantExtractionConcurrency { get; set; } = 4;
+
+    /// <summary>Gets or sets the maximum time (in seconds) <see cref="PerTenantConcurrencyGate"/> waits to acquire
+    /// a slot before timing out (Story 6.2). Defaults to 300 (5 min) — long enough to ride through normal batch
+    /// queuing, short enough that a stuck gate surfaces as an <c>ExtractionGateTimeout</c> (event 6206) rather
+    /// than hanging the workflow indefinitely.</summary>
+    public int ExtractionGateAcquireTimeoutSeconds { get; set; } = 300;
+
     /// <summary>Gets or sets the list of extensions that are always skipped as UNSUPPORTED_EXTENSION (lowercase with leading dot).</summary>
     public string[] UnsupportedExtensions { get; set; } =
     [
