@@ -81,6 +81,19 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IndexHealth))]
 [JsonSerializable(typeof(TenantConfigurationView))]
 [JsonSerializable(typeof(TenantUpdateInput))]
+// Story 6.1: URL and directory ingestion contracts.
+[JsonSerializable(typeof(UrlFetchResult))]
+[JsonSerializable(typeof(FetchUrlInput))]
+[JsonSerializable(typeof(UrlIngestionRequest))]
+[JsonSerializable(typeof(UrlIngestionResponse))]
+[JsonSerializable(typeof(DirectoryIngestionRequest))]
+[JsonSerializable(typeof(DirectoryIngestionOutcome))]
+[JsonSerializable(typeof(SkippedFile))]
+[JsonSerializable(typeof(IReadOnlyList<SkippedFile>))]
+[JsonSerializable(typeof(BatchStatusResponse))]
+[JsonSerializable(typeof(BatchStatusCounts))]
+[JsonSerializable(typeof(BatchInstanceStatus))]
+[JsonSerializable(typeof(IReadOnlyList<BatchInstanceStatus>))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

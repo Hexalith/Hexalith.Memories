@@ -1,0 +1,11 @@
+// <copyright file="FetchUrlInput.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Contracts.V1;
+
+/// <summary>Input to the URL fetch workflow activity.</summary>
+/// <param name="Url">Absolute http(s) URL to fetch.</param>
+/// <param name="MemoryUnitId">Correlating memory unit identifier (used for structured logging).</param>
+public sealed record FetchUrlInput(string Url, string MemoryUnitId);

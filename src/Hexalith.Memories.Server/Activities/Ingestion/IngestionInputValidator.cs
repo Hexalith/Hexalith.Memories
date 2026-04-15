@@ -24,26 +24,54 @@ internal static class IngestionInputValidator
         ValidateRequired(input.SourceUri, nameof(input.SourceUri));
         ValidateRequired(input.ContentType, nameof(input.ContentType));
         ValidateRequired(input.IngestedBy, nameof(input.IngestedBy));
-        ValidateContentBytes(input.ContentBytes);
         ValidateSourceType(input.SourceType);
+        ValidateContentBytesForSourceType(input.ContentBytes, input.SourceType, input.SourceUri);
         ValidateMetadata(input.Metadata);
     }
 
-    private static void ValidateContentBytes(byte[]? contentBytes)
+    private static void ValidateContentBytesForSourceType(byte[]? contentBytes, SourceType sourceType, string sourceUri)
     {
-        if (contentBytes is null)
+        if (sourceType == SourceType.File)
         {
-            throw new ArgumentException("ContentBytes is required.");
+            if (contentBytes is null)
+            {
+                throw new ArgumentException("ContentBytes is required for SourceType=File.");
+            }
+
+            if (contentBytes.Length == 0)
+            {
+                throw new ArgumentException("ContentBytes must not be empty for SourceType=File.");
+            }
+
+            if (contentBytes.Length > MaxContentBytes)
+            {
+                throw new ArgumentException($"ContentBytes must not exceed {MaxContentBytes} bytes (1 MB).");
+            }
+
+            return;
         }
 
-        if (contentBytes.Length == 0)
+        if (sourceType == SourceType.Url)
         {
-            throw new ArgumentException("ContentBytes must not be empty.");
+            if (contentBytes is { Length: > 0 })
+            {
+                throw new ArgumentException("ContentBytes must be null for SourceType=Url; the server fetches the URL body.");
+            }
+
+            if (!Uri.TryCreate(sourceUri, UriKind.Absolute, out Uri? parsed)
+                || (parsed.Scheme is not "http" and not "https"))
+            {
+                throw new ArgumentException("SourceUri must be an absolute http(s) URL when SourceType=Url.");
+            }
+
+            return;
         }
 
-        if (contentBytes.Length > MaxContentBytes)
+        // Other source types (Event, Command, Projection, Discussion, Annotation) do not flow
+        // through Kreuzberg extraction; bytes MUST be null or empty.
+        if (contentBytes is { Length: > 0 })
         {
-            throw new ArgumentException($"ContentBytes must not exceed {MaxContentBytes} bytes (1 MB).");
+            throw new ArgumentException($"ContentBytes must be null or empty for SourceType={sourceType}.");
         }
     }
 

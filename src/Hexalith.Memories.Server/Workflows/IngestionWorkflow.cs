@@ -10,6 +10,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Logging;
 
@@ -79,12 +80,38 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 nameof(ValidateContentActivity),
                 input);
 
-            currentStage = "extracting";
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Extracting);
+
+            byte[] contentBytes = input.ContentBytes ?? [];
+            string contentType = input.ContentType;
+            string effectiveUrl = input.SourceUri;
+            long fetchedContentLength = contentBytes.LongLength;
+            UrlFetchResult? urlFetch = null;
+
+            // Story 6.1: when SourceType=Url, fetch the body via FetchUrlActivity before extraction.
+            // The outer retry policy applies per activity (5 attempts, exponential backoff).
+            if (input.SourceType == SourceType.Url)
+            {
+                currentStage = "fetching";
+                urlFetch = await context.CallActivityAsync<UrlFetchResult>(
+                    nameof(FetchUrlActivity),
+                    new FetchUrlInput(input.SourceUri, memoryUnitId),
+                    retryOptions);
+                contentBytes = urlFetch.ContentBytes;
+                if (!string.IsNullOrWhiteSpace(urlFetch.ContentType))
+                {
+                    contentType = urlFetch.ContentType;
+                }
+
+                effectiveUrl = urlFetch.FinalUrl;
+                fetchedContentLength = urlFetch.ContentLength;
+            }
+
+            currentStage = "extracting";
 
             ExtractionResult extraction = await context.CallActivityAsync<ExtractionResult>(
                 nameof(ExtractContentActivity),
-                new ExtractionInput(input.SourceUri, input.ContentBytes, input.ContentType, input.SourceType),
+                new ExtractionInput(input.SourceUri, contentBytes, contentType, input.SourceType),
                 retryOptions);
 
             logger.LogInformation(
@@ -128,7 +155,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 // stores only the model identifier rather than the full compound value.
                 EmbeddingModel = GetEmbeddingModelIdentifier(embedding),
                 EmbeddingDimensions = embedding.Dimensions,
-                Metadata = input.Metadata,
+                Metadata = BuildIndexMetadata(input, urlFetch, effectiveUrl, fetchedContentLength),
                 CausationId = input.CausationId,
                 CorrelationId = input.CorrelationId,
             };
@@ -387,7 +414,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         int retryCount,
         ILogger logger)
     {
-        FailureDetails details = new(stage, exception.GetType().Name, retryCount);
+        FailureDetails details = new(stage, GetErrorCode(exception), retryCount);
 
         exception.Data[nameof(FailureDetails)] = details;
         exception.Data[nameof(MemoryUnitStatus)] = MemoryUnitStatus.Failed;
@@ -403,6 +430,45 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             details.RetryCount);
     }
 
+    private static string GetErrorCode(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        if (exception is UrlFetchException fetchException)
+        {
+            return fetchException.ErrorCode;
+        }
+
+        if (exception is WorkflowTaskFailedException workflowException)
+        {
+            if (UrlFetchException.TryExtractErrorCode(workflowException.FailureDetails?.ErrorMessage, out string wrappedCode))
+            {
+                return wrappedCode;
+            }
+
+            if (UrlFetchException.TryExtractErrorCode(workflowException.Message, out string workflowMessageCode))
+            {
+                return workflowMessageCode;
+            }
+        }
+
+        if (UrlFetchException.TryExtractErrorCode(exception.Message, out string messageCode))
+        {
+            return messageCode;
+        }
+
+        if (exception.InnerException is not null)
+        {
+            string innerCode = GetErrorCode(exception.InnerException);
+            if (!string.Equals(innerCode, exception.InnerException.GetType().Name, StringComparison.Ordinal))
+            {
+                return innerCode;
+            }
+        }
+
+        return exception.GetType().Name;
+    }
+
     private static int GetRetryCountForStage(string stage)
         => string.Equals(stage, "validation", StringComparison.OrdinalIgnoreCase)
             ? 0
@@ -410,6 +476,38 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
     private static bool HasFailureDetails(Exception exception)
         => exception.Data.Contains(nameof(FailureDetails));
+
+    /// <summary>
+    /// Story 6.1 AC10: attach http.* metadata as AI-origin fields (confidence 1.0) when the ingestion
+    /// source is a URL. Caller-supplied metadata is preserved verbatim.
+    /// </summary>
+    private static Dictionary<string, MetadataField> BuildIndexMetadata(
+        IngestionInput input,
+        UrlFetchResult? urlFetch,
+        string effectiveUrl,
+        long contentLength)
+    {
+        Dictionary<string, MetadataField> metadata = new(input.Metadata);
+
+        if (input.SourceType != SourceType.Url || urlFetch is null)
+        {
+            return metadata;
+        }
+
+        metadata["http.finalUrl"] = new MetadataField(effectiveUrl, MetadataOrigin.Ai, 1.0f);
+
+        if (!string.IsNullOrWhiteSpace(urlFetch.ContentType))
+        {
+            metadata["http.contentType"] = new MetadataField(urlFetch.ContentType, MetadataOrigin.Ai, 1.0f);
+        }
+
+        metadata["http.contentLength"] = new MetadataField(
+            contentLength.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            MetadataOrigin.Ai,
+            1.0f);
+
+        return metadata;
+    }
 
     private static string GetEmbeddingModelIdentifier(EmbeddingResult embedding)
     {

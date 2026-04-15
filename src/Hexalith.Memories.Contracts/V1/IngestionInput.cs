@@ -14,7 +14,8 @@ public sealed record IngestionInput
 
     public required string SourceUri { get; init; }
 
-    public required byte[] ContentBytes { get; init; }
+    /// <summary>Gets the payload bytes. Required (non-null, non-empty) when <see cref="SourceType"/> is <see cref="SourceType.File"/>; MUST be null (or empty) when <see cref="SourceType"/> is <see cref="SourceType.Url"/> — the workflow fetches the body via FetchUrlActivity.</summary>
+    public byte[]? ContentBytes { get; init; }
 
     public required string ContentType { get; init; }
 

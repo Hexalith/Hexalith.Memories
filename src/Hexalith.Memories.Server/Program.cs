@@ -52,6 +52,17 @@ builder.Services.AddHttpClient("EmbeddingClient", client =>
 });
 builder.Services.AddSingleton<EmbeddingClient>();
 
+// Story 6.1: URL and directory ingestion — settings, named HttpClient, and services.
+builder.Services.Configure<IngestionSettings>(builder.Configuration.GetSection("Ingestion"));
+builder.Services.Configure<UrlFetcherOptions>(builder.Configuration.GetSection("Ingestion:UrlFetcher"));
+builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false,
+    });
+builder.Services.AddSingleton<IUrlContentFetcher, UrlContentFetcher>();
+builder.Services.AddSingleton<DirectoryIngestionService>();
+
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("falkordb", (sp, _) =>
@@ -127,6 +138,9 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupGraphActivity>();
     options.RegisterActivity<RecordCaseActivityActivity>();
 
+    // Story 6.1: URL ingestion
+    options.RegisterActivity<FetchUrlActivity>();
+
     // Story 5.1: Tenant provisioning workflow + activities
     options.RegisterWorkflow<TenantProvisioningWorkflow>();
     options.RegisterActivity<ProvisionRediSearchActivity>();
@@ -194,6 +208,244 @@ app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient,
 {
     WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
     return state is null ? Results.NotFound() : Results.Ok(state);
+});
+
+// Story 6.1: URL ingestion — single-URL entry point. Returns 202 with workflow instance id.
+app.MapPost("/api/ingest/url", async (
+    DaprWorkflowClient workflowClient,
+    TenantStatusGuard tenantGuard,
+    Microsoft.Extensions.Options.IOptions<UrlFetcherOptions> urlFetcherOptions,
+    ILoggerFactory loggerFactory,
+    UrlIngestionRequest request,
+    CancellationToken cancellationToken) =>
+{
+    ILogger urlLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Url");
+
+    ErrorResponse? validationError = ValidateUrlIngestionRequest(request, urlFetcherOptions.Value, out Uri? url);
+    if (validationError is not null || url is null)
+    {
+        IngestionEndpointLog.LogUrlIngestionRejected(
+            urlLogger,
+            request?.TenantId ?? "(missing)",
+            request?.CaseId ?? "(missing)",
+            IngestionEndpointLog.RedactUrl(request?.Url),
+            validationError!.Code);
+        return Results.BadRequest(validationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        IngestionEndpointLog.LogUrlIngestionRejected(
+            urlLogger,
+            request.TenantId,
+            request.CaseId,
+            IngestionEndpointLog.RedactUrl(request.Url),
+            tenantStatusError.Code);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+    }
+
+    IngestionInput input = new()
+    {
+        TenantId = request.TenantId,
+        CaseId = request.CaseId,
+        SourceUri = request.Url,
+        ContentBytes = null,
+        ContentType = "application/octet-stream",
+        SourceType = SourceType.Url,
+        IngestedBy = request.IngestedBy,
+        Metadata = request.Metadata,
+        CausationId = request.CausationId,
+        CorrelationId = request.CorrelationId,
+    };
+
+    string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
+        nameof(IngestionWorkflow),
+        input: input);
+
+    IngestionEndpointLog.LogUrlIngestionScheduled(
+        urlLogger,
+        request.TenantId,
+        request.CaseId,
+        instanceId,
+        IngestionEndpointLog.RedactUrl(url));
+
+    return Results.Accepted(
+        $"/api/ingest/{instanceId}",
+        new UrlIngestionResponse(instanceId, request.Url));
+});
+
+// Story 6.1: Directory ingestion — batch scheduler over an allow-listed server filesystem root.
+app.MapPost("/api/ingest/directory", async (
+    DirectoryIngestionService directoryService,
+    TenantStatusGuard tenantGuard,
+    ILoggerFactory loggerFactory,
+    DirectoryIngestionRequest request,
+    CancellationToken cancellationToken) =>
+{
+    ILogger dirLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Directory");
+
+    ErrorResponse? shapeError = ValidateDirectoryIngestionRequest(request);
+    if (shapeError is not null)
+    {
+        IngestionEndpointLog.LogDirectoryBatchRejected(
+            dirLogger,
+            request?.TenantId ?? "(missing)",
+            request?.CaseId ?? "(missing)",
+            null,
+            shapeError.Code,
+            request?.DirectoryPath ?? string.Empty);
+        return Results.BadRequest(shapeError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        IngestionEndpointLog.LogDirectoryBatchRejected(
+            dirLogger,
+            request.TenantId,
+            request.CaseId,
+            null,
+            tenantStatusError.Code,
+            request.DirectoryPath);
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+    }
+
+    DirectoryIngestionResult result = await directoryService.IngestAsync(request, cancellationToken);
+    if (result.ErrorCode is not null)
+    {
+        IngestionEndpointLog.LogDirectoryBatchRejected(
+            dirLogger,
+            request.TenantId,
+            request.CaseId,
+            result.BatchId,
+            result.ErrorCode,
+            request.DirectoryPath);
+
+        return result.ErrorCode switch
+        {
+            "DIRECTORY_INGESTION_DISABLED" => Results.Json(
+                new ErrorResponse(
+                    "DIRECTORY_INGESTION_DISABLED",
+                    "Directory ingestion is not enabled on this server.",
+                    "Configure Ingestion:AllowedDirectoryRoots to enable."),
+                statusCode: StatusCodes.Status403Forbidden),
+            "BATCH_TOO_LARGE" => Results.Json(
+                new ErrorResponse(
+                    "BATCH_TOO_LARGE",
+                    "Batch exceeds the maximum supported number of files.",
+                    "Ingest smaller sub-directories, or call POST /api/ingest per file."),
+                statusCode: StatusCodes.Status400BadRequest),
+            "BATCH_TRACKING_UNAVAILABLE" => Results.Json(
+                new ErrorResponse(
+                    "BATCH_TRACKING_UNAVAILABLE",
+                    "Directory batch tracking is temporarily unavailable.",
+                    "Retry when the DAPR state store is healthy; no successful batch response was returned."),
+                statusCode: StatusCodes.Status503ServiceUnavailable),
+            "DAPR_UNAVAILABLE" => Results.Json(
+                new ErrorResponse(
+                    "DAPR_UNAVAILABLE",
+                    "DAPR sidecar is not ready.",
+                    "Check service health via /healthz and retry."),
+                statusCode: StatusCodes.Status503ServiceUnavailable),
+            "BATCH_SCHEDULING_FAILED" => Results.Json(
+                new ErrorResponse(
+                    "BATCH_SCHEDULING_FAILED",
+                    "Directory batch scheduling failed before the batch could be safely accepted.",
+                    "Inspect server logs and retry the request."),
+                statusCode: StatusCodes.Status500InternalServerError),
+            _ => Results.Json(
+                new ErrorResponse(
+                    "INVALID_DIRECTORY_PATH",
+                    "Directory path is not allowed.",
+                    "Provide an absolute path under a configured Ingestion:AllowedDirectoryRoots entry."),
+                statusCode: StatusCodes.Status400BadRequest),
+        };
+    }
+
+    DirectoryIngestionOutcome outcome = result.Outcome!;
+    IngestionEndpointLog.LogDirectoryBatchScheduled(
+        dirLogger,
+        request.TenantId,
+        request.CaseId,
+        outcome.BatchId,
+        outcome.Discovered,
+        outcome.Enqueued,
+        outcome.Skipped.Count);
+
+    return Results.Accepted(
+        $"/api/ingest/batches/{outcome.BatchId}",
+        outcome);
+});
+
+// Story 6.1: Aggregated batch status — queries persisted batch state and polls each workflow instance.
+app.MapGet("/api/ingest/batches/{batchId}", async (
+    DaprClient daprClient,
+    DaprWorkflowClient workflowClient,
+    string batchId,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(batchId))
+    {
+        return Results.NotFound();
+    }
+
+    DirectoryBatchState? state;
+    try
+    {
+        state = await daprClient.GetStateAsync<DirectoryBatchState>(
+            DirectoryIngestionService.StateStoreName,
+            DirectoryIngestionService.BatchStateKeyPrefix + batchId,
+            cancellationToken: cancellationToken);
+    }
+    catch (Exception)
+    {
+        state = null;
+    }
+
+    if (state is null)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "BATCH_NOT_FOUND",
+            $"Batch '{batchId}' was not found or has expired.",
+            "Verify the batchId returned by POST /api/ingest/directory."));
+    }
+
+    using SemaphoreSlim gate = new(50);
+    Task<BatchInstanceStatus>[] statusTasks = state.Files.Select(async file =>
+    {
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WorkflowState? wfState = await workflowClient
+                .GetWorkflowStateAsync(file.InstanceId)
+                .ConfigureAwait(false);
+            return DirectoryBatchStatusMapper.MapInstance(file, wfState);
+        }
+        catch (Exception)
+        {
+            return DirectoryBatchStatusMapper.MapInstance(file, null);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }).ToArray();
+
+    BatchInstanceStatus[] instances = await Task.WhenAll(statusTasks);
+    BatchStatusCounts counts = DirectoryBatchStatusMapper.BuildCounts(instances);
+
+    BatchStatusResponse response = new(
+        state.BatchId,
+        state.TenantId,
+        state.CaseId,
+        Discovered: state.Discovered,
+        Enqueued: state.Files.Length,
+        Skipped: state.Skipped.Length,
+        Counts: counts,
+        Instances: instances);
+
+    return Results.Ok(response);
 });
 
 app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
@@ -1685,6 +1937,115 @@ static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configur
             $"Connection string '{connectionName}' is required. Start the server through AppHost or set ConnectionStrings__{connectionName}.");
 
     return ConnectionMultiplexer.Connect(connectionString);
+}
+
+static ErrorResponse? ValidateUrlIngestionRequest(UrlIngestionRequest request, UrlFetcherOptions options, out Uri? url)
+{
+    url = null;
+    if (request is null)
+    {
+        return new ErrorResponse("INVALID_INPUT", "Request body is required.", "Provide a JSON body with tenantId, caseId, url, and ingestedBy.");
+    }
+
+    ErrorResponse? tenantError = ValidateTenantId(request.TenantId);
+    if (tenantError is not null)
+    {
+        return tenantError;
+    }
+
+    if (string.IsNullOrWhiteSpace(request.CaseId))
+    {
+        return new ErrorResponse("INVALID_INPUT", "CaseId is required.", "Provide a non-empty caseId.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IngestedBy))
+    {
+        return new ErrorResponse("INVALID_INPUT", "IngestedBy is required.", "Provide the identity of the ingesting principal.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Url)
+        || !Uri.TryCreate(request.Url, UriKind.Absolute, out Uri? parsed)
+        || (parsed.Scheme is not "http" and not "https"))
+    {
+        return new ErrorResponse(
+            "INVALID_URL",
+            "URL scheme or host is not allowed.",
+            "Use an http(s) URL with a publicly routable host.");
+    }
+
+    if (!UrlHostValidator.IsAllowedHost(parsed, options))
+    {
+        return new ErrorResponse(
+            "INVALID_URL",
+            "URL scheme or host is not allowed.",
+            "Use an http(s) URL with a publicly routable host. Set Ingestion:UrlFetcher:AllowPrivateHosts=true in configuration to allow private hosts (development only).");
+    }
+
+    foreach ((string key, MetadataField field) in request.Metadata)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return new ErrorResponse("INVALID_INPUT", "Metadata keys must not be empty.", "Remove empty metadata keys.");
+        }
+
+        if (float.IsNaN(field.Confidence) || float.IsInfinity(field.Confidence) || field.Confidence < 0f || field.Confidence > 1f)
+        {
+            return new ErrorResponse(
+                "INVALID_INPUT",
+                $"Metadata field '{key}' confidence must be between 0.0 and 1.0.",
+                "Adjust metadata confidence to a value between 0 and 1.");
+        }
+    }
+
+    url = parsed;
+    return null;
+}
+
+static ErrorResponse? ValidateDirectoryIngestionRequest(DirectoryIngestionRequest request)
+{
+    if (request is null)
+    {
+        return new ErrorResponse("INVALID_INPUT", "Request body is required.", "Provide a JSON body with tenantId, caseId, directoryPath, and ingestedBy.");
+    }
+
+    ErrorResponse? tenantError = ValidateTenantId(request.TenantId);
+    if (tenantError is not null)
+    {
+        return tenantError;
+    }
+
+    if (string.IsNullOrWhiteSpace(request.CaseId))
+    {
+        return new ErrorResponse("INVALID_INPUT", "CaseId is required.", "Provide a non-empty caseId.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IngestedBy))
+    {
+        return new ErrorResponse("INVALID_INPUT", "IngestedBy is required.", "Provide the identity of the ingesting principal.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.DirectoryPath))
+    {
+        return new ErrorResponse("INVALID_INPUT", "DirectoryPath is required.", "Provide an absolute directory path under a configured root.");
+    }
+
+    foreach ((string key, MetadataField field) in request.Metadata)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return new ErrorResponse("INVALID_INPUT", "Metadata keys must not be empty.", "Remove empty metadata keys.");
+        }
+
+        if (float.IsNaN(field.Confidence) || float.IsInfinity(field.Confidence) || field.Confidence < 0f || field.Confidence > 1f)
+        {
+            return new ErrorResponse(
+                "INVALID_INPUT",
+                $"Metadata field '{key}' confidence must be between 0.0 and 1.0.",
+                "Adjust metadata confidence to a value between 0 and 1.");
+        }
+    }
+
+    return null;
 }
 
 static ErrorResponse? ValidateIngestionRequest(IngestionInput input)

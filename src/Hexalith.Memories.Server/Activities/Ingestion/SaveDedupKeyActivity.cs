@@ -29,7 +29,12 @@ public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
         IDatabase db = _redis.GetDatabase();
-        await db.StringSetAsync(input.DedupKey, input.MemoryUnitId).ConfigureAwait(false);
+        await db.StringSetAsync(
+            input.DedupKey,
+            input.MemoryUnitId,
+            expiry: null,
+            when: When.Always,
+            flags: CommandFlags.None).ConfigureAwait(false);
         return true;
     }
 }

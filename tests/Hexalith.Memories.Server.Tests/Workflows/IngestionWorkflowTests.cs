@@ -12,6 +12,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.TestHelpers.Factories;
@@ -326,6 +327,27 @@ public class IngestionWorkflowTests
         details.RetryCount.ShouldBe(5);
         ex.Data[nameof(MemoryUnitStatus)].ShouldBe(MemoryUnitStatus.Failed);
         ex.Data["MemoryUnitId"].ShouldBe(TestGuid.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_UrlFetchFailure_ShouldPreserveUrlFetchErrorCode()
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Url, sourceUri: "https://example.com/doc", contentBytes: null);
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+        context.CallActivityAsync<UrlFetchResult>(
+                nameof(FetchUrlActivity), Arg.Any<FetchUrlInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<UrlFetchResult>(new UrlFetchException("URL_TIMEOUT", "URL fetch timed out after 30s.")));
+
+        IngestionWorkflow workflow = new();
+
+        UrlFetchException ex = await Should.ThrowAsync<UrlFetchException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.Stage.ShouldBe("fetching");
+        details.ErrorCode.ShouldBe("URL_TIMEOUT");
+        details.RetryCount.ShouldBe(5);
     }
 
     // --- AC: Activity recording resilience ---

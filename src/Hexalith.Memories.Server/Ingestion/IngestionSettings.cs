@@ -1,0 +1,58 @@
+// <copyright file="IngestionSettings.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Ingestion;
+
+/// <summary>Ingestion-wide settings bound from the "Ingestion" configuration section.</summary>
+public sealed class IngestionSettings
+{
+    /// <summary>Gets or sets the allow-list of absolute directory roots that POST /api/ingest/directory may traverse. Empty by default — endpoint is disabled until an operator opts in.</summary>
+    public string[] AllowedDirectoryRoots { get; set; } = [];
+
+    /// <summary>Gets or sets the maximum number of candidate files per directory batch.</summary>
+    public int MaxBatchSize { get; set; } = 500;
+
+    /// <summary>Gets or sets the maximum number of skipped-file entries returned in the response before truncation.</summary>
+    public int MaxSkippedReportSize { get; set; } = 100;
+
+    /// <summary>Gets or sets the TTL (in hours) for persisted batch state records.</summary>
+    public int BatchStateTtlHours { get; set; } = 24;
+
+    /// <summary>Gets or sets the list of extensions that are always enqueued (lowercase with leading dot).</summary>
+    public string[] SupportedExtensions { get; set; } =
+    [
+        ".md",
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".html",
+        ".htm",
+        ".xlsx",
+        ".xls",
+        ".pptx",
+        ".ppt",
+        ".csv",
+        ".json",
+        ".rtf",
+        ".epub",
+    ];
+
+    /// <summary>Gets or sets the list of extensions that are always skipped as UNSUPPORTED_EXTENSION (lowercase with leading dot).</summary>
+    public string[] UnsupportedExtensions { get; set; } =
+    [
+        ".exe",
+        ".dll",
+        ".bin",
+        ".iso",
+        ".dmg",
+        ".so",
+        ".dylib",
+        ".app",
+        ".msi",
+        ".deb",
+        ".rpm",
+    ];
+}

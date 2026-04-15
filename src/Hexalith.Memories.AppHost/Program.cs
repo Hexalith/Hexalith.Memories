@@ -78,6 +78,12 @@ IResourceBuilder<ProjectResource> server = builder
     .WaitFor(redis)
     .WaitFor(falkordb);
 
+// Story 6.1: dev-only default allow-list for POST /api/ingest/directory so developers can batch-ingest
+// the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
+// — appsettings.json keeps AllowedDirectoryRoots empty, so the endpoint is disabled by default.
+string testDataRoot = EnsureTestDataRoot();
+server = server.WithEnvironment("Ingestion__AllowedDirectoryRoots__0", testDataRoot);
+
 // Story 5.4 AC3 — application-side token injection.
 // The AppHost now propagates both APP_API_TOKEN and DAPR_API_TOKEN to the application resource and the
 // DAPR sidecar when DAPR_API_TOKEN_MODE=enabled. Both values still come from the ambient environment so
@@ -98,6 +104,22 @@ if (daprApiToken is not null)
 _ = server;
 
 builder.Build().Run();
+
+static string EnsureTestDataRoot()
+{
+    string repoRoot = ResolveRepositoryRoot();
+    string testData = Path.Combine(repoRoot, "test-data");
+    Directory.CreateDirectory(testData);
+    string readme = Path.Combine(testData, "README.md");
+    if (!File.Exists(readme))
+    {
+        File.WriteAllText(
+            readme,
+            "# test-data\n\nDev-only allow-list root for POST /api/ingest/directory. Safe to add sample files here; the endpoint is still disabled in production by default (appsettings.json AllowedDirectoryRoots=[]).\n");
+    }
+
+    return testData;
+}
 
 static string EnsureSecretsFile()
 {

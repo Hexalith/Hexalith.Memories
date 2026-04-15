@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
+using System.Linq;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -28,7 +30,9 @@ public class SaveDedupKeyActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
 
-        await db.Received(1).StringSetAsync("dedup:tenant-1:case-1:abc123", "mu-001", Arg.Any<TimeSpan?>(), Arg.Any<bool>(), Arg.Any<When>(), Arg.Any<CommandFlags>());
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
+        call.GetArguments()[0].ShouldBe((RedisKey)"dedup:tenant-1:case-1:abc123");
+        call.GetArguments()[1].ShouldBe((RedisValue)"mu-001");
     }
 
     [Fact]
@@ -48,8 +52,11 @@ public class SaveDedupKeyActivityTests
     public async Task RunAsync_RedisUnavailable_ShouldPropagateException()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
-        db.StringSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<bool>(), Arg.Any<When>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new InvalidOperationException("Redis unavailable"));
+        Task<bool> failure = Task.FromException<bool>(new InvalidOperationException("Redis unavailable"));
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(failure);
+        db.StringSetAsync(default, default, default, default, default, default)
+            .ReturnsForAnyArgs(failure);
         SaveDedupKeyActivity activity = new(redis);
 
         await Should.ThrowAsync<InvalidOperationException>(
@@ -62,7 +69,8 @@ public class SaveDedupKeyActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
-        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        redis.GetDatabase().Returns(db);
+        redis.GetDatabase(Arg.Any<int>(), Arg.Is<object?>(value => value == null)).Returns(db);
         return (db, redis);
     }
 }
