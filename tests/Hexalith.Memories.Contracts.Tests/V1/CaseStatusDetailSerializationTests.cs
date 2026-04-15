@@ -23,7 +23,11 @@ public class CaseStatusDetailSerializationTests
             LastActivityAt: DateTimeOffset.Parse("2026-04-01T11:30:00+00:00"),
             IndexedCount: 5,
             FailedCount: 2,
-            MemberCount: 3);
+            MemberCount: 3,
+            QueuedCount: 1,
+            ExtractingCount: 2,
+            EmbeddingCount: 3,
+            IndexingCount: 4);
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         CaseStatusDetail? deserialized = JsonSerializer.Deserialize<CaseStatusDetail>(json, MemoriesJsonContext.Options);
@@ -39,6 +43,10 @@ public class CaseStatusDetailSerializationTests
         deserialized.IndexedCount.ShouldBe(5);
         deserialized.FailedCount.ShouldBe(2);
         deserialized.MemberCount.ShouldBe(3);
+        deserialized.QueuedCount.ShouldBe(1);
+        deserialized.ExtractingCount.ShouldBe(2);
+        deserialized.EmbeddingCount.ShouldBe(3);
+        deserialized.IndexingCount.ShouldBe(4);
     }
 
     [Fact]
@@ -55,10 +63,18 @@ public class CaseStatusDetailSerializationTests
         json.ShouldContain("\"indexedCount\":");
         json.ShouldContain("\"failedCount\":");
         json.ShouldContain("\"memberCount\":");
+        json.ShouldContain("\"queuedCount\":");
+        json.ShouldContain("\"extractingCount\":");
+        json.ShouldContain("\"embeddingCount\":");
+        json.ShouldContain("\"indexingCount\":");
         json.ShouldNotContain("\"MemoryUnitCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"IndexedCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"FailedCount\":", Shouldly.Case.Sensitive);
         json.ShouldNotContain("\"MemberCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"QueuedCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"ExtractingCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"EmbeddingCount\":", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("\"IndexingCount\":", Shouldly.Case.Sensitive);
     }
 
     [Fact]

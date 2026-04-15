@@ -81,6 +81,17 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IndexHealth))]
 [JsonSerializable(typeof(TenantConfigurationView))]
 [JsonSerializable(typeof(TenantUpdateInput))]
+// Story 6.3: retry / failure visibility / re-ingestion contracts.
+[JsonSerializable(typeof(CaseIngestionCounts))]
+[JsonSerializable(typeof(CounterTransitionInput))]
+[JsonSerializable(typeof(FailedUnitInput))]
+[JsonSerializable(typeof(FailedUnitSummary))]
+[JsonSerializable(typeof(FailedUnitsPage))]
+[JsonSerializable(typeof(IReadOnlyList<FailedUnitSummary>))]
+[JsonSerializable(typeof(ReIngestRequest))]
+[JsonSerializable(typeof(ReIngestedUnitInfo))]
+[JsonSerializable(typeof(BulkReIngestionResponse))]
+[JsonSerializable(typeof(IReadOnlyList<ReIngestedUnitInfo>))]
 // Story 6.1: URL and directory ingestion contracts.
 [JsonSerializable(typeof(UrlFetchResult))]
 [JsonSerializable(typeof(FetchUrlInput))]

@@ -31,7 +31,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, IDatabase falkorDbDb) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         var input = new CreateCaseInput("tenant-1", "Test Case", "A description");
 
@@ -88,7 +88,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         // Act
         List<CaseRecord> result = await service.ListCasesAsync("tenant-1", maxResults: 2, cancellationToken: CancellationToken.None);
@@ -108,7 +108,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         // Act
         List<CaseRecord> result = await service.ListCasesAsync("tenant-1", cancellationToken: CancellationToken.None);
@@ -126,7 +126,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(Array.Empty<HashEntry>());
@@ -146,7 +146,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         HashEntry[] fakeHash =
         [
@@ -236,7 +236,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(Array.Empty<HashEntry>());
@@ -301,7 +301,7 @@ public class CaseServiceTests
             });
 
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         HashEntry[] fakeHash =
         [
@@ -326,6 +326,62 @@ public class CaseServiceTests
         result.IndexedCount.ShouldBe(result.MemoryUnitCount);
         result.FailedCount.ShouldBe(1);
         result.LastActivityAt.ShouldNotBeNull();
+        result.QueuedCount.ShouldBe(0);
+        result.ExtractingCount.ShouldBe(0);
+        result.EmbeddingCount.ShouldBe(0);
+        result.IndexingCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetCaseStatusAsync_WhenCounterActorReturnsCounts_ShouldPopulateInFlightFields()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
+        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
+        activityDb.StreamRangeAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<int?>(),
+            Arg.Any<Order>(),
+            Arg.Any<CommandFlags>())
+            .Returns(_ => Array.Empty<StreamEntry>());
+
+        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            activityService,
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(new CaseIngestionCounts(2, 3, 4, 5)),
+            logger);
+
+        HashEntry[] fakeHash =
+        [
+            new("id", "case-123"),
+            new("tenantId", "tenant-1"),
+            new("name", "Test Case"),
+            new("description", "desc"),
+            new("status", "active"),
+            new("createdAt", "2026-04-01T10:00:00+00:00"),
+            new("lastUpdated", "2026-04-01T11:00:00+00:00"),
+        ];
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(fakeHash);
+
+        // Act
+        CaseStatusDetail? result = await service.GetCaseStatusAsync("tenant-1", "case-123", CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.QueuedCount.ShouldBe(2);
+        result.ExtractingCount.ShouldBe(3);
+        result.EmbeddingCount.ShouldBe(4);
+        result.IndexingCount.ShouldBe(5);
     }
 
     [Fact]
@@ -338,7 +394,7 @@ public class CaseServiceTests
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
         DateTimeOffset deletionStartedAt = DateTimeOffset.Parse("2026-04-13T09:00:00+00:00");
 
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(
@@ -372,7 +428,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(0L);
@@ -408,7 +464,7 @@ public class CaseServiceTests
 
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(5L);
@@ -447,7 +503,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(1000L);
@@ -473,7 +529,7 @@ public class CaseServiceTests
 
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(1000L);
@@ -508,7 +564,7 @@ public class CaseServiceTests
 
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(0L);
@@ -539,7 +595,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(5L);
@@ -563,7 +619,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(5L);
@@ -594,7 +650,7 @@ public class CaseServiceTests
 
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(5L);
@@ -630,7 +686,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
             .Returns(true);
@@ -657,7 +713,7 @@ public class CaseServiceTests
 
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
             .Returns(false);
@@ -684,7 +740,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString().EndsWith(":members")), Arg.Any<CommandFlags>())
             .Returns(Array.Empty<HashEntry>());
@@ -704,7 +760,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         HashEntry[] entries =
         [
@@ -731,7 +787,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         HashEntry[] entries =
         [
@@ -757,7 +813,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashLengthAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"), Arg.Any<CommandFlags>())
             .Returns(42L);
@@ -777,7 +833,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         IBatch batch = Substitute.For<IBatch>();
         redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
@@ -803,7 +859,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         IBatch batch = Substitute.For<IBatch>();
         redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
@@ -826,7 +882,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         // Act
         Dictionary<string, string> result = await service.ResolveNamesAsync("tenant-1", [], CancellationToken.None);
@@ -843,7 +899,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         IBatch batch = Substitute.For<IBatch>();
         redisDb.CreateBatch(Arg.Any<object>()).Returns(batch);
@@ -865,7 +921,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>())
             .Returns(
@@ -899,7 +955,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:legacy-mu"), Arg.Any<CommandFlags>())
             .Returns(
@@ -932,7 +988,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), logger);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
         redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:annotation-001"), Arg.Any<CommandFlags>())
             .Returns(
@@ -973,7 +1029,7 @@ public class CaseServiceTests
             .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
         (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
         CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
@@ -1005,7 +1061,7 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
             .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
@@ -1028,7 +1084,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-missing"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(RedisValue.Null);
@@ -1048,7 +1104,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-OTHER"));
@@ -1068,7 +1124,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDbWithMuIds("ann-001", "ann-002");
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
@@ -1095,7 +1151,7 @@ public class CaseServiceTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-missing"), Arg.Any<CommandFlags>())
             .Returns(false);
@@ -1119,7 +1175,7 @@ public class CaseServiceTests
             .Returns(("MATCH query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
         builder.BuildDeleteCaseNode(Arg.Any<string>())
             .Returns(("DELETE query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
             .Returns(true);
@@ -1160,7 +1216,7 @@ public class CaseServiceTests
             .Returns(callInfo => ($"DELETE MU {callInfo.Arg<string>()}", new Dictionary<string, object> { ["id"] = callInfo.Arg<string>() }));
         builder.BuildDeleteCaseNode(Arg.Any<string>())
             .Returns(("DELETE CASE", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), NullLogger<CaseService>.Instance);
+        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
             .Returns(true);
@@ -1196,6 +1252,28 @@ public class CaseServiceTests
 
     private static DaprWorkflowClient CreateMockWorkflowClient()
         => null!;
+
+    private static Dapr.Actors.Client.IActorProxyFactory CreateMockActorProxyFactory(CaseIngestionCounts? counts = null)
+    {
+        // CreateActorProxy<T>(ActorId, string) is an extension method on IActorProxyFactory; it calls
+        // the non-generic CreateActorProxy(ActorId, Type, string) under the hood. Stub that so the
+        // proxy returned is a live NSubstitute mock producing zero counts (matching the fallback
+        // behavior operators would see from a cold / just-provisioned actor).
+        Hexalith.Memories.Server.Actors.ICaseIngestionCounterActor proxy =
+            Substitute.For<Hexalith.Memories.Server.Actors.ICaseIngestionCounterActor>();
+        proxy.GetCountsAsync().Returns(Task.FromResult(counts ?? new Hexalith.Memories.Contracts.V1.CaseIngestionCounts(0, 0, 0, 0)));
+
+        Dapr.Actors.Client.IActorProxyFactory factory = Substitute.For<Dapr.Actors.Client.IActorProxyFactory>();
+        factory.CreateActorProxy<Hexalith.Memories.Server.Actors.ICaseIngestionCounterActor>(
+            Arg.Any<Dapr.Actors.ActorId>(),
+            Arg.Any<string>()).Returns(proxy);
+        factory.CreateActorProxy(
+            Arg.Any<Dapr.Actors.ActorId>(),
+            Arg.Any<Type>(),
+            Arg.Any<string>(),
+            Arg.Any<Dapr.Actors.Client.ActorProxyOptions?>()).Returns(proxy);
+        return factory;
+    }
 
     private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDb()
     {

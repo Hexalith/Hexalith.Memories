@@ -21,6 +21,7 @@ using Hexalith.Memories.ServiceDefaults;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 using StackExchange.Redis;
 
@@ -66,6 +67,11 @@ builder.Services.AddSingleton<DirectoryIngestionService>();
 // Story 6.2: per-tenant rate limiting and concurrency gate.
 builder.Services.AddSingleton<PerTenantConcurrencyGate>();
 builder.Services.AddSingleton<IJitterSource, ThreadSafeRandomJitterSource>();
+builder.Services.AddSingleton<CaseIngestionCounterLogic>();
+builder.Services.AddSingleton<FailedUnitsRegistry>();
+builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
+builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
+builder.Services.AddSingleton<ReIngestionCoordinator>();
 
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
@@ -145,6 +151,10 @@ builder.Services.AddDaprWorkflow(options =>
     // Story 6.1: URL ingestion
     options.RegisterActivity<FetchUrlActivity>();
 
+    // Story 6.3: failed-unit persistence + per-case counter actor transitions
+    options.RegisterActivity<PersistFailedUnitActivity>();
+    options.RegisterActivity<UpdateCaseIngestionCounterActivity>();
+
     // Story 5.1: Tenant provisioning workflow + activities
     options.RegisterWorkflow<TenantProvisioningWorkflow>();
     options.RegisterActivity<ProvisionRediSearchActivity>();
@@ -173,6 +183,7 @@ builder.Services.AddActors(options =>
     options.Actors.RegisterActor<EmbeddingRateLimiterActor>();
     options.Actors.RegisterActor<TenantConfigurationActor>();
     options.Actors.RegisterActor<CorpusStatisticsActor>();
+    options.Actors.RegisterActor<CaseIngestionCounterActor>();
     options.ActorIdleTimeout = TimeSpan.FromMinutes(60);
     options.ActorScanInterval = TimeSpan.FromSeconds(30);
     options.ReentrancyConfig = new Dapr.Actors.ActorReentrancyConfig { Enabled = false };
@@ -185,6 +196,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 WebApplication app = builder.Build();
+
+// Story 6.3 FR9: pin the per-activity retry policy table at startup so workflow replays observe a
+// stable, immutable snapshot. Hot-reload is Phase 2.
+RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<IngestionSettings>>().Value);
 
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
@@ -960,6 +975,207 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/status", async (
     return status is null
         ? Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."))
         : Results.Ok(status);
+});
+
+// Story 6.3 FR11: list failed memory units for a case (most-recent first, paged).
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/failed-units", async (
+    string tenantId,
+    string caseId,
+    int? limit,
+    int? offset,
+    CaseService caseService,
+    FailedUnitsRegistry registry,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    FailedUnitsPage page = await registry.ListAsync(tenantId, caseId, limit ?? 50, offset ?? 0, cancellationToken);
+    return Results.Ok(page);
+});
+
+// Story 6.3 FR11: detail endpoint for a single memory unit. When the indexed-MU hash is missing AND a
+// failed-unit hash exists, synthesize a Failed MemoryUnit projection (content="" since it was never
+// extracted/persisted). Tenant-mismatch guard inside CaseService.
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}", async (
+    string tenantId,
+    string caseId,
+    string memoryUnitId,
+    CaseService caseService,
+    FailedUnitsRegistry registry,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    MemoryUnit? indexed = await caseService.GetMemoryUnitAsync(tenantId, memoryUnitId, cancellationToken);
+    if (indexed is not null)
+    {
+        if (!string.Equals(indexed.CaseId, caseId, StringComparison.Ordinal))
+        {
+            return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' does not exist in case '{caseId}'.", "Verify the case id."));
+        }
+
+        return Results.Ok(indexed);
+    }
+
+    FailedUnitSummary? failed = await registry.GetSummaryAsync(tenantId, memoryUnitId, cancellationToken);
+    if (failed is null)
+    {
+        return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' was not found.", "Verify the memory unit id."));
+    }
+
+    if (!string.Equals(failed.CaseId, caseId, StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new ErrorResponse("CASE_MISMATCH", "Memory unit belongs to a different case.", "Use the case id reported by the failed-units list."));
+    }
+
+    MemoryUnit synthesized = new()
+    {
+        Id = failed.MemoryUnitId,
+        TenantId = tenantId,
+        CaseId = failed.CaseId,
+        SourceUri = failed.SourceUri,
+        SourceType = failed.SourceType,
+        IngestedBy = string.Empty,
+        IngestedAt = failed.FailedAt,
+        LastUpdated = failed.FailedAt,
+        Content = string.Empty,
+        ContentHash = string.Empty,
+        Status = MemoryUnitStatus.Failed,
+        FailureDetails = new FailureDetails(failed.Stage, failed.ErrorCode, failed.RetryCount, failed.ErrorMessage, failed.LastRetryAt),
+    };
+    return Results.Ok(synthesized);
+});
+
+// Story 6.3 FR12: re-ingest a single failed memory unit. Atomic claim via Lua deletes the failed-unit
+// hash, sorted-set entry, AND the dedup key in one round-trip; if the claim fails (already gone),
+// returns 409. The new workflow re-uses the original memory-unit-id via the DAPR workflow `instanceId`
+// parameter — annotations and graph edges survive.
+app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest", async (
+    string tenantId,
+    string caseId,
+    string memoryUnitId,
+    ReIngestionCoordinator coordinator,
+    TenantStatusGuard tenantGuard,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    ErrorResponse? statusErr = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (statusErr is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(statusErr);
+    }
+
+    ReIngestionAttemptResult attempt = await coordinator.TryScheduleAsync(
+        tenantId,
+        caseId,
+        memoryUnitId,
+        cancellationToken);
+
+    return attempt.Outcome switch
+    {
+        ReIngestionAttemptOutcome.NotFound => Results.NotFound(new ErrorResponse(
+            "MEMORY_UNIT_NOT_FOUND",
+            $"Failed memory unit '{memoryUnitId}' was not found.",
+            "Verify the memory unit id.")),
+        ReIngestionAttemptOutcome.CaseMismatch => Results.BadRequest(new ErrorResponse(
+            "CASE_MISMATCH",
+            "Memory unit belongs to a different case.",
+            "Use the case id reported by the failed-units list.")),
+        ReIngestionAttemptOutcome.Conflict => Results.Conflict(new ErrorResponse(
+            "RE_INGESTION_IN_PROGRESS",
+            "Another re-ingestion is already in progress for this unit.",
+            "Wait for the current re-ingestion to complete or check status.")),
+        ReIngestionAttemptOutcome.Scheduled => Results.Accepted(
+            $"/api/ingest/{attempt.WorkflowInstanceId}",
+            new { newWorkflowInstanceId = attempt.WorkflowInstanceId, memoryUnitId }),
+        _ => throw new InvalidOperationException($"Unsupported re-ingestion outcome '{attempt.Outcome}'."),
+    };
+});
+
+// Story 6.3 FR12: bulk re-ingestion. Per-unit failures are isolated — one missing or conflicted unit
+// does not abort the batch. Body: { "all": true, "limit": 50 } OR { "memoryUnitIds": ["a","b"] }.
+app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest", async (
+    string tenantId,
+    string caseId,
+    ReIngestRequest request,
+    CaseService caseService,
+    FailedUnitsRegistry registry,
+    ReIngestionCoordinator coordinator,
+    TenantStatusGuard tenantGuard,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        TenantIdGuard.Validate(tenantId);
+    }
+    catch (ArgumentException)
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
+    }
+
+    ErrorResponse? statusErr = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (statusErr is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(statusErr);
+    }
+
+    Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+    if (caseResult is null)
+    {
+        return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
+    }
+
+    int boundedLimit = Math.Clamp(request.Limit, 1, 500);
+    List<string> targets;
+    if (request.MemoryUnitIds is { Count: > 0 })
+    {
+        targets = request.MemoryUnitIds.Take(boundedLimit).ToList();
+    }
+    else if (request.All)
+    {
+        FailedUnitsPage page = await registry.ListAsync(tenantId, caseId, boundedLimit, 0, cancellationToken);
+        targets = page.Units.Select(u => u.MemoryUnitId).ToList();
+    }
+    else
+    {
+        return Results.BadRequest(new ErrorResponse("INVALID_REQUEST", "Either 'memoryUnitIds' or 'all=true' must be supplied.", "Provide a list of memory unit ids or set 'all' to true."));
+    }
+
+    BulkReIngestionResponse response = await coordinator.TryScheduleManyAsync(
+        tenantId,
+        caseId,
+        targets,
+        cancellationToken);
+
+    return Results.Ok(response);
 });
 
 app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/activity", async (

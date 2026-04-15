@@ -41,3 +41,4 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 ## Operations
 
 - [Rate limiting — per-tenant ceilings, 429 handling, extraction gate](docs/operations/rate-limiting.md)
+- [Failure recovery — failed-unit registry, re-ingestion, retry policy overrides](docs/operations/failure-recovery.md)

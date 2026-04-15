@@ -25,10 +25,16 @@ using StackExchange.Redis;
 
 using Shouldly;
 
+[
+Collection(Hexalith.Memories.Server.Tests.Ingestion.RetryPolicyBuilderStateCollection.Name)
+]
 public class IngestionWorkflowTests
 {
     private static readonly DateTime TestTimestamp = new(2026, 3, 29, 10, 0, 0, DateTimeKind.Utc);
     private static readonly Guid TestGuid = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    public IngestionWorkflowTests()
+        => RetryPolicyBuilder.ResetToDefaults();
 
     // --- AC1: Full pipeline orchestration ---
 
@@ -327,6 +333,73 @@ public class IngestionWorkflowTests
         details.RetryCount.ShouldBe(5);
         ex.Data[nameof(MemoryUnitStatus)].ShouldBe(MemoryUnitStatus.Failed);
         ex.Data["MemoryUnitId"].ShouldBe(TestGuid.ToString());
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexingFailure_ShouldPopulateErrorMessageAndLastRetryAt()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Provider returned 500 Internal Server Error")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.ErrorMessage.ShouldBe("Provider returned 500 Internal Server Error");
+        details.LastRetryAt.ShouldBe(new DateTimeOffset(TestTimestamp, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexingFailure_LongMessage_ShouldTruncateAt1024Chars()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        string longMessage = new('X', 2000);
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException(longMessage)));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+
+        FailureDetails details = (FailureDetails)ex.Data[nameof(FailureDetails)]!;
+        details.ErrorMessage.ShouldNotBeNull();
+        details.ErrorMessage!.Length.ShouldBe(1024);
     }
 
     [Fact]
@@ -769,17 +842,6 @@ public class IngestionWorkflowTests
     // ==================================================================================
 
     [Fact]
-    public void IngestionWorkflow_MainRetryAttempts_ShouldBePinnedAtFive()
-    {
-        System.Reflection.FieldInfo? field = typeof(IngestionWorkflow).GetField(
-            "_mainRetryAttempts",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        field.ShouldNotBeNull();
-        field!.GetRawConstantValue().ShouldBe(5);
-    }
-
-    [Fact]
     public void IngestionWorkflow_CompensationRetryAttempts_ShouldBePinnedAtThree()
     {
         System.Reflection.FieldInfo? field = typeof(IngestionWorkflow).GetField(
@@ -791,26 +853,62 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
-    public void IngestionWorkflow_MainRetryPolicy_ShouldPinIntervalsAndCoefficient()
+    public void IngestionWorkflow_MainRetryPolicy_ShouldPinDefaultIntervalsAndCoefficient()
     {
-        // Invokes the internal CreateMainRetry() helper introduced by Story 5.6 and asserts the
-        // WorkflowRetryPolicy values. If this fails, NFR22 has been silently weakened.
-        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
-            "CreateMainRetry",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        // Story 6.3: per-activity retry options come from RetryPolicyBuilder. The default policy
+        // must still match the pre-6.3 baseline so NFR22 is not silently weakened.
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        WorkflowTaskOptions options = RetryPolicyBuilder.For("AnyActivity");
+        WorkflowRetryPolicy policy = options.RetryPolicy!;
 
-        method.ShouldNotBeNull();
-        object? options = method!.Invoke(null, null);
-        options.ShouldNotBeNull();
-
-        WorkflowTaskOptions taskOptions = (WorkflowTaskOptions)options!;
-        taskOptions.RetryPolicy.ShouldNotBeNull();
-
-        WorkflowRetryPolicy policy = taskOptions.RetryPolicy!;
         policy.MaxNumberOfAttempts.ShouldBe(5);
         policy.FirstRetryInterval.ShouldBe(TimeSpan.FromSeconds(2));
         policy.BackoffCoefficient.ShouldBe(1.5);
         policy.MaxRetryInterval.ShouldBe(TimeSpan.FromMinutes(5));
+    }
+
+    [Fact]
+    public async Task RunAsync_PerActivityOverride_ShouldUseOverrideForEmbeddingAndDefaultForExtraction()
+    {
+        IngestionSettings settings = new()
+        {
+            RetryPolicies = new(StringComparer.Ordinal)
+            {
+                [nameof(GenerateEmbeddingActivity)] = new ActivityRetryPolicy
+                {
+                    MaxAttempts = 3,
+                    FirstRetryIntervalSeconds = 4,
+                    BackoffCoefficient = 2.0,
+                    MaxRetryIntervalSeconds = 60,
+                },
+            },
+        };
+        RetryPolicyBuilder.Initialize(settings);
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<ExtractionResult>(
+            nameof(ExtractContentActivity),
+            Arg.Any<ExtractionInput>(),
+            Arg.Is<WorkflowTaskOptions>(options =>
+                options.RetryPolicy != null
+                && options.RetryPolicy.MaxNumberOfAttempts == 5
+                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
+                && options.RetryPolicy.BackoffCoefficient == 1.5
+                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromMinutes(5)));
+        await context.Received().CallActivityAsync<EmbeddingResult>(
+            nameof(GenerateEmbeddingActivity),
+            Arg.Any<EmbeddingInput>(),
+            Arg.Is<WorkflowTaskOptions>(options =>
+                options.RetryPolicy != null
+                && options.RetryPolicy.MaxNumberOfAttempts == 3
+                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(4)
+                && options.RetryPolicy.BackoffCoefficient == 2.0
+                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromSeconds(60)));
     }
 
     [Fact]
@@ -833,6 +931,9 @@ public class IngestionWorkflowTests
     [Fact]
     public async Task RunAsync_DimensionMismatchFailure_ShouldStillUseMainRetryPolicy()
     {
+        // Story 6.3: RetryPolicyBuilder is a process-global snapshot; prior tests may have initialized
+        // it with overrides. Reset to defaults so this test sees the pre-6.3 baseline per AC11.
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
         IngestionInput input = IngestionInputFactory.Create();
         WorkflowContext context = CreateMockContext();
         SetupPreIndexActivities(context, input);
@@ -859,5 +960,115 @@ public class IngestionWorkflowTests
                 && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
                 && options.RetryPolicy.BackoffCoefficient == 1.5
                 && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromMinutes(5)));
+    }
+
+    // ==================================================================================
+    // Story 6.3 Task 12 — Murat coverage: persistence invariants and per-transition ids.
+    // ==================================================================================
+
+    [Fact]
+    public async Task RunAsync_IndexingFailure_PersistsFailedUnitAndRecordsStreamEvent()
+    {
+        // Invariant: both PersistFailedUnitActivity AND RecordCaseActivityActivity(IngestionFailed)
+        // are invoked on the same failure path. Pins the contract that the failed-units registry and
+        // the activity stream are updated together.
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("boom")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+
+        IngestionWorkflow workflow = new();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => workflow.RunAsync(context, input));
+
+        await context.Received().CallActivityAsync<bool>(
+            nameof(RecordCaseActivityActivity),
+            Arg.Is<CaseActivityInput>(c => c.EventType == CaseActivityEventType.IngestionFailed));
+        await context.Received().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Is<FailedUnitInput>(f => f.Stage == "indexing"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_OuterCatch_PersistFailedUnitFailure_DoesNotMaskOriginalException()
+    {
+        // When PersistFailedUnitActivity itself throws, the outer catch still re-throws the ORIGINAL
+        // ingestion exception unchanged (the persistence failure is logged via event 6309 only).
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("original error")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", TestGuid.ToString(), input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<bool>(new InvalidOperationException("redis hiccup during persist")));
+
+        IngestionWorkflow workflow = new();
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => workflow.RunAsync(context, input));
+        ex.Message.ShouldBe("original error");
+    }
+
+    [Fact]
+    public async Task RunAsync_EachStageTransition_EmitsUniqueCounterTransitionId()
+    {
+        // AC5 invariant: every UpdateCaseIngestionCounterActivity call carries a unique transitionId.
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        System.Collections.Generic.List<CounterTransitionInput> capturedTransitions = [];
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<bool>(
+                nameof(UpdateCaseIngestionCounterActivity),
+                Arg.Any<CounterTransitionInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(ci =>
+            {
+                capturedTransitions.Add(ci.Arg<CounterTransitionInput>());
+                return Task.FromResult(true);
+            });
+
+        IngestionWorkflow workflow = new();
+        await workflow.RunAsync(context, input);
+
+        capturedTransitions.Count.ShouldBeGreaterThanOrEqualTo(4);
+        capturedTransitions.Select(t => t.TransitionId).Distinct().Count()
+            .ShouldBe(capturedTransitions.Count, "every transitionId must be unique per workflow instance");
     }
 }

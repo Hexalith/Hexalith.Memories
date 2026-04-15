@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-15 # Story 6.2 Per-Tenant Load Management & Rate Limiting: done
+# last_updated: 2026-04-15 # Story 6.3 Retry, Failure Visibility & Re-Ingestion: done
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-15 # Story 6.2 Per-Tenant Load Management & Rate Limiting: done
+last_updated: 2026-04-15 # Story 6.3 Retry, Failure Visibility & Re-Ingestion: done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
   epic-6: in-progress
   6-1-url-and-directory-ingestion: done
   6-2-per-tenant-load-management-and-rate-limiting: done
-  6-3-retry-failure-visibility-and-re-ingestion: ready-for-dev
+  6-3-retry-failure-visibility-and-re-ingestion: done
   6-4-pipeline-state-persistence-and-zero-data-loss: backlog
   epic-6-retrospective: optional
 

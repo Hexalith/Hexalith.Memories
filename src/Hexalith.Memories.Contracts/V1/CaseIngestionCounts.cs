@@ -1,0 +1,10 @@
+// <copyright file="CaseIngestionCounts.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Contracts.V1;
+
+/// <summary>Per-stage in-flight counts for a case (Story 6.3 FR10). Indexed and Failed counts are sourced
+/// elsewhere (FalkorDB / activity stream) and are NOT carried by this record.</summary>
+public sealed record CaseIngestionCounts(int Queued, int Extracting, int Embedding, int Indexing);

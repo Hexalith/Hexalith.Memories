@@ -115,6 +115,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             logger);
 
         MemoryUnit? result = await service.GetMemoryUnitAsync("tenant-a", "mu-xyz", CancellationToken.None);
@@ -147,6 +148,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             NullLogger<CaseService>.Instance);
 
         MemoryUnit? result = await service.GetMemoryUnitAsync("tenant-a", "mu-xyz", CancellationToken.None);
@@ -181,6 +183,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             NullLogger<CaseService>.Instance);
 
         MemoryUnit? result = await service.GetMemoryUnitAsync("tenant-a", "mu-legacy", CancellationToken.None);
@@ -219,6 +222,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             logger);
 
         CaseRecord? result = await service.GetCaseAsync("tenant-a", "case-1", CancellationToken.None);
@@ -268,6 +272,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             logger);
 
         List<CaseRecord> result = await service.ListCasesAsync("tenant-a", 10, CancellationToken.None);
@@ -304,6 +309,7 @@ public sealed class TenantContextEnforcementTests
             Substitute.For<IGraphQueryBuilder>(),
             CreateActivityService(),
             CreateWorkflowClient(),
+            CreateMockActorProxyFactory(),
             logger);
 
         CaseStatusDetail? result = await service.GetCaseStatusAsync("tenant-a", "case-1", CancellationToken.None);
@@ -395,4 +401,18 @@ public sealed class TenantContextEnforcementTests
     }
 
     private static DaprWorkflowClient CreateWorkflowClient() => null!;
+
+    private static Dapr.Actors.Client.IActorProxyFactory CreateMockActorProxyFactory()
+    {
+        Hexalith.Memories.Server.Actors.ICaseIngestionCounterActor proxy =
+            Substitute.For<Hexalith.Memories.Server.Actors.ICaseIngestionCounterActor>();
+        proxy.GetCountsAsync().Returns(new Hexalith.Memories.Contracts.V1.CaseIngestionCounts(0, 0, 0, 0));
+        Dapr.Actors.Client.IActorProxyFactory factory = Substitute.For<Dapr.Actors.Client.IActorProxyFactory>();
+        factory.CreateActorProxy(
+            Arg.Any<Dapr.Actors.ActorId>(),
+            Arg.Any<Type>(),
+            Arg.Any<string>(),
+            Arg.Any<Dapr.Actors.Client.ActorProxyOptions?>()).Returns(proxy);
+        return factory;
+    }
 }

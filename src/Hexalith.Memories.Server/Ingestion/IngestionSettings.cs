@@ -52,6 +52,11 @@ public sealed class IngestionSettings
     /// than hanging the workflow indefinitely.</summary>
     public int ExtractionGateAcquireTimeoutSeconds { get; set; } = 300;
 
+    /// <summary>Gets or sets the per-activity retry policy overrides (Story 6.3 FR9). Keys are activity class names
+    /// (e.g., <c>"GenerateEmbeddingActivity"</c>); missing entries fall back to the default policy
+    /// <c>(MaxAttempts=5, FirstRetryIntervalSeconds=2, BackoffCoefficient=1.5, MaxRetryIntervalSeconds=300)</c>.</summary>
+    public Dictionary<string, ActivityRetryPolicy> RetryPolicies { get; init; } = new(StringComparer.Ordinal);
+
     /// <summary>Gets or sets the list of extensions that are always skipped as UNSUPPORTED_EXTENSION (lowercase with leading dot).</summary>
     public string[] UnsupportedExtensions { get; set; } =
     [

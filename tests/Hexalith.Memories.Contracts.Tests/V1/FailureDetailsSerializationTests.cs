@@ -27,4 +27,31 @@ public class FailureDetailsSerializationTests
 
         deserialized.ShouldBe(original);
     }
+
+    [Fact]
+    public void WithErrorMessageAndLastRetryAt_ShouldRoundTrip()
+    {
+        var lastRetryAt = new DateTimeOffset(2026, 4, 15, 12, 0, 0, TimeSpan.Zero);
+        var original = new FailureDetails("embedding", "PROVIDER_500", 5, "Provider returned 500", lastRetryAt);
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        FailureDetails? deserialized = JsonSerializer.Deserialize<FailureDetails>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldBe(original);
+        deserialized!.ErrorMessage.ShouldBe("Provider returned 500");
+        deserialized.LastRetryAt.ShouldBe(lastRetryAt);
+    }
+
+    [Fact]
+    public void LegacyPayload_WithoutNewFields_ShouldDeserializeWithNulls()
+    {
+        string legacyJson = """{"stage":"embedding","errorCode":"TIMEOUT","retryCount":3}""";
+        FailureDetails? deserialized = JsonSerializer.Deserialize<FailureDetails>(legacyJson, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized!.Stage.ShouldBe("embedding");
+        deserialized.ErrorCode.ShouldBe("TIMEOUT");
+        deserialized.RetryCount.ShouldBe(3);
+        deserialized.ErrorMessage.ShouldBeNull();
+        deserialized.LastRetryAt.ShouldBeNull();
+    }
 }

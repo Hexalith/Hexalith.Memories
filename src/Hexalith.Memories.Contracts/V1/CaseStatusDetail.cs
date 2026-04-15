@@ -23,4 +23,8 @@ public sealed record CaseStatusDetail(
     int FailedCount,
     int MemberCount,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    DateTimeOffset? DeletionStartedAt = null);
+    DateTimeOffset? DeletionStartedAt = null,
+    int QueuedCount = 0,
+    int ExtractingCount = 0,
+    int EmbeddingCount = 0,
+    int IndexingCount = 0);

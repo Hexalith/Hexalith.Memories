@@ -38,9 +38,25 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
         LogCurrentStatus(logger, memoryUnitId, currentStatus);
 
-        WorkflowTaskOptions retryOptions = CreateMainRetry();
+        IReadOnlyDictionary<string, WorkflowTaskOptions> retry = RetryPolicyBuilder.SnapshotAll();
+        WorkflowTaskOptions For(string activityName) =>
+            retry.TryGetValue(activityName, out WorkflowTaskOptions? opts) ? opts : retry[RetryPolicyBuilder.DefaultKey];
         WorkflowTaskOptions compensationRetry = CreateCompensationRetry();
         CleanupInput cleanupInput = new(memoryUnitId, input.TenantId);
+
+        // Story 6.3 FR10: monotonic transition id used by CaseIngestionCounterActor for replay-idempotency.
+        // The sequence is deterministic across replays because the workflow re-executes from the top.
+        int counterSeq = 0;
+        Task<bool> UpdateCounter(string previous, string next) =>
+            context.CallActivityAsync<bool>(
+                nameof(UpdateCaseIngestionCounterActivity),
+                new CounterTransitionInput(
+                    input.TenantId,
+                    input.CaseId,
+                    previous,
+                    next,
+                    $"{context.InstanceId}:{System.Threading.Interlocked.Increment(ref counterSeq)}"),
+                compensationRetry);
 
         try
         {
@@ -50,12 +66,15 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 input.TenantId,
                 memoryUnitId);
 
+            await UpdateCounter("none", "queued");
+            context.SetCustomStatus("queued");
+
             currentStage = "idempotency";
             string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
             IdempotencyResult idempotency = await context.CallActivityAsync<IdempotencyResult>(
                 nameof(CheckIdempotencyActivity),
                 new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId),
-                retryOptions);
+                For(nameof(CheckIdempotencyActivity)));
 
             if (idempotency.IsDuplicate)
             {
@@ -66,6 +85,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     idempotency.ExistingMemoryUnitId);
 
                 currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed);
+
+                await UpdateCounter("queued", "none");
+                context.SetCustomStatus("duplicate");
 
                 return new IngestionResult(
                     idempotency.ExistingMemoryUnitId!,
@@ -81,6 +103,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 input);
 
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Extracting);
+            await UpdateCounter("queued", "extracting");
+            context.SetCustomStatus("extracting");
 
             byte[] contentBytes = input.ContentBytes ?? [];
             string contentType = input.ContentType;
@@ -96,7 +120,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 urlFetch = await context.CallActivityAsync<UrlFetchResult>(
                     nameof(FetchUrlActivity),
                     new FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId),
-                    retryOptions);
+                    For(nameof(FetchUrlActivity)));
                 contentBytes = urlFetch.ContentBytes;
                 if (!string.IsNullOrWhiteSpace(urlFetch.ContentType))
                 {
@@ -112,7 +136,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             ExtractionResult extraction = await context.CallActivityAsync<ExtractionResult>(
                 nameof(ExtractContentActivity),
                 new ExtractionInput(input.SourceUri, contentBytes, contentType, input.SourceType, input.TenantId),
-                retryOptions);
+                For(nameof(ExtractContentActivity)));
 
             logger.LogInformation(
                 "Content extracted: {ContentHash}, {Length} chars",
@@ -121,11 +145,13 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
             currentStage = "embedding";
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Embedding);
+            await UpdateCounter("extracting", "embedding");
+            context.SetCustomStatus("embedding");
 
             EmbeddingResult embedding = await context.CallActivityAsync<EmbeddingResult>(
                 nameof(GenerateEmbeddingActivity),
                 new EmbeddingInput(input.TenantId, extraction.ExtractedContent),
-                retryOptions);
+                For(nameof(GenerateEmbeddingActivity)));
 
             logger.LogInformation(
                 "Embedding generated: {Provider}, {Dims} dimensions",
@@ -134,6 +160,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
             currentStage = "indexing";
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexing);
+            await UpdateCounter("embedding", "indexing");
+            context.SetCustomStatus("indexing");
 
             IndexInput indexInput = new()
             {
@@ -163,15 +191,15 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             Task<IndexResult> syntacticTask = context.CallActivityAsync<IndexResult>(
                 nameof(IndexSyntacticActivity),
                 indexInput,
-                retryOptions);
+                For(nameof(IndexSyntacticActivity)));
             Task<IndexResult> semanticTask = context.CallActivityAsync<IndexResult>(
                 nameof(IndexSemanticActivity),
                 indexInput,
-                retryOptions);
+                For(nameof(IndexSemanticActivity)));
             Task<IndexResult> graphTask = context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity),
                 indexInput,
-                retryOptions);
+                For(nameof(IndexGraphActivity)));
 
             try
             {
@@ -204,7 +232,16 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     memoryUnitId,
                     string.Join(", ", completedBackends));
 
-                AttachFailureDetails(ex, memoryUnitId, currentStage, _mainRetryAttempts, logger);
+                AttachFailureDetails(
+                    ex,
+                    memoryUnitId,
+                    currentStage,
+                    _mainRetryAttempts,
+                    new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
+                    logger);
+                try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
+                context.SetCustomStatus("failed");
+                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
                 throw;
             }
 
@@ -220,7 +257,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 ConsistencyResult consistency = await context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
                     new ConsistencyInput(memoryUnitId, input.TenantId),
-                    retryOptions);
+                    For(nameof(VerifyConsistencyActivity)));
 
                 consistencyNote = null;
                 if (!consistency.SyntacticExists || !consistency.SemanticExists || !consistency.GraphExists)
@@ -252,7 +289,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 await context.CallActivityAsync<bool>(
                     nameof(SaveDedupKeyActivity),
                     new DedupKeyInput(dedupKey, memoryUnitId),
-                    retryOptions);
+                    For(nameof(SaveDedupKeyActivity)));
             }
             catch (Exception ex)
             {
@@ -268,7 +305,16 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     "Post-index workflow step failed for {MemoryUnitId}; rolled back indexed backends.",
                     memoryUnitId);
 
-                AttachFailureDetails(ex, memoryUnitId, currentStage, _mainRetryAttempts, logger);
+                AttachFailureDetails(
+                    ex,
+                    memoryUnitId,
+                    currentStage,
+                    _mainRetryAttempts,
+                    new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
+                    logger);
+                try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
+                context.SetCustomStatus("failed");
+                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
                 throw;
             }
 
@@ -290,6 +336,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             }
 
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed);
+            await UpdateCounter("indexing", "none");
+            context.SetCustomStatus("indexed");
 
             return new IngestionResult(
                 memoryUnitId,
@@ -300,23 +348,19 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         }
         catch (Exception ex) when (ex is not OperationCanceledException && !HasFailureDetails(ex))
         {
-            AttachFailureDetails(ex, memoryUnitId, currentStage, GetRetryCountForStage(currentStage), logger);
+            AttachFailureDetails(
+                ex,
+                memoryUnitId,
+                currentStage,
+                GetRetryCountForStage(currentStage),
+                new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
+                logger);
+            try { await UpdateCounter(MapStageToBucket(currentStage), "none"); } catch { /* counter drift documented */ }
+            context.SetCustomStatus("failed");
+            await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
             throw;
         }
     }
-
-    /// <summary>
-    /// Builds the retry policy for main pipeline activities. Story 5.6 AC5 pins these values
-    /// (maxNumberOfAttempts=5, firstRetryInterval=2s, backoffCoefficient=1.5, maxRetryInterval=5min).
-    /// Worst-case total wait on retry exhaustion: 2 + 3 + 4.5 + 6.75 + 10.125 ≈ 26.4 s per attempt
-    /// window. Do NOT lower the retry count or shorten intervals without amending NFR22.
-    /// </summary>
-    internal static WorkflowTaskOptions CreateMainRetry() => new(
-        new WorkflowRetryPolicy(
-            maxNumberOfAttempts: _mainRetryAttempts,
-            firstRetryInterval: TimeSpan.FromSeconds(2),
-            backoffCoefficient: 1.5,
-            maxRetryInterval: TimeSpan.FromMinutes(5)));
 
     internal static WorkflowTaskOptions CreateCompensationRetry() => new(
         new WorkflowRetryPolicy(
@@ -412,9 +456,16 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         string memoryUnitId,
         string stage,
         int retryCount,
+        DateTimeOffset now,
         ILogger logger)
     {
-        FailureDetails details = new(stage, GetErrorCode(exception), retryCount);
+        string? message = exception.Message;
+        if (message is { Length: > 1024 })
+        {
+            message = message[..1024];
+        }
+
+        FailureDetails details = new(stage, GetErrorCode(exception), retryCount, message, now);
 
         exception.Data[nameof(FailureDetails)] = details;
         exception.Data[nameof(MemoryUnitStatus)] = MemoryUnitStatus.Failed;
@@ -422,12 +473,13 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
         logger.LogError(
             exception,
-            "Ingestion failed for {MemoryUnitId}. Status={Status}; stage={Stage}; errorCode={ErrorCode}; retryCount={RetryCount}",
+            "Ingestion failed for {MemoryUnitId}. Status={Status}; stage={Stage}; errorCode={ErrorCode}; retryCount={RetryCount}; message={ErrorMessage}",
             memoryUnitId,
             MemoryUnitStatus.Failed,
             details.Stage,
             details.ErrorCode,
-            details.RetryCount);
+            details.RetryCount,
+            details.ErrorMessage);
     }
 
     private static string GetErrorCode(Exception exception)
@@ -476,6 +528,55 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
     private static bool HasFailureDetails(Exception exception)
         => exception.Data.Contains(nameof(FailureDetails));
+
+    /// <summary>Story 6.3: maps the workflow's pipeline-stage string to the counter-actor bucket name.
+    /// Stages BEFORE the queued bucket is incremented (idempotency, validation) map to <c>"none"</c>; stages
+    /// AFTER indexing began (verifying, dedup) map to <c>"indexing"</c> because that's the last bucket the
+    /// workflow occupied.</summary>
+    private static string MapStageToBucket(string stage) => stage switch
+    {
+        "queued" => "queued",
+        "fetching" or "extracting" => "extracting",
+        "embedding" => "embedding",
+        "indexing" or "verifying" or "dedup" => "indexing",
+        _ => "none",
+    };
+
+    /// <summary>Story 6.3 NFR19: persists the failed unit to Redis as a best-effort step. A persistence
+    /// failure logs event 6309 but never masks the original failure.</summary>
+    private static async Task TryPersistFailedUnit(
+        WorkflowContext context,
+        IngestionInput input,
+        string memoryUnitId,
+        string stage,
+        Exception failure,
+        WorkflowTaskOptions retry,
+        ILogger logger)
+    {
+        try
+        {
+            FailureDetails? details = failure.Data[nameof(FailureDetails)] as FailureDetails;
+            FailedUnitInput failedInput = new(
+                input.TenantId,
+                input.CaseId,
+                memoryUnitId,
+                input.SourceUri,
+                input.SourceType,
+                input.IngestedBy,
+                input.SourceType == SourceType.Url ? null : input.ContentType,
+                stage,
+                details?.ErrorCode ?? failure.GetType().Name,
+                details?.ErrorMessage,
+                details?.RetryCount ?? 0,
+                details?.LastRetryAt,
+                new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero));
+            await context.CallActivityAsync<bool>(nameof(PersistFailedUnitActivity), failedInput, retry);
+        }
+        catch (Exception persistEx)
+        {
+            RetryFailureLog.LogFailedUnitPersistenceFailed(logger, memoryUnitId, persistEx.Message);
+        }
+    }
 
     /// <summary>
     /// Story 6.1 AC10: attach http.* metadata as AI-origin fields (confidence 1.0) when the ingestion

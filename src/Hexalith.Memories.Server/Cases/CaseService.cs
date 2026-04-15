@@ -11,9 +11,12 @@ using System.Text.Json;
 
 using BaUlid = ByteAether.Ulid.Ulid;
 
+using Dapr.Actors;
+using Dapr.Actors.Client;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
@@ -37,6 +40,7 @@ internal sealed class CaseService
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly CaseActivityService _activityService;
     private readonly DaprWorkflowClient _workflowClient;
+    private readonly IActorProxyFactory _actorProxyFactory;
     private readonly ILogger<CaseService> _logger;
 
     public CaseService(
@@ -45,6 +49,7 @@ internal sealed class CaseService
         IGraphQueryBuilder graphQueryBuilder,
         CaseActivityService activityService,
         DaprWorkflowClient workflowClient,
+        IActorProxyFactory actorProxyFactory,
         ILogger<CaseService> logger)
     {
         _redis = redis;
@@ -52,6 +57,7 @@ internal sealed class CaseService
         _graphQueryBuilder = graphQueryBuilder;
         _activityService = activityService;
         _workflowClient = workflowClient;
+        _actorProxyFactory = actorProxyFactory;
         _logger = logger;
     }
 
@@ -422,8 +428,10 @@ internal sealed class CaseService
         Task<DateTimeOffset?> lastActivityTask = _activityService.GetLastActivityTimestampAsync(tenantId, caseId, cancellationToken);
         Task<int> failedCountTask = _activityService.GetFailedCountAsync(tenantId, caseId, cancellationToken);
         Task<int> memberCountTask = GetMemberCountAsync(tenantId, caseId, cancellationToken);
-        await Task.WhenAll(lastActivityTask, failedCountTask, memberCountTask).ConfigureAwait(false);
+        Task<CaseIngestionCounts> countsTask = GetIngestionCountsSafe(tenantId, caseId);
+        await Task.WhenAll(lastActivityTask, failedCountTask, memberCountTask, countsTask).ConfigureAwait(false);
 
+        CaseIngestionCounts counts = countsTask.Result;
         return new CaseStatusDetail(
             caseResult.Id,
             caseResult.TenantId,
@@ -437,7 +445,34 @@ internal sealed class CaseService
             IndexedCount: caseResult.MemoryUnitCount,
             FailedCount: failedCountTask.Result,
             MemberCount: memberCountTask.Result,
-                DeletionStartedAt: ReadOptionalDateTimeOffset(entries, "deletionStartedAt"));
+            DeletionStartedAt: ReadOptionalDateTimeOffset(entries, "deletionStartedAt"),
+            QueuedCount: counts.Queued,
+            ExtractingCount: counts.Extracting,
+            EmbeddingCount: counts.Embedding,
+            IndexingCount: counts.Indexing);
+    }
+
+    /// <summary>Story 6.3 FR10: O(1) actor read for in-flight counts. Actor unreachable → zero counts +
+    /// warning log; never fails the whole status endpoint.</summary>
+    private async Task<CaseIngestionCounts> GetIngestionCountsSafe(string tenantId, string caseId)
+    {
+        try
+        {
+            ICaseIngestionCounterActor? counter = _actorProxyFactory.CreateActorProxy<ICaseIngestionCounterActor>(
+                new ActorId($"{tenantId}:{caseId}"),
+                nameof(CaseIngestionCounterActor));
+            if (counter is null)
+            {
+                return new CaseIngestionCounts(0, 0, 0, 0);
+            }
+
+            return await counter.GetCountsAsync().ConfigureAwait(false) ?? new CaseIngestionCounts(0, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CaseIngestionCounterActor unreachable for {TenantId}:{CaseId}; reporting zero in-flight counts.", tenantId, caseId);
+            return new CaseIngestionCounts(0, 0, 0, 0);
+        }
     }
 
     /// <summary>Adds a member to a case using atomic HSETNX for idempotency.</summary>
@@ -971,6 +1006,10 @@ internal sealed class CaseService
         // missing → null (not a mismatch — legacy data pre-dates the field).
         _ = fields.TryGetValue("embeddingModel", out string? embeddingModel);
         _ = fields.TryGetValue("embeddingDimensions", out string? embeddingDimensionsStr);
+        // Story 6.3: future-extension hook — failed-units written by PersistFailedUnitActivity write
+        // a failureDetailsJson field; the indexed-MU hash never has one today, but reading it here lets
+        // the same parser serve both code paths if dual-write is added in Phase 2.
+        _ = fields.TryGetValue("failureDetailsJson", out string? failureDetailsJson);
 
         _ = Enum.TryParse(sourceTypeStr, ignoreCase: true, out SourceType sourceType);
         MemoryUnitStatus status = Enum.TryParse(statusStr, ignoreCase: true, out MemoryUnitStatus parsedStatus)
@@ -999,7 +1038,25 @@ internal sealed class CaseService
             EmbeddingProvider = string.IsNullOrWhiteSpace(embeddingProvider) ? null : embeddingProvider,
             EmbeddingModel = string.IsNullOrWhiteSpace(embeddingModel) ? null : embeddingModel,
             EmbeddingDimensions = embeddingDimensions,
+            FailureDetails = ParseFailureDetails(failureDetailsJson),
         };
+    }
+
+    private static FailureDetails? ParseFailureDetails(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<FailureDetails>(json, MemoriesJsonContext.Options);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static Dictionary<string, MetadataField> ParseMetadata(string? metadataJson)
