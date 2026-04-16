@@ -1,92 +1,124 @@
 # Hexalith.Memories Test Suite
 
-## Architecture
+## Setup
 
-```
-tests/
-├── Hexalith.Memories.Contracts.Tests/     # Serialization round-trips for V1 contracts
-├── Hexalith.Memories.Server.Tests/        # Unit tests (mocked dependencies)
-│   ├── Activities/Ingestion/              # Extract, Embedding activities
-│   ├── Activities/Indexing/               # Syntactic, Semantic, Graph activities
-│   ├── Actors/                            # RateLimiter logic
-│   ├── Graph/                             # GraphQueryBuilder (injection prevention)
-│   └── Ingestion/                         # Client tests
-├── Hexalith.Memories.IntegrationTests/    # Real infrastructure via Testcontainers
-│   ├── Fixtures/                          # Shared containers (Redis Stack, FalkorDB)
-│   ├── Indexing/                          # Activity integration tests
-│   └── Graph/                             # FalkorDB query verification
-└── Hexalith.Memories.TestHelpers/         # Shared factories (not a test runner)
-    └── Factories/                         # IndexInputFactory, ExtractionInputFactory
-```
+1. Use the SDK pinned in `../global.json`.
+2. Review `../.env.example`; local overrides live in `../.env`.
+3. Start Docker Desktop or another Docker engine before running integration tests.
+4. Restore and build the solution before the first full run.
+5. Keep git submodules initialized when running the full workspace build.
 
-## Running Tests
+For local service-backed runs, the default server endpoints exposed by the AppHost are:
 
-### Unit Tests (fast, no Docker)
+- `http://localhost:5000/health`
+- `http://localhost:5000/alive`
+- `http://localhost:5000/ready`
+
+## Running tests
+
+### Fast local loop
 
 ```bash
 dotnet test --filter "Category!=Integration"
 ```
 
-### Integration Tests (requires Docker)
+```powershell
+./tools/test.ps1 -Filter 'Category!=Integration'
+```
+
+### Integration coverage
 
 ```bash
 dotnet test --filter "Category=Integration"
 ```
 
-### All Tests
+```powershell
+./tools/test.ps1 -Filter 'Category=Integration'
+```
+
+### Full suite
 
 ```bash
 dotnet test
 ```
 
-### With Coverage
+```powershell
+./tools/test.ps1
+```
+
+### Coverage
 
 ```bash
 dotnet test --collect:"XPlat Code Coverage" --settings tests/tests.runsettings
 ```
 
-### Single Project
+```powershell
+./tools/test.ps1 -Coverage
+```
+
+### Debug / investigation
 
 ```bash
-dotnet test tests/Hexalith.Memories.Server.Tests
+dotnet test tests/Hexalith.Memories.Server.Tests --logger "console;verbosity=detailed"
+dotnet test --filter "Category=Integration" --logger "console;verbosity=detailed"
+dotnet test --blame-hang --blame-hang-timeout 5m
 ```
 
-## Test Categorization
+### Headed / browser mode
 
-- **Unit tests**: No `[Trait]` attribute needed (default)
-- **Integration tests**: Mark with `[Trait("Category", "Integration")]`
-- **Collection fixtures**: Use `[Collection("RedisStack")]` or `[Collection("FalkorDB")]` to share container lifecycle
+Not applicable to the current root scaffold. This repository is backend-first at the workspace root, so no Playwright/Cypress harness is added here. If a browser harness is introduced later, prefer `data-testid` selectors and keep UI tests focused on user journeys only.
 
-## Factories
+## Architecture overview
 
-Shared test data factories in `Hexalith.Memories.TestHelpers`:
-
-```csharp
-// Defaults — parallel-safe with auto-incrementing IDs
-IndexInput input = IndexInputFactory.Create();
-
-// Override specific fields to show test intent
-IndexInput input = IndexInputFactory.Create(
-    tenantId: "my-tenant",
-    causationId: "mu-cause-001");
-
-// Realistic 768-dim vector for dimension-sensitive tests
-float[] vector = IndexInputFactory.CreateRealisticVector(768);
+```text
+tests/
+├── Hexalith.Memories.Contracts.Tests/     # Serialization and contract round-trips
+├── Hexalith.Memories.Server.Tests/        # Fast unit/service tests with mocked dependencies
+├── Hexalith.Memories.IntegrationTests/    # Real infrastructure via Testcontainers + Aspire helpers
+├── Hexalith.Memories.Cli.Tests/           # CLI/client behavior and formatter coverage
+└── Hexalith.Memories.TestHelpers/         # Shared factories and reusable test support
 ```
 
-## Integration Test Infrastructure
+### Fixtures, factories, and helpers
 
-Uses [Testcontainers for .NET](https://dotnet.testcontainers.org/) to spin up real backends:
+- `Hexalith.Memories.IntegrationTests/Fixtures/RedisStackFixture.cs` — shared Redis Stack lifecycle
+- `Hexalith.Memories.IntegrationTests/Fixtures/FalkorDbFixture.cs` — shared FalkorDB lifecycle
+- `Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs` — end-to-end Aspire test orchestration
+- `Hexalith.Memories.TestHelpers/Factories/IndexInputFactory.cs` — override-based indexing inputs and realistic vectors
+- `Hexalith.Memories.TestHelpers/Factories/IngestionInputFactory.cs` — override-based ingestion inputs
+- `Hexalith.Memories.TestHelpers/Factories/ExtractionInputFactory.cs` — override-based extraction inputs
 
-- **RedisStackFixture**: `redis/redis-stack:latest` — RediSearch + Vector Search
-- **FalkorDbFixture**: `falkordb/falkordb:latest` — graph database
+## Best practices
 
-Containers start once per `[Collection]` (not per test) and use random ports to avoid conflicts.
+- Prefer the lowest useful test level: unit first, integration for backend boundaries, end-to-end only when the user journey truly requires it.
+- Keep tests deterministic: no hard waits, no conditional control flow, no hidden assertions.
+- Keep tests isolated and self-cleaning so they run safely in parallel.
+- Use override-based factories to make intent explicit and prevent data collisions.
+- Mark integration scenarios with `[Trait("Category", "Integration")]`.
+- Use Shouldly for assertions and NSubstitute for mocking.
+- Prefer fixture composition over inheritance.
+- Keep UI-selector guidance dormant until a browser harness exists; if one is added later, prefer `data-testid`.
 
-## Conventions
+## CI integration notes
 
-- **Assertions**: Shouldly (`.ShouldBe()`, `.ShouldContain()`, `Should.ThrowAsync<T>()`)
-- **Mocking**: NSubstitute (`Substitute.For<T>()`, `.Received()`, `.Returns()`)
-- **Naming**: `MethodName_Scenario_ExpectedBehavior` or `Scenario_ShouldExpectedBehavior`
-- **No test inheritance**: Prefer composition via collection fixtures
-- **Exceptions propagate**: Activities don't catch — test exception propagation explicitly
+- Use `tools/test.ps1` on PowerShell/Windows runners.
+- Use `tools/test.sh` on bash/Linux runners.
+- Coverage collection relies on `XPlat Code Coverage` plus `tests/tests.runsettings`.
+- Integration targets require Docker availability for Testcontainers.
+- The root repository currently exposes script entry points rather than a dedicated root CI workflow; these commands are the intended automation surface.
+
+## Troubleshooting
+
+- **Docker-backed tests fail immediately**: confirm Docker Desktop or your container runtime is running before executing `Category=Integration` targets.
+- **Coverage output is missing**: use the coverage command or `tools/test.ps1 -Coverage` / `tools/test.sh --coverage`, which add `tests/tests.runsettings` automatically.
+- **Raw filtered `dotnet test` runs show a warning**: if you run `dotnet test --filter ...` against the whole solution, dedicated integration-only projects can emit a “no test matches the given testcase filter” warning. The wrapper scripts avoid that by targeting the relevant projects directly.
+- **Endpoint-dependent tests fail locally**: review `../.env` and confirm `BASE_URL` / `API_URL` still point at the expected local server endpoint.
+
+## Knowledge base references
+
+- `_bmad/tea/testarch/knowledge/data-factories.md`
+- `_bmad/tea/testarch/knowledge/fixture-architecture.md`
+- `_bmad/tea/testarch/knowledge/test-quality.md`
+- `_bmad/tea/testarch/knowledge/test-levels-framework.md`
+- `_bmad/tea/testarch/knowledge/test-priorities-matrix.md`
+- `_bmad/tea/testarch/knowledge/risk-governance.md`
