@@ -9,6 +9,7 @@ using System.CommandLine;
 
 using Hexalith.Memories.Cli.Configuration;
 using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,7 +34,6 @@ Example:
     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
     [
         ("ingest", "Ingest memories from files, URLs, or directories.", "7.2"),
-        ("search", "Search memories with three-axis hybrid fusion.", "7.2"),
         ("traverse", "Walk the causal graph from a seed memory.", "7.2"),
         ("case", "Create, list, and manage cases.", "7.2"),
         ("status", "Inspect ingestion pipeline status.", "7.2"),
@@ -55,6 +55,7 @@ Example:
         root.Options.Add(globalOptions.EndpointOption);
         root.Options.Add(globalOptions.TokenOption);
         root.Options.Add(globalOptions.VerboseOption);
+        root.Options.Add(globalOptions.FormatOption);
 
         // tenant — fully wired group in 7.1.
         var tenantCommand = new Command("tenant", TenantCommandDescription);
@@ -68,7 +69,14 @@ Example:
         configCommand.SetAction(_ => configCommand.Parse("--help").Invoke());
         root.Subcommands.Add(configCommand);
 
-        // Stubbed groups (7.2–7.4).
+        // search — wired group in 7.2 (query + inspect).
+        var searchCommand = new Command("search", "Search memories with three-axis hybrid fusion.");
+        searchCommand.Subcommands.Add(SearchQueryCommand.Build(services));
+        searchCommand.Subcommands.Add(SearchInspectCommand.Build(services));
+        searchCommand.SetAction(_ => searchCommand.Parse("--help").Invoke());
+        root.Subcommands.Add(searchCommand);
+
+        // Stubbed groups (7.3–7.4).
         foreach ((string name, string description, string storyId) in CommandGroups)
         {
             root.Subcommands.Add(NotImplementedCommand.Create(services, name, description, storyId));
@@ -111,5 +119,61 @@ Example:
 
         flag.ApiToken = parseResult.GetValue(globalOptions.TokenOption);
         console.Verbose = parseResult.GetValue(globalOptions.VerboseOption);
+
+        // Story 7.2: resolve --format. When --help or --version is present, skip validation so an invalid
+        // --format value never blocks help output (Task 1.5).
+        string? formatRaw = parseResult.GetValue(globalOptions.FormatOption);
+        if (string.IsNullOrEmpty(formatRaw))
+        {
+            console.Format = OutputFormat.Human;
+            return;
+        }
+
+        if (IsHelpOrVersionInvocation(parseResult))
+        {
+            console.Format = OutputFormat.Human;
+            return;
+        }
+
+        if (!TryParseFormat(formatRaw, out OutputFormat parsed))
+        {
+            throw new Configuration.InvalidConfigurationException(
+                filePath: "--format",
+                message: $"Unknown format '{formatRaw}'. Use human, json, or table.");
+        }
+
+        console.Format = parsed;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> if the parse carries a real help or version option. Walks the parsed
+    /// symbol tree (not raw tokens) so an option argument whose value is literally <c>--help</c> /
+    /// <c>--version</c> does not spuriously bypass <c>--format</c> validation.
+    /// </summary>
+    private static bool IsHelpOrVersionInvocation(System.CommandLine.ParseResult parseResult)
+    {
+        System.CommandLine.Parsing.CommandResult? current = parseResult.CommandResult;
+        while (current is not null)
+        {
+            foreach (System.CommandLine.Parsing.SymbolResult child in current.Children)
+            {
+                if (child is System.CommandLine.Parsing.OptionResult optionResult
+                    && (optionResult.Option is System.CommandLine.Help.HelpOption
+                        || optionResult.Option is System.CommandLine.VersionOption))
+                {
+                    return true;
+                }
+            }
+
+            current = current.Parent as System.CommandLine.Parsing.CommandResult;
+        }
+
+        return false;
+    }
+
+    private static bool TryParseFormat(string raw, out OutputFormat format)
+    {
+        return Enum.TryParse(raw, ignoreCase: true, out format)
+            && Enum.IsDefined(format);
     }
 }

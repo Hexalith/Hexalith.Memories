@@ -152,3 +152,7 @@ install succeeds but `memories` is not on `PATH`.
 `--verbose` prints the underlying exception type + message (never the stack trace, never the token
 value) to stderr under the one-line plumbing error. This is a debugging aid during 7.1; Story 7.3
 extends the error surface with recovery suggestions.
+
+## See also
+
+- [`cli-output-formats.md`](cli-output-formats.md) — `--format human|json|table` contract, envelope schema, and per-command examples (Story 7.2).

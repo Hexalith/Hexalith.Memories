@@ -7,7 +7,7 @@ namespace Hexalith.Memories.Cli.Commands;
 
 using System.CommandLine;
 
-/// <summary>Holds the three global options advertised on the root command (AC #3a / ADR-7.1-005).</summary>
+/// <summary>Holds the global options advertised on the root command (ADR-7.1-005 + Story 7.2 <c>--format</c>).</summary>
 public sealed class CliGlobalOptions
 {
     /// <summary>The <c>--endpoint</c> option.</summary>
@@ -28,6 +28,13 @@ public sealed class CliGlobalOptions
     public Option<bool> VerboseOption { get; } = new("--verbose")
     {
         Description = "Emit additional diagnostic output to stderr (exception type / message; never the token).",
+        Recursive = true,
+    };
+
+    /// <summary>The <c>--format</c> option (Story 7.2 / ADR-7.2-001). Raw string — validated in <c>ApplyGlobalOptions</c>.</summary>
+    public Option<string?> FormatOption { get; } = new("--format")
+    {
+        Description = "Output format: human (default), json, table.",
         Recursive = true,
     };
 }

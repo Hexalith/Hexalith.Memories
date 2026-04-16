@@ -40,15 +40,19 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 
 ## CLI (preview)
 
-Story 7.1 ships the `memories` .NET global tool — foundation only (install, `tenant list`, `config show`, and the 4-tier endpoint resolver). Output formatting, rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.2-7.5.
+Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.3-7.5.
 
 ```bash
 dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
 dotnet tool install -g --add-source ./artifacts Hexalith.Memories.Cli
 memories --version
+memories --format json tenant list
 ```
 
-See [CLI configuration](docs/dev/cli-config.md) for the endpoint resolution chain, environment variables, config file schema, and PATH troubleshooting.
+Use `--format json` for scripts and LLM agents — the envelope is versioned and stable. See:
+
+- [CLI configuration](docs/dev/cli-config.md) — endpoint resolution, environment variables, PATH troubleshooting.
+- [CLI output formats](docs/dev/cli-output-formats.md) — envelope schema, per-command examples, versioning policy.
 
 ## Operations
 

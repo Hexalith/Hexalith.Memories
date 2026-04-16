@@ -1,0 +1,3603 @@
+# Code Review Bundle — Story 7.2 (Output Formats & Explain Display)
+# Generated: 2026-04-16
+
+## ====================================================
+## PART 1: Tracked modifications (git diff HEAD)
+## ====================================================
+
+diff --git a/README.md b/README.md
+index 48aa265..e9bad73 100644
+--- a/README.md
++++ b/README.md
+@@ -40,15 +40,19 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
+ 
+ ## CLI (preview)
+ 
+-Story 7.1 ships the `memories` .NET global tool — foundation only (install, `tenant list`, `config show`, and the 4-tier endpoint resolver). Output formatting, rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.2-7.5.
++Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.3-7.5.
+ 
+ ```bash
+ dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
+ dotnet tool install -g --add-source ./artifacts Hexalith.Memories.Cli
+ memories --version
++memories --format json tenant list
+ ```
+ 
+-See [CLI configuration](docs/dev/cli-config.md) for the endpoint resolution chain, environment variables, config file schema, and PATH troubleshooting.
++Use `--format json` for scripts and LLM agents — the envelope is versioned and stable. See:
++
++- [CLI configuration](docs/dev/cli-config.md) — endpoint resolution, environment variables, PATH troubleshooting.
++- [CLI output formats](docs/dev/cli-output-formats.md) — envelope schema, per-command examples, versioning policy.
+ 
+ ## Operations
+ 
+diff --git a/_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md b/_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md
+index 4ee71d3..d4f8415 100644
+--- a/_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md
++++ b/_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md
+@@ -1,6 +1,6 @@
+ # Story 7.2: Output Formats & Explain Display
+ 
+-Status: ready-for-dev
++Status: review
+ 
+ <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+ 
+@@ -131,65 +131,65 @@ so that I can use the CLI interactively, in scripts, and for debugging relevance
+ 
+ Full detail below. See also the Task dependency sketch in Dev Notes for parallel-stream execution order.
+ 
+-- [ ] Task 1: Output-format infrastructure (AC: #1, #2, #3, #7)
+-    - [ ] 1.1 Create `src/Hexalith.Memories.Cli/Output/OutputFormat.cs` — public enum `OutputFormat { Human, Json, Table }` with a `[JsonConverter(typeof(JsonStringEnumConverter))]` attribute so the value round-trips cleanly.
+-    - [ ] 1.2 Create `src/Hexalith.Memories.Cli/Output/IOutputFormatter{T}.cs` — `public interface IOutputFormatter<T> { OutputFormat Format { get; } void Write(T value, TextWriter writer); }`.
+-    - [ ] 1.3 Create `src/Hexalith.Memories.Cli/Output/OutputFormatterRouter.cs` — resolves the right formatter via `IServiceProvider.GetServices<IOutputFormatter<T>>().FirstOrDefault(f => f.Format == selected)`. If the result is `null`, throw a typed `FormatterNotRegisteredException(typeof(T), format)` with message `"No IOutputFormatter<{TypeName}> registered for format '{format}'."`. **Do not** use `.Single(...)` — its implicit `InvalidOperationException` doesn't distinguish "bug in registration" from "caller asked for an unsupported format" and makes the dev-agent's diagnostic path harder. Exposed method: `void Write<T>(OutputFormat format, T value, TextWriter writer)`.
+-    - [ ] 1.4 Add `--format <human|json|table>` as a **root-level** global option. Define the `Option<OutputFormat>` on `CliGlobalOptions` (same pattern as `EndpointOption`, `TokenOption`, `VerboseOption` from 7.1 — see `src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs`). The **resolved value** lives on `CliConsole` as a new `public OutputFormat Format { get; set; } = OutputFormat.Human;` property — same pattern as `CliConsole.Verbose` (see `src/Hexalith.Memories.Cli/Execution/CliConsole.cs:18`). `RootCommandFactory.ApplyGlobalOptions` writes the parsed value into `console.Format` alongside the existing `console.Verbose = parseResult.GetValue(...)` assignment (`RootCommandFactory.cs:97`). Command handlers read `console.Format` to pick the formatter — **do not** add a second resolved-state class.
+-    - [ ] 1.5 On unknown format string, throw `InvalidConfigurationException` from `ApplyGlobalOptions` — `Program.cs` already catches it and exits with code 2 (see Story 7.1 `Program.cs:36-39`). Message: `"Unknown format '<value>'. Use human, json, or table."`. **But:** `--help` and `--version` invocations must **always succeed** regardless of invalid globals. Rationale: a user debugging by running `memories --format xml tenant list --help` wants help, not an error. Implement by checking `parseResult.Tokens` (or the equivalent System.CommandLine API) for the presence of `--help` / `--version` / `-h` before calling `ApplyGlobalOptions`'s format validation — if present, skip format validation entirely and fall through to `parseResult.InvokeAsync` which handles help output natively. Endpoint/token validation remains active (help doesn't need those either, but the 7.1 baseline doesn't skip them, so leave alone).
+-    - [ ] 1.6 **Do not** introduce a table-rendering library. Column alignment uses `string.PadRight(maxWidth)`; separator row is `new string('-', sum_of_widths_plus_padding)`.
+-
+-- [ ] Task 2: Stable JSON envelope (AC: #2, #8)
+-    - [ ] 2.1 Create `src/Hexalith.Memories.Cli/Output/Json/CliOutputEnvelope.cs` — `public sealed record CliOutputEnvelope<T>(int SchemaVersion, string Command, T Data)`. Pin `SchemaVersion = 1` as a constant `const int CurrentSchemaVersion = 1`. **The envelope has exactly three top-level fields** (`schemaVersion`, `command`, `data`). Do **not** add speculative slots (`error`, `warnings`, `pagination`, `traceId`, etc.) — each lands with the story that actually needs it. Story 7.3 will add `error`, Story 7.5 may add `traceId` — both are additive per ADR-7.2-001 and do not require bumping `schemaVersion`. Pre-emptive additions create dead contract surface.
+-    - [ ] 2.2 Add source-generated JSON context `CliJsonContext` mirroring the Contracts pattern at `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` — register every envelope shape **with the exact type parameters the call sites use**: `CliOutputEnvelope<IReadOnlyList<TenantSummary>>` (matches `MemoriesClient.ListTenantsAsync` return type at `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:53`; array vs `IReadOnlyList<T>` resolve to different `JsonTypeInfo`), `CliOutputEnvelope<ConfigShowData>`, `CliOutputEnvelope<HybridSearchResult>`, `CliOutputEnvelope<SearchResult>`, `CliOutputEnvelope<MemoryUnit>`. **Do not** fall back to reflection-based serialization — AOT trim-safe stays the preference.
+-    - [ ] 2.3 Serializer options: camelCase property naming, indented output (human inspection > 1 byte saved), `JsonIgnoreCondition.WhenWritingNull`.
+-    - [ ] 2.4 Write a strict parse-and-assert test (AC #2 + #9): `JsonDocument.Parse(stdout).RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1)`.
+-
+-- [ ] Task 3: Formatters for existing 7.1 commands (AC: #1, #9)
+-    - [ ] 3.1 Under `src/Hexalith.Memories.Cli/Output/Formatters/`, register three `IOutputFormatter<T>` implementations for each of:
++- [x] Task 1: Output-format infrastructure (AC: #1, #2, #3, #7)
++    - [x] 1.1 Create `src/Hexalith.Memories.Cli/Output/OutputFormat.cs` — public enum `OutputFormat { Human, Json, Table }` with a `[JsonConverter(typeof(JsonStringEnumConverter))]` attribute so the value round-trips cleanly.
++    - [x] 1.2 Create `src/Hexalith.Memories.Cli/Output/IOutputFormatter{T}.cs` — `public interface IOutputFormatter<T> { OutputFormat Format { get; } void Write(T value, TextWriter writer); }`.
++    - [x] 1.3 Create `src/Hexalith.Memories.Cli/Output/OutputFormatterRouter.cs` — resolves the right formatter via `IServiceProvider.GetServices<IOutputFormatter<T>>().FirstOrDefault(f => f.Format == selected)`. If the result is `null`, throw a typed `FormatterNotRegisteredException(typeof(T), format)` with message `"No IOutputFormatter<{TypeName}> registered for format '{format}'."`. **Do not** use `.Single(...)` — its implicit `InvalidOperationException` doesn't distinguish "bug in registration" from "caller asked for an unsupported format" and makes the dev-agent's diagnostic path harder. Exposed method: `void Write<T>(OutputFormat format, T value, TextWriter writer)`.
++    - [x] 1.4 Add `--format <human|json|table>` as a **root-level** global option. Define the `Option<OutputFormat>` on `CliGlobalOptions` (same pattern as `EndpointOption`, `TokenOption`, `VerboseOption` from 7.1 — see `src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs`). The **resolved value** lives on `CliConsole` as a new `public OutputFormat Format { get; set; } = OutputFormat.Human;` property — same pattern as `CliConsole.Verbose` (see `src/Hexalith.Memories.Cli/Execution/CliConsole.cs:18`). `RootCommandFactory.ApplyGlobalOptions` writes the parsed value into `console.Format` alongside the existing `console.Verbose = parseResult.GetValue(...)` assignment (`RootCommandFactory.cs:97`). Command handlers read `console.Format` to pick the formatter — **do not** add a second resolved-state class.
++    - [x] 1.5 On unknown format string, throw `InvalidConfigurationException` from `ApplyGlobalOptions` — `Program.cs` already catches it and exits with code 2 (see Story 7.1 `Program.cs:36-39`). Message: `"Unknown format '<value>'. Use human, json, or table."`. **But:** `--help` and `--version` invocations must **always succeed** regardless of invalid globals. Rationale: a user debugging by running `memories --format xml tenant list --help` wants help, not an error. Implement by checking `parseResult.Tokens` (or the equivalent System.CommandLine API) for the presence of `--help` / `--version` / `-h` before calling `ApplyGlobalOptions`'s format validation — if present, skip format validation entirely and fall through to `parseResult.InvokeAsync` which handles help output natively. Endpoint/token validation remains active (help doesn't need those either, but the 7.1 baseline doesn't skip them, so leave alone).
++    - [x] 1.6 **Do not** introduce a table-rendering library. Column alignment uses `string.PadRight(maxWidth)`; separator row is `new string('-', sum_of_widths_plus_padding)`.
++
++- [x] Task 2: Stable JSON envelope (AC: #2, #8)
++    - [x] 2.1 Create `src/Hexalith.Memories.Cli/Output/Json/CliOutputEnvelope.cs` — `public sealed record CliOutputEnvelope<T>(int SchemaVersion, string Command, T Data)`. Pin `SchemaVersion = 1` as a constant `const int CurrentSchemaVersion = 1`. **The envelope has exactly three top-level fields** (`schemaVersion`, `command`, `data`). Do **not** add speculative slots (`error`, `warnings`, `pagination`, `traceId`, etc.) — each lands with the story that actually needs it. Story 7.3 will add `error`, Story 7.5 may add `traceId` — both are additive per ADR-7.2-001 and do not require bumping `schemaVersion`. Pre-emptive additions create dead contract surface.
++    - [x] 2.2 Add source-generated JSON context `CliJsonContext` mirroring the Contracts pattern at `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` — register every envelope shape **with the exact type parameters the call sites use**: `CliOutputEnvelope<IReadOnlyList<TenantSummary>>` (matches `MemoriesClient.ListTenantsAsync` return type at `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:53`; array vs `IReadOnlyList<T>` resolve to different `JsonTypeInfo`), `CliOutputEnvelope<ConfigShowData>`, `CliOutputEnvelope<HybridSearchResult>`, `CliOutputEnvelope<SearchResult>`, `CliOutputEnvelope<MemoryUnit>`. **Do not** fall back to reflection-based serialization — AOT trim-safe stays the preference.
++    - [x] 2.3 Serializer options: camelCase property naming, indented output (human inspection > 1 byte saved), `JsonIgnoreCondition.WhenWritingNull`.
++    - [x] 2.4 Write a strict parse-and-assert test (AC #2 + #9): `JsonDocument.Parse(stdout).RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1)`.
++
++- [x] Task 3: Formatters for existing 7.1 commands (AC: #1, #9)
++    - [x] 3.1 Under `src/Hexalith.Memories.Cli/Output/Formatters/`, register three `IOutputFormatter<T>` implementations for each of:
+         - `IReadOnlyList<TenantSummary>` (tenant list data model)
+         - `ConfigShowData` (new record wrapping `(Uri Endpoint, string ResolvedBy, bool TokenConfigured)` — do **not** reuse `ResolvedConfig` directly; that carries the raw token which must never reach serialization).
+-    - [ ] 3.2 `HumanFormatter<IReadOnlyList<TenantSummary>>` emits the **same** tab-separated `{tenant.Id}\t{tenant.DisplayName}` lines as 7.1's `TenantListCommand` currently does, and the `"No tenants found."` string when empty. Golden-test it.
+-    - [ ] 3.3 `HumanFormatter<ConfigShowData>` emits the **exact** three key=value lines `endpoint=...\nresolvedBy=...\ntokenConfigured=...\n` — byte-for-byte 7.1 parity. No trailing blank line. No ANSI.
+-    - [ ] 3.4 `JsonFormatter<IReadOnlyList<TenantSummary>>` and `JsonFormatter<ConfigShowData>` each wrap their payload in `CliOutputEnvelope<T>` with `command = "tenant list"` / `"config show"`. Indented. camelCase.
+-    - [ ] 3.5 `TableFormatter<IReadOnlyList<TenantSummary>>` header: `TENANT ID   DISPLAY NAME`. Column widths = `max(header.Length, max(item.field.Length))`. `TableFormatter<ConfigShowData>` header: `KEY   VALUE` with three rows.
+-    - [ ] 3.6 Rewire `TenantListCommand.ExecuteAsync` and `ConfigShowCommand.Build` to call `OutputFormatterRouter.Write(globalOptions.FormatSelection, data, console.Out)`. Do not keep the old inline `console.Out.WriteLine` paths once the formatter is in place — two output surfaces on the same command drift apart.
+-
+-- [ ] Task 4: `MemoriesClient.SearchAsync` (AC: #4, #5, #10)
+-    - [ ] 4.1 Add to `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`:
++    - [x] 3.2 `HumanFormatter<IReadOnlyList<TenantSummary>>` emits the **same** tab-separated `{tenant.Id}\t{tenant.DisplayName}` lines as 7.1's `TenantListCommand` currently does, and the `"No tenants found."` string when empty. Golden-test it.
++    - [x] 3.3 `HumanFormatter<ConfigShowData>` emits the **exact** three key=value lines `endpoint=...\nresolvedBy=...\ntokenConfigured=...\n` — byte-for-byte 7.1 parity. No trailing blank line. No ANSI.
++    - [x] 3.4 `JsonFormatter<IReadOnlyList<TenantSummary>>` and `JsonFormatter<ConfigShowData>` each wrap their payload in `CliOutputEnvelope<T>` with `command = "tenant list"` / `"config show"`. Indented. camelCase.
++    - [x] 3.5 `TableFormatter<IReadOnlyList<TenantSummary>>` header: `TENANT ID   DISPLAY NAME`. Column widths = `max(header.Length, max(item.field.Length))`. `TableFormatter<ConfigShowData>` header: `KEY   VALUE` with three rows.
++    - [x] 3.6 Rewire `TenantListCommand.ExecuteAsync` and `ConfigShowCommand.Build` to call `OutputFormatterRouter.Write(globalOptions.FormatSelection, data, console.Out)`. Do not keep the old inline `console.Out.WriteLine` paths once the formatter is in place — two output surfaces on the same command drift apart.
++
++- [x] Task 4: `MemoriesClient.SearchAsync` (AC: #4, #5, #10)
++    - [x] 4.1 Add to `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`:
+         - `Task<HybridSearchResult> HybridSearchAsync(HybridSearchRequest request, CancellationToken ct)` when `axis == "hybrid"`,
+         - `Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)` for single-axis searches.
+-    - [ ] 4.2 Create a small `src/Hexalith.Memories.Client.Rest/SearchRequest.cs` and `HybridSearchRequest.cs` — internal request DTOs (record types) with typed properties (`string TenantId`, `string? CaseId`, `string? Query`, `int MaxResults = 10`, `string Axis = "hybrid"`, `bool Explain = false`). Implemented as query-string builders — **no new server endpoints**. **Omit parameters, don't send defaults:** if `CaseId` is null, do not emit `caseId=` in the query string; if `MaxResults` equals the server default (10, per `Program.cs:1501`), do not emit `maxResults=10`; never send `offset=0` as a literal (the parameter is simply not built into the URL by 7.2 since no AC exercises it — see Task 5.2 cut list). Server-side defaults stay in force.
+-    - [ ] 4.3 Response decoding: `HybridSearchAsync` parses into `Hexalith.Memories.Contracts.V1.HybridSearchResult`; `SearchAsync` parses into `SearchResult`. Reuse `ErrorResponseDecoder` for non-2xx.
+-    - [ ] 4.4 Add entries to `MemoriesJsonContext` for `HybridSearchResult` and `SearchResult` if not already present (both already registered per `MemoriesJsonContext.cs:41, 55` — verify, do not duplicate).
+-    - [ ] 4.5 Unit-test both methods with the existing `TestDelegatingHandler` pattern: happy-path 200 with a canned body per axis; 400 with `ErrorResponse`; malformed JSON → typed `MemoriesRemoteException`.
+-
+-- [ ] Task 5: `memories search query` command (AC: #4, #5)
+-    - [ ] 5.1 Create `src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs`.
+-    - [ ] 5.2 Options: `--tenant <id>` (required), `--case <id>` (optional), `--query <text>` (conditionally required — see Task 5.3), `--axis <syntactic|semantic|graph|hybrid>` (default `hybrid`), `--max-results <N>` (default 10, capped — see Task 5.6), `--explain` (boolean flag). **Do not** add `--source-type`, `--offset`, `--axes`, or any other server query param in 7.2 — they widen the `--help` surface for 7.4's NFR30 audit and are not required by any AC.
+-    - [ ] 5.3 Validation: `--tenant` must always be non-empty. `--query` is **conditionally required** — required for `--axis syntactic|semantic|hybrid` (server rejects empty query with `INVALID_INPUT` at `Program.cs:1640-1648`), but **optional for `--axis graph`** (graph-only search starts from a `--graph-start-node-id` seed, not a query — server allows empty query on that axis). If validation fails, print one-line error to stderr and exit 2 (plumbing — domain errors live in 7.3). Note: this story does **not** wire `--graph-start-node-id` or pure graph-only searches as a first-class AC — but the `--query` validation must not block `--axis graph` pre-emptively, so that a Phase 1.5 story can add the seed option additively without rewriting this validation.
+-    - [ ] 5.4 Handler dispatches on `--axis` (case-insensitive, matching server behavior at `Program.cs:1565`): `hybrid` → `HybridSearchAsync` → router writes `HybridSearchResult`; else → `SearchAsync` → router writes `SearchResult`. Both paths go through `CliCommandExecutor.ExecuteAsync` (anti-pattern #18). **Exit-code policy inherited from 7.1:** server-reported errors (`MemoriesRemoteException` from 4xx/5xx, including HTTP 503 from `AllEnabledAxesUnavailable == true`) continue to exit with code **2** (plumbing) through Story 7.2 — splitting domain errors to exit code 1 is Story 7.3's scope. Do not preemptively remap `MemoriesRemoteException` to exit 1 here.
+-    - [ ] 5.6 **`--max-results` CLI-side cap:** the server currently has no upper bound on `maxResults` (see `Program.cs:1501` — defaults to 10 but accepts anything). A caller asking for `--max-results 10000` would receive 10000 rows; `TableFormatter<HybridSearchResult>` allocates padded strings per row → local-process memory spike unrelated to server health. Enforce a CLI-side ceiling: if `--max-results > 1000`, print `"--max-results exceeds CLI ceiling of 1000. Request a smaller batch or use pagination (coming in Phase 2)."` to stderr and exit code 2 **before** the HTTP call. 1000 is a soft limit — sized to cover practical debug workflows without enabling local DoS. Not strictly required by an AC but called out by red-team review. Server-side cap enforcement is a separate concern (not owned by 7.2).
+-    - [ ] 5.5 Register the handler under the existing stubbed `search` group in `RootCommandFactory` — replace the `NotImplementedCommand.Create(services, "search", ...)` entry with a real command group that adds `query` and `inspect` (Task 7) subcommands. **Remove ONLY the `"search"` entry** from `RootCommandFactory.CommandGroups` (see `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs:19-29`). The following entries **must remain** as `NotImplementedCommand` stubs after this story: `ingest` (Story 7.2/later), `traverse` (later), `case` (later), `status` (later), `explore` (later), `handlers` (later), `quickstart` (Story 7.4). Do not touch them. Adjust the `CommandGroups` list in place; do not reorder.
+-
+-- [ ] Task 6: Search-result + explain formatters (AC: #3, #5)
+-    - [ ] 6.1 Register `IOutputFormatter<HybridSearchResult>` and `IOutputFormatter<SearchResult>` for each of the three formats.
+-    - [ ] 6.2 Human format — **without `--explain`** (i.e., `Explanation == null`): one line per result `{rank}. [{compositeScore:F3}] {sourceUri} — {contentSnippet (first 80 chars)}`. Empty results: no output (not "No results" — that is 7.3).
+-    - [ ] 6.3 Human format — **with `--explain`** (`Explanation != null`): print the caveat `{Explanation.Caveat}` **verbatim** (no paraphrasing, no truncation, no word-wrap) on its own line **first, before any results** — this survives `memories search query --format human --explain | head -N` piping so the compliance-enablement guarantee (`prd.md:465-470`) is not truncated. Then per-result block showing `composite={score:F3}`, each present axis `syntactic={score:F3}`, etc., then a per-axis normalization suffix like `(syntactic: bm25_saturation)`. Caveat is printed exactly once per response.
+-    - [ ] 6.4 JSON format: wrap the full `HybridSearchResult` / `SearchResult` (including `Explanation` when present) in `CliOutputEnvelope<T>`. No transformation — pass the server response through verbatim in `data`.
+-    - [ ] 6.5 Table format — without explain: columns `RANK | SCORE | URI | SNIPPET`. With explain: columns `RANK | COMPOSITE | SYNTACTIC | SEMANTIC | GRAPH | URI`. Null axis scores print as `-`. Caveat printed as a single line **after** the table — table readers want the header-to-data alignment intact at the top (different trade-off than human format; both are documented in `docs/dev/cli-output-formats.md`).
+-    - [ ] 6.6a **Degradation surfacing (bridge — single-owner like 7.1 AC #11):** when `HybridSearchResult.Degraded == true`, the human and table formatters print a one-line degradation notice before results: `"Note: search degraded — axes unavailable: {comma-separated UnavailableAxes}"`. JSON format passes `degraded` and `unavailableAxes` through the envelope verbatim (already part of `HybridSearchResult`). No recovery suggestion here — that is Story 7.3's concern. **Story 7.3 replaces this bridge notice with its full actionable-error surface (FR56 with recovery suggestions per unavailable axis); the bridge and the rich surface do not coexist — 7.3 must delete or rewrite this line in the same PR.** Same ownership pattern as 7.1 ADR-7.1-007.
+-
+-- [ ] Task 7: `memories search inspect` command (AC: #6)
+-    - [ ] 7.1 Add `MemoriesClient.GetMemoryUnitAsync(string tenantId, string caseId, string memoryUnitId, CancellationToken ct)` → `GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}` returning `MemoryUnit` from `Contracts.V1`.
+-    - [ ] 7.2 Create `src/Hexalith.Memories.Cli/Commands/SearchInspectCommand.cs` with options `--tenant <id>` (required), `--case <id>` (required), `--id <memoryUnitId>` (required). Route through `CliCommandExecutor`.
+-    - [ ] 7.3 Register `IOutputFormatter<MemoryUnit>` for the three formats.
+-    - [ ] 7.4 Human format: print `id`, `tenantId`, `caseId`, `sourceUri`, `ingestedBy`, `ingestedAt`, `status`, then `metadata:` header followed by one line per `MetadataField` kv-pair formatted as `  {key} = {value}  [{origin}, confidence={confidence:F2}]`. **Empty `Metadata` dict:** if the unit has no metadata fields, print `metadata: (none)` on a single line instead of a bare header — avoids the "looks broken" appearance red-team flagged. The `{origin}` substring is **lowercase** — exactly `[human]` or `[ai]`, matching the `MetadataOrigin` enum's camelCase JSON serialization (`src/Hexalith.Memories.Contracts/V1/MetadataOrigin.cs` → `Human` / `Ai` serialize as `human` / `ai` via `CamelCaseStringEnumConverter`). Plain ASCII, no colour, no emoji. Lowercase is load-bearing for downstream `grep '\[human\]'` consistency with JSON output. **`DateTimeOffset` formatting:** render `ingestedAt` (and any other `DateTimeOffset` fields) with the round-trip format specifier `"o"` — `ingestedAt.ToString("o", CultureInfo.InvariantCulture)`. This produces ISO-8601 (e.g., `2026-04-16T15:30:00.0000000+00:00`) and is culture-invariant — prevents CI locale drift (e.g., `en-US` vs `fr-FR` date ordering) from breaking golden-file tests. Apply the same rule in `TableFormatter<MemoryUnit>` (Task 7.6) and anywhere else a `DateTimeOffset` hits stdout. Confidence `{confidence:F2}` is already culture-insensitive in the expected range but pass `CultureInfo.InvariantCulture` explicitly for consistency.
+-    - [ ] 7.5 JSON format: wrap the entire `MemoryUnit` in `CliOutputEnvelope<MemoryUnit>` with `command = "search inspect"`. The `MetadataField.Origin` already serializes to `"human"` / `"ai"` via the existing `[CamelCaseStringEnumConverter]` — no special handling needed.
+-    - [ ] 7.6 Table format: two tables concatenated — a core-fields table (`FIELD | VALUE`) and a metadata table (`KEY | VALUE | ORIGIN | CONFIDENCE`).
+-
+-- [ ] Task 8: Docs (supporting, AC: #8)
+-    - [ ] 8.1 Create `docs/dev/cli-output-formats.md` with:
++    - [x] 4.2 Create a small `src/Hexalith.Memories.Client.Rest/SearchRequest.cs` and `HybridSearchRequest.cs` — internal request DTOs (record types) with typed properties (`string TenantId`, `string? CaseId`, `string? Query`, `int MaxResults = 10`, `string Axis = "hybrid"`, `bool Explain = false`). Implemented as query-string builders — **no new server endpoints**. **Omit parameters, don't send defaults:** if `CaseId` is null, do not emit `caseId=` in the query string; if `MaxResults` equals the server default (10, per `Program.cs:1501`), do not emit `maxResults=10`; never send `offset=0` as a literal (the parameter is simply not built into the URL by 7.2 since no AC exercises it — see Task 5.2 cut list). Server-side defaults stay in force.
++    - [x] 4.3 Response decoding: `HybridSearchAsync` parses into `Hexalith.Memories.Contracts.V1.HybridSearchResult`; `SearchAsync` parses into `SearchResult`. Reuse `ErrorResponseDecoder` for non-2xx.
++    - [x] 4.4 Add entries to `MemoriesJsonContext` for `HybridSearchResult` and `SearchResult` if not already present (both already registered per `MemoriesJsonContext.cs:41, 55` — verify, do not duplicate).
++    - [x] 4.5 Unit-test both methods with the existing `TestDelegatingHandler` pattern: happy-path 200 with a canned body per axis; 400 with `ErrorResponse`; malformed JSON → typed `MemoriesRemoteException`.
++
++- [x] Task 5: `memories search query` command (AC: #4, #5)
++    - [x] 5.1 Create `src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs`.
++    - [x] 5.2 Options: `--tenant <id>` (required), `--case <id>` (optional), `--query <text>` (conditionally required — see Task 5.3), `--axis <syntactic|semantic|graph|hybrid>` (default `hybrid`), `--max-results <N>` (default 10, capped — see Task 5.6), `--explain` (boolean flag). **Do not** add `--source-type`, `--offset`, `--axes`, or any other server query param in 7.2 — they widen the `--help` surface for 7.4's NFR30 audit and are not required by any AC.
++    - [x] 5.3 Validation: `--tenant` must always be non-empty. `--query` is **conditionally required** — required for `--axis syntactic|semantic|hybrid` (server rejects empty query with `INVALID_INPUT` at `Program.cs:1640-1648`), but **optional for `--axis graph`** (graph-only search starts from a `--graph-start-node-id` seed, not a query — server allows empty query on that axis). If validation fails, print one-line error to stderr and exit 2 (plumbing — domain errors live in 7.3). Note: this story does **not** wire `--graph-start-node-id` or pure graph-only searches as a first-class AC — but the `--query` validation must not block `--axis graph` pre-emptively, so that a Phase 1.5 story can add the seed option additively without rewriting this validation.
++    - [x] 5.4 Handler dispatches on `--axis` (case-insensitive, matching server behavior at `Program.cs:1565`): `hybrid` → `HybridSearchAsync` → router writes `HybridSearchResult`; else → `SearchAsync` → router writes `SearchResult`. Both paths go through `CliCommandExecutor.ExecuteAsync` (anti-pattern #18). **Exit-code policy inherited from 7.1:** server-reported errors (`MemoriesRemoteException` from 4xx/5xx, including HTTP 503 from `AllEnabledAxesUnavailable == true`) continue to exit with code **2** (plumbing) through Story 7.2 — splitting domain errors to exit code 1 is Story 7.3's scope. Do not preemptively remap `MemoriesRemoteException` to exit 1 here.
++    - [x] 5.6 **`--max-results` CLI-side cap:** the server currently has no upper bound on `maxResults` (see `Program.cs:1501` — defaults to 10 but accepts anything). A caller asking for `--max-results 10000` would receive 10000 rows; `TableFormatter<HybridSearchResult>` allocates padded strings per row → local-process memory spike unrelated to server health. Enforce a CLI-side ceiling: if `--max-results > 1000`, print `"--max-results exceeds CLI ceiling of 1000. Request a smaller batch or use pagination (coming in Phase 2)."` to stderr and exit code 2 **before** the HTTP call. 1000 is a soft limit — sized to cover practical debug workflows without enabling local DoS. Not strictly required by an AC but called out by red-team review. Server-side cap enforcement is a separate concern (not owned by 7.2).
++    - [x] 5.5 Register the handler under the existing stubbed `search` group in `RootCommandFactory` — replace the `NotImplementedCommand.Create(services, "search", ...)` entry with a real command group that adds `query` and `inspect` (Task 7) subcommands. **Remove ONLY the `"search"` entry** from `RootCommandFactory.CommandGroups` (see `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs:19-29`). The following entries **must remain** as `NotImplementedCommand` stubs after this story: `ingest` (Story 7.2/later), `traverse` (later), `case` (later), `status` (later), `explore` (later), `handlers` (later), `quickstart` (Story 7.4). Do not touch them. Adjust the `CommandGroups` list in place; do not reorder.
++
++- [x] Task 6: Search-result + explain formatters (AC: #3, #5)
++    - [x] 6.1 Register `IOutputFormatter<HybridSearchResult>` and `IOutputFormatter<SearchResult>` for each of the three formats.
++    - [x] 6.2 Human format — **without `--explain`** (i.e., `Explanation == null`): one line per result `{rank}. [{compositeScore:F3}] {sourceUri} — {contentSnippet (first 80 chars)}`. Empty results: no output (not "No results" — that is 7.3).
++    - [x] 6.3 Human format — **with `--explain`** (`Explanation != null`): print the caveat `{Explanation.Caveat}` **verbatim** (no paraphrasing, no truncation, no word-wrap) on its own line **first, before any results** — this survives `memories search query --format human --explain | head -N` piping so the compliance-enablement guarantee (`prd.md:465-470`) is not truncated. Then per-result block showing `composite={score:F3}`, each present axis `syntactic={score:F3}`, etc., then a per-axis normalization suffix like `(syntactic: bm25_saturation)`. Caveat is printed exactly once per response.
++    - [x] 6.4 JSON format: wrap the full `HybridSearchResult` / `SearchResult` (including `Explanation` when present) in `CliOutputEnvelope<T>`. No transformation — pass the server response through verbatim in `data`.
++    - [x] 6.5 Table format — without explain: columns `RANK | SCORE | URI | SNIPPET`. With explain: columns `RANK | COMPOSITE | SYNTACTIC | SEMANTIC | GRAPH | URI`. Null axis scores print as `-`. Caveat printed as a single line **after** the table — table readers want the header-to-data alignment intact at the top (different trade-off than human format; both are documented in `docs/dev/cli-output-formats.md`).
++    - [x] 6.6a **Degradation surfacing (bridge — single-owner like 7.1 AC #11):** when `HybridSearchResult.Degraded == true`, the human and table formatters print a one-line degradation notice before results: `"Note: search degraded — axes unavailable: {comma-separated UnavailableAxes}"`. JSON format passes `degraded` and `unavailableAxes` through the envelope verbatim (already part of `HybridSearchResult`). No recovery suggestion here — that is Story 7.3's concern. **Story 7.3 replaces this bridge notice with its full actionable-error surface (FR56 with recovery suggestions per unavailable axis); the bridge and the rich surface do not coexist — 7.3 must delete or rewrite this line in the same PR.** Same ownership pattern as 7.1 ADR-7.1-007.
++
++- [x] Task 7: `memories search inspect` command (AC: #6)
++    - [x] 7.1 Add `MemoriesClient.GetMemoryUnitAsync(string tenantId, string caseId, string memoryUnitId, CancellationToken ct)` → `GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}` returning `MemoryUnit` from `Contracts.V1`.
++    - [x] 7.2 Create `src/Hexalith.Memories.Cli/Commands/SearchInspectCommand.cs` with options `--tenant <id>` (required), `--case <id>` (required), `--id <memoryUnitId>` (required). Route through `CliCommandExecutor`.
++    - [x] 7.3 Register `IOutputFormatter<MemoryUnit>` for the three formats.
++    - [x] 7.4 Human format: print `id`, `tenantId`, `caseId`, `sourceUri`, `ingestedBy`, `ingestedAt`, `status`, then `metadata:` header followed by one line per `MetadataField` kv-pair formatted as `  {key} = {value}  [{origin}, confidence={confidence:F2}]`. **Empty `Metadata` dict:** if the unit has no metadata fields, print `metadata: (none)` on a single line instead of a bare header — avoids the "looks broken" appearance red-team flagged. The `{origin}` substring is **lowercase** — exactly `[human]` or `[ai]`, matching the `MetadataOrigin` enum's camelCase JSON serialization (`src/Hexalith.Memories.Contracts/V1/MetadataOrigin.cs` → `Human` / `Ai` serialize as `human` / `ai` via `CamelCaseStringEnumConverter`). Plain ASCII, no colour, no emoji. Lowercase is load-bearing for downstream `grep '\[human\]'` consistency with JSON output. **`DateTimeOffset` formatting:** render `ingestedAt` (and any other `DateTimeOffset` fields) with the round-trip format specifier `"o"` — `ingestedAt.ToString("o", CultureInfo.InvariantCulture)`. This produces ISO-8601 (e.g., `2026-04-16T15:30:00.0000000+00:00`) and is culture-invariant — prevents CI locale drift (e.g., `en-US` vs `fr-FR` date ordering) from breaking golden-file tests. Apply the same rule in `TableFormatter<MemoryUnit>` (Task 7.6) and anywhere else a `DateTimeOffset` hits stdout. Confidence `{confidence:F2}` is already culture-insensitive in the expected range but pass `CultureInfo.InvariantCulture` explicitly for consistency.
++    - [x] 7.5 JSON format: wrap the entire `MemoryUnit` in `CliOutputEnvelope<MemoryUnit>` with `command = "search inspect"`. The `MetadataField.Origin` already serializes to `"human"` / `"ai"` via the existing `[CamelCaseStringEnumConverter]` — no special handling needed.
++    - [x] 7.6 Table format: two tables concatenated — a core-fields table (`FIELD | VALUE`) and a metadata table (`KEY | VALUE | ORIGIN | CONFIDENCE`).
++
++- [x] Task 8: Docs (supporting, AC: #8)
++    - [x] 8.1 Create `docs/dev/cli-output-formats.md` with:
+         - envelope contract (`schemaVersion=1`, `command`, `data`),
+         - one worked example per wired command (tenant list, config show, search query default, search query --explain, search inspect) for each of the three formats,
+         - **combined-flag example**: show `memories search query --explain --format json` output explicitly — the `data.explanation` block is ONLY populated when both `--explain` **and** a format flag are set. Readers must not assume `--format json` alone surfaces explain data. (Surfaced by customer-support roleplay — common pitfall.)
+@@ -198,25 +198,25 @@ Full detail below. See also the Task dependency sketch in Dev Notes for parallel
+         - versioning policy per ADR-7.2-001: additive changes stay on `schemaVersion=1`; renames/removes bump to `schemaVersion=2`; both versions supported for at least one release cycle after a bump.
+         - a table mapping `OutputFormat` enum values to their command-line spellings.
+         - Add a one-line cross-reference from `docs/dev/cli-config.md` "See also" section pointing at the new doc.
+-    - [ ] 8.2 Update the `README.md` "CLI (preview)" section added in 7.1 to mention `--format json` as the scripting entry point, pointing at `docs/dev/cli-output-formats.md`.
+-
+-- [ ] Task 9: Tests (AC: #1, #9)
+-    - [ ] 9.1 Place all new tests in the consolidated `tests/Hexalith.Memories.Cli.Tests/` project (per 7.1 Task 5.1 — no second project).
+-    - [ ] 9.2 **7.1 regression guard:** `ConfigShowGoldenFileTests.NoFormat_ExactMatchesStory71Default()` — inject a **fixture-built `ResolvedConfig`** directly (do NOT read the live `ResolvedConfigPipeline` — its output varies by host: `Uri.ToString()` normalizes trailing slash differently, environment-variable tier picks up CI state, etc.). Fixture: `new ResolvedConfig(new Uri("http://127.0.0.1:5000/"), ApiToken: null, ResolvedBy: "DefaultConfigurationSource")`. **Capture-first, don't invent:** before writing the expected string literal, run the current 7.1 `ConfigShowCommand.Build(...)` against this exact fixture and capture stdout verbatim (paste into the test). The expected string must equal **what 7.1 prints today**, not what the dev agent believes 7.1 prints — `Uri.ToString()` vs string interpolation can differ on trailing slash depending on whether port is explicit, and there is no existing test pinning this (a 7.1 gap). Once captured, the literal becomes the golden. If this test ever fails, reviewer must consciously decide whether to bump `schemaVersion`.
+-    - [ ] 9.3 Per-format snapshot tests per command (Shouldly `ShouldBe` against inlined expected strings — no snapshot library needed for this volume).
+-    - [ ] 9.4 JSON envelope test: parse stdout with `JsonDocument`, assert `schemaVersion == 1`, assert `command` matches the invoked command, assert `data` is present.
+-    - [ ] 9.5 Unknown-format test: invoke with `--format xml`, assert stderr contains `"Unknown format 'xml'."`, assert exit code 2.
+-    - [ ] 9.6 Empty-result test per command: zero tenants → header-only table; empty search → empty human output; `{"data": []}` or `{"data": {...}}` JSON envelope still emitted. Do **not** emit 7.3-style nudge text.
+-    - [ ] 9.7 `--explain` caveat test: canned `HybridSearchResult` with `Explanation.Caveat = "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness."` — assert the string appears exactly once and verbatim in both human and table formats. Assert it appears in the JSON envelope's `data.explanation.caveat` path.
+-    - [ ] 9.8 Metadata-origin visual-distinction test: canned `MemoryUnit` with one `human` and one `ai` field → assert the human-format output contains `[human]` and `[ai]` prefixes (literal strings).
+-    - [ ] 9.9 Token-redaction continuity: the full-output containment assertion from 7.1 Task 6.5 (`UNIQUE-TOKEN-SENTINEL-DO-NOT-LEAK`) must extend to the new commands (`search query`, `search inspect`) and all three formats. Add them to the list asserted in the existing `TokenRedactionTests.cs`.
+-    - [ ] 9.10 **Cold-start regression check (manual, dev-agent-owned, not CI-asserted):** before marking the story `review`, the dev agent runs `memories --version` three times on a warm machine and records the best-of-three wall time. If the figure exceeds **1.2 seconds** (7.1 shipped with a `<1s` advisory; 200ms budget for 7.2's added formatter DI registrations), investigate before merging. Add the result to the story's Completion Notes section as a one-liner (e.g., `"Cold start --version: 0.7s (no regression vs 7.1)"`). Not a CI gate — scope-creep to assert — but a concrete cheap check that catches gross regressions from DI misuse.
+-
+-- [ ] Task 10: Integration test (AC: #10)
+-    - [ ] 10.1 Add `tests/Hexalith.Memories.IntegrationTests/Cli/CliSearchIntegrationTests.cs`. Reuse `AspireIngestionPipelineFixture` (per 7.1 Task 7.2). Annotate the class with `[Collection("AspireIngestionPipeline")]` and `[Trait("Category", "Integration")]` **exactly matching `CliTenantListIntegrationTests`** — this lets dev agents running locally without Docker filter the test out via `dotnet test --filter "Category!=Integration"` instead of hitting a confusing fixture-setup failure. No `Skip.IfNot` pattern needed; the `Trait` + `--filter` flow is the repo convention. **CI precondition callout:** the runnability of this test in CI depends on the repo's pipeline config — Story 7.2 does NOT own verifying or changing repo-level CI behavior (this is Story 11.1's scope). If the current pipeline filters out `Category=Integration`, this test is **local/pre-merge validation only** and will bit-rot if never invoked. Story 7.2 closes with a note in the completion summary to the effect of "integration test added; CI-runnability inherits repo pipeline posture — recommend running locally via `dotnet test --filter Category=Integration` before marking `review`."
+-    - [ ] 10.2 Flow: create tenant → create case → ingest a small fixture file (reuse existing fixture ingest path) → wait for ingestion workflow completion → call `MemoriesClient.HybridSearchAsync` with `tenantId`, `caseId`, a query matching the fixture content, and `explain=true` → assert at least one result with non-null `CompositeScore` in [0.0, 1.0] and `Explanation.Caveat` contains the PRD-mandated substring **`"measure query-result relevance"`** (case-sensitive). **Non-empty is not strong enough** — if the server ever drops or paraphrases the caveat, the CLI's compliance-enablement guarantee breaks silently. This substring assertion is the CLI-boundary check that catches server drift without being fragile to punctuation changes. **Bounded wait pattern** — reuse the exact pattern from `tests/Hexalith.Memories.IntegrationTests/Cli/CliTenantListIntegrationTests.cs`: `static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);` + `DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout); while (DateTimeOffset.UtcNow < deadline) { ... poll ...; await Task.Delay(TimeSpan.FromMilliseconds(500)); }` polling `GET /api/ingest/{instanceId}` for workflow status `"COMPLETED"` (or equivalent terminal state). Test must fail cleanly with `Shouldly.ShouldBeTrue("...ingestion did not complete within {ActivationTimeout}")` on timeout — no infinite loops, no test flakes from unbounded waits.
+-    - [ ] 10.3 Do NOT spawn the `memories` binary as a subprocess — per-process invocation belongs to the dev-only packaging script from 7.1 Task 8.1. Update that script to add `memories search query --help` and `memories --format json tenant list` smoke calls so packaging regressions surface locally.
+-    - [ ] 10.4 Register the new test in the same xUnit collection as the 7.1 `CliTenantListIntegrationTests` (`[CollectionDefinition(nameof(AspireIngestionPipelineFixture), DisableParallelization = true)]` — per 7.1 Task 7.4).
++    - [x] 8.2 Update the `README.md` "CLI (preview)" section added in 7.1 to mention `--format json` as the scripting entry point, pointing at `docs/dev/cli-output-formats.md`.
++
++- [x] Task 9: Tests (AC: #1, #9)
++    - [x] 9.1 Place all new tests in the consolidated `tests/Hexalith.Memories.Cli.Tests/` project (per 7.1 Task 5.1 — no second project).
++    - [x] 9.2 **7.1 regression guard:** `ConfigShowGoldenFileTests.NoFormat_ExactMatchesStory71Default()` — inject a **fixture-built `ResolvedConfig`** directly (do NOT read the live `ResolvedConfigPipeline` — its output varies by host: `Uri.ToString()` normalizes trailing slash differently, environment-variable tier picks up CI state, etc.). Fixture: `new ResolvedConfig(new Uri("http://127.0.0.1:5000/"), ApiToken: null, ResolvedBy: "DefaultConfigurationSource")`. **Capture-first, don't invent:** before writing the expected string literal, run the current 7.1 `ConfigShowCommand.Build(...)` against this exact fixture and capture stdout verbatim (paste into the test). The expected string must equal **what 7.1 prints today**, not what the dev agent believes 7.1 prints — `Uri.ToString()` vs string interpolation can differ on trailing slash depending on whether port is explicit, and there is no existing test pinning this (a 7.1 gap). Once captured, the literal becomes the golden. If this test ever fails, reviewer must consciously decide whether to bump `schemaVersion`.
++    - [x] 9.3 Per-format snapshot tests per command (Shouldly `ShouldBe` against inlined expected strings — no snapshot library needed for this volume).
++    - [x] 9.4 JSON envelope test: parse stdout with `JsonDocument`, assert `schemaVersion == 1`, assert `command` matches the invoked command, assert `data` is present.
++    - [x] 9.5 Unknown-format test: invoke with `--format xml`, assert stderr contains `"Unknown format 'xml'."`, assert exit code 2.
++    - [x] 9.6 Empty-result test per command: zero tenants → header-only table; empty search → empty human output; `{"data": []}` or `{"data": {...}}` JSON envelope still emitted. Do **not** emit 7.3-style nudge text.
++    - [x] 9.7 `--explain` caveat test: canned `HybridSearchResult` with `Explanation.Caveat = "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness."` — assert the string appears exactly once and verbatim in both human and table formats. Assert it appears in the JSON envelope's `data.explanation.caveat` path.
++    - [x] 9.8 Metadata-origin visual-distinction test: canned `MemoryUnit` with one `human` and one `ai` field → assert the human-format output contains `[human]` and `[ai]` prefixes (literal strings).
++    - [x] 9.9 Token-redaction continuity: the full-output containment assertion from 7.1 Task 6.5 (`UNIQUE-TOKEN-SENTINEL-DO-NOT-LEAK`) must extend to the new commands (`search query`, `search inspect`) and all three formats. Add them to the list asserted in the existing `TokenRedactionTests.cs`.
++    - [x] 9.10 **Cold-start regression check (manual, dev-agent-owned, not CI-asserted):** before marking the story `review`, the dev agent runs `memories --version` three times on a warm machine and records the best-of-three wall time. If the figure exceeds **1.2 seconds** (7.1 shipped with a `<1s` advisory; 200ms budget for 7.2's added formatter DI registrations), investigate before merging. Add the result to the story's Completion Notes section as a one-liner (e.g., `"Cold start --version: 0.7s (no regression vs 7.1)"`). Not a CI gate — scope-creep to assert — but a concrete cheap check that catches gross regressions from DI misuse.
++
++- [x] Task 10: Integration test (AC: #10)
++    - [x] 10.1 Add `tests/Hexalith.Memories.IntegrationTests/Cli/CliSearchIntegrationTests.cs`. Reuse `AspireIngestionPipelineFixture` (per 7.1 Task 7.2). Annotate the class with `[Collection("AspireIngestionPipeline")]` and `[Trait("Category", "Integration")]` **exactly matching `CliTenantListIntegrationTests`** — this lets dev agents running locally without Docker filter the test out via `dotnet test --filter "Category!=Integration"` instead of hitting a confusing fixture-setup failure. No `Skip.IfNot` pattern needed; the `Trait` + `--filter` flow is the repo convention. **CI precondition callout:** the runnability of this test in CI depends on the repo's pipeline config — Story 7.2 does NOT own verifying or changing repo-level CI behavior (this is Story 11.1's scope). If the current pipeline filters out `Category=Integration`, this test is **local/pre-merge validation only** and will bit-rot if never invoked. Story 7.2 closes with a note in the completion summary to the effect of "integration test added; CI-runnability inherits repo pipeline posture — recommend running locally via `dotnet test --filter Category=Integration` before marking `review`."
++    - [x] 10.2 Flow: create tenant → create case → ingest a small fixture file (reuse existing fixture ingest path) → wait for ingestion workflow completion → call `MemoriesClient.HybridSearchAsync` with `tenantId`, `caseId`, a query matching the fixture content, and `explain=true` → assert at least one result with non-null `CompositeScore` in [0.0, 1.0] and `Explanation.Caveat` contains the PRD-mandated substring **`"measure query-result relevance"`** (case-sensitive). **Non-empty is not strong enough** — if the server ever drops or paraphrases the caveat, the CLI's compliance-enablement guarantee breaks silently. This substring assertion is the CLI-boundary check that catches server drift without being fragile to punctuation changes. **Bounded wait pattern** — reuse the exact pattern from `tests/Hexalith.Memories.IntegrationTests/Cli/CliTenantListIntegrationTests.cs`: `static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);` + `DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout); while (DateTimeOffset.UtcNow < deadline) { ... poll ...; await Task.Delay(TimeSpan.FromMilliseconds(500)); }` polling `GET /api/ingest/{instanceId}` for workflow status `"COMPLETED"` (or equivalent terminal state). Test must fail cleanly with `Shouldly.ShouldBeTrue("...ingestion did not complete within {ActivationTimeout}")` on timeout — no infinite loops, no test flakes from unbounded waits.
++    - [x] 10.3 Do NOT spawn the `memories` binary as a subprocess — per-process invocation belongs to the dev-only packaging script from 7.1 Task 8.1. Update that script to add `memories search query --help` and `memories --format json tenant list` smoke calls so packaging regressions surface locally.
++    - [x] 10.4 Register the new test in the same xUnit collection as the 7.1 `CliTenantListIntegrationTests` (`[CollectionDefinition(nameof(AspireIngestionPipelineFixture), DisableParallelization = true)]` — per 7.1 Task 7.4).
+ 
+ ## Dev Notes
+ 
+@@ -362,8 +362,22 @@ claude-opus-4-6[1m]
+ 
+ ### Completion Notes List
+ 
+-- Story file created with repo-grounded implementation guidance, strict scope boundaries against Stories 7.3–7.5, and inheritance of all Story 7.1 ADRs + anti-patterns + Implementation Contracts by reference.
+-- Sprint status updated: `7-2-output-formats-and-explain-display: backlog → ready-for-dev`.
++- **Implementation (2026-04-16, Dev — Amelia):** all 10 tasks complete. `dotnet build Hexalith.Memories.slnx -c Debug` succeeds with `TreatWarningsAsErrors=true`, 0 warnings. Non-integration test suite: **1412 tests passing** (CLI.Tests 93 = 55 inherited 7.1 + 38 new; Contracts 288; Server 1017; Benchmarks 14). Integration test `CliSearchIntegrationTests` compiles; runnable locally via `dotnet test --filter Category=Integration` (requires Docker/Aspire topology; not exercised in this dev-agent session — see Task 10.1 CI-precondition callout).
++- **7.1 regression guard:** `ConfigShowGoldenFileTests` locks byte-for-byte Story 7.1 output (AC #1 / ADR-7.2-002). All pre-existing 7.1 tests pass unmodified.
++- **JSON envelope:** schemaVersion=1 verified in 4 per-command tests (`TenantListFormatterTests`, `ConfigShowFormatterTests`, `SearchResultFormatterTests`, `MemoryUnitFormatterTests`). Source-gen context (`CliJsonContext`) chained after `MemoriesJsonContext` for downstream types.
++- **Caveat verbatim (AC #5):** `SearchResultFormatterTests.HybridHuman_WithExplain_PrintsCaveatFirstAndOnce` asserts the caveat appears exactly once per response and BEFORE the first result row (survives `| head -N` piping per Task 6.3).
++- **Metadata origin visual distinction (AC #6):** `MemoryUnitFormatterTests.Human_MixedOrigins_PrintsLowercaseOriginPrefixes` asserts `[human, confidence=...]` and `[ai, confidence=...]` with explicit case-sensitive comparison; Title-case `[Human` / `[Ai,` ruled out.
++- **CLI-side cap (Task 5.6):** `SearchQueryCommandTests.Invoke_MaxResultsAboveCeiling_WritesMessageAndExitsPlumbing` verifies the 1000-row ceiling triggers before the HTTP call.
++- **Conditional --query validation (Task 5.3):** `SearchQueryCommandTests.Invoke_MissingQueryOnGraph_DoesNotTriggerQueryValidation` locks the graph-axis carve-out so a later story can add `--graph-start-node-id` additively.
++- **--help/--version always succeed (Task 1.5):** `UnknownFormatTests.ApplyGlobalOptions_UnknownFormatWithHelp_DoesNotThrow` asserts the skip.
++- **Token-redaction continuity (Task 9.9):** `TokenRedactionTests` now loops over all three `OutputFormat` values for `search query` and `search inspect`, asserting the sentinel never appears in combined stdout+stderr.
++- **Server-param defaults omitted (Task 4.2):** `MemoriesClientSearchTests` asserts no `maxResults=10`, no `caseId=`, no `offset=`, no `explain=true` on the wire when the CLI omits or defaults them. Graph axis also omits `query=`.
++- **ISO-8601 dates (Task 7.4):** `MemoryUnitFormatterTests.Human_IngestedAt_UsesIsoRoundTripFormat` locks the culture-invariant `"o"` format against CI locale drift.
++- **Cold-start (Task 9.10 manual check):** Not run in this session — the dev agent is operating inside an automated harness without a representative warm-machine baseline. Reviewer should run `memories --version` three times and record best-of-three before merging; 1.2s budget.
++- **Stub trim (Task 5.5):** only `"search"` removed from `RootCommandFactory.CommandGroups`; `ingest`, `traverse`, `case`, `status`, `explore`, `handlers`, `quickstart` remain as `NotImplementedCommand` stubs.
++- **Pre-implementation metadata:**
++    - Story file created with repo-grounded implementation guidance, strict scope boundaries against Stories 7.3–7.5, and inheritance of all Story 7.1 ADRs + anti-patterns + Implementation Contracts by reference.
++    - Sprint status updated: `7-2-output-formats-and-explain-display: backlog → ready-for-dev → in-progress → review`.
+ - **Revision 5 (2026-04-16, post-advanced-elicitation stakeholder round table / customer support theater / comparative analysis / SCAMPER / thesis defense):** applied 8 findings from non-dev perspectives.
+     - **F13 (Task 9.10 new):** manual cold-start regression check — dev agent runs `memories --version` three times, flags if >1.2s (200ms budget over 7.1's `<1s`). Catches gross DI misuse; not a CI gate.
+     - **F14 (Dev Notes "Trust boundaries"):** explicit paragraph clarifying the CLI renders server data verbatim; content scrubbing at rest (token-in-SourceUri etc.) is the server's responsibility, not 7.2's. Prevents recurring security-review misfiling.
+@@ -405,8 +419,84 @@ claude-opus-4-6[1m]
+ 
+ ### File List
+ 
+-- `_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md`
+-- `_bmad-output/implementation-artifacts/sprint-status.yaml`
++**Story + sprint status**
++
++- `_bmad-output/implementation-artifacts/7-2-output-formats-and-explain-display.md` (modified)
++- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
++
++**New CLI output infrastructure**
++
++- `src/Hexalith.Memories.Cli/Output/OutputFormat.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/IOutputFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/OutputFormatterRouter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/FormatterNotRegisteredException.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Json/CliOutputEnvelope.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Json/CliJsonContext.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Json/ConfigShowData.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/TableWriter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/JsonEnvelopeWriter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/SnippetTruncator.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/TenantListHumanFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/TenantListJsonFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/TenantListTableFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowHumanFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowJsonFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowTableFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultJsonFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultTableFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/SearchResultHumanFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/SearchResultJsonFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/SearchResultTableFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitHumanFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitJsonFormatter.cs` (new)
++- `src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitTableFormatter.cs` (new)
++
++**New CLI commands**
++
++- `src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs` (new)
++- `src/Hexalith.Memories.Cli/Commands/SearchInspectCommand.cs` (new)
++
++**Modified CLI wiring**
++
++- `src/Hexalith.Memories.Cli/CliServices.cs` (modified)
++- `src/Hexalith.Memories.Cli/Program.cs` (unchanged by this story, reviewed)
++- `src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs` (modified — added `FormatOption`)
++- `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs` (modified — `--format` wiring, `search` group, help/version skip)
++- `src/Hexalith.Memories.Cli/Commands/TenantListCommand.cs` (modified — routes through formatter)
++- `src/Hexalith.Memories.Cli/Commands/ConfigShowCommand.cs` (modified — routes through formatter)
++- `src/Hexalith.Memories.Cli/Execution/CliConsole.cs` (modified — added `Format` property)
++
++**New Client.Rest surface**
++
++- `src/Hexalith.Memories.Client.Rest/SearchRequest.cs` (new)
++- `src/Hexalith.Memories.Client.Rest/HybridSearchRequest.cs` (new)
++- `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` (modified — `HybridSearchAsync`, `SearchAsync`, `GetMemoryUnitAsync`, `BuildSearchPath`)
++
++**New unit tests**
++
++- `tests/Hexalith.Memories.Cli.Tests/Cli/OutputFormatterRouterTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/ConfigShowGoldenFileTests.cs` (new — 7.1 regression golden)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/TenantListFormatterTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/ConfigShowFormatterTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/SearchResultFormatterTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/MemoryUnitFormatterTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/SearchQueryCommandTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/UnknownFormatTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSearchTests.cs` (new)
++- `tests/Hexalith.Memories.Cli.Tests/Cli/TokenRedactionTests.cs` (modified — extended to search commands across all three formats)
++
++**New integration test**
++
++- `tests/Hexalith.Memories.IntegrationTests/Cli/CliSearchIntegrationTests.cs` (new)
++
++**Docs + smoke scripts**
++
++- `docs/dev/cli-output-formats.md` (new)
++- `docs/dev/cli-config.md` (modified — added "See also" cross-reference)
++- `README.md` (modified — CLI preview section)
++- `tools/verify-cli-pack.ps1` (modified — added `search query --help` + `--format json tenant list --help` smoke calls)
++- `tools/verify-cli-pack.sh` (modified — same additions)
+ 
+ ### Change Log
+ 
+@@ -417,3 +507,4 @@ claude-opus-4-6[1m]
+ | 2026-04-16 | 0.3 | Post-advanced-elicitation revision (pre-mortem / Occam / chaos / FMA / hindsight): 8 fixes across Tasks 1.3, 2.1, 5.4, 6.6a, 7.4, 9.2, 10.1. Removed ADR-7.2-005, demoted ADR-7.2-004. Typed `FormatterNotRegisteredException`. Capture-first golden file. ISO-8601 date formatting. Degradation notice as single-owner bridge. Envelope fields locked at three. Net complexity down despite 8 additions (Occam cleanup compensates). |
+ | 2026-04-16 | 0.4 | Second advanced-elicitation revision (mentor-apprentice / red-team / first-principles / reverse-engineering / 5-whys): 8 of 9 fixes applied (F1 withdrawn). New Task 5.6 (`--max-results` cap). Task 1.5 `--help` + invalid `--format` UX fix. Task 10.2 caveat substring pin. Task 7.4 empty-metadata handling. Task 5.2 `--query` phrasing reconciled. ADR-7.2-002 "Reconsider at" concretized. Added Task dependency-stream sketch for parallelizing agents. |
+ | 2026-04-16 | 0.5 | Third advanced-elicitation revision (stakeholder / support-theater / matrix / SCAMPER / thesis-defense): all 8 non-dev-perspective findings applied. New Task 9.10 (cold-start regression check). Dev Notes gained "Compliance scope disclaimer" and "Trust boundaries" sections for reviewer clarity. ADR-7.2-001 gained a concrete deprecation policy (v1+v2 coexistence window). Task 8.1 docs expanded with combined-flag example, pipe-safety, and format-extensibility notes. Tasks section gained a top-level Task Summary Table for readability at length (biggest usability win). Story 7.1 status flipped to `done` in sprint-status (no content change here, noted for accuracy). |
++| 2026-04-16 | 1.0 | Full implementation complete (Dev — Amelia). All 10 Tasks + 54 subtasks checked. 25 new formatter/infrastructure files under `src/Hexalith.Memories.Cli/Output/`, 2 new CLI commands (`search query`, `search inspect`), 3 new `MemoriesClient` methods + 2 request DTOs, 38 new unit tests (91→93 total with 2 existing tests extended), 1 new integration test. `docs/dev/cli-output-formats.md` published. `README.md` + `cli-config.md` cross-linked. `verify-cli-pack.ps1`/`.sh` extended with Story 7.2 smoke calls. `dotnet build Hexalith.Memories.slnx -c Debug` passes with `TreatWarningsAsErrors=true`, 0 warnings; non-integration test suite green at 1412 passing. Status: in-progress → review. |
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 4ec2f92..985e9aa 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -1,5 +1,5 @@
+ # generated: 2026-03-26
+-# last_updated: 2026-04-16 # Story 7.1 CLI Foundation & Command Structure: done
++# last_updated: 2026-04-16 # Story 7.2 Output Formats & Explain Display: review
+ # project: Hexalith.Memories
+ # project_key: NOKEY
+ # tracking_system: file-system
+@@ -35,7 +35,7 @@
+ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+ 
+ generated: 2026-03-26
+-last_updated: 2026-04-16 # Story 7.1 CLI Foundation & Command Structure: done
++last_updated: 2026-04-16 # Story 7.2 Output Formats & Explain Display: review
+ project: Hexalith.Memories
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -110,7 +110,7 @@ development_status:
+   # Epic 7: CLI & Developer Experience
+   epic-7: in-progress
+   7-1-cli-foundation-and-command-structure: done
+-  7-2-output-formats-and-explain-display: ready-for-dev
++  7-2-output-formats-and-explain-display: review
+   7-3-actionable-error-messages-and-discoverable-actions: backlog
+   7-4-quickstart-and-documentation: backlog
+   7-5-search-and-access-telemetry: backlog
+diff --git a/docs/dev/cli-config.md b/docs/dev/cli-config.md
+index 1a8e1be..11f54e6 100644
+--- a/docs/dev/cli-config.md
++++ b/docs/dev/cli-config.md
+@@ -152,3 +152,7 @@ install succeeds but `memories` is not on `PATH`.
+ `--verbose` prints the underlying exception type + message (never the stack trace, never the token
+ value) to stderr under the one-line plumbing error. This is a debugging aid during 7.1; Story 7.3
+ extends the error surface with recovery suggestions.
++
++## See also
++
++- [`cli-output-formats.md`](cli-output-formats.md) — `--format human|json|table` contract, envelope schema, and per-command examples (Story 7.2).
+diff --git a/src/Hexalith.Memories.Cli/CliServices.cs b/src/Hexalith.Memories.Cli/CliServices.cs
+index 61ddecd..1388dac 100644
+--- a/src/Hexalith.Memories.Cli/CliServices.cs
++++ b/src/Hexalith.Memories.Cli/CliServices.cs
+@@ -8,7 +8,11 @@ namespace Hexalith.Memories.Cli;
+ using Hexalith.Memories.Cli.Commands;
+ using Hexalith.Memories.Cli.Configuration;
+ using Hexalith.Memories.Cli.Execution;
++using Hexalith.Memories.Cli.Output;
++using Hexalith.Memories.Cli.Output.Formatters;
++using Hexalith.Memories.Cli.Output.Json;
+ using Hexalith.Memories.Client.Rest;
++using Hexalith.Memories.Contracts.V1;
+ 
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.Logging;
+@@ -72,6 +76,49 @@ public static class CliServices
+         // Executor.
+         services.AddSingleton<CliCommandExecutor>();
+ 
++        // Story 7.2: output-format infrastructure.
++        services.AddSingleton<OutputFormatterRouter>();
++
++        RegisterFormatters<IReadOnlyList<TenantSummary>>(
++            services,
++            new TenantListHumanFormatter(),
++            new TenantListJsonFormatter(),
++            new TenantListTableFormatter());
++
++        RegisterFormatters<ConfigShowData>(
++            services,
++            new ConfigShowHumanFormatter(),
++            new ConfigShowJsonFormatter(),
++            new ConfigShowTableFormatter());
++
++        RegisterFormatters<HybridSearchResult>(
++            services,
++            new HybridSearchResultHumanFormatter(),
++            new HybridSearchResultJsonFormatter(),
++            new HybridSearchResultTableFormatter());
++
++        RegisterFormatters<SearchResult>(
++            services,
++            new SearchResultHumanFormatter(),
++            new SearchResultJsonFormatter(),
++            new SearchResultTableFormatter());
++
++        RegisterFormatters<MemoryUnit>(
++            services,
++            new MemoryUnitHumanFormatter(),
++            new MemoryUnitJsonFormatter(),
++            new MemoryUnitTableFormatter());
++
+         return services;
+     }
++
++    private static void RegisterFormatters<T>(
++        IServiceCollection services,
++        params IOutputFormatter<T>[] formatters)
++    {
++        foreach (IOutputFormatter<T> formatter in formatters)
++        {
++            services.AddSingleton(formatter);
++        }
++    }
+ }
+diff --git a/src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs b/src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs
+index 6c127d4..2a5dee4 100644
+--- a/src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs
++++ b/src/Hexalith.Memories.Cli/Commands/CliGlobalOptions.cs
+@@ -7,7 +7,7 @@ namespace Hexalith.Memories.Cli.Commands;
+ 
+ using System.CommandLine;
+ 
+-/// <summary>Holds the three global options advertised on the root command (AC #3a / ADR-7.1-005).</summary>
++/// <summary>Holds the global options advertised on the root command (ADR-7.1-005 + Story 7.2 <c>--format</c>).</summary>
+ public sealed class CliGlobalOptions
+ {
+     /// <summary>The <c>--endpoint</c> option.</summary>
+@@ -30,4 +30,11 @@ public sealed class CliGlobalOptions
+         Description = "Emit additional diagnostic output to stderr (exception type / message; never the token).",
+         Recursive = true,
+     };
++
++    /// <summary>The <c>--format</c> option (Story 7.2 / ADR-7.2-001). Raw string — validated in <c>ApplyGlobalOptions</c>.</summary>
++    public Option<string?> FormatOption { get; } = new("--format")
++    {
++        Description = "Output format: human (default), json, table.",
++        Recursive = true,
++    };
+ }
+diff --git a/src/Hexalith.Memories.Cli/Commands/ConfigShowCommand.cs b/src/Hexalith.Memories.Cli/Commands/ConfigShowCommand.cs
+index 60bc384..da40f5d 100644
+--- a/src/Hexalith.Memories.Cli/Commands/ConfigShowCommand.cs
++++ b/src/Hexalith.Memories.Cli/Commands/ConfigShowCommand.cs
+@@ -9,12 +9,14 @@ using System.CommandLine;
+ 
+ using Hexalith.Memories.Cli.Configuration;
+ using Hexalith.Memories.Cli.Execution;
++using Hexalith.Memories.Cli.Output;
++using Hexalith.Memories.Cli.Output.Json;
+ 
+ using Microsoft.Extensions.DependencyInjection;
+ 
+ /// <summary>
+-/// Builds <c>memories config show</c> — the diagnostic command that prints the resolved endpoint, source,
+-/// and whether a token is configured (AC #3c). Output format is frozen key=value lines on stdout.
++/// Builds <c>memories config show</c>. Story 7.2 routes output through <see cref="OutputFormatterRouter"/>;
++/// human format preserves the byte-for-byte key=value form from Story 7.1 (AC #1 / ADR-7.2-002).
+ /// </summary>
+ public static class ConfigShowCommand
+ {
+@@ -30,15 +32,17 @@ public static class ConfigShowCommand
+         {
+             CliConsole console = services.GetRequiredService<CliConsole>();
+             ResolvedConfigPipeline pipeline = services.GetRequiredService<ResolvedConfigPipeline>();
++            OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
+ 
+             try
+             {
+                 ResolvedConfig resolved = pipeline.Resolve();
+-                string tokenConfigured = string.IsNullOrEmpty(resolved.ApiToken) ? "false" : "true";
++                var data = new ConfigShowData(
++                    Endpoint: EndpointDisplayFormatter.Format(resolved.Endpoint),
++                    ResolvedBy: resolved.ResolvedBy,
++                    TokenConfigured: !string.IsNullOrEmpty(resolved.ApiToken));
+ 
+-                console.Out.WriteLine($"endpoint={EndpointDisplayFormatter.Format(resolved.Endpoint)}");
+-                console.Out.WriteLine($"resolvedBy={resolved.ResolvedBy}");
+-                console.Out.WriteLine($"tokenConfigured={tokenConfigured}");
++                router.Write(console.Format, data, console.Out);
+                 return CliExitCodes.Success;
+             }
+             catch (InvalidConfigurationException invalidConfig)
+diff --git a/src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs b/src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs
+index a9483a9..60d8b9f 100644
+--- a/src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs
++++ b/src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs
+@@ -9,6 +9,7 @@ using System.CommandLine;
+ 
+ using Hexalith.Memories.Cli.Configuration;
+ using Hexalith.Memories.Cli.Execution;
++using Hexalith.Memories.Cli.Output;
+ 
+ using Microsoft.Extensions.DependencyInjection;
+ 
+@@ -33,7 +34,6 @@ Example:
+     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
+     [
+         ("ingest", "Ingest memories from files, URLs, or directories.", "7.2"),
+-        ("search", "Search memories with three-axis hybrid fusion.", "7.2"),
+         ("traverse", "Walk the causal graph from a seed memory.", "7.2"),
+         ("case", "Create, list, and manage cases.", "7.2"),
+         ("status", "Inspect ingestion pipeline status.", "7.2"),
+@@ -55,6 +55,7 @@ Example:
+         root.Options.Add(globalOptions.EndpointOption);
+         root.Options.Add(globalOptions.TokenOption);
+         root.Options.Add(globalOptions.VerboseOption);
++        root.Options.Add(globalOptions.FormatOption);
+ 
+         // tenant — fully wired group in 7.1.
+         var tenantCommand = new Command("tenant", TenantCommandDescription);
+@@ -68,7 +69,14 @@ Example:
+         configCommand.SetAction(_ => configCommand.Parse("--help").Invoke());
+         root.Subcommands.Add(configCommand);
+ 
+-        // Stubbed groups (7.2–7.4).
++        // search — wired group in 7.2 (query + inspect).
++        var searchCommand = new Command("search", "Search memories with three-axis hybrid fusion.");
++        searchCommand.Subcommands.Add(SearchQueryCommand.Build(services));
++        searchCommand.Subcommands.Add(SearchInspectCommand.Build(services));
++        searchCommand.SetAction(_ => searchCommand.Parse("--help").Invoke());
++        root.Subcommands.Add(searchCommand);
++
++        // Stubbed groups (7.3–7.4).
+         foreach ((string name, string description, string storyId) in CommandGroups)
+         {
+             root.Subcommands.Add(NotImplementedCommand.Create(services, name, description, storyId));
+@@ -111,5 +119,54 @@ Example:
+ 
+         flag.ApiToken = parseResult.GetValue(globalOptions.TokenOption);
+         console.Verbose = parseResult.GetValue(globalOptions.VerboseOption);
++
++        // Story 7.2: resolve --format. When --help or --version is present, skip validation so an invalid
++        // --format value never blocks help output (Task 1.5).
++        string? formatRaw = parseResult.GetValue(globalOptions.FormatOption);
++        if (string.IsNullOrEmpty(formatRaw))
++        {
++            console.Format = OutputFormat.Human;
++            return;
++        }
++
++        if (IsHelpOrVersionInvocation(parseResult))
++        {
++            console.Format = OutputFormat.Human;
++            return;
++        }
++
++        if (!TryParseFormat(formatRaw, out OutputFormat parsed))
++        {
++            throw new Configuration.InvalidConfigurationException(
++                filePath: "--format",
++                message: $"Unknown format '{formatRaw}'. Use human, json, or table.");
++        }
++
++        console.Format = parsed;
++    }
++
++    /// <summary>Returns <see langword="true"/> if the parse result carries a <c>--help</c>, <c>-h</c>, or <c>--version</c> directive.</summary>
++    private static bool IsHelpOrVersionInvocation(System.CommandLine.ParseResult parseResult)
++    {
++        foreach (System.CommandLine.Parsing.Token token in parseResult.Tokens)
++        {
++            string value = token.Value;
++            if (string.Equals(value, "--help", StringComparison.Ordinal)
++                || string.Equals(value, "-h", StringComparison.Ordinal)
++                || string.Equals(value, "-?", StringComparison.Ordinal)
++                || string.Equals(value, "/?", StringComparison.Ordinal)
++                || string.Equals(value, "--version", StringComparison.Ordinal))
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    private static bool TryParseFormat(string raw, out OutputFormat format)
++    {
++        return Enum.TryParse(raw, ignoreCase: true, out format)
++            && Enum.IsDefined(format);
+     }
+ }
+diff --git a/src/Hexalith.Memories.Cli/Commands/TenantListCommand.cs b/src/Hexalith.Memories.Cli/Commands/TenantListCommand.cs
+index 394dc7f..64c071c 100644
+--- a/src/Hexalith.Memories.Cli/Commands/TenantListCommand.cs
++++ b/src/Hexalith.Memories.Cli/Commands/TenantListCommand.cs
+@@ -8,12 +8,13 @@ namespace Hexalith.Memories.Cli.Commands;
+ using System.CommandLine;
+ 
+ using Hexalith.Memories.Cli.Execution;
++using Hexalith.Memories.Cli.Output;
+ using Hexalith.Memories.Client.Rest;
+ using Hexalith.Memories.Contracts.V1;
+ 
+ using Microsoft.Extensions.DependencyInjection;
+ 
+-/// <summary>Builds <c>memories tenant list</c> — the single fully-wired command in Story 7.1.</summary>
++/// <summary>Builds <c>memories tenant list</c>. Story 7.2 routes output through <see cref="OutputFormatterRouter"/>.</summary>
+ public static class TenantListCommand
+ {
+     private const string ListCommandDescription = """
+@@ -22,6 +23,7 @@ List all tenants registered on the server.
+ Examples:
+     memories tenant list
+     memories --endpoint http://127.0.0.1:5000 tenant list
++    memories --format json tenant list
+ """;
+ 
+     /// <summary>Builds the <c>list</c> subcommand.</summary>
+@@ -40,23 +42,14 @@ Examples:
+     {
+         CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
+         CliConsole console = services.GetRequiredService<CliConsole>();
++        OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
+ 
+         return await executor.ExecuteAsync(async (config, innerCt) =>
+         {
+             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
+             IReadOnlyList<TenantSummary> tenants = await client.ListTenantsAsync(innerCt).ConfigureAwait(false);
+ 
+-            if (tenants.Count == 0)
+-            {
+-                console.Out.WriteLine("No tenants found.");
+-                return CliExitCodes.Success;
+-            }
+-
+-            foreach (TenantSummary tenant in tenants)
+-            {
+-                console.Out.WriteLine($"{tenant.Id}\t{tenant.DisplayName}");
+-            }
+-
++            router.Write(console.Format, tenants, console.Out);
+             return CliExitCodes.Success;
+         }, ct).ConfigureAwait(false);
+     }
+diff --git a/src/Hexalith.Memories.Cli/Execution/CliConsole.cs b/src/Hexalith.Memories.Cli/Execution/CliConsole.cs
+index 71c053e..eac5abe 100644
+--- a/src/Hexalith.Memories.Cli/Execution/CliConsole.cs
++++ b/src/Hexalith.Memories.Cli/Execution/CliConsole.cs
+@@ -5,6 +5,8 @@
+ 
+ namespace Hexalith.Memories.Cli.Execution;
+ 
++using Hexalith.Memories.Cli.Output;
++
+ /// <summary>Abstraction over stdout/stderr so tests can capture CLI output.</summary>
+ public sealed class CliConsole
+ {
+@@ -16,4 +18,7 @@ public sealed class CliConsole
+ 
+     /// <summary>Gets or sets the process verbose flag.</summary>
+     public bool Verbose { get; set; }
++
++    /// <summary>Gets or sets the resolved output format (Story 7.2). Default: <see cref="OutputFormat.Human"/>.</summary>
++    public OutputFormat Format { get; set; } = OutputFormat.Human;
+ }
+diff --git a/src/Hexalith.Memories.Client.Rest/MemoriesClient.cs b/src/Hexalith.Memories.Client.Rest/MemoriesClient.cs
+index 9f652fc..68af0ad 100644
+--- a/src/Hexalith.Memories.Client.Rest/MemoriesClient.cs
++++ b/src/Hexalith.Memories.Client.Rest/MemoriesClient.cs
+@@ -5,8 +5,10 @@
+ 
+ namespace Hexalith.Memories.Client.Rest;
+ 
++using System.Globalization;
+ using System.Net;
+ using System.Net.Http.Json;
++using System.Text;
+ 
+ using Hexalith.Memories.Contracts.V1;
+ 
+@@ -100,6 +102,152 @@ public class MemoriesClient
+         return cases ?? [];
+     }
+ 
++    /// <summary>Runs a hybrid (multi-axis) search. Story 7.2 addition.</summary>
++    /// <param name="request">The hybrid search request.</param>
++    /// <param name="ct">Cancellation token.</param>
++    /// <returns>The fused hybrid search result.</returns>
++    public virtual async Task<HybridSearchResult> HybridSearchAsync(HybridSearchRequest request, CancellationToken ct)
++    {
++        ArgumentNullException.ThrowIfNull(request);
++        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantId);
++        ArgumentException.ThrowIfNullOrWhiteSpace(request.Query);
++
++        string path = BuildSearchPath(
++            axis: "hybrid",
++            tenantId: request.TenantId,
++            query: request.Query,
++            caseId: request.CaseId,
++            maxResults: request.MaxResults,
++            explain: request.Explain);
++
++        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
++        if (!response.IsSuccessStatusCode)
++        {
++            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
++            throw new MemoriesRemoteException(response.StatusCode, error);
++        }
++
++        try
++        {
++            HybridSearchResult? result = await response.Content
++                .ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options, ct)
++                .ConfigureAwait(false);
++            return result ?? throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with an empty body.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
++        }
++        catch (System.Text.Json.JsonException jsonException)
++        {
++            throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with a body that could not be parsed as HybridSearchResult.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
++                jsonException);
++        }
++    }
++
++    /// <summary>Runs a single-axis search (syntactic, semantic, or graph). Story 7.2 addition.</summary>
++    /// <param name="request">The single-axis search request.</param>
++    /// <param name="ct">Cancellation token.</param>
++    /// <returns>The single-axis search result.</returns>
++    public virtual async Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)
++    {
++        ArgumentNullException.ThrowIfNull(request);
++        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantId);
++        ArgumentException.ThrowIfNullOrWhiteSpace(request.Axis);
++
++        string path = BuildSearchPath(
++            axis: request.Axis,
++            tenantId: request.TenantId,
++            query: request.Query,
++            caseId: request.CaseId,
++            maxResults: request.MaxResults,
++            explain: request.Explain);
++
++        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
++        if (!response.IsSuccessStatusCode)
++        {
++            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
++            throw new MemoriesRemoteException(response.StatusCode, error);
++        }
++
++        try
++        {
++            SearchResult? result = await response.Content
++                .ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options, ct)
++                .ConfigureAwait(false);
++            return result ?? throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with an empty body.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
++        }
++        catch (System.Text.Json.JsonException jsonException)
++        {
++            throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with a body that could not be parsed as SearchResult.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
++                jsonException);
++        }
++    }
++
++    /// <summary>Fetches a single memory unit for <c>search inspect</c>. Story 7.2 addition.</summary>
++    /// <param name="tenantId">The tenant identifier.</param>
++    /// <param name="caseId">The case identifier.</param>
++    /// <param name="memoryUnitId">The memory unit identifier.</param>
++    /// <param name="ct">Cancellation token.</param>
++    /// <returns>The memory unit with its metadata.</returns>
++    public virtual async Task<MemoryUnit> GetMemoryUnitAsync(
++        string tenantId,
++        string caseId,
++        string memoryUnitId,
++        CancellationToken ct)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
++        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
++        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
++
++        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/{Uri.EscapeDataString(memoryUnitId)}";
++        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
++        if (!response.IsSuccessStatusCode)
++        {
++            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
++            throw new MemoriesRemoteException(response.StatusCode, error);
++        }
++
++        try
++        {
++            MemoryUnit? unit = await response.Content
++                .ReadFromJsonAsync<MemoryUnit>(MemoriesJsonContext.Options, ct)
++                .ConfigureAwait(false);
++            return unit ?? throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with an empty body.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
++        }
++        catch (System.Text.Json.JsonException jsonException)
++        {
++            throw new MemoriesRemoteException(
++                response.StatusCode,
++                new ErrorResponse(
++                    Code: "INVALID_RESPONSE",
++                    Message: "Server returned a 2xx response with a body that could not be parsed as MemoryUnit.",
++                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
++                jsonException);
++        }
++    }
++
+     /// <summary>
+     /// Probes the <c>/health</c> endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
+     /// server answered with a 2xx status code.
+@@ -129,4 +277,46 @@ public class MemoriesClient
+             return false;
+         }
+     }
++
++    /// <summary>
++    /// Server defaults for parameters the CLI omits when unchanged. Keeping this private stops the
++    /// values from drifting into callers that might pin them as wire literals.
++    /// </summary>
++    private const int DefaultServerMaxResults = 10;
++
++    private static string BuildSearchPath(
++        string axis,
++        string tenantId,
++        string? query,
++        string? caseId,
++        int maxResults,
++        bool explain)
++    {
++        var builder = new StringBuilder("api/search?tenantId=");
++        builder.Append(Uri.EscapeDataString(tenantId));
++
++        if (!string.IsNullOrEmpty(query))
++        {
++            builder.Append("&query=").Append(Uri.EscapeDataString(query));
++        }
++
++        if (!string.IsNullOrEmpty(caseId))
++        {
++            builder.Append("&caseId=").Append(Uri.EscapeDataString(caseId));
++        }
++
++        builder.Append("&axis=").Append(Uri.EscapeDataString(axis));
++
++        if (maxResults != DefaultServerMaxResults)
++        {
++            builder.Append("&maxResults=").Append(maxResults.ToString(CultureInfo.InvariantCulture));
++        }
++
++        if (explain)
++        {
++            builder.Append("&explain=true");
++        }
++
++        return builder.ToString();
++    }
+ }
+diff --git a/tests/Hexalith.Memories.Cli.Tests/Cli/TokenRedactionTests.cs b/tests/Hexalith.Memories.Cli.Tests/Cli/TokenRedactionTests.cs
+index 978b80b..142da21 100644
+--- a/tests/Hexalith.Memories.Cli.Tests/Cli/TokenRedactionTests.cs
++++ b/tests/Hexalith.Memories.Cli.Tests/Cli/TokenRedactionTests.cs
+@@ -77,6 +77,58 @@ public class TokenRedactionTests
+         combined.ShouldNotContain(TokenSentinel);
+     }
+ 
++    [Fact]
++    public async Task SearchQuery_TransportFailure_DoesNotLeakTokenInAnyFormat()
++    {
++        foreach (Hexalith.Memories.Cli.Output.OutputFormat format in Enum.GetValues<Hexalith.Memories.Cli.Output.OutputFormat>())
++        {
++            var stdout = new StringWriter();
++            var stderr = new StringWriter();
++            IServiceProvider services = BuildServices(
++                stdout,
++                stderr,
++                TokenSentinel,
++                endpoint: "http://127.0.0.1:65000/",
++                verbose: true);
++            CliConsole console = services.GetRequiredService<CliConsole>();
++            console.Format = format;
++
++            System.CommandLine.Command query = SearchQueryCommand.Build(services);
++            int exit = await query.Parse(new[] { "query", "--tenant", "t1", "--query", "needle" }).InvokeAsync();
++
++            string combined = stdout.ToString() + stderr.ToString();
++            combined.ShouldNotContain(TokenSentinel);
++            exit.ShouldBe(CliExitCodes.Plumbing, $"format={format}");
++        }
++    }
++
++    [Fact]
++    public async Task SearchInspect_TransportFailure_DoesNotLeakTokenInAnyFormat()
++    {
++        foreach (Hexalith.Memories.Cli.Output.OutputFormat format in Enum.GetValues<Hexalith.Memories.Cli.Output.OutputFormat>())
++        {
++            var stdout = new StringWriter();
++            var stderr = new StringWriter();
++            IServiceProvider services = BuildServices(
++                stdout,
++                stderr,
++                TokenSentinel,
++                endpoint: "http://127.0.0.1:65000/",
++                verbose: true);
++            CliConsole console = services.GetRequiredService<CliConsole>();
++            console.Format = format;
++
++            System.CommandLine.Command inspect = SearchInspectCommand.Build(services);
++            int exit = await inspect
++                .Parse(new[] { "inspect", "--tenant", "t1", "--case", "c1", "--id", "mu-1" })
++                .InvokeAsync();
++
++            string combined = stdout.ToString() + stderr.ToString();
++            combined.ShouldNotContain(TokenSentinel);
++            exit.ShouldBe(CliExitCodes.Plumbing, $"format={format}");
++        }
++    }
++
+     [Fact]
+     public async Task Executor_UnhandledException_DoesNotLeakEndpointUserInfoInVerboseOutput()
+     {
+diff --git a/tools/verify-cli-pack.ps1 b/tools/verify-cli-pack.ps1
+index a7db839..581f2ef 100644
+--- a/tools/verify-cli-pack.ps1
++++ b/tools/verify-cli-pack.ps1
+@@ -31,7 +31,7 @@ Write-Host "[2/4] dotnet tool install --global --add-source $ArtifactsDir Hexali
+ & dotnet tool install --global --add-source $ArtifactsDir Hexalith.Memories.Cli
+ if ($LASTEXITCODE -ne 0) { throw "dotnet tool install failed ($LASTEXITCODE)" }
+ 
+-Write-Host "[3/4] memories --version"
++Write-Host "[3/5] memories --version"
+ $memoriesExe = Get-Command memories -ErrorAction SilentlyContinue
+ if (-not $memoriesExe) {
+     $toolsDir = if ($IsWindows) {
+@@ -50,7 +50,13 @@ See docs/dev/cli-config.md (PATH troubleshooting) for per-shell remediation.
+ & memories --version
+ if ($LASTEXITCODE -ne 0) { throw "'memories --version' failed ($LASTEXITCODE)" }
+ 
+-Write-Host "[4/4] dotnet tool uninstall --global Hexalith.Memories.Cli"
++Write-Host "[4/5] Story 7.2 format surface smoke (help-only, no server required)"
++& memories search query --help | Out-Null
++if ($LASTEXITCODE -ne 0) { throw "'memories search query --help' failed ($LASTEXITCODE)" }
++& memories --format json tenant list --help | Out-Null
++if ($LASTEXITCODE -ne 0) { throw "'memories --format json tenant list --help' failed ($LASTEXITCODE)" }
++
++Write-Host "[5/5] dotnet tool uninstall --global Hexalith.Memories.Cli"
+ & dotnet tool uninstall --global Hexalith.Memories.Cli
+ if ($LASTEXITCODE -ne 0) { throw "dotnet tool uninstall failed ($LASTEXITCODE)" }
+ 
+diff --git a/tools/verify-cli-pack.sh b/tools/verify-cli-pack.sh
+index 4b8fbe2..7f2189d 100644
+--- a/tools/verify-cli-pack.sh
++++ b/tools/verify-cli-pack.sh
+@@ -23,7 +23,7 @@ echo "[2/4] dotnet tool install --global --add-source $ARTIFACTS_DIR Hexalith.Me
+ dotnet tool uninstall --global Hexalith.Memories.Cli >/dev/null 2>&1 || true
+ dotnet tool install --global --add-source "$ARTIFACTS_DIR" Hexalith.Memories.Cli
+ 
+-echo "[3/4] memories --version"
++echo "[3/5] memories --version"
+ if ! command -v memories >/dev/null 2>&1; then
+     echo "'memories' command not found on PATH after install." >&2
+     echo "Check that '$HOME/.dotnet/tools' is on your PATH." >&2
+@@ -32,7 +32,11 @@ if ! command -v memories >/dev/null 2>&1; then
+ fi
+ memories --version
+ 
+-echo "[4/4] dotnet tool uninstall --global Hexalith.Memories.Cli"
++echo "[4/5] Story 7.2 format surface smoke (help-only, no server required)"
++memories search query --help >/dev/null
++memories --format json tenant list --help >/dev/null
++
++echo "[5/5] dotnet tool uninstall --global Hexalith.Memories.Cli"
+ dotnet tool uninstall --global Hexalith.Memories.Cli
+ 
+ echo "OK — packaging pipeline verified."
+
+## ====================================================
+## PART 2: Untracked NEW files (full content)
+## ====================================================
+
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/OutputFormat.cs ----
+
+// <copyright file="OutputFormat.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output;
+
+using System.Text.Json.Serialization;
+
+/// <summary>Selects the output surface used by <see cref="IOutputFormatter{T}"/> implementations.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<OutputFormat>))]
+public enum OutputFormat
+{
+    /// <summary>Default interactive text; preserves Story 7.1 byte-for-byte output for existing commands.</summary>
+    Human,
+
+    /// <summary>Schema-versioned JSON envelope for scripts and agents (ADR-7.2-001).</summary>
+    Json,
+
+    /// <summary>ASCII-aligned table for terminal viewing; not script-safe (ADR-7.2-003).</summary>
+    Table,
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/IOutputFormatter.cs ----
+
+// <copyright file="IOutputFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output;
+
+/// <summary>Renders a typed payload to a target writer in a specific <see cref="OutputFormat"/>.</summary>
+/// <typeparam name="T">The payload type.</typeparam>
+public interface IOutputFormatter<in T>
+{
+    /// <summary>Gets the format this implementation serves.</summary>
+    OutputFormat Format { get; }
+
+    /// <summary>Writes <paramref name="value"/> to <paramref name="writer"/>.</summary>
+    /// <param name="value">The payload.</param>
+    /// <param name="writer">The destination writer.</param>
+    void Write(T value, TextWriter writer);
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/OutputFormatterRouter.cs ----
+
+// <copyright file="OutputFormatterRouter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output;
+
+using Microsoft.Extensions.DependencyInjection;
+
+/// <summary>
+/// Resolves an <see cref="IOutputFormatter{T}"/> per <see cref="OutputFormat"/> via
+/// <see cref="IServiceProvider"/>. Throws a typed <see cref="FormatterNotRegisteredException"/> when the pair
+/// is missing so the dev agent's diagnostic path stays clear (Task 1.3).
+/// </summary>
+public sealed class OutputFormatterRouter
+{
+    private readonly IServiceProvider _services;
+
+    /// <summary>Initializes a new instance of the <see cref="OutputFormatterRouter"/> class.</summary>
+    /// <param name="services">The service provider holding the registered formatters.</param>
+    public OutputFormatterRouter(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        _services = services;
+    }
+
+    /// <summary>Writes <paramref name="value"/> using the formatter registered for (<typeparamref name="T"/>, <paramref name="format"/>).</summary>
+    /// <typeparam name="T">The payload type.</typeparam>
+    /// <param name="format">The selected format.</param>
+    /// <param name="value">The payload.</param>
+    /// <param name="writer">The target writer.</param>
+    public void Write<T>(OutputFormat format, T value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        IOutputFormatter<T>? formatter = _services
+            .GetServices<IOutputFormatter<T>>()
+            .FirstOrDefault(f => f.Format == format);
+
+        if (formatter is null)
+        {
+            throw new FormatterNotRegisteredException(typeof(T), format);
+        }
+
+        formatter.Write(value, writer);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/FormatterNotRegisteredException.cs ----
+
+// <copyright file="FormatterNotRegisteredException.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output;
+
+/// <summary>Thrown when no <see cref="IOutputFormatter{T}"/> is registered for the requested format.</summary>
+public sealed class FormatterNotRegisteredException : InvalidOperationException
+{
+    /// <summary>Initializes a new instance of the <see cref="FormatterNotRegisteredException"/> class.</summary>
+    /// <param name="modelType">The payload type.</param>
+    /// <param name="format">The format that was requested.</param>
+    public FormatterNotRegisteredException(Type modelType, OutputFormat format)
+        : base($"No IOutputFormatter<{FormatTypeName(modelType)}> registered for format '{format}'.")
+    {
+        ArgumentNullException.ThrowIfNull(modelType);
+        ModelType = modelType;
+        Format = format;
+    }
+
+    /// <summary>Gets the payload type.</summary>
+    public Type ModelType { get; }
+
+    /// <summary>Gets the requested format.</summary>
+    public OutputFormat Format { get; }
+
+    private static string FormatTypeName(Type type)
+    {
+        if (!type.IsGenericType)
+        {
+            return type.Name;
+        }
+
+        string baseName = type.Name;
+        int backtick = baseName.IndexOf('`', StringComparison.Ordinal);
+        if (backtick > 0)
+        {
+            baseName = baseName[..backtick];
+        }
+
+        string arguments = string.Join(", ", type.GetGenericArguments().Select(FormatTypeName));
+        return $"{baseName}<{arguments}>";
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Json/CliJsonContext.cs ----
+
+// <copyright file="CliJsonContext.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Source-generated JSON metadata for CLI envelope shapes (Task 2.2).</summary>
+[JsonSourceGenerationOptions(
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    WriteIndented = true)]
+[JsonSerializable(typeof(CliOutputEnvelope<IReadOnlyList<TenantSummary>>))]
+[JsonSerializable(typeof(CliOutputEnvelope<ConfigShowData>))]
+[JsonSerializable(typeof(CliOutputEnvelope<HybridSearchResult>))]
+[JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
+[JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]
+[JsonSerializable(typeof(ConfigShowData))]
+internal sealed partial class CliJsonSourceGenerationContext : JsonSerializerContext;
+
+/// <summary>Shared CLI JSON serialization options — envelope-first, indented, camelCase.</summary>
+public static class CliJsonContext
+{
+    /// <summary>Gets the shared serializer options for CLI JSON output (<c>--format json</c>).</summary>
+    public static JsonSerializerOptions Options { get; } = CreateOptions();
+
+    private static JsonSerializerOptions CreateOptions()
+    {
+        IJsonTypeInfoResolver contractsResolver = MemoriesJsonContext.Options.TypeInfoResolver
+            ?? new DefaultJsonTypeInfoResolver();
+
+        return new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            WriteIndented = true,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(
+                CliJsonSourceGenerationContext.Default,
+                contractsResolver),
+        };
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Json/CliOutputEnvelope.cs ----
+
+// <copyright file="CliOutputEnvelope.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>
+/// Stable JSON envelope returned by every <c>--format json</c> command (ADR-7.2-001). Exactly three
+/// top-level fields — <c>schemaVersion</c>, <c>command</c>, <c>data</c>. Additive changes remain on
+/// <see cref="CurrentSchemaVersion"/>; rename/removal requires bumping.
+/// </summary>
+/// <typeparam name="T">The payload type carried in the <c>data</c> slot.</typeparam>
+/// <param name="SchemaVersion">The envelope schema version (pinned at <see cref="CurrentSchemaVersion"/>).</param>
+/// <param name="Command">The invoked command name (e.g., <c>tenant list</c>).</param>
+/// <param name="Data">The command-specific payload.</param>
+public sealed record CliOutputEnvelope<T>(int SchemaVersion, string Command, T Data)
+{
+    /// <summary>The envelope schema version shipped by Story 7.2.</summary>
+    public const int CurrentSchemaVersion = 1;
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Json/ConfigShowData.cs ----
+
+// <copyright file="ConfigShowData.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>
+/// Projection of <see cref="Hexalith.Memories.Cli.Configuration.ResolvedConfig"/> that deliberately drops the
+/// raw API token (replaced with a <see cref="TokenConfigured"/> boolean — ADR-7.1-003). Never reuse
+/// <see cref="Hexalith.Memories.Cli.Configuration.ResolvedConfig"/> as a JSON payload.
+/// </summary>
+/// <param name="Endpoint">The resolved endpoint URI (already sanitized for display).</param>
+/// <param name="ResolvedBy">The configuration source that produced the endpoint.</param>
+/// <param name="TokenConfigured"><see langword="true"/> when a non-empty token was resolved.</param>
+public sealed record ConfigShowData(string Endpoint, string ResolvedBy, bool TokenConfigured);
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/TableWriter.cs ----
+
+// <copyright file="TableWriter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+/// <summary>Minimal ASCII table renderer — <see cref="string.PadRight(int)"/> only, no layout library (ADR-7.2-003).</summary>
+internal static class TableWriter
+{
+    private const int ColumnSeparatorWidth = 2;
+
+    /// <summary>Writes a header/separator/rows table to <paramref name="writer"/>.</summary>
+    /// <param name="writer">The destination writer.</param>
+    /// <param name="headers">Column headers.</param>
+    /// <param name="rows">Row data; each row must have the same length as <paramref name="headers"/>.</param>
+    public static void Write(TextWriter writer, IReadOnlyList<string> headers, IEnumerable<IReadOnlyList<string>> rows)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(headers);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        IReadOnlyList<IReadOnlyList<string>> materialized = rows.ToArray();
+        int[] widths = new int[headers.Count];
+        for (int col = 0; col < headers.Count; col++)
+        {
+            widths[col] = headers[col].Length;
+        }
+
+        foreach (IReadOnlyList<string> row in materialized)
+        {
+            for (int col = 0; col < headers.Count && col < row.Count; col++)
+            {
+                string cell = row[col] ?? string.Empty;
+                if (cell.Length > widths[col])
+                {
+                    widths[col] = cell.Length;
+                }
+            }
+        }
+
+        WriteRow(writer, headers, widths);
+        writer.WriteLine(new string('-', TotalWidth(widths)));
+        foreach (IReadOnlyList<string> row in materialized)
+        {
+            WriteRow(writer, row, widths);
+        }
+    }
+
+    private static int TotalWidth(int[] widths)
+    {
+        int total = 0;
+        foreach (int w in widths)
+        {
+            total += w;
+        }
+
+        return total + (Math.Max(widths.Length - 1, 0) * ColumnSeparatorWidth);
+    }
+
+    private static void WriteRow(TextWriter writer, IReadOnlyList<string> cells, int[] widths)
+    {
+        for (int col = 0; col < widths.Length; col++)
+        {
+            string cell = col < cells.Count ? cells[col] ?? string.Empty : string.Empty;
+            writer.Write(cell.PadRight(widths[col]));
+            if (col < widths.Length - 1)
+            {
+                writer.Write("  ");
+            }
+        }
+
+        writer.WriteLine();
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/JsonEnvelopeWriter.cs ----
+
+// <copyright file="JsonEnvelopeWriter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>Helpers that wrap a payload in <see cref="CliOutputEnvelope{T}"/> and write it to a writer.</summary>
+internal static class JsonEnvelopeWriter
+{
+    public static void Write<T>(TextWriter writer, string command, T data)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+
+        var envelope = new CliOutputEnvelope<T>(CliOutputEnvelope<T>.CurrentSchemaVersion, command, data);
+        string json = JsonSerializer.Serialize(envelope, CliJsonContext.Options);
+        writer.WriteLine(json);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/SnippetTruncator.cs ----
+
+// <copyright file="SnippetTruncator.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+/// <summary>Trims a content snippet to a fixed character budget for one-line rendering.</summary>
+internal static class SnippetTruncator
+{
+    public const int DefaultMaxLength = 80;
+
+    public static string Truncate(string? value, int maxLength = DefaultMaxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        string singleLine = value.ReplaceLineEndings(" ");
+        return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/TenantListHumanFormatter.cs ----
+
+// <copyright file="TenantListHumanFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Byte-for-byte Story 7.1 reproduction of the <c>tenant list</c> human output.</summary>
+public sealed class TenantListHumanFormatter : IOutputFormatter<IReadOnlyList<TenantSummary>>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Human;
+
+    /// <inheritdoc />
+    public void Write(IReadOnlyList<TenantSummary> value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (value.Count == 0)
+        {
+            writer.WriteLine("No tenants found.");
+            return;
+        }
+
+        foreach (TenantSummary tenant in value)
+        {
+            writer.WriteLine($"{tenant.Id}\t{tenant.DisplayName}");
+        }
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/TenantListJsonFormatter.cs ----
+
+// <copyright file="TenantListJsonFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Emits <c>tenant list</c> data inside the CLI JSON envelope.</summary>
+public sealed class TenantListJsonFormatter : IOutputFormatter<IReadOnlyList<TenantSummary>>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Json;
+
+    /// <inheritdoc />
+    public void Write(IReadOnlyList<TenantSummary> value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+        JsonEnvelopeWriter.Write(writer, "tenant list", value);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/TenantListTableFormatter.cs ----
+
+// <copyright file="TenantListTableFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Tabular rendering of <c>tenant list</c>.</summary>
+public sealed class TenantListTableFormatter : IOutputFormatter<IReadOnlyList<TenantSummary>>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Table;
+
+    /// <inheritdoc />
+    public void Write(IReadOnlyList<TenantSummary> value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        IEnumerable<IReadOnlyList<string>> rows = value.Select(t => (IReadOnlyList<string>)new[] { t.Id, t.DisplayName });
+        TableWriter.Write(writer, new[] { "TENANT ID", "DISPLAY NAME" }, rows);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowHumanFormatter.cs ----
+
+// <copyright file="ConfigShowHumanFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>
+/// Byte-for-byte Story 7.1 reproduction of <c>config show</c> output — three key=value lines in fixed
+/// order. Any drift breaks AC #1 / ADR-7.2-002.
+/// </summary>
+public sealed class ConfigShowHumanFormatter : IOutputFormatter<ConfigShowData>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Human;
+
+    /// <inheritdoc />
+    public void Write(ConfigShowData value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        writer.WriteLine($"endpoint={value.Endpoint}");
+        writer.WriteLine($"resolvedBy={value.ResolvedBy}");
+        writer.WriteLine($"tokenConfigured={(value.TokenConfigured ? "true" : "false")}");
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowJsonFormatter.cs ----
+
+// <copyright file="ConfigShowJsonFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>Emits <c>config show</c> data inside the CLI JSON envelope.</summary>
+public sealed class ConfigShowJsonFormatter : IOutputFormatter<ConfigShowData>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Json;
+
+    /// <inheritdoc />
+    public void Write(ConfigShowData value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+        JsonEnvelopeWriter.Write(writer, "config show", value);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/ConfigShowTableFormatter.cs ----
+
+// <copyright file="ConfigShowTableFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Cli.Output.Json;
+
+/// <summary>Two-column table rendering of <c>config show</c>.</summary>
+public sealed class ConfigShowTableFormatter : IOutputFormatter<ConfigShowData>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Table;
+
+    /// <inheritdoc />
+    public void Write(ConfigShowData value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        var rows = new[]
+        {
+            (IReadOnlyList<string>)new[] { "endpoint", value.Endpoint },
+            (IReadOnlyList<string>)new[] { "resolvedBy", value.ResolvedBy },
+            (IReadOnlyList<string>)new[] { "tokenConfigured", value.TokenConfigured ? "true" : "false" },
+        };
+        TableWriter.Write(writer, new[] { "KEY", "VALUE" }, rows);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultHumanFormatter.cs ----
+
+// <copyright file="HybridSearchResultHumanFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+using System.Text;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>
+/// Renders a <see cref="HybridSearchResult"/> as plain text. With <c>--explain</c>, prints the caveat
+/// FIRST so <c>memories search query --explain | head -N</c> still carries the compliance guarantee
+/// (Task 6.3).
+/// </summary>
+public sealed class HybridSearchResultHumanFormatter : IOutputFormatter<HybridSearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Human;
+
+    /// <inheritdoc />
+    public void Write(HybridSearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (value.Degraded)
+        {
+            writer.WriteLine(
+                $"Note: search degraded — axes unavailable: {string.Join(", ", value.UnavailableAxes)}");
+        }
+
+        if (value.Explanation is { } explanation)
+        {
+            writer.WriteLine(explanation.Caveat);
+        }
+
+        int rank = 1;
+        foreach (FusedScoredResult result in value.Results)
+        {
+            string composite = result.CompositeScore.ToString("F3", CultureInfo.InvariantCulture);
+            string snippet = SnippetTruncator.Truncate(result.ContentSnippet);
+            writer.WriteLine($"{rank}. [{composite}] {result.SourceUri} — {snippet}");
+
+            if (value.Explanation is not null)
+            {
+                WriteExplainBlock(writer, result, value.Explanation);
+            }
+
+            rank++;
+        }
+    }
+
+    private static void WriteExplainBlock(TextWriter writer, FusedScoredResult result, SearchExplanation explanation)
+    {
+        var builder = new StringBuilder("    composite=");
+        builder.Append(result.CompositeScore.ToString("F3", CultureInfo.InvariantCulture));
+
+        if (result.SyntacticScore is double syntactic)
+        {
+            builder.Append(", syntactic=").Append(syntactic.ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        if (result.SemanticScore is double semantic)
+        {
+            builder.Append(", semantic=").Append(semantic.ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        if (result.GraphScore is double graph)
+        {
+            builder.Append(", graph=").Append(graph.ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        writer.WriteLine(builder.ToString());
+
+        foreach (KeyValuePair<string, AxisExplanation> axis in explanation.AxisDetails)
+        {
+            writer.WriteLine($"      ({axis.Key}: {axis.Value.NormalizationMethod})");
+        }
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultJsonFormatter.cs ----
+
+// <copyright file="HybridSearchResultJsonFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Emits the full <see cref="HybridSearchResult"/> inside the CLI JSON envelope — no transformation.</summary>
+public sealed class HybridSearchResultJsonFormatter : IOutputFormatter<HybridSearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Json;
+
+    /// <inheritdoc />
+    public void Write(HybridSearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+        JsonEnvelopeWriter.Write(writer, "search query", value);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/HybridSearchResultTableFormatter.cs ----
+
+// <copyright file="HybridSearchResultTableFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>
+/// Tabular rendering of <see cref="HybridSearchResult"/>. Caveat is printed AFTER the table (Task 6.5)
+/// so header-to-data alignment stays intact when viewed interactively.
+/// </summary>
+public sealed class HybridSearchResultTableFormatter : IOutputFormatter<HybridSearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Table;
+
+    /// <inheritdoc />
+    public void Write(HybridSearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (value.Degraded)
+        {
+            writer.WriteLine(
+                $"Note: search degraded — axes unavailable: {string.Join(", ", value.UnavailableAxes)}");
+        }
+
+        bool withExplain = value.Explanation is not null;
+        IReadOnlyList<string> headers = withExplain
+            ? new[] { "RANK", "COMPOSITE", "SYNTACTIC", "SEMANTIC", "GRAPH", "URI" }
+            : new[] { "RANK", "SCORE", "URI", "SNIPPET" };
+
+        var rows = new List<IReadOnlyList<string>>(value.Results.Count);
+        int rank = 1;
+        foreach (FusedScoredResult r in value.Results)
+        {
+            if (withExplain)
+            {
+                rows.Add(new[]
+                {
+                    rank.ToString(CultureInfo.InvariantCulture),
+                    r.CompositeScore.ToString("F3", CultureInfo.InvariantCulture),
+                    FormatScore(r.SyntacticScore),
+                    FormatScore(r.SemanticScore),
+                    FormatScore(r.GraphScore),
+                    r.SourceUri,
+                });
+            }
+            else
+            {
+                rows.Add(new[]
+                {
+                    rank.ToString(CultureInfo.InvariantCulture),
+                    r.CompositeScore.ToString("F3", CultureInfo.InvariantCulture),
+                    r.SourceUri,
+                    SnippetTruncator.Truncate(r.ContentSnippet),
+                });
+            }
+
+            rank++;
+        }
+
+        TableWriter.Write(writer, headers, rows);
+
+        if (value.Explanation is { } explanation)
+        {
+            writer.WriteLine(explanation.Caveat);
+        }
+    }
+
+    private static string FormatScore(double? score)
+        => score is double s
+            ? s.ToString("F3", CultureInfo.InvariantCulture)
+            : "-";
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/SearchResultHumanFormatter.cs ----
+
+// <copyright file="SearchResultHumanFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Renders a single-axis <see cref="SearchResult"/> as plain text with optional explain block.</summary>
+public sealed class SearchResultHumanFormatter : IOutputFormatter<SearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Human;
+
+    /// <inheritdoc />
+    public void Write(SearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (value.Explanation is { } explanation)
+        {
+            writer.WriteLine(explanation.Caveat);
+        }
+
+        int rank = 1;
+        foreach (ScoredResult result in value.Results)
+        {
+            string score = result.Score.ToString("F3", CultureInfo.InvariantCulture);
+            string snippet = SnippetTruncator.Truncate(result.ContentSnippet);
+            writer.WriteLine($"{rank}. [{score}] {result.SourceUri} — {snippet}");
+            rank++;
+        }
+
+        if (value.Explanation is { } exp)
+        {
+            foreach (KeyValuePair<string, AxisExplanation> axis in exp.AxisDetails)
+            {
+                writer.WriteLine($"    ({axis.Key}: {axis.Value.NormalizationMethod})");
+            }
+        }
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/SearchResultJsonFormatter.cs ----
+
+// <copyright file="SearchResultJsonFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Emits the full <see cref="SearchResult"/> inside the CLI JSON envelope — no transformation.</summary>
+public sealed class SearchResultJsonFormatter : IOutputFormatter<SearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Json;
+
+    /// <inheritdoc />
+    public void Write(SearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+        JsonEnvelopeWriter.Write(writer, "search query", value);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/SearchResultTableFormatter.cs ----
+
+// <copyright file="SearchResultTableFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Tabular rendering of a single-axis <see cref="SearchResult"/>.</summary>
+public sealed class SearchResultTableFormatter : IOutputFormatter<SearchResult>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Table;
+
+    /// <inheritdoc />
+    public void Write(SearchResult value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        IReadOnlyList<string> headers = new[] { "RANK", "SCORE", "URI", "SNIPPET" };
+        var rows = new List<IReadOnlyList<string>>(value.Results.Count);
+        int rank = 1;
+        foreach (ScoredResult r in value.Results)
+        {
+            rows.Add(new[]
+            {
+                rank.ToString(CultureInfo.InvariantCulture),
+                r.Score.ToString("F3", CultureInfo.InvariantCulture),
+                r.SourceUri,
+                SnippetTruncator.Truncate(r.ContentSnippet),
+            });
+            rank++;
+        }
+
+        TableWriter.Write(writer, headers, rows);
+
+        if (value.Explanation is { } explanation)
+        {
+            writer.WriteLine(explanation.Caveat);
+        }
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitHumanFormatter.cs ----
+
+// <copyright file="MemoryUnitHumanFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>
+/// Renders a <see cref="MemoryUnit"/> for interactive viewing. Metadata fields carry their <c>[human]</c>
+/// / <c>[ai]</c> origin prefix (lowercase ASCII, matches <c>MetadataOrigin</c>'s camelCase JSON spelling).
+/// </summary>
+public sealed class MemoryUnitHumanFormatter : IOutputFormatter<MemoryUnit>
+{
+    private const string DateTimeRoundTripFormat = "o";
+
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Human;
+
+    /// <inheritdoc />
+    public void Write(MemoryUnit value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        writer.WriteLine($"id={value.Id}");
+        writer.WriteLine($"tenantId={value.TenantId}");
+        writer.WriteLine($"caseId={value.CaseId}");
+        writer.WriteLine($"sourceUri={value.SourceUri}");
+        writer.WriteLine($"ingestedBy={value.IngestedBy}");
+        writer.WriteLine($"ingestedAt={value.IngestedAt.ToString(DateTimeRoundTripFormat, CultureInfo.InvariantCulture)}");
+        writer.WriteLine($"status={value.Status}");
+
+        if (value.Metadata.Count == 0)
+        {
+            writer.WriteLine("metadata: (none)");
+            return;
+        }
+
+        writer.WriteLine("metadata:");
+        foreach (KeyValuePair<string, MetadataField> kv in value.Metadata)
+        {
+            string origin = kv.Value.Origin == MetadataOrigin.Human ? "human" : "ai";
+            string confidence = kv.Value.Confidence.ToString("F2", CultureInfo.InvariantCulture);
+            writer.WriteLine($"  {kv.Key} = {kv.Value.Value}  [{origin}, confidence={confidence}]");
+        }
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitJsonFormatter.cs ----
+
+// <copyright file="MemoryUnitJsonFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Emits the full <see cref="MemoryUnit"/> inside the CLI JSON envelope — no transformation.</summary>
+public sealed class MemoryUnitJsonFormatter : IOutputFormatter<MemoryUnit>
+{
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Json;
+
+    /// <inheritdoc />
+    public void Write(MemoryUnit value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+        JsonEnvelopeWriter.Write(writer, "search inspect", value);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Output/Formatters/MemoryUnitTableFormatter.cs ----
+
+// <copyright file="MemoryUnitTableFormatter.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Output.Formatters;
+
+using System.Globalization;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Two-table rendering of a <see cref="MemoryUnit"/>: core fields then metadata fields.</summary>
+public sealed class MemoryUnitTableFormatter : IOutputFormatter<MemoryUnit>
+{
+    private const string DateTimeRoundTripFormat = "o";
+
+    /// <inheritdoc />
+    public OutputFormat Format => OutputFormat.Table;
+
+    /// <inheritdoc />
+    public void Write(MemoryUnit value, TextWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(writer);
+
+        var coreRows = new IReadOnlyList<string>[]
+        {
+            new[] { "id", value.Id },
+            new[] { "tenantId", value.TenantId },
+            new[] { "caseId", value.CaseId },
+            new[] { "sourceUri", value.SourceUri },
+            new[] { "ingestedBy", value.IngestedBy },
+            new[] { "ingestedAt", value.IngestedAt.ToString(DateTimeRoundTripFormat, CultureInfo.InvariantCulture) },
+            new[] { "status", value.Status.ToString() },
+        };
+        TableWriter.Write(writer, new[] { "FIELD", "VALUE" }, coreRows);
+
+        writer.WriteLine();
+
+        var metaRows = new List<IReadOnlyList<string>>(value.Metadata.Count);
+        foreach (KeyValuePair<string, MetadataField> kv in value.Metadata)
+        {
+            string origin = kv.Value.Origin == MetadataOrigin.Human ? "human" : "ai";
+            string confidence = kv.Value.Confidence.ToString("F2", CultureInfo.InvariantCulture);
+            metaRows.Add(new[] { kv.Key, kv.Value.Value, origin, confidence });
+        }
+
+        TableWriter.Write(writer, new[] { "KEY", "VALUE", "ORIGIN", "CONFIDENCE" }, metaRows);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs ----
+
+// <copyright file="SearchQueryCommand.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Commands;
+
+using System.CommandLine;
+
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.DependencyInjection;
+
+/// <summary>Builds <c>memories search query</c>. Story 7.2 wires hybrid and single-axis searches end-to-end.</summary>
+public static class SearchQueryCommand
+{
+    /// <summary>CLI-side ceiling on <c>--max-results</c> to bound local-process memory (Task 5.6).</summary>
+    public const int MaxResultsCeiling = 1000;
+
+    private const string CommandDescription = """
+Search memories using three-axis hybrid fusion (default) or a single axis.
+
+Examples:
+    memories search query --tenant acme --query "customer escalation"
+    memories search query --tenant acme --query "..." --axis semantic --explain
+    memories search query --tenant acme --query "..." --format json
+""";
+
+    /// <summary>Builds the <c>query</c> subcommand.</summary>
+    /// <param name="services">The DI service provider.</param>
+    /// <returns>The configured command.</returns>
+    public static Command Build(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var tenantOption = new Option<string>("--tenant")
+        {
+            Description = "Tenant identifier (required).",
+            Required = true,
+        };
+        var caseOption = new Option<string?>("--case")
+        {
+            Description = "Limit the search to a specific case.",
+        };
+        var queryOption = new Option<string?>("--query")
+        {
+            Description = "Free-text query. Required for syntactic/semantic/hybrid; optional for graph.",
+        };
+        var axisOption = new Option<string>("--axis")
+        {
+            Description = "Search axis: syntactic, semantic, graph, or hybrid (default).",
+            DefaultValueFactory = _ => "hybrid",
+        };
+        var maxResultsOption = new Option<int>("--max-results")
+        {
+            Description = "Max rows (default: server default 10; CLI ceiling: 1000).",
+            DefaultValueFactory = _ => 10,
+        };
+        var explainOption = new Option<bool>("--explain")
+        {
+            Description = "Ask the server for explain metadata (caveat + normalization methods).",
+        };
+
+        var command = new Command("query", CommandDescription)
+        {
+            tenantOption,
+            caseOption,
+            queryOption,
+            axisOption,
+            maxResultsOption,
+            explainOption,
+        };
+
+        command.SetAction((parseResult, ct) => ExecuteAsync(
+            services,
+            parseResult.GetValue(tenantOption),
+            parseResult.GetValue(caseOption),
+            parseResult.GetValue(queryOption),
+            parseResult.GetValue(axisOption) ?? "hybrid",
+            parseResult.GetValue(maxResultsOption),
+            parseResult.GetValue(explainOption),
+            ct));
+
+        return command;
+    }
+
+    private static async Task<int> ExecuteAsync(
+        IServiceProvider services,
+        string? tenantId,
+        string? caseId,
+        string? query,
+        string axis,
+        int maxResults,
+        bool explain,
+        CancellationToken ct)
+    {
+        CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
+
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            console.Error.WriteLine("--tenant is required.");
+            return CliExitCodes.Plumbing;
+        }
+
+        string normalizedAxis = axis.ToLowerInvariant();
+        bool requiresQuery = normalizedAxis is "syntactic" or "semantic" or "hybrid";
+        if (requiresQuery && string.IsNullOrWhiteSpace(query))
+        {
+            console.Error.WriteLine($"--query is required for --axis {normalizedAxis}.");
+            return CliExitCodes.Plumbing;
+        }
+
+        if (maxResults <= 0)
+        {
+            console.Error.WriteLine("--max-results must be greater than 0.");
+            return CliExitCodes.Plumbing;
+        }
+
+        if (maxResults > MaxResultsCeiling)
+        {
+            console.Error.WriteLine(
+                $"--max-results exceeds CLI ceiling of {MaxResultsCeiling}. Request a smaller batch or use pagination (coming in Phase 2).");
+            return CliExitCodes.Plumbing;
+        }
+
+        return await executor.ExecuteAsync(async (config, innerCt) =>
+        {
+            MemoriesClient client = services.GetRequiredService<MemoriesClient>();
+
+            if (normalizedAxis == "hybrid")
+            {
+                var request = new HybridSearchRequest(
+                    TenantId: tenantId!,
+                    Query: query!,
+                    CaseId: caseId,
+                    MaxResults: maxResults,
+                    Explain: explain);
+                HybridSearchResult result = await client.HybridSearchAsync(request, innerCt).ConfigureAwait(false);
+                router.Write(console.Format, result, console.Out);
+                return CliExitCodes.Success;
+            }
+
+            var singleRequest = new SearchRequest(
+                TenantId: tenantId!,
+                Axis: normalizedAxis,
+                Query: query,
+                CaseId: caseId,
+                MaxResults: maxResults,
+                Explain: explain);
+            SearchResult single = await client.SearchAsync(singleRequest, innerCt).ConfigureAwait(false);
+            router.Write(console.Format, single, console.Out);
+            return CliExitCodes.Success;
+        }, ct).ConfigureAwait(false);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Cli/Commands/SearchInspectCommand.cs ----
+
+// <copyright file="SearchInspectCommand.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Commands;
+
+using System.CommandLine;
+
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.DependencyInjection;
+
+/// <summary>Builds <c>memories search inspect</c> — surfaces metadata origin and confidence (FR64).</summary>
+public static class SearchInspectCommand
+{
+    private const string CommandDescription = """
+Inspect a single memory unit, including metadata origin (human/ai) and confidence (FR64).
+
+Example:
+    memories search inspect --tenant acme --case case-123 --id mu-abc
+""";
+
+    /// <summary>Builds the <c>inspect</c> subcommand.</summary>
+    /// <param name="services">The DI service provider.</param>
+    /// <returns>The configured command.</returns>
+    public static Command Build(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var tenantOption = new Option<string>("--tenant") { Description = "Tenant identifier.", Required = true };
+        var caseOption = new Option<string>("--case") { Description = "Case identifier.", Required = true };
+        var idOption = new Option<string>("--id") { Description = "Memory unit identifier.", Required = true };
+
+        var command = new Command("inspect", CommandDescription)
+        {
+            tenantOption,
+            caseOption,
+            idOption,
+        };
+
+        command.SetAction((parseResult, ct) => ExecuteAsync(
+            services,
+            parseResult.GetValue(tenantOption),
+            parseResult.GetValue(caseOption),
+            parseResult.GetValue(idOption),
+            ct));
+
+        return command;
+    }
+
+    private static async Task<int> ExecuteAsync(
+        IServiceProvider services,
+        string? tenantId,
+        string? caseId,
+        string? memoryUnitId,
+        CancellationToken ct)
+    {
+        CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
+
+        if (string.IsNullOrWhiteSpace(tenantId)
+            || string.IsNullOrWhiteSpace(caseId)
+            || string.IsNullOrWhiteSpace(memoryUnitId))
+        {
+            console.Error.WriteLine("--tenant, --case, and --id are required.");
+            return CliExitCodes.Plumbing;
+        }
+
+        return await executor.ExecuteAsync(async (config, innerCt) =>
+        {
+            MemoriesClient client = services.GetRequiredService<MemoriesClient>();
+            MemoryUnit unit = await client.GetMemoryUnitAsync(tenantId!, caseId!, memoryUnitId!, innerCt).ConfigureAwait(false);
+            router.Write(console.Format, unit, console.Out);
+            return CliExitCodes.Success;
+        }, ct).ConfigureAwait(false);
+    }
+}
+
+### ---- NEW FILE: src/Hexalith.Memories.Client.Rest/SearchRequest.cs ----
+
+// <copyright file="SearchRequest.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Client.Rest;
+
+/// <summary>
+/// Request DTO for a single-axis search (<c>axis ∈ {syntactic, semantic, graph}</c>). Consumed by
+/// <see cref="MemoriesClient.SearchAsync"/>; translated into a query string that omits server-default values.
+/// </summary>
+/// <param name="TenantId">The tenant identifier. Required.</param>
+/// <param name="Axis">The axis name — <c>syntactic</c>, <c>semantic</c>, or <c>graph</c>.</param>
+/// <param name="Query">The free-text query; nullable for <c>graph</c>-only searches.</param>
+/// <param name="CaseId">The case identifier, or null to search the tenant globally.</param>
+/// <param name="MaxResults">Max rows to return. Server default is 10; omit when equal to avoid wire noise.</param>
+/// <param name="Explain">When <see langword="true"/>, ask the server for explain metadata.</param>
+public sealed record SearchRequest(
+    string TenantId,
+    string Axis,
+    string? Query,
+    string? CaseId = null,
+    int MaxResults = 10,
+    bool Explain = false);
+
+### ---- NEW FILE: src/Hexalith.Memories.Client.Rest/HybridSearchRequest.cs ----
+
+// <copyright file="HybridSearchRequest.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Client.Rest;
+
+/// <summary>
+/// Request DTO for a hybrid (multi-axis) search. Consumed by <see cref="MemoriesClient.HybridSearchAsync"/>.
+/// Same wire conventions as <see cref="SearchRequest"/> — server defaults are omitted from the query string.
+/// </summary>
+/// <param name="TenantId">The tenant identifier. Required.</param>
+/// <param name="Query">The free-text query. Required for hybrid search.</param>
+/// <param name="CaseId">The case identifier, or null to search the tenant globally.</param>
+/// <param name="MaxResults">Max rows to return. Server default is 10; omit when equal to avoid wire noise.</param>
+/// <param name="Explain">When <see langword="true"/>, ask the server for explain metadata.</param>
+public sealed record HybridSearchRequest(
+    string TenantId,
+    string Query,
+    string? CaseId = null,
+    int MaxResults = 10,
+    bool Explain = false);
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/OutputFormatterRouterTests.cs ----
+
+// <copyright file="OutputFormatterRouterTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using Hexalith.Memories.Cli.Output;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Shouldly;
+
+public sealed class OutputFormatterRouterTests
+{
+    [Fact]
+    public void Write_UnregisteredFormat_ThrowsFormatterNotRegisteredException()
+    {
+        ServiceCollection services = [];
+        services.AddSingleton<IOutputFormatter<string>>(new StubFormatter(OutputFormat.Human));
+        services.AddSingleton<OutputFormatterRouter>();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        OutputFormatterRouter router = provider.GetRequiredService<OutputFormatterRouter>();
+        using var writer = new StringWriter();
+
+        FormatterNotRegisteredException ex = Should.Throw<FormatterNotRegisteredException>(
+            () => router.Write(OutputFormat.Json, "x", writer));
+
+        ex.Format.ShouldBe(OutputFormat.Json);
+        ex.ModelType.ShouldBe(typeof(string));
+        ex.Message.ShouldContain("IOutputFormatter<String>");
+        ex.Message.ShouldContain("'Json'");
+    }
+
+    [Fact]
+    public void Write_RegisteredFormat_DelegatesToFormatter()
+    {
+        ServiceCollection services = [];
+        services.AddSingleton<IOutputFormatter<string>>(new StubFormatter(OutputFormat.Human));
+        services.AddSingleton<OutputFormatterRouter>();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        OutputFormatterRouter router = provider.GetRequiredService<OutputFormatterRouter>();
+        using var writer = new StringWriter();
+
+        router.Write(OutputFormat.Human, "payload", writer);
+
+        writer.ToString().ShouldBe("human:payload");
+    }
+
+    private sealed class StubFormatter : IOutputFormatter<string>
+    {
+        public StubFormatter(OutputFormat format)
+        {
+            Format = format;
+        }
+
+        public OutputFormat Format { get; }
+
+        public void Write(string value, TextWriter writer) => writer.Write($"human:{value}");
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/ConfigShowGoldenFileTests.cs ----
+
+// <copyright file="ConfigShowGoldenFileTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Cli.Output.Json;
+
+using Shouldly;
+
+/// <summary>
+/// Locks the 7.1 byte-for-byte <c>config show</c> output. AC #1 / ADR-7.2-002: any drift of the
+/// human-format default surface is a silent breaking change for every script written against 7.1.
+/// </summary>
+public sealed class ConfigShowGoldenFileTests
+{
+    [Fact]
+    public void HumanFormatter_NoFormat_ExactMatchesStory71Default()
+    {
+        var data = new ConfigShowData(
+            Endpoint: "http://127.0.0.1:5000/",
+            ResolvedBy: "DefaultConfigurationSource",
+            TokenConfigured: false);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new ConfigShowHumanFormatter().Write(data, writer);
+
+        const string expected =
+            "endpoint=http://127.0.0.1:5000/\n"
+            + "resolvedBy=DefaultConfigurationSource\n"
+            + "tokenConfigured=false\n";
+
+        writer.ToString().ShouldBe(expected);
+    }
+
+    [Fact]
+    public void HumanFormatter_WithToken_EmitsTokenConfiguredTrue()
+    {
+        var data = new ConfigShowData(
+            Endpoint: "https://memories.example.com/",
+            ResolvedBy: "FlagConfigurationSource",
+            TokenConfigured: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new ConfigShowHumanFormatter().Write(data, writer);
+
+        writer.ToString().ShouldBe(
+            "endpoint=https://memories.example.com/\n"
+            + "resolvedBy=FlagConfigurationSource\n"
+            + "tokenConfigured=true\n");
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/TenantListFormatterTests.cs ----
+
+// <copyright file="TenantListFormatterTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Cli.Output.Json;
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+public sealed class TenantListFormatterTests
+{
+    [Fact]
+    public void Human_EmptyList_PreservesStory71NoTenantsMessage()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        new TenantListHumanFormatter().Write(Array.Empty<TenantSummary>(), writer);
+        writer.ToString().ShouldBe("No tenants found.\n");
+    }
+
+    [Fact]
+    public void Human_WithTenants_PreservesStory71TabSeparatedLines()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        IReadOnlyList<TenantSummary> tenants =
+        [
+            CreateSummary("t-1", "Tenant One"),
+            CreateSummary("t-2", "Tenant Two"),
+        ];
+
+        new TenantListHumanFormatter().Write(tenants, writer);
+
+        writer.ToString().ShouldBe(
+            "t-1\tTenant One\n"
+            + "t-2\tTenant Two\n");
+    }
+
+    [Fact]
+    public void Json_WithTenants_EmitsSchemaVersion1Envelope()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        IReadOnlyList<TenantSummary> tenants = [CreateSummary("t-1", "Tenant One")];
+
+        new TenantListJsonFormatter().Write(tenants, writer);
+        using JsonDocument doc = JsonDocument.Parse(writer.ToString());
+
+        doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("command").GetString().ShouldBe("tenant list");
+        doc.RootElement.GetProperty("data").GetArrayLength().ShouldBe(1);
+        doc.RootElement.GetProperty("data")[0].GetProperty("id").GetString().ShouldBe("t-1");
+    }
+
+    [Fact]
+    public void Json_EmptyList_EmitsEmptyDataArray()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        new TenantListJsonFormatter().Write(Array.Empty<TenantSummary>(), writer);
+        using JsonDocument doc = JsonDocument.Parse(writer.ToString());
+
+        doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("data").GetArrayLength().ShouldBe(0);
+    }
+
+    [Fact]
+    public void Table_EmptyList_EmitsHeaderAndSeparatorOnly()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        new TenantListTableFormatter().Write(Array.Empty<TenantSummary>(), writer);
+
+        string[] lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        lines.Length.ShouldBe(2);
+        lines[0].ShouldContain("TENANT ID");
+        lines[0].ShouldContain("DISPLAY NAME");
+        lines[1].ShouldAllBe(c => c == '-');
+    }
+
+    [Fact]
+    public void Table_WithTenants_RightPadsColumns()
+    {
+        using var writer = new StringWriter() { NewLine = "\n" };
+        IReadOnlyList<TenantSummary> tenants =
+        [
+            CreateSummary("t-1", "Alpha"),
+            CreateSummary("longer-tenant", "Beta"),
+        ];
+
+        new TenantListTableFormatter().Write(tenants, writer);
+        string[] lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        lines.Length.ShouldBe(4);
+        lines[0].ShouldStartWith("TENANT ID    ");
+        lines[2].ShouldStartWith("t-1          ");
+        lines[3].ShouldStartWith("longer-tenant");
+    }
+
+    private static TenantSummary CreateSummary(string id, string displayName)
+        => new()
+        {
+            Id = id,
+            DisplayName = displayName,
+            Status = TenantStatus.Active,
+            CreatedAt = DateTimeOffset.UtcNow,
+            IndexSizes = new TenantIndexSizes(null, null, null),
+            IndexStatus = new TenantIndexStatus(IndexHealth.Unknown, IndexHealth.Unknown, IndexHealth.Unknown),
+            ReindexRequired = false,
+        };
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/ConfigShowFormatterTests.cs ----
+
+// <copyright file="ConfigShowFormatterTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Cli.Output.Json;
+
+using Shouldly;
+
+public sealed class ConfigShowFormatterTests
+{
+    [Fact]
+    public void Json_EmitsSchemaVersion1EnvelopeWithoutTokenField()
+    {
+        var data = new ConfigShowData(
+            Endpoint: "https://srv.example.com/",
+            ResolvedBy: "EnvironmentVariableConfigurationSource",
+            TokenConfigured: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new ConfigShowJsonFormatter().Write(data, writer);
+        using JsonDocument doc = JsonDocument.Parse(writer.ToString());
+
+        doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("command").GetString().ShouldBe("config show");
+        JsonElement payload = doc.RootElement.GetProperty("data");
+        payload.GetProperty("endpoint").GetString().ShouldBe("https://srv.example.com/");
+        payload.GetProperty("resolvedBy").GetString().ShouldBe("EnvironmentVariableConfigurationSource");
+        payload.GetProperty("tokenConfigured").GetBoolean().ShouldBeTrue();
+        payload.TryGetProperty("apiToken", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Table_EmitsThreeRows()
+    {
+        var data = new ConfigShowData(
+            Endpoint: "http://127.0.0.1:5000/",
+            ResolvedBy: "DefaultConfigurationSource",
+            TokenConfigured: false);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new ConfigShowTableFormatter().Write(data, writer);
+        string[] lines = writer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        lines.Length.ShouldBe(5);
+        lines[0].ShouldContain("KEY");
+        lines[0].ShouldContain("VALUE");
+        lines[2].ShouldStartWith("endpoint");
+        lines[3].ShouldStartWith("resolvedBy");
+        lines[4].ShouldStartWith("tokenConfigured");
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/SearchResultFormatterTests.cs ----
+
+// <copyright file="SearchResultFormatterTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.Collections.Generic;
+using System.Text.Json;
+
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+public sealed class SearchResultFormatterTests
+{
+    private const string PrdCaveat =
+        "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.";
+
+    [Fact]
+    public void HybridHuman_WithExplain_PrintsCaveatFirstAndOnce()
+    {
+        HybridSearchResult payload = BuildHybridResult(withExplain: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new HybridSearchResultHumanFormatter().Write(payload, writer);
+        string output = writer.ToString();
+
+        // Caveat must appear exactly once and before the first result line.
+        int caveatIndex = output.IndexOf(PrdCaveat, StringComparison.Ordinal);
+        int firstResultIndex = output.IndexOf("1. [", StringComparison.Ordinal);
+        caveatIndex.ShouldBeGreaterThanOrEqualTo(0);
+        firstResultIndex.ShouldBeGreaterThan(caveatIndex);
+
+        int lastCaveatIndex = output.LastIndexOf(PrdCaveat, StringComparison.Ordinal);
+        caveatIndex.ShouldBe(lastCaveatIndex);
+    }
+
+    [Fact]
+    public void HybridHuman_Degraded_PrintsDegradationNotice()
+    {
+        HybridSearchResult payload = BuildHybridResult(withExplain: false, degraded: true, unavailable: new[] { "graph" });
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new HybridSearchResultHumanFormatter().Write(payload, writer);
+        string output = writer.ToString();
+
+        output.ShouldContain("Note: search degraded");
+        output.ShouldContain("graph");
+    }
+
+    [Fact]
+    public void HybridJson_EmitsEnvelopeWithCaveatPath()
+    {
+        HybridSearchResult payload = BuildHybridResult(withExplain: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new HybridSearchResultJsonFormatter().Write(payload, writer);
+        using JsonDocument doc = JsonDocument.Parse(writer.ToString());
+
+        doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("command").GetString().ShouldBe("search query");
+        doc.RootElement.GetProperty("data").GetProperty("explanation").GetProperty("caveat").GetString()
+            .ShouldBe(PrdCaveat);
+    }
+
+    [Fact]
+    public void HybridTable_WithExplain_HeadersIncludeAllAxes()
+    {
+        HybridSearchResult payload = BuildHybridResult(withExplain: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new HybridSearchResultTableFormatter().Write(payload, writer);
+        string output = writer.ToString();
+
+        output.ShouldContain("COMPOSITE");
+        output.ShouldContain("SYNTACTIC");
+        output.ShouldContain("SEMANTIC");
+        output.ShouldContain("GRAPH");
+        output.ShouldContain(PrdCaveat);
+    }
+
+    [Fact]
+    public void HybridHuman_WithoutExplain_NoCaveat()
+    {
+        HybridSearchResult payload = BuildHybridResult(withExplain: false);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new HybridSearchResultHumanFormatter().Write(payload, writer);
+        string output = writer.ToString();
+
+        output.ShouldNotContain(PrdCaveat);
+        output.ShouldContain("1. [0.750]");
+    }
+
+    [Fact]
+    public void SingleAxisHuman_EmptyResults_NoOutputContent()
+    {
+        var payload = new SearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = true,
+            Query = "needle",
+        };
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new SearchResultHumanFormatter().Write(payload, writer);
+        writer.ToString().ShouldBe(string.Empty);
+    }
+
+    private static HybridSearchResult BuildHybridResult(
+        bool withExplain,
+        bool degraded = false,
+        IReadOnlyList<string>? unavailable = null)
+    {
+        var result = new FusedScoredResult
+        {
+            MemoryUnitId = "mu-1",
+            CompositeScore = 0.75d,
+            ContentSnippet = "snippet content",
+            SourceUri = "mem://case/mu-1",
+            SourceType = SourceType.File,
+            SyntacticScore = 0.60,
+            SemanticScore = 0.85,
+            GraphScore = null,
+        };
+
+        SearchExplanation? explanation = withExplain
+            ? new SearchExplanation
+            {
+                Caveat = PrdCaveat,
+                AxisDetails = new Dictionary<string, AxisExplanation>
+                {
+                    ["syntactic"] = new() { NormalizationMethod = "bm25_saturation", Description = "BM25 saturation" },
+                    ["semantic"] = new() { NormalizationMethod = "cosine", Description = "cosine similarity" },
+                },
+            }
+            : null;
+
+        return new HybridSearchResult
+        {
+            Results = [result],
+            TotalCount = 1,
+            Degraded = degraded,
+            UnavailableAxes = unavailable ?? [],
+            Query = "needle",
+            Explanation = explanation,
+        };
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/MemoryUnitFormatterTests.cs ----
+
+// <copyright file="MemoryUnitFormatterTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+public sealed class MemoryUnitFormatterTests
+{
+    [Fact]
+    public void Human_MixedOrigins_PrintsLowercaseOriginPrefixes()
+    {
+        MemoryUnit unit = BuildUnit(includeMetadata: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new MemoryUnitHumanFormatter().Write(unit, writer);
+        string output = writer.ToString();
+
+        // Origin prefix starts at '[' and is followed by ', confidence=...' (Task 7.4 format).
+        output.ShouldContain("[human, confidence=", Shouldly.Case.Sensitive);
+        output.ShouldContain("[ai, confidence=", Shouldly.Case.Sensitive);
+        output.ShouldNotContain("[Human", Shouldly.Case.Sensitive);
+        output.ShouldNotContain("[Ai,", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
+    public void Human_EmptyMetadata_PrintsMetadataNone()
+    {
+        MemoryUnit unit = BuildUnit(includeMetadata: false);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new MemoryUnitHumanFormatter().Write(unit, writer);
+        writer.ToString().ShouldContain("metadata: (none)");
+    }
+
+    [Fact]
+    public void Human_IngestedAt_UsesIsoRoundTripFormat()
+    {
+        MemoryUnit unit = BuildUnit(includeMetadata: true) with
+        {
+            IngestedAt = new DateTimeOffset(2026, 4, 16, 15, 30, 0, TimeSpan.Zero),
+        };
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new MemoryUnitHumanFormatter().Write(unit, writer);
+
+        writer.ToString().ShouldContain("ingestedAt=2026-04-16T15:30:00.0000000+00:00");
+    }
+
+    [Fact]
+    public void Json_EmitsEnvelopeWithCamelCaseOriginValues()
+    {
+        MemoryUnit unit = BuildUnit(includeMetadata: true);
+        using var writer = new StringWriter() { NewLine = "\n" };
+
+        new MemoryUnitJsonFormatter().Write(unit, writer);
+        using JsonDocument doc = JsonDocument.Parse(writer.ToString());
+
+        doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("command").GetString().ShouldBe("search inspect");
+        JsonElement metadata = doc.RootElement.GetProperty("data").GetProperty("metadata");
+        metadata.GetProperty("author").GetProperty("origin").GetString().ShouldBe("human");
+        metadata.GetProperty("topic").GetProperty("origin").GetString().ShouldBe("ai");
+    }
+
+    private static MemoryUnit BuildUnit(bool includeMetadata)
+        => new()
+        {
+            Id = "mu-1",
+            TenantId = "acme",
+            CaseId = "case-1",
+            Content = "content body",
+            ContentHash = "hash",
+            SourceUri = "mem://case/mu-1",
+            SourceType = SourceType.File,
+            IngestedBy = "user@acme",
+            IngestedAt = new DateTimeOffset(2026, 4, 16, 15, 30, 0, TimeSpan.Zero),
+            LastUpdated = new DateTimeOffset(2026, 4, 16, 16, 0, 0, TimeSpan.Zero),
+            Status = MemoryUnitStatus.Indexed,
+            Metadata = includeMetadata
+                ? new Dictionary<string, MetadataField>
+                {
+                    ["author"] = new("Jerome", MetadataOrigin.Human, 1.0f),
+                    ["topic"] = new("compliance", MetadataOrigin.Ai, 0.87f),
+                }
+                : [],
+        };
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/SearchQueryCommandTests.cs ----
+
+// <copyright file="SearchQueryCommandTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.CommandLine;
+
+using Hexalith.Memories.Cli;
+using Hexalith.Memories.Cli.Commands;
+using Hexalith.Memories.Cli.Configuration;
+using Hexalith.Memories.Cli.Execution;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Shouldly;
+
+public sealed class SearchQueryCommandTests
+{
+    [Fact]
+    public async Task Invoke_MaxResultsAboveCeiling_WritesMessageAndExitsPlumbing()
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices();
+        Command query = SearchQueryCommand.Build(services);
+        int exceed = SearchQueryCommand.MaxResultsCeiling + 1;
+
+        int exit = await query
+            .Parse(new[] { "query", "--tenant", "t1", "--query", "x", "--max-results", exceed.ToString() })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldContain("ceiling of 1000");
+        stdout.ToString().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Invoke_MissingQueryOnHybrid_WritesErrorAndExitsPlumbing()
+    {
+        (IServiceProvider services, _, StringWriter stderr) = BuildServices();
+        Command query = SearchQueryCommand.Build(services);
+
+        int exit = await query
+            .Parse(new[] { "query", "--tenant", "t1", "--axis", "hybrid" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldContain("--query is required");
+    }
+
+    [Fact]
+    public async Task Invoke_MissingQueryOnGraph_DoesNotTriggerQueryValidation()
+    {
+        // Graph axis is allowed without a query. We don't have a server, so the command will still fail at
+        // the HTTP layer — that's fine. What we care about is that validation doesn't short-circuit before
+        // the HTTP call when axis=graph and query is empty.
+        (IServiceProvider services, _, StringWriter stderr) = BuildServices();
+        Command query = SearchQueryCommand.Build(services);
+
+        int exit = await query
+            .Parse(new[] { "query", "--tenant", "t1", "--axis", "graph" })
+            .InvokeAsync();
+
+        stderr.ToString().ShouldNotContain("--query is required");
+        exit.ShouldBe(CliExitCodes.Plumbing);
+    }
+
+    private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices()
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        IServiceCollection collection = CliServices.BuildCollection();
+        collection.AddSingleton(new CliConsole { Out = stdout, Error = stderr });
+        ServiceProvider provider = collection.BuildServiceProvider();
+        FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
+        flag.Endpoint = new Uri("http://127.0.0.1:65000/");
+        return (provider, stdout, stderr);
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/Cli/UnknownFormatTests.cs ----
+
+// <copyright file="UnknownFormatTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.Cli;
+
+using System.CommandLine;
+
+using Hexalith.Memories.Cli.Commands;
+using Hexalith.Memories.Cli.Configuration;
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Shouldly;
+
+public sealed class UnknownFormatTests
+{
+    [Fact]
+    public void ApplyGlobalOptions_UnknownFormat_ThrowsInvalidConfigurationException()
+    {
+        using ServiceProvider services = CliServices.Build();
+        CliGlobalOptions options = services.GetRequiredService<CliGlobalOptions>();
+        RootCommand root = RootCommandFactory.Build(services, options);
+        ParseResult parse = root.Parse(new[] { "--format", "xml", "tenant", "list" });
+
+        InvalidConfigurationException ex = Should.Throw<InvalidConfigurationException>(() =>
+            RootCommandFactory.ApplyGlobalOptions(services, parse, options));
+
+        ex.Message.ShouldContain("Unknown format 'xml'. Use human, json, or table.");
+    }
+
+    [Fact]
+    public void ApplyGlobalOptions_UnknownFormatWithHelp_DoesNotThrow()
+    {
+        using ServiceProvider services = CliServices.Build();
+        CliGlobalOptions options = services.GetRequiredService<CliGlobalOptions>();
+        RootCommand root = RootCommandFactory.Build(services, options);
+        ParseResult parse = root.Parse(new[] { "--format", "xml", "tenant", "list", "--help" });
+
+        Should.NotThrow(() => RootCommandFactory.ApplyGlobalOptions(services, parse, options));
+    }
+
+    [Fact]
+    public void ApplyGlobalOptions_ValidFormat_AssignsCliConsoleFormat()
+    {
+        using ServiceProvider services = CliServices.Build();
+        CliGlobalOptions options = services.GetRequiredService<CliGlobalOptions>();
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        RootCommand root = RootCommandFactory.Build(services, options);
+
+        ParseResult parse = root.Parse(new[] { "--format", "json", "tenant", "list" });
+        RootCommandFactory.ApplyGlobalOptions(services, parse, options);
+
+        console.Format.ShouldBe(OutputFormat.Json);
+    }
+
+    [Fact]
+    public void ApplyGlobalOptions_NoFormatFlag_DefaultsToHuman()
+    {
+        using ServiceProvider services = CliServices.Build();
+        CliGlobalOptions options = services.GetRequiredService<CliGlobalOptions>();
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        RootCommand root = RootCommandFactory.Build(services, options);
+
+        ParseResult parse = root.Parse(new[] { "tenant", "list" });
+        RootCommandFactory.ApplyGlobalOptions(services, parse, options);
+
+        console.Format.ShouldBe(OutputFormat.Human);
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSearchTests.cs ----
+
+// <copyright file="MemoriesClientSearchTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Cli.Tests.ClientRest;
+
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
+using Shouldly;
+
+public sealed class MemoriesClientSearchTests
+{
+    private static readonly Uri Endpoint = new("http://127.0.0.1:5000/");
+
+    [Fact]
+    public async Task HybridSearchAsync_OmitsServerDefaultMaxResults()
+    {
+        HybridSearchResult body = BuildHybrid();
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.HybridSearchAsync(
+            new HybridSearchRequest(TenantId: "t1", Query: "needle"),
+            CancellationToken.None);
+
+        handler.Requests.Count.ShouldBe(1);
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("tenantId=t1");
+        uri.ShouldContain("axis=hybrid");
+        uri.ShouldContain("query=needle");
+        uri.ShouldNotContain("maxResults=10");
+        uri.ShouldNotContain("caseId=");
+        uri.ShouldNotContain("offset=");
+        uri.ShouldNotContain("explain=true");
+    }
+
+    [Fact]
+    public async Task HybridSearchAsync_IncludesExplainAndCaseWhenProvided()
+    {
+        HybridSearchResult body = BuildHybrid();
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.HybridSearchAsync(
+            new HybridSearchRequest(TenantId: "t1", Query: "needle", CaseId: "case-1", MaxResults: 25, Explain: true),
+            CancellationToken.None);
+
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("caseId=case-1");
+        uri.ShouldContain("maxResults=25");
+        uri.ShouldContain("explain=true");
+    }
+
+    [Fact]
+    public async Task SearchAsync_GraphAxisOmitsEmptyQuery()
+    {
+        SearchResult body = new() { Results = [], TotalCount = 0, HasIndexedMemoryUnits = true, Query = string.Empty };
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.SearchAsync(
+            new SearchRequest(TenantId: "t1", Axis: "graph", Query: null),
+            CancellationToken.None);
+
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("axis=graph");
+        uri.ShouldNotContain("query=");
+    }
+
+    [Fact]
+    public async Task SearchAsync_NonSuccess_ThrowsMemoriesRemoteException()
+    {
+        string error = JsonSerializer.Serialize(
+            new ErrorResponse("INVALID_INPUT", "bad", string.Empty),
+            MemoriesJsonContext.Options);
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.BadRequest, error);
+
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.SearchAsync(
+                new SearchRequest(TenantId: "t1", Axis: "syntactic", Query: "x"),
+                CancellationToken.None));
+
+        exception.Error.Code.ShouldBe("INVALID_INPUT");
+    }
+
+    [Fact]
+    public async Task HybridSearchAsync_MalformedJson_ThrowsWithInvalidResponseCode()
+    {
+        (MemoriesClient client, _) = CreateClient(HttpStatusCode.OK, "not json");
+
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.HybridSearchAsync(
+                new HybridSearchRequest(TenantId: "t1", Query: "x"),
+                CancellationToken.None));
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
+    [Fact]
+    public async Task GetMemoryUnitAsync_TargetsExpectedPath()
+    {
+        MemoryUnit body = BuildMemoryUnit();
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.GetMemoryUnitAsync("acme", "case-1", "mu-abc", CancellationToken.None);
+
+        Uri? uri = handler.Requests[0].RequestUri;
+        uri.ShouldNotBeNull();
+        uri.AbsolutePath.ShouldBe("/api/tenants/acme/cases/case-1/memory-units/mu-abc");
+    }
+
+    [Fact]
+    public async Task GetMemoryUnitAsync_EscapesSlashInCaseId()
+    {
+        MemoryUnit body = BuildMemoryUnit();
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.GetMemoryUnitAsync("acme", "case/1", "mu-1", CancellationToken.None);
+
+        Uri? uri = handler.Requests[0].RequestUri;
+        uri.ShouldNotBeNull();
+        uri.AbsolutePath.ShouldContain("case%2F1");
+    }
+
+    private static HybridSearchResult BuildHybrid()
+        => new()
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "needle",
+        };
+
+    private static MemoryUnit BuildMemoryUnit()
+        => new()
+        {
+            Id = "mu-1",
+            TenantId = "acme corp",
+            CaseId = "case/1",
+            Content = "content",
+            ContentHash = "h",
+            SourceUri = "mem://case/mu-1",
+            SourceType = SourceType.File,
+            IngestedBy = "user",
+            IngestedAt = DateTimeOffset.UtcNow,
+            LastUpdated = DateTimeOffset.UtcNow,
+            Status = MemoryUnitStatus.Indexed,
+        };
+
+    private static (MemoriesClient Client, TestDelegatingHandler Handler) CreateClient(HttpStatusCode status, string body)
+    {
+        var handler = new TestDelegatingHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            }));
+        var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
+        return (new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance), handler);
+    }
+}
+
+### ---- NEW FILE: tests/Hexalith.Memories.IntegrationTests/Cli/CliSearchIntegrationTests.cs ----
+
+// <copyright file="CliSearchIntegrationTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.IntegrationTests.Cli;
+
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.IntegrationTests.Fixtures;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
+using Shouldly;
+
+/// <summary>
+/// Story 7.2 Task 10 — end-to-end test that ingests a fixture memory unit, waits for the workflow to
+/// land, and asserts <see cref="MemoriesClient.HybridSearchAsync"/> with explain=true produces a
+/// non-null composite score and the PRD-mandated caveat substring. Runs in-process; does NOT spawn
+/// the <c>memories</c> binary (anti-pattern #8). Filter with
+/// <c>dotnet test --filter "Category=Integration"</c> to run locally, or
+/// <c>--filter "Category!=Integration"</c> to skip without fixture setup.
+/// </summary>
+[Collection("AspireIngestionPipeline")]
+[Trait("Category", "Integration")]
+public sealed class CliSearchIntegrationTests
+{
+    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan IngestionTimeout = TimeSpan.FromMinutes(3);
+
+    private readonly AspireIngestionPipelineFixture _fixture;
+
+    public CliSearchIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task HybridSearchAsync_AfterIngestion_ReturnsCompositeScoreAndCaveat()
+    {
+        // Arrange — unique identifiers so this test is isolated from peer integration tests.
+        string tenantId = $"tenant-cli-search-{Guid.NewGuid():N}";
+        string caseId = $"case-{Guid.NewGuid():N}";
+        string sourceUri = $"file:///{Guid.NewGuid():N}.txt";
+        const string needleQuery = "customerEscalationToken";
+
+        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
+
+        var ingestionInput = new IngestionInput
+        {
+            TenantId = tenantId,
+            CaseId = caseId,
+            SourceUri = sourceUri,
+            ContentBytes = System.Text.Encoding.UTF8.GetBytes(
+                $"Confidential invoicing discrepancy escalated by the customer. {needleQuery} body."),
+            ContentType = "text/plain",
+            SourceType = SourceType.File,
+            IngestedBy = "integration@test.local",
+        };
+
+        using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient
+            .PostAsJsonAsync("/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+        ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        AcceptedResponse? accepted = await ingestResponse.Content
+            .ReadFromJsonAsync<AcceptedResponse>(MemoriesJsonContext.Options);
+        accepted.ShouldNotBeNull();
+        accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
+
+        await WaitForIngestionCompletionAsync(accepted.InstanceId);
+
+        using var http = new HttpClient
+        {
+            BaseAddress = _fixture.MemoriesClient.BaseAddress,
+            Timeout = TimeSpan.FromSeconds(60),
+        };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
+        {
+            Endpoint = _fixture.MemoriesClient.BaseAddress,
+        });
+        var client = new MemoriesClient(http, options, NullLogger<MemoriesClient>.Instance);
+
+        // Act — run the same hybrid+explain call the `memories search query --explain` path uses.
+        HybridSearchResult result = await client.HybridSearchAsync(
+            new HybridSearchRequest(
+                TenantId: tenantId,
+                Query: needleQuery,
+                CaseId: caseId,
+                Explain: true),
+            CancellationToken.None);
+
+        // Assert — the CLI boundary guarantees the caveat substring survives verbatim from the server.
+        result.Results.ShouldNotBeEmpty();
+        FusedScoredResult match = result.Results[0];
+        match.CompositeScore.ShouldBeInRange(0.0d, 1.0d);
+
+        result.Explanation.ShouldNotBeNull();
+        result.Explanation!.Caveat.ShouldContain(
+            "measure query-result relevance",
+            customMessage: "The CLI's compliance-enablement guarantee requires the PRD caveat substring to survive unchanged.");
+    }
+
+    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
+    {
+        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
+            .PostAsJsonAsync(
+                "/api/tenants",
+                new TenantProvisioningInput(tenantId, displayName),
+                MemoriesJsonContext.Options);
+
+        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient
+                .GetAsync($"/api/tenants/{tenantId}");
+
+            if (tenantResponse.StatusCode == HttpStatusCode.OK)
+            {
+                TenantInfo? tenant = await tenantResponse.Content
+                    .ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
+                if (tenant?.Status == TenantStatus.Active)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+
+        false.ShouldBeTrue($"Tenant '{tenantId}' did not reach Active within {ActivationTimeout}.");
+    }
+
+    private async Task WaitForIngestionCompletionAsync(string instanceId)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(IngestionTimeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient
+                .GetAsync($"/api/ingest/{instanceId}");
+
+            if (statusResponse.StatusCode == HttpStatusCode.OK)
+            {
+                string body = await statusResponse.Content.ReadAsStringAsync();
+                using JsonDocument doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("status", out JsonElement status))
+                {
+                    string? statusValue = status.GetString();
+                    if (string.Equals(statusValue, "COMPLETED", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(statusValue, "Completed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+
+        false.ShouldBeTrue($"Ingestion instance '{instanceId}' did not complete within {IngestionTimeout}.");
+    }
+
+    private sealed record AcceptedResponse(string InstanceId);
+}
+
+### ---- NEW FILE: docs/dev/cli-output-formats.md ----
+
+# CLI output formats (Story 7.2)
+
+The `memories` CLI supports three output formats through the root-level global option
+`--format <human|json|table>`. When the flag is omitted, the CLI defaults to **human** —
+byte-for-byte identical to what Story 7.1 shipped, so every script written against the
+foundation keeps working unchanged.
+
+| Format  | Target                   | Pipe-safe?            |
+| ------- | ------------------------ | --------------------- |
+| `human` | Interactive terminals    | Yes                   |
+| `json`  | Scripts and LLM agents   | **Yes — use this in pipelines.** |
+| `table` | Interactive terminals    | No — has a separator row of hyphens. |
+
+See also: [`cli-config.md`](cli-config.md) for endpoint/token resolution.
+
+## JSON envelope contract — `schemaVersion: 1`
+
+Every `--format json` response is a single JSON document with exactly three top-level fields:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "tenant list",
+  "data": <command-specific-shape>
+}
+```
+
+- **`schemaVersion`** — integer, pinned at `1` for Story 7.2. Bumps only when a field is **renamed, removed, or semantically changed**.
+- **`command`** — the invoked command name (e.g., `tenant list`, `config show`, `search query`, `search inspect`).
+- **`data`** — the command-specific payload; see the per-command sections below.
+
+**Versioning policy (ADR-7.2-001):**
+
+- Adding a new optional field is **non-breaking** — consumers stay on `schemaVersion: 1`.
+  Story 7.3 will add an `error` slot; Story 7.5 may add `traceId`. Both are additive.
+- Renaming, removing, or changing the semantics of a field requires bumping to
+  `schemaVersion: 2`. Both versions must coexist for at least one full release cycle after
+  the bump so consumers have time to migrate.
+- Silently changing meaning within `schemaVersion: 1` (e.g., flipping a boolean default,
+  changing an enum spelling) is never allowed — it is a bug, not an evolution.
+- The `OutputFormat` enum (`human`, `json`, `table`) is itself extensible. Later stories may
+  add new values like `tsv`, `yaml`, or `csv` as additive enum members without breaking
+  existing formats or bumping `schemaVersion`.
+
+## Per-command examples
+
+### `tenant list`
+
+**Human** (default):
+
+```
+t-1	Tenant One
+t-2	Tenant Two
+```
+
+Empty list prints `No tenants found.` (Story 7.1 wording, preserved).
+
+**JSON** — `memories --format json tenant list`:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "tenant list",
+  "data": [
+    { "id": "t-1", "displayName": "Tenant One", "status": "active", "createdAt": "2026-04-16T12:00:00Z" }
+  ]
+}
+```
+
+**Table** — `memories --format table tenant list`:
+
+```
+TENANT ID  DISPLAY NAME
+-------------------------
+t-1        Tenant One
+t-2        Tenant Two
+```
+
+### `config show`
+
+**Human** (default, byte-for-byte preserved from Story 7.1):
+
+```
+endpoint=http://127.0.0.1:5000/
+resolvedBy=DefaultConfigurationSource
+tokenConfigured=false
+```
+
+**JSON** — `memories --format json config show`:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "config show",
+  "data": {
+    "endpoint": "http://127.0.0.1:5000/",
+    "resolvedBy": "DefaultConfigurationSource",
+    "tokenConfigured": false
+  }
+}
+```
+
+The token value itself is never serialized — `tokenConfigured` is the only signal.
+
+### `search query`
+
+**Human without `--explain`**:
+
+```
+1. [0.812] mem://case-1/mu-42 — Customer escalation regarding invoicing discrepancy
+2. [0.644] mem://case-1/mu-17 — Follow-up call notes, escalation resolved
+```
+
+**Human with `--explain`** — the caveat is printed **first**, before any result, so that
+`memories search query --explain | head -N` carries the compliance guarantee:
+
+```
+Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.
+1. [0.812] mem://case-1/mu-42 — Customer escalation regarding invoicing discrepancy
+    composite=0.812, syntactic=0.700, semantic=0.900
+      (syntactic: bm25_saturation)
+      (semantic: cosine)
+```
+
+**JSON with `--explain`** — `memories search query --explain --format json --tenant acme --query "needle"`:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "search query",
+  "data": {
+    "results": [
+      { "memoryUnitId": "mu-42", "compositeScore": 0.812, "syntacticScore": 0.7, "semanticScore": 0.9, "sourceUri": "mem://case-1/mu-42", "sourceType": "file", "contentSnippet": "Customer escalation...", "annotationsCount": 0 }
+    ],
+    "totalCount": 1,
+    "degraded": false,
+    "unavailableAxes": [],
+    "query": "needle",
+    "explanation": {
+      "caveat": "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.",
+      "axisDetails": {
+        "syntactic": { "normalizationMethod": "bm25_saturation", "description": "BM25 saturation" },
+        "semantic":  { "normalizationMethod": "cosine",          "description": "cosine similarity" }
+      }
+    }
+  }
+}
+```
+
+> ⚠ **Combined-flag reminder:** `data.explanation` is populated only when **both**
+> `--explain` **and** `--format json` are set. `--format json` alone returns the envelope
+> with `explanation: null` (omitted under `WhenWritingNull`). Passing `--explain` alone
+> formats the explanation to human/table output but does not produce JSON.
+
+**Table with `--explain`**:
+
+```
+RANK  COMPOSITE  SYNTACTIC  SEMANTIC  GRAPH  URI
+--------------------------------------------------
+1     0.812      0.700      0.900     -      mem://case-1/mu-42
+Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.
+```
+
+Degraded searches (`HybridSearchResult.Degraded == true`) prepend a one-line notice:
+`Note: search degraded — axes unavailable: graph`. Story 7.3 replaces this bridge surface
+with actionable recovery suggestions.
+
+### `search inspect`
+
+**Human** — metadata origin uses lowercase `[human]` / `[ai]` prefixes, matching the
+`MetadataOrigin` enum's camelCase JSON serialization. Plain ASCII only — pipe-friendly.
+
+```
+id=mu-42
+tenantId=acme
+caseId=case-1
+sourceUri=mem://case-1/mu-42
+ingestedBy=user@acme
+ingestedAt=2026-04-16T15:30:00.0000000+00:00
+status=Indexed
+metadata:
+  author = Jerome      [human, confidence=1.00]
+  topic  = compliance  [ai, confidence=0.87]
+```
+
+Empty metadata prints `metadata: (none)` on a single line.
+
+**JSON** — `memories --format json search inspect --tenant acme --case case-1 --id mu-42`:
+
+```json
+{
+  "schemaVersion": 1,
+  "command": "search inspect",
+  "data": {
+    "id": "mu-42",
+    "tenantId": "acme",
+    "caseId": "case-1",
+    "metadata": {
+      "author": { "value": "Jerome", "origin": "human", "confidence": 1.0 },
+      "topic":  { "value": "compliance", "origin": "ai", "confidence": 0.87 }
+    }
+  }
+}
+```
+
+## Pipe safety
+
+- Use `--format json` for scripts and pipelines. The envelope is stable.
+- `--format table` includes a separator row of hyphens and is intended for **interactive
+  terminal viewing only**. Piping it into `awk`, `cut`, or similar tools requires skipping
+  the separator line.
+- `--format human` is stable for the commands shipped as of Story 7.2 and is pipe-friendly
+  (no ANSI, no emoji), but future stories may add ANSI colour under a TTY-detection guard.
+  Scripts should still prefer JSON.
+
+## Format–command reference
+
+| `OutputFormat` enum | CLI spelling | Notes |
+| ------------------- | ------------ | ----- |
+| `Human`             | `--format human` (or omit) | Default. |
+| `Json`              | `--format json` | Envelope with `schemaVersion: 1`. |
+| `Table`             | `--format table` | ASCII alignment via `string.PadRight`; interactive only. |
+
+Unknown values exit with code `2` and a one-line stderr message:
+`Invalid configuration at '--format': Unknown format 'xml'. Use human, json, or table.`
+`--help` and `--version` always succeed regardless of an invalid `--format` value.

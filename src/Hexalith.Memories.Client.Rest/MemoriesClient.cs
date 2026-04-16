@@ -5,8 +5,10 @@
 
 namespace Hexalith.Memories.Client.Rest;
 
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 
 using Hexalith.Memories.Contracts.V1;
 
@@ -100,6 +102,152 @@ public class MemoriesClient
         return cases ?? [];
     }
 
+    /// <summary>Runs a hybrid (multi-axis) search. Story 7.2 addition.</summary>
+    /// <param name="request">The hybrid search request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The fused hybrid search result.</returns>
+    public virtual async Task<HybridSearchResult> HybridSearchAsync(HybridSearchRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Query);
+
+        string path = BuildSearchPath(
+            axis: "hybrid",
+            tenantId: request.TenantId,
+            query: request.Query,
+            caseId: request.CaseId,
+            maxResults: request.MaxResults,
+            explain: request.Explain);
+
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            HybridSearchResult? result = await response.Content
+                .ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return result ?? throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with an empty body.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as HybridSearchResult.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
+    /// <summary>Runs a single-axis search (syntactic, semantic, or graph). Story 7.2 addition.</summary>
+    /// <param name="request">The single-axis search request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The single-axis search result.</returns>
+    public virtual async Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.TenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.Axis);
+
+        string path = BuildSearchPath(
+            axis: request.Axis,
+            tenantId: request.TenantId,
+            query: request.Query,
+            caseId: request.CaseId,
+            maxResults: request.MaxResults,
+            explain: request.Explain);
+
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            SearchResult? result = await response.Content
+                .ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return result ?? throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with an empty body.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as SearchResult.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
+    /// <summary>Fetches a single memory unit for <c>search inspect</c>. Story 7.2 addition.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="memoryUnitId">The memory unit identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The memory unit with its metadata.</returns>
+    public virtual async Task<MemoryUnit> GetMemoryUnitAsync(
+        string tenantId,
+        string caseId,
+        string memoryUnitId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/{Uri.EscapeDataString(memoryUnitId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            MemoryUnit? unit = await response.Content
+                .ReadFromJsonAsync<MemoryUnit>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return unit ?? throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with an empty body.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as MemoryUnit.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
     /// <summary>
     /// Probes the <c>/health</c> endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
     /// server answered with a 2xx status code.
@@ -128,5 +276,47 @@ public class MemoriesClient
             _logger.LogDebug(ex, "Health probe failed.");
             return false;
         }
+    }
+
+    /// <summary>
+    /// Server defaults for parameters the CLI omits when unchanged. Keeping this private stops the
+    /// values from drifting into callers that might pin them as wire literals.
+    /// </summary>
+    private const int DefaultServerMaxResults = 10;
+
+    private static string BuildSearchPath(
+        string axis,
+        string tenantId,
+        string? query,
+        string? caseId,
+        int maxResults,
+        bool explain)
+    {
+        var builder = new StringBuilder("api/search?tenantId=");
+        builder.Append(Uri.EscapeDataString(tenantId));
+
+        if (!string.IsNullOrEmpty(query))
+        {
+            builder.Append("&query=").Append(Uri.EscapeDataString(query));
+        }
+
+        if (!string.IsNullOrEmpty(caseId))
+        {
+            builder.Append("&caseId=").Append(Uri.EscapeDataString(caseId));
+        }
+
+        builder.Append("&axis=").Append(Uri.EscapeDataString(axis));
+
+        if (maxResults != DefaultServerMaxResults)
+        {
+            builder.Append("&maxResults=").Append(maxResults.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (explain)
+        {
+            builder.Append("&explain=true");
+        }
+
+        return builder.ToString();
     }
 }

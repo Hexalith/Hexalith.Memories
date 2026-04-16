@@ -9,12 +9,14 @@ using System.CommandLine;
 
 using Hexalith.Memories.Cli.Configuration;
 using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Cli.Output.Json;
 
 using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
-/// Builds <c>memories config show</c> — the diagnostic command that prints the resolved endpoint, source,
-/// and whether a token is configured (AC #3c). Output format is frozen key=value lines on stdout.
+/// Builds <c>memories config show</c>. Story 7.2 routes output through <see cref="OutputFormatterRouter"/>;
+/// human format preserves the byte-for-byte key=value form from Story 7.1 (AC #1 / ADR-7.2-002).
 /// </summary>
 public static class ConfigShowCommand
 {
@@ -30,15 +32,17 @@ public static class ConfigShowCommand
         {
             CliConsole console = services.GetRequiredService<CliConsole>();
             ResolvedConfigPipeline pipeline = services.GetRequiredService<ResolvedConfigPipeline>();
+            OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
 
             try
             {
                 ResolvedConfig resolved = pipeline.Resolve();
-                string tokenConfigured = string.IsNullOrEmpty(resolved.ApiToken) ? "false" : "true";
+                var data = new ConfigShowData(
+                    Endpoint: EndpointDisplayFormatter.Format(resolved.Endpoint),
+                    ResolvedBy: resolved.ResolvedBy,
+                    TokenConfigured: !string.IsNullOrEmpty(resolved.ApiToken));
 
-                console.Out.WriteLine($"endpoint={EndpointDisplayFormatter.Format(resolved.Endpoint)}");
-                console.Out.WriteLine($"resolvedBy={resolved.ResolvedBy}");
-                console.Out.WriteLine($"tokenConfigured={tokenConfigured}");
+                router.Write(console.Format, data, console.Out);
                 return CliExitCodes.Success;
             }
             catch (InvalidConfigurationException invalidConfig)

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Cli.Execution;
 
+using Hexalith.Memories.Cli.Output;
+
 /// <summary>Abstraction over stdout/stderr so tests can capture CLI output.</summary>
 public sealed class CliConsole
 {
@@ -16,4 +18,7 @@ public sealed class CliConsole
 
     /// <summary>Gets or sets the process verbose flag.</summary>
     public bool Verbose { get; set; }
+
+    /// <summary>Gets or sets the resolved output format (Story 7.2). Default: <see cref="OutputFormat.Human"/>.</summary>
+    public OutputFormat Format { get; set; } = OutputFormat.Human;
 }

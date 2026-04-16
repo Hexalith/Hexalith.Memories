@@ -78,6 +78,58 @@ public class TokenRedactionTests
     }
 
     [Fact]
+    public async Task SearchQuery_TransportFailure_DoesNotLeakTokenInAnyFormat()
+    {
+        foreach (Hexalith.Memories.Cli.Output.OutputFormat format in Enum.GetValues<Hexalith.Memories.Cli.Output.OutputFormat>())
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            IServiceProvider services = BuildServices(
+                stdout,
+                stderr,
+                TokenSentinel,
+                endpoint: "http://127.0.0.1:65000/",
+                verbose: true);
+            CliConsole console = services.GetRequiredService<CliConsole>();
+            console.Format = format;
+
+            System.CommandLine.Command query = SearchQueryCommand.Build(services);
+            int exit = await query.Parse(new[] { "query", "--tenant", "t1", "--query", "needle" }).InvokeAsync();
+
+            string combined = stdout.ToString() + stderr.ToString();
+            combined.ShouldNotContain(TokenSentinel);
+            exit.ShouldBe(CliExitCodes.Plumbing, $"format={format}");
+        }
+    }
+
+    [Fact]
+    public async Task SearchInspect_TransportFailure_DoesNotLeakTokenInAnyFormat()
+    {
+        foreach (Hexalith.Memories.Cli.Output.OutputFormat format in Enum.GetValues<Hexalith.Memories.Cli.Output.OutputFormat>())
+        {
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            IServiceProvider services = BuildServices(
+                stdout,
+                stderr,
+                TokenSentinel,
+                endpoint: "http://127.0.0.1:65000/",
+                verbose: true);
+            CliConsole console = services.GetRequiredService<CliConsole>();
+            console.Format = format;
+
+            System.CommandLine.Command inspect = SearchInspectCommand.Build(services);
+            int exit = await inspect
+                .Parse(new[] { "inspect", "--tenant", "t1", "--case", "c1", "--id", "mu-1" })
+                .InvokeAsync();
+
+            string combined = stdout.ToString() + stderr.ToString();
+            combined.ShouldNotContain(TokenSentinel);
+            exit.ShouldBe(CliExitCodes.Plumbing, $"format={format}");
+        }
+    }
+
+    [Fact]
     public async Task Executor_UnhandledException_DoesNotLeakEndpointUserInfoInVerboseOutput()
     {
         var stdout = new StringWriter();

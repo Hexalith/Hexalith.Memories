@@ -8,7 +8,11 @@ namespace Hexalith.Memories.Cli;
 using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Configuration;
 using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Cli.Output.Formatters;
+using Hexalith.Memories.Cli.Output.Json;
 using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -72,6 +76,49 @@ public static class CliServices
         // Executor.
         services.AddSingleton<CliCommandExecutor>();
 
+        // Story 7.2: output-format infrastructure.
+        services.AddSingleton<OutputFormatterRouter>();
+
+        RegisterFormatters<IReadOnlyList<TenantSummary>>(
+            services,
+            new TenantListHumanFormatter(),
+            new TenantListJsonFormatter(),
+            new TenantListTableFormatter());
+
+        RegisterFormatters<ConfigShowData>(
+            services,
+            new ConfigShowHumanFormatter(),
+            new ConfigShowJsonFormatter(),
+            new ConfigShowTableFormatter());
+
+        RegisterFormatters<HybridSearchResult>(
+            services,
+            new HybridSearchResultHumanFormatter(),
+            new HybridSearchResultJsonFormatter(),
+            new HybridSearchResultTableFormatter());
+
+        RegisterFormatters<SearchResult>(
+            services,
+            new SearchResultHumanFormatter(),
+            new SearchResultJsonFormatter(),
+            new SearchResultTableFormatter());
+
+        RegisterFormatters<MemoryUnit>(
+            services,
+            new MemoryUnitHumanFormatter(),
+            new MemoryUnitJsonFormatter(),
+            new MemoryUnitTableFormatter());
+
         return services;
+    }
+
+    private static void RegisterFormatters<T>(
+        IServiceCollection services,
+        params IOutputFormatter<T>[] formatters)
+    {
+        foreach (IOutputFormatter<T> formatter in formatters)
+        {
+            services.AddSingleton(formatter);
+        }
     }
 }

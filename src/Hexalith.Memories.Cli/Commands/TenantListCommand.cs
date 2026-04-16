@@ -8,12 +8,13 @@ namespace Hexalith.Memories.Cli.Commands;
 using System.CommandLine;
 
 using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.DependencyInjection;
 
-/// <summary>Builds <c>memories tenant list</c> — the single fully-wired command in Story 7.1.</summary>
+/// <summary>Builds <c>memories tenant list</c>. Story 7.2 routes output through <see cref="OutputFormatterRouter"/>.</summary>
 public static class TenantListCommand
 {
     private const string ListCommandDescription = """
@@ -22,6 +23,7 @@ List all tenants registered on the server.
 Examples:
     memories tenant list
     memories --endpoint http://127.0.0.1:5000 tenant list
+    memories --format json tenant list
 """;
 
     /// <summary>Builds the <c>list</c> subcommand.</summary>
@@ -40,23 +42,14 @@ Examples:
     {
         CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
         CliConsole console = services.GetRequiredService<CliConsole>();
+        OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
 
         return await executor.ExecuteAsync(async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
             IReadOnlyList<TenantSummary> tenants = await client.ListTenantsAsync(innerCt).ConfigureAwait(false);
 
-            if (tenants.Count == 0)
-            {
-                console.Out.WriteLine("No tenants found.");
-                return CliExitCodes.Success;
-            }
-
-            foreach (TenantSummary tenant in tenants)
-            {
-                console.Out.WriteLine($"{tenant.Id}\t{tenant.DisplayName}");
-            }
-
+            router.Write(console.Format, tenants, console.Out);
             return CliExitCodes.Success;
         }, ct).ConfigureAwait(false);
     }

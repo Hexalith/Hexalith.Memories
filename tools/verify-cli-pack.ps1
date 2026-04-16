@@ -31,7 +31,7 @@ Write-Host "[2/4] dotnet tool install --global --add-source $ArtifactsDir Hexali
 & dotnet tool install --global --add-source $ArtifactsDir Hexalith.Memories.Cli
 if ($LASTEXITCODE -ne 0) { throw "dotnet tool install failed ($LASTEXITCODE)" }
 
-Write-Host "[3/4] memories --version"
+Write-Host "[3/5] memories --version"
 $memoriesExe = Get-Command memories -ErrorAction SilentlyContinue
 if (-not $memoriesExe) {
     $toolsDir = if ($IsWindows) {
@@ -50,7 +50,13 @@ See docs/dev/cli-config.md (PATH troubleshooting) for per-shell remediation.
 & memories --version
 if ($LASTEXITCODE -ne 0) { throw "'memories --version' failed ($LASTEXITCODE)" }
 
-Write-Host "[4/4] dotnet tool uninstall --global Hexalith.Memories.Cli"
+Write-Host "[4/5] Story 7.2 format surface smoke (help-only, no server required)"
+& memories search query --help | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "'memories search query --help' failed ($LASTEXITCODE)" }
+& memories --format json tenant list --help | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "'memories --format json tenant list --help' failed ($LASTEXITCODE)" }
+
+Write-Host "[5/5] dotnet tool uninstall --global Hexalith.Memories.Cli"
 & dotnet tool uninstall --global Hexalith.Memories.Cli
 if ($LASTEXITCODE -ne 0) { throw "dotnet tool uninstall failed ($LASTEXITCODE)" }
 

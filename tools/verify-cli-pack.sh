@@ -23,7 +23,7 @@ echo "[2/4] dotnet tool install --global --add-source $ARTIFACTS_DIR Hexalith.Me
 dotnet tool uninstall --global Hexalith.Memories.Cli >/dev/null 2>&1 || true
 dotnet tool install --global --add-source "$ARTIFACTS_DIR" Hexalith.Memories.Cli
 
-echo "[3/4] memories --version"
+echo "[3/5] memories --version"
 if ! command -v memories >/dev/null 2>&1; then
     echo "'memories' command not found on PATH after install." >&2
     echo "Check that '$HOME/.dotnet/tools' is on your PATH." >&2
@@ -32,7 +32,11 @@ if ! command -v memories >/dev/null 2>&1; then
 fi
 memories --version
 
-echo "[4/4] dotnet tool uninstall --global Hexalith.Memories.Cli"
+echo "[4/5] Story 7.2 format surface smoke (help-only, no server required)"
+memories search query --help >/dev/null
+memories --format json tenant list --help >/dev/null
+
+echo "[5/5] dotnet tool uninstall --global Hexalith.Memories.Cli"
 dotnet tool uninstall --global Hexalith.Memories.Cli
 
 echo "OK — packaging pipeline verified."
