@@ -12,7 +12,13 @@
     <ProjectReference
       Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
     <ProjectReference
+      Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
+    <ProjectReference
       Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

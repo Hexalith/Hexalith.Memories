@@ -4,6 +4,9 @@ using CommunityToolkit.Aspire.Hosting.Dapr;
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 string secretsFile = EnsureSecretsFile();
 string daprConfigPath = ResolveDaprConfigPath();
+string daprAppId = ResolveDaprAppId();
+string redisConfigPath = ResolveRedisConfigPath();
+string redisVolumeName = ResolveRedisVolumeName();
 
 // Story 5.4 AC3 — DAPR API token authentication.
 //
@@ -16,10 +19,17 @@ string daprConfigPath = ResolveDaprConfigPath();
 // access to the app port bypasses the token check. Story D8 (Phase 1.5) adds a proper
 // TenantAuthorizationMiddleware for external callers.
 (string? daprApiToken, string? appApiToken) = ResolveDaprApiTokens();
+ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
 
-// Redis Stack: RediSearch (syntactic) + Vector Search (semantic) + DAPR state store
+// Story 6.4: make Redis durability explicit instead of relying on image defaults.
+// The redis/redis-stack image auto-loads /redis-stack.conf from its /entrypoint.sh, so a
+// repo-owned config bind-mount plus a named /data volume is enough to enable durable AOF+RDB.
+// Tests can override the volume name for isolation via MEMORIES_REDIS_VOLUME_NAME; local/dev
+// runs keep a stable named volume so controlled restarts preserve state.
 IResourceBuilder<ContainerResource> redis = builder
     .AddContainer("redis", "redis/redis-stack")
+    .WithBindMount(redisConfigPath, "/redis-stack.conf", isReadOnly: true)
+    .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
 
@@ -51,23 +61,13 @@ IResourceBuilder<ProjectResource> server = builder
         sidecar = sidecar
             .WithOptions(new DaprSidecarOptions
             {
-                AppId = "memories-server",
+                AppId = daprAppId,
                 DaprHttpPort = 3500,
                 DaprGrpcPort = 50001,
                 Config = daprConfigPath,
             })
             .WithReference(stateStore)
             .WithReference(secretStore);
-
-        if (appApiToken is not null)
-        {
-            sidecar = sidecar.WithEnvironment("APP_API_TOKEN", appApiToken);
-        }
-
-        if (daprApiToken is not null)
-        {
-            sidecar = sidecar.WithEnvironment("DAPR_API_TOKEN", daprApiToken);
-        }
     })
     .WithEnvironment(
         "ConnectionStrings__redis",
@@ -147,6 +147,64 @@ static string ResolveDaprConfigPath()
     }
 
     return configPath;
+}
+
+static string ResolveRedisConfigPath()
+{
+    string repoRoot = ResolveRepositoryRoot();
+    string configPath = Path.Combine(repoRoot, "deploy", "redis", "redis.conf");
+
+    if (!File.Exists(configPath))
+    {
+        throw new FileNotFoundException(
+            "Redis persistence configuration not found. Ensure deploy/redis/redis.conf exists.",
+            configPath);
+    }
+
+    // Story 6.4: the redis/redis-stack image silently falls back to in-memory defaults if the bind-mounted
+    // config is present but empty or missing the AOF directive — which would make "restart durability"
+    // green while actually losing data. Reject that up front so AppHost fails loudly instead.
+    string content = File.ReadAllText(configPath);
+    if (!content.Contains("appendonly yes", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            $"Redis persistence configuration at '{configPath}' must set 'appendonly yes' to enable AOF durability.");
+    }
+
+    return configPath;
+}
+
+static string ResolveDaprAppId()
+{
+    string? configured = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
+    return string.IsNullOrWhiteSpace(configured)
+        ? "memories-server"
+        : configured.Trim();
+}
+
+static string ResolveRedisVolumeName()
+{
+    string? configured = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
+    return string.IsNullOrWhiteSpace(configured)
+        ? "hexalith-memories-redis-data"
+        : configured.Trim();
+}
+
+static void ApplyProcessEnvironmentTokens(string? daprApiToken, string? appApiToken)
+{
+    // CommunityToolkit.Aspire.Hosting.Dapr 9.7 / Aspire 13.1 does not expose a sidecar-specific
+    // environment-builder API. When token mode is enabled, seed the AppHost process environment so
+    // the spawned daprd sidecar inherits the required variables, while still explicitly passing them
+    // to the application project resource below.
+    if (!string.IsNullOrWhiteSpace(appApiToken))
+    {
+        Environment.SetEnvironmentVariable("APP_API_TOKEN", appApiToken);
+    }
+
+    if (!string.IsNullOrWhiteSpace(daprApiToken))
+    {
+        Environment.SetEnvironmentVariable("DAPR_API_TOKEN", daprApiToken);
+    }
 }
 
 static (string? DaprApiToken, string? AppApiToken) ResolveDaprApiTokens()

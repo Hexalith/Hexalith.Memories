@@ -144,8 +144,12 @@ internal sealed class ReIngestionCoordinator
         SourceType = record.SourceType,
         IngestedBy = record.IngestedBy,
         ContentType = record.SourceType == SourceType.Url
-            ? string.Empty
-            : record.ContentType ?? string.Empty,
+            ? string.IsNullOrWhiteSpace(record.ContentType)
+                ? "application/octet-stream"
+                : record.ContentType
+            : string.IsNullOrWhiteSpace(record.ContentType)
+                ? string.Empty
+                : record.ContentType,
         ContentBytes = null,
         Metadata = [],
     };

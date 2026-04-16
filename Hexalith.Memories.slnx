@@ -1,12 +1,15 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj" />
+    <Project Path="src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj" />
+    <Project Path="src/Hexalith.Memories.Client.Rest/Hexalith.Memories.Client.Rest.csproj" />
     <Project Path="src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj" />
     <Project Path="src/Hexalith.Memories.Redis/Hexalith.Memories.Redis.csproj" />
     <Project Path="src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj" />
     <Project Path="src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.TestHelpers/Hexalith.Memories.TestHelpers.csproj" />

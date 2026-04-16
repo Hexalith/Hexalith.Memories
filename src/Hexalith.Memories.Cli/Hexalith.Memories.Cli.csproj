@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- CLI framework: System.CommandLine 2.0.0-beta5.25306.1 — chosen over Spectre.Console.Cli because
+       System.CommandLine is Microsoft-supported, ships with the .NET CLI itself, exposes root-level
+       recursive options (Option.Recursive = true) which Task 2.4 relies on, and supports async handlers
+       with CancellationToken natively for Ctrl-C handling (Task 2.8). See ADR-7.1-008. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>memories</ToolCommandName>
+    <IsPackable>true</IsPackable>
+    <PackageId>Hexalith.Memories.Cli</PackageId>
+    <RootNamespace>Hexalith.Memories.Cli</RootNamespace>
+    <AssemblyName>Hexalith.Memories.Cli</AssemblyName>
+    <Description>Hexalith.Memories global CLI tool (Story 7.1 foundation).</Description>
+    <!-- Silence NU5104 (prerelease dependency warning) for System.CommandLine — remove when the package goes GA.
+         Silence NU1603 (resolved higher version) for transitive dependencies on prerelease packages. -->
+    <NoWarn>$(NoWarn);NU5104;NU1603</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>

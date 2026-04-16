@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Actors;
 
+using System.Runtime.Serialization;
+
 /// <summary>
 /// Per-tenant corpus statistics cached by <see cref="CorpusStatisticsActor"/>.
 /// Used as DAPR actor internal state — not a public API contract.
@@ -12,7 +14,8 @@ namespace Hexalith.Memories.Server.Actors;
 /// <param name="DocumentCount">The number of documents in the tenant's RediSearch index.</param>
 /// <param name="AverageDocumentLength">The average document length in bytes (computed from <c>DocTableSizeMB / NumDocs</c>).</param>
 /// <param name="LastRefreshedAt">The timestamp when statistics were last refreshed from RediSearch.</param>
+[DataContract]
 public sealed record CorpusStatistics(
-    int DocumentCount,
-    double AverageDocumentLength,
-    DateTimeOffset LastRefreshedAt);
+    [property: DataMember] int DocumentCount,
+    [property: DataMember] double AverageDocumentLength,
+    [property: DataMember] DateTimeOffset LastRefreshedAt);

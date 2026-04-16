@@ -5,10 +5,17 @@
 
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
+using System.Diagnostics;
 using System.Net;
 
 using Aspire.Hosting;
 using Aspire.Hosting.Testing;
+
+using Dapr.Actors;
+using Dapr.Actors.Client;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Actors;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,6 +30,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private string? _previousAspNetCoreEnvironment;
     private string? _previousDotNetEnvironment;
     private string? _previousFakeEmbedding;
+    private string? _previousAllowPrivateHosts;
+    private string? _previousDaprAppId;
+    private string? _previousRedisVolumeName;
+    private string _daprAppId = string.Empty;
+    private string _redisVolumeName = string.Empty;
+    private ActorProxyFactory? _actorProxyFactory;
+    private ActorProxyOptions? _actorProxyOptions;
+    private HttpClientHandler? _actorHttpMessageHandler;
     private readonly TestLogProvider _logProvider = new();
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
@@ -40,19 +55,92 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the FalkorDB connection for backend verification.</summary>
     public IConnectionMultiplexer FalkorDbConnection { get; private set; } = null!;
 
+    /// <summary>Creates a counter-actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="caseId">Case identifier.</param>
+    /// <returns>The actor proxy.</returns>
+    public ICaseIngestionCounterActor CreateCaseIngestionCounterActorProxy(string tenantId, string caseId)
+        => CreateActorProxy<ICaseIngestionCounterActor>($"{tenantId}:{caseId}", "CaseIngestionCounterActor");
+
+    /// <summary>Creates a rate-limiter actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <returns>The actor proxy.</returns>
+    public IEmbeddingRateLimiterActor CreateEmbeddingRateLimiterActorProxy(string tenantId)
+        => CreateActorProxy<IEmbeddingRateLimiterActor>(tenantId, "EmbeddingRateLimiterActor");
+
+    /// <summary>Creates a corpus-statistics actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <returns>The actor proxy.</returns>
+    public ICorpusStatisticsActor CreateCorpusStatisticsActorProxy(string tenantId)
+        => CreateActorProxy<ICorpusStatisticsActor>(tenantId, "CorpusStatisticsActor");
+
+    /// <summary>Restarts the full topology and reconnects all clients.</summary>
+    /// <returns>The elapsed warm-restart duration.</returns>
+    public async Task<TimeSpan> RestartTopologyAsync()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        await DisposeTopologyAsync(cts.Token).ConfigureAwait(false);
+        await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+        stopwatch.Stop();
+        return stopwatch.Elapsed;
+    }
+
     /// <inheritdoc/>
     public async Task InitializeAsync()
     {
         _previousAspNetCoreEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
         _previousDotNetEnvironment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
         _previousFakeEmbedding = Environment.GetEnvironmentVariable("Memories__Testing__UseFakeEmbedding");
+        _previousAllowPrivateHosts = Environment.GetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts");
+        _previousDaprAppId = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
+        _previousRedisVolumeName = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
 
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
         Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Development");
         Environment.SetEnvironmentVariable("Memories__Testing__UseFakeEmbedding", "true");
+        Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
+
+        _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
+        Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _daprAppId);
+        Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+    }
 
+    /// <summary>Returns a snapshot of log entries captured since the specified starting index.</summary>
+    /// <param name="startIndex">The 0-based index from which to read newly-captured log entries.</param>
+    /// <returns>The captured log entries after the starting index.</returns>
+    public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
+
+    /// <inheritdoc/>
+    public async Task DisposeAsync()
+    {
+        await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
+
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", _previousAspNetCoreEnvironment);
+        Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", _previousDotNetEnvironment);
+        Environment.SetEnvironmentVariable("Memories__Testing__UseFakeEmbedding", _previousFakeEmbedding);
+        Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", _previousAllowPrivateHosts);
+        Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _previousDaprAppId);
+        Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _previousRedisVolumeName);
+    }
+
+    private TActor CreateActorProxy<TActor>(string actorId, string actorType)
+        where TActor : IActor
+    {
+        if (_actorProxyFactory is null || _actorProxyOptions is null)
+        {
+            throw new InvalidOperationException("Actor proxies are unavailable before the topology has started.");
+        }
+
+        return _actorProxyFactory.CreateActorProxy<TActor>(new ActorId(actorId), actorType, _actorProxyOptions);
+    }
+
+    private async Task StartTopologyAsync(CancellationToken cancellationToken)
+    {
         _builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(false);
@@ -65,11 +153,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         });
 
         _app = await _builder.BuildAsync().ConfigureAwait(false);
-        await _app.StartAsync(cts.Token).ConfigureAwait(false);
+        await _app.StartAsync(cancellationToken).ConfigureAwait(false);
 
         _ = await _app.ResourceNotifications
-            .WaitForResourceHealthyAsync("memories-server", cts.Token)
-            .WaitAsync(TimeSpan.FromMinutes(3), cts.Token)
+            .WaitForResourceHealthyAsync("memories-server", cancellationToken)
+            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
             .ConfigureAwait(false);
 
         MemoriesClient = _app.CreateHttpClient("memories-server");
@@ -87,43 +175,59 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         RedisConnection = await ConnectionMultiplexer.ConnectAsync(redisEndpoint.Authority).ConfigureAwait(false);
         FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(falkorEndpoint.Authority).ConfigureAwait(false);
+
+        _actorProxyOptions = new ActorProxyOptions
+        {
+            HttpEndpoint = DaprSidecarHttpEndpoint.ToString(),
+            RequestTimeout = TimeSpan.FromSeconds(30),
+            JsonSerializerOptions = MemoriesJsonContext.Options,
+        };
+        _actorHttpMessageHandler = new HttpClientHandler();
+        _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
     }
 
-    /// <summary>Returns a snapshot of log entries captured since the specified starting index.</summary>
-    /// <param name="startIndex">The 0-based index from which to read newly-captured log entries.</param>
-    /// <returns>The captured log entries after the starting index.</returns>
-    public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
-
-    /// <inheritdoc/>
-    public async Task DisposeAsync()
+    private async Task DisposeTopologyAsync(CancellationToken cancellationToken)
     {
-        MemoriesClient.Dispose();
+        if (MemoriesClient is not null)
+        {
+            MemoriesClient.Dispose();
+            MemoriesClient = null!;
+        }
 
         if (RedisConnection is not null)
         {
             await RedisConnection.CloseAsync().ConfigureAwait(false);
             RedisConnection.Dispose();
+            RedisConnection = null!;
         }
 
         if (FalkorDbConnection is not null)
         {
             await FalkorDbConnection.CloseAsync().ConfigureAwait(false);
             FalkorDbConnection.Dispose();
+            FalkorDbConnection = null!;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (_app is not null)
         {
             await _app.DisposeAsync().ConfigureAwait(false);
+            _app = null;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (_builder is not null)
         {
             await _builder.DisposeAsync().ConfigureAwait(false);
+            _builder = null;
         }
 
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", _previousAspNetCoreEnvironment);
-        Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", _previousDotNetEnvironment);
-        Environment.SetEnvironmentVariable("Memories__Testing__UseFakeEmbedding", _previousFakeEmbedding);
+        _actorProxyFactory = null;
+        _actorProxyOptions = null;
+        _actorHttpMessageHandler?.Dispose();
+        _actorHttpMessageHandler = null;
     }
 
     private static async Task WaitForEndpointAsync(

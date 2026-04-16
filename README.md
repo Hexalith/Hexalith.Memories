@@ -38,7 +38,20 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 - `http://localhost:5000/alive`
 - `http://localhost:5000/ready`
 
+## CLI (preview)
+
+Story 7.1 ships the `memories` .NET global tool — foundation only (install, `tenant list`, `config show`, and the 4-tier endpoint resolver). Output formatting, rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.2-7.5.
+
+```bash
+dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
+dotnet tool install -g --add-source ./artifacts Hexalith.Memories.Cli
+memories --version
+```
+
+See [CLI configuration](docs/dev/cli-config.md) for the endpoint resolution chain, environment variables, config file schema, and PATH troubleshooting.
+
 ## Operations
 
 - [Rate limiting — per-tenant ceilings, 429 handling, extraction gate](docs/operations/rate-limiting.md)
 - [Failure recovery — failed-unit registry, re-ingestion, retry policy overrides](docs/operations/failure-recovery.md)
+- [Pipeline persistence — Redis durability, restart validation, warm restart and throughput benchmark](docs/operations/pipeline-persistence.md)

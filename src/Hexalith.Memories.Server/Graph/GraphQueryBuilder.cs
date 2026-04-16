@@ -18,6 +18,37 @@ using Hexalith.Memories.Contracts.V1;
 /// </remarks>
 public sealed class GraphQueryBuilder : IGraphQueryBuilder
 {
+    /// <summary>
+    /// Test-only overload used by integration tests that do not distinguish between provider and model.
+    /// Passes <paramref name="embeddingIdentifier"/> as both <c>embeddingProvider</c> and <c>embeddingModel</c>.
+    /// Production call sites MUST use the 12-argument overload with distinct provider/model values.
+    /// </summary>
+    public (string Query, IDictionary<string, object> Parameters) BuildMergeMemoryUnitNode(
+        string memoryUnitId,
+        string caseId,
+        string content,
+        string contentHash,
+        string sourceUri,
+        SourceType sourceType,
+        string embeddingIdentifier,
+        int embeddingDimensions,
+        string ingestedBy,
+        DateTimeOffset ingestedAt,
+        string metadataJson)
+        => BuildMergeMemoryUnitNode(
+            memoryUnitId,
+            caseId,
+            content,
+            contentHash,
+            sourceUri,
+            sourceType,
+            embeddingIdentifier,
+            embeddingIdentifier,
+            embeddingDimensions,
+            ingestedBy,
+            ingestedAt,
+            metadataJson);
+
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildMergeMemoryUnitNode(
         string memoryUnitId,

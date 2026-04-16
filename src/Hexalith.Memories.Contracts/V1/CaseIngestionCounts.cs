@@ -5,6 +5,13 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Runtime.Serialization;
+
 /// <summary>Per-stage in-flight counts for a case (Story 6.3 FR10). Indexed and Failed counts are sourced
 /// elsewhere (FalkorDB / activity stream) and are NOT carried by this record.</summary>
-public sealed record CaseIngestionCounts(int Queued, int Extracting, int Embedding, int Indexing);
+[DataContract]
+public sealed record CaseIngestionCounts(
+    [property: DataMember] int Queued,
+    [property: DataMember] int Extracting,
+    [property: DataMember] int Embedding,
+    [property: DataMember] int Indexing);
