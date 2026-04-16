@@ -32,11 +32,30 @@ if ! command -v memories >/dev/null 2>&1; then
 fi
 memories --version
 
-echo "[4/5] Story 7.2 format surface smoke (help-only, no server required)"
+echo "[4/6] Story 7.2 format surface smoke (help-only, no server required)"
 memories search query --help >/dev/null
 memories --format json tenant list --help >/dev/null
 
-echo "[5/5] dotnet tool uninstall --global Hexalith.Memories.Cli"
+# Story 7.3 Task 8.3: confirm the error-translation surface survived packaging. The call targets a
+# nonexistent tenant against whatever endpoint is configured (typically unreachable in this dev
+# loop), so exit code 1 (domain) or 2 (plumbing) is expected — we only check the binary didn't
+# crash or silently exit 0.
+echo "[5/6] Story 7.3 error-translation smoke (expect exit 1 or 2, NOT 0)"
+set +e
+memories search inspect --tenant nonexistent --case x --id y >/dev/null 2>&1
+exit_code=$?
+set -e
+if [[ "$exit_code" -eq 0 ]]; then
+    echo "Unexpected success (exit 0) from 'memories search inspect --tenant nonexistent'; the error-translation surface is broken." >&2
+    exit 1
+fi
+if [[ "$exit_code" -ne 1 && "$exit_code" -ne 2 ]]; then
+    echo "Unexpected exit code $exit_code from error smoke call; expected 1 (domain) or 2 (plumbing)." >&2
+    exit 1
+fi
+echo "Error smoke exited $exit_code as expected."
+
+echo "[6/6] dotnet tool uninstall --global Hexalith.Memories.Cli"
 dotnet tool uninstall --global Hexalith.Memories.Cli
 
 echo "OK — packaging pipeline verified."

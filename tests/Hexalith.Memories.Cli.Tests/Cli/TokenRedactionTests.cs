@@ -130,6 +130,61 @@ public class TokenRedactionTests
     }
 
     [Fact]
+    public async Task Executor_MemoriesRemoteException_ScrubsTokenFromBothMessageAndSuggestion()
+    {
+        // Story 7.3 Task 3.1: BOTH message AND suggestion flow through SanitizeText when sourced from
+        // the server. Catalog suggestions are compile-time constants and bypass sanitization. Unknown
+        // codes fall through to the server's suggestion, so both fields must be scrubbed symmetrically.
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        IServiceProvider services = BuildServices(stdout, stderr, TokenSentinel, verbose: false);
+        CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
+        var error = new Hexalith.Memories.Contracts.V1.ErrorResponse(
+            "UNKNOWN_FUTURE_CODE_XYZ",
+            $"Server message leaked {TokenSentinel} somehow.",
+            $"Server suggestion leaked {TokenSentinel} somehow.");
+
+        int exitCode = await executor.ExecuteAsync(
+            "tenant list",
+            (_, _) => throw new Hexalith.Memories.Client.Rest.MemoriesRemoteException(
+                System.Net.HttpStatusCode.BadRequest,
+                error),
+            CancellationToken.None);
+
+        exitCode.ShouldBe(CliExitCodes.DomainError);
+        string combined = stdout.ToString() + stderr.ToString();
+        combined.ShouldNotContain(TokenSentinel);
+        combined.ShouldContain("<redacted>");
+    }
+
+    [Fact]
+    public async Task Executor_ServerErrorInJsonMode_DoesNotLeakTokenInEnvelope()
+    {
+        // ADR-7.3-002: JSON errors land on stdout. The envelope must not carry a token in any field.
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        IServiceProvider services = BuildServices(stdout, stderr, TokenSentinel, verbose: false);
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        console.Format = Hexalith.Memories.Cli.Output.OutputFormat.Json;
+        CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
+        var error = new Hexalith.Memories.Contracts.V1.ErrorResponse(
+            "UNKNOWN_FUTURE_CODE_XYZ",
+            $"Message {TokenSentinel}.",
+            $"Suggestion {TokenSentinel}.");
+
+        int exitCode = await executor.ExecuteAsync(
+            "tenant list",
+            (_, _) => throw new Hexalith.Memories.Client.Rest.MemoriesRemoteException(
+                System.Net.HttpStatusCode.BadRequest,
+                error),
+            CancellationToken.None);
+
+        exitCode.ShouldBe(CliExitCodes.DomainError);
+        string combined = stdout.ToString() + stderr.ToString();
+        combined.ShouldNotContain(TokenSentinel);
+    }
+
+    [Fact]
     public async Task Executor_UnhandledException_DoesNotLeakEndpointUserInfoInVerboseOutput()
     {
         var stdout = new StringWriter();

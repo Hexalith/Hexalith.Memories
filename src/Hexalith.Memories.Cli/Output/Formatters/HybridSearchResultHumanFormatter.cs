@@ -13,7 +13,8 @@ using Hexalith.Memories.Contracts.V1;
 /// <summary>
 /// Renders a <see cref="HybridSearchResult"/> as plain text. With <c>--explain</c>, prints the caveat
 /// FIRST so <c>memories search query --explain | head -N</c> still carries the compliance guarantee
-/// (Task 6.3).
+/// (Task 6.3). Degradation handling moved to <c>SearchQueryCommand</c> per Story 7.3 Task 5.1 —
+/// formatter is now degradation-agnostic.
 /// </summary>
 public sealed class HybridSearchResultHumanFormatter : IOutputFormatter<HybridSearchResult>
 {
@@ -25,13 +26,6 @@ public sealed class HybridSearchResultHumanFormatter : IOutputFormatter<HybridSe
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentNullException.ThrowIfNull(writer);
-
-        if (value.Degraded)
-        {
-            IEnumerable<string> axes = value.UnavailableAxes ?? Array.Empty<string>();
-            writer.WriteLine(
-                $"Note: search degraded — axes unavailable: {string.Join(", ", axes)}");
-        }
 
         if (value.Explanation is { } explanation)
         {

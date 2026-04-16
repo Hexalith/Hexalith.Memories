@@ -22,6 +22,7 @@ using Hexalith.Memories.Contracts.V1;
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]
 [JsonSerializable(typeof(ConfigShowData))]
+[JsonSerializable(typeof(CliErrorPayload))]
 internal sealed partial class CliJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared CLI JSON serialization options — envelope-first, indented, camelCase.</summary>

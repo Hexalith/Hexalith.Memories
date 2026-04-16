@@ -6,15 +6,19 @@
 namespace Hexalith.Memories.Cli.Execution;
 
 /// <summary>
-/// Exit codes emitted by the CLI. Code <c>1</c> is reserved for Story 7.3's domain-error surface and is not
-/// emitted in 7.1. See the exit-code table in the story Implementation Contracts section.
+/// Exit codes emitted by the CLI. Code <c>1</c> (<see cref="DomainError"/>) is emitted by domain/business
+/// failures since Story 7.3; see <c>ErrorMessageCatalog</c> for per-code classification.
 /// </summary>
 public static class CliExitCodes
 {
     /// <summary>Success — includes <c>--help</c>, <c>--version</c>, and any successful command.</summary>
     public const int Success = 0;
 
-    /// <summary>Reserved for Story 7.3 domain/business errors (e.g., <c>CASE_NOT_FOUND</c>).</summary>
+    /// <summary>
+    /// Domain/business error from server (e.g., <c>CASE_NOT_FOUND</c>, <c>TENANT_NOT_FOUND</c>,
+    /// <c>INVALID_INPUT</c>). Used since Story 7.3 — see <c>ErrorMessageCatalog</c> for the full
+    /// classification.
+    /// </summary>
     public const int DomainError = 1;
 
     /// <summary>Plumbing/config error: connection failure, bad URI, TLS failure, token-over-http guard.</summary>

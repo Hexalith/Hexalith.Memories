@@ -38,16 +38,19 @@ public sealed class SearchResultFormatterTests
     }
 
     [Fact]
-    public void HybridHuman_Degraded_PrintsDegradationNotice()
+    public void HybridHuman_Degraded_FormatterOmitsDegradationNotice_SurfaceMovedToHandlerInStory73()
     {
+        // Story 7.3 Task 5.1: the 7.2 bridge line "Note: search degraded — axes unavailable: ..." was
+        // deleted from the formatter. Per-axis degradation warnings are now emitted to stderr by
+        // SearchQueryCommand BEFORE the formatter runs. The formatter itself is degradation-agnostic.
         HybridSearchResult payload = BuildHybridResult(withExplain: false, degraded: true, unavailable: new[] { "graph" });
         using var writer = new StringWriter() { NewLine = "\n" };
 
         new HybridSearchResultHumanFormatter().Write(payload, writer);
         string output = writer.ToString();
 
-        output.ShouldContain("Note: search degraded");
-        output.ShouldContain("graph");
+        output.ShouldNotContain("Note: search degraded");
+        output.ShouldNotContain("axes unavailable");
     }
 
     [Fact]

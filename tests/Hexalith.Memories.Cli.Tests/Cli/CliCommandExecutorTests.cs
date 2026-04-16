@@ -23,19 +23,23 @@ public class CliCommandExecutorTests
     private static readonly Uri LocalhostEndpoint = new("http://127.0.0.1:5000/");
 
     [Fact]
-    public async Task ExecuteAsync_HttpRequestException_PrintsBridgeMessageAndReturnsCode2()
+    public async Task ExecuteAsync_HttpRequestException_PrintsAppHostHintAndReturnsCode2()
     {
+        // Story 7.3 AC #1: connection-failure message includes the AppHost recovery hint.
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         var executor = CreateExecutor(stdout, stderr, verbose: false);
 
         int exitCode = await executor.ExecuteAsync(
-            (_, _) => throw new HttpRequestException("connection refused"),
+            (_, _) => throw new HttpRequestException(
+                "connection refused",
+                new SocketException((int)SocketError.ConnectionRefused)),
             CancellationToken.None);
 
         exitCode.ShouldBe(CliExitCodes.Plumbing);
-        stderr.ToString().ShouldContain("Cannot reach Memories Server at http://127.0.0.1:5000/");
-        stderr.ToString().ShouldContain("Check that the service is running.");
+        stderr.ToString().ShouldContain("Cannot connect to Memories Server at http://127.0.0.1:5000/");
+        stderr.ToString().ShouldContain("Is the service running?");
+        stderr.ToString().ShouldContain("dotnet run --project Hexalith.Memories.AppHost");
 
         // AC #11: no stack trace on the default path.
         stderr.ToString().ShouldNotContain("   at ");
@@ -43,18 +47,19 @@ public class CliCommandExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteAsync_SocketException_SameBridgeMessageAndCode2()
+    public async Task ExecuteAsync_SocketException_SameAppHostHintAndCode2()
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         var executor = CreateExecutor(stdout, stderr, verbose: false);
 
         int exitCode = await executor.ExecuteAsync(
-            (_, _) => throw new SocketException(),
+            (_, _) => throw new SocketException((int)SocketError.ConnectionRefused),
             CancellationToken.None);
 
         exitCode.ShouldBe(CliExitCodes.Plumbing);
-        stderr.ToString().ShouldContain("Cannot reach Memories Server at http://127.0.0.1:5000/");
+        stderr.ToString().ShouldContain("Cannot connect to Memories Server at http://127.0.0.1:5000/");
+        stderr.ToString().ShouldContain("dotnet run --project Hexalith.Memories.AppHost");
     }
 
     [Fact]

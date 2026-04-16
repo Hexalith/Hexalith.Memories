@@ -14,9 +14,11 @@ using Hexalith.Memories.Cli.Output.Json;
 internal static class JsonEnvelopeWriter
 {
     public static void Write<T>(TextWriter writer, string command, T data)
+        where T : class
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        ArgumentNullException.ThrowIfNull(data);
 
         var envelope = new CliOutputEnvelope<T>(CliOutputEnvelope<T>.CurrentSchemaVersion, command, data);
 

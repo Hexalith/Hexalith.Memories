@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-16 # Story 7.2 Output Formats & Explain Display: done (post code-review)
+# last_updated: 2026-04-16 # Story 7.3 Actionable Error Messages & Discoverable Actions: done
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-16 # Story 7.2 Output Formats & Explain Display: done (post code-review)
+last_updated: 2026-04-16 # Story 7.3 Actionable Error Messages & Discoverable Actions: done
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -111,8 +111,8 @@ development_status:
   epic-7: in-progress
   7-1-cli-foundation-and-command-structure: done
   7-2-output-formats-and-explain-display: done
-  7-3-actionable-error-messages-and-discoverable-actions: backlog
-  7-4-quickstart-and-documentation: backlog
+  7-3-actionable-error-messages-and-discoverable-actions: done
+  7-4-quickstart-and-documentation: ready-for-dev
   7-5-search-and-access-telemetry: backlog
   epic-7-retrospective: optional
 

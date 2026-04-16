@@ -14,6 +14,8 @@
     <ProjectReference
       Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
     <ProjectReference
+      Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />
+    <ProjectReference
       Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
   </ItemGroup>
 

@@ -5,6 +5,13 @@
     <NoWarn>$(NoWarn);NU5104;NU1603</NoWarn>
   </PropertyGroup>
 
+  <!-- Story 7.3 Task 7.2: pin the repo root at compile time so the drift test can locate server sources
+       reliably regardless of the test runner's working directory. MSBuild resolves $(MSBuildThisFileDirectory)
+       to this csproj's directory; ..\..\ walks to the repo root. -->
+  <ItemGroup>
+    <AssemblyMetadata Include="RepoRoot" Value="$(MSBuildThisFileDirectory)..\..\" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />

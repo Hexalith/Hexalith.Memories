@@ -40,7 +40,7 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 
 ## CLI (preview)
 
-Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Rich error messages, the quickstart wizard, and search/access telemetry land in Stories 7.3-7.5.
+Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. The quickstart wizard and search/access telemetry land in Stories 7.4-7.5.
 
 ```bash
 dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts

@@ -38,19 +38,54 @@ Examples:
         return command;
     }
 
+    /// <summary>Command name used in JSON error envelopes (ADR-7.3-002).</summary>
+    public const string CommandName = "tenant list";
+
     private static async Task<int> ExecuteAsync(IServiceProvider services, CancellationToken ct)
     {
         CliCommandExecutor executor = services.GetRequiredService<CliCommandExecutor>();
         CliConsole console = services.GetRequiredService<CliConsole>();
         OutputFormatterRouter router = services.GetRequiredService<OutputFormatterRouter>();
 
-        return await executor.ExecuteAsync(async (config, innerCt) =>
+        return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
             IReadOnlyList<TenantSummary> tenants = await client.ListTenantsAsync(innerCt).ConfigureAwait(false);
 
             router.Write(console.Format, tenants, console.Out);
+
+            // FR57 empty-state nudge (Task 4.3): append a second informational line AFTER the formatter
+            // writes so ADR-7.2-002 byte-for-byte parity for "No tenants found." is preserved.
+            if (tenants.Count == 0)
+            {
+                WriteEmptyTenantsNudge(console);
+            }
+
             return CliExitCodes.Success;
         }, ct).ConfigureAwait(false);
+    }
+
+    private static void WriteEmptyTenantsNudge(CliConsole console)
+    {
+        const string nudge =
+            "Get started: provisioning a tenant via 'memories tenant create' will be wired in a later story; "
+            + "for now, provision via the server's REST API at POST /api/tenants. "
+            + "Run 'memories quickstart' for a guided setup.";
+
+        switch (console.Format)
+        {
+            case OutputFormat.Json:
+                // JSON consumers detect emptiness via `data.length === 0`; do not inject nudge text
+                // into stdout or stderr.
+                return;
+            case OutputFormat.Table:
+                // Interactive nudge for humans viewing a table — stderr so piped consumers can 2>/dev/null.
+                console.Error.WriteLine(nudge);
+                return;
+            default:
+                // Human format — appended to stdout after "No tenants found.".
+                console.Out.WriteLine(nudge);
+                return;
+        }
     }
 }

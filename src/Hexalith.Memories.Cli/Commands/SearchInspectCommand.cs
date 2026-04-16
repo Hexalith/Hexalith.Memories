@@ -9,6 +9,7 @@ using System.CommandLine;
 
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
@@ -67,11 +68,16 @@ Example:
             || string.IsNullOrWhiteSpace(caseId)
             || string.IsNullOrWhiteSpace(memoryUnitId))
         {
-            console.Error.WriteLine("--tenant, --case, and --id are required.");
+            CliErrorWriter.Write(
+                console,
+                CommandName,
+                code: "INVALID_INPUT",
+                message: "--tenant, --case, and --id are required.",
+                suggestion: "Run 'memories search inspect --help' to see required options.");
             return CliExitCodes.Plumbing;
         }
 
-        return await executor.ExecuteAsync(async (config, innerCt) =>
+        return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
             MemoryUnit unit = await client.GetMemoryUnitAsync(tenantId!, caseId!, memoryUnitId!, innerCt).ConfigureAwait(false);
@@ -79,4 +85,7 @@ Example:
             return CliExitCodes.Success;
         }, ct).ConfigureAwait(false);
     }
+
+    /// <summary>Command name used in JSON error envelopes (ADR-7.3-002).</summary>
+    public const string CommandName = "search inspect";
 }

@@ -11,9 +11,9 @@ using Hexalith.Memories.Contracts.V1;
 
 /// <summary>
 /// Tabular rendering of <see cref="HybridSearchResult"/>. The caveat is printed AFTER the table (Task 6.5)
-/// so the interactive header-to-data alignment stays intact. The degraded-axes notice still prints BEFORE
-/// the header per Task 6.6a — header is the second line of output when <see cref="HybridSearchResult.Degraded"/>
-/// is <see langword="true"/>.
+/// so the interactive header-to-data alignment stays intact. Degradation handling moved to
+/// <c>SearchQueryCommand</c> per Story 7.3 Task 5.2 — formatter is now degradation-agnostic; the per-axis
+/// warning block is emitted to stderr by the command handler before the formatter runs.
 /// </summary>
 public sealed class HybridSearchResultTableFormatter : IOutputFormatter<HybridSearchResult>
 {
@@ -25,13 +25,6 @@ public sealed class HybridSearchResultTableFormatter : IOutputFormatter<HybridSe
     {
         ArgumentNullException.ThrowIfNull(value);
         ArgumentNullException.ThrowIfNull(writer);
-
-        if (value.Degraded)
-        {
-            IEnumerable<string> axes = value.UnavailableAxes ?? Array.Empty<string>();
-            writer.WriteLine(
-                $"Note: search degraded — axes unavailable: {string.Join(", ", axes)}");
-        }
 
         bool withExplain = value.Explanation is not null;
         IReadOnlyList<string> headers = withExplain

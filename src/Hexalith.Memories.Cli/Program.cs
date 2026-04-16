@@ -9,6 +9,8 @@ using System.CommandLine;
 
 using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Cli.Output.Formatters;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -39,8 +41,7 @@ public static class Program
         }
         catch (Configuration.InvalidConfigurationException invalidConfiguration)
         {
-            Console.Error.WriteLine($"Invalid configuration: {invalidConfiguration.Message}");
-            return CliExitCodes.Plumbing;
+            return WriteInvalidConfigurationError(services, parseResult, globalOptions, invalidConfiguration.Message);
         }
 
         using var cts = new CancellationTokenSource();
@@ -67,5 +68,31 @@ public static class Program
         {
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    internal static int WriteInvalidConfigurationError(
+        IServiceProvider services,
+        ParseResult parseResult,
+        CliGlobalOptions globalOptions,
+        string message)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(parseResult);
+        ArgumentNullException.ThrowIfNull(globalOptions);
+        ArgumentNullException.ThrowIfNull(message);
+
+        CliConsole console = services.GetRequiredService<CliConsole>();
+        if (string.Equals(parseResult.GetValue(globalOptions.FormatOption), "json", StringComparison.OrdinalIgnoreCase))
+        {
+            console.Format = OutputFormat.Json;
+        }
+
+        CliErrorWriter.Write(
+            console,
+            CliCommandExecutor.RootCommandName,
+            code: "INVALID_CONFIG",
+            message: $"Invalid configuration: {message}",
+            suggestion: "Fix the configuration values and retry.");
+        return CliExitCodes.Plumbing;
     }
 }

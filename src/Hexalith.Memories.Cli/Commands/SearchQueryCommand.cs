@@ -6,9 +6,12 @@
 namespace Hexalith.Memories.Cli.Commands;
 
 using System.CommandLine;
+using System.Text;
 
+using Hexalith.Memories.Cli.Errors;
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
@@ -19,6 +22,30 @@ public static class SearchQueryCommand
 {
     /// <summary>CLI-side ceiling on <c>--max-results</c> to bound local-process memory (Task 5.6).</summary>
     public const int MaxResultsCeiling = 1000;
+
+    /// <summary>Command name used in JSON error envelopes (ADR-7.3-002).</summary>
+    public const string CommandName = "search query";
+
+    /// <summary>
+    /// PRD-verbatim empty-state nudge for a zero-result probe that implies an empty tenant (no <c>--query</c>
+    /// AND graph-axis only). See AC #2 decision tree.
+    /// </summary>
+    public const string EmptyTenantNudge =
+        "No results. This tenant has no memory units yet. "
+        + "Get started: 'memories ingest <file>' to add your first document, or configure a DAPR subscription to auto-index events. "
+        + "Run 'memories quickstart' for a guided setup.";
+
+    /// <summary>
+    /// Hybrid empty-state nudge for a non-empty query that returned zero results. Honest about the
+    /// unknowable distinction between "query didn't match" and "tenant might be empty" — lists actions
+    /// that resolve either case (AC #2 hybrid-nudge clause).
+    /// </summary>
+    public const string EmptyQueryNudge =
+        "No results. Either your search terms didn't match anything OR this tenant has no memory units yet. "
+        + "To find out: try broader query terms, omit --case to widen scope, "
+        + "run 'memories search inspect --tenant <id> --case <id> --id <memoryUnitId>' on a known id to confirm indexing, "
+        + "or run 'memories ingest <file>' to add data. "
+        + "Run 'memories quickstart' for a guided setup.";
 
     private const string CommandDescription = """
 Search memories using three-axis hybrid fusion (default) or a single axis.
@@ -103,39 +130,52 @@ Examples:
 
         if (string.IsNullOrWhiteSpace(tenantId))
         {
-            console.Error.WriteLine("--tenant is required.");
-            return CliExitCodes.Plumbing;
+            return WriteValidationError(
+                console,
+                code: "INVALID_INPUT",
+                message: "--tenant is required.",
+                suggestion: "Run 'memories search query --help' to see required options.");
         }
 
         string normalizedAxis = axis.Trim().ToLowerInvariant();
         if (normalizedAxis is not ("syntactic" or "semantic" or "graph" or "hybrid"))
         {
-            console.Error.WriteLine(
-                $"--axis '{axis}' is not recognized. Use syntactic, semantic, graph, or hybrid.");
-            return CliExitCodes.Plumbing;
+            return WriteValidationError(
+                console,
+                code: "INVALID_AXIS",
+                message: $"--axis '{axis}' is not recognized. Use syntactic, semantic, graph, or hybrid.",
+                suggestion: "Run 'memories search query --help' to see valid axis values.");
         }
 
         bool requiresQuery = normalizedAxis is "syntactic" or "semantic" or "hybrid";
         if (requiresQuery && string.IsNullOrWhiteSpace(query))
         {
-            console.Error.WriteLine($"--query is required for --axis {normalizedAxis}.");
-            return CliExitCodes.Plumbing;
+            return WriteValidationError(
+                console,
+                code: "INVALID_INPUT",
+                message: $"--query is required for --axis {normalizedAxis}.",
+                suggestion: "Run 'memories search query --help' to see valid input combinations.");
         }
 
         if (maxResults <= 0)
         {
-            console.Error.WriteLine("--max-results must be greater than 0.");
-            return CliExitCodes.Plumbing;
+            return WriteValidationError(
+                console,
+                code: "INVALID_INPUT",
+                message: "--max-results must be greater than 0.",
+                suggestion: "Run 'memories search query --help' to review the allowed range.");
         }
 
         if (maxResults > MaxResultsCeiling)
         {
-            console.Error.WriteLine(
-                $"--max-results exceeds CLI ceiling of {MaxResultsCeiling}. Request a smaller batch or use pagination (coming in Phase 2).");
-            return CliExitCodes.Plumbing;
+            return WriteValidationError(
+                console,
+                code: "INVALID_INPUT",
+                message: $"--max-results exceeds CLI ceiling of {MaxResultsCeiling}. Request a smaller batch or use pagination (coming in Phase 2).",
+                suggestion: "Run 'memories search query --help' and retry with a smaller --max-results value.");
         }
 
-        return await executor.ExecuteAsync(async (config, innerCt) =>
+        return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
 
@@ -148,7 +188,18 @@ Examples:
                     MaxResults: maxResults,
                     Explain: explain);
                 HybridSearchResult result = await client.HybridSearchAsync(request, innerCt).ConfigureAwait(false);
-                router.Write(console.Format, result, console.Out);
+
+                // Task 4 (empty-state) and Task 5 (degradation) both live here — Task 4 runs first, Task 5
+                // second. Both modify the same method; ordering matters for review diff clarity.
+                WriteDegradationNoticeIfNeeded(console, result);
+                WriteResultAndEmptyStateNudge(
+                    router,
+                    console,
+                    result,
+                    query,
+                    normalizedAxis,
+                    hasResults: result.Results.Count > 0,
+                    hasExplanation: result.Explanation is not null);
                 return CliExitCodes.Success;
             }
 
@@ -160,8 +211,124 @@ Examples:
                 MaxResults: maxResults,
                 Explain: explain);
             SearchResult single = await client.SearchAsync(singleRequest, innerCt).ConfigureAwait(false);
-            router.Write(console.Format, single, console.Out);
+            WriteResultAndEmptyStateNudge(
+                router,
+                console,
+                single,
+                query,
+                normalizedAxis,
+                hasResults: single.Results.Count > 0,
+                hasExplanation: single.Explanation is not null);
             return CliExitCodes.Success;
         }, ct).ConfigureAwait(false);
+    }
+
+    private static int WriteValidationError(CliConsole console, string code, string message, string suggestion)
+    {
+        CliErrorWriter.Write(console, CommandName, code, message, suggestion);
+        return CliExitCodes.Plumbing;
+    }
+
+    private static void WriteResultAndEmptyStateNudge<T>(
+        OutputFormatterRouter router,
+        CliConsole console,
+        T payload,
+        string? query,
+        string axis,
+        bool hasResults,
+        bool hasExplanation)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(router);
+        ArgumentNullException.ThrowIfNull(console);
+        ArgumentNullException.ThrowIfNull(payload);
+
+        bool formatterMustRunFirst = console.Format == OutputFormat.Human && !hasResults && hasExplanation;
+        if (formatterMustRunFirst)
+        {
+            router.Write(console.Format, payload, console.Out);
+            WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults);
+            return;
+        }
+
+        WriteEmptyStateNudgeIfNeeded(console, query, axis, hasResults);
+        router.Write(console.Format, payload, console.Out);
+    }
+
+    private static void WriteEmptyStateNudgeIfNeeded(CliConsole console, string? query, string axis, bool hasResults)
+    {
+        if (hasResults)
+        {
+            return;
+        }
+
+        // JSON consumers detect emptiness via `data.results.length === 0`; do not inject nudge text
+        // into stdout (would force scripts to grep the envelope for advice text — worse UX).
+        if (console.Format == OutputFormat.Json)
+        {
+            return;
+        }
+
+        // Empty-tenant branch (AC #2 PRD-verbatim): no --query AND graph-axis only — the only scenario
+        // where the CLI can safely assert "tenant has no memory units yet."
+        bool isEmptyTenantProbe = string.IsNullOrWhiteSpace(query) && axis == "graph";
+        string nudge = isEmptyTenantProbe ? EmptyTenantNudge : EmptyQueryNudge;
+
+        switch (console.Format)
+        {
+            case OutputFormat.Table:
+                // Table format is interactive-only — nudge goes to stderr to preserve header/separator
+                // alignment on stdout for piped consumers.
+                console.Error.WriteLine(nudge);
+                return;
+            default:
+                // Human format — normally the nudge is the complete output for zero results. When
+                // --explain is set, SearchQueryCommand writes the formatter output first so the caveat
+                // remains the first line per Story 7.2's contract.
+                console.Out.WriteLine(nudge);
+                return;
+        }
+    }
+
+    private static void WriteDegradationNoticeIfNeeded(CliConsole console, HybridSearchResult result)
+    {
+        if (!result.Degraded)
+        {
+            return;
+        }
+
+        // JSON consumers detect degradation via `data.degraded === true && data.unavailableAxes`
+        // (the envelope already carries the flag). Stderr duplication would be redundant out-of-band
+        // signaling — same rationale as ADR-7.3-002 for errors.
+        if (console.Format == OutputFormat.Json)
+        {
+            return;
+        }
+
+        IEnumerable<string> axes = result.UnavailableAxes ?? Array.Empty<string>();
+        var builder = new StringBuilder();
+        builder.AppendLine("Warning: search degraded — partial results only.");
+
+        bool wroteAnyAxis = false;
+        foreach (string axis in axes)
+        {
+            string code = axis.Equals("graph", StringComparison.OrdinalIgnoreCase)
+                ? "GRAPH_UNAVAILABLE"
+                : "BACKEND_UNAVAILABLE";
+            ErrorTranslation translation = ErrorMessageCatalog.Resolve(code);
+            string suggestion = translation.CliSuggestion
+                ?? "Backend recovers automatically; retry shortly.";
+            builder.AppendLine($"  - {axis}: {suggestion}");
+            wroteAnyAxis = true;
+        }
+
+        if (!wroteAnyAxis)
+        {
+            // Null-axes guard: server returned Degraded=true with no axis details. FR57 says no
+            // dead-end states — surface something actionable rather than suppressing.
+            builder.AppendLine("  - (no axis details available) Retry the request; partial-results recovery is best-effort.");
+        }
+
+        console.Error.Write(builder.ToString());
     }
 }
