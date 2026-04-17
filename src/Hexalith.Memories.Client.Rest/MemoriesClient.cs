@@ -249,6 +249,257 @@ public class MemoriesClient
     }
 
     /// <summary>
+    /// Schedules a tenant-provisioning workflow via <c>POST /api/tenants</c>. Fire-and-forget semantics — the
+    /// server returns <c>202 Accepted</c> with the workflow instance id before the tenant is fully active.
+    /// Callers observe completion via <see cref="GetTenantAsync(string, CancellationToken)"/> — polling for
+    /// <see cref="TenantStatus.Active"/> — or by calling the server's
+    /// <c>GET /api/tenants/{tenantId}/provision-status/{instanceId}</c> endpoint directly.
+    /// </summary>
+    /// <param name="tenantId">The desired tenant identifier.</param>
+    /// <param name="displayName">The tenant display name.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The provisioning workflow instance id.</returns>
+    /// <remarks>
+    /// EXPERIMENTAL (HXL001 — Story 7.4): Added to unblock the <c>memories quickstart</c> wizard. Signature
+    /// may change when the <c>memories tenant create</c> CLI subcommand is wired in Phase 1.5. Suppress with
+    /// <c>#pragma warning disable HXL001</c> at opt-in call sites.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL001")]
+    public virtual async Task<string> CreateTenantAsync(string tenantId, string displayName, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        var input = new TenantProvisioningInput(tenantId, displayName);
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync("api/tenants", input, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        return await ReadInstanceIdAsync(response, "workflowInstanceId", ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Fetches a tenant by id. Returns <see langword="null"/> when the server responds with
+    /// <c>TENANT_NOT_FOUND</c>; throws for any other failure.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The tenant info, or <see langword="null"/> when the tenant does not exist.</returns>
+    public virtual async Task<TenantInfo?> GetTenantAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            return await response.Content
+                .ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as TenantInfo.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
+    /// <summary>
+    /// Creates a case within a tenant via <c>POST /api/tenants/{tenantId}/cases</c>.
+    /// </summary>
+    /// <param name="tenantId">The tenant id.</param>
+    /// <param name="name">The case display name.</param>
+    /// <param name="description">Optional case description.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The created case.</returns>
+    /// <remarks>
+    /// EXPERIMENTAL (HXL001 — Story 7.4): Added to unblock the <c>memories quickstart</c> wizard. Signature
+    /// may change when the <c>memories case create</c> CLI subcommand is wired in Phase 1.5.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL001")]
+    public virtual async Task<Case> CreateCaseAsync(string tenantId, string name, string? description, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var input = new CreateCaseInput(tenantId, name, description);
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases";
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync(path, input, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            Case? created = await response.Content
+                .ReadFromJsonAsync<Case>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return created ?? throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with an empty body.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as Case.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
+    /// <summary>
+    /// Submits a file ingestion via <c>POST /api/ingest</c>. Returns the workflow instance id; the ingestion
+    /// runs asynchronously on the server.
+    /// </summary>
+    /// <param name="tenantId">The tenant id.</param>
+    /// <param name="caseId">The case id.</param>
+    /// <param name="sourceUri">The logical source URI recorded with the memory unit (callers supply their own scheme — e.g. <c>quickstart://</c>, <c>file://</c>, or a content-addressed URI).</param>
+    /// <param name="content">The raw content bytes to ingest.</param>
+    /// <param name="contentType">The MIME content-type of <paramref name="content"/>.</param>
+    /// <param name="ingestedBy">Identifier of the submitter (user or system).</param>
+    /// <param name="metadata">Optional metadata fields (each entry carries its own <see cref="MetadataOrigin"/> and confidence) to attach to the memory unit.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow instance id.</returns>
+    /// <remarks>
+    /// EXPERIMENTAL (HXL001 — Story 7.4): Added to unblock the <c>memories quickstart</c> wizard. Signature
+    /// may change when the <c>memories ingest</c> CLI subcommand is wired in Phase 1.5. Suppress with
+    /// <c>#pragma warning disable HXL001</c> at opt-in call sites.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL001")]
+    public virtual async Task<string> IngestAsync(
+        string tenantId,
+        string caseId,
+        string sourceUri,
+        byte[] content,
+        string contentType,
+        string ingestedBy,
+        IReadOnlyDictionary<string, MetadataField>? metadata,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentException.ThrowIfNullOrWhiteSpace(contentType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(ingestedBy);
+
+        var metadataMap = new Dictionary<string, MetadataField>(StringComparer.Ordinal);
+        if (metadata is not null)
+        {
+            foreach (KeyValuePair<string, MetadataField> pair in metadata)
+            {
+                metadataMap[pair.Key] = pair.Value;
+            }
+        }
+
+        var input = new IngestionInput
+        {
+            TenantId = tenantId,
+            CaseId = caseId,
+            SourceUri = sourceUri,
+            ContentBytes = content,
+            ContentType = contentType,
+            SourceType = SourceType.File,
+            IngestedBy = ingestedBy,
+            Metadata = metadataMap,
+        };
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync("api/ingest", input, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        return await ReadInstanceIdAsync(response, "instanceId", ct).ConfigureAwait(false);
+    }
+
+    private static async Task<string> ReadInstanceIdAsync(HttpResponseMessage response, string propertyName, CancellationToken ct)
+    {
+        string payload = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            throw CreateInvalidResponseException(response.StatusCode, "Server returned a 2xx response with an empty body.");
+        }
+
+        try
+        {
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(payload);
+            if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                throw CreateInvalidResponseException(response.StatusCode, "Server returned a 2xx response with a body that was not a JSON object.");
+            }
+
+            if (document.RootElement.TryGetProperty(propertyName, out System.Text.Json.JsonElement id)
+                && id.ValueKind == System.Text.Json.JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(id.GetString()))
+            {
+                return id.GetString()!;
+            }
+
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                $"Server returned a 2xx response missing required property '{propertyName}'.");
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as a workflow response.",
+                jsonException);
+        }
+    }
+
+    private static MemoriesRemoteException CreateInvalidResponseException(
+        HttpStatusCode statusCode,
+        string message,
+        Exception? innerException = null)
+        => new(
+            statusCode,
+            new ErrorResponse(
+                Code: "INVALID_RESPONSE",
+                Message: message,
+                Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+            innerException);
+
+    /// <summary>
     /// Probes the <c>/health</c> endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
     /// server answered with a 2xx status code.
     /// </summary>

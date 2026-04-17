@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
+using Hexalith.Memories.Cli.Quickstart;
 using Hexalith.Memories.Contracts.V1;
 
 /// <summary>Source-generated JSON metadata for CLI envelope shapes (Task 2.2).</summary>
@@ -21,8 +22,12 @@ using Hexalith.Memories.Contracts.V1;
 [JsonSerializable(typeof(CliOutputEnvelope<HybridSearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]
+[JsonSerializable(typeof(CliOutputEnvelope<QuickstartEnvelopeData>))]
 [JsonSerializable(typeof(ConfigShowData))]
 [JsonSerializable(typeof(CliErrorPayload))]
+[JsonSerializable(typeof(QuickstartEnvelopeData))]
+[JsonSerializable(typeof(QuickstartStepResult))]
+[JsonSerializable(typeof(QuickstartStepStatus))]
 internal sealed partial class CliJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared CLI JSON serialization options — envelope-first, indented, camelCase.</summary>

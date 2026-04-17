@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Cli.Output.Formatters;
 
 using Hexalith.Memories.Cli.Output.Json;
+using Hexalith.Memories.Cli.Quickstart;
 using Hexalith.Memories.Contracts.V1;
 
 /// <summary>
@@ -32,6 +33,7 @@ internal static class CommandPayloadRegistry
             ["config show"] = JsonErrorEnvelopeWriter.Write<ConfigShowData>,
             ["search query"] = JsonErrorEnvelopeWriter.Write<HybridSearchResult>,
             ["search inspect"] = JsonErrorEnvelopeWriter.Write<MemoryUnit>,
+            ["quickstart"] = JsonErrorEnvelopeWriter.Write<QuickstartEnvelopeData>,
         };
 
     /// <summary>

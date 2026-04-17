@@ -19,8 +19,9 @@ public static class RootCommandFactory
     private const string RootDescription = """
 Hexalith.Memories CLI (preview) — foundation tool shipped by Story 7.1.
 
-Example:
+Examples:
     memories tenant list
+    memories quickstart
 """;
 
     private const string TenantCommandDescription = """
@@ -28,6 +29,21 @@ Tenant administration commands.
 
 Example:
     memories tenant list
+""";
+
+    private const string ConfigCommandDescription = """
+Inspect and diagnose CLI configuration.
+
+Example:
+    memories config show
+""";
+
+    private const string SearchCommandDescription = """
+Search memories with three-axis hybrid fusion.
+
+Examples:
+    memories search query --tenant acme --query "first search"
+    memories search inspect --tenant acme --case case-1 --id mu-abc
 """;
 
     /// <summary>Top-level command groups surfaced in root help (FR53).</summary>
@@ -39,7 +55,6 @@ Example:
         ("status", "Inspect ingestion pipeline status.", "7.2"),
         ("explore", "Interactive exploration of memories and cases.", "7.2"),
         ("handlers", "List registered event handlers.", "7.2"),
-        ("quickstart", "Guided onboarding flow (quickstart wizard).", "7.4"),
     ];
 
     /// <summary>Builds the root command tree.</summary>
@@ -64,19 +79,22 @@ Example:
         root.Subcommands.Add(tenantCommand);
 
         // config — diagnostic group in 7.1.
-        var configCommand = new Command("config", "Inspect and diagnose CLI configuration.");
+        var configCommand = new Command("config", ConfigCommandDescription);
         configCommand.Subcommands.Add(ConfigShowCommand.Build(services));
         configCommand.SetAction(_ => configCommand.Parse("--help").Invoke());
         root.Subcommands.Add(configCommand);
 
         // search — wired group in 7.2 (query + inspect).
-        var searchCommand = new Command("search", "Search memories with three-axis hybrid fusion.");
+        var searchCommand = new Command("search", SearchCommandDescription);
         searchCommand.Subcommands.Add(SearchQueryCommand.Build(services));
         searchCommand.Subcommands.Add(SearchInspectCommand.Build(services));
         searchCommand.SetAction(_ => searchCommand.Parse("--help").Invoke());
         root.Subcommands.Add(searchCommand);
 
-        // Stubbed groups (7.3–7.4).
+        // quickstart — wired guided wizard in 7.4.
+        root.Subcommands.Add(QuickstartCommand.Build(services));
+
+        // Stubbed groups (7.x — remaining stories).
         foreach ((string name, string description, string storyId) in CommandGroups)
         {
             root.Subcommands.Add(NotImplementedCommand.Create(services, name, description, storyId));

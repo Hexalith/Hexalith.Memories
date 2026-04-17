@@ -2,7 +2,7 @@
 
 The `memories` CLI is a .NET global tool that talks to the Hexalith.Memories Server over HTTP.
 Story 7.1 ships the foundation: installation, the endpoint resolver, `tenant list`, and `config show`.
-Stories 7.2–7.5 add output formats, rich error messages, a quickstart wizard, and telemetry.
+Stories 7.2–7.3 added output formats and rich error messages. Story 7.4 wires the guided quickstart wizard (see [quickstart.md](quickstart.md)). Story 7.5 adds telemetry.
 
 ## Install
 

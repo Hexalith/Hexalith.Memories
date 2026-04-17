@@ -231,6 +231,36 @@ Empty metadata prints `metadata: (none)` on a single line.
 }
 ```
 
+### `quickstart`
+
+The guided-wizard command (Story 7.4) returns a step-array payload instead of a single entity. Each step carries its own status, `durationMs`, and (on failure) an error code + actionable suggestion. Per-step failure context lives inside `data.steps[N]` — the envelope's top-level `error` slot is NEVER populated for `quickstart` (ADR-7.4-003).
+
+**JSON** — `memories --format json quickstart --dry-run`:
+
+```json
+{
+    "schemaVersion": 1,
+    "command": "quickstart",
+    "data": {
+        "steps": [
+            {
+                "id": 1,
+                "title": "Verifying prerequisites",
+                "status": "dry-run",
+                "durationMs": 0,
+                "message": "Would run Docker, .NET SDK, port, OS, and DAPR CLI checks.",
+                "suggestion": null,
+                "errorCode": null
+            }
+        ],
+        "overallStatus": "ok",
+        "elapsedMs": 2
+    }
+}
+```
+
+See [quickstart.md](quickstart.md) for the per-step walkthrough, failure decision tree, and `jq` patterns.
+
 ## Pipe safety
 
 - Use `--format json` for scripts and pipelines. The envelope is stable.

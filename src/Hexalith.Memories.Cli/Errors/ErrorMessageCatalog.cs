@@ -118,6 +118,42 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Fix the configuration values and retry.",
                 ExitCode: 1),
 
+            // Server/client contract mismatch or malformed success payload.
+            ["INVALID_RESPONSE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Check that the server version matches the client's Contracts.V1 version.",
+                ExitCode: 2),
+
+            // Quickstart prerequisite + validation failures.
+            ["DOCKER_UNAVAILABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Install Docker Desktop or start the Docker daemon, then retry.",
+                ExitCode: 2),
+            ["DOTNET_VERSION_INSUFFICIENT"] = new(
+                CliMessage: null,
+                CliSuggestion: "Install a .NET 9 SDK (or newer) and retry.",
+                ExitCode: 2),
+            ["PORT_IN_USE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Free the conflicting port or reconfigure the service using it, then retry.",
+                ExitCode: 2),
+            ["SERVER_NOT_READY"] = new(
+                CliMessage: null,
+                CliSuggestion: "Start the AppHost, verify the server port, and retry the quickstart.",
+                ExitCode: 2),
+            ["SAMPLE_VALIDATION_ZERO_RESULTS"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retry the validation search in a few seconds and inspect server logs for ingestion or indexing failures.",
+                ExitCode: 2),
+            ["SAMPLE_VALIDATION_CANARY_NONZERO_RESULTS"] = new(
+                CliMessage: null,
+                CliSuggestion: "Inspect per-axis scores with '--explain' and investigate the search pipeline configuration.",
+                ExitCode: 2),
+            ["SAMPLE_VALIDATION_CANARY_ERROR"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retry the canary search and inspect server logs if the failure persists.",
+                ExitCode: 2),
+
             // Tenant transient states — surface as domain (user/timing) rather than plumbing.
             // Fallback wording: 'memories tenant status' is not yet wired.
             // TODO(5.x/7.x): replace with "memories tenant status --id <id>" once wired.

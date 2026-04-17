@@ -50,7 +50,7 @@ See docs/dev/cli-config.md (PATH troubleshooting) for per-shell remediation.
 & memories --version
 if ($LASTEXITCODE -ne 0) { throw "'memories --version' failed ($LASTEXITCODE)" }
 
-Write-Host "[4/6] Story 7.2 format surface smoke (help-only, no server required)"
+Write-Host "[4/7] Story 7.2 format surface smoke (help-only, no server required)"
 & memories search query --help | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "'memories search query --help' failed ($LASTEXITCODE)" }
 & memories --format json tenant list --help | Out-Null
@@ -60,7 +60,7 @@ if ($LASTEXITCODE -ne 0) { throw "'memories --format json tenant list --help' fa
 # nonexistent tenant against whatever endpoint is configured (typically unreachable in this dev
 # loop), so exit code 1 (domain) or 2 (plumbing) is expected — we only check the binary didn't
 # crash or silently exit 0.
-Write-Host "[5/6] Story 7.3 error-translation smoke (expect exit 1 or 2, NOT 0)"
+Write-Host "[5/7] Story 7.3 error-translation smoke (expect exit 1 or 2, NOT 0)"
 & memories search inspect --tenant nonexistent --case x --id y 2>&1 | Out-Null
 $errExit = $LASTEXITCODE
 if ($errExit -eq 0) {
@@ -71,7 +71,19 @@ if ($errExit -ne 1 -and $errExit -ne 2) {
 }
 Write-Host "Error smoke exited $errExit as expected."
 
-Write-Host "[6/6] dotnet tool uninstall --global Hexalith.Memories.Cli"
+# Story 7.4 Task 14.2/14.3: --help must exit 0 regardless of server state and embed the NFR30
+# example block. Do NOT substitute --dry-run — the wizard still constructs MemoriesClient at DI
+# resolution time which requires a resolvable endpoint; --help bypasses the DI graph entirely.
+Write-Host "[6/7] Story 7.4 quickstart --help smoke (expect exit 0 with 'Example' in stdout)"
+$helpOutput = & memories quickstart --help
+if ($LASTEXITCODE -ne 0) { throw "'memories quickstart --help' failed ($LASTEXITCODE)" }
+$helpText = ($helpOutput | Out-String)
+if ($helpText -notmatch '(?i)\bExamples?\b') {
+    throw "'memories quickstart --help' output missing the 'Example' keyword — NFR30 contract violated."
+}
+Write-Host 'Quickstart --help smoke passed.'
+
+Write-Host "[7/7] dotnet tool uninstall --global Hexalith.Memories.Cli"
 & dotnet tool uninstall --global Hexalith.Memories.Cli
 if ($LASTEXITCODE -ne 0) { throw "dotnet tool uninstall failed ($LASTEXITCODE)" }
 

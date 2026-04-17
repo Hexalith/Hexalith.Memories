@@ -25,6 +25,14 @@ public static class ConfigShowCommand
     /// <summary>Command name used in JSON error envelopes (ADR-7.3-002).</summary>
     public const string CommandName = "config show";
 
+    private const string CommandDescription = """
+Print the resolved endpoint, source, and whether a token is configured.
+
+Examples:
+    memories config show
+    memories config show --format json
+""";
+
     /// <summary>Builds the <c>show</c> subcommand.</summary>
     /// <param name="services">The DI service provider.</param>
     /// <returns>The configured command.</returns>
@@ -32,7 +40,7 @@ public static class ConfigShowCommand
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        var command = new Command("show", "Print the resolved endpoint, source, and whether a token is configured.");
+        var command = new Command("show", CommandDescription);
         command.SetAction(parseResult =>
         {
             CliConsole console = services.GetRequiredService<CliConsole>();

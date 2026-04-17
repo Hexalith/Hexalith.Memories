@@ -4,20 +4,60 @@ Hexalith Memory Module with syntactic and semantic search.
 
 ## Quick start
 
-Initialize the required submodules before building the solution:
+The guided quickstart gets you from a fresh clone to a first search result in under 30 minutes on a clean machine (NFR31 — approximate; see [docs/dev/quickstart.md](docs/dev/quickstart.md#manual-nfr31-walkthrough-cadence) for the manual walkthrough cadence). The current automated coverage focuses on the wizard itself against a warm fixture; the full clean-machine walkthrough remains a manual verification step.
+
+### 1. Prerequisites (~30s to verify)
+
+- [Docker Desktop](https://docs.docker.com/desktop/) (WSL2 on Windows; resource allocation on macOS)
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0) or newer
+- `git` with submodules support
+
+If any of these fail, see [docs/dev/quickstart.md](docs/dev/quickstart.md) for OS-specific setup notes.
+
+### 2. Clone and initialize submodules (~2 min cold)
 
 ```bash
+git clone <repo-url> Hexalith.Memories
+cd Hexalith.Memories
 git submodule update --init --recursive
-dotnet build
+```
+
+The submodules are checked out under `src/submodules/Hexalith.Commons` and `src/submodules/Hexalith.EventStore`.
+
+### 3. Build the solution (~5 min first time, ~30s incremental)
+
+```bash
+dotnet build Hexalith.Memories.slnx
+```
+
+### 4. Boot the local stack in a dedicated terminal (~1 min first time, ~20s subsequent)
+
+```bash
 dotnet run --project src/Hexalith.Memories.AppHost
 ```
 
-The submodules are checked out under:
+On first AppHost run, a gitignored local `secrets.json` placeholder is created automatically if it does not already exist. Wait for the Aspire dashboard to show the `memories-server` resource as Running.
 
-- `src/submodules/Hexalith.Commons`
-- `src/submodules/Hexalith.EventStore`
+### 5. Install the CLI (~1 min first time, ~10s subsequent)
 
-On first AppHost run, a gitignored local `secrets.json` placeholder is created automatically if it does not already exist.
+```bash
+dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
+dotnet tool install -g --add-source ./artifacts Hexalith.Memories.Cli
+```
+
+### 6. Run the guided quickstart (<1 min on a warm stack)
+
+In a second terminal (while the AppHost continues running in the first):
+
+```bash
+memories quickstart
+```
+
+The wizard verifies prerequisites, prints the stack boot command, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search. On success you'll see `Quickstart ok in <N>s across 6 steps.`
+
+**Total** (warm cache, approximate): ~10 min. Cold-start first-time: approximately 25-30 min (network + Docker image pulls; record manual walkthrough timings in [docs/dev/quickstart-walkthrough-log.md](docs/dev/quickstart-walkthrough-log.md)).
+
+**If a step fails**, consult [docs/dev/quickstart.md](docs/dev/quickstart.md) for the per-step failure decision tree.
 
 ## Local development stack
 
@@ -40,7 +80,7 @@ The deployment-oriented Dapr component manifests live under `deploy/dapr/compone
 
 ## CLI (preview)
 
-Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. The quickstart wizard and search/access telemetry land in Stories 7.4-7.5.
+Story 7.2 expands the `memories` .NET global tool with `--format human|json|table`, three-axis search (`memories search query`), memory-unit inspection (`memories search inspect`), and the `--explain` score breakdown. Story 7.3 adds actionable error messages: every failure renders `Error: <CODE>` + message + recovery suggestion in human/table modes, or a `{ schemaVersion, command, error: { code, message, suggestion } }` envelope on stdout in JSON mode; domain errors exit `1` and plumbing exits `2`. Story 7.4 wires the `memories quickstart` guided wizard that verifies prerequisites, probes server health, provisions a sample tenant, ingests a sample document, and runs a validation search — completing in <30 minutes on a clean machine (NFR31) and in <60 seconds against a warm stack. Search/access telemetry lands in Story 7.5.
 
 ```bash
 dotnet pack src/Hexalith.Memories.Cli -c Release -o ./artifacts
@@ -53,6 +93,7 @@ Use `--format json` for scripts and LLM agents — the envelope is versioned and
 
 - [CLI configuration](docs/dev/cli-config.md) — endpoint resolution, environment variables, PATH troubleshooting.
 - [CLI output formats](docs/dev/cli-output-formats.md) — envelope schema, per-command examples, versioning policy.
+- [Quickstart wizard](docs/dev/quickstart.md) — per-step walkthrough, failure decision tree, OS-specific notes, dry-run mode, JSON envelope reference.
 
 ## Operations
 

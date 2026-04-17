@@ -1,0 +1,532 @@
+# Story 7.5: Search & Access Telemetry
+
+Status: ready-for-dev
+
+<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## TL;DR
+
+**What ships:** Observability instrumentation that closes **NFR27 (structured JSON logs with DAPR-correlated trace context)**, **NFR28 (end-to-end distributed traces CLI → ingress → Server → backends)**, **NFR29 (custom per-tenant metrics — ingestion throughput, search latency per axis, index size, pipeline queue depth)**, and **FR67 (per-tenant audit events for every search + access operation)**. This is the last story in Epic 7 and closes Gate 3 (Developer Experience + Operational Observability) together with 7.1-7.4.
+
+The story lands **five additive substrates** — no existing behavior changes, only instrumentation and one new read-only endpoint:
+
+1. **`Hexalith.Memories.ServiceDefaults.Telemetry`** — two new static classes `MemoriesActivitySource` (ActivitySource name `"Hexalith.Memories"` — already registered at `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:55` via `.AddSource("Hexalith.Memories")` but no code emits to it yet) and `MemoriesMeter` (Meter name `"Hexalith.Memories"` — NOT yet registered; Task 2.1 extends `ConfigureOpenTelemetry` with `.AddMeter("Hexalith.Memories")`). The pattern mirrors `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore.Server/Telemetry/EventStoreActivitySource.cs` — public constants for activity names + tag keys so instrumentation sites don't drift from each other.
+
+2. **Audit event emission substrate** in `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLog.cs` — `[LoggerMessage]` structured-log source-generated emitters for FR67 audit events, using EventId bank **7500-7599** (next unused bank — see "Repo state" section for the existing 5400/5500/5600/6100/6200/6300 inventory). Each audit event is a single JSON log line (stdout via `AddJsonConsole`) with fixed-shape fields: `eventId`, `timestamp`, `tenantId`, `operationType` (`search` | `ingest` | `traverse` | `delete` | `case-access`), `caseId` (nullable), `user` (identity string — see ADR-7.5-004 for resolution rules), `queryParams` (free-form object — for search: `query`, `axis`, `maxResults`, `offset`, metadata filters; for ingest: `sourceType`, `contentType`, `bytes`; for traverse: `startNodeId`, `depth`; for delete/case-access: operation-specific keys), `resultCount` (nullable — populated for read operations), `durationMs`, `outcome` (`ok` | `partial` | `error`), `errorCode` (nullable).
+
+3. **Activity (span) + metric emission across the four operation surfaces** that FR67 names: **search** (`MapGet("/api/search")` at `Program.cs:1483` and the hybrid/graph-scoped branches), **ingest** (`MapPost("/api/ingest")`, `/ingest/url`, `/ingest/directory`), **traverse** (`MapGet("/api/tenants/{tenantId}/traverse")` at `Program.cs:2013`), and **case access** (the case-scoped read endpoints — `MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}")`). Each operation: (a) opens an `Activity` via `MemoriesActivitySource.StartActivity(MemoriesActivitySource.<OperationName>)` and tags it with `memories.tenant_id`, `memories.case_id`, `memories.operation`, `memories.axis` (for search) or `memories.source_type` (for ingest); (b) records custom metrics at completion time (histograms for latency, counters for throughput / errors, updown-counters for queue depth where applicable); (c) emits one `AccessTelemetryLog` entry on completion (both success and failure paths — the `outcome` field distinguishes). **Ingestion queue depth** is a gauge sourced from the existing `PerTenantConcurrencyGate` — Task 4.3 adds an instrumentation hook.
+
+4. **One new read-only endpoint `GET /api/tenants/{tenantId}/telemetry/summary`** (plus a CLI `memories status telemetry --tenant <id>` subcommand wired via `NotImplementedCommand` stub in `RootCommandFactory.cs` — see ADR-7.5-003). This is a **verification endpoint for operators**: returns a snapshot of the current per-tenant metric values (index sizes already computed by `TenantMetricsService.GetIndexSizesAsync`, plus new observable-gauge-sourced values for search throughput / latency p50+p99 / ingestion rate / queue depth). It's NOT a "metrics backend replacement" — the Aspire Dashboard + OTLP exporter remains the source of truth; this endpoint is a CLI-friendly poke for developers who don't want to open the dashboard during local dev or who need a JSON snapshot for scripts. The endpoint consumes existing `Meter` observable gauges in-process (no Prometheus scraping) — see Task 5 for the snapshot composition detail. **Do NOT** re-instrument existing operations to feed the summary endpoint; share the histograms/counters used for OTLP export.
+
+5. **CLI-side trace propagation** — the CLI currently does NOT call `AddServiceDefaults`, so HTTP calls from `MemoriesClient` do NOT propagate W3C TraceContext headers or export spans to the OTLP endpoint. NFR28 requires the full chain from CLI (as the originator) to be a single distributed trace. Task 6 adds a **minimal opt-in telemetry bootstrap** to the CLI `CliServices.cs` — enabled when `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var OR `--telemetry` flag is set (default OFF to preserve CLI startup latency). When enabled: creates `MemoriesActivitySource` as the root span source, registers `AddHttpClientInstrumentation()` on the `HttpClient` used by `MemoriesClient` (via `IHttpClientFactory.ConfigureHttpClientDefaults` pattern), and wires the OTLP exporter to the configured endpoint. When OFF: the CLI runs without instrumentation overhead (<5ms additional startup cost target per Dev Notes benchmark criterion). Dev-local default: OFF; the `AppHost` sets `HEXALITH_MEMORIES_OTEL_ENDPOINT` in Aspire's resource environment so integration tests and local Aspire runs automatically see CLI traces — documented in `docs/dev/telemetry.md`.
+
+**What does NOT ship:**
+
+- **Dedicated audit telemetry store (write-once / append-only artifact).** Architecture line 206: *"Access telemetry to separate write-only store — MVP: structured log file. Growth: dedicated audit store."* 7.5 emits audit events to the structured JSON log (`AddJsonConsole` in ServiceDefaults) AND to the OpenTelemetry Logs pipeline. Operators who need tamper-evidence capture the log stream via their SIEM / filebeat / etc. Dedicated audit store is a **Phase 3** deliverable (see PRD line 443 — "this is *not* a tamper-evident audit trail").
+- **Security / compliance certifications** (SOC 2, GDPR Article 30, HIPAA). The PRD is explicit (line 449): Memories is open-source software; certifications apply to the deploying organization, not the artifact. 7.5 provides the **evidence plumbing** (correlation IDs, audit events with fixed schema, trace propagation); the operator maps it to their compliance controls.
+- **Alert rules, dashboard definitions, alarm thresholds.** The OTLP exporter + Aspire Dashboard covers local dev; production dashboard JSON files are deferred to the deployment playbook (not epic-7 scope). One exception: `docs/dev/telemetry.md` includes **example** Prometheus queries and Grafana panel snippets as a starter template for operators — these are illustrative, not a shipped artifact.
+- **Per-operation sampling / sampling configuration.** All activities sampled at 100% in MVP. Per-activity sampling policies are a Phase 1.5 concern once production traffic shapes appear.
+- **Ingestion-content redaction in logs.** Audit events log `sourceType`, `contentType`, and `bytes` (size) for ingest operations — NEVER the content body or metadata values. Query parameters are logged for search (the `query` string is audit-relevant: "who searched for what") but tokens in the Authorization header are already redacted by the existing `SanitizeText` path (7.3 anti-pattern #12). If a search query itself contains PII (customer-supplied queries in a regulated environment), that leakage is governed by operator policy — documented as a caveat in `docs/dev/telemetry.md`, NOT sanitized by 7.5 (speculative complexity; no concrete redaction rule exists that doesn't either corrupt operator audit or leak policy assumptions).
+- **CLI telemetry emission by default.** CLI telemetry is opt-in (env var / flag). The wizard (Story 7.4) continues to log to stdout/stderr unchanged — it is NOT a CLI-internal audit event emitter. See "Post-ship success criteria" in Story 7.4 Dev Notes for the 7.5 telemetry hand-off contract that IS implemented (consume `QuickstartStepResult.Duration` + `QuickstartStepResult.ErrorCode` via the JSON envelope if CLI telemetry is enabled).
+- **Workflow / activity-level instrumentation** (DAPR Workflow state transitions, individual activity timings inside `IngestionWorkflow`). These are partially covered by DAPR's built-in tracing (the DAPR sidecar emits spans for workflow activities automatically). The Server-side instrumentation added in 7.5 covers the HTTP-request-level spans; finer-grained workflow tracing is additive in future stories if operator feedback demands it.
+- **Metric cardinality caps.** `memories.tenant_id` + `memories.axis` + `memories.case_id` as tag keys can explode cardinality on a noisy tenant. MVP: no enforcement (tenant count <100 expected per architecture deployment model); operator guidance in `docs/dev/telemetry.md` explains the risk and how to configure `AddMeter` filtering at the OTLP collector if cardinality is ever an issue. Hard caps are a Phase 2 tuning concern.
+- **New server-side authentication / user-identity resolution.** `IngestionInput.IngestedBy` is ALREADY the carrier for user identity on ingest paths (see `src/Hexalith.Memories.Contracts/V1/IngestionInput.cs:24`). For search/traverse there is no such field — see ADR-7.5-004 for how 7.5 resolves user identity from existing request data without adding new inputs.
+
+**Primary risks:**
+
+1. **Metric cardinality explosion on multi-tenant environments.** Per-tenant tags on every metric × per-axis sub-tags × per-case possible tagging = O(tenants × axes × cases) unique time series. MVP keeps tagging at tenant + axis + operation (NOT case — case is in the audit log but NOT a metric tag). **Mitigation:** pin tag keys explicitly in `MemoriesMeter` constants; reviewer catches any instrumentation site that adds a new tag; `docs/dev/telemetry.md` documents the tag-key policy.
+2. **Audit log volume on a high-traffic tenant.** A chatty search workload (10/s per tenant × 10 tenants × 60s = 6000 audit entries/minute per node) could saturate a slow log drain. **Mitigation:** the audit event is a single compact JSON line (~300 bytes); `AddJsonConsole` is async in the default `ILogger` pipeline. Operators who need to throttle log volume configure the OTLP Log exporter filter — NOT a Memories concern. Documented in `docs/dev/telemetry.md`.
+3. **CLI telemetry startup latency regression.** Adding `AddHttpClientInstrumentation` + OTLP exporter to the CLI when the env var is set could push cold-start beyond the current ~150ms baseline (7.1 measurement). **Mitigation:** opt-in via env var, measured by a benchmark test (`QuickstartBenchmarkTests.ColdStart_NoTelemetry_Baseline` vs `..._WithTelemetry_Increment` — must be <5ms increment with no-op OTLP exporter). If the increment is bigger than 10ms with a live exporter, file a follow-up but ship anyway — the user opted in by setting the env var.
+4. **Trace context NOT propagating end-to-end across DAPR service invocation.** Architecture line 82 says *"OpenTelemetry traces MUST propagate across all DAPR hops"*. DAPR sidecars auto-inject W3C TraceContext by default, but if a custom `HttpClient` is used without `AddHttpClientInstrumentation` OR if a manually-constructed DAPR `HttpClientFactory` bypasses the DI pipeline, the trace breaks. **Mitigation:** Task 11 adds an integration test `AspireEndToEndTraceTest` that exercises CLI → ingress → Server → Redis and asserts a single `traceId` across all captured spans via the OTLP in-memory exporter. This is the gate test for NFR28.
+5. **User-identity resolution legibility for search/traverse.** `IngestionInput.IngestedBy` covers ingest. Search/traverse have no user-identity carrier today (ADR-7.5-004 proposes using an optional `x-user-id` header — defaulting to `"anonymous"` when absent — AND the existing `caseId` activity record's "system" literal as a correlation anchor for operator-initiated searches). **Risk:** in Phase 1.5 when `TenantAuthorizationMiddleware` lands, the claim-based identity replaces the header path. The audit log schema MUST accept both so the Phase 1.5 migration is additive, not a breaking change.
+6. **Aspire Dashboard vs. production OTLP collector gap.** Aspire Dashboard is dev-only; production uses operator's choice of OTLP endpoint. 7.5 does NOT ship dashboard definitions for production. **Risk:** operators without an OTLP collector see "telemetry works in dev, invisible in prod" and blame Memories. **Mitigation:** `docs/dev/telemetry.md` opens with a "what you need to see these" section naming the Aspire Dashboard (local) AND a table of production OTLP collectors (Jaeger, Tempo, Grafana Cloud, Datadog, Honeycomb) with one-line config snippets.
+7. **Audit event field drift.** Future stories may add operation types (10.x adds MCP-sourced operations; 9.x adds EventStore-sourced events). If every new operation invents its own audit schema, consumers (SIEM parsers) break. **Mitigation:** the `AccessTelemetryEvent` record (Task 3.2) is a **versioned contract** — `schemaVersion: 1` is embedded in every event. A future story that adds fields bumps to `schemaVersion: 2` only if the addition is breaking; additive fields (new optional keys) stay at `1`. Document the versioning policy in `docs/dev/telemetry.md` alongside 7.2's envelope policy (ADR-7.2-001).
+8. **Health endpoint filter bypass for trace exclusion.** The `ConfigureOpenTelemetry` path at `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:56-60` explicitly excludes `/health`, `/alive`, `/ready` from AspNetCore instrumentation. 7.5 MUST preserve this filter when extending `ConfigureOpenTelemetry` — otherwise every 1-second health probe from the quickstart wizard (Story 7.4) floods the trace collector. **Mitigation:** Task 2.1 explicitly preserves the existing filter; Task 11 adds a regression test `Telemetry_HealthEndpointNotTraced` that asserts a `GET /health` produces zero spans on the `Hexalith.Memories` source.
+
+## Story
+
+As an operator,
+I want structured logging, distributed traces, and custom metrics for the entire system,
+so that I can monitor, debug, and audit Memories in production.
+
+## Acceptance Criteria
+
+1. **Structured JSON logging with OpenTelemetry correlation IDs (NFR27).**
+   **Given** any operation in the Memories Server emits a log entry (via `ILogger<T>` or the `[LoggerMessage]` source-generated emitters),
+   **When** the log is written to stdout,
+   **Then** the log entry is valid JSON produced by `AddJsonConsole` (already configured in `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:46`)
+   **And** the JSON contains a `TraceId` field populated from the current `Activity.Current?.TraceId` OR from the DAPR-propagated `traceparent` header when the current operation is initiated by a DAPR service invocation (NFR27)
+   **And** the JSON contains a `SpanId` field populated from `Activity.Current?.SpanId`
+   **And** log entries produced inside a search, ingest, traverse, or case-access endpoint include `TenantId`, `Operation` (one of `search` | `ingest` | `traverse` | `case-access`), and at least one operation-specific identifier (`CaseId` if present, `MemoryUnitId` for memory-unit reads, `InstanceId` for workflow-scheduled ops).
+
+2. **Distributed trace propagation CLI → ingress → Server → backends (NFR28).**
+   **Given** a CLI invocation with `HEXALITH_MEMORIES_OTEL_ENDPOINT=http://localhost:18889` set,
+   **When** the CLI executes `memories search query --tenant demo --query "hybrid search"` against the AppHost-orchestrated stack,
+   **Then** a single `traceId` appears on the root CLI span, the outbound HTTP span (via `AddHttpClientInstrumentation`), the Server's AspNetCore request span, the Server's `memories.search` activity (created via `MemoriesActivitySource.StartActivity`), and any downstream Redis / FalkorDB activity spans captured by existing instrumentation
+   **And** the Aspire Dashboard's trace view shows a single contiguous trace with 5+ spans (exact count depends on axis configuration — syntactic-only has fewer than hybrid)
+   **And** when the CLI is invoked WITHOUT the env var / `--telemetry` flag, no OTLP export occurs AND CLI startup latency increases by no more than 5ms vs. the 7.4 baseline (benchmarked in `QuickstartBenchmarkTests`).
+
+3. **Custom per-tenant metrics visible in Aspire Dashboard (NFR29).**
+   **Given** the AppHost is running with one provisioned tenant and an ingestion + search workload,
+   **When** the operator opens `http://localhost:18888` → Metrics tab,
+   **Then** the following metrics are visible under the `Hexalith.Memories` meter (names pinned by `MemoriesMeter` constants):
+     - `memories.ingestion.documents` (counter, tag: `tenant_id`) — total documents ingested (successful only; failures go to `memories.ingestion.failures`)
+     - `memories.search.requests` (counter, tag: `tenant_id`, `axis`) — total search requests per user-facing resolved axis
+     - `memories.search.duration` (histogram, tag: `tenant_id`, `axis`) — latency per search request, bucketed. **`axis` tag semantics (clarified per Rev 0.3 — Feynman finding Gap A):** represents the user-facing **resolved axis** (one of `syntactic`, `semantic`, `graph`, `hybrid`, `graph-scoped-syntactic`, `graph-scoped-semantic`) — NOT per-axis sub-measurements inside a hybrid call. A hybrid search tagged `axis=hybrid` records the whole-request wall-clock duration that the caller experienced. Per-axis sub-latency breakdowns are deferred — operators who need them correlate with the explain metadata (Story 2.6) or via per-span trace inspection in the Aspire Dashboard.
+     - `memories.index.size` (observable-gauge, tag: `tenant_id`, `axis`) — per-tenant index size, sourced from existing `TenantMetricsService.GetIndexSizesAsync` (called lazily on gauge read, NOT on every request)
+     - `memories.pipeline.queue_depth` (observable-gauge, tag: `tenant_id`) — per-tenant ingestion queue depth, sourced from `PerTenantConcurrencyGate` (Task 4.3 adds the instrumentation hook)
+   **And** each metric's tag set matches the pinned policy (tenant_id + axis only — NO case_id or user tags on metrics, per Risk #1 cardinality mitigation)
+   **And** **metric + audit emission happens only AFTER `TenantStatusGuard.ValidateTenantActiveAsync` passes** (cardinality-injection mitigation, Rev 0.3 — Pre-mortem finding 1b): rejected-tenant paths (invalid id format, unknown tenant, suspended tenant) emit a SYNTHETIC tag `tenant_id = "__rejected__"` on the `memories.ingestion.failures` / `memories.search.requests` counter — bounded cardinality, discoverable by operators, no attacker amplification. A unit test `TenantGuard_RejectedTenant_EmitsSyntheticTag` guards this pattern per code path.
+   **And** a unit test `MemoriesMetricsTests.AllRegisteredMetricsHaveExpectedTagKeys` asserts the pinned tag-key policy at compile time (so a future contributor adding `case_id` to a metric tag breaks the test).
+
+4. **Per-tenant audit event for every search + access operation (FR67).**
+   **`outcome` taxonomy (pinned per Rev 0.3 — Feynman finding Gap B):**
+     - `"ok"` — operation succeeded; all requested axes / backends responded.
+     - `"partial"` — hybrid search where ≥1 axis succeeded AND ≥1 axis reported degraded/unavailable (matches `HybridSearchResult.UnavailableAxes`). Only the hybrid search path can emit `partial`; all other operations are binary `ok` | `error`.
+     - `"error"` — operation failed (validation failure, backend unavailable, tenant rejection, timeout, cancellation).
+   **Given** any search (`MapGet("/api/search")`), ingest (`MapPost("/api/ingest")`, `/ingest/url`, `/ingest/directory`), traverse (`MapGet("/api/tenants/{tenantId}/traverse")`), or case-access (memory-unit reads at `MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}")`) request completes (success OR failure),
+   **When** the endpoint emits its audit record via `AccessTelemetryLog.LogAccessEvent`,
+   **Then** exactly one JSON log line is produced with the fixed `AccessTelemetryEvent` schema:
+     ```json
+     {
+       "schemaVersion": 1,
+       "eventId": <EventId in 7500-7599>,
+       "timestamp": "<ISO 8601 UTC>",
+       "tenantId": "<tenant id>",
+       "operationType": "search" | "ingest" | "traverse" | "case-access" | "delete",
+       "caseId": "<case id or null>",
+       "user": "<identity or 'anonymous'>",
+       "queryParams": { /* operation-specific keys */ },
+       "resultCount": <int or null>,
+       "durationMs": <int>,
+       "outcome": "ok" | "partial" | "error",
+       "errorCode": "<code or null>",
+       "traceId": "<W3C trace id>",
+       "spanId": "<W3C span id>"
+     }
+     ```
+   **And** the event is written regardless of outcome (no silent failures — a 503 backend-unavailable still emits an `outcome: "error"` event with the relevant `errorCode`)
+   **And** the `queryParams` object NEVER contains raw tokens, authorization headers, or memory-unit content (ingest queryParams limited to `sourceType`, `contentType`, `bytes`)
+   **And** the `user` field uses ADR-7.5-004 resolution rules (see Dev Notes) — defaulting to `"anonymous"` on search/traverse when no identity carrier is present; using `IngestionInput.IngestedBy` verbatim on ingest paths
+   **And** the `traceId` / `spanId` fields are populated from `Activity.Current` (same values as AC #1's log enrichment).
+
+5. **Trace exclusions preserved (regression guard).**
+   **Given** the existing `/health`, `/alive`, `/ready` path filters in `ConfigureOpenTelemetry` (`src/Hexalith.Memories.ServiceDefaults/Extensions.cs:56-60`),
+   **When** a `GET /health` is served,
+   **Then** no AspNetCore span is created on the `Hexalith.Memories` source (or on the default ASP.NET Core source, per the existing filter)
+   **And** a test `Telemetry_HealthEndpointNotTraced` in `tests/Hexalith.Memories.Server.Tests/Telemetry/` asserts this invariant with an in-memory OTLP exporter
+   **And** no audit event is emitted for health probes (audit emission is gated on the four enumerated operation types; health probes are NOT one of them).
+
+6. **Telemetry summary endpoint + CLI command (operator verification surface).**
+   **Given** `GET /api/tenants/{tenantId}/telemetry/summary`,
+   **When** the operator requests it with a valid tenant id,
+   **Then** the response is `200 OK` with JSON shape:
+     ```json
+     {
+       "tenantId": "<id>",
+       "asOf": "<ISO 8601 UTC>",
+       "indexSizes": { "syntactic": <long>, "semantic": <long>, "graph": <long> },
+       "indexHealth": { "syntactic": "Ready|Degraded|Missing|Unknown", "semantic": "...", "graph": "..." },
+       "searchMetrics": {
+         "syntactic": { "requestsLast5m": <long>, "errorsLast5m": <long> },
+         "semantic": { "requestsLast5m": <long>, "errorsLast5m": <long> },
+         "graph":    { "requestsLast5m": <long>, "errorsLast5m": <long> },
+         "hybrid":   { "requestsLast5m": <long>, "errorsLast5m": <long> }
+       },
+       "ingestionMetrics": {
+         "documentsLast5m": <long>,
+         "failuresLast5m": <long>,
+         "queueDepth": <int>
+       }
+     }
+     ```
+   **And** for an unknown tenant id the response is `404 NOT_FOUND` with the standard `ErrorResponse` shape
+   **And** the endpoint reads counters via a lightweight in-process `MeterListener` subscription that maintains rolling 5-minute windows per axis/tenant — **no histogram / percentile computation** (p50/p99 were scoped out per party-mode review Revision 0.2 — Amelia + Murat finding: .NET 10's `MeterListener` surfaces raw measurement callbacks, not aggregated percentiles; implementing in-process percentile aggregation duplicates what the OTLP collector already does. Operators who want percentile latency query the OTLP collector / Aspire Dashboard directly)
+   **And** the CLI `memories status telemetry --tenant <id>` command exists as a wired subcommand (not a `NotImplementedCommand` stub) that calls this endpoint and renders the output in `--format human|json|table` per the Story 7.2 envelope contract.
+
+7. **CLI opt-in telemetry bootstrap.**
+   **Given** the CLI is invoked with `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var set OR with `--telemetry` flag,
+   **When** any `memories` subcommand runs,
+   **Then** `CliServices.BuildServiceProvider` registers the OpenTelemetry SDK with: `MemoriesActivitySource` as a trace source, `AddHttpClientInstrumentation` on the `HttpClient` used by `MemoriesClient`, and the OTLP exporter pointed at the configured endpoint
+   **And** the CLI creates a root span `"memories.cli.invoke"` with tag `memories.command = <commandName>` that wraps the entire `ExecuteAsync(commandName, ...)` call (from 7.3 Task 3.8)
+   **And** when NEITHER the env var NOR the flag is set, the CLI's service provider does NOT register any OpenTelemetry services (zero overhead path)
+   **And** the bootstrap is idempotent — setting both the env var and the flag does not double-register.
+
+8. **Backward-compatibility + regression invariants.**
+   **Given** the full Story 7.1-7.4 test suite (`Cli.Tests`, `Server.Tests`, `Contracts.Tests`, `IntegrationTests`),
+   **When** 7.5's instrumentation is added,
+   **Then** every existing test passes without modification (telemetry is additive — no semantic change to existing endpoint behavior)
+   **And** the existing `ServiceDefaults.Extensions.ConfigureOpenTelemetry` health-path filter (lines 56-60) is preserved byte-for-byte
+   **And** the existing `AddJsonConsole` configuration (line 46) is preserved
+   **And** the existing `AddSource("Hexalith.Memories")` call (line 55) remains and is now exercised by emitted spans.
+
+9. **Tests cover the full telemetry surface.**
+   **Given** the consolidated test projects,
+   **When** `dotnet test` runs,
+   **Then** the following test classes exist and pass (all Tier 1 + Tier 2 unless marked Integration):
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/MemoriesActivitySourceTests.cs` — asserts source name constant, activity name constants, tag key constants; reuses `ActivityListener` test pattern from `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/EventStoreActivitySourceTests.cs`
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/MemoriesMetricsTests.cs` — asserts meter name, metric name constants, tag-key policy (AC #3 final paragraph)
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLogTests.cs` — asserts each operation type emits one audit event with the AC #4 schema; asserts user-identity resolution for each code path (ADR-7.5-004)
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs` — asserts `ConfigureOpenTelemetry` registers `.AddSource("Hexalith.Memories")` AND `.AddMeter("Hexalith.Memories")` AND preserves the health-endpoint filter; mirrors the EventStore pattern at `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs`
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryEventSchemaTests.cs` — audit-schema immutability guard (Task 8.5); asserts `AccessTelemetryEvent` field names against a frozen V1 manifest
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/TracePropagationNoDockerTests.cs` — **Tier-2, CI-enforceable** NFR28 coverage via `WebApplicationFactory<Program>` + in-memory OTLP exporter (Task 11.1); asserts single `TraceId` across AspNetCore + `memories.search` activity + audit log
+     - `tests/Hexalith.Memories.Server.Tests/Telemetry/TelemetrySummaryEndpointTests.cs` — endpoint contract, 404 on unknown tenant, happy-path JSON shape
+     - `tests/Hexalith.Memories.Cli.Tests/Telemetry/CliTelemetryBootstrapTests.cs` — assertss env-var gate + flag gate + idempotency; mocks `IHttpClientFactory` to verify instrumentation registration
+     - `tests/Hexalith.Memories.Cli.Tests/Commands/StatusTelemetryCommandTests.cs` — wired subcommand, `--format` matrix, `--endpoint` override, error handling for 404
+     - `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs` **`[Trait("Category","Integration")]`** — single-trace-id assertion across CLI → Server → Redis; uses in-memory OTLP exporter on the Aspire fixture
+     - `tests/Hexalith.Memories.IntegrationTests/Telemetry/AuditLogStreamTests.cs` **`[Trait("Category","Integration")]`** — runs a search + ingest workflow against the fixture, captures stdout JSON logs, asserts one `AccessTelemetryEvent` per operation
+   **And** each test respects the existing `[Trait("Category","Integration")]` filter convention from 7.1-7.4.
+
+10. **`docs/dev/telemetry.md` documents the observability contract.**
+    **Given** an operator or developer wants to consume Memories telemetry,
+    **When** they read `docs/dev/telemetry.md`,
+    **Then** the doc covers:
+     - **"What you need to see these" section** — Aspire Dashboard (local, port 18888/18889), production OTLP collectors (Jaeger / Tempo / Grafana / Datadog / Honeycomb) with one-line config snippets
+     - **ActivitySource names** — `Hexalith.Memories` (pinned), pending future additions follow `Hexalith.Memories.<subsystem>` convention
+     - **Meter names + metric name catalog** — the five metrics from AC #3 with description, unit, tag keys, cardinality notes
+     - **Audit event schema (AC #4)** — field-by-field documentation, versioning policy (additive fields stay at schemaVersion 1, breaking changes bump)
+     - **Tag-key policy** — explicit list of allowed tag keys per metric (Risk #1 mitigation); how to add a new tag (update `MemoriesMeter` constants → update `MemoriesMetricsTests.AllRegisteredMetricsHaveExpectedTagKeys`)
+     - **Trace propagation rules** — CLI opt-in env var / flag; Server always-on; DAPR auto-propagates; health-endpoint exclusion
+     - **User-identity resolution** — ADR-7.5-004 semantics: `IngestedBy` field → `x-user-id` header → `"anonymous"` fallback
+     - **Cardinality risk + operator mitigation** — how to configure OTLP collector-side tag dropping if tenant count grows
+     - **Example Prometheus queries + Grafana panel snippets** — illustrative starter set (NOT a shipped dashboard)
+     - **Audit log volume estimates + throttle guidance** — back-of-envelope calculations + how to configure log-level filtering on audit emitters
+     - **Compliance disclaimer** — PRD line 449 reproduced + Story 7.4 "regulated environments" caveat now resolved (7.5 emits the events; operator captures them for SOC 2 / GDPR / HIPAA purposes).
+
+## Tasks / Subtasks
+
+### Task Summary (orientation)
+
+14 top-level tasks organized as five parallelizable streams (per Dev Notes task dependency sketch). The linear order below is the recommended execution order; LLM dev agents can parallelize Stream A + B if they have the capacity.
+
+- **Stream A (substrate):** Tasks 1-2 (activity source + meter + ServiceDefaults wiring)
+- **Stream B (instrumentation sites):** Tasks 3-4 (per-endpoint instrumentation + audit log emission)
+- **Stream C (operator surface):** Tasks 5-7 (summary endpoint, CLI bootstrap, status subcommand)
+- **Stream D (tests):** Tasks 8-11
+- **Stream E (docs + packaging):** Tasks 12-14
+
+---
+
+- [ ] **Task 1: Create `MemoriesActivitySource` + `MemoriesMeter` static classes (AC: #1, #2, #3)**
+  - [ ] 1.1 Create `src/Hexalith.Memories.Server/Telemetry/MemoriesActivitySource.cs` — `public static class` with `public const string SourceName = "Hexalith.Memories"` and public constants for activity names: `SearchRequest = "memories.search"`, `IngestRequest = "memories.ingest"`, `TraverseRequest = "memories.traverse"`, `CaseAccess = "memories.case-access"`, `AuditEmit = "memories.audit.emit"` (optional child span wrapping the audit log write — see Task 4.4). Expose `public static ActivitySource Instance { get; } = new(SourceName)` — this is the emitter. Add tag key constants: `TagTenantId = "memories.tenant_id"`, `TagCaseId = "memories.case_id"`, `TagMemoryUnitId = "memories.memory_unit_id"`, `TagOperation = "memories.operation"`, `TagAxis = "memories.axis"`, `TagSourceType = "memories.source_type"`, `TagOutcome = "memories.outcome"`, `TagErrorCode = "memories.error_code"`. Mirror the EventStore pattern at `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore.Server/Telemetry/EventStoreActivitySource.cs` — same const-heavy shape so the two submodules feel familiar to operators.
+  - [ ] 1.2 Create `src/Hexalith.Memories.Server/Telemetry/MemoriesMeter.cs` — static class with `public const string Name = "Hexalith.Memories"` + public `Meter Instance` + the five instruments from AC #3: `IngestionDocuments` (Counter&lt;long&gt;, unit `{documents}`), `IngestionFailures` (Counter&lt;long&gt;, tag keys include `error_code`), `SearchRequests` (Counter&lt;long&gt;), `SearchDuration` (Histogram&lt;double&gt;, unit `ms`), `IndexSize` (ObservableGauge&lt;long&gt;, unit `{documents}`), `PipelineQueueDepth` (ObservableGauge&lt;int&gt;, unit `{items}`). Observable gauges are registered with a callback that lazily reads from `TenantMetricsService` (for `IndexSize`) and `PerTenantConcurrencyGate` (for `PipelineQueueDepth`) — do NOT eagerly poll every tenant on gauge read; use the `IEnumerable<Measurement<T>>` callback pattern with an injected `IEnumerable<TenantSummary>` provider (the existing `TenantRegistryService.ListTenantsAsync` result, cached for 30s in the callback — add a small `TelemetrySnapshotCache` helper if needed).
+  - [ ] 1.3 Add internal constants for metric instrument names: `IngestionDocumentsName = "memories.ingestion.documents"`, etc. — tests assert these names so renames are loud.
+  - [ ] 1.4 Unit test `MemoriesActivitySourceTests` (Task 9.1 sibling) asserts SourceName, every activity constant, every tag key constant. `MemoriesMetricsTests` (Task 9.2 sibling) asserts meter name + each instrument name + the tag-key policy (`MemoriesMeter.IngestionDocuments.TagKeys.Should().BeEquivalentTo(new[] { "tenant_id" })` — using a compile-time manifest the tests read from `MemoriesMeter.MetricTagKeyPolicy` dictionary).
+
+- [ ] **Task 2: Extend `ServiceDefaults.Extensions.ConfigureOpenTelemetry` (AC: #2, #5, #8)**
+  - [ ] 2.1 In `src/Hexalith.Memories.ServiceDefaults/Extensions.cs`, extend the `.WithMetrics(metrics => ...)` chain to add `.AddMeter("Hexalith.Memories")` (mirrors the existing `.AddSource("Hexalith.Memories")` on the tracing branch at line 55). The existing aspnetcore/http/runtime instrumentation stays untouched.
+  - [ ] 2.2 Preserve the existing health-path filter (lines 56-60) **byte-for-byte**. Add a regression test `Telemetry_HealthEndpointNotTraced` (Task 9.4 sibling).
+  - [ ] 2.3 Do NOT change the `AddJsonConsole` configuration (line 46) — the trace-id enrichment comes from the OpenTelemetry Logging pipeline which is already wired via `builder.Logging.AddOpenTelemetry(logging => { logging.IncludeFormattedMessage = true; logging.IncludeScopes = true; })` (line 40-44). Verify in Task 9.3 that emitted logs carry `TraceId`/`SpanId` when an `Activity.Current` is set.
+  - [ ] 2.4 Register the telemetry-cache helper (`TelemetrySnapshotCache`) in `AddServiceDefaults` via `builder.Services.AddSingleton<TelemetrySnapshotCache>()` so the observable-gauge callbacks can resolve it at read time.
+
+- [ ] **Task 3: Create `AccessTelemetryEvent` record + `AccessTelemetryLog` source-gen emitter (AC: #1, #4, #7)**
+  - [ ] 3.1 Create `src/Hexalith.Memories.Contracts/V1/AccessTelemetryEvent.cs` — `public sealed record AccessTelemetryEvent` with all fields from AC #4. Put in `Contracts` (NOT `Server`) because the record may be referenced by Phase 1.5 MCP / EventStore consumers; decision pinned by ADR-7.5-001. Include `[JsonPropertyName]` attributes matching the camelCase schema in AC #4. Register in `MemoriesJsonContext` (source-gen) so AOT scenarios serialize cleanly.
+  - [ ] 3.2 `AccessTelemetryEvent.SchemaVersion` is a compile-time const `1`; documented in the record's XML docs as "Increment only for breaking schema changes; additive fields stay at 1" (matches ADR-7.2-001 envelope policy).
+  - [ ] 3.3 Create `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLog.cs` — `internal static partial class` with `[LoggerMessage]` emitters for each operation type. **Dedicated logger category** (per Rev 0.3 — Red Team finding): the class defines a marker type `internal sealed class AccessTelemetryCategory { }`; callers inject `ILogger<AccessTelemetryCategory>` (NOT `ILogger<AccessTelemetryLog>` or `ILogger<Program>`). This gives operators a distinct category name (`Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory`) they can route to a separate log sink / filter rule — keeping search queries (which may carry privacy-sensitive terms) out of general operational log streams consumed by sysadmins for deployment troubleshooting. `docs/dev/telemetry.md` documents the routing recipe (Task 12.1). Event ID bank **7500-7599**:
+    - `7501 — LogSearchAccess` (Information)
+    - `7502 — LogIngestAccess` (Information)
+    - `7503 — LogTraverseAccess` (Information)
+    - `7504 — LogCaseAccess` (Information)
+    - `7505 — LogDeleteAccess` (Information)
+    - `7511 — LogSearchAccessError` (Warning) — mirror of 7501 for outcome: error; same schema, different log level so operators can alert on Warning+ only without losing the OK path
+    - `7512 — LogIngestAccessError` (Warning)
+    - `7513 — LogTraverseAccessError` (Warning)
+    - `7514 — LogCaseAccessError` (Warning)
+    - `7515 — LogDeleteAccessError` (Warning)
+  - [ ] 3.4 Each `[LoggerMessage]` method signature takes the full `AccessTelemetryEvent` as a structured log argument (NOT individual string params — this keeps the JSON payload shape intact). Example: `[LoggerMessage(EventId = 7501, Level = LogLevel.Information, Message = "Search access {@event}")] internal static partial void LogSearchAccess(ILogger logger, AccessTelemetryEvent @event)`. The `{@event}` placeholder (structured-destructuring) produces the AC #4 JSON shape when `AddJsonConsole` serializes it.
+  - [ ] 3.5 Add helper `internal static AccessTelemetryEvent Create(string tenantId, string operationType, ..., Activity? currentActivity)` that reads `currentActivity?.TraceId.ToString()` + `currentActivity?.SpanId.ToString()` and populates the record. Return `AccessTelemetryEvent` for the caller to pass to the `LogXxx` method.
+  - [ ] 3.6 Unit test `AccessTelemetryLogTests` (Task 9.3 sibling) asserts each `LogXxx` method produces the AC #4 JSON shape by scope-capturing the log via `ITestOutputHelper` + a `StructuredLoggerProvider` helper. Use `FluentAssertions.JsonEquivalence` or parse-then-compare — NOT string matching (brittle).
+
+- [ ] **Task 4: Instrument the four operation surfaces (AC: #1, #3, #4)**
+  - [ ] 4.1 **Search endpoint instrumentation** (`src/Hexalith.Memories.Server/Program.cs:1483` and branches): wrap the entire handler body in `using var activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.SearchRequest)` (C# 8 `using` declaration form; null-safe per `ActivitySource` convention — the `activity` is null if no listener is attached, but `activity?.SetTag(...)` works regardless). Set tags `TagTenantId`, `TagOperation = "search"`, `TagAxis = <resolved axis>`. On entry: start a `Stopwatch`. On completion (regardless of outcome): record `MemoriesMeter.SearchRequests.Add(1, tags)`, `MemoriesMeter.SearchDuration.Record(elapsed.TotalMilliseconds, tags)`, compose an `AccessTelemetryEvent`, call `AccessTelemetryLog.LogSearchAccess` (ok) or `LogSearchAccessError` (error/partial). `queryParams` payload: `{ query, axis, maxResults, offset, metadataQuery, sourceType, explain }` — nulls omitted. `resultCount` populated from the result's `Results.Count` on success; null on error. Use a `try/finally` pattern — do NOT use `catch` to swallow; re-throw after the audit emission. **Tenant-validation order (Rev 0.3 — Pre-mortem finding 1b):** `TenantStatusGuard.ValidateTenantActiveAsync` MUST run BEFORE the metric `.Add()` / `.Record()` calls emit with the caller-supplied `tenantId` tag. If the guard rejects, the failure metric + audit event emit with `tenant_id = "__rejected__"` (synthetic, bounded cardinality) — not with the attacker-supplied id. Pattern: pull the `TagList` composition into a helper `BuildMetricTags(guardResult, axis)` that returns `__rejected__` when the guard fails. Apply the same pattern across Tasks 4.2-4.4 via the shared helper.
+  - [ ] 4.1.1 **Validation-fail branches** (search endpoint has ~8 early-return paths for INVALID_INPUT / INVALID_AXIS / INVALID_SOURCE_TYPE / CASE_NOT_FOUND / TENANT_NOT_FOUND): each MUST emit one audit event with `outcome = "error"` and `errorCode = <ErrorResponse.Code>` before returning. Pattern: refactor the handler to compute `ErrorResponse?` in a guard block, then a single `try/finally`-scoped emitter at the bottom handles the audit emission uniformly for both happy path and guard-rejection path. Alternative (cleaner): an `EndpointFilter` or a `TelemetryScope` helper that guarantees the audit emission on every exit path regardless of early return. **Decision at implementation time**: if the refactor touches >30 lines of Program.cs, prefer the helper; if the handler is already linear with a single exit, the inline `try/finally` is simpler. Document the chosen pattern in Completion Notes so Tasks 4.2-4.4 can copy it.
+  - [ ] 4.2 **Ingest endpoints** (`Program.cs:207`, `:233`, `:298`): same pattern as 4.1 with `SourceName = MemoriesActivitySource.IngestRequest`, `TagOperation = "ingest"`, `TagSourceType = <SourceType.ToString()>`. `queryParams`: `{ sourceType, contentType, bytes }` (NOT the content itself). `user` field: from `IngestionInput.IngestedBy` verbatim. `resultCount`: null (ingest is a workflow-scheduling operation, no read results). Completion event fires at the "workflow scheduled successfully" point — the actual ingestion may continue async; a follow-up audit event for workflow completion is NOT part of 7.5 (deferred to EventStore integration story 9.2).
+  - [ ] 4.3 **Traverse endpoint** (`Program.cs:2013`): same pattern. `queryParams`: `{ startNodeId, depth, edgeType? }`. `TagOperation = "traverse"`.
+  - [ ] 4.4 **Case-access (memory-unit read) endpoint** (`Program.cs:1012`): same pattern. `queryParams`: `{ memoryUnitId }`. `TagOperation = "case-access"`.
+  - [ ] 4.5 **Pipeline queue depth observable gauge**: the callback registered in Task 1.2 reads from `PerTenantConcurrencyGate.GetCurrentDepth(tenantId)` — add that public method to `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs` IF it does not already exist (grep at implementation time; the gate tracks concurrency slots so a depth accessor should be trivial). If the class is internal to a partial, expose via `internal static` helper in same assembly — meter callbacks run in-process. If the accessor is genuinely complex to add without perturbing the gate's semantics, defer the gauge and tag as `memories.pipeline.queue_depth = null` in the summary endpoint; document as Completion Note.
+  - [ ] 4.6 **Index size observable gauge**: the callback reads from `TenantMetricsService.GetIndexSizesAsync`. Since the callback is synchronous and `GetIndexSizesAsync` is async, use the `TelemetrySnapshotCache` (Task 1.2) to stash a 30-second-TTL snapshot: on cache miss, a background refresh fires via `Task.Run`; on cache hit, return the cached values synchronously. **Never** `.Result` / `.Wait()` in a gauge callback — that can deadlock the metric collector.
+  - [ ] 4.7 **Ingestion throughput counter**: the existing `IngestionWorkflow` or `DaprIngestionWorkflowScheduler` increments the counter on successful workflow scheduling. Grep at implementation time for the best hook — ideally the same location that emits EventId 6101 (`LogUrlIngestionScheduled`) so the counter increments in lockstep with the existing log. Add `MemoriesMeter.IngestionDocuments.Add(1, new TagList { { "tenant_id", tenantId } });` alongside the log call.
+  - [ ] 4.8 **Do NOT** instrument the `/health`, `/alive`, `/ready` endpoints (per AC #5 + the existing filter). No activity, no metric, no audit.
+
+- [ ] **Task 5: Telemetry summary endpoint (AC: #6)**
+  - [ ] 5.1 Create `src/Hexalith.Memories.Server/Telemetry/TelemetrySummaryService.cs` — service that composes the AC #6 response shape. Dependencies: `TenantMetricsService` (existing, for index sizes / health), `TelemetrySnapshotCache` (for the gauge-sourced values), and a new lightweight `RollingCounterStore` (Task 5.2) that maintains per-tenant / per-axis rolling 5-minute windows for the counter deltas. **Scope boundary vs Story 5.5's `GET /api/tenants/{tenantId}/configuration` (Rev 0.3 — First Principles finding, verified by inspection of `src/Hexalith.Memories.Contracts/V1/TenantConfigurationView.cs`):** 5.5's endpoint returns `MemoryUnitCount` (aggregate), `IndexStatus` (per-backend health), `LastActivityAt`, `EmbeddingConfig`. 7.5's summary endpoint is almost entirely additive — per-axis `indexSizes`, counter deltas (`requestsLast5m` / `errorsLast5m` / `documentsLast5m` / `failuresLast5m`), and `queueDepth` are all unique to 7.5. The ONE intentional overlap is `indexHealth` (7.5) ↔ `IndexStatus` (5.5) — preserved as a one-stop-shop convenience for CLI consumers running `memories status telemetry` who don't want to issue two requests. Do NOT "clean up" the duplication; the redundancy is by design.
+  - [ ] 5.2 Create `src/Hexalith.Memories.Server/Telemetry/RollingCounterStore.cs` — singleton service that subscribes to `MemoriesMeter.SearchRequests`, `MemoriesMeter.IngestionDocuments`, `MemoriesMeter.IngestionFailures` via `MeterListener.SetMeasurementEventCallback<long>`. **Ring buffer shape PINNED (Rev 0.3 — Tree of Thoughts finding):** 5 slots at 1-minute wall-clock granularity per `(tenantId, axis)` key. Rationale: `requestsLast5m` is an inherently rough summary number; sub-minute precision is overengineering. 5×60s vs 60×5s: 10× less memory (20B vs 240B per key × ~200 keys = 4KB vs 48KB total), simpler code, same operator-facing signal. 60-second boundary effects (e.g., "just crossed the minute" reporting 59s of data in one slot) are acceptable for an operator-monitoring surface. On read, sum the ring contents to produce `requestsLast5m`/`errorsLast5m`/`documentsLast5m`/`failuresLast5m`. **No percentile/histogram aggregation** (Rev 0.2 scope-cut).
+  - [ ] 5.3 Register `TelemetrySummaryService` AND `RollingCounterStore` in the Server's DI container (via extension method `AddMemoriesTelemetry` that also registers `TelemetrySnapshotCache`). `RollingCounterStore` is a singleton with `IHostedService` behavior — starts its `MeterListener` subscription on service start.
+  - [ ] 5.4 Wire the endpoint in `Program.cs`: `app.MapGet("/api/tenants/{tenantId}/telemetry/summary", async (TelemetrySummaryService service, TenantStatusGuard guard, string tenantId, CancellationToken ct) => { ... })`. Use `TenantStatusGuard.ValidateTenantActiveAsync` for the 404 path (matches the search endpoint pattern at `Program.cs:1533-1537`).
+  - [ ] 5.5 Endpoint MUST NOT emit an `AccessTelemetryEvent` for itself — recursively telemetering the telemetry endpoint inflates audit volume without adding value. Exclude from Task 4's instrumentation loop. Explicitly tagged `[Trait("audit-exempt", "true")]` in the tests.
+  - [ ] 5.6 Document the percentile scope-cut in `docs/dev/telemetry.md` (Task 12.1): summary endpoint exposes counter deltas + gauges only; operators who need latency percentiles use Aspire Dashboard or their OTLP collector's aggregation (point at the `memories.search.duration` histogram exported via OTLP).
+
+- [ ] **Task 6: CLI opt-in telemetry bootstrap (AC: #2, #7)**
+  - [ ] 6.1 Extend `src/Hexalith.Memories.Cli/CliServices.cs` `BuildServiceProvider` (or equivalent setup method — grep for the current wiring site): if `Environment.GetEnvironmentVariable("HEXALITH_MEMORIES_OTEL_ENDPOINT")` is set OR the resolved `GlobalOptions.Telemetry` flag is true, register: `services.AddOpenTelemetry().WithTracing(t => t.AddSource("Hexalith.Memories").AddHttpClientInstrumentation().AddOtlpExporter(o => o.Endpoint = new Uri(resolvedEndpoint)))`. If neither, skip the registration entirely (zero-overhead path). **OTLP exporter failure mode (Rev 0.3 — Feynman finding Gap C):** the OTLP exporter is **non-blocking by default**; endpoint unavailability (connection refused, DNS failure, HTTP 5xx) silently drops spans. The CLI user-visible experience is unchanged — by design, telemetry never blocks the command. Document this in `docs/dev/telemetry.md` (Task 12.1 "what happens when OTLP is down" sub-section) so a user who sees "telemetry enabled but no traces in collector" knows to check collector health, not CLI behavior. NO CLI-side retry / buffering logic — the collector is responsible for ingest resilience.
+  - [ ] 6.2 Add `--telemetry` as a global flag in `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs` global options section — binds to `GlobalOptions.Telemetry : bool`. Resolution precedence: flag → env var → off. Document in `docs/dev/cli-config.md`.
+  - [ ] 6.3 In `CliCommandExecutor.ExecuteAsync(commandName, handler, ct)`: if telemetry is enabled, wrap `handler.Invoke` in `using var activity = MemoriesActivitySource.Instance.StartActivity("memories.cli.invoke"); activity?.SetTag("memories.command", commandName);`. The activity IS the root span for this invocation; the outgoing HTTP span from `MemoriesClient` will be a child automatically via `AddHttpClientInstrumentation`.
+  - [ ] 6.4 **Idempotency**: if `services.Any(s => s.ServiceType == typeof(OpenTelemetrySdk))` — which covers the "already registered" case for tests that configure SDK manually — skip re-registration. Bypass via a fresh `ServiceCollection` in each unit test.
+  - [ ] 6.5 Reference the same `MemoriesActivitySource` from the Server package — add a project reference `Cli → Server.Telemetry` OR (cleaner, preserves 7.1 CLI-only-depends-on-Client.Rest invariant) move `MemoriesActivitySource` + `MemoriesMeter` to a new shared `src/Hexalith.Memories.Telemetry/` project referenced by both `Server` and `Cli`. **Decision pin (ADR-7.5-002):** create the shared `Hexalith.Memories.Telemetry` project. Add to `.slnx`, register in `Directory.Packages.props` as a project reference (no new NuGet dep).
+
+- [ ] **Task 7: `memories status telemetry` CLI subcommand (AC: #6, #7)**
+  - [ ] 7.1 Check `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs` for an existing `status` command group — if absent, the `CommandGroups` tuple list has a `("status", ...)` stub (per 7.1 + 7.3 — grep to confirm). Remove the stub entry if present; add an explicit `root.Subcommands.Add(StatusCommand.Build(services))` block that composes a `status` container with `telemetry` as a single subcommand. Pattern matches Story 7.4's `QuickstartCommand.Build` wiring.
+  - [ ] 7.2 Create `src/Hexalith.Memories.Cli/Commands/StatusTelemetryCommand.cs` — command class following the 7.3 convention (`CommandName`, `Build(services)`, handler that calls `MemoriesClient.GetTelemetrySummaryAsync`). Accepts `--tenant <id>` as a required option; inherits global `--endpoint`, `--token`, `--verbose`, `--format`.
+  - [ ] 7.3 Add `MemoriesClient.GetTelemetrySummaryAsync(string tenantId, CancellationToken ct) : Task<TelemetrySummary>` to `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`. Use `[Experimental("HXL001")]` attribute (same diagnostic id as 7.4's additions) — "Signature may change in Phase 1.5 when the telemetry surface stabilizes."
+  - [ ] 7.4 `TelemetrySummary` record lives in `Hexalith.Memories.Contracts.V1` (serialized in `MemoriesJsonContext`) — matches the AC #6 JSON shape field-for-field.
+  - [ ] 7.5 Register `"status telemetry" → typeof(TelemetrySummary)` in `CommandPayloadRegistry.cs` (the 7.3 dispatch convention). Register `CliOutputEnvelope<TelemetrySummary>` in `CliJsonContext.cs` source-gen.
+  - [ ] 7.6 Human-format renderer: a compact table of the three axes' index sizes + health + percentiles + ingestion rate + queue depth. JSON-format: the envelope + `TelemetrySummary` payload. Table-format: two-column layout (per 7.2 convention).
+  - [ ] 7.7 Update `CliHelpCompletenessTests` (from 7.4) — `status` + `status telemetry` are newly-wired commands, must have `--help` with at least one example.
+
+- [ ] **Task 8: Unit tests — ActivitySource / Meter / AuditLog (AC: #9)**
+  - [ ] 8.1 `MemoriesActivitySourceTests.cs` (patterns from `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/EventStoreActivitySourceTests.cs`).
+  - [ ] 8.2 `MemoriesMetricsTests.cs` — asserts meter name, instrument names, tag-key policy. Use a `MeterListener` to subscribe to the meter and record emitted tags.
+  - [ ] 8.3 `AccessTelemetryLogTests.cs` — for each `LogXxx` method, capture the emitted log via a custom `ILoggerProvider` that records structured state; deserialize the captured `@event` arg as an `AccessTelemetryEvent`; assert all AC #4 fields.
+  - [ ] 8.4 `OpenTelemetryRegistrationTests.cs` — build a `HostApplicationBuilder`, call `AddServiceDefaults`, reflect on `OpenTelemetry.TracerProvider` + `MeterProvider` to assert `"Hexalith.Memories"` is a registered source AND meter. Also asserts the health-endpoint filter predicate rejects `/health` / `/alive` / `/ready`.
+  - [ ] 8.5 **`AccessTelemetryEventSchemaTests.cs` — audit schema immutability guard.** Asserts `AccessTelemetryEvent` field names against a frozen manifest (`string[] ExpectedV1FieldNames = ["schemaVersion", "eventId", "timestamp", "tenantId", "operationType", "caseId", "user", "queryParams", "resultCount", "durationMs", "outcome", "errorCode", "traceId", "spanId"]`). Uses reflection (`typeof(AccessTelemetryEvent).GetProperties()` + `JsonPropertyNameAttribute` resolution) so a rename from `tenantId` → `tenant_id` (or any field rename) fails the test loudly. **Rationale (party-mode review Rev 0.2 — Winston finding):** audit pipelines are the #1 silent-break surface on schema renames; this test is the fail-loudly guard.
+
+- [ ] **Task 9: Endpoint + instrumentation tests (AC: #1, #4, #6, #9)**
+  - [ ] 9.1 `TelemetrySummaryEndpointTests.cs` — WebApplicationFactory-style test (pattern from existing `Server.Tests`). Asserts happy-path shape, 404 path, no-data-yet → nulls in percentile fields.
+  - [ ] 9.2 `SearchEndpointTelemetryTests.cs` — invoke the search endpoint with `ActivityListener` attached; assert one activity named `memories.search` with expected tags; assert one log entry at EventId 7501 or 7511; assert `memories.search.requests` counter incremented.
+  - [ ] 9.3 `IngestEndpointTelemetryTests.cs`, `TraverseEndpointTelemetryTests.cs`, `CaseAccessEndpointTelemetryTests.cs` — same pattern.
+  - [ ] 9.4 `TelemetryHealthExclusionTests.cs` — invoke `GET /health` through the test host; assert zero activities on `Hexalith.Memories` source; zero audit events.
+  - [ ] 9.5 `AuditEventSchemaVersioningTests.cs` — asserts `AccessTelemetryEvent.SchemaVersion == 1` for all emitted events; asserts backward-compat shape is serialized correctly by `MemoriesJsonContext`.
+
+- [ ] **Task 10: CLI bootstrap + subcommand tests (AC: #2, #6, #7, #9)**
+  - [ ] 10.1 `CliTelemetryBootstrapTests.cs` — asserts env-var gate: with env var set, services include OpenTelemetry tracer; without, they do not. Asserts flag gate: `--telemetry` overrides env var when set. Asserts idempotency: passing both doesn't double-register. Uses `ServiceCollection` + `BuildServiceProvider` pattern.
+  - [ ] 10.2 `StatusTelemetryCommandTests.cs` — handler-level tests for `memories status telemetry` with mocked `MemoriesClient`; asserts human / json / table output shape; asserts 404-from-server → exit code 1 via `ErrorMessageCatalog.Resolve`.
+  - [ ] 10.3 `CliTelemetryStartupLatencyBenchmark.cs` — `[MemoryDiagnoser] [Benchmark]` measuring `BuildServiceProvider` time with / without telemetry. Asserts via `[Benchmark]` + custom exporter that the delta is <5ms. This is a benchmark, not a unit test — lives in `tests/Hexalith.Memories.Cli.Benchmarks/` if that project exists, otherwise gated behind `[Trait("Category", "Benchmark")]` in the existing `Cli.Tests` project and excluded from the default `dotnet test` run.
+  - [ ] 10.4 `CliHelpCompletenessTests` (from 7.4) gains `memories status` and `memories status telemetry` — verify both have `--help` with at least one example (Task 7.7).
+
+- [ ] **Task 11: Trace + audit tests — Tier-2 (no Docker) AND Tier-3 (Aspire fixture) (AC: #2, #4, #9)**
+  - [ ] 11.1 **Tier-2 trace propagation (no Docker).** `tests/Hexalith.Memories.Server.Tests/Telemetry/TracePropagationNoDockerTests.cs` — uses `WebApplicationFactory<Program>` + `TestServer` + `AddInMemoryExporter`; drives the Server with a plain `HttpClient` from the factory (simulating the CLI outbound call but without spawning a CLI process or needing DAPR). Asserts: (a) a search request produces a single `TraceId` across the AspNetCore span + the `memories.search` activity; (b) the `memories.search` activity has the expected tags; (c) the audit log line for the same operation carries the matching `traceId` + `spanId`. **Rationale (party-mode review Rev 0.2 — Murat finding):** the Aspire/Docker integration test (Task 11.3) is the authoritative end-to-end gate, but it's `[Trait("Category","Integration")]` and won't run on dev machines without Docker — this Tier-2 variant makes NFR28's propagation invariant CI-enforceable without Docker, covering ~80% of what can break (source/meter registration, activity tagging, log enrichment). It does NOT cover DAPR sidecar propagation (deferred to Phase 1.5 when DAPR hops actually exist per Winston's architecture note).
+  - [ ] 11.2 `AuditLogStreamTests.cs` (Tier-2) — `WebApplicationFactory<Program>` + captured `ILogger` via `ITestOutputHelper` + structured scope recorder. Runs a search + ingest + traverse + case-access through the test server; asserts one `AccessTelemetryEvent` emitted per operation with the AC #4 shape. No Docker, no Aspire fixture.
+  - [ ] 11.3 **Tier-3 end-to-end via Aspire fixture.** `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs` `[Trait("Category", "Integration")]` — uses `AspireIngestionPipelineFixture`; attaches an in-memory OTLP exporter (add `OpenTelemetry.Exporter.InMemory` to `Directory.Packages.props` — currently absent per anti-pattern #15); invokes CLI via DI (NOT a subprocess, per 7.1 anti-pattern #8); asserts the captured spans share a single `TraceId`. Full chain: CLI root → HttpClient → Server AspNetCore → `memories.search` → downstream Redis span from `StackExchange.Redis.Extensions.OpenTelemetry` (if registered — if not, skip the Redis assertion and document as a gap). If Docker unavailable in the dev environment, skip this test; the Tier-2 variant (11.1) still gates NFR28's source-registration invariant.
+  - [ ] 11.4 `AuditLogStreamIntegrationTests.cs` (Tier-3) — end-to-end variant of 11.2 against the Aspire fixture, capturing stdout JSON logs with `EventId in 7500-7599`.
+  - [ ] 11.5 **Test fixture cleanup**: audit events reference tenant ids that live only for the fixture run — no cleanup needed (Story 7.4 established the fixture-per-run convention).
+
+- [ ] **Task 12: `docs/dev/telemetry.md` (AC: #10)**
+  - [ ] 12.1 Create the doc with the 10 sections from AC #10. Reference Story 7.4's `docs/dev/quickstart.md` Troubleshooting + experimental-apis sections for continuity.
+  - [ ] 12.2 Include one worked Prometheus query example per metric (illustrative only, not a shipped dashboard).
+  - [ ] 12.3 Include the compliance disclaimer reproducing PRD line 449 + resolving Story 7.4's "regulated environments" caveat.
+  - [ ] 12.4 Cross-reference `docs/dev/cli-config.md` (`--telemetry` flag + env var), `docs/dev/cli-output-formats.md` (`status telemetry` envelope), `docs/dev/experimental-apis.md` (`HXL001` now includes `GetTelemetrySummaryAsync`).
+  - [ ] 12.5 **Audit log routing recipe (Rev 0.3 — Red Team finding):** dedicated section showing how to route `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory` log entries to a separate sink (file / SIEM / filebeat / syslog) distinct from operational logs. Include a worked `appsettings.json` snippet with the `Logging:LogLevel` category-specific filter + example configuration for a dedicated JSON sink. Rationale: search queries may contain privacy-sensitive terms on regulated tenants; separating audit from operational log streams keeps incidental access scoped to the audit pipeline's narrower operator audience.
+  - [ ] 12.6 **Audit log-level config gate (Rev 0.3 — Pre-mortem finding 1a):** document the new `Memories:Telemetry:AuditLogLevel` configuration setting (default `Information`). Operators on high-traffic tenants throttle to `Warning` — this keeps error events (EventId 7511-7515) flowing while suppressing successful-operation events (7501-7505). Trade-off: losing `ok`-outcome audit trail for successes; operators on regulated tenants MUST keep default and scale the log pipeline instead. Task 3.3 + Task 3.4 emitters honor this config via the per-emitter LogLevel (static gate — `[LoggerMessage]` filters by configured level automatically); no additional code.
+  - [ ] 12.7 **Phase 1.5 MCP trace TODO marker (Rev 0.3 — Pre-mortem finding 1c):** dedicated "Phase 1.5 coverage gaps" section listing: "NFR28 is validated in 7.5 for CLI → Server (Tier-2 `WebApplicationFactory`) and CLI → Server → Redis (Tier-3 Aspire fixture). MCP Server → Server trace propagation (via DAPR service invocation) is NOT covered — MCP does not exist yet. The story introducing `Hexalith.Memories.Mcp` (planned Epic 10) MUST include an end-to-end trace test covering the MCP → Server DAPR hop as part of its Definition of Done. Flag this dependency in the Epic 10 story's References section."
+
+- [ ] **Task 13: Update existing docs + the CHANGELOG (AC: #10)**
+  - [ ] 13.1 `docs/dev/cli-config.md` — add the `--telemetry` global flag row + `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var row to the precedence table.
+  - [ ] 13.2 `docs/dev/cli-output-formats.md` — add a `status telemetry` per-command row with JSON envelope sample.
+  - [ ] 13.3 `docs/dev/experimental-apis.md` — append `GetTelemetrySummaryAsync` to the HXL001 method list.
+  - [ ] 13.4 `README.md` — append to the "CLI (preview)" section: `"Story 7.5 wires search + access telemetry: distributed traces (NFR28), custom Aspire Dashboard metrics (NFR29), and per-tenant audit events (FR67). See docs/dev/telemetry.md."`. Additive edit only.
+
+- [ ] **Task 14: Packaging smoke test (AC: #8, #9)**
+  - [ ] 14.1 `tools/verify-cli-pack.sh` + `.ps1` — add `memories status telemetry --help` smoke test step (right after the 7.4 `quickstart --help` check). Exit code must be `0`; stdout must contain `"Example"` and a four-space-indented `memories status telemetry` invocation (NFR30 per 7.4 Task 9).
+  - [ ] 14.2 Verify the shared `Hexalith.Memories.Telemetry` project (ADR-7.5-002) is packed — the CLI NuGet tool must have its assembly embedded. If the packer only includes the CLI's direct references and the Telemetry project is referenced via Server (transitive), either (a) add a direct `ProjectReference` from CLI to Telemetry, or (b) confirm dotnet's default self-contained packing includes it. Validate with `dotnet pack` + `unzip -l`.
+
+## Dev Notes
+
+### Inherited from Stories 7.1 + 7.2 + 7.3 + 7.4 (do not re-derive)
+
+- **All ADRs from 7.1 (8), 7.2 (3), 7.3 (4), 7.4 (5)** — the 7.2 envelope contract (ADR-7.2-001) governs the `status telemetry` JSON output; 7.3's synthetic-error-code convention (ADR-7.3-001) applies to any 7.5 CLI-local errors (none expected). 7.4's `--format` matrix + exit-code split (ADR-7.3-003) applies to `status telemetry`.
+- **Implementation contracts from 7.1-7.4**: command-name plumbing (`ExecuteAsync(commandName, ..., ct)` overload); JSON envelope stdout-only; per-format dispatch in command handlers; `CommandPayloadRegistry` dispatches source-gen types per command; `CliHelpCompletenessTests` tag-filter for stubs; `[Experimental("HXL001")]` for pre-CLI-wiring client methods (7.4 Revision 0.4).
+- **7.1 + 7.2 + 7.3 + 7.4 anti-patterns — most relevant to 7.5:**
+  - 7.1 #12 (never log or emit the token). Audit events MUST NOT include authorization headers or raw `--token` values. `queryParams` filtering explicitly drops keys matching the token-sanitization pattern.
+  - 7.1 #14 (no emoji in formatter output). Audit events are structured JSON — no UI characters.
+  - 7.3 #7 (write JSON envelope to stdout BEFORE verbose stderr). The `status telemetry` JSON mode writes exactly one envelope to stdout; stderr empty.
+  - 7.4 #7 (reading sample document text from disk at runtime). Not directly applicable — 7.5 has no sample content — but the same principle holds: the `AccessTelemetryEvent` schema lives in the source assembly, not a config file.
+  - 7.4 #10 (interleaving stderr/stdout writes during JSON-mode output). Same rule applies to `status telemetry`.
+  - 7.4 #13 (embedding PII, credentials, internal URLs in sample content) — applied to `queryParams` filtering: per Task 4.1 the `query` string is logged verbatim for search, which is deliberate (audit-relevant); operator policy governs what's pasted into queries. Documented caveat in `docs/dev/telemetry.md`.
+
+### New architectural decisions (locked in this story)
+
+**ADR-7.5-001 — `AccessTelemetryEvent` lives in `Contracts.V1`, not `Server`.**
+- **Decision:** The record ships in `Hexalith.Memories.Contracts.V1` alongside `ErrorResponse`, `SearchResult`, etc.
+- **Rationale:** Phase 1.5 adds MCP server (story 10.x) and EventStore integration (story 9.x). Both will emit audit events with the same schema — forcing consumers to reference a `Server` package just for the schema is a layering inversion. Shipping in `Contracts` makes the record available to all interfaces (CLI, MCP, EventStore) without a runtime dependency.
+- **Trade-off:** A contract evolution (schemaVersion bump) is now a versioned Contracts change — stricter review overhead. Acceptable: the schema is operator-facing and should be stable.
+- **Reconsider at:** If operator feedback shows frequent schema churn post-ship, the record could move to a dedicated `Telemetry.Contracts` package. Defer until churn is actually observed.
+
+**ADR-7.5-002 — Shared `Hexalith.Memories.Telemetry` project.**
+- **Decision:** Create `src/Hexalith.Memories.Telemetry/` containing `MemoriesActivitySource` + `MemoriesMeter` + shared tag-key constants. Both `Server` and `Cli` reference it.
+- **Rationale:** 7.5 needs the CLI to create root spans on the same `ActivitySource` the Server uses (so the trace propagates without a re-creation at the Server boundary — W3C TraceContext propagation handles the linking, but the source must be consistently named). 7.1's CLI dependency shape **evolves** from "CLI → Client.Rest only" to **"CLI → Client.Rest + Telemetry"** (honest evolution, party-mode review Rev 0.2 — Winston finding). This is acceptable because `Hexalith.Memories.Telemetry` has zero runtime dependencies beyond `System.Diagnostics.DiagnosticSource` (part of the BCL) — the CLI packaging footprint is unchanged.
+- **Trade-off:** One more project in the `.slnx`. Acceptable: the alternative (duplicate constants in Cli and Server) is a forever source of drift.
+- **Reconsider at:** If Phase 1.5 adds cross-submodule shared telemetry (e.g., EventStore integration wants the same ActivitySource names), the right boundary becomes `Hexalith.Commons` (cross-repo) rather than `Hexalith.Memories.Telemetry` (this-repo). Migration cost at that point: 1-2 days. Do NOT pre-migrate — YAGNI.
+
+**ADR-7.5-003 — Telemetry summary endpoint is an operator read-only poke, NOT a metrics backend.**
+- **Decision:** `GET /api/tenants/{tenantId}/telemetry/summary` returns a point-in-time snapshot of the current metric values (indexes, counters, histograms). Aspire Dashboard + OTLP collector remain the source of truth for time-series + alerting. The endpoint exists for CLI-friendly ad-hoc inspection + scripting (`memories status telemetry --tenant X --format json | jq`).
+- **Rationale:** Operators need a low-friction way to see per-tenant state during development without opening a UI. Exposing raw metric internals (histogram buckets with bucket boundaries, raw counter values) would be a misleading "I'm a metrics system" signal. The endpoint returns curated summaries (p50/p99 from histograms, counter values for last-5-minute windows, current gauge values).
+- **Trade-off:** The endpoint is a second instrumentation site that must stay consistent with the OTLP-exported metrics. Mitigation: both surfaces share `MemoriesMeter.Instance`; the summary endpoint is a reader, not a parallel instrumenter.
+- **Reconsider at:** If operators routinely scrape the summary endpoint as a Prometheus replacement, that's a signal the project should either bless the pattern (add Prometheus scrape endpoint) or deprecate the summary endpoint in favor of pushing users to the OTLP collector. Phase 2 decision.
+
+**ADR-7.5-004 — User-identity resolution: layered fallback.**
+- **Decision:** The `user` field of `AccessTelemetryEvent` is resolved as:
+  1. **Ingest paths:** `IngestionInput.IngestedBy` (existing contract field, always present — `required` — per `src/Hexalith.Memories.Contracts/V1/IngestionInput.cs:24`).
+  2. **Search / traverse / case-access paths:** the `x-user-id` HTTP header value if present, else `"anonymous"`. The header is a soft convention (not enforced), added by Phase 1.5's `TenantAuthorizationMiddleware` when it lands. Pre-Phase-1.5, the CLI does NOT set this header; audit events show `"anonymous"` for search/traverse — which is accurate for the current no-auth state.
+  3. **Wizard-originated operations (from Story 7.4 quickstart):** when the CLI's `HEXALITH_MEMORIES_WIZARD_INVOCATION_ID` env var is set (Task 4.3 of 7.4 Dev Notes references this as a hand-off; verify presence), the server adds a tag `memories.wizard_origin = true` to the activity and sets `user = "quickstart-wizard"` as a recognizable identity.
+- **Rationale:** The architecture requires user identity for audit purposes (FR67); absent authentication, `"anonymous"` is the honest answer. Shipping a lie (hardcoded `"system"` on search paths) would violate FR65's spirit (`ingested_by` is truthful metadata) and make the audit log unreliable for forensic review.
+- **Trade-off:** Phase 1.5 `TenantAuthorizationMiddleware` must populate `x-user-id` from validated claims — that's a contract on the middleware, documented in its story's AC.
+- **Reconsider at:** When `TenantAuthorizationMiddleware` lands, the header becomes enforced (missing header → 401 for authenticated endpoints). Audit schema is unchanged; `"anonymous"` becomes vanishingly rare in production traffic. Operators who today scrape `user = "anonymous"` as a red flag will continue to — that's the point.
+
+**ADR-7.5-005 — CLI telemetry is opt-in; server telemetry is always-on.**
+- **Decision:** The Server unconditionally emits activities, metrics, and audit events (no flag to disable). The CLI requires explicit opt-in via env var or flag.
+- **Rationale:** The Server is a long-running service with an OTLP collector always wired (production) or Aspire Dashboard (dev) — telemetry is free. The CLI is a short-lived process where startup latency matters (NFR31 + 7.4 Risk #1 — 30-min target). Instrumenting a cold CLI invocation adds measurable time for a feature most developers won't use on every invocation.
+- **Trade-off:** A developer who wants to debug a CLI invocation's trace must remember to set the env var. Mitigation: the Aspire `AppHost` sets the env var for CLI subprocesses it launches (via Aspire resource environment config), so most dev workflows get it free.
+- **Reconsider at:** Phase 1.5 if CLI usage patterns show developers consistently want traces by default (unlikely given the cost), flip the default. Until then, opt-in.
+
+### Hand-off from Story 7.4 (telemetry)
+
+7.4 Dev Notes ("Hand-off to Story 7.5 (telemetry)") pins three contracts:
+
+- **Per-step durations come from `QuickstartStepResult.Duration`** — the JSON envelope's `data.steps[N].durationMs` field. If the CLI is invoked with `--telemetry`, Task 6.3 wraps the entire quickstart in a root span; individual step durations are also emitted as metric values on `memories.quickstart.step.duration{step_id,status}` — BUT: 7.5 does NOT re-measure. The wrapping activity reads `QuickstartStepResult.Duration` directly from the envelope returned by the wizard. Proposed metric names: `memories.quickstart.step.duration` (histogram, tag `step_id` + `status`), `memories.quickstart.total.duration` (histogram, tag `overall_status`), `memories.quickstart.step.failure_count` (counter, tag `step_id` + `error_code`). **Reversal to 7.4's proposal:** only emit these metrics when `--telemetry` is enabled — default-off matches ADR-7.5-005. **Follow-up note:** quickstart metrics are NICE-TO-HAVE in 7.5; if the telemetry hand-off is genuinely finicky (e.g., envelope parsing timing conflicts with step timing), defer them and file a follow-up story. The CORE 7.5 work (search/ingest/traverse/case-access + the four ACs) is what gates the epic.
+- **Error code propagation via `QuickstartStepResult.ErrorCode`** — when a wizard step fails, 7.5's audit event emits `errorCode = step.ErrorCode` verbatim, treating it as a failure taxonomy entry. The `AccessTelemetryEvent.errorCode` field is typed `string?` — accepts both catalog codes (`TENANT_FAILED`) and synthetic CLI codes (`DOCKER_UNAVAILABLE`) identically.
+- **No parallel instrumentation** — don't re-wrap `MemoriesClient.CreateTenantAsync` with a separate activity; the `AddHttpClientInstrumentation` spans already cover the wire call.
+
+### Post-ship success criteria
+
+The observability plumbing's real ROI is measurable by signals the plumbing itself provides. Proposed signals (pin thresholds when 30 days of production data land):
+
+- **Trace completeness rate**: % of CLI-initiated operations where the OTLP collector sees ≥4 connected spans (CLI root → HttpClient → Server AspNetCore → Server handler activity). Target: >95%. Below suggests propagation breakage.
+- **Audit event volume**: expected range per operational tenant (calibrated in `docs/dev/telemetry.md` back-of-envelope section). Dramatic deviation from expected = silent loss (too few) or instrumentation site bug (double-emission).
+- **Metric ingestion lag**: time between operation completion and metric visibility in Aspire Dashboard. Target: <5s p99. Higher = OTLP exporter issue or collector saturation.
+- **Schema version compliance**: % of emitted audit events with `schemaVersion == 1`. Target: 100%. Anything lower means a bug in a new code path.
+
+These are observational targets, not CI gates. Reviewed quarterly post-ship.
+
+### Repo state the dev agent must rely on
+
+- Stories 7.1, 7.2, 7.3, 7.4 are `done` (per sprint-status.yaml) — 7.4 is `review` as of 2026-04-17 but its contracts (envelope, command pattern, `[Experimental("HXL001")]` attribute, `IsStub` marker, `CliHelpCompletenessTests`) are stable and inheritable.
+- **`src/Hexalith.Memories.ServiceDefaults/Extensions.cs`** already configures OpenTelemetry with `.AddSource("Hexalith.Memories")` at line 55 — Task 2.1 extends with `.AddMeter("Hexalith.Memories")`. Do NOT remove or modify existing `.AddSource()` / `.AddAspNetCoreInstrumentation` / `.AddHttpClientInstrumentation` / OTLP exporter calls.
+- **`AddJsonConsole` is already wired** at line 46 — the `TraceId` / `SpanId` enrichment on logs comes from the OpenTelemetry Logging pipeline (lines 40-44 — `logging.IncludeScopes = true` + `IncludeFormattedMessage = true`). Task 9.3 verifies the enrichment works; no new config needed.
+- **`MemoriesClient`** (`src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`) has `CreateTenantAsync`, `GetTenantAsync`, `CreateCaseAsync`, `IngestAsync`, `ListTenantsAsync`, `ListCasesAsync`, `HybridSearchAsync`, `SearchAsync`, `GetMemoryUnitAsync`, `ProbeHealthAsync` — all `public virtual`; wizard-added ones have `[Experimental("HXL001")]`. Task 7.3 adds `GetTelemetrySummaryAsync` with the same attribute.
+- **`TenantMetricsService`** (`src/Hexalith.Memories.Server/Tenants/TenantMetricsService.cs`) exposes `GetMemoryUnitCountAsync`, `GetIndexSizesAsync`, `GetLastActivityAtAsync` — all non-throwing (returns null on unavailability). Task 5.1 + 1.2 reuse without modification.
+- **`PerTenantConcurrencyGate`** (`src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`) — grep at implementation time for a `GetCurrentDepth(tenantId)` accessor. If absent, Task 4.5 adds it.
+- **EventId banks already in use:** 5400s (tenant mismatch), 5500s (tenant registry), 5600s (search degradation), 6100s (URL/directory ingestion), 6200s (rate limiting), 6300s (retry failure). **Bank 7500-7599 is free** — claimed by this story for audit telemetry events.
+- **Existing structured-log pattern** (used by every `*Log.cs` file): `internal static partial class` + `[LoggerMessage(EventId=N, Level=..., Message="...")]` methods. Task 3.3 follows this pattern verbatim.
+- **`AspireIngestionPipelineFixture`** (7.1) bootstraps the full stack — 7.5 integration tests reuse it. Verify the fixture has `AddInMemoryExporter` available (may need to add `OpenTelemetry.Exporter.InMemory` package reference to `tests/Hexalith.Memories.IntegrationTests/` — check `Directory.Packages.props`; add the line if needed).
+- **EventStore submodule telemetry** at `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore.Server/Telemetry/EventStoreActivitySource.cs` is the closest in-repo analogue. Same const-heavy pattern + tag key constants. Tests at `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/*.cs` are the template for Task 8's test classes — especially `OpenTelemetryRegistrationTests.cs` (asserts source + meter registration) and `EventStoreActivitySourceTests.cs` (asserts const values).
+- **`Program.cs`** endpoint locations (for instrumentation wrapping in Task 4):
+  - Search: `src/Hexalith.Memories.Server/Program.cs:1483` (main) + `:1598` (graph-scoped) + `:1636` (hybrid branch)
+  - Ingest: `Program.cs:207` (file), `:233` (URL), `:298` (directory)
+  - Traverse: `Program.cs:2013`
+  - Case-access (memory-unit read): `Program.cs:1012`
+- **`samples/` folder still does not exist** (Story 7.4 "What does NOT ship" point 3). 7.5 continues to respect that scope.
+- **`docs/dev/` folder** contains `cli-config.md`, `cli-output-formats.md`, `experimental-apis.md`, `quickstart.md`, `quickstart-walkthrough-log.md`. Task 12.1 adds `telemetry.md`.
+
+### Task dependency sketch (for parallelizing dev agents)
+
+- **Stream A (substrate):** Task 1 (types), Task 2 (ServiceDefaults wiring), Task 3 (AccessTelemetryLog). Task 3.1 (`AccessTelemetryEvent` in `Contracts`) is the hard-block for Task 4+; do that first.
+- **Stream B (instrumentation):** Task 4 (per-endpoint instrumentation). Needs Task 1-3 complete.
+- **Stream C (operator surface):** Task 5 (summary endpoint), Task 6 (CLI bootstrap), Task 7 (status subcommand). Task 5 needs Tasks 1-2; Tasks 6-7 parallel to 5 but need Task 1 for shared ActivitySource.
+- **Stream D (tests):** Tasks 8-11. Each sub-task parallels the stream it tests — Task 8 parallels Stream A, Task 9 parallels Streams A+B, Task 10 parallels Stream C, Task 11 is the final integration gate.
+- **Stream E (docs + packaging):** Tasks 12-14. Task 12 needs all of A-D done (documents what was built). Tasks 13-14 parallel 12.
+
+Sequential execution (1 → 2 → ... → 14) is valid and simpler. LLM dev agents should default to linear.
+
+### Anti-patterns to avoid (7.5-specific, layered on top of 7.1/7.2/7.3/7.4)
+
+1. **Re-instrumenting existing DAPR-auto-traced spans.** DAPR sidecars already emit spans for service invocation, workflow activities, actor invocation, pub/sub publish, state store reads. Do NOT wrap DAPR SDK calls with additional `Activity.StartActivity` — they'll be duplicate child spans on the same trace. Instrument at the endpoint-handler layer + the service-service-boundary layer; leave DAPR internals alone.
+2. **Logging memory unit content or metadata values in audit events.** `queryParams` for ingest is `{sourceType, contentType, bytes}` — NEVER `{sourceType, contentType, contentPreview}`. `queryParams` for search logs the `query` string (audit-relevant: "who searched for what") but NEVER `metadataQuery` raw values that might contain private filter strings — log only the COUNT of metadata filters, not the values. Document in `docs/dev/telemetry.md`.
+3. **Tagging metrics with `case_id` or `user`.** Risk #1 mitigation — cardinality explodes. Metrics tag keys are pinned to `tenant_id` + `axis` + `source_type` + `error_code` (for the failures counter). Case id goes in the audit log (free-form string, one event per operation, bounded by request rate), not the metric. User id likewise.
+4. **Async polling inside observable gauge callbacks.** Task 4.6 pattern — use the `TelemetrySnapshotCache` with a background refresh. `GaugeCallback → .Result → TenantMetricsService.GetIndexSizesAsync()` is a synchronous wait on an async call; during high load this can deadlock the metric collector thread. ALWAYS return cached values from the callback; refresh off the critical path.
+5. **Emitting audit events for health / status / telemetry endpoints.** Self-referential audit is noise. Gate on `TagOperation` being one of the four enumerated types; health + telemetry summary + version endpoints are excluded.
+6. **Hardcoding the OTLP endpoint.** The Aspire AppHost surfaces `OTEL_EXPORTER_OTLP_ENDPOINT` via resource env vars. The Server reads it via `builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]` (already at line 71 of `Extensions.cs`). The CLI uses `HEXALITH_MEMORIES_OTEL_ENDPOINT` (our env var, distinct so a dev can enable CLI telemetry without affecting the Server). Do NOT hardcode `localhost:18889` anywhere.
+7. **Forgetting to exclude the `/health` path filter.** The existing filter at `ServiceDefaults/Extensions.cs:56-60` MUST stay. A single accidental regression (e.g., a `.Clear()` on the filter list) floods the trace collector with quickstart-wizard health-probe spans. Task 2.2 regression test is the guard.
+8. **Emitting audit events synchronously on the request hot path.** `ILogger.LogXxx` with `[LoggerMessage]` source-gen is nearly free (no boxing, async default providers), but if a consumer plugs in a synchronous-blocking sink (custom `ILoggerProvider`), performance regresses. Mitigation: the test harness measures end-to-end search latency with telemetry on vs. off; increment target <5ms p99 (documented in `docs/dev/telemetry.md` perf section).
+9. **Creating per-call `ActivitySource` or `Meter` instances.** `MemoriesActivitySource.Instance` and `MemoriesMeter.Instance` are singletons. Creating new instances per request breaks the OpenTelemetry source-registration contract (the SDK tracks sources by identity).
+10. **Failing to validate `TenantId` format in the telemetry summary endpoint.** Must reuse `ValidateTenantId` from `Program.cs` (the same validator used by `/api/search`). Don't invent a new validator.
+11. **Emitting two audit events for one operation.** A single ingest that succeeds → one Information event (7502). A single ingest that fails → one Warning event (7512). NEVER both. Task 4's `try/finally` pattern must emit exactly once in each path.
+12. **Mixing audit event payload sizes.** `AccessTelemetryEvent` is a fixed-shape record. Don't let a search endpoint populate extra keys under `queryParams`. The `queryParams` is `IReadOnlyDictionary<string, object?>` (or a strongly-typed record per operation — see Task 3.1) with a well-documented key set per operation.
+13. **Crossing the CLI ↔ Server project reference boundary for telemetry helpers.** ADR-7.5-002 pins the shared `Hexalith.Memories.Telemetry` project. Do NOT add `Server.Telemetry` types to the CLI's project references (or vice-versa) — use the shared project.
+14. **Double-registering OpenTelemetry in tests.** Tests that use `HostApplicationBuilder` via the existing test fixture should call `AddServiceDefaults` once. A test that also calls `AddOpenTelemetry().WithTracing(...)` directly either registers duplicate sources (warnings in console, flaky tests) or fights with the fixture's config. Use the fixture as-is; inject `ActivityListener` for test-side capture.
+15. **Forgetting to add `OpenTelemetry.Exporter.InMemory` package.** Task 11.1 needs this package for the integration trace test. If not in `Directory.Packages.props`, add the line and verify across the solution build.
+
+### Testing approach
+
+- **Tier 1 (unit):** `MemoriesActivitySourceTests`, `MemoriesMetricsTests`, `AccessTelemetryLogTests`, `OpenTelemetryRegistrationTests`, `CliTelemetryBootstrapTests`, `StatusTelemetryCommandTests`, `AuditEventSchemaVersioningTests`.
+- **Tier 2 (endpoint-level, no DAPR):** `TelemetrySummaryEndpointTests`, `SearchEndpointTelemetryTests`, `IngestEndpointTelemetryTests`, `TraverseEndpointTelemetryTests`, `CaseAccessEndpointTelemetryTests`, `TelemetryHealthExclusionTests`. Use `WebApplicationFactory<Program>` + `ActivityListener` + in-memory log capture.
+- **Tier 3 (integration, Aspire fixture):** `AspireEndToEndTraceTests`, `AuditLogStreamTests`. Require Docker + Aspire. Marked `[Trait("Category", "Integration")]`.
+- **Benchmark:** `CliTelemetryStartupLatencyBenchmark` — gated behind `[Trait("Category", "Benchmark")]`; not in the default `dotnet test` run.
+- **Regression guards**: all 7.1/7.2/7.3/7.4 tests pass unchanged. Specifically: `CliHelpCompletenessTests` now covers `status`+`status telemetry`; `ConfigShowGoldenFileTests` unchanged (no config surface change); `TokenRedactionTests` unchanged (audit events are a new surface — re-audit sanitization during code review).
+
+### Definition of Done
+
+1. `src/Hexalith.Memories.Telemetry/` project exists with `MemoriesActivitySource.cs` + `MemoriesMeter.cs`. Referenced by both `Server` and `Cli` projects in `.slnx`.
+2. `src/Hexalith.Memories.Contracts/V1/AccessTelemetryEvent.cs` exists + registered in `MemoriesJsonContext`.
+3. `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLog.cs` exists with the 10 `[LoggerMessage]` emitters (EventIds 7501-7505 + 7511-7515).
+4. `src/Hexalith.Memories.Server/Telemetry/TelemetrySummaryService.cs` exists + registered in DI. `GET /api/tenants/{tenantId}/telemetry/summary` endpoint wired in `Program.cs`.
+5. Search (`:1483`), ingest (`:207`, `:233`, `:298`), traverse (`:2013`), and case-access (`:1012`) endpoints are wrapped in Task 4's activity/metric/audit instrumentation.
+6. `ServiceDefaults.Extensions.ConfigureOpenTelemetry` extended with `.AddMeter("Hexalith.Memories")`. Health-endpoint filter preserved byte-for-byte.
+7. CLI: `--telemetry` global flag + `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var gate. `memories status telemetry --tenant <id>` command wired (not a stub). Root span `"memories.cli.invoke"` emitted when telemetry enabled.
+8. `MemoriesClient.GetTelemetrySummaryAsync` exists with `[Experimental("HXL001")]`.
+9. `docs/dev/telemetry.md` exists with all 10 AC #10 sections. Cross-references to `cli-config.md`, `cli-output-formats.md`, `experimental-apis.md` are present.
+10. `docs/dev/cli-config.md` + `docs/dev/cli-output-formats.md` + `docs/dev/experimental-apis.md` updated (Tasks 13.1-13.3).
+11. `README.md` CLI (preview) section gains the 7.5 line.
+12. `tools/verify-cli-pack.sh` + `.ps1` include the `status telemetry --help` smoke.
+13. `dotnet build Hexalith.Memories.slnx` clean (0 warnings, 0 errors under `TreatWarningsAsErrors=true`). **All 7.1/7.2/7.3/7.4 tests pass without modification**. New tests (Tasks 8-11) pass.
+14. `AspireEndToEndTraceTests.Telemetry_CliToServerToRedis_SharesSingleTraceId` passes against the fixture (or documented as "requires Docker; ran manually at <commit-sha>, pass recorded in Completion Notes" if the dev environment lacks Docker).
+15. `sprint-status.yaml` transitions `7-5-search-and-access-telemetry: backlog → ready-for-dev → in-progress → review → done`. Epic 7 transitions to `done` ONLY when all five stories (7.1-7.5) are `done` — this is the final story of Epic 7 and closes Gate 3.
+
+### References
+
+- Epic 7 overview and Story 7.5 acceptance criteria: [Source: `_bmad-output/planning-artifacts/epics.md:1498-1524`]
+- Epic 7 objective ("polished CLI, <30-min onboarding, operational observability" — Gate 3): [Source: `_bmad-output/planning-artifacts/epics.md:1381-1383`]
+- **NFR27** (structured JSON logs + OTel correlation IDs from DAPR trace context): [Source: `_bmad-output/planning-artifacts/prd.md:998`]
+- **NFR28** (trace propagation across DAPR hops; end-to-end distributed trace): [Source: `_bmad-output/planning-artifacts/prd.md:999`]
+- **NFR29** (custom per-tenant metrics via OpenTelemetry): [Source: `_bmad-output/planning-artifacts/prd.md:1000`]
+- **FR67** (per-tenant audit events for search + access): [Source: `_bmad-output/planning-artifacts/prd.md:919`]
+- Observability cross-cutting concern (architecture summary): [Source: `_bmad-output/planning-artifacts/architecture.md:82`]
+- Access telemetry as structured log file (MVP) vs. dedicated audit store (Growth): [Source: `_bmad-output/planning-artifacts/architecture.md:206`]
+- Deployment topology — Aspire Dashboard ports: [Source: `_bmad-output/planning-artifacts/architecture.md:541`]
+- Access telemetry compliance disclaimer: [Source: `_bmad-output/planning-artifacts/prd.md:443-449`]
+- ServiceDefaults OpenTelemetry wiring (extend, do not replace): [Source: `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:37-79`]
+- Health-endpoint filter (must preserve): [Source: `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:56-60`]
+- `AddJsonConsole` wiring (source of TraceId/SpanId enrichment): [Source: `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:46`]
+- Server search endpoint (instrumentation target): [Source: `src/Hexalith.Memories.Server/Program.cs:1483-1740`]
+- Server ingest endpoints (instrumentation targets): [Source: `src/Hexalith.Memories.Server/Program.cs:207, :233, :298`]
+- Server traverse endpoint (instrumentation target): [Source: `src/Hexalith.Memories.Server/Program.cs:2013`]
+- Server memory-unit read endpoint (case-access instrumentation): [Source: `src/Hexalith.Memories.Server/Program.cs:1012`]
+- `IngestionInput.IngestedBy` (user-identity carrier for ingest — ADR-7.5-004 rule 1): [Source: `src/Hexalith.Memories.Contracts/V1/IngestionInput.cs:24`]
+- Existing `[LoggerMessage]` pattern (to follow for AccessTelemetryLog): [Source: `src/Hexalith.Memories.Server/Ingestion/IngestionEndpointLog.cs:29-38`]
+- EventId bank inventory (7500 is next free): [Source: `src/Hexalith.Memories.Server/Tenants/TenantMismatchMonitor.cs:52`, `src/Hexalith.Memories.Server/Ingestion/IngestionEndpointLog.cs:30`, `src/Hexalith.Memories.Server/Ingestion/RateLimitingLog.cs:17`, `src/Hexalith.Memories.Server/Ingestion/RetryFailureLog.cs:17`, `src/Hexalith.Memories.Server/Search/SearchEndpointDegradationLog.cs:76`, `src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs:435`]
+- `TenantMetricsService` (for summary endpoint index-size gauge): [Source: `src/Hexalith.Memories.Server/Tenants/TenantMetricsService.cs`]
+- `PerTenantConcurrencyGate` (for queue-depth gauge): [Source: `src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs`]
+- `MemoriesClient` surface (to extend with `GetTelemetrySummaryAsync`): [Source: `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:55-488`]
+- EventStore telemetry analogue (pattern to mirror): [Source: `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore.Server/Telemetry/EventStoreActivitySource.cs`]
+- EventStore telemetry tests (patterns for Task 8-9): [Source: `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs`, `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/EventStoreActivitySourceTests.cs`, `src/submodules/Hexalith.EventStore/tests/Hexalith.EventStore.Server.Tests/Telemetry/EventStoreTraceTests.cs`]
+- `MemoriesJsonContext` (to register `AccessTelemetryEvent` + `TelemetrySummary`): [Source: `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs`]
+- `CommandPayloadRegistry` (to register `"status telemetry"` dispatch): [Source: `src/Hexalith.Memories.Cli/Output/Formatters/CommandPayloadRegistry.cs`]
+- `CliJsonContext` (to register `CliOutputEnvelope<TelemetrySummary>`): [Source: `src/Hexalith.Memories.Cli/Output/Json/CliJsonContext.cs`]
+- `RootCommandFactory` (to wire `status` + `status telemetry`): [Source: `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs`]
+- `CliCommandExecutor.ExecuteAsync(commandName, handler, ct)` (to wrap in root span): [Source: `src/Hexalith.Memories.Cli/Execution/CliCommandExecutor.cs`]
+- `CliHelpCompletenessTests` (to extend with new commands): [Source: `tests/Hexalith.Memories.Cli.Tests/Cli/CliHelpCompletenessTests.cs`]
+- `AspireIngestionPipelineFixture` (integration-test host): [Source: `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs`]
+- Story 7.4 telemetry hand-off: [Source: `_bmad-output/implementation-artifacts/7-4-quickstart-and-documentation.md:499-508`]
+- Story 7.4 post-ship success criteria (the metrics this story makes real): [Source: `_bmad-output/implementation-artifacts/7-4-quickstart-and-documentation.md:510-520`]
+- Packaging verification scripts (add `status telemetry --help` smoke): [Source: `tools/verify-cli-pack.sh`, `tools/verify-cli-pack.ps1`]
+
+## Dev Agent Record
+
+### Agent Model Used
+
+{{agent_model_name_version}}
+
+### Debug Log References
+
+- Story created from current repo state on 2026-04-17.
+- Target story selected automatically from `_bmad-output/implementation-artifacts/sprint-status.yaml` — first backlog entry was `7-5-search-and-access-telemetry` (Story 7.4 at `review`, Story 7.5 at `backlog`).
+- Epic 7 status already `in-progress`; no epic status change required. Epic 7 transitions to `done` only when Story 7.5 completes AND Story 7.4 completes `review → done`.
+- Previous story 7.4 is at `status: review` — its dev notes, ADRs, anti-patterns, and implementation patterns are authoritative and inherited here without re-derivation.
+- Verified that `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:55` already registers `.AddSource("Hexalith.Memories")` — Task 2.1 extends with `.AddMeter("Hexalith.Memories")` (one-line addition).
+- Verified that `AddJsonConsole` is already wired (line 46) with `IncludeScopes=true` + `IncludeFormattedMessage=true` (lines 42-43) — trace-id enrichment on logs comes automatically; no new config needed for AC #1.
+- Confirmed no `ActivitySource`, `Meter`, or shared telemetry substrate exists in Memories code today. The EventStore submodule at `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore.Server/Telemetry/EventStoreActivitySource.cs` is the authoritative pattern — same const-heavy shape + tag key constants.
+- Verified EventId bank inventory: 5400 (tenant mismatch), 5500 (tenant registry), 5600 (search degradation), 6100-6300 (ingestion + rate limiting + retry). Bank **7500-7599** is unused and claimed by this story.
+- Verified `IngestionInput.IngestedBy` is a `required string` field (cannot be null) — ADR-7.5-004's rule 1 is well-founded.
+- Verified `MemoriesClient` has 10 existing `public virtual` methods; new `GetTelemetrySummaryAsync` follows the same shape + gets `[Experimental("HXL001")]` per the 7.4 Revision 0.4 convention.
+- Verified `TenantMetricsService.GetIndexSizesAsync` returns `(TenantIndexSizes, TenantIndexStatus)` with non-throwing semantics (null on unavailability) — directly usable by the summary endpoint (Task 5) + the `IndexSize` observable gauge callback (Task 1.2).
+- Verified `docs/dev/` already contains `cli-config.md`, `cli-output-formats.md`, `experimental-apis.md`, `quickstart.md`, `quickstart-walkthrough-log.md`. `telemetry.md` is the new file for 7.5.
+
+### Completion Notes List
+
+### File List
+
+### Change Log
+
+| Date | Version | Description |
+| :--- | :--- | :--- |
+| 2026-04-17 | 0.1 | Story context created. Status: backlog → ready-for-dev. |
+| 2026-04-17 | 0.2 | Party-mode multi-agent review (Winston / Amelia / Murat). Three changes applied: **(1)** AC #6 + Task 5.2 dropped p50/p99 percentile fields — summary endpoint now exposes counter deltas (`requestsLast5m`, `errorsLast5m`, `documentsLast5m`, `failuresLast5m`) + gauges only. Rationale: .NET 10's `MeterListener` gives raw measurement callbacks, not aggregated percentiles; in-process percentile aggregation duplicates what OTLP collectors already do. Operators needing latency percentiles query the Aspire Dashboard / OTLP collector directly against the already-exported `memories.search.duration` histogram. New Task 5.2 scopes a `RollingCounterStore` for the 5-minute counter windows. **(2)** New Task 11.1 adds a **Tier-2 (non-Docker) NFR28 trace-propagation test** via `WebApplicationFactory<Program>` + `AddInMemoryExporter` — makes the propagation invariant CI-enforceable on dev machines without Docker; the Aspire-fixture end-to-end test stays as Task 11.3 for full-chain coverage. **(3)** New Task 8.5 adds `AccessTelemetryEventSchemaTests` — audit-schema immutability guard asserting field names against a frozen V1 manifest (fails loudly on `tenantId → tenant_id`-style silent breaks). Minor corrections: Task 4.1.1 added for validation-fail branch audit emission (8 early-return paths must emit `outcome: "error"`); ADR-7.5-002 rationale updated to honestly evolve the CLI dep-shape invariant rather than claim preservation. Net: 3 substantive changes + 2 correctness fixes; zero scope expansion beyond original AC coverage; percentile fields deferred (not removed from the epic — retrievable from OTLP collector). |
+| 2026-04-17 | 0.3 | Advanced-elicitation pass (Pre-mortem / Tree of Thoughts / Red Team / First Principles / Feynman). 7 findings applied: **(1a)** New Task 12.6 — `Memories:Telemetry:AuditLogLevel` config gate lets operators throttle audit emission to `Warning+` on high-traffic tenants (Pre-mortem failure scenario: log drain saturation). **(1b)** AC #3 + Task 4.1 pin `TenantStatusGuard` validation BEFORE metric/audit emission; rejected-tenant paths emit synthetic `tenant_id = "__rejected__"` tag to prevent cardinality injection; new `TenantGuard_RejectedTenant_EmitsSyntheticTag` test. **(1c)** New Task 12.7 — `docs/dev/telemetry.md` Phase 1.5 MCP coverage-gap section; Epic 10's MCP story MUST add the MCP → Server trace test to close NFR28 for DAPR hops (7.5 explicitly covers CLI → Server only; DAPR hops don't exist yet). **(2)** Task 5.2 ring-buffer shape PINNED to 5×60s slots (was TBD) — 10× less memory than the 60×5s alternative, sub-minute precision not needed for an operator-monitoring signal. **(3)** Task 3.3 emits audit via dedicated `ILogger<AccessTelemetryCategory>` marker-type category — gives operators a distinct log-filter path to route privacy-sensitive search queries away from general operational logs; routing recipe documented in new Task 12.5. **(5a)** AC #3 clarifies `axis` tag semantics — represents user-facing resolved axis (`syntactic|semantic|graph|hybrid|graph-scoped-*`) NOT per-axis sub-measurements; hybrid records whole-request duration the caller experiences. **(5b)** AC #4 pins `outcome` taxonomy: `"partial"` is hybrid-only (≥1 axis succeeded AND ≥1 axis degraded); all other operations are binary `ok` | `error`. **(5c)** Task 6.1 documents OTLP exporter non-blocking silent-drop failure mode — CLI never blocks on telemetry; collector health is the debug target for missing traces. **Resolved — finding #4 (First Principles, summary endpoint redundancy):** verified by direct inspection of `src/Hexalith.Memories.Contracts/V1/TenantConfigurationView.cs`. Actual overlap is only `indexHealth` (~20% of the endpoint) — NOT `indexSizes` as originally claimed; per-axis sizes, counter deltas, and queue depth are all unique to 7.5. Narrowing would drop 4/5 of the endpoint's value. **Kept as designed.** Task 5.1 gains an explicit scope-boundary note so future maintainers don't "clean up" the intentional `indexHealth` duplication (it's a one-stop-shop convenience for CLI consumers). Net: 8 of 8 findings resolved; zero code-shape changes beyond Rev 0.2; three new subtasks (12.5, 12.6, 12.7) + one clarifying edit to Task 5.1; findings were hygiene + forward-compat guardrails rather than architectural pivots. |

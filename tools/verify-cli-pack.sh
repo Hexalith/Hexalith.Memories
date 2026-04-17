@@ -32,7 +32,7 @@ if ! command -v memories >/dev/null 2>&1; then
 fi
 memories --version
 
-echo "[4/6] Story 7.2 format surface smoke (help-only, no server required)"
+echo "[4/7] Story 7.2 format surface smoke (help-only, no server required)"
 memories search query --help >/dev/null
 memories --format json tenant list --help >/dev/null
 
@@ -40,7 +40,7 @@ memories --format json tenant list --help >/dev/null
 # nonexistent tenant against whatever endpoint is configured (typically unreachable in this dev
 # loop), so exit code 1 (domain) or 2 (plumbing) is expected — we only check the binary didn't
 # crash or silently exit 0.
-echo "[5/6] Story 7.3 error-translation smoke (expect exit 1 or 2, NOT 0)"
+echo "[5/7] Story 7.3 error-translation smoke (expect exit 1 or 2, NOT 0)"
 set +e
 memories search inspect --tenant nonexistent --case x --id y >/dev/null 2>&1
 exit_code=$?
@@ -55,7 +55,18 @@ if [[ "$exit_code" -ne 1 && "$exit_code" -ne 2 ]]; then
 fi
 echo "Error smoke exited $exit_code as expected."
 
-echo "[6/6] dotnet tool uninstall --global Hexalith.Memories.Cli"
+# Story 7.4 Task 14.1/14.3: --help must exit 0 regardless of server state and embed the NFR30
+# example block. Do NOT substitute --dry-run here — the wizard still constructs MemoriesClient at DI
+# resolution time which requires a resolvable endpoint; --help bypasses the DI graph entirely.
+echo "[6/7] Story 7.4 quickstart --help smoke (expect exit 0 with 'Example' in stdout)"
+help_output="$(memories quickstart --help)"
+if ! grep -qi 'Example' <<<"$help_output"; then
+    echo "'memories quickstart --help' output missing the 'Example' keyword — NFR30 contract violated." >&2
+    exit 1
+fi
+echo "Quickstart --help smoke passed."
+
+echo "[7/7] dotnet tool uninstall --global Hexalith.Memories.Cli"
 dotnet tool uninstall --global Hexalith.Memories.Cli
 
 echo "OK — packaging pipeline verified."

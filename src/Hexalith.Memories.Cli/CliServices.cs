@@ -11,6 +11,7 @@ using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Output.Json;
+using Hexalith.Memories.Cli.Quickstart;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
@@ -108,6 +109,14 @@ public static class CliServices
             new MemoryUnitHumanFormatter(),
             new MemoryUnitJsonFormatter(),
             new MemoryUnitTableFormatter());
+
+        // Story 7.4: quickstart wizard services.
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<IProcessRunner, DefaultProcessRunner>();
+        services.AddSingleton<PrerequisiteChecks>();
+        services.AddSingleton<HealthProbe>();
+        services.AddSingleton<QuickstartTenantProvisioner>();
+        services.AddSingleton<QuickstartSampleFlow>();
 
         return services;
     }

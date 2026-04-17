@@ -404,6 +404,9 @@ FodyWeavers.xsd
 !.vscode/extensions.json
 !.vscode/*.code-snippets
 
+# Local agent/editor settings
+.claude/settings.local.json
+
 # Local History for Visual Studio Code
 .history/
 
