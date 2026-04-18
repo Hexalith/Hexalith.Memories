@@ -37,4 +37,11 @@ public sealed class CliGlobalOptions
         Description = "Output format: human (default), json, table.",
         Recursive = true,
     };
+
+    /// <summary>The <c>--telemetry</c> flag (Story 7.5). Opt-in CLI OTLP trace emission; defaults to off.</summary>
+    public Option<bool> TelemetryOption { get; } = new("--telemetry")
+    {
+        Description = "Enable OTLP trace export from the CLI (uses HEXALITH_MEMORIES_OTEL_ENDPOINT when set, otherwise the local Aspire OTLP endpoint http://localhost:18889). Off by default to preserve cold-start latency.",
+        Recursive = true,
+    };
 }

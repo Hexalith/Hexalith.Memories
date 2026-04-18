@@ -17,6 +17,16 @@ using Shouldly;
 
 public sealed class ProgramTests
 {
+    [Theory]
+    [InlineData(new[] { "--telemetry" }, true)]
+    [InlineData(new[] { "--telemetry", "true" }, true)]
+    [InlineData(new[] { "--telemetry", "false" }, false)]
+    [InlineData(new[] { "--telemetry=true" }, true)]
+    [InlineData(new[] { "--telemetry=false" }, false)]
+    [InlineData(new[] { "search", "query" }, false)]
+    public void IsTelemetryEnabled_ParsesSupportedForms(string[] args, bool expected)
+        => Program.IsTelemetryEnabled(args).ShouldBe(expected);
+
     [Fact]
     public void WriteInvalidConfigurationError_JsonRequested_EmitsEnvelopeOnStdout()
     {

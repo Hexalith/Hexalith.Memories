@@ -19,6 +19,7 @@ using Hexalith.Memories.Contracts.V1;
     WriteIndented = true)]
 [JsonSerializable(typeof(CliOutputEnvelope<IReadOnlyList<TenantSummary>>))]
 [JsonSerializable(typeof(CliOutputEnvelope<ConfigShowData>))]
+[JsonSerializable(typeof(CliOutputEnvelope<TelemetrySummary>))]
 [JsonSerializable(typeof(CliOutputEnvelope<HybridSearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]

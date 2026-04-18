@@ -55,8 +55,19 @@ No caller in Epics 7-11 needed them, so 7.1 keeps the resolver lean.
 
 - `HEXALITH_MEMORIES_ENDPOINT` — base URL of the Memories Server (for example `https://memories.example.com/`).
 - `HEXALITH_MEMORIES_API_TOKEN` — API token used for authenticated calls. Prefer this over `--token`.
+- `HEXALITH_MEMORIES_OTEL_ENDPOINT` — **(Story 7.5)** OTLP collector endpoint for opt-in CLI telemetry.
+  Setting this enables CLI trace export even when `--telemetry` is not passed.
 
 Empty-string values are treated as unset and fall through to the next tier.
+
+## Global flags
+
+- `--endpoint` — override the resolved server endpoint.
+- `--token` — API token (prefer the env var).
+- `--verbose` — stderr diagnostic output.
+- `--format` — `human` (default), `json`, `table`.
+- `--telemetry` — **(Story 7.5)** opt-in CLI OTLP trace export. Off by default to preserve cold-start
+  latency. See [telemetry.md](telemetry.md) for details.
 
 ## Config file schema
 

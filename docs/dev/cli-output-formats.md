@@ -11,7 +11,8 @@ foundation keeps working unchanged.
 | `json`  | Scripts and LLM agents | **Yes — use this in pipelines.**     |
 | `table` | Interactive terminals  | No — has a separator row of hyphens. |
 
-See also: [`cli-config.md`](cli-config.md) for endpoint/token resolution.
+See also: [`cli-config.md`](cli-config.md) for endpoint/token resolution. Story 7.5 wires the
+`status telemetry` subcommand — see [`telemetry.md`](telemetry.md) for its JSON envelope payload.
 
 ## JSON envelope contract — `schemaVersion: 1`
 

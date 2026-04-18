@@ -46,13 +46,19 @@ Examples:
     memories search inspect --tenant acme --case case-1 --id mu-abc
 """;
 
+    private const string StatusCommandDescription = """
+Inspect server + pipeline status (telemetry summary, indexes, queue depth).
+
+Example:
+    memories status telemetry --tenant acme
+""";
+
     /// <summary>Top-level command groups surfaced in root help (FR53).</summary>
     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
     [
         ("ingest", "Ingest memories from files, URLs, or directories.", "7.2"),
         ("traverse", "Walk the causal graph from a seed memory.", "7.2"),
         ("case", "Create, list, and manage cases.", "7.2"),
-        ("status", "Inspect ingestion pipeline status.", "7.2"),
         ("explore", "Interactive exploration of memories and cases.", "7.2"),
         ("handlers", "List registered event handlers.", "7.2"),
     ];
@@ -93,6 +99,15 @@ Examples:
 
         // quickstart — wired guided wizard in 7.4.
         root.Subcommands.Add(QuickstartCommand.Build(services));
+
+        // Story 7.5 — status command group (currently only the telemetry subcommand is wired).
+        var statusCommand = new Command("status", StatusCommandDescription);
+        statusCommand.Subcommands.Add(StatusTelemetryCommand.Build(services));
+        statusCommand.SetAction(_ => statusCommand.Parse("--help").Invoke());
+        root.Subcommands.Add(statusCommand);
+
+        // Story 7.5: add the global --telemetry flag to the root command.
+        root.Options.Add(globalOptions.TelemetryOption);
 
         // Stubbed groups (7.x — remaining stories).
         foreach ((string name, string description, string storyId) in CommandGroups)

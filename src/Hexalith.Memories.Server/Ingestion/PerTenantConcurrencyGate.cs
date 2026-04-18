@@ -98,6 +98,19 @@ public sealed class PerTenantConcurrencyGate : IAsyncDisposable
             ? semaphore.CurrentCount
             : GetBoundedMaxPerTenant();
 
+    /// <summary>
+    /// Story 7.5 Task 4.5 — gets the current ingestion queue depth for a tenant. This is the number
+    /// of waiters that have been blocked on the gate (not acquired yet). Safe to call from a
+    /// metric-collection callback — reads an atomic counter, no semaphore mutation.
+    /// </summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <returns>Current number of queued waiters for the tenant (0 if none or tenant unknown).</returns>
+    public int GetCurrentDepth(string tenantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        return _queuedWaiters.TryGetValue(tenantId, out int depth) ? depth : 0;
+    }
+
     /// <inheritdoc/>
     public ValueTask DisposeAsync()
     {

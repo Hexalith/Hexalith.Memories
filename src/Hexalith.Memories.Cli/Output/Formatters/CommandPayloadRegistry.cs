@@ -33,6 +33,7 @@ internal static class CommandPayloadRegistry
             ["config show"] = JsonErrorEnvelopeWriter.Write<ConfigShowData>,
             ["search query"] = JsonErrorEnvelopeWriter.Write<HybridSearchResult>,
             ["search inspect"] = JsonErrorEnvelopeWriter.Write<MemoryUnit>,
+            ["status telemetry"] = JsonErrorEnvelopeWriter.Write<TelemetrySummary>,
             ["quickstart"] = JsonErrorEnvelopeWriter.Write<QuickstartEnvelopeData>,
         };
 

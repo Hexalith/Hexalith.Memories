@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-17 # Story 7.4 Quickstart & Documentation: done (code review complete)
+# last_updated: 2026-04-18 # Story 7.5 Search & Access Telemetry: Rev 1.3 Tier-2 pass (Tasks 11.1 + 11.2 landed; 8 new Server tests via WebApplicationFactory<Program>); stays in review
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-17 # Story 7.4 Quickstart & Documentation: done (code review complete)
+last_updated: 2026-04-18 # Story 7.5 Search & Access Telemetry: Rev 1.3 Tier-2 pass (Tasks 11.1 + 11.2 landed; 8 new Server tests via WebApplicationFactory<Program>); stays in review
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -113,14 +113,14 @@ development_status:
   7-2-output-formats-and-explain-display: done
   7-3-actionable-error-messages-and-discoverable-actions: done
   7-4-quickstart-and-documentation: done
-  7-5-search-and-access-telemetry: ready-for-dev
+  7-5-search-and-access-telemetry: review
   epic-7-retrospective: optional
 
   # --- Phase: MVP — Operations ---
 
   # Epic 8: Observability & System Health
-  epic-8: backlog
-  8-1-health-checks-and-readiness: backlog
+  epic-8: in-progress
+  8-1-health-checks-and-readiness: ready-for-dev
   8-2-consistency-verification-and-repair: backlog
   8-3-data-export: backlog
   epic-8-retrospective: optional

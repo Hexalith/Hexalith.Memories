@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Telemetry\Hexalith.Memories.Telemetry.csproj" />
   </ItemGroup>
 
   <ItemGroup>

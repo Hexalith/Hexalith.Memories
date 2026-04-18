@@ -83,6 +83,16 @@ if ($helpText -notmatch '(?i)\bExamples?\b') {
 }
 Write-Host 'Quickstart --help smoke passed.'
 
+# Story 7.5 Task 14.1: status telemetry --help must exit 0 and include an example.
+Write-Host "[6b/7] Story 7.5 status telemetry --help smoke (expect exit 0 with 'Example' in stdout)"
+$telemetryHelpOutput = & memories status telemetry --help
+if ($LASTEXITCODE -ne 0) { throw "'memories status telemetry --help' failed ($LASTEXITCODE)" }
+$telemetryHelpText = ($telemetryHelpOutput | Out-String)
+if ($telemetryHelpText -notmatch '(?i)\bExamples?\b') {
+    throw "'memories status telemetry --help' output missing the 'Example' keyword — NFR30 contract violated."
+}
+Write-Host 'status telemetry --help smoke passed.'
+
 Write-Host "[7/7] dotnet tool uninstall --global Hexalith.Memories.Cli"
 & dotnet tool uninstall --global Hexalith.Memories.Cli
 if ($LASTEXITCODE -ne 0) { throw "dotnet tool uninstall failed ($LASTEXITCODE)" }

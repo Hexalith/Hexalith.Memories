@@ -26,6 +26,16 @@ public static class CliServices
     /// <returns>A fully-configured <see cref="IServiceProvider"/>.</returns>
     public static ServiceProvider Build() => BuildCollection().BuildServiceProvider();
 
+    /// <summary>Builds the service provider, additionally registering opt-in telemetry (Story 7.5).</summary>
+    /// <param name="telemetryFlag">Whether the global <c>--telemetry</c> flag was passed.</param>
+    /// <returns>A fully-configured <see cref="IServiceProvider"/>.</returns>
+    public static ServiceProvider Build(bool telemetryFlag)
+    {
+        IServiceCollection services = BuildCollection();
+        Execution.CliTelemetryBootstrap.TryRegister(services, telemetryFlag);
+        return services.BuildServiceProvider();
+    }
+
     /// <summary>
     /// Builds the service collection (exposed for tests that want to inject fakes before building the
     /// container).
@@ -91,6 +101,12 @@ public static class CliServices
             new ConfigShowHumanFormatter(),
             new ConfigShowJsonFormatter(),
             new ConfigShowTableFormatter());
+
+        RegisterFormatters<TelemetrySummary>(
+            services,
+            new StatusTelemetryHumanFormatter(),
+            new StatusTelemetryJsonFormatter(),
+            new StatusTelemetryTableFormatter());
 
         RegisterFormatters<HybridSearchResult>(
             services,

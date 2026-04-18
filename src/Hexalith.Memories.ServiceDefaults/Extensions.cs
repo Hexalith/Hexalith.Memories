@@ -1,3 +1,5 @@
+using Hexalith.Memories.Telemetry;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
@@ -49,20 +51,33 @@ public static class Extensions
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddRuntimeInstrumentation())
+                .AddRuntimeInstrumentation()
+                .AddMeter(MemoriesMeter.Name))
             .WithTracing(tracing => tracing
                 .AddSource(builder.Environment.ApplicationName)
-                .AddSource("Hexalith.Memories")
+                .AddSource(MemoriesActivitySource.SourceName)
                 .AddAspNetCoreInstrumentation(tracing =>
-                    tracing.Filter = context =>
-                        !context.Request.Path.StartsWithSegments(HealthEndpointPath)
-                        && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-                        && !context.Request.Path.StartsWithSegments(ReadinessEndpointPath))
+                    tracing.Filter = ShouldTraceHttpRequest)
                 .AddHttpClientInstrumentation());
 
         _ = builder.AddOpenTelemetryExporters();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Returns <c>false</c> when the request path targets one of the health probe endpoints
+    /// (<c>/health</c>, <c>/alive</c>, <c>/ready</c>) so those requests are NOT traced on the
+    /// default ASP.NET Core source. Extracted from the inline lambda in
+    /// <see cref="ConfigureOpenTelemetry{TBuilder}"/> for Story 7.5 AC #5 regression testing.
+    /// </summary>
+    public static bool ShouldTraceHttpRequest(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return !context.Request.Path.StartsWithSegments(HealthEndpointPath)
+            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
+            && !context.Request.Path.StartsWithSegments(ReadinessEndpointPath);
     }
 
     private static TBuilder AddOpenTelemetryExporters<TBuilder>(this TBuilder builder)

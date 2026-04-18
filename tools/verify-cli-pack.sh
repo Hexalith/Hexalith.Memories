@@ -66,6 +66,15 @@ if ! grep -qi 'Example' <<<"$help_output"; then
 fi
 echo "Quickstart --help smoke passed."
 
+# Story 7.5 Task 14.1: status telemetry --help must exit 0 and include an example.
+echo "[6b/7] Story 7.5 status telemetry --help smoke (expect exit 0 with 'Example' in stdout)"
+telemetry_help="$(memories status telemetry --help)"
+if ! grep -qi 'Example' <<<"$telemetry_help"; then
+    echo "'memories status telemetry --help' output missing the 'Example' keyword — NFR30 contract violated." >&2
+    exit 1
+fi
+echo "status telemetry --help smoke passed."
+
 echo "[7/7] dotnet tool uninstall --global Hexalith.Memories.Cli"
 dotnet tool uninstall --global Hexalith.Memories.Cli
 

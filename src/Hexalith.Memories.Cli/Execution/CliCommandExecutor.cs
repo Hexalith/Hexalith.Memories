@@ -15,6 +15,7 @@ using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Output.Json;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Options;
 
@@ -90,6 +91,10 @@ public sealed class CliCommandExecutor
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
         ArgumentNullException.ThrowIfNull(handler);
+
+        // Story 7.5 — wrap the invocation in a root CLI span. Null-safe when no listener attached.
+        using System.Diagnostics.Activity? cliActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CliInvoke);
+        cliActivity?.SetTag(MemoriesActivitySource.TagCommand, commandName);
 
         ResolvedConfig config;
         try

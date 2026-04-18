@@ -27,7 +27,10 @@ public static class Program
             args = ["--help"];
         }
 
-        using ServiceProvider services = CliServices.Build();
+        // Story 7.5 — pre-scan args for --telemetry so CliServices can register the OpenTelemetry SDK
+        // before any command handler runs. Env-var gate is also honored inside TryRegister.
+        bool telemetryFlag = IsTelemetryEnabled(args);
+        using ServiceProvider services = CliServices.Build(telemetryFlag);
 
         CliGlobalOptions globalOptions = services.GetRequiredService<CliGlobalOptions>();
         RootCommand root = RootCommandFactory.Build(services, globalOptions);
@@ -68,6 +71,35 @@ public static class Program
         {
             Console.CancelKeyPress -= cancelHandler;
         }
+    }
+
+    internal static bool IsTelemetryEnabled(IReadOnlyList<string> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        for (int i = 0; i < args.Count; i++)
+        {
+            string arg = args[i];
+            if (string.Equals(arg, "--telemetry", StringComparison.OrdinalIgnoreCase))
+            {
+                if (i + 1 < args.Count && bool.TryParse(args[i + 1], out bool explicitValue))
+                {
+                    return explicitValue;
+                }
+
+                return true;
+            }
+
+            if (arg.StartsWith("--telemetry=", StringComparison.OrdinalIgnoreCase)
+                || arg.StartsWith("--telemetry:", StringComparison.OrdinalIgnoreCase))
+            {
+                int separatorIndex = arg.IndexOfAny(['=', ':']);
+                string rawValue = separatorIndex >= 0 ? arg[(separatorIndex + 1)..] : string.Empty;
+                return !bool.TryParse(rawValue, out bool explicitValue) || explicitValue;
+            }
+        }
+
+        return false;
     }
 
     internal static int WriteInvalidConfigurationError(

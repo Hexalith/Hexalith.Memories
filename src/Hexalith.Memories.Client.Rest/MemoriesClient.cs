@@ -570,4 +570,36 @@ public class MemoriesClient
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// Story 7.5 — fetches the per-tenant telemetry summary from
+    /// <c>GET /api/tenants/{tenantId}/telemetry/summary</c>.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The telemetry summary.</returns>
+    /// <remarks>
+    /// EXPERIMENTAL (HXL001 — Story 7.5): signature may change in Phase 1.5 when the telemetry surface
+    /// stabilizes (percentile fields, additional metric axes). Suppress with
+    /// <c>#pragma warning disable HXL001</c> at opt-in call sites.
+    /// </remarks>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL001")]
+    public virtual async Task<TelemetrySummary> GetTelemetrySummaryAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/telemetry/summary";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        TelemetrySummary? summary = await response.Content
+            .ReadFromJsonAsync<TelemetrySummary>(MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+        return summary ?? throw new InvalidOperationException("Server returned an empty telemetry summary.");
+    }
 }

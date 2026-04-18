@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <Description>Shared ActivitySource and Meter definitions for Hexalith.Memories telemetry (Story 7.5).</Description>
+  </PropertyGroup>
+
+</Project>

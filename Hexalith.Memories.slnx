@@ -7,6 +7,7 @@
     <Project Path="src/Hexalith.Memories.Redis/Hexalith.Memories.Redis.csproj" />
     <Project Path="src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj" />
     <Project Path="src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj" />
+    <Project Path="src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />

@@ -105,6 +105,14 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(BatchStatusCounts))]
 [JsonSerializable(typeof(BatchInstanceStatus))]
 [JsonSerializable(typeof(IReadOnlyList<BatchInstanceStatus>))]
+// Story 7.5: access telemetry + summary contracts.
+[JsonSerializable(typeof(AccessTelemetryEvent))]
+[JsonSerializable(typeof(TelemetrySummary))]
+[JsonSerializable(typeof(TelemetryIndexSizes))]
+[JsonSerializable(typeof(TelemetryIndexHealth))]
+[JsonSerializable(typeof(TelemetrySearchMetrics))]
+[JsonSerializable(typeof(TelemetryAxisCounters))]
+[JsonSerializable(typeof(TelemetryIngestionMetrics))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

@@ -15,9 +15,13 @@ using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
+using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.ServiceDefaults;
+using Hexalith.Memories.Telemetry;
+
+using Microsoft.Extensions.Logging;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -119,8 +123,10 @@ builder.Services.AddSingleton<CaseActivityService>(sp =>
 builder.Services.AddScoped<CaseService>();
 builder.Services.AddSingleton<TenantRegistryService>();
 builder.Services.AddSingleton<TenantStatusGuard>();
-// Story 5.5: per-tenant operational metrics for GET /api/tenants and GET /configuration.
 builder.Services.AddSingleton<TenantMetricsService>();
+builder.Services.AddSingleton<RollingCounterStore>();
+builder.Services.AddSingleton<TelemetrySummaryService>();
+builder.Services.AddSingleton<TelemetrySnapshotCache>();
 builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
     new TenantIsolationVerifier(
         sp.GetRequiredService<TenantRegistryService>(),
@@ -130,14 +136,12 @@ builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
 
 builder.Services.AddDaprWorkflow(options =>
 {
-    // Existing activities (Stories 1.3-1.5)
     options.RegisterActivity<ExtractContentActivity>();
     options.RegisterActivity<GenerateEmbeddingActivity>();
     options.RegisterActivity<IndexSyntacticActivity>();
     options.RegisterActivity<IndexSemanticActivity>();
     options.RegisterActivity<IndexGraphActivity>();
 
-    // Story 1.6: Ingestion workflow + new activities
     options.RegisterWorkflow<IngestionWorkflow>();
     options.RegisterActivity<ValidateContentActivity>();
     options.RegisterActivity<CheckIdempotencyActivity>();
@@ -148,14 +152,11 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupGraphActivity>();
     options.RegisterActivity<RecordCaseActivityActivity>();
 
-    // Story 6.1: URL ingestion
     options.RegisterActivity<FetchUrlActivity>();
 
-    // Story 6.3: failed-unit persistence + per-case counter actor transitions
     options.RegisterActivity<PersistFailedUnitActivity>();
     options.RegisterActivity<UpdateCaseIngestionCounterActivity>();
 
-    // Story 5.1: Tenant provisioning workflow + activities
     options.RegisterWorkflow<TenantProvisioningWorkflow>();
     options.RegisterActivity<ProvisionRediSearchActivity>();
     options.RegisterActivity<ProvisionRedisVectorActivity>();
@@ -168,7 +169,6 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<UpdateTenantStatusActivity>();
     options.RegisterActivity<RemoveTenantRegistryActivity>();
 
-    // Story 5.2: Tenant deletion workflow + activities
     options.RegisterWorkflow<TenantDeletionWorkflow>();
     options.RegisterActivity<DeleteRediSearchActivity>();
     options.RegisterActivity<DeleteRedisVectorActivity>();
@@ -197,30 +197,80 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 WebApplication app = builder.Build();
 
-// Story 6.3 FR9: pin the per-activity retry policy table at startup so workflow replays observe a
-// stable, immutable snapshot. Hot-reload is Phase 2.
 RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<IngestionSettings>>().Value);
 
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
+TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
+MemoriesMeter.EnsureObservableGaugesCreated(
+    telemetrySnapshotCache.GetIndexSizeMeasurements,
+    telemetrySnapshotCache.GetQueueDepthMeasurements);
 
-app.MapPost("/api/ingest", async (DaprWorkflowClient workflowClient, TenantStatusGuard tenantGuard, IngestionInput input) =>
+app.MapPost("/api/ingest", async (
+    DaprWorkflowClient workflowClient,
+    TenantStatusGuard tenantGuard,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    IngestionInput input) =>
 {
-    ErrorResponse? validationError = ValidateIngestionRequest(input);
-    if (validationError is not null)
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
+    activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
+    string tenantIdTag = string.IsNullOrWhiteSpace(input.TenantId) ? MemoriesMeter.RejectedTenantTag : input.TenantId;
+    using var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        AccessTelemetryLog.OperationIngest,
+        successEventId: 7502,
+        errorEventId: 7512,
+        tenantIdTag,
+        recordMetricOnDispose: s =>
+        {
+            if (s.Outcome == AccessTelemetryLog.OutcomeError)
+            {
+                TelemetryMetricsRecorder.RecordIngestFailure(s.TenantIdTag, s.ErrorCode ?? "UNKNOWN_ERROR");
+            }
+            else
+            {
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+            }
+        });
+    scope.CaseId = input.CaseId;
+    scope.User = string.IsNullOrWhiteSpace(input.IngestedBy) ? AccessTelemetryLog.UserAnonymous : input.IngestedBy;
+    scope.QueryParams = new Dictionary<string, object?>
     {
-        return Results.BadRequest(validationError);
-    }
+        ["sourceType"] = input.SourceType.ToString(),
+        ["sourceUriPresent"] = !string.IsNullOrWhiteSpace(input.SourceUri),
+        ["contentBytes"] = input.ContentBytes?.Length ?? 0,
+        ["metadataCount"] = input.Metadata.Count,
+    };
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
+    activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
+    activity?.SetTag(MemoriesActivitySource.TagSourceType, input.SourceType.ToString().ToLowerInvariant());
 
-    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(input.TenantId, CancellationToken.None);
-    if (tenantStatusError is not null)
+    try
     {
-        return TenantStatusGuard.ToHttpResult(tenantStatusError);
-    }
+        ErrorResponse? validationError = ValidateIngestionRequest(input);
+        if (validationError is not null)
+        {
+            scope.MarkValidationError(validationError.Code);
+            return Results.BadRequest(validationError);
+        }
 
-    string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
-        nameof(IngestionWorkflow), input: input);
-    return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
+        ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(input.TenantId, CancellationToken.None);
+        if (tenantStatusError is not null)
+        {
+            scope.MarkTenantRejected(tenantStatusError.Code);
+            return TenantStatusGuard.ToHttpResult(tenantStatusError);
+        }
+
+        string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
+        scope.ResultCount = 1;
+        return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 }).WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024));
 
 app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient, string instanceId) =>
@@ -229,175 +279,263 @@ app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient,
     return state is null ? Results.NotFound() : Results.Ok(state);
 });
 
-// Story 6.1: URL ingestion — single-URL entry point. Returns 202 with workflow instance id.
 app.MapPost("/api/ingest/url", async (
     DaprWorkflowClient workflowClient,
     TenantStatusGuard tenantGuard,
     Microsoft.Extensions.Options.IOptions<UrlFetcherOptions> urlFetcherOptions,
     ILoggerFactory loggerFactory,
+    ILogger<AccessTelemetryCategory> auditLogger,
     UrlIngestionRequest request,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
+    activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
+    string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
+    using var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        AccessTelemetryLog.OperationIngest,
+        successEventId: 7502,
+        errorEventId: 7512,
+        tenantIdTag,
+        recordMetricOnDispose: s =>
+        {
+            if (s.Outcome == AccessTelemetryLog.OutcomeError)
+            {
+                TelemetryMetricsRecorder.RecordIngestFailure(s.TenantIdTag, s.ErrorCode ?? "UNKNOWN_ERROR");
+            }
+            else
+            {
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+            }
+        });
+    scope.CaseId = request.CaseId;
+    scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
+    Dictionary<string, object?> urlQueryParams = new()
+    {
+        ["urlPresent"] = !string.IsNullOrWhiteSpace(request.Url),
+        ["metadataCount"] = request.Metadata.Count,
+    };
+    scope.QueryParams = urlQueryParams;
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
+    activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
+    activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.Url.ToString().ToLowerInvariant());
+
     ILogger urlLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Url");
 
-    ErrorResponse? validationError = ValidateUrlIngestionRequest(request, urlFetcherOptions.Value, out Uri? url);
-    if (validationError is not null || url is null)
+    try
     {
-        IngestionEndpointLog.LogUrlIngestionRejected(
-            urlLogger,
-            request?.TenantId ?? "(missing)",
-            request?.CaseId ?? "(missing)",
-            IngestionEndpointLog.RedactUrl(request?.Url),
-            validationError!.Code);
-        return Results.BadRequest(validationError);
-    }
+        ErrorResponse? validationError = ValidateUrlIngestionRequest(request, urlFetcherOptions.Value, out Uri? url);
+        if (validationError is not null || url is null)
+        {
+            scope.MarkValidationError(validationError!.Code);
+            IngestionEndpointLog.LogUrlIngestionRejected(
+                urlLogger,
+                request?.TenantId ?? "(missing)",
+                request?.CaseId ?? "(missing)",
+                IngestionEndpointLog.RedactUrl(request?.Url),
+                validationError.Code);
+            return Results.BadRequest(validationError);
+        }
 
-    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
-    if (tenantStatusError is not null)
-    {
-        IngestionEndpointLog.LogUrlIngestionRejected(
+        urlQueryParams["urlHost"] = url.Host;
+
+        ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
+        if (tenantStatusError is not null)
+        {
+            scope.MarkTenantRejected(tenantStatusError.Code);
+            IngestionEndpointLog.LogUrlIngestionRejected(
+                urlLogger,
+                request.TenantId,
+                request.CaseId,
+                IngestionEndpointLog.RedactUrl(request.Url),
+                tenantStatusError.Code);
+            return TenantStatusGuard.ToHttpResult(tenantStatusError);
+        }
+
+        IngestionInput input = new()
+        {
+            TenantId = request.TenantId,
+            CaseId = request.CaseId,
+            SourceUri = request.Url,
+            ContentBytes = null,
+            ContentType = "application/octet-stream",
+            SourceType = SourceType.Url,
+            IngestedBy = request.IngestedBy,
+            Metadata = request.Metadata,
+            CausationId = request.CausationId,
+            CorrelationId = request.CorrelationId,
+        };
+
+        string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
+
+        scope.ResultCount = 1;
+        IngestionEndpointLog.LogUrlIngestionScheduled(
             urlLogger,
             request.TenantId,
             request.CaseId,
-            IngestionEndpointLog.RedactUrl(request.Url),
-            tenantStatusError.Code);
-        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+            instanceId,
+            IngestionEndpointLog.RedactUrl(url));
+
+        return Results.Accepted(
+            $"/api/ingest/{instanceId}",
+            new UrlIngestionResponse(instanceId, request.Url));
     }
-
-    IngestionInput input = new()
+    catch (Exception ex)
     {
-        TenantId = request.TenantId,
-        CaseId = request.CaseId,
-        SourceUri = request.Url,
-        ContentBytes = null,
-        ContentType = "application/octet-stream",
-        SourceType = SourceType.Url,
-        IngestedBy = request.IngestedBy,
-        Metadata = request.Metadata,
-        CausationId = request.CausationId,
-        CorrelationId = request.CorrelationId,
-    };
-
-    string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
-        nameof(IngestionWorkflow),
-        input: input);
-
-    IngestionEndpointLog.LogUrlIngestionScheduled(
-        urlLogger,
-        request.TenantId,
-        request.CaseId,
-        instanceId,
-        IngestionEndpointLog.RedactUrl(url));
-
-    return Results.Accepted(
-        $"/api/ingest/{instanceId}",
-        new UrlIngestionResponse(instanceId, request.Url));
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
-// Story 6.1: Directory ingestion — batch scheduler over an allow-listed server filesystem root.
 app.MapPost("/api/ingest/directory", async (
     DirectoryIngestionService directoryService,
     TenantStatusGuard tenantGuard,
     ILoggerFactory loggerFactory,
+    ILogger<AccessTelemetryCategory> auditLogger,
     DirectoryIngestionRequest request,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
+    activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
+    string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
+    using var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        AccessTelemetryLog.OperationIngest,
+        successEventId: 7502,
+        errorEventId: 7512,
+        tenantIdTag,
+        recordMetricOnDispose: s =>
+        {
+            if (s.Outcome == AccessTelemetryLog.OutcomeError)
+            {
+                TelemetryMetricsRecorder.RecordIngestFailure(s.TenantIdTag, s.ErrorCode ?? "UNKNOWN_ERROR");
+            }
+            else
+            {
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+            }
+        });
+    scope.CaseId = request.CaseId;
+    scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
+    scope.QueryParams = new Dictionary<string, object?>
+    {
+        ["directoryPathPresent"] = !string.IsNullOrWhiteSpace(request.DirectoryPath),
+        ["recursive"] = request.Recursive,
+        ["metadataCount"] = request.Metadata.Count,
+    };
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
+    activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
+    activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.File.ToString().ToLowerInvariant());
+
     ILogger dirLogger = loggerFactory.CreateLogger("Hexalith.Memories.Server.Ingestion.Directory");
 
-    ErrorResponse? shapeError = ValidateDirectoryIngestionRequest(request);
-    if (shapeError is not null)
+    try
     {
-        IngestionEndpointLog.LogDirectoryBatchRejected(
-            dirLogger,
-            request?.TenantId ?? "(missing)",
-            request?.CaseId ?? "(missing)",
-            null,
-            shapeError.Code,
-            request?.DirectoryPath ?? string.Empty);
-        return Results.BadRequest(shapeError);
-    }
-
-    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
-    if (tenantStatusError is not null)
-    {
-        IngestionEndpointLog.LogDirectoryBatchRejected(
-            dirLogger,
-            request.TenantId,
-            request.CaseId,
-            null,
-            tenantStatusError.Code,
-            request.DirectoryPath);
-        return TenantStatusGuard.ToHttpResult(tenantStatusError);
-    }
-
-    DirectoryIngestionResult result = await directoryService.IngestAsync(request, cancellationToken);
-    if (result.ErrorCode is not null)
-    {
-        IngestionEndpointLog.LogDirectoryBatchRejected(
-            dirLogger,
-            request.TenantId,
-            request.CaseId,
-            result.BatchId,
-            result.ErrorCode,
-            request.DirectoryPath);
-
-        return result.ErrorCode switch
+        ErrorResponse? shapeError = ValidateDirectoryIngestionRequest(request);
+        if (shapeError is not null)
         {
-            "DIRECTORY_INGESTION_DISABLED" => Results.Json(
-                new ErrorResponse(
-                    "DIRECTORY_INGESTION_DISABLED",
-                    "Directory ingestion is not enabled on this server.",
-                    "Configure Ingestion:AllowedDirectoryRoots to enable."),
-                statusCode: StatusCodes.Status403Forbidden),
-            "BATCH_TOO_LARGE" => Results.Json(
-                new ErrorResponse(
-                    "BATCH_TOO_LARGE",
-                    "Batch exceeds the maximum supported number of files.",
-                    "Ingest smaller sub-directories, or call POST /api/ingest per file."),
-                statusCode: StatusCodes.Status400BadRequest),
-            "BATCH_TRACKING_UNAVAILABLE" => Results.Json(
-                new ErrorResponse(
-                    "BATCH_TRACKING_UNAVAILABLE",
-                    "Directory batch tracking is temporarily unavailable.",
-                    "Retry when the DAPR state store is healthy; no successful batch response was returned."),
-                statusCode: StatusCodes.Status503ServiceUnavailable),
-            "DAPR_UNAVAILABLE" => Results.Json(
-                new ErrorResponse(
-                    "DAPR_UNAVAILABLE",
-                    "DAPR sidecar is not ready.",
-                    "Check service health via /healthz and retry."),
-                statusCode: StatusCodes.Status503ServiceUnavailable),
-            "BATCH_SCHEDULING_FAILED" => Results.Json(
-                new ErrorResponse(
-                    "BATCH_SCHEDULING_FAILED",
-                    "Directory batch scheduling failed before the batch could be safely accepted.",
-                    "Inspect server logs and retry the request."),
-                statusCode: StatusCodes.Status500InternalServerError),
-            _ => Results.Json(
-                new ErrorResponse(
-                    "INVALID_DIRECTORY_PATH",
-                    "Directory path is not allowed.",
-                    "Provide an absolute path under a configured Ingestion:AllowedDirectoryRoots entry."),
-                statusCode: StatusCodes.Status400BadRequest),
-        };
+            scope.MarkValidationError(shapeError.Code);
+            IngestionEndpointLog.LogDirectoryBatchRejected(
+                dirLogger,
+                request?.TenantId ?? "(missing)",
+                request?.CaseId ?? "(missing)",
+                null,
+                shapeError.Code,
+                request?.DirectoryPath ?? string.Empty);
+            return Results.BadRequest(shapeError);
+        }
+
+        ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
+        if (tenantStatusError is not null)
+        {
+            scope.MarkTenantRejected(tenantStatusError.Code);
+            IngestionEndpointLog.LogDirectoryBatchRejected(
+                dirLogger,
+                request.TenantId,
+                request.CaseId,
+                null,
+                tenantStatusError.Code,
+                request.DirectoryPath);
+            return TenantStatusGuard.ToHttpResult(tenantStatusError);
+        }
+
+        DirectoryIngestionResult result = await directoryService.IngestAsync(request, cancellationToken);
+        if (result.ErrorCode is not null)
+        {
+            scope.MarkValidationError(result.ErrorCode);
+            IngestionEndpointLog.LogDirectoryBatchRejected(
+                dirLogger,
+                request.TenantId,
+                request.CaseId,
+                result.BatchId,
+                result.ErrorCode,
+                request.DirectoryPath);
+
+            return result.ErrorCode switch
+            {
+                "DIRECTORY_INGESTION_DISABLED" => Results.Json(
+                    new ErrorResponse(
+                        "DIRECTORY_INGESTION_DISABLED",
+                        "Directory ingestion is not enabled on this server.",
+                        "Configure Ingestion:AllowedDirectoryRoots to enable."),
+                    statusCode: StatusCodes.Status403Forbidden),
+                "BATCH_TOO_LARGE" => Results.Json(
+                    new ErrorResponse(
+                        "BATCH_TOO_LARGE",
+                        "Batch exceeds the maximum supported number of files.",
+                        "Ingest smaller sub-directories, or call POST /api/ingest per file."),
+                    statusCode: StatusCodes.Status400BadRequest),
+                "BATCH_TRACKING_UNAVAILABLE" => Results.Json(
+                    new ErrorResponse(
+                        "BATCH_TRACKING_UNAVAILABLE",
+                        "Directory batch tracking is temporarily unavailable.",
+                        "Retry when the DAPR state store is healthy; no successful batch response was returned."),
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                "DAPR_UNAVAILABLE" => Results.Json(
+                    new ErrorResponse(
+                        "DAPR_UNAVAILABLE",
+                        "DAPR sidecar is not ready.",
+                        "Check service health via /healthz and retry."),
+                    statusCode: StatusCodes.Status503ServiceUnavailable),
+                "BATCH_SCHEDULING_FAILED" => Results.Json(
+                    new ErrorResponse(
+                        "BATCH_SCHEDULING_FAILED",
+                        "Directory batch scheduling failed before the batch could be safely accepted.",
+                        "Inspect server logs and retry the request."),
+                    statusCode: StatusCodes.Status500InternalServerError),
+                _ => Results.Json(
+                    new ErrorResponse(
+                        "INVALID_DIRECTORY_PATH",
+                        "Directory path is not allowed.",
+                        "Provide an absolute path under a configured Ingestion:AllowedDirectoryRoots entry."),
+                    statusCode: StatusCodes.Status400BadRequest),
+            };
+        }
+
+        DirectoryIngestionOutcome outcome = result.Outcome!;
+        scope.ResultCount = outcome.Enqueued;
+        IngestionEndpointLog.LogDirectoryBatchScheduled(
+            dirLogger,
+            request.TenantId,
+            request.CaseId,
+            outcome.BatchId,
+            outcome.Discovered,
+            outcome.Enqueued,
+            outcome.Skipped.Count);
+
+        return Results.Accepted(
+            $"/api/ingest/batches/{outcome.BatchId}",
+            outcome);
     }
-
-    DirectoryIngestionOutcome outcome = result.Outcome!;
-    IngestionEndpointLog.LogDirectoryBatchScheduled(
-        dirLogger,
-        request.TenantId,
-        request.CaseId,
-        outcome.BatchId,
-        outcome.Discovered,
-        outcome.Enqueued,
-        outcome.Skipped.Count);
-
-    return Results.Accepted(
-        $"/api/ingest/batches/{outcome.BatchId}",
-        outcome);
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
-// Story 6.1: Aggregated batch status — queries persisted batch state and polls each workflow instance.
 app.MapGet("/api/ingest/batches/{batchId}", async (
     DaprClient daprClient,
     DaprWorkflowClient workflowClient,
@@ -1015,55 +1153,88 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}",
     string memoryUnitId,
     CaseService caseService,
     FailedUnitsRegistry registry,
+    ILogger<AccessTelemetryCategory> auditLogger,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CaseAccess);
+    activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationCaseAccess);
+    using var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        AccessTelemetryLog.OperationCaseAccess,
+        successEventId: 7504,
+        errorEventId: 7514,
+        tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
+    scope.CaseId = caseId;
+    scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+    {
+        ["memoryUnitId"] = memoryUnitId,
+    };
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
+    activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+    activity?.SetTag(MemoriesActivitySource.TagMemoryUnitId, memoryUnitId);
+
     try
     {
-        TenantIdGuard.Validate(tenantId);
-    }
-    catch (ArgumentException)
-    {
-        return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
-    }
-
-    MemoryUnit? indexed = await caseService.GetMemoryUnitAsync(tenantId, memoryUnitId, cancellationToken);
-    if (indexed is not null)
-    {
-        if (!string.Equals(indexed.CaseId, caseId, StringComparison.Ordinal))
+        try
         {
-            return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' does not exist in case '{caseId}'.", "Verify the case id."));
+            TenantIdGuard.Validate(tenantId);
+        }
+        catch (ArgumentException)
+        {
+            scope.MarkTenantRejected("INVALID_TENANT_ID");
+            return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId contains invalid characters.", "Only alphanumeric and hyphens allowed."));
         }
 
-        return Results.Ok(indexed);
-    }
+        MemoryUnit? indexed = await caseService.GetMemoryUnitAsync(tenantId, memoryUnitId, cancellationToken);
+        if (indexed is not null)
+        {
+            if (!string.Equals(indexed.CaseId, caseId, StringComparison.Ordinal))
+            {
+                scope.MarkValidationError("MEMORY_UNIT_NOT_FOUND");
+                return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' does not exist in case '{caseId}'.", "Verify the case id."));
+            }
 
-    FailedUnitSummary? failed = await registry.GetSummaryAsync(tenantId, memoryUnitId, cancellationToken);
-    if (failed is null)
-    {
-        return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' was not found.", "Verify the memory unit id."));
-    }
+            scope.ResultCount = 1;
+            return Results.Ok(indexed);
+        }
 
-    if (!string.Equals(failed.CaseId, caseId, StringComparison.Ordinal))
-    {
-        return Results.BadRequest(new ErrorResponse("CASE_MISMATCH", "Memory unit belongs to a different case.", "Use the case id reported by the failed-units list."));
-    }
+        FailedUnitSummary? failed = await registry.GetSummaryAsync(tenantId, memoryUnitId, cancellationToken);
+        if (failed is null)
+        {
+            scope.MarkValidationError("MEMORY_UNIT_NOT_FOUND");
+            return Results.NotFound(new ErrorResponse("MEMORY_UNIT_NOT_FOUND", $"Memory unit '{memoryUnitId}' was not found.", "Verify the memory unit id."));
+        }
 
-    MemoryUnit synthesized = new()
+        if (!string.Equals(failed.CaseId, caseId, StringComparison.Ordinal))
+        {
+            scope.MarkValidationError("CASE_MISMATCH");
+            return Results.BadRequest(new ErrorResponse("CASE_MISMATCH", "Memory unit belongs to a different case.", "Use the case id reported by the failed-units list."));
+        }
+
+        MemoryUnit synthesized = new()
+        {
+            Id = failed.MemoryUnitId,
+            TenantId = tenantId,
+            CaseId = failed.CaseId,
+            SourceUri = failed.SourceUri,
+            SourceType = failed.SourceType,
+            IngestedBy = string.Empty,
+            IngestedAt = failed.FailedAt,
+            LastUpdated = failed.FailedAt,
+            Content = string.Empty,
+            ContentHash = string.Empty,
+            Status = MemoryUnitStatus.Failed,
+            FailureDetails = new FailureDetails(failed.Stage, failed.ErrorCode, failed.RetryCount, failed.ErrorMessage, failed.LastRetryAt),
+        };
+        scope.ResultCount = 1;
+        return Results.Ok(synthesized);
+    }
+    catch (Exception ex)
     {
-        Id = failed.MemoryUnitId,
-        TenantId = tenantId,
-        CaseId = failed.CaseId,
-        SourceUri = failed.SourceUri,
-        SourceType = failed.SourceType,
-        IngestedBy = string.Empty,
-        IngestedAt = failed.FailedAt,
-        LastUpdated = failed.FailedAt,
-        Content = string.Empty,
-        ContentHash = string.Empty,
-        Status = MemoryUnitStatus.Failed,
-        FailureDetails = new FailureDetails(failed.Stage, failed.ErrorCode, failed.RetryCount, failed.ErrorMessage, failed.LastRetryAt),
-    };
-    return Results.Ok(synthesized);
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 // Story 6.3 FR12: re-ingest a single failed memory unit. Atomic claim via Lua deletes the failed-unit
@@ -1492,6 +1663,8 @@ app.MapGet("/api/search", async (
     IGraphQueryBuilder graphQueryBuilder,
     [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
     ILogger<Program> logger,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    RollingCounterStore rollingCounterStore,
     HttpContext httpContext,
     [FromQuery] string tenantId,
     [FromQuery] string? query,
@@ -1508,263 +1681,519 @@ app.MapGet("/api/search", async (
     [FromQuery] bool explain = false,
     CancellationToken cancellationToken = default) =>
 {
+    using System.Diagnostics.Activity? searchActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.SearchRequest);
+    searchActivity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationSearch);
+    string initialTenantTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
+    string searchAxisTag = string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase)
+        ? "semantic"
+        : string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase)
+            ? "graph"
+            : string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase)
+                ? "hybrid"
+                : "syntactic";
+    using var searchScope = new EndpointTelemetryScope(
+        auditLogger,
+        searchActivity,
+        AccessTelemetryLog.OperationSearch,
+        successEventId: 7501,
+        errorEventId: 7511,
+        tenantIdTag: initialTenantTag,
+        recordMetricOnDispose: s =>
+        {
+            TelemetryMetricsRecorder.RecordSearch(s.TenantIdTag, searchAxisTag, s.ElapsedMs);
+            if (s.Outcome == AccessTelemetryLog.OutcomeError)
+            {
+                rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
+            }
+        });
+    searchScope.CaseId = caseId;
+    Dictionary<string, object?> searchQueryParams = new(System.StringComparer.Ordinal)
+    {
+        ["query"] = query,
+        ["axis"] = axis,
+        ["axes"] = axes,
+        ["maxResults"] = maxResults,
+        ["offset"] = offset,
+        ["sourceType"] = sourceType,
+        ["metadataFilterCount"] = string.IsNullOrWhiteSpace(metadataQuery) ? 0 : metadataQuery.Split(',').Length,
+        ["explain"] = explain,
+    };
+    searchScope.QueryParams = searchQueryParams;
+    searchActivity?.SetTag(MemoriesActivitySource.TagAxis, searchAxisTag);
+
+    void SetResolvedSearchAxis(string resolvedAxis)
+    {
+        searchAxisTag = resolvedAxis;
+        searchQueryParams["axis"] = resolvedAxis;
+        searchActivity?.SetTag(MemoriesActivitySource.TagAxis, resolvedAxis);
+    }
+
+    void CompleteSearchSuccess(string resolvedAxis, int resultCount)
+    {
+        SetResolvedSearchAxis(resolvedAxis);
+        searchScope.ResultCount = resultCount;
+    }
+
+    IResult SearchError(string errorCode, IResult result)
+    {
+        searchScope.MarkValidationError(errorCode);
+        return result;
+    }
+
+    IResult SearchTenantRejected(string errorCode, IResult result)
+    {
+        searchScope.MarkTenantRejected(errorCode);
+        return result;
+    }
+
     void RecordSearchActivity()
     {
         if (!string.IsNullOrWhiteSpace(caseId))
         {
-            _ = activityService.RecordEventAsync(tenantId, caseId!, CaseActivityEventType.SearchExecuted, "system", $"Search '{query}' via {axis}", null);
+            _ = activityService.RecordEventAsync(tenantId, caseId!, CaseActivityEventType.SearchExecuted, "system", $"Search '{query}' via {searchAxisTag}", null);
         }
     }
 
-    if (string.IsNullOrWhiteSpace(tenantId))
+    try
     {
-        return Results.BadRequest(new ErrorResponse(
-            "INVALID_INPUT",
-            "Parameter 'tenantId' is required.",
-            "Provide tenantId as a query parameter."));
-    }
-
-    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-    if (tenantValidationError is not null)
-    {
-        return Results.BadRequest(tenantValidationError);
-    }
-
-    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
-    if (tenantStatusError is not null)
-    {
-        return TenantStatusGuard.ToHttpResult(tenantStatusError);
-    }
-
-    // Validate caseId exists before executing search
-    if (!string.IsNullOrWhiteSpace(caseId))
-    {
-        Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
-        if (targetCase is null)
+        if (string.IsNullOrWhiteSpace(tenantId))
         {
-            return Results.NotFound(new ErrorResponse(
-                "CASE_NOT_FOUND",
-                $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
-        }
-    }
-
-    // Validate sourceType is a known enum value
-    if (!string.IsNullOrWhiteSpace(sourceType) && !Enum.TryParse<SourceType>(sourceType, ignoreCase: true, out _))
-    {
-        return Results.BadRequest(new ErrorResponse(
-            "INVALID_SOURCE_TYPE",
-            $"Source type '{sourceType}' is not recognized.",
-            "Valid values: file, url, event, command, projection, discussion, annotation."));
-    }
-
-    // Validate axis BEFORE query — axis determines whether query is required
-    if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new ErrorResponse(
-            "INVALID_AXIS",
-            $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph, hybrid.",
-            "Use axis=syntactic, axis=semantic, axis=graph, or axis=hybrid."));
-    }
-
-    // --- axis=graph: pure traversal (query NOT required) ---
-    if (string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase))
-    {
-        if (string.IsNullOrWhiteSpace(startNodeId))
-        {
-            return Results.BadRequest(new ErrorResponse(
-                "MISSING_START_NODE",
-                "Graph-scoped search requires a startNodeId parameter.",
-                "Provide startNodeId=<memoryUnitId> to specify the graph traversal starting point."));
+            return SearchTenantRejected(
+                "INVALID_INPUT",
+                Results.BadRequest(new ErrorResponse(
+                    "INVALID_INPUT",
+                    "Parameter 'tenantId' is required.",
+                    "Provide tenantId as a query parameter.")));
         }
 
-        int clampedDepth = Math.Clamp(depth, 0, 10);
-        int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
-        var searchQuery = new SearchQuery
-        {
-            TenantId = tenantId,
-            Query = query ?? string.Empty,
-            CaseId = caseId,
-            SourceTypeFilter = sourceType,
-            MetadataQuery = metadataQuery,
-            MaxResults = clampedMaxResults,
-            Offset = Math.Max(offset, 0),
-        };
+        searchActivity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
 
-        SearchResult result;
-        try
+        ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+        if (tenantValidationError is not null)
         {
-            result = await graphScopedSearch.SearchAsync(
-                searchQuery, startNodeId, clampedDepth,
-                innerSearch: null, cancellationToken);
-        }
-        catch (RedisConnectionException ex)
-        {
-            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
-        }
-        catch (RedisTimeoutException ex)
-        {
-            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
-        }
-        catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
-        {
-            return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
-        }
-        catch (TimeoutException)
-        {
-            // TimeoutException (504 GRAPH_TIMEOUT) is semantically distinct from RedisTimeoutException (503):
-            // 504 = live FalkorDB, query exceeded deadline → caller should reduce depth.
-            // 503 = multiplexer command-layer timeout → caller should retry.
-            return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
+            return SearchError(tenantValidationError.Code, Results.BadRequest(tenantValidationError));
         }
 
-        result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-        result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-        if (explain)
+        ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+        if (tenantStatusError is not null)
         {
-            result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
+            return SearchTenantRejected(tenantStatusError.Code, TenantStatusGuard.ToHttpResult(tenantStatusError));
         }
 
-        RecordSearchActivity();
-        return Results.Ok(result);
-    }
+        // Validate caseId exists before executing search
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
+            if (targetCase is null)
+            {
+                return SearchError(
+                    "CASE_NOT_FOUND",
+                    Results.NotFound(new ErrorResponse(
+                        "CASE_NOT_FOUND",
+                        $"Case '{caseId}' not found in tenant '{tenantId}'.",
+                        $"Use GET /api/tenants/{tenantId}/cases to list available cases.")));
+            }
+        }
 
-    // --- axis=hybrid: multi-axis fusion ---
-    if (string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
-    {
+        // Validate sourceType is a known enum value
+        if (!string.IsNullOrWhiteSpace(sourceType) && !Enum.TryParse<SourceType>(sourceType, ignoreCase: true, out _))
+        {
+            return SearchError(
+                "INVALID_SOURCE_TYPE",
+                Results.BadRequest(new ErrorResponse(
+                    "INVALID_SOURCE_TYPE",
+                    $"Source type '{sourceType}' is not recognized.",
+                    "Valid values: file, url, event, command, projection, discussion, annotation.")));
+        }
+
+        // Validate axis BEFORE query — axis determines whether query is required
+        if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            return SearchError(
+                "INVALID_AXIS",
+                Results.BadRequest(new ErrorResponse(
+                    "INVALID_AXIS",
+                    $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph, hybrid.",
+                    "Use axis=syntactic, axis=semantic, axis=graph, or axis=hybrid.")));
+        }
+
+        // --- axis=graph: pure traversal (query NOT required) ---
+        if (string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(startNodeId))
+            {
+                return SearchError(
+                    "MISSING_START_NODE",
+                    Results.BadRequest(new ErrorResponse(
+                        "MISSING_START_NODE",
+                        "Graph-scoped search requires a startNodeId parameter.",
+                        "Provide startNodeId=<memoryUnitId> to specify the graph traversal starting point.")));
+            }
+
+            int clampedDepth = Math.Clamp(depth, 0, 10);
+            int clampedMaxResults = Math.Clamp(maxResults, 1, 100);
+            var searchQuery = new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = query ?? string.Empty,
+                CaseId = caseId,
+                SourceTypeFilter = sourceType,
+                MetadataQuery = metadataQuery,
+                MaxResults = clampedMaxResults,
+                Offset = Math.Max(offset, 0),
+            };
+
+            SearchResult result;
+            try
+            {
+                result = await graphScopedSearch.SearchAsync(
+                    searchQuery, startNodeId, clampedDepth,
+                    innerSearch: null, cancellationToken);
+            }
+            catch (RedisConnectionException ex)
+            {
+                return SearchError(
+                    "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex));
+            }
+            catch (RedisTimeoutException ex)
+            {
+                return SearchError(
+                    "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex));
+            }
+            catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+            {
+                return SearchError(
+                    "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex));
+            }
+            catch (TimeoutException)
+            {
+                return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
+            }
+
+            result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+            if (explain)
+            {
+                result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
+            }
+
+            CompleteSearchSuccess("graph", result.Results.Count);
+            RecordSearchActivity();
+            return Results.Ok(result);
+        }
+
+        // --- axis=hybrid: multi-axis fusion ---
+        if (string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return SearchError(
+                    "INVALID_INPUT",
+                    Results.BadRequest(new ErrorResponse(
+                        "INVALID_INPUT",
+                        "Parameter 'query' is required for hybrid search.",
+                        "Provide query as a query parameter.")));
+            }
+
+            HashSet<string> enabledAxes = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
+            if (!string.IsNullOrWhiteSpace(axes))
+            {
+                enabledAxes = new HashSet<string>(
+                    axes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
+            string? invalidAxis = HybridSearchService.FindInvalidAxis(enabledAxes);
+            if (invalidAxis is not null)
+            {
+                return SearchError(
+                    "INVALID_AXIS",
+                    Results.BadRequest(new ErrorResponse(
+                        "INVALID_AXIS",
+                        $"Unknown axis '{invalidAxis}' in axes parameter. Valid axes: syntactic, semantic, graph.",
+                        "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic.")));
+            }
+
+            var hybridQuery = new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = query,
+                CaseId = caseId,
+                SourceTypeFilter = sourceType,
+                MetadataQuery = metadataQuery,
+                MaxResults = Math.Clamp(maxResults, 1, 100),
+                Offset = Math.Max(offset, 0),
+            };
+
+            var weights = new FusionWeights();
+            TenantEmbeddingConfig? embeddingConfig = null;
+            List<string> preUnavailableAxes = [];
+            string? effectiveGraphStartNodeId = !string.IsNullOrWhiteSpace(graphStartNodeId)
+                ? graphStartNodeId
+                : startNodeId;
+
+            if (enabledAxes.Contains("semantic"))
+            {
+                try
+                {
+                    ITenantConfigurationActor actor = actorProxyFactory
+                        .CreateActorProxy<ITenantConfigurationActor>(
+                            new ActorId(tenantId), nameof(TenantConfigurationActor));
+                    embeddingConfig = await actor.GetEmbeddingConfigAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    preUnavailableAxes.Add("semantic");
+                }
+            }
+
+            int clampedDepth = Math.Clamp(depth, 0, 10);
+            HybridSearchResult hybridResult = await hybridSearchService.SearchAsync(
+                hybridQuery,
+                embeddingConfig,
+                effectiveGraphStartNodeId,
+                clampedDepth,
+                weights,
+                enabledAxes,
+                preUnavailableAxes,
+                cancellationToken);
+
+            if (hybridResult.AllEnabledAxesUnavailable == true)
+            {
+                return SearchError(
+                    "ALL_BACKENDS_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildAllBackendsUnavailableResponse(
+                        httpContext,
+                        logger,
+                        tenantId,
+                        hybridResult.UnavailableAxes,
+                        enabledAxes.ToArray()));
+            }
+
+            hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
+            hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+
+            if (explain)
+            {
+                IReadOnlySet<string> explanationAxes = DetermineHybridExplanationAxes(
+                    enabledAxes,
+                    hybridResult.UnavailableAxes,
+                    embeddingConfig is not null,
+                    !string.IsNullOrWhiteSpace(effectiveGraphStartNodeId));
+                hybridResult = hybridResult with { Explanation = ExplainMetadataBuilder.BuildForHybrid(explanationAxes, weights) };
+            }
+
+            CompleteSearchSuccess("hybrid", hybridResult.Results.Count);
+            if (hybridResult.Degraded && hybridResult.UnavailableAxes.Count > 0)
+            {
+                searchScope.MarkPartial("HYBRID_DEGRADED");
+            }
+
+            RecordSearchActivity();
+            return Results.Ok(hybridResult);
+        }
+
         if (string.IsNullOrWhiteSpace(query))
         {
-            return Results.BadRequest(new ErrorResponse(
+            return SearchError(
                 "INVALID_INPUT",
-                "Parameter 'query' is required for hybrid search.",
-                "Provide query as a query parameter."));
+                Results.BadRequest(new ErrorResponse(
+                    "INVALID_INPUT",
+                    "Parameter 'query' is required for syntactic and semantic search.",
+                    "Provide query as a query parameter.")));
         }
 
-        // Parse enabled axes (default: all three)
-        HashSet<string> enabledAxes = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
-        if (!string.IsNullOrWhiteSpace(axes))
-        {
-            enabledAxes = new HashSet<string>(
-                axes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-                StringComparer.OrdinalIgnoreCase);
-        }
-
-        string? invalidAxis = HybridSearchService.FindInvalidAxis(enabledAxes);
-        if (invalidAxis is not null)
-        {
-            return Results.BadRequest(new ErrorResponse(
-                "INVALID_AXIS",
-                $"Unknown axis '{invalidAxis}' in axes parameter. Valid axes: syntactic, semantic, graph.",
-                "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic."));
-        }
-
-        var hybridQuery = new SearchQuery
+        int clampedMax = Math.Clamp(maxResults, 1, 100);
+        int clampedOff = Math.Max(offset, 0);
+        var mainSearchQuery = new SearchQuery
         {
             TenantId = tenantId,
             Query = query,
             CaseId = caseId,
             SourceTypeFilter = sourceType,
             MetadataQuery = metadataQuery,
-            MaxResults = Math.Clamp(maxResults, 1, 100),
-            Offset = Math.Max(offset, 0),
+            MaxResults = clampedMax,
+            Offset = clampedOff,
         };
 
-        var weights = new FusionWeights();
-        TenantEmbeddingConfig? embeddingConfig = null;
-        List<string> preUnavailableAxes = [];
-        string? effectiveGraphStartNodeId = !string.IsNullOrWhiteSpace(graphStartNodeId)
-            ? graphStartNodeId
-            : startNodeId;
-
-        if (enabledAxes.Contains("semantic"))
+        if (!string.IsNullOrWhiteSpace(startNodeId))
         {
-            try
+            int clampedDepth = Math.Clamp(depth, 0, 10);
+
+            if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
             {
                 ITenantConfigurationActor actor = actorProxyFactory
                     .CreateActorProxy<ITenantConfigurationActor>(
                         new ActorId(tenantId), nameof(TenantConfigurationActor));
-                embeddingConfig = await actor.GetEmbeddingConfigAsync();
+
+                bool innerSearchStarted = false;
+
+                TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+                SearchResult result;
+
+                try
+                {
+                    result = await graphScopedSearch.SearchAsync(
+                        mainSearchQuery, startNodeId, clampedDepth,
+                        q =>
+                        {
+                            innerSearchStarted = true;
+                            return semanticService.SearchAsync(q, config, cancellationToken);
+                        },
+                        cancellationToken);
+                }
+                catch (EmbeddingApiException ex)
+                {
+                    return SearchError(
+                        "EMBEDDING_UNAVAILABLE",
+                        Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
+                }
+                catch (EmbeddingRateLimitException ex)
+                {
+                    return SearchError(
+                        "EMBEDDING_UNAVAILABLE",
+                        Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
+                }
+                catch (SemanticSearchDimensionMismatchException ex)
+                {
+                    return SearchError(
+                        "DIMENSION_MISMATCH",
+                        Results.Json(SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex), statusCode: 500));
+                }
+                catch (RedisConnectionException ex)
+                {
+                    return SearchError(
+                        innerSearchStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                        SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                            httpContext,
+                            logger,
+                            "semantic",
+                            tenantId,
+                            startNodeId,
+                            innerSearchStarted,
+                            ex));
+                }
+                catch (RedisTimeoutException ex)
+                {
+                    return SearchError(
+                        innerSearchStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                        SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                            httpContext,
+                            logger,
+                            "semantic",
+                            tenantId,
+                            startNodeId,
+                            innerSearchStarted,
+                            ex));
+                }
+                catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+                {
+                    return SearchError(
+                        innerSearchStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                        SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                            httpContext,
+                            logger,
+                            "semantic",
+                            tenantId,
+                            startNodeId,
+                            innerSearchStarted,
+                            ex));
+                }
+                catch (TimeoutException)
+                {
+                    return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
+                }
+
+                result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
+                result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+                if (explain)
+                {
+                    result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
+                }
+
+                CompleteSearchSuccess("graph-scoped-semantic", result.Results.Count);
+                RecordSearchActivity();
+                return Results.Ok(result);
             }
-            catch (OperationCanceledException)
+
+            bool innerSyntacticStarted = false;
+            SearchResult syntacticResult;
+            try
             {
-                throw;
+                syntacticResult = await graphScopedSearch.SearchAsync(
+                    mainSearchQuery, startNodeId, clampedDepth,
+                    q =>
+                    {
+                        innerSyntacticStarted = true;
+                        return syntacticService.SearchAsync(q);
+                    },
+                    cancellationToken);
             }
-            catch
+            catch (RedisConnectionException ex)
             {
-                preUnavailableAxes.Add("semantic");
+                return SearchError(
+                    innerSyntacticStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                        httpContext,
+                        logger,
+                        "syntactic",
+                        tenantId,
+                        startNodeId,
+                        innerSyntacticStarted,
+                        ex));
             }
+            catch (RedisTimeoutException ex)
+            {
+                return SearchError(
+                    innerSyntacticStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                        httpContext,
+                        logger,
+                        "syntactic",
+                        tenantId,
+                        startNodeId,
+                        innerSyntacticStarted,
+                        ex));
+            }
+            catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+            {
+                return SearchError(
+                    innerSyntacticStarted ? "BACKEND_UNAVAILABLE" : "GRAPH_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
+                        httpContext,
+                        logger,
+                        "syntactic",
+                        tenantId,
+                        startNodeId,
+                        innerSyntacticStarted,
+                        ex));
+            }
+            catch (TimeoutException)
+            {
+                return SearchError("GRAPH_TIMEOUT", SearchEndpointDegradationResponses.BuildGraphTimeoutResponse());
+            }
+
+            syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
+            syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+            if (explain)
+            {
+                syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+            }
+
+            CompleteSearchSuccess("graph-scoped-syntactic", syntacticResult.Results.Count);
+            RecordSearchActivity();
+            return Results.Ok(syntacticResult);
         }
-
-        int clampedDepth = Math.Clamp(depth, 0, 10);
-        HybridSearchResult hybridResult = await hybridSearchService.SearchAsync(
-            hybridQuery,
-            embeddingConfig,
-            effectiveGraphStartNodeId,
-            clampedDepth,
-            weights,
-            enabledAxes,
-            preUnavailableAxes,
-            cancellationToken);
-
-        if (hybridResult.AllEnabledAxesUnavailable == true)
-        {
-            // Total failure: every attempted axis landed in unavailableAxes. Promote to 503
-            // rather than the misleading "200 OK { results: [], degraded: true }" shape that would
-            // otherwise be returned.
-            return SearchEndpointDegradationResponses.BuildAllBackendsUnavailableResponse(
-                httpContext,
-                logger,
-                tenantId,
-                hybridResult.UnavailableAxes,
-                enabledAxes.ToArray());
-        }
-
-        hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
-        hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-
-        if (explain)
-        {
-            IReadOnlySet<string> explanationAxes = DetermineHybridExplanationAxes(
-                enabledAxes,
-                hybridResult.UnavailableAxes,
-                embeddingConfig is not null,
-                !string.IsNullOrWhiteSpace(effectiveGraphStartNodeId));
-            hybridResult = hybridResult with { Explanation = ExplainMetadataBuilder.BuildForHybrid(explanationAxes, weights) };
-        }
-
-        RecordSearchActivity();
-        return Results.Ok(hybridResult);
-    }
-
-    // --- For syntactic, semantic, and graph-scoped inner search: query IS required ---
-    if (string.IsNullOrWhiteSpace(query))
-    {
-        return Results.BadRequest(new ErrorResponse(
-            "INVALID_INPUT",
-            "Parameter 'query' is required for syntactic and semantic search.",
-            "Provide query as a query parameter."));
-    }
-
-    int clampedMax = Math.Clamp(maxResults, 1, 100);
-    int clampedOff = Math.Max(offset, 0);
-    var mainSearchQuery = new SearchQuery
-    {
-        TenantId = tenantId,
-        Query = query,
-        CaseId = caseId,
-        SourceTypeFilter = sourceType,
-        MetadataQuery = metadataQuery,
-        MaxResults = clampedMax,
-        Offset = clampedOff,
-    };
-
-    // --- Graph-scoped inner search (syntactic/semantic + startNodeId) ---
-    if (!string.IsNullOrWhiteSpace(startNodeId))
-    {
-        int clampedDepth = Math.Clamp(depth, 0, 10);
 
         if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
         {
@@ -1772,248 +2201,109 @@ app.MapGet("/api/search", async (
                 .CreateActorProxy<ITenantConfigurationActor>(
                     new ActorId(tenantId), nameof(TenantConfigurationActor));
 
-            // Task 2.3 Option A: flip innerSearchStarted=true at the top of the inner-search lambda.
-            // A transient exception thrown BEFORE the inner callback fires is graph-origin
-            // (FalkorDB traversal failure) → GRAPH_UNAVAILABLE. After the callback fires, a transient
-            // exception is redis-origin → BACKEND_UNAVAILABLE.
-            bool innerSearchStarted = false;
-
             TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
-            SearchResult result;
-
+            SearchResult searchResult;
             try
             {
-                result = await graphScopedSearch.SearchAsync(
-                    mainSearchQuery, startNodeId, clampedDepth,
-                    q =>
-                    {
-                        innerSearchStarted = true;
-                        return semanticService.SearchAsync(q, config, cancellationToken);
-                    },
-                    cancellationToken);
+                searchResult = await semanticService.SearchAsync(
+                    mainSearchQuery, config, cancellationToken);
             }
             catch (EmbeddingApiException ex)
             {
-                return Results.Json(
-                    SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
-                    statusCode: 503);
+                return SearchError(
+                    "EMBEDDING_UNAVAILABLE",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
             }
             catch (EmbeddingRateLimitException ex)
             {
-                return Results.Json(
-                    SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
-                    statusCode: 503);
+                return SearchError(
+                    "EMBEDDING_UNAVAILABLE",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
             }
             catch (SemanticSearchDimensionMismatchException ex)
             {
-                return Results.Json(
-                    SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
-                    statusCode: 500);
+                return SearchError(
+                    "DIMENSION_MISMATCH",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex), statusCode: 500));
             }
             catch (RedisConnectionException ex)
             {
-                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                    httpContext,
-                    logger,
-                    "semantic",
-                    tenantId,
-                    startNodeId,
-                    innerSearchStarted,
-                    ex);
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
             }
             catch (RedisTimeoutException ex)
             {
-                // Must precede TimeoutException (base class) — RedisTimeoutException is a multiplexer
-                // command-layer timeout → 503, whereas TimeoutException from WaitAsync is the
-                // graph-query deadline → 504 GRAPH_TIMEOUT.
-                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                    httpContext,
-                    logger,
-                    "semantic",
-                    tenantId,
-                    startNodeId,
-                    innerSearchStarted,
-                    ex);
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
             }
             catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
             {
-                return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                    httpContext,
-                    logger,
-                    "semantic",
-                    tenantId,
-                    startNodeId,
-                    innerSearchStarted,
-                    ex);
-            }
-            catch (TimeoutException)
-            {
-                return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
             }
 
-            result = await EnrichResultWithCaseAttributionAsync(result, caseService, tenantId, cancellationToken);
-            result = await EnrichResultWithAnnotationCountsAsync(result, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+            searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
             if (explain)
             {
-                result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
+                searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
             }
 
+            CompleteSearchSuccess("semantic", searchResult.Results.Count);
             RecordSearchActivity();
-            return Results.Ok(result);
+            return Results.Ok(searchResult);
         }
 
-        bool innerSyntacticStarted = false;
-        SearchResult syntacticResult;
+        SearchResult syntacticDefault;
         try
         {
-            syntacticResult = await graphScopedSearch.SearchAsync(
-                mainSearchQuery, startNodeId, clampedDepth,
-                q =>
-                {
-                    innerSyntacticStarted = true;
-                    return syntacticService.SearchAsync(q);
-                },
-                cancellationToken);
+            syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
         }
         catch (RedisConnectionException ex)
         {
-            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                httpContext,
-                logger,
-                "syntactic",
-                tenantId,
-                startNodeId,
-                innerSyntacticStarted,
-                ex);
+            return SearchError(
+                "BACKEND_UNAVAILABLE",
+                SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex));
         }
         catch (RedisTimeoutException ex)
         {
-            // Must precede TimeoutException (base class).
-            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                httpContext,
-                logger,
-                "syntactic",
-                tenantId,
-                startNodeId,
-                innerSyntacticStarted,
-                ex);
+            return SearchError(
+                "BACKEND_UNAVAILABLE",
+                SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex));
         }
         catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
         {
-            return SearchEndpointDegradationResponses.BuildGraphScopedAxisFailureResponse(
-                httpContext,
-                logger,
-                "syntactic",
-                tenantId,
-                startNodeId,
-                innerSyntacticStarted,
-                ex);
-        }
-        catch (TimeoutException)
-        {
-            return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
+            return SearchError(
+                "BACKEND_UNAVAILABLE",
+                SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex));
         }
 
-        syntacticResult = await EnrichResultWithCaseAttributionAsync(syntacticResult, caseService, tenantId, cancellationToken);
-        syntacticResult = await EnrichResultWithAnnotationCountsAsync(syntacticResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+        syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
+        syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
         if (explain)
         {
-            syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
+            syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
         }
 
+        CompleteSearchSuccess("syntactic", syntacticDefault.Results.Count);
         RecordSearchActivity();
-        return Results.Ok(syntacticResult);
+        return Results.Ok(syntacticDefault);
     }
-
-    // --- Existing routing for syntactic/semantic without graph scope ---
-    if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
+    catch (Exception ex)
     {
-        ITenantConfigurationActor actor = actorProxyFactory
-            .CreateActorProxy<ITenantConfigurationActor>(
-                new ActorId(tenantId), nameof(TenantConfigurationActor));
-
-        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
-        SearchResult searchResult;
-        try
-        {
-            searchResult = await semanticService.SearchAsync(
-                mainSearchQuery, config, cancellationToken);
-        }
-        catch (EmbeddingApiException ex)
-        {
-            return Results.Json(
-                SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
-                statusCode: 503);
-        }
-        catch (EmbeddingRateLimitException ex)
-        {
-            return Results.Json(
-                SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex),
-                statusCode: 503);
-        }
-        catch (SemanticSearchDimensionMismatchException ex)
-        {
-            return Results.Json(
-                SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex),
-                statusCode: 500);
-        }
-        catch (RedisConnectionException ex)
-        {
-            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
-        }
-        catch (RedisTimeoutException ex)
-        {
-            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
-        }
-        catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
-        {
-            return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex);
-        }
-
-        searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
-        searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-        if (explain)
-        {
-            searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
-        }
-
-        RecordSearchActivity();
-        return Results.Ok(searchResult);
+        searchScope.MarkUnhandledException(ex);
+        throw;
     }
-
-    SearchResult syntacticDefault;
-    try
-    {
-        syntacticDefault = await syntacticService.SearchAsync(mainSearchQuery);
-    }
-    catch (RedisConnectionException ex)
-    {
-        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
-    }
-    catch (RedisTimeoutException ex)
-    {
-        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
-    }
-    catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
-    {
-        return SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "syntactic", tenantId, ex);
-    }
-
-    syntacticDefault = await EnrichResultWithCaseAttributionAsync(syntacticDefault, caseService, tenantId, cancellationToken);
-    syntacticDefault = await EnrichResultWithAnnotationCountsAsync(syntacticDefault, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-    if (explain)
-    {
-        syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
-    }
-
-    RecordSearchActivity();
-    return Results.Ok(syntacticDefault);
 });
 
 app.MapGet("/api/tenants/{tenantId}/traverse", async (
     string tenantId,
     GraphTraversalService traversalService,
     ILogger<Program> logger,
+    ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
     [FromQuery] string? startNodeId,
     [FromQuery] int depth = 2,
@@ -2021,19 +2311,41 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     [FromQuery] string? edgeTypes = null,
     CancellationToken cancellationToken = default) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.TraverseRequest);
+    activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationTraverse);
+    using var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        AccessTelemetryLog.OperationTraverse,
+        successEventId: 7503,
+        errorEventId: 7513,
+        tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
+    scope.CaseId = caseId;
+    scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+    {
+        ["startNodeId"] = startNodeId,
+        ["depth"] = depth,
+        ["edgeTypes"] = edgeTypes,
+    };
+
     if (string.IsNullOrWhiteSpace(tenantId))
     {
+        scope.MarkValidationError("INVALID_TENANT_ID");
         return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId is required.", "Provide a valid tenantId."));
     }
+
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
 
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     if (string.IsNullOrWhiteSpace(startNodeId))
     {
+        scope.MarkValidationError("MISSING_START_NODE");
         return Results.BadRequest(new ErrorResponse(
             "MISSING_START_NODE",
             "startNodeId query parameter is required.",
@@ -2051,6 +2363,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
         {
             if (!Enum.TryParse<EdgeType>(part, ignoreCase: true, out EdgeType et) || !Enum.IsDefined(et))
             {
+                scope.MarkValidationError("INVALID_EDGE_TYPE");
                 return Results.BadRequest(new ErrorResponse(
                     "INVALID_EDGE_TYPE",
                     $"Unknown edge type: '{part}'. Valid types: {validTypesString}",
@@ -2068,20 +2381,53 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     {
         TraversalResult result = await traversalService.TraverseAsync(
             tenantId, startNodeId, clampedDepth, caseId, parsedEdgeTypes, cancellationToken);
+        scope.ResultCount = result.Nodes.Count;
         return Results.Ok(result);
     }
     catch (RedisConnectionException ex)
     {
+        scope.MarkValidationError("GRAPH_UNAVAILABLE");
         return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
     }
     catch (RedisTimeoutException ex)
     {
+        scope.MarkValidationError("GRAPH_UNAVAILABLE");
         return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
     }
     catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
     {
+        scope.MarkValidationError("GRAPH_UNAVAILABLE");
         return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
     }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
+});
+
+// Story 7.5 — telemetry summary endpoint (AC #6). Operator-facing read-only poke; DOES NOT emit
+// an AccessTelemetryEvent for itself (Task 5.5 — self-referential audit noise).
+app.MapGet("/api/tenants/{tenantId}/telemetry/summary", async (
+    string tenantId,
+    TelemetrySummaryService summaryService,
+    TenantStatusGuard tenantGuard,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+    }
+
+    TelemetrySummary summary = await summaryService.GetSummaryAsync(tenantId, cancellationToken);
+    return Results.Ok(summary);
 });
 
 app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (
@@ -2692,3 +3038,11 @@ static List<CaseGroupSummary> BuildCaseGroups(
         .OrderByDescending(c => c.ResultCount)
         .ToList();
 }
+
+// Story 7.5 Rev 1.3 (Task 11.1/11.2): partial Program sentinel enables
+// WebApplicationFactory<Program> to reference the top-level-statement program
+// class by name from the Server.Tests project (InternalsVisibleTo is already
+// granted on Server.csproj). Do NOT add members here — keep it empty.
+#pragma warning disable SA1649, SA1402 // file-name-match + one-type-per-file: top-level statement convention
+public partial class Program { }
+#pragma warning restore SA1649, SA1402
