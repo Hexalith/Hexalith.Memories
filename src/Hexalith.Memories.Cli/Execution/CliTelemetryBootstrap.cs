@@ -76,12 +76,36 @@ public static class CliTelemetryBootstrap
     }
 
     internal static Uri? ResolveEndpoint(string? endpoint, bool telemetryFlag)
+        => ResolveEndpoint(endpoint, telemetryFlag, WriteStderr);
+
+    internal static Uri? ResolveEndpoint(string? endpoint, bool telemetryFlag, Action<string> warn)
     {
+        ArgumentNullException.ThrowIfNull(warn);
+
         if (!string.IsNullOrWhiteSpace(endpoint))
         {
-            return new Uri(endpoint, UriKind.Absolute);
+            if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? parsedEndpoint)
+                && IsAcceptableOtlpScheme(parsedEndpoint))
+            {
+                return parsedEndpoint;
+            }
+
+            warn(
+                $"[Hexalith.Memories.Cli] Ignoring {OtlpEndpointEnvVar}='{endpoint}': " +
+                "value is not an http(s) absolute URI. " +
+                (telemetryFlag
+                    ? $"Falling back to {LocalDevelopmentOtlpEndpoint}."
+                    : "Telemetry disabled."));
+
+            return telemetryFlag ? new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute) : null;
         }
 
         return telemetryFlag ? new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute) : null;
     }
+
+    private static bool IsAcceptableOtlpScheme(Uri uri)
+        => uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+
+    private static void WriteStderr(string message) => Console.Error.WriteLine(message);
 }

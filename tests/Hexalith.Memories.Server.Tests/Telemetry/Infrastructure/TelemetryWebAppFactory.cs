@@ -55,6 +55,10 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
     /// <see cref="CapturingAuditLoggerProvider"/>.</summary>
     public CapturingAuditLoggerProvider AuditLogs { get; } = new();
 
+    /// <summary>Fake <see cref="DaprClient"/> exposed to tests. Tests that need specific behavior
+    /// (e.g. a known tenant in the registry) configure it directly via NSubstitute before building a client.</summary>
+    public DaprClient DaprClient { get; } = Substitute.For<DaprClient>();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -76,10 +80,11 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
                 "falkordb",
                 (_, _) => Substitute.For<IConnectionMultiplexer>());
 
-            // 2. Replace DaprClient with a fake so DI resolution and health-probe wiring does not attempt
-            //    to connect to a non-existent sidecar.
+            // 2. Replace DaprClient with the shared fake so DI resolution and health-probe wiring does not
+            //    attempt to connect to a non-existent sidecar, and tests can stub registry calls via
+            //    the factory's DaprClient property.
             services.RemoveAll<DaprClient>();
-            services.AddSingleton<DaprClient>(_ => Substitute.For<DaprClient>());
+            services.AddSingleton<DaprClient>(DaprClient);
 
             // 3. Remove DAPR-specific hosted services (workflow runtime + actor registration) — both try to
             //    open gRPC channels to the sidecar on StartAsync. Filter by implementation assembly so we do

@@ -7,6 +7,8 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
 using System.Diagnostics;
 using System.Net;
+using System.Text;
+using System.Text.RegularExpressions;
 
 using Aspire.Hosting;
 using Aspire.Hosting.Testing;
@@ -39,12 +41,15 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private ActorProxyOptions? _actorProxyOptions;
     private HttpClientHandler? _actorHttpMessageHandler;
     private readonly TestLogProvider _logProvider = new();
+    private static readonly Regex DaprHttpPortRegex = new(
+        @"HTTP server listening on TCP address: :(?<port>\d+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
     public HttpClient MemoriesClient { get; private set; } = null!;
 
-    /// <summary>Gets the fixed DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
-    public Uri DaprSidecarHttpEndpoint { get; } = new("http://127.0.0.1:3500");
+    /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
+    public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");
 
     /// <summary>Gets the number of captured log entries.</summary>
     public int LogEntryCount => _logProvider.Count;
@@ -55,20 +60,20 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the FalkorDB connection for backend verification.</summary>
     public IConnectionMultiplexer FalkorDbConnection { get; private set; } = null!;
 
-    /// <summary>Creates a counter-actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <summary>Creates a counter-actor proxy against the test DAPR sidecar endpoint.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <param name="caseId">Case identifier.</param>
     /// <returns>The actor proxy.</returns>
     public ICaseIngestionCounterActor CreateCaseIngestionCounterActorProxy(string tenantId, string caseId)
         => CreateActorProxy<ICaseIngestionCounterActor>($"{tenantId}:{caseId}", "CaseIngestionCounterActor");
 
-    /// <summary>Creates a rate-limiter actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <summary>Creates a rate-limiter actor proxy against the test DAPR sidecar endpoint.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <returns>The actor proxy.</returns>
     public IEmbeddingRateLimiterActor CreateEmbeddingRateLimiterActorProxy(string tenantId)
         => CreateActorProxy<IEmbeddingRateLimiterActor>(tenantId, "EmbeddingRateLimiterActor");
 
-    /// <summary>Creates a corpus-statistics actor proxy against the fixed test DAPR sidecar endpoint.</summary>
+    /// <summary>Creates a corpus-statistics actor proxy against the test DAPR sidecar endpoint.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <returns>The actor proxy.</returns>
     public ICorpusStatisticsActor CreateCorpusStatisticsActorProxy(string tenantId)
@@ -115,6 +120,25 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <returns>The captured log entries after the starting index.</returns>
     public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
 
+    /// <summary>Stops the FalkorDB container hosted by the Aspire topology.</summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the container has stopped.</returns>
+    public Task StopFalkorDbContainerAsync(CancellationToken cancellationToken = default)
+        => StopContainerAsync(
+            "FalkorDB",
+            static container => container.Image.Contains("falkordb/falkordb", StringComparison.OrdinalIgnoreCase)
+                || container.Name.Contains("falkordb", StringComparison.OrdinalIgnoreCase),
+            cancellationToken);
+
+    /// <summary>Stops the Dapr sidecar process for the Memories Server resource.</summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the sidecar has stopped.</returns>
+    public Task StopDaprSidecarAsync(CancellationToken cancellationToken = default)
+        => StopProcessListeningOnPortAsync(
+            DaprSidecarHttpEndpoint.Port,
+            "Memories Server Dapr sidecar",
+            cancellationToken);
+
     /// <inheritdoc/>
     public async Task DisposeAsync()
     {
@@ -141,6 +165,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
+        int logStartIndex = _logProvider.Count;
+
         _builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(false);
@@ -170,6 +196,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             TimeSpan.FromMinutes(3),
             TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 
+        DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
+
         Uri redisEndpoint = _app.GetEndpoint("redis", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("falkordb", "falkordb");
 
@@ -184,6 +212,29 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         };
         _actorHttpMessageHandler = new HttpClientHandler();
         _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
+    }
+
+    private static Uri ResolveDaprSidecarHttpEndpoint(IReadOnlyList<CapturedLogEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+
+        for (int i = entries.Count - 1; i >= 0; i--)
+        {
+            CapturedLogEntry entry = entries[i];
+            if (!entry.Category.Contains("memories-server-dapr-cli", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            Match match = DaprHttpPortRegex.Match(entry.Message);
+            if (match.Success && int.TryParse(match.Groups["port"].Value, out int port) && port > 0)
+            {
+                return new Uri($"http://127.0.0.1:{port}");
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Could not determine the Memories Server Dapr sidecar HTTP endpoint from the captured Aspire logs.");
     }
 
     private async Task DisposeTopologyAsync(CancellationToken cancellationToken)
@@ -230,6 +281,150 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _actorHttpMessageHandler = null;
     }
 
+    private async Task StopContainerAsync(
+        string description,
+        Func<RunningContainer, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        IReadOnlyList<RunningContainer> containers = await ListRunningContainersAsync(cancellationToken).ConfigureAwait(false);
+        RunningContainer container = containers.FirstOrDefault(predicate);
+
+        if (string.IsNullOrWhiteSpace(container.Name))
+        {
+            string available = string.Join(
+                Environment.NewLine,
+                containers.Select(c => $"- {c.Name} ({c.Image})"));
+            throw new InvalidOperationException(
+                $"Could not find the {description} container in the running Aspire topology. " +
+                $"Available containers:{Environment.NewLine}{available}");
+        }
+
+        _ = await RunDockerCommandAsync($"stop --time 0 {container.Name}", cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<RunningContainer>> ListRunningContainersAsync(CancellationToken cancellationToken)
+    {
+        string output = await RunDockerCommandAsync(
+            "ps --format \"{{.Names}}|{{.Image}}\" --no-trunc",
+            cancellationToken).ConfigureAwait(false);
+
+        List<RunningContainer> containers = [];
+        foreach (string line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] parts = line.Split('|', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length == 2)
+            {
+                containers.Add(new RunningContainer(parts[0], parts[1]));
+            }
+        }
+
+        return containers;
+    }
+
+    private static async Task StopProcessListeningOnPortAsync(
+        int port,
+        string description,
+        CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(port);
+        ArgumentException.ThrowIfNullOrWhiteSpace(description);
+
+        int processId = OperatingSystem.IsWindows()
+            ? await FindWindowsListeningProcessIdAsync(port, cancellationToken).ConfigureAwait(false)
+            : await FindUnixListeningProcessIdAsync(port, cancellationToken).ConfigureAwait(false);
+
+        if (processId <= 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not find the {description} process listening on port {port}.");
+        }
+
+        using Process process = Process.GetProcessById(processId);
+        process.Kill(entireProcessTree: true);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<int> FindWindowsListeningProcessIdAsync(int port, CancellationToken cancellationToken)
+    {
+        string output = await RunProcessCommandAsync("netstat", "-ano -p tcp", cancellationToken).ConfigureAwait(false);
+
+        foreach (string line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Length < 5 || !parts[0].Equals("TCP", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!parts[1].EndsWith($":{port}", StringComparison.Ordinal) ||
+                !parts[3].Equals("LISTENING", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (int.TryParse(parts[4], out int processId))
+            {
+                return processId;
+            }
+        }
+
+        return 0;
+    }
+
+    private static async Task<int> FindUnixListeningProcessIdAsync(int port, CancellationToken cancellationToken)
+    {
+        string output = await RunProcessCommandAsync(
+            "/bin/sh",
+            $"-c \"lsof -ti tcp:{port} -sTCP:LISTEN\"",
+            cancellationToken).ConfigureAwait(false);
+
+        string firstLine = output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? string.Empty;
+
+        return int.TryParse(firstLine, out int processId) ? processId : 0;
+    }
+
+    private static async Task<string> RunDockerCommandAsync(string arguments, CancellationToken cancellationToken)
+        => await RunProcessCommandAsync("docker", arguments, cancellationToken).ConfigureAwait(false);
+
+    private static async Task<string> RunProcessCommandAsync(
+        string fileName,
+        string arguments,
+        CancellationToken cancellationToken)
+    {
+        using Process process = new();
+        process.StartInfo.FileName = fileName;
+        process.StartInfo.Arguments = arguments;
+        process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.RedirectStandardError = true;
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.CreateNoWindow = true;
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException($"Failed to start '{fileName} {arguments}'.");
+        }
+
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+        string stdout = (await stdoutTask.ConfigureAwait(false)).Trim();
+        string stderr = (await stderrTask.ConfigureAwait(false)).Trim();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"{fileName} {arguments} failed with exit code {process.ExitCode}: {stderr}");
+        }
+
+        return stdout;
+    }
+
     private static async Task WaitForEndpointAsync(
         HttpClient client,
         string url,
@@ -269,6 +464,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Represents a captured integration-test log entry.</summary>
     public sealed record CapturedLogEntry(LogLevel Level, string Category, string Message);
+
+    private readonly record struct RunningContainer(string Name, string Image);
 
     private sealed class TestLogProvider : ILoggerProvider
     {

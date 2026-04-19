@@ -1,6 +1,6 @@
 # Story 8.1: Health Checks & Readiness
 
-Status: ready-for-dev
+Status: done
 
 **Effort estimate:** ~5 working days end-to-end — 3 days implementation (Tasks 1-5), 1 day docs (Task 7), 1 day integration wiring + test debugging (Task 6 + dotnet-format/CI reconciliation). Adjust if 7.5 is not yet merged at start — rebase cost can add 0.5-1 day (see "Previous story intelligence" + the 7.5 merge-conflict protocol in Dev Notes).
 
@@ -13,10 +13,10 @@ Status: ready-for-dev
 **What already exists (do NOT rebuild):**
 
 1. **ServiceDefaults endpoint scaffolding** — `src/Hexalith.Memories.ServiceDefaults/Extensions.cs:93-124` already maps three endpoints via `MapDefaultEndpoints()`:
-   - `/health` — aggregate of all checks (no predicate)
-   - `/alive` — predicate `r => r.Tags.Contains("live")`
-   - `/ready` — predicate `r => r.Tags.Contains("ready")`
-   - Status-code mapping already configured: `Healthy→200`, `Degraded→200`, `Unhealthy→503` (line 97-102). This is the hinge AC3 depends on — **do NOT change it**.
+    - `/health` — aggregate of all checks (no predicate)
+    - `/alive` — predicate `r => r.Tags.Contains("live")`
+    - `/ready` — predicate `r => r.Tags.Contains("ready")`
+    - Status-code mapping already configured: `Healthy→200`, `Degraded→200`, `Unhealthy→503` (line 97-102). This is the hinge AC3 depends on — **do NOT change it**.
 2. **`self` liveness check** — `ServiceDefaults.Extensions.AddDefaultHealthChecks` (line 84-91) registers `"self"` returning `HealthCheckResult.Healthy()` tagged `["live"]`. Reuse as-is; it's the "process is alive and serving requests" sentinel.
 3. **`DaprSidecarHealthCheck`** — `src/Hexalith.Memories.Server/HealthChecks/DaprSidecarHealthCheck.cs` already implemented via `DaprClient.CheckHealthAsync`. Registered in `Program.cs:38-43` with tag `["ready"]` and 3-second timeout. Unit tests at `tests/Hexalith.Memories.Server.Tests/HealthChecks/DaprSidecarHealthCheckTests.cs` (4 tests, `NSubstitute` + `Shouldly`, matching project test conventions).
 4. **`DaprStateStoreHealthCheck`** — probes DAPR state store via `GetStateAsync<byte[]>` with a `__health_probe__` key. Registered in `Program.cs:44-51` tagged `["ready"]`. Unit tests at `tests/Hexalith.Memories.Server.Tests/HealthChecks/DaprStateStoreHealthCheckTests.cs`.
@@ -27,31 +27,31 @@ Status: ready-for-dev
 **What 8.1 adds:**
 
 1. **Three new backend health check classes** in `src/Hexalith.Memories.Server/HealthChecks/`:
-   - `RediSearchHealthCheck` — probes the shared Redis instance via keyed `IConnectionMultiplexer("redis")`; verifies RediSearch module loaded via `FT._LIST` (cheap; no tenant scope; module failure distinct from connectivity failure).
-   - `RedisVectorHealthCheck` — probes the same Redis instance; verifies vector capability via `MODULE LIST` search for `search` / `ReJSON` (Redis Stack bundles vector into `search` module). NOTE: MVP deploys RediSearch + Redis Vector on **one** physical Redis instance per architecture.md line 228 — two logical checks per FR72 AC so operators see the capability breakdown, not one merged check.
-   - `FalkorDbHealthCheck` — probes keyed `IConnectionMultiplexer("falkordb")`; verifies FalkorDB via `GRAPH.LIST` (cheap; instance-scoped, not tenant-scoped).
+    - `RediSearchHealthCheck` — probes the shared Redis instance via keyed `IConnectionMultiplexer("redis")`; verifies RediSearch module loaded via `FT._LIST` (cheap; no tenant scope; module failure distinct from connectivity failure).
+    - `RedisVectorHealthCheck` — probes the same Redis instance; verifies vector capability via `MODULE LIST` search for `search` / `ReJSON` (Redis Stack bundles vector into `search` module). NOTE: MVP deploys RediSearch + Redis Vector on **one** physical Redis instance per architecture.md line 228 — two logical checks per FR72 AC so operators see the capability breakdown, not one merged check.
+    - `FalkorDbHealthCheck` — probes keyed `IConnectionMultiplexer("falkordb")`; verifies FalkorDB via `GRAPH.LIST` (cheap; instance-scoped, not tenant-scoped).
 2. **One shared helper** `BackendHealthCheckBase` (abstract; optional — see Dev Notes "One-class vs. three-class decision") OR inline status-classification logic per check. Pick whichever keeps each check <60 LOC (same bar as the existing `DaprStateStoreHealthCheck`).
-3. **DAPR sidecar re-tagging** — change the registration at `Program.cs:42` from `tags: ["ready"]` to `tags: ["live", "ready"]` so liveness also verifies sidecar connectivity (epic AC4: *"liveness probe checks the Memories Server process health and DAPR sidecar connectivity"*). No new check class; just the tag list.
+3. **DAPR sidecar re-tagging** — change the registration at `Program.cs:42` from `tags: ["ready"]` to `tags: ["live", "ready"]` so liveness also verifies sidecar connectivity (epic AC4: _"liveness probe checks the Memories Server process health and DAPR sidecar connectivity"_). No new check class; just the tag list.
 4. **Custom JSON response writer** `BackendHealthResponseWriter` that renders the `HealthReport` for `/ready` and `/health` as JSON matching the AC5 schema (per-backend status + description + capability-affected message). The default ASP.NET Core response writer produces plain text — replace it via `HealthCheckOptions.ResponseWriter`. Wire via a new extension `MapBackendAwareDefaultEndpoints(this WebApplication app)` in `ServiceDefaults/Extensions.cs` that delegates to the existing `MapDefaultEndpoints` but overrides the response writer — OR modify `MapDefaultEndpoints` in place (one project uses `ServiceDefaults`; no cross-repo surface). Choose in-place modification; document the response-writer change in `docs/dev/health-checks.md`.
 5. **Program.cs registration updates** — add the three backend checks alongside the existing DAPR checks; each tagged `["ready"]` with 3-second timeout; each failing with `HealthStatus.Degraded` (NOT `Unhealthy`) on connectivity failure so the aggregate `/ready` response is `Degraded` (200 OK) when one backend is down, `Unhealthy` (503) only when the service is truly non-functional (DAPR sidecar dead). See Dev Notes "Status-aggregation design" for the full matrix.
 6. **`docs/dev/health-checks.md`** — operator-facing doc covering endpoints, response shapes, capability-affected semantics, orchestrator-probe configuration snippets (Kubernetes `livenessProbe` + `readinessProbe` YAML; Aspire dashboard linkage).
 7. **Unit tests** at `tests/Hexalith.Memories.Server.Tests/HealthChecks/`:
-   - `RediSearchHealthCheckTests.cs` — healthy / connection-refused / LOADING response / module-missing / null-context paths.
-   - `RedisVectorHealthCheckTests.cs` — same matrix.
-   - `FalkorDbHealthCheckTests.cs` — healthy / connection-refused / unknown-error.
-   - `BackendHealthResponseWriterTests.cs` — JSON shape assertions for healthy / partially-degraded / fully-unhealthy reports + capability-affected message mapping.
+    - `RediSearchHealthCheckTests.cs` — healthy / connection-refused / LOADING response / module-missing / null-context paths.
+    - `RedisVectorHealthCheckTests.cs` — same matrix.
+    - `FalkorDbHealthCheckTests.cs` — healthy / connection-refused / unknown-error.
+    - `BackendHealthResponseWriterTests.cs` — JSON shape assertions for healthy / partially-degraded / fully-unhealthy reports + capability-affected message mapping.
 8. **Integration tests** at `tests/Hexalith.Memories.IntegrationTests/Health/`:
-   - `HealthEndpointIntegrationTests.cs` `[Trait("Category","Integration")]` — exercises `/health`, `/alive`, `/ready` against the Aspire fixture; asserts 200 + per-backend payload when all healthy; `[Fact(Skip)]` pattern acceptable per Story 5.6 deferral if the pre-existing `CS0311 on IDaprSidecarResource` AppHost build error has not been resolved (see Story 5.6 Dev Notes). If the build error has been resolved by landing time of 8.1, un-skip.
+    - `HealthEndpointIntegrationTests.cs` `[Trait("Category","Integration")]` — exercises `/health`, `/alive`, `/ready` against the Aspire fixture; asserts 200 + per-backend payload when all healthy; `[Fact(Skip)]` pattern acceptable per Story 5.6 deferral if the pre-existing `CS0311 on IDaprSidecarResource` AppHost build error has not been resolved (see Story 5.6 Dev Notes). If the build error has been resolved by landing time of 8.1, un-skip.
 
 **What does NOT ship:**
 
-- **Deep per-tenant index health probing in `/ready`.** The readiness endpoint is instance-scoped (the Redis / FalkorDB *connection* is healthy), not tenant-scoped (index X for tenant Y is healthy). Tenant-scoped index health is already exposed via `GET /api/tenants/{tenantId}/configuration` (Story 5.5 `TenantIndexStatus`) and via `GET /api/tenants/{tenantId}/telemetry/summary` (Story 7.5). Do NOT probe every tenant's index in the health check — that is O(tenants × axes) backend load per probe and flips the semantics from "service is reachable" to "every tenant's data is reachable", which is Story 8.2 (Consistency Verification) territory, not 8.1.
+- **Deep per-tenant index health probing in `/ready`.** The readiness endpoint is instance-scoped (the Redis / FalkorDB _connection_ is healthy), not tenant-scoped (index X for tenant Y is healthy). Tenant-scoped index health is already exposed via `GET /api/tenants/{tenantId}/configuration` (Story 5.5 `TenantIndexStatus`) and via `GET /api/tenants/{tenantId}/telemetry/summary` (Story 7.5). Do NOT probe every tenant's index in the health check — that is O(tenants × axes) backend load per probe and flips the semantics from "service is reachable" to "every tenant's data is reachable", which is Story 8.2 (Consistency Verification) territory, not 8.1.
 - **Alert thresholds / SLO definitions.** The endpoints emit the signal; operator wiring to alerts / PagerDuty / etc. is downstream. Documented as out-of-scope in `docs/dev/health-checks.md`.
 - **A separate `/metrics` Prometheus endpoint.** Metrics flow via the OTLP exporter wired in Story 7.5 `ConfigureOpenTelemetry`. Health checks are a complementary signal (liveness/readiness boolean-ish) not a metric ingestion path.
 - **Circuit-breaker state exposure.** The three backend checks are point-in-time probes; Polly circuit-breaker state (if any is ever added) is NOT surfaced here. If a future story adds circuit breakers, it extends the JSON response writer.
-- **Consistency verification across backends.** Story 8.2 ships `ConsistencyVerificationWorkflow` (FR73). 8.1 only reports backend *connectivity*, not cross-backend *data consistency*.
+- **Consistency verification across backends.** Story 8.2 ships `ConsistencyVerificationWorkflow` (FR73). 8.1 only reports backend _connectivity_, not cross-backend _data consistency_.
 - **Data export functionality.** Story 8.3 (FR71). Orthogonal.
-- **Rate-limiting of probe requests.** Orchestrator probes are typically 1-5 Hz; the three backend pings (FT._LIST + MODULE LIST + GRAPH.LIST) are each <1 ms against a healthy local Redis. No throttling needed; documented in `docs/dev/health-checks.md` under "Probe cost".
+- **Rate-limiting of probe requests.** Orchestrator probes are typically 1-5 Hz; the three backend pings (FT.\_LIST + MODULE LIST + GRAPH.LIST) are each <1 ms against a healthy local Redis. No throttling needed; documented in `docs/dev/health-checks.md` under "Probe cost".
 - **Retry-After header on 503 responses.** ASP.NET Core's default health-check handler does NOT emit `Retry-After`. Story 5.6 adds `Retry-After: 5` to search-endpoint 503s, but that is request-flow semantic — orchestrator probes have their own retry cadence (`periodSeconds` in Kubernetes). Leave absent to avoid surprising probe behavior.
 - **Per-backend timeout overrides.** All three backend checks share the existing 3-second timeout already used for DAPR checks (`Program.cs:37`). Do NOT introduce per-backend timeout configuration in MVP — adds config surface for no current use case.
 - **Graph axis optionality signal.** Architecture line 151 says graph axis is "architecturally optional"; if FalkorDB is intentionally disabled, the check still reports `Degraded` + capability message — it does NOT self-configure to skip. Phase 2 concern if graph-optional deployments become common.
@@ -69,16 +69,16 @@ Status: ready-for-dev
 
 **Risk → Guard test mapping** (each risk's mitigation is pinned by a specific test):
 
-| # | Risk | Guard test |
-|---|------|-----------|
-| 1 | Status-aggregation breaks orchestration | `BackendHealthResponseWriterTests.OneBackendDown_ReturnsDegraded` + `ReadyEndpointAggregationTests` (in-memory WebApplicationFactory) + `HealthEndpointIntegrationTests.ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities` (if Aspire fixture builds) |
-| 2 | Sidecar in liveness → cascading restarts | `ProgramHealthCheckRegistrationTests` asserts `dapr-sidecar` tag set = `["live", "ready"]`; operational mitigation is documented `failureThreshold ≥3` in `docs/dev/health-checks.md` |
-| 3 | Redis Stack module detection fragility | `RedisVectorHealthCheckTests` — known-good `MODULE LIST` shapes + lenient parser for ambiguous responses |
-| 4 | Probe storm on cold start | Documented `initialDelaySeconds ≥15` in docs (orchestrator config); no unit-level guard — failure mode is operator-configurable |
-| 5 | FalkorDB connection classifier ambiguity | `FalkorDbHealthCheckTests` — verifies keyed multiplexer resolution + capability message is "graph" not "Redis" |
-| 6 | JSON contract drift vs. `TenantIndexStatus` | `BackendHealthResponseWriterTests.JsonShape_MatchesDocumentedSchema` pins camelCase + field names |
-| 7 | Trace-exclusion regression via custom writer | `Telemetry_HealthEndpointNotTraced` (pre-existing from 7.5) + `BackendHealthResponseWriter_Invocation_DoesNotCreateMemoriesSpan` (new) |
-| 8 | Capability catalog drift from registrations | `BackendCapabilityCatalogTests` — every registered check name has an entry |
+| #   | Risk                                         | Guard test                                                                                                                                                                                                                                                     |
+| --- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Status-aggregation breaks orchestration      | `BackendHealthResponseWriterTests.OneBackendDown_ReturnsDegraded` + `ReadyEndpointAggregationTests` (in-memory WebApplicationFactory) + `HealthEndpointIntegrationTests.ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities` (if Aspire fixture builds) |
+| 2   | Sidecar in liveness → cascading restarts     | `ProgramHealthCheckRegistrationTests` asserts `dapr-sidecar` tag set = `["live", "ready"]`; operational mitigation is documented `failureThreshold ≥3` in `docs/dev/health-checks.md`                                                                          |
+| 3   | Redis Stack module detection fragility       | `RedisVectorHealthCheckTests` — known-good `MODULE LIST` shapes + lenient parser for ambiguous responses                                                                                                                                                       |
+| 4   | Probe storm on cold start                    | Documented `initialDelaySeconds ≥15` in docs (orchestrator config); no unit-level guard — failure mode is operator-configurable                                                                                                                                |
+| 5   | FalkorDB connection classifier ambiguity     | `FalkorDbHealthCheckTests` — verifies keyed multiplexer resolution + capability message is "graph" not "Redis"                                                                                                                                                 |
+| 6   | JSON contract drift vs. `TenantIndexStatus`  | `BackendHealthResponseWriterTests.JsonShape_MatchesDocumentedSchema` pins camelCase + field names                                                                                                                                                              |
+| 7   | Trace-exclusion regression via custom writer | `Telemetry_HealthEndpointNotTraced` (pre-existing from 7.5) + `BackendHealthResponseWriter_Invocation_DoesNotCreateMemoriesSpan` (new)                                                                                                                         |
+| 8   | Capability catalog drift from registrations  | `BackendCapabilityCatalogTests` — every registered check name has an entry                                                                                                                                                                                     |
 
 ## Story
 
@@ -101,25 +101,27 @@ so that I can detect infrastructure issues before they impact users and integrat
    **When** the readiness probe returns,
    **Then** HTTP status is `200 OK`
    **And** the JSON response body for `GET /ready` has shape (five entries — the `ready`-tagged checks; `self` does NOT appear here because it is tagged `live` only):
-   ```json
-   {
-     "schemaVersion": 1,
-     "status": "Healthy",
-     "totalDurationMs": <int>,
-     "entries": {
-       "dapr-sidecar":   { "status": "Healthy", "description": "Dapr sidecar is responsive.", "durationMs": <int> },
-       "dapr-statestore":{ "status": "Healthy", "description": "Dapr state store 'statestore' is accessible.", "durationMs": <int> },
-       "redisearch":     { "status": "Healthy", "description": "RediSearch module reachable; N indexes loaded.", "durationMs": <int> },
-       "redis-vector":   { "status": "Healthy", "description": "Redis Vector capability reachable.", "durationMs": <int> },
-       "falkordb":       { "status": "Healthy", "description": "FalkorDB reachable; N graphs.", "durationMs": <int> }
-     }
-   }
-   ```
-   **And** the JSON is served with `Content-Type: application/json` (the default plain-text writer is replaced by `BackendHealthResponseWriter`).
-   **And** endpoint-to-entries composition is:
-   - `GET /alive` → two entries: `self` + `dapr-sidecar` (both `live`-tagged).
-   - `GET /ready` → five entries: `dapr-sidecar` + `dapr-statestore` + `redisearch` + `redis-vector` + `falkordb` (all `ready`-tagged). Note `dapr-sidecar` appears in BOTH endpoints because it carries both tags.
-   - `GET /health` → six entries: the union of all registered checks (no predicate).
+
+    ```json
+    {
+      "schemaVersion": 1,
+      "status": "Healthy",
+      "totalDurationMs": <int>,
+      "entries": {
+        "dapr-sidecar":   { "status": "Healthy", "description": "Dapr sidecar is responsive.", "durationMs": <int> },
+        "dapr-statestore":{ "status": "Healthy", "description": "Dapr state store 'statestore' is accessible.", "durationMs": <int> },
+        "redisearch":     { "status": "Healthy", "description": "RediSearch module reachable; N indexes loaded.", "durationMs": <int> },
+        "redis-vector":   { "status": "Healthy", "description": "Redis Vector capability reachable.", "durationMs": <int> },
+        "falkordb":       { "status": "Healthy", "description": "FalkorDB reachable; N graphs.", "durationMs": <int> }
+      }
+    }
+    ```
+
+    **And** the JSON is served with `Content-Type: application/json` (the default plain-text writer is replaced by `BackendHealthResponseWriter`).
+    **And** endpoint-to-entries composition is:
+    - `GET /alive` → two entries: `self` + `dapr-sidecar` (both `live`-tagged).
+    - `GET /ready` → five entries: `dapr-sidecar` + `dapr-statestore` + `redisearch` + `redis-vector` + `falkordb` (all `ready`-tagged). Note `dapr-sidecar` appears in BOTH endpoints because it carries both tags.
+    - `GET /health` → six entries: the union of all registered checks (no predicate).
 
 3. **One backend unhealthy → aggregate `Degraded` with capability-affected message (AC3 from epic).**
    **Given** one backend is unhealthy (e.g., FalkorDB down — `RedisConnectionException` on `GRAPH.LIST`),
@@ -168,18 +170,18 @@ so that I can detect infrastructure issues before they impact users and integrat
    **And** Story 7.5's `Telemetry_HealthEndpointNotTraced` passes without modification
    **And** Story 7.5's `ConfigureOpenTelemetry` flow is NOT modified by this story (8.1 does not touch `ServiceDefaults/Extensions.cs` apart from the response-writer wiring; the meter / source / health-path filter remain exactly as 7.5 left them).
 
-9. **Tests cover the full health-check surface.** *(AC #9 is the **authoritative** source for test-class inventory and per-class test counts. The "Testing standards" section in Dev Notes documents conventions only — if a count in that section conflicts with a number here, this AC wins.)*
+9. **Tests cover the full health-check surface.** _(AC #9 is the **authoritative** source for test-class inventory and per-class test counts. The "Testing standards" section in Dev Notes documents conventions only — if a count in that section conflicts with a number here, this AC wins.)_
    **Given** the consolidated test projects,
    **When** `dotnet test` runs,
    **Then** the following classes exist and pass (Tier 1 — unit — unless marked Integration):
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs` — healthy / connection-refused (`RedisConnectionException`) / LOADING response / module-missing / null-context paths.
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/RedisVectorHealthCheckTests.cs` — 6 tests: same matrix as RediSearch + an explicit "MODULE LIST returned but vector module absent" case. Authoritative count; supersedes any earlier "5" figure.
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs` — healthy / `RedisConnectionException` / `RedisServerException` / driver-level `Exception` (per `TenantMetricsService.GetFalkorDbNodeCountAsync` pattern lines 241-248).
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendHealthResponseWriterTests.cs` — JSON schema (AC #7), all-healthy shape, one-backend-degraded shape, fully-unhealthy shape, capability-affected message mapping, **AOT-guard roundtrip** (serialize then deserialize; assert every documented V1 property is present with the expected name — catches the silent anonymous-type/AOT regression described in Task 3.3).
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendCapabilityCatalogTests.cs` — asserts every registered backend check name resolves to a non-empty `affectedCapabilities` list.
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs` — asserts (a) three backend checks registered with tag `"ready"`; (b) `dapr-sidecar` tagged `["live", "ready"]`; (c) `dapr-statestore` tagged `["ready"]` (unchanged); (d) aggregate `Degraded` → 200 mapping preserved. Uses `IHealthChecksBuilder` inspection or `HealthCheckService` resolution via the test host.
-   - `tests/Hexalith.Memories.Server.Tests/HealthChecks/ReadyEndpointAggregationTests.cs` — **Tier-1 in-memory end-to-end** test using `WebApplicationFactory<Program>` with a fake failing backend check substituted via DI override. Hits `GET /ready` and asserts: aggregate `status=Degraded`, HTTP `200 OK`, `entries[<fake>].status=Degraded`, `entries[<fake>].affectedCapabilities` non-empty. **Independent of the Aspire fixture** — closes the aggregate-behavior verification gap when `HealthEndpointIntegrationTests` is `[Fact(Skip)]`'d due to the 5.6 CS0311 AppHost build error. This test is the definitive runtime guarantee that Risk #1's mitigation actually works end-to-end.
-   - `tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs` `[Trait("Category","Integration")]` — three scenarios: (1) all-healthy returns 200 with full payload; (2) FalkorDB down (stop container) returns 200 with `status=Degraded` + `falkordb.status=Degraded` + capability message; (3) DAPR sidecar down returns 503 with `status=Unhealthy`. `[Fact(Skip)]` pattern acceptable if pre-existing CS0311 AppHost build error from 5.6 Dev Notes remains unresolved; un-skip otherwise.
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs` — healthy / connection-refused (`RedisConnectionException`) / LOADING response / module-missing / null-context paths.
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/RedisVectorHealthCheckTests.cs` — 6 tests: same matrix as RediSearch + an explicit "MODULE LIST returned but vector module absent" case. Authoritative count; supersedes any earlier "5" figure.
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs` — healthy / `RedisConnectionException` / `RedisServerException` / driver-level `Exception` (per `TenantMetricsService.GetFalkorDbNodeCountAsync` pattern lines 241-248).
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendHealthResponseWriterTests.cs` — JSON schema (AC #7), all-healthy shape, one-backend-degraded shape, fully-unhealthy shape, capability-affected message mapping, **AOT-guard roundtrip** (serialize then deserialize; assert every documented V1 property is present with the expected name — catches the silent anonymous-type/AOT regression described in Task 3.3).
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendCapabilityCatalogTests.cs` — asserts every registered backend check name resolves to a non-empty `affectedCapabilities` list.
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs` — asserts (a) three backend checks registered with tag `"ready"`; (b) `dapr-sidecar` tagged `["live", "ready"]`; (c) `dapr-statestore` tagged `["ready"]` (unchanged); (d) aggregate `Degraded` → 200 mapping preserved. Uses `IHealthChecksBuilder` inspection or `HealthCheckService` resolution via the test host.
+    - `tests/Hexalith.Memories.Server.Tests/HealthChecks/ReadyEndpointAggregationTests.cs` — **Tier-1 in-memory end-to-end** test using `WebApplicationFactory<Program>` with a fake failing backend check substituted via DI override. Hits `GET /ready` and asserts: aggregate `status=Degraded`, HTTP `200 OK`, `entries[<fake>].status=Degraded`, `entries[<fake>].affectedCapabilities` non-empty. **Independent of the Aspire fixture** — closes the aggregate-behavior verification gap when `HealthEndpointIntegrationTests` is `[Fact(Skip)]`'d due to the 5.6 CS0311 AppHost build error. This test is the definitive runtime guarantee that Risk #1's mitigation actually works end-to-end.
+    - `tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs` `[Trait("Category","Integration")]` — three scenarios: (1) all-healthy returns 200 with full payload; (2) FalkorDB down (stop container) returns 200 with `status=Degraded` + `falkordb.status=Degraded` + capability message; (3) DAPR sidecar down returns 503 with `status=Unhealthy`. `[Fact(Skip)]` pattern acceptable if pre-existing CS0311 AppHost build error from 5.6 Dev Notes remains unresolved; un-skip otherwise.
 
 10. **`docs/dev/health-checks.md` documents the health contract.**
     **Given** an operator or developer wants to wire Memories into an orchestrator,
@@ -206,158 +208,171 @@ so that I can detect infrastructure issues before they impact users and integrat
 
 ---
 
-- [ ] **Task 1: Create `RediSearchHealthCheck` + `RedisVectorHealthCheck` (AC: #1, #2, #3, #7, #9)**
-  - [ ] 1.1 Create `src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs` — `public sealed class` implementing `IHealthCheck`. Constructor takes `[FromKeyedServices("redis")] IConnectionMultiplexer redis` (mirrors `TenantMetricsService` line 40-41 pattern — the KeyedServices attribute is tolerated on constructor params for ASP.NET Core DI). Implementation: on `CheckHealthAsync`, execute `FT._LIST` against `redis.GetDatabase()` via `db.ExecuteAsync("FT._LIST")`. Return `HealthCheckResult.Healthy($"RediSearch module reachable; {indexCount} indexes loaded.")` on success (parse result as `RedisResult[]` and use `.Length` for `indexCount`). On `RedisConnectionException` / `RedisServerException` LOADING|BUSY → `new HealthCheckResult(context.Registration.FailureStatus, $"RediSearch unreachable: {ex.GetType().Name}", ex)`. On generic `RedisException` → same Degraded. The `context.Registration.FailureStatus` resolves to `Degraded` because Task 4 registers the check with `failureStatus: HealthStatus.Degraded`.
-  - [ ] 1.2 Copyright header matches the existing `DaprSidecarHealthCheck.cs` block (ITANEO header). Use file-scoped namespace + primary-constructor pattern (`public sealed class RediSearchHealthCheck([FromKeyedServices("redis")] IConnectionMultiplexer redis) : IHealthCheck` — same shape as existing `DaprStateStoreHealthCheck` line 13). Validate non-null in the primary-constructor-to-field assignment (same pattern as existing checks).
-  - [ ] 1.2a **Log-level guidance.** The per-probe code path emits at most one log on state transition — NOT per successful probe. Inject an `ILogger<RediSearchHealthCheck>` and use a `[LoggerMessage(EventId = 8101, Level = LogLevel.Warning, Message = "RediSearch probe transitioned to Degraded: {reason}")]` partial method. Do NOT log on every Healthy result — orchestrator probes at 5Hz × 10 pods × 3 backends = 150 log entries/sec of noise. The framework-level `Microsoft.Extensions.Diagnostics.HealthChecks` logger emits its own Debug-level trace of each probe; that's sufficient for diagnostic purposes. EventIds 8101-8103 for RediSearch / 8111-8113 for Redis Vector / 8121-8123 for FalkorDB (state-transitions-only from the 8100-8199 bank reserved by this story — see "Previous story intelligence").
-  - [ ] 1.3 Create `src/Hexalith.Memories.Server/HealthChecks/RedisVectorHealthCheck.cs` — same shape. Implementation: execute `MODULE LIST` via `db.ExecuteAsync("MODULE", "LIST")`; iterate the returned `RedisResult[]`, parse each entry as an array, find one whose `name` field is `"search"` (Redis Stack bundles RediSearch + Vector into the `search` module — verified against architecture.md line 228 `redis/redis-stack`). Return `Healthy("Redis Vector capability reachable.")` if found; `Degraded("Vector module absent from MODULE LIST response.")` if the module is not present. On exception: same pattern as 1.1.
-  - [ ] 1.4 Do NOT add tenant-scoped probing (no `FT.INFO {tenantId}`). Instance-level probe only — per "What does NOT ship" bullet #1.
-  - [ ] 1.5 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs` — mirror the `DaprSidecarHealthCheckTests` shape (5 tests: happy / connection-refused / LOADING / module-missing / null-context). Use `NSubstitute.For<IConnectionMultiplexer>()` + mocked `IDatabase.ExecuteAsync` returning canned `RedisResult`. Shouldly assertions. Tests inherit the existing `Hexalith.Memories.Server.Tests` test project setup — no new fixture wiring needed.
-  - [ ] 1.6 Unit tests `...RedisVectorHealthCheckTests.cs` — same matrix + specific case for "MODULE LIST returned but vector module absent".
+- [x] **Task 1: Create `RediSearchHealthCheck` + `RedisVectorHealthCheck` (AC: #1, #2, #3, #7, #9)**
+    - [x] 1.1 Create `src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs` — `public sealed class` implementing `IHealthCheck`. Constructor takes `[FromKeyedServices("redis")] IConnectionMultiplexer redis` (mirrors `TenantMetricsService` line 40-41 pattern — the KeyedServices attribute is tolerated on constructor params for ASP.NET Core DI). Implementation: on `CheckHealthAsync`, execute `FT._LIST` against `redis.GetDatabase()` via `db.ExecuteAsync("FT._LIST")`. Return `HealthCheckResult.Healthy($"RediSearch module reachable; {indexCount} indexes loaded.")` on success (parse result as `RedisResult[]` and use `.Length` for `indexCount`). On `RedisConnectionException` / `RedisServerException` LOADING|BUSY → `new HealthCheckResult(context.Registration.FailureStatus, $"RediSearch unreachable: {ex.GetType().Name}", ex)`. On generic `RedisException` → same Degraded. The `context.Registration.FailureStatus` resolves to `Degraded` because Task 4 registers the check with `failureStatus: HealthStatus.Degraded`.
+    - [x] 1.2 Copyright header matches the existing `DaprSidecarHealthCheck.cs` block (ITANEO header). Use file-scoped namespace + primary-constructor pattern (`public sealed class RediSearchHealthCheck([FromKeyedServices("redis")] IConnectionMultiplexer redis) : IHealthCheck` — same shape as existing `DaprStateStoreHealthCheck` line 13). Validate non-null in the primary-constructor-to-field assignment (same pattern as existing checks).
+    - [x] 1.2a **Log-level guidance.** The per-probe code path emits at most one log on state transition — NOT per successful probe. Inject an `ILogger<RediSearchHealthCheck>` and use a `[LoggerMessage(EventId = 8101, Level = LogLevel.Warning, Message = "RediSearch probe transitioned to Degraded: {reason}")]` partial method. Do NOT log on every Healthy result — orchestrator probes at 5Hz × 10 pods × 3 backends = 150 log entries/sec of noise. The framework-level `Microsoft.Extensions.Diagnostics.HealthChecks` logger emits its own Debug-level trace of each probe; that's sufficient for diagnostic purposes. EventIds 8101-8103 for RediSearch / 8111-8113 for Redis Vector / 8121-8123 for FalkorDB (state-transitions-only from the 8100-8199 bank reserved by this story — see "Previous story intelligence").
+    - [x] 1.3 Create `src/Hexalith.Memories.Server/HealthChecks/RedisVectorHealthCheck.cs` — same shape. Implementation: execute `MODULE LIST` via `db.ExecuteAsync("MODULE", "LIST")`; iterate the returned `RedisResult[]`, parse each entry as an array, find one whose `name` field is `"search"` (Redis Stack bundles RediSearch + Vector into the `search` module — verified against architecture.md line 228 `redis/redis-stack`). Return `Healthy("Redis Vector capability reachable.")` if found; `Degraded("Vector module absent from MODULE LIST response.")` if the module is not present. On exception: same pattern as 1.1.
+    - [x] 1.4 Do NOT add tenant-scoped probing (no `FT.INFO {tenantId}`). Instance-level probe only — per "What does NOT ship" bullet #1.
+    - [x] 1.5 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs` — mirror the `DaprSidecarHealthCheckTests` shape (5 tests: happy / connection-refused / LOADING / module-missing / null-context). Use `NSubstitute.For<IConnectionMultiplexer>()` + mocked `IDatabase.ExecuteAsync` returning canned `RedisResult`. Shouldly assertions. Tests inherit the existing `Hexalith.Memories.Server.Tests` test project setup — no new fixture wiring needed.
+    - [x] 1.6 Unit tests `...RedisVectorHealthCheckTests.cs` — same matrix + specific case for "MODULE LIST returned but vector module absent".
 
-- [ ] **Task 2: Create `FalkorDbHealthCheck` (AC: #1, #3, #9)**
-  - [ ] 2.1 Create `src/Hexalith.Memories.Server/HealthChecks/FalkorDbHealthCheck.cs` — `public sealed class` implementing `IHealthCheck`. Constructor takes `[FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb`. Implementation: wrap a `GRAPH.LIST` call. Use `NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase())` + `falkor.ListAsync()` if NFalkorDB exposes it; otherwise fall back to `falkorDb.GetDatabase().ExecuteAsync("GRAPH.LIST")` and parse the result array. Return `Healthy($"FalkorDB reachable; {graphCount} graphs.")` on success.
-  - [ ] 2.2 Exception handling mirror the pattern at `TenantMetricsService.GetFalkorDbNodeCountAsync` lines 225-248: `RedisServerException` with "no such graph"/"unknown graph" → `Healthy` (empty instance is still healthy — NOT a failure); other `RedisServerException` → Degraded; `RedisConnectionException` → Degraded; generic `Exception` catch-all (NFalkorDB can surface driver-level parse failures) → Degraded. Never throw from the method.
-  - [ ] 2.3 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs` — 4 tests (healthy with graphs / healthy empty / connection-refused / server-exception).
+- [x] **Task 2: Create `FalkorDbHealthCheck` (AC: #1, #3, #9)**
+    - [x] 2.1 Create `src/Hexalith.Memories.Server/HealthChecks/FalkorDbHealthCheck.cs` — `public sealed class` implementing `IHealthCheck`. Constructor takes `[FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb`. Implementation: wrap a `GRAPH.LIST` call. Use `NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase())` + `falkor.ListAsync()` if NFalkorDB exposes it; otherwise fall back to `falkorDb.GetDatabase().ExecuteAsync("GRAPH.LIST")` and parse the result array. Return `Healthy($"FalkorDB reachable; {graphCount} graphs.")` on success.
+    - [x] 2.2 Exception handling mirror the pattern at `TenantMetricsService.GetFalkorDbNodeCountAsync` lines 225-248: `RedisServerException` with "no such graph"/"unknown graph" → `Healthy` (empty instance is still healthy — NOT a failure); other `RedisServerException` → Degraded; `RedisConnectionException` → Degraded; generic `Exception` catch-all (NFalkorDB can surface driver-level parse failures) → Degraded. Never throw from the method.
+    - [x] 2.3 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs` — 4 tests (healthy with graphs / healthy empty / connection-refused / server-exception).
 
-- [ ] **Task 3: Create `BackendCapabilityCatalog` + `BackendHealthResponseWriter` (AC: #2, #3, #7, #8)**
-  - [ ] 3.1 Create `src/Hexalith.Memories.Server/HealthChecks/BackendCapabilityCatalog.cs` — `internal static class` with a `public static IReadOnlyDictionary<string, IReadOnlyList<string>> Map` containing:
-    ```csharp
-    ["redisearch"]    = ["syntactic-search", "hybrid-search-syntactic-axis"],
-    ["redis-vector"]  = ["semantic-search", "hybrid-search-semantic-axis"],
-    ["falkordb"]      = ["graph-traversal", "graph-scoped-search"],
-    ["dapr-sidecar"]  = ["all-service-invocation", "workflow-orchestration", "actor-runtime"],
-    ["dapr-statestore"] = ["workflow-state-persistence", "actor-state-persistence"]
-    ```
-    Expose a `static IReadOnlyList<string> GetCapabilities(string checkName)` that returns `Map[checkName]` or an empty list. Use `StringComparer.Ordinal` for the dictionary (check names are internal IDs, not user-facing text).
-  - [ ] 3.2 Create `src/Hexalith.Memories.Server/HealthChecks/BackendHealthResponseWriter.cs` — `internal static class` with `public static Task WriteAsync(HttpContext context, HealthReport report)`. Serializes to JSON via `System.Text.Json.JsonSerializer` using `MemoriesJsonContext.Options` (the camelCase + source-gen resolver). Shape matches AC #2 exactly:
-    ```csharp
-    new
-    {
-        schemaVersion = 1, // Pinned V1 per AC #7. Increment (+ migration note in docs/dev/health-checks.md) on breaking rename/removal. Additive fields stay at 1.
-        status = report.Status.ToString(), // "Healthy" | "Degraded" | "Unhealthy"
-        totalDurationMs = (int)report.TotalDuration.TotalMilliseconds,
-        entries = report.Entries.ToDictionary(
-            kv => kv.Key,
-            kv => new
-            {
-                status = kv.Value.Status.ToString(),
-                description = kv.Value.Description ?? string.Empty,
-                durationMs = (int)kv.Value.Duration.TotalMilliseconds,
-                affectedCapabilities = kv.Value.Status == HealthStatus.Healthy
-                    ? Array.Empty<string>()
-                    : BackendCapabilityCatalog.GetCapabilities(kv.Key).ToArray()
-            })
-    }
-    ```
-    Set `context.Response.ContentType = "application/json; charset=utf-8"`. Use `await context.Response.WriteAsync(json)`.
-  - [ ] 3.3 Do NOT register `BackendHealthResponseWriter` types in `MemoriesJsonContext` — the writer uses anonymous objects and falls back to the reflection-based resolver in `MemoriesJsonContext.Options` (the `Combine(MemoriesJsonSourceGenerationContext.Default, new DefaultJsonTypeInfoResolver())` at line 126-128). AOT build is NOT expected on the Server project (per csproj — `Microsoft.NET.Sdk.Web`, no `PublishAot`). If Phase 2 enables AOT on the server, a follow-up story swaps the anonymous types for named records and adds them to the JSON context.
-  - [ ] 3.3a **No probe correlation ID in V1.** The response entries do NOT include a `probeId`, `traceId`, or `traceparent`-echo field. Rationale: health paths are deliberately excluded from tracing (Story 7.5 AC #5) — generating a trace just for correlation would flip that invariant. Operators debugging a failed probe correlate by timestamp: the `durationMs` + the DAPR sidecar log (DaprClient emits its own correlation) + the system clock. If operators ask for correlation IDs later, a future story can add a V1-compatible `probeId` field (monotonic counter from `Interlocked.Increment` on a static `long`; zero allocation, no trace dependency). Document this decision in `docs/dev/health-checks.md` under "Debugging failed probes" so operators aren't surprised.
-  - [ ] 3.4 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendHealthResponseWriterTests.cs` — 6 tests: (a) all-healthy JSON shape; (b) one-backend-Degraded with affectedCapabilities populated; (c) unhealthy DAPR sidecar with its own capability list; (d) unknown check name gets empty capabilities (graceful degradation, no exception); (e) `ContentType` + encoding assertion; (f) **AOT-guard roundtrip** — deserialize the emitted JSON back into a `Dictionary<string,JsonElement>` and assert each documented V1 property name is present with the expected type (string for `status` / `description`, number for `durationMs` / `totalDurationMs`, array for `affectedCapabilities`). Rationale: the writer uses anonymous types intentionally (see Task 3.3); if `PublishAot` is ever enabled on Server without the follow-up conversion to named records, serialization could silently emit `{}`. This test traps the regression without requiring an AOT build. Build a fake `HealthReport` via `new HealthReport(entries, status, duration)` — all constructors are public.
-  - [ ] 3.5 Unit test `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendCapabilityCatalogTests.cs` — asserts every key in the catalog map matches one of the five check names used in `Program.cs` registrations (use `nameof`-based snapshot or a pinned array — Task 4.3 updates the array alongside the registrations).
+- [x] **Task 3: Create `BackendCapabilityCatalog` + `BackendHealthResponseWriter` (AC: #2, #3, #7, #8)**
+    - [x] 3.1 Create `src/Hexalith.Memories.Server/HealthChecks/BackendCapabilityCatalog.cs` — `internal static class` with a `public static IReadOnlyDictionary<string, IReadOnlyList<string>> Map` containing:
+        ```csharp
+        ["redisearch"]    = ["syntactic-search", "hybrid-search-syntactic-axis"],
+        ["redis-vector"]  = ["semantic-search", "hybrid-search-semantic-axis"],
+        ["falkordb"]      = ["graph-traversal", "graph-scoped-search"],
+        ["dapr-sidecar"]  = ["all-service-invocation", "workflow-orchestration", "actor-runtime"],
+        ["dapr-statestore"] = ["workflow-state-persistence", "actor-state-persistence"]
+        ```
+        Expose a `static IReadOnlyList<string> GetCapabilities(string checkName)` that returns `Map[checkName]` or an empty list. Use `StringComparer.Ordinal` for the dictionary (check names are internal IDs, not user-facing text).
+    - [x] 3.2 Create `src/Hexalith.Memories.Server/HealthChecks/BackendHealthResponseWriter.cs` — `internal static class` with `public static Task WriteAsync(HttpContext context, HealthReport report)`. Serializes to JSON via `System.Text.Json.JsonSerializer` using `MemoriesJsonContext.Options` (the camelCase + source-gen resolver). Shape matches AC #2 exactly:
+        ```csharp
+        new
+        {
+            schemaVersion = 1, // Pinned V1 per AC #7. Increment (+ migration note in docs/dev/health-checks.md) on breaking rename/removal. Additive fields stay at 1.
+            status = report.Status.ToString(), // "Healthy" | "Degraded" | "Unhealthy"
+            totalDurationMs = (int)report.TotalDuration.TotalMilliseconds,
+            entries = report.Entries.ToDictionary(
+                kv => kv.Key,
+                kv => new
+                {
+                    status = kv.Value.Status.ToString(),
+                    description = kv.Value.Description ?? string.Empty,
+                    durationMs = (int)kv.Value.Duration.TotalMilliseconds,
+                    affectedCapabilities = kv.Value.Status == HealthStatus.Healthy
+                        ? Array.Empty<string>()
+                        : BackendCapabilityCatalog.GetCapabilities(kv.Key).ToArray()
+                })
+        }
+        ```
+        Set `context.Response.ContentType = "application/json; charset=utf-8"`. Use `await context.Response.WriteAsync(json)`.
+    - [x] 3.3 Do NOT register `BackendHealthResponseWriter` types in `MemoriesJsonContext` — the writer uses anonymous objects and falls back to the reflection-based resolver in `MemoriesJsonContext.Options` (the `Combine(MemoriesJsonSourceGenerationContext.Default, new DefaultJsonTypeInfoResolver())` at line 126-128). AOT build is NOT expected on the Server project (per csproj — `Microsoft.NET.Sdk.Web`, no `PublishAot`). If Phase 2 enables AOT on the server, a follow-up story swaps the anonymous types for named records and adds them to the JSON context.
+    - [x] 3.3a **No probe correlation ID in V1.** The response entries do NOT include a `probeId`, `traceId`, or `traceparent`-echo field. Rationale: health paths are deliberately excluded from tracing (Story 7.5 AC #5) — generating a trace just for correlation would flip that invariant. Operators debugging a failed probe correlate by timestamp: the `durationMs` + the DAPR sidecar log (DaprClient emits its own correlation) + the system clock. If operators ask for correlation IDs later, a future story can add a V1-compatible `probeId` field (monotonic counter from `Interlocked.Increment` on a static `long`; zero allocation, no trace dependency). Document this decision in `docs/dev/health-checks.md` under "Debugging failed probes" so operators aren't surprised.
+    - [x] 3.4 Unit tests `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendHealthResponseWriterTests.cs` — 6 tests: (a) all-healthy JSON shape; (b) one-backend-Degraded with affectedCapabilities populated; (c) unhealthy DAPR sidecar with its own capability list; (d) unknown check name gets empty capabilities (graceful degradation, no exception); (e) `ContentType` + encoding assertion; (f) **AOT-guard roundtrip** — deserialize the emitted JSON back into a `Dictionary<string,JsonElement>` and assert each documented V1 property name is present with the expected type (string for `status` / `description`, number for `durationMs` / `totalDurationMs`, array for `affectedCapabilities`). Rationale: the writer uses anonymous types intentionally (see Task 3.3); if `PublishAot` is ever enabled on Server without the follow-up conversion to named records, serialization could silently emit `{}`. This test traps the regression without requiring an AOT build. Build a fake `HealthReport` via `new HealthReport(entries, status, duration)` — all constructors are public.
+    - [x] 3.5 Unit test `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendCapabilityCatalogTests.cs` — asserts every key in the catalog map matches one of the five check names used in `Program.cs` registrations (use `nameof`-based snapshot or a pinned array — Task 4.3 updates the array alongside the registrations).
 
-- [ ] **Task 4: Register new checks + re-tag sidecar in `Program.cs` (AC: #1, #4, #5, #8)**
-  - [ ] 4.1 Open `src/Hexalith.Memories.Server/Program.cs` at lines 37-51. Extend the existing `AddHealthChecks()` chain:
-    ```csharp
-    .AddCheck<DaprSidecarHealthCheck>(
-        "dapr-sidecar",
-        failureStatus: HealthStatus.Unhealthy,
-        tags: ["live", "ready"],        // CHANGED — was ["ready"]
-        timeout: healthCheckTimeout)
-    .Add(new HealthCheckRegistration(
-        "dapr-statestore",
-        sp => new DaprStateStoreHealthCheck(
-            sp.GetRequiredService<DaprClient>(),
-            "statestore"),
-        failureStatus: HealthStatus.Unhealthy,
-        tags: ["ready"],
-        timeout: healthCheckTimeout))
-    .AddCheck<RediSearchHealthCheck>(
-        "redisearch",
-        failureStatus: HealthStatus.Degraded,
-        tags: ["ready"],
-        timeout: healthCheckTimeout)
-    .AddCheck<RedisVectorHealthCheck>(
-        "redis-vector",
-        failureStatus: HealthStatus.Degraded,
-        tags: ["ready"],
-        timeout: healthCheckTimeout)
-    .AddCheck<FalkorDbHealthCheck>(
-        "falkordb",
-        failureStatus: HealthStatus.Degraded,
-        tags: ["ready"],
-        timeout: healthCheckTimeout);
-    ```
-  - [ ] 4.2 The three new checks resolve their `IConnectionMultiplexer` via `[FromKeyedServices]` attributes on their constructors (Task 1.1, 1.3, 2.1). `AddCheck<T>` needs `T` to be constructable from DI — verify by running the unit tests before wiring if unsure (a missing keyed-service resolution throws at first probe, not at registration).
-  - [ ] 4.3 If Task 3.5 uses a pinned array of check names, update it to match the five names above.
-  - [ ] 4.4 Unit test `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs` — uses `WebApplicationFactory<Program>` (or a minimal test host with `Program.cs`'s `AddHealthChecks` segment refactored into a test-accessible extension IF needed — see Dev Notes "Program.cs testability"). Assert: resolve `IOptions<HealthCheckServiceOptions>` (or iterate the registered `HealthCheckRegistration` via `IHealthChecksBuilder` inspection pattern) → five checks registered → tag sets match AC #4 + AC #8. This test is the guard for the tag-list regression risk.
+- [x] **Task 4: Register new checks + re-tag sidecar in `Program.cs` (AC: #1, #4, #5, #8)**
+    - [x] 4.1 Open `src/Hexalith.Memories.Server/Program.cs` at lines 37-51. Extend the existing `AddHealthChecks()` chain:
+        ```csharp
+        .AddCheck<DaprSidecarHealthCheck>(
+            "dapr-sidecar",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["live", "ready"],        // CHANGED — was ["ready"]
+            timeout: healthCheckTimeout)
+        .Add(new HealthCheckRegistration(
+            "dapr-statestore",
+            sp => new DaprStateStoreHealthCheck(
+                sp.GetRequiredService<DaprClient>(),
+                "statestore"),
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready"],
+            timeout: healthCheckTimeout))
+        .AddCheck<RediSearchHealthCheck>(
+            "redisearch",
+            failureStatus: HealthStatus.Degraded,
+            tags: ["ready"],
+            timeout: healthCheckTimeout)
+        .AddCheck<RedisVectorHealthCheck>(
+            "redis-vector",
+            failureStatus: HealthStatus.Degraded,
+            tags: ["ready"],
+            timeout: healthCheckTimeout)
+        .AddCheck<FalkorDbHealthCheck>(
+            "falkordb",
+            failureStatus: HealthStatus.Degraded,
+            tags: ["ready"],
+            timeout: healthCheckTimeout);
+        ```
+    - [x] 4.2 The three new checks resolve their `IConnectionMultiplexer` via `[FromKeyedServices]` attributes on their constructors (Task 1.1, 1.3, 2.1). `AddCheck<T>` needs `T` to be constructable from DI — verify by running the unit tests before wiring if unsure (a missing keyed-service resolution throws at first probe, not at registration).
+    - [x] 4.3 If Task 3.5 uses a pinned array of check names, update it to match the five names above.
+    - [x] 4.4 Unit test `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs` — uses `WebApplicationFactory<Program>` (or a minimal test host with `Program.cs`'s `AddHealthChecks` segment refactored into a test-accessible extension IF needed — see Dev Notes "Program.cs testability"). Assert: resolve `IOptions<HealthCheckServiceOptions>` (or iterate the registered `HealthCheckRegistration` via `IHealthChecksBuilder` inspection pattern) → five checks registered → tag sets match AC #4 + AC #8. This test is the guard for the tag-list regression risk.
 
-- [ ] **Task 5: Wire `BackendHealthResponseWriter` into `MapDefaultEndpoints` (AC: #2, #5, #6, #7)**
-  - [ ] 5.1 Open `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` at lines 93-124. Modify `MapDefaultEndpoints` to set `ResponseWriter` on each `HealthCheckOptions`:
-    ```csharp
-    var healthOptions = new HealthCheckOptions
-    {
-        ResultStatusCodes = statusCodes,
-        ResponseWriter = Hexalith.Memories.Server.HealthChecks.BackendHealthResponseWriter.WriteAsync,
-    };
-    ```
-    Apply the same `ResponseWriter` to the `/alive` and `/ready` options too (each `new HealthCheckOptions { ... }` gets the writer).
-  - [ ] 5.2 **Referencing across projects:** `ServiceDefaults` does NOT currently reference `Server`. Avoid a new project reference — inverting the dependency breaks the clean "ServiceDefaults is the foundation" layering. **Resolution:** move `BackendHealthResponseWriter` to `ServiceDefaults` itself (not `Server`) at `src/Hexalith.Memories.ServiceDefaults/Health/BackendHealthResponseWriter.cs`. The `BackendCapabilityCatalog` ALSO moves to `ServiceDefaults/Health/` since the writer needs it. The three check classes STAY in `Server` (they have `Dapr.Client` / `StackExchange.Redis` / NFalkorDB dependencies that don't belong in `ServiceDefaults`). **Revise Task 3.1-3.2 paths accordingly.** `MemoriesJsonContext` lives in `Contracts` — accessible from `ServiceDefaults` because `ServiceDefaults` can reference `Contracts` cleanly (check the csproj — if it doesn't already, add the ProjectReference).
-  - [ ] 5.3 After the path change, `ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj` MUST reference `Hexalith.Memories.Contracts.csproj` (for `MemoriesJsonContext`). Check the csproj; add `<ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />` if missing.
-  - [ ] 5.4 Preserve the trace-exclusion filter at `ServiceDefaults/Extensions.cs:56-63` **byte-for-byte**. Do not reorder lines in `ConfigureOpenTelemetry`. The 7.5 regression test `Telemetry_HealthEndpointNotTraced` is the guard.
-  - [ ] 5.5 **Define health path constants as a single source of truth.** Add `internal static class HealthEndpointPaths` in `src/Hexalith.Memories.ServiceDefaults/Health/HealthEndpointPaths.cs` with three consts: `public const string Health = "/health";`, `public const string Alive = "/alive";`, `public const string Ready = "/ready";`. Replace the literal strings in BOTH `MapDefaultEndpoints` (lines 109, 113, 119) AND the trace-exclusion filter (lines 59-63) with references to these constants. Rationale: today if a dev renames `/health` → `/healthz` for an orchestrator convention, they could update the endpoint mapping but miss the filter predicate — silently breaking the Story 7.5 trace-exclusion invariant. The `Telemetry_HealthEndpointNotTraced` test would still pass against the new path, giving false assurance. One constant = one change point = no drift.
-  - [ ] 5.6 After wiring, run `dotnet build src/Hexalith.Memories.ServiceDefaults` + `dotnet build src/Hexalith.Memories.Server` to confirm the cross-project reference resolves and no `CS0246` surfaces.
+- [x] **Task 5: Wire `BackendHealthResponseWriter` into `MapDefaultEndpoints` (AC: #2, #5, #6, #7)**
+    - [x] 5.1 Open `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` at lines 93-124. Modify `MapDefaultEndpoints` to set `ResponseWriter` on each `HealthCheckOptions`:
+        ```csharp
+        var healthOptions = new HealthCheckOptions
+        {
+            ResultStatusCodes = statusCodes,
+            ResponseWriter = Hexalith.Memories.Server.HealthChecks.BackendHealthResponseWriter.WriteAsync,
+        };
+        ```
+        Apply the same `ResponseWriter` to the `/alive` and `/ready` options too (each `new HealthCheckOptions { ... }` gets the writer).
+    - [x] 5.2 **Referencing across projects:** `ServiceDefaults` does NOT currently reference `Server`. Avoid a new project reference — inverting the dependency breaks the clean "ServiceDefaults is the foundation" layering. **Resolution:** move `BackendHealthResponseWriter` to `ServiceDefaults` itself (not `Server`) at `src/Hexalith.Memories.ServiceDefaults/Health/BackendHealthResponseWriter.cs`. The `BackendCapabilityCatalog` ALSO moves to `ServiceDefaults/Health/` since the writer needs it. The three check classes STAY in `Server` (they have `Dapr.Client` / `StackExchange.Redis` / NFalkorDB dependencies that don't belong in `ServiceDefaults`). **Revise Task 3.1-3.2 paths accordingly.** `MemoriesJsonContext` lives in `Contracts` — accessible from `ServiceDefaults` because `ServiceDefaults` can reference `Contracts` cleanly (check the csproj — if it doesn't already, add the ProjectReference).
+    - [x] 5.3 After the path change, `ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj` MUST reference `Hexalith.Memories.Contracts.csproj` (for `MemoriesJsonContext`). Check the csproj; add `<ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />` if missing.
+    - [x] 5.4 Preserve the trace-exclusion filter at `ServiceDefaults/Extensions.cs:56-63` **byte-for-byte**. Do not reorder lines in `ConfigureOpenTelemetry`. The 7.5 regression test `Telemetry_HealthEndpointNotTraced` is the guard.
+    - [x] 5.5 **Define health path constants as a single source of truth.** Add `internal static class HealthEndpointPaths` in `src/Hexalith.Memories.ServiceDefaults/Health/HealthEndpointPaths.cs` with three consts: `public const string Health = "/health";`, `public const string Alive = "/alive";`, `public const string Ready = "/ready";`. Replace the literal strings in BOTH `MapDefaultEndpoints` (lines 109, 113, 119) AND the trace-exclusion filter (lines 59-63) with references to these constants. Rationale: today if a dev renames `/health` → `/healthz` for an orchestrator convention, they could update the endpoint mapping but miss the filter predicate — silently breaking the Story 7.5 trace-exclusion invariant. The `Telemetry_HealthEndpointNotTraced` test would still pass against the new path, giving false assurance. One constant = one change point = no drift.
+    - [x] 5.6 After wiring, run `dotnet build src/Hexalith.Memories.ServiceDefaults` + `dotnet build src/Hexalith.Memories.Server` to confirm the cross-project reference resolves and no `CS0246` surfaces.
 
-- [ ] **Task 6: Integration test + optional AppHost smoke (AC: #9)**
-  - [ ] 6.1 Create `tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs` with `[Trait("Category","Integration")]`. Three scenarios:
-    - `ReadyEndpoint_AllHealthy_Returns200WithFiveEntries` — fixture starts Aspire, hits `GET /ready`, parses JSON, asserts `status="Healthy"` + five entries + `redisearch.status="Healthy"` etc.
-    - `ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities` — stop the FalkorDB container resource via `IDistributedApplicationTestingBuilder` (Aspire testing supports `resource.Stop`), hit `/ready`, assert `status="Degraded"` + `falkordb.status="Degraded"` + `falkordb.affectedCapabilities=["graph-traversal","graph-scoped-search"]` + HTTP status 200.
-    - `AliveEndpoint_Default_Returns200WithSidecarCheck` — hits `/alive`, asserts entries contain `self` + `dapr-sidecar` ONLY (no backend checks).
-  - [ ] 6.2 If the Aspire fixture CS0311 build error from Story 5.6 Dev Notes is still unresolved at 8.1 landing time, apply `[Fact(Skip = "Aspire fixture build failure tracked in 5.6 Dev Notes")]` to the three tests — same deferral pattern 5.6 established. Un-skip once the fixture builds. Document this status in Completion Notes.
-  - [ ] 6.3 Do NOT write a CLI-side test for 8.1 — the CLI does not currently expose a health-check subcommand and adding one is out of scope (Story 8.2 / 8.3 may add `memories status` if operator need surfaces; don't speculate here).
+- [x] **Task 6: Integration test + optional AppHost smoke (AC: #9)**
+    - [x] 6.1 Create `tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs` with `[Trait("Category","Integration")]`. Three scenarios:
+        - `ReadyEndpoint_AllHealthy_Returns200WithFiveEntries` — fixture starts Aspire, hits `GET /ready`, parses JSON, asserts `status="Healthy"` + five entries + `redisearch.status="Healthy"` etc.
+        - `ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities` — stop the FalkorDB container resource via `IDistributedApplicationTestingBuilder` (Aspire testing supports `resource.Stop`), hit `/ready`, assert `status="Degraded"` + `falkordb.status="Degraded"` + `falkordb.affectedCapabilities=["graph-traversal","graph-scoped-search"]` + HTTP status 200.
+        - `AliveEndpoint_Default_Returns200WithSidecarCheck` — hits `/alive`, asserts entries contain `self` + `dapr-sidecar` ONLY (no backend checks).
+    - [x] 6.2 If the Aspire fixture CS0311 build error from Story 5.6 Dev Notes is still unresolved at 8.1 landing time, apply `[Fact(Skip = "Aspire fixture build failure tracked in 5.6 Dev Notes")]` to the three tests — same deferral pattern 5.6 established. Un-skip once the fixture builds. Document this status in Completion Notes.
+    - [x] 6.3 Do NOT write a CLI-side test for 8.1 — the CLI does not currently expose a health-check subcommand and adding one is out of scope (Story 8.2 / 8.3 may add `memories status` if operator need surfaces; don't speculate here).
 
-- [ ] **Task 7: Author `docs/dev/health-checks.md` (AC: #10)**
-  - [ ] 7.1 Create `docs/dev/health-checks.md`. Open with a one-paragraph statement of purpose: "Operator-facing reference for the Memories Server's liveness and readiness endpoints. Describes the probe contract, response shape, orchestrator wiring, and capability semantics. Complements [docs/dev/telemetry.md](./telemetry.md) (metrics + traces + audit events) — health checks answer 'is the service up?'; telemetry answers 'is it working well?'".
-  - [ ] 7.2 Section: **Endpoint summary** — table `Endpoint | Path | Predicate | Typical Consumer | Aggregate on failure | HTTP status`. Three rows: `/health` (no predicate, dashboard), `/alive` (live tag, Kubernetes livenessProbe → pod restart), `/ready` (ready tag, Kubernetes readinessProbe → service-rotation gate).
-  - [ ] 7.3 Section: **Check inventory** — table of five checks from Task 4 (`self`, `dapr-sidecar`, `dapr-statestore`, `redisearch`, `redis-vector`, `falkordb`). Columns: name / tags / probe description / failure status / affected capabilities. Values from `BackendCapabilityCatalog.Map` (Task 3.1).
-  - [ ] 7.4 Section: **Response shape** — the frozen V1 JSON schema from AC #2 + #7 including the top-level `schemaVersion: 1` field. Include a worked example of a degraded response (FalkorDB down). Add a note: "Schema is versioned by the `schemaVersion` field. Additive field changes keep `schemaVersion: 1`; rename/removal bumps to `schemaVersion: 2` with a migration note in this doc." Add a **sub-note on `affectedCapabilities` consumers**: "V1 ships this array as an operator-facing diagnostic signal. No production gateway or proxy today auto-routes on `affectedCapabilities` — capability-aware routing is a future story. Clients that care about capability-specialized requests (graph-only, vector-only) MUST read the array themselves and decide; they cannot assume a gateway does it for them." Add a **sub-note on debugging failed probes**: "V1 does not include a `probeId` or `traceId` field — health paths are excluded from OpenTelemetry by design (Story 7.5). Correlate failing probes with sidecar/backend logs by timestamp and `durationMs`. If correlation IDs become necessary in practice, a future story adds a V1-compatible `probeId` field (monotonic counter, zero trace overhead)."
-  - [ ] 7.5 Section: **Orchestrator probe configuration** — **Kubernetes** YAML snippet:
-    ```yaml
-    livenessProbe:
-      httpGet: { path: /alive, port: 5000 }
-      initialDelaySeconds: 10
-      periodSeconds: 10
-      failureThreshold: 3     # tolerate sidecar blips per Story 8.1 Risk #2
-    readinessProbe:
-      httpGet: { path: /ready, port: 5000 }
-      initialDelaySeconds: 15 # per Story 8.1 Risk #4 — allow multiplexer warmup
-      periodSeconds: 5
-      failureThreshold: 2
-    ```
-    **Docker** `HEALTHCHECK` (plain-Docker / Podman deployments without K8s):
-    ```dockerfile
-    # In the Dockerfile, after EXPOSE:
-    HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
-      CMD curl --fail --silent --show-error http://localhost:5000/alive || exit 1
-    ```
-    Notes on the Docker form: (a) `--start-period=20s` parallels `initialDelaySeconds: 15` + 5s buffer for image cold-start; (b) Docker has no equivalent of Kubernetes' separate readiness probe — `HEALTHCHECK` controls container status only, not upstream load-balancer rotation. For environments that need readiness semantics (e.g., Docker Swarm with external LB), probe `/ready` via an external sidecar rather than `HEALTHCHECK`; (c) the `curl` path requires the base image to include curl — for distroless or `mcr.microsoft.com/dotnet/runtime-deps` images, use `wget -q --spider` or a compiled health-check binary.
-    **Docker Compose** override (maps `HEALTHCHECK` via compose YAML without rebuilding the image):
-    ```yaml
-    services:
-      memories-server:
-        healthcheck:
-          test: ["CMD-SHELL", "curl --fail --silent http://localhost:5000/alive || exit 1"]
-          interval: 10s
-          timeout: 5s
-          start_period: 20s
-          retries: 3
-    ```
-  - [ ] 7.6 Section: **Aspire dashboard** — paragraph pointing to the local dashboard (http://localhost:18888) and its resource-health column; one screenshot-caption placeholder if the team wants to add one later (don't embed an image — document-only).
-  - [ ] 7.7 Section: **Capability-affected mapping** — reproduce the `BackendCapabilityCatalog.Map` contents as a Markdown table so operators can decode `affectedCapabilities` arrays without reading code.
-  - [ ] 7.8 Section: **Probe tuning guidance** — expand on 7.5 with the rationale from Risks #2 and #4 (sidecar auto-restart, multiplexer warmup). One paragraph each. Include a **"Blast radius"** sub-note explaining that the `dapr-sidecar` check is shared by both `/alive` AND `/ready` — a DAPR control-plane glitch is correlated across all pods and can trigger simultaneous liveness-probe failures. Recommend `failureThreshold ≥3` + `periodSeconds ≥10` for liveness to tolerate transient blips; warn against lowering these defaults without understanding the correlated-failure mode.
-  - [ ] 7.9 Section: **Known gaps and limitations** — document the "architecturally optional graph axis" gap explicitly: if FalkorDB is intentionally omitted from a deployment (architecture.md line 151 flags graph as optional), the readiness endpoint will permanently report `falkordb.status=Degraded` with capability-affected message. Operators cannot currently distinguish "FalkorDB is down" from "FalkorDB is intentionally disabled" from the `/ready` payload. Workaround: set orchestrator alerting rules to ignore `falkordb` failures in graph-disabled deployments. Full resolution deferred to Phase 2 (axis-optionality signal in the check registration). This paragraph also notes the "capability-affected routing" gap: the `affectedCapabilities` array is consumed manually today; no gateway/proxy layer automatically routes away from degraded capabilities — clients MUST honor the array themselves.
-  - [ ] 7.10 Section: **Out of scope** — short bulleted list: alert thresholds, consistency verification (→ Story 8.2), data export (→ Story 8.3), per-tenant index health (→ use `/api/tenants/{tenantId}/configuration` or `/api/tenants/{tenantId}/telemetry/summary`).
-  - [ ] 7.11 Link `docs/dev/health-checks.md` from `docs/dev/telemetry.md` (Story 7.5's doc) under its "See also" section if that section exists — light cross-reference, not a full re-doc.
+- [x] **Task 7: Author `docs/dev/health-checks.md` (AC: #10)**
+    - [x] 7.1 Create `docs/dev/health-checks.md`. Open with a one-paragraph statement of purpose: "Operator-facing reference for the Memories Server's liveness and readiness endpoints. Describes the probe contract, response shape, orchestrator wiring, and capability semantics. Complements [docs/dev/telemetry.md](./telemetry.md) (metrics + traces + audit events) — health checks answer 'is the service up?'; telemetry answers 'is it working well?'".
+    - [x] 7.2 Section: **Endpoint summary** — table `Endpoint | Path | Predicate | Typical Consumer | Aggregate on failure | HTTP status`. Three rows: `/health` (no predicate, dashboard), `/alive` (live tag, Kubernetes livenessProbe → pod restart), `/ready` (ready tag, Kubernetes readinessProbe → service-rotation gate).
+    - [x] 7.3 Section: **Check inventory** — table of five checks from Task 4 (`self`, `dapr-sidecar`, `dapr-statestore`, `redisearch`, `redis-vector`, `falkordb`). Columns: name / tags / probe description / failure status / affected capabilities. Values from `BackendCapabilityCatalog.Map` (Task 3.1).
+    - [x] 7.4 Section: **Response shape** — the frozen V1 JSON schema from AC #2 + #7 including the top-level `schemaVersion: 1` field. Include a worked example of a degraded response (FalkorDB down). Add a note: "Schema is versioned by the `schemaVersion` field. Additive field changes keep `schemaVersion: 1`; rename/removal bumps to `schemaVersion: 2` with a migration note in this doc." Add a **sub-note on `affectedCapabilities` consumers**: "V1 ships this array as an operator-facing diagnostic signal. No production gateway or proxy today auto-routes on `affectedCapabilities` — capability-aware routing is a future story. Clients that care about capability-specialized requests (graph-only, vector-only) MUST read the array themselves and decide; they cannot assume a gateway does it for them." Add a **sub-note on debugging failed probes**: "V1 does not include a `probeId` or `traceId` field — health paths are excluded from OpenTelemetry by design (Story 7.5). Correlate failing probes with sidecar/backend logs by timestamp and `durationMs`. If correlation IDs become necessary in practice, a future story adds a V1-compatible `probeId` field (monotonic counter, zero trace overhead)."
+    - [x] 7.5 Section: **Orchestrator probe configuration** — **Kubernetes** YAML snippet:
+        ```yaml
+        livenessProbe:
+            httpGet: { path: /alive, port: 5000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3 # tolerate sidecar blips per Story 8.1 Risk #2
+        readinessProbe:
+            httpGet: { path: /ready, port: 5000 }
+            initialDelaySeconds: 15 # per Story 8.1 Risk #4 — allow multiplexer warmup
+            periodSeconds: 5
+            failureThreshold: 2
+        ```
+        **Docker** `HEALTHCHECK` (plain-Docker / Podman deployments without K8s):
+        ```dockerfile
+        # In the Dockerfile, after EXPOSE:
+        HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
+          CMD curl --fail --silent --show-error http://localhost:5000/alive || exit 1
+        ```
+        Notes on the Docker form: (a) `--start-period=20s` parallels `initialDelaySeconds: 15` + 5s buffer for image cold-start; (b) Docker has no equivalent of Kubernetes' separate readiness probe — `HEALTHCHECK` controls container status only, not upstream load-balancer rotation. For environments that need readiness semantics (e.g., Docker Swarm with external LB), probe `/ready` via an external sidecar rather than `HEALTHCHECK`; (c) the `curl` path requires the base image to include curl — for distroless or `mcr.microsoft.com/dotnet/runtime-deps` images, use `wget -q --spider` or a compiled health-check binary.
+        **Docker Compose** override (maps `HEALTHCHECK` via compose YAML without rebuilding the image):
+        ```yaml
+        services:
+            memories-server:
+                healthcheck:
+                    test:
+                        [
+                            "CMD-SHELL",
+                            "curl --fail --silent http://localhost:5000/alive || exit 1",
+                        ]
+                    interval: 10s
+                    timeout: 5s
+                    start_period: 20s
+                    retries: 3
+        ```
+    - [x] 7.6 Section: **Aspire dashboard** — paragraph pointing to the local dashboard (http://localhost:18888) and its resource-health column; one screenshot-caption placeholder if the team wants to add one later (don't embed an image — document-only).
+    - [x] 7.7 Section: **Capability-affected mapping** — reproduce the `BackendCapabilityCatalog.Map` contents as a Markdown table so operators can decode `affectedCapabilities` arrays without reading code.
+    - [x] 7.8 Section: **Probe tuning guidance** — expand on 7.5 with the rationale from Risks #2 and #4 (sidecar auto-restart, multiplexer warmup). One paragraph each. Include a **"Blast radius"** sub-note explaining that the `dapr-sidecar` check is shared by both `/alive` AND `/ready` — a DAPR control-plane glitch is correlated across all pods and can trigger simultaneous liveness-probe failures. Recommend `failureThreshold ≥3` + `periodSeconds ≥10` for liveness to tolerate transient blips; warn against lowering these defaults without understanding the correlated-failure mode.
+    - [x] 7.9 Section: **Known gaps and limitations** — document the "architecturally optional graph axis" gap explicitly: if FalkorDB is intentionally omitted from a deployment (architecture.md line 151 flags graph as optional), the readiness endpoint will permanently report `falkordb.status=Degraded` with capability-affected message. Operators cannot currently distinguish "FalkorDB is down" from "FalkorDB is intentionally disabled" from the `/ready` payload. Workaround: set orchestrator alerting rules to ignore `falkordb` failures in graph-disabled deployments. Full resolution deferred to Phase 2 (axis-optionality signal in the check registration). This paragraph also notes the "capability-affected routing" gap: the `affectedCapabilities` array is consumed manually today; no gateway/proxy layer automatically routes away from degraded capabilities — clients MUST honor the array themselves.
+    - [x] 7.10 Section: **Out of scope** — short bulleted list: alert thresholds, consistency verification (→ Story 8.2), data export (→ Story 8.3), per-tenant index health (→ use `/api/tenants/{tenantId}/configuration` or `/api/tenants/{tenantId}/telemetry/summary`).
+    - [x] 7.11 Link `docs/dev/health-checks.md` from `docs/dev/telemetry.md` (Story 7.5's doc) under its "See also" section if that section exists — light cross-reference, not a full re-doc.
+
+### Review Findings
+
+- [x] [Review][Patch] Unexpected non-array RediSearch/FalkorDB probe responses are reported as healthy zero-state — FIXED: both checks now fail closed on null/non-array probe results and are covered by regression tests. [src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs; src/Hexalith.Memories.Server/HealthChecks/FalkorDbHealthCheck.cs; tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs; tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs]
+- [x] [Review][Patch] Redis-backed health checks do not observe the configured 3-second cancellation timeout — FIXED: RediSearch / Redis Vector / FalkorDB probes now use the supplied cancellation token and surface timeout failures through `HealthCheckResult`. [src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs; src/Hexalith.Memories.Server/HealthChecks/RedisVectorHealthCheck.cs; src/Hexalith.Memories.Server/HealthChecks/FalkorDbHealthCheck.cs]
+- [x] [Review][Patch] `ProgramHealthCheckRegistrationTests` leaks `HealthCheckWebAppFactory` instances in `GetRegistration` — FIXED: factory lifetimes are disposed correctly in registration lookup paths. [tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs]
+- [x] [Review][Patch] Integration health-check coverage does not satisfy Story 8.1's authoritative AC #9 scenarios — FIXED: the health integration suite now covers all-healthy, FalkorDB-down degraded readiness, and Dapr-sidecar-down unhealthy liveness. [tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs; tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs]
+- [x] [Review][Patch] `ProgramHealthCheckRegistrationTests` does not assert the required `Degraded -> 200 OK` mapping — FIXED: explicit coverage added for degraded readiness aggregation while unrelated checks are stubbed healthy. [tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs]
+- [x] [Review][Patch] `docs/dev/health-checks.md` misstates `/health` and `/ready` aggregate failure semantics — FIXED: aggregate semantics corrected and the document linted clean. [docs/dev/health-checks.md]
 
 ## Dev Notes
 
@@ -366,34 +381,34 @@ so that I can detect infrastructure issues before they impact users and integrat
 Run these commands at the start of the implementation session to catch state drift and confirm the baseline the story assumes:
 
 1. **Confirm sprint + story status consistent with this file.**
-   ```bash
-   grep "8-1-health-checks-and-readiness" _bmad-output/implementation-artifacts/sprint-status.yaml
-   # Expect: 8-1-health-checks-and-readiness: ready-for-dev
-   ```
+    ```bash
+    grep "8-1-health-checks-and-readiness" _bmad-output/implementation-artifacts/sprint-status.yaml
+    # Expect: 8-1-health-checks-and-readiness: ready-for-dev
+    ```
 2. **Understand the 7.5 state in the working tree** (see Previous story intelligence — 7.5 is in-progress at 8.1 planning time).
-   ```bash
-   git status --short | grep -E "Telemetry|ServiceDefaults|Extensions\.cs"
-   # If 7.5 artifacts appear, decide per the landing-order coordination bullet: rebase on 7.5 merge or coordinate on the active branch.
-   ```
+    ```bash
+    git status --short | grep -E "Telemetry|ServiceDefaults|Extensions\.cs"
+    # If 7.5 artifacts appear, decide per the landing-order coordination bullet: rebase on 7.5 merge or coordinate on the active branch.
+    ```
 3. **Confirm the baseline test suite is green for health-check templates** (these are the shape you will copy).
-   ```bash
-   dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~HealthChecks"
-   # Expect: DaprSidecarHealthCheckTests + DaprStateStoreHealthCheckTests all passing.
-   ```
+    ```bash
+    dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~HealthChecks"
+    # Expect: DaprSidecarHealthCheckTests + DaprStateStoreHealthCheckTests all passing.
+    ```
 4. **Confirm ServiceDefaults builds before you add the Contracts ProjectReference** (Task 5.3). Capture current state; re-run after the csproj edit to prove no CS0246 regression.
-   ```bash
-   dotnet build src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj
-   ```
+    ```bash
+    dotnet build src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj
+    ```
 5. **Read the trace-exclusion filter as-is so you can preserve it byte-for-byte.**
-   ```bash
-   sed -n '56,65p' src/Hexalith.Memories.ServiceDefaults/Extensions.cs
-   # The predicate body is lines 59-63; line 56 is the WithTracing lambda open.
-   ```
+    ```bash
+    sed -n '56,65p' src/Hexalith.Memories.ServiceDefaults/Extensions.cs
+    # The predicate body is lines 59-63; line 56 is the WithTracing lambda open.
+    ```
 6. **Verify the Aspire testing API used by Task 6.1 matches the pinned package version.** `IDistributedApplicationTestingBuilder` + per-resource `Stop`/start control moved between Aspire 8.x and 9.x; the exact API surface depends on what's in `Directory.Packages.props`.
-   ```bash
-   grep -E "Aspire\.Hosting\.Testing|Aspire\.Hosting" Directory.Packages.props
-   # Note the version. Cross-check the documented Task 6.1 pattern (`resource.Stop` via IDistributedApplicationTestingBuilder) against the Aspire docs for that version BEFORE writing the test. If the API has drifted, adjust the test fixture plan — do NOT invent a resource-lifecycle API that doesn't exist in the pinned package.
-   ```
+    ```bash
+    grep -E "Aspire\.Hosting\.Testing|Aspire\.Hosting" Directory.Packages.props
+    # Note the version. Cross-check the documented Task 6.1 pattern (`resource.Stop` via IDistributedApplicationTestingBuilder) against the Aspire docs for that version BEFORE writing the test. If the API has drifted, adjust the test fixture plan — do NOT invent a resource-lifecycle API that doesn't exist in the pinned package.
+    ```
 
 If any step surfaces unexpected state (e.g., baseline tests red, 7.5 artifacts committed under a different shape, Aspire testing API drift), **stop and sync with the SM / user before coding** — the assumptions in this story are pinned to the state captured on 2026-04-17.
 
@@ -403,13 +418,13 @@ If any step surfaces unexpected state (e.g., baseline tests red, 7.5 artifacts c
 - **Reuse keyed `IConnectionMultiplexer` services** registered at `Program.cs:80-83` (`"redis"` + `"falkordb"`). The new checks resolve via `[FromKeyedServices]` on constructor params — ASP.NET Core DI honors the attribute on check classes instantiated via `AddCheck<T>`. The `TenantMetricsService` ctor at `TenantMetricsService.cs:40-41` demonstrates the exact pattern.
 - **Reuse `IndexHealth` enum semantics**: the enum distinguishes data state from availability state. For health checks the distinction collapses — connectivity failure + "no such index at instance level" both surface as `Degraded` in AC3. The `affectedCapabilities` array encodes the "what broke" dimension; the `IndexHealth`-equivalent (`status` in the JSON) encodes the "how broken" dimension (Healthy / Degraded / Unhealthy).
 - **Status-aggregation design** (Risk #1 matrix):
-  | Check               | failureStatus       | Aggregate when failing alone | HTTP |
+  | Check | failureStatus | Aggregate when failing alone | HTTP |
   |---------------------|---------------------|------------------------------|------|
-  | dapr-sidecar        | Unhealthy           | Unhealthy                    | 503  |
-  | dapr-statestore     | Unhealthy           | Unhealthy                    | 503  |
-  | redisearch          | **Degraded**        | Degraded                     | 200  |
-  | redis-vector        | **Degraded**        | Degraded                     | 200  |
-  | falkordb            | **Degraded**        | Degraded                     | 200  |
+  | dapr-sidecar | Unhealthy | Unhealthy | 503 |
+  | dapr-statestore | Unhealthy | Unhealthy | 503 |
+  | redisearch | **Degraded** | Degraded | 200 |
+  | redis-vector | **Degraded** | Degraded | 200 |
+  | falkordb | **Degraded** | Degraded | 200 |
   The rule: "backend unavailable" = service can still serve a reduced set of operations → Degraded/200. "DAPR unavailable" = service can serve almost nothing → Unhealthy/503 → orchestrator pulls it from rotation. This inversion is deliberate and matches Story 5.6's partial-failure philosophy (hybrid search goes Degraded when one axis fails; 503 only when all axes fail).
 - **Trace-exclusion preservation**: the filter predicate at `ServiceDefaults/Extensions.cs` lines 59-63 (within the `WithTracing` lambda opened at line 56) is load-bearing — Story 7.5 AC #5 pins it. Do NOT move `/ready` to a different path. Do NOT add the paths to a separate `MapGet`. The existing three `MapHealthChecks` calls stay; only the options object changes.
 - **Writer placement**: per Task 5.2, the response writer MUST live in `ServiceDefaults`, not `Server`. `ServiceDefaults` already depends on `Contracts` implicitly (via the AspNetCore/OTel/health-check packages); verify by csproj.
@@ -421,10 +436,10 @@ If any step surfaces unexpected state (e.g., baseline tests red, 7.5 artifacts c
 - **Landing-order coordination (7.5 not yet merged).** At 8.1 planning time, 7.5 shows status `in-progress` in `_bmad-output/implementation-artifacts/sprint-status.yaml`. `git status` shows `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` modified, `src/Hexalith.Memories.Server/Telemetry/` directory untracked, and `tests/Hexalith.Memories.Server.Tests/Telemetry/` untracked. Implication for 8.1 dev: **(a)** prefer rebasing on / waiting for 7.5's merge before starting 8.1 so the Telemetry + ServiceDefaults edits don't collide; **(b)** if 8.1 MUST start with 7.5 still in-flight, coordinate on the same working branch — the trace-exclusion filter at `ServiceDefaults/Extensions.cs` lines 59-63 (predicate body; wrapper `WithTracing` starts at line 56) MUST be preserved byte-for-byte even when the 7.5 regression test is not yet committed; **(c)** 7.5 Task 9.4 creates the regression test as `tests/Hexalith.Memories.Server.Tests/Telemetry/TelemetryHealthExclusionTests.cs` containing test method `Telemetry_HealthEndpointNotTraced` — if the file does not yet exist when 8.1 runs `dotnet test`, that is expected; do NOT create a placeholder.
 - 7.5 explicitly calls out in Risk #8 that the health-endpoint filter at `ServiceDefaults/Extensions.cs` lines 59-63 is a pinned invariant. 8.1 inherits the invariant — do NOT move the filter or change path strings. 7.5's regression test method `Telemetry_HealthEndpointNotTraced` (in file `TelemetryHealthExclusionTests.cs`) is the cross-story guard once landed.
 - **Merge-conflict protocol with 7.5** (both stories touch `ServiceDefaults/Extensions.cs`):
-  - **Collision zone:** lines 56-63 (trace-exclusion filter) — 7.5 is adding the filter, 8.1 is preserving it byte-for-byte. Direct collision if 7.5's exact final shape differs from what 8.1 assumes. Lines 93-124 (`MapDefaultEndpoints`) — 8.1 modifies the response writer; 7.5 does not, but close enough that rebasing context-diffs may conflict.
-  - **Preferred order:** 7.5 lands first. 8.1 rebases onto main after the 7.5 PR is merged. This is the lowest-risk sequencing because 8.1's trace-exclusion invariant is defined relative to 7.5's final filter shape.
-  - **If 8.1 MUST start before 7.5 merges** (sprint pressure): branch from a shared base with the 7.5 dev; coordinate on a single working branch; rebase forward when 7.5's `ServiceDefaults/Extensions.cs` reaches its final form. Do NOT land 8.1 with a different filter shape than 7.5 — `Telemetry_HealthEndpointNotTraced` will fail in main after both merge.
-  - **Conflict-resolution rule:** if rebase produces conflict markers in lines 56-63, the 7.5 shape wins verbatim; 8.1 only adds the `ResponseWriter` wiring at lines 93-124. No 8.1 edit should alter the predicate body or the ActivitySource name.
+    - **Collision zone:** lines 56-63 (trace-exclusion filter) — 7.5 is adding the filter, 8.1 is preserving it byte-for-byte. Direct collision if 7.5's exact final shape differs from what 8.1 assumes. Lines 93-124 (`MapDefaultEndpoints`) — 8.1 modifies the response writer; 7.5 does not, but close enough that rebasing context-diffs may conflict.
+    - **Preferred order:** 7.5 lands first. 8.1 rebases onto main after the 7.5 PR is merged. This is the lowest-risk sequencing because 8.1's trace-exclusion invariant is defined relative to 7.5's final filter shape.
+    - **If 8.1 MUST start before 7.5 merges** (sprint pressure): branch from a shared base with the 7.5 dev; coordinate on a single working branch; rebase forward when 7.5's `ServiceDefaults/Extensions.cs` reaches its final form. Do NOT land 8.1 with a different filter shape than 7.5 — `Telemetry_HealthEndpointNotTraced` will fail in main after both merge.
+    - **Conflict-resolution rule:** if rebase produces conflict markers in lines 56-63, the 7.5 shape wins verbatim; 8.1 only adds the `ResponseWriter` wiring at lines 93-124. No 8.1 edit should alter the predicate body or the ActivitySource name.
 - 7.5 adds `TelemetrySummaryService` that computes per-tenant index sizes + health — operator-facing at `/api/tenants/{tenantId}/telemetry/summary`. 8.1 is instance-scoped; the two endpoints are complementary (8.1 = "is the service reachable?"; 7.5 summary = "how is tenant X's index doing?"). Do NOT duplicate the per-tenant index probing in 8.1 — the call stack for 7.5 already lazy-reads `TenantMetricsService.GetIndexSizesAsync`.
 - 7.5 pins EventId bank `7500-7599`. Stories before that used banks `5400, 5500, 5600, 6100, 6200, 6300`. **Story 8.1 uses EventId bank `8100-8199`** for any new `[LoggerMessage]` emitters. If 8.1 emits no structured logs (the health checks already produce `HealthCheckResult` which flows through ASP.NET Core's standard logger), no EventIds are consumed — acceptable. Guideline: only emit an 81xx log event for operator-actionable state transitions (e.g., first-time-degraded detection) — not per-probe chatter.
 
@@ -475,29 +490,29 @@ If any step surfaces unexpected state (e.g., baseline tests red, 7.5 artifacts c
 ### Testing standards
 
 - **Unit test conventions** (from `.editorconfig` + existing `Server.Tests` projects):
-  - xUnit `[Fact]` / `[Theory]`; NSubstitute for mocking; Shouldly for assertions; **NOT** FluentAssertions (project standard per existing test files).
-  - Test classes: `ClassNameTests`, methods: `MethodName_Scenario_Expected` (e.g., `CheckHealthAsync_WhenSidecarThrows_ShouldReturnFailureWithException`).
-  - Arrange / Act / Assert comments present in existing tests; preserve the style.
-  - Use the `CreateContext()` helper pattern from `DaprSidecarHealthCheckTests.cs:101-111` for `HealthCheckContext` fabrication.
+    - xUnit `[Fact]` / `[Theory]`; NSubstitute for mocking; Shouldly for assertions; **NOT** FluentAssertions (project standard per existing test files).
+    - Test classes: `ClassNameTests`, methods: `MethodName_Scenario_Expected` (e.g., `CheckHealthAsync_WhenSidecarThrows_ShouldReturnFailureWithException`).
+    - Arrange / Act / Assert comments present in existing tests; preserve the style.
+    - Use the `CreateContext()` helper pattern from `DaprSidecarHealthCheckTests.cs:101-111` for `HealthCheckContext` fabrication.
 - **Integration test conventions** (Story 5.6 pattern):
-  - Apply `[Trait("Category","Integration")]`.
-  - Use the existing Aspire fixture (`AspireIngestionPipelineFixture`) OR inherit from a new `AspireHealthFixture` if the ingestion fixture's warmup is too heavy. Check `tests/Hexalith.Memories.IntegrationTests/Fixtures/` for reuse.
-  - `[Fact(Skip)]` with a clear reason string is acceptable when the Aspire fixture CS0311 build error blocks execution.
+    - Apply `[Trait("Category","Integration")]`.
+    - Use the existing Aspire fixture (`AspireIngestionPipelineFixture`) OR inherit from a new `AspireHealthFixture` if the ingestion fixture's warmup is too heavy. Check `tests/Hexalith.Memories.IntegrationTests/Fixtures/` for reuse.
+    - `[Fact(Skip)]` with a clear reason string is acceptable when the Aspire fixture CS0311 build error blocks execution.
 - **Test count target (informational — AC #9 is authoritative):** ~20+ new unit tests + 3 integration tests (integration possibly skipped). If a count below contradicts AC #9, update here — AC #9 wins. Distribution snapshot:
-  - RediSearchHealthCheckTests: 5
-  - RedisVectorHealthCheckTests: 6 (includes module-absent case)
-  - FalkorDbHealthCheckTests: 4
-  - BackendHealthResponseWriterTests: 6 (includes AOT-guard roundtrip)
-  - BackendCapabilityCatalogTests: 1 (+ a `[Theory]` iterating check names if the dict grows)
-  - ProgramHealthCheckRegistrationTests: 4
-  - HealthEndpointIntegrationTests: 3 (possibly skipped)
-  - ReadyEndpointAggregationTests: 3 (in-memory WebApplicationFactory)
+    - RediSearchHealthCheckTests: 5
+    - RedisVectorHealthCheckTests: 6 (includes module-absent case)
+    - FalkorDbHealthCheckTests: 4
+    - BackendHealthResponseWriterTests: 6 (includes AOT-guard roundtrip)
+    - BackendCapabilityCatalogTests: 1 (+ a `[Theory]` iterating check names if the dict grows)
+    - ProgramHealthCheckRegistrationTests: 4
+    - HealthEndpointIntegrationTests: 3 (possibly skipped)
+    - ReadyEndpointAggregationTests: 3 (in-memory WebApplicationFactory)
 
 ### Story-shape template (reusable pattern for Epic 8)
 
 This story's structure worked well for infrastructure-heavy work and should be the template for Stories 8.2 and 8.3. Reusable sections (in order):
 
-1. **TL;DR** with four subsections: *What already exists (do NOT rebuild)*, *What 8.x adds*, *What does NOT ship*, *Primary risks*. The "What does NOT ship" list consistently prevented scope creep in 8.1 review and is the highest-leverage pattern.
+1. **TL;DR** with four subsections: _What already exists (do NOT rebuild)_, _What 8.x adds_, _What does NOT ship_, _Primary risks_. The "What does NOT ship" list consistently prevented scope creep in 8.1 review and is the highest-leverage pattern.
 2. **Risks → Guard tests table** (see above). Every risk with a named test pinning its mitigation. If a risk has no guard test, either add one or downgrade the risk to a Dev Note caveat.
 3. **ACs with frozen JSON schemas**. When the story defines a contract (JSON, CLI args, config shape), include the authoritative example inline with a `schemaVersion` / version-pinning strategy.
 4. **AC #9 = authoritative test inventory**. Any other test-count reference in the story is informational and may contradict AC #9 — AC #9 wins.
@@ -558,10 +573,74 @@ Recent relevant commits (run `git log --oneline` to confirm ordering is unchange
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.7 (1M context) — claude-opus-4-7[1m]
 
 ### Debug Log References
 
+- Pre-flight (Dev Notes §Pre-flight) passed on 2026-04-19: `sprint-status` = `ready-for-dev`; baseline HealthCheck tests green (11 passed); `ServiceDefaults` builds clean; trace-exclusion filter at `Extensions.cs:74-81` intact; `TelemetryHealthExclusionTests.cs` already landed (Story 7.5 ahead).
+- 7.5 merge-conflict protocol: 7.5's trace-exclusion filter is already committed to the working tree on the current branch — the `HealthEndpointPath`/`AlivenessEndpointPath`/`ReadinessEndpointPath` private consts were extracted into a shared `Hexalith.Memories.ServiceDefaults.Health.HealthEndpointPaths` public class (Task 5.5) and the `ShouldTraceHttpRequest` predicate now references those constants. Test `TelemetryHealthExclusionTests` continues to pass without modification — verified after the change.
+- Aspire AppHost CS0311 check (Dev Notes §Previous story intelligence / 5.6): `dotnet build tests/Hexalith.Memories.IntegrationTests` succeeds → CS0311 no longer present. The final health integration suite now runs active end-to-end fault injection for FalkorDB and the Dapr sidecar; the fixture discovers the sidecar's runtime HTTP port from captured Aspire logs so sidecar-down tests work even when Aspire assigns dynamic ports.
+- Focused server health-check rerun after review fixes: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~HealthChecks"` → 63 passed / 0 failed.
+- Focused health integration rerun after dynamic sidecar-port discovery: `dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --filter "FullyQualifiedName~HealthEndpointIntegrationTests"` → 4 passed / 0 failed.
+- `dotnet test` (Server.Tests) — 1176 passed / 0 failed after wiring.
+- `dotnet build Hexalith.Memories.slnx` — 0 warnings / 0 errors (all 15 projects).
+
 ### Completion Notes List
 
+- Three new backend health checks (`RediSearchHealthCheck`, `RedisVectorHealthCheck`, `FalkorDbHealthCheck`) probe Redis Stack / Redis Vector (via `MODULE LIST` search for `"search"`) / FalkorDB instance-level; each returns `HealthStatus.Degraded` on failure (AC3 / Risk #1).
+- `dapr-sidecar` retagged to `["live", "ready"]` (AC4); `dapr-statestore` unchanged; `self` unchanged. `/alive` now executes `self` + `dapr-sidecar`; `/ready` executes the five `ready`-tagged checks; `/health` is the union.
+- `BackendCapabilityCatalog` (in `ServiceDefaults/Health/`) pins the `check-name → affected-capabilities` mapping (Risk #8). `BackendCapabilityCatalogTests` enforces a 1-to-1 mapping against the registered check names.
+- `BackendHealthResponseWriter` (in `ServiceDefaults/Health/`) replaces the default plain-text writer on all three endpoints and emits the V1 JSON schema (`schemaVersion: 1`, camelCase, per-entry `affectedCapabilities`). Installed in `MapDefaultEndpoints`.
+- `HealthEndpointPaths` (new, in `ServiceDefaults/Health/`) is the single source of truth for the three paths; both `MapDefaultEndpoints` and the trace-exclusion predicate now reference it (Task 5.5). Prior private-constant path literals in `Extensions.cs` removed.
+- `Hexalith.Memories.ServiceDefaults.csproj` gained a `ProjectReference` to `Hexalith.Memories.Contracts.csproj` so the response writer can consume `MemoriesJsonContext.Options` (camelCase + combined resolver).
+- Tests added (Tier-1 unit + in-memory end-to-end, all green):
+    - `RediSearchHealthCheckTests` (6 tests)
+    - `RedisVectorHealthCheckTests` (7 tests — includes module-absent + connection-refused + loading + unknown-command matrix)
+    - `FalkorDbHealthCheckTests` (7 tests — includes empty-instance healthy + driver-level exception)
+    - `BackendCapabilityCatalogTests` (8 tests across `[Theory]`)
+    - `BackendHealthResponseWriterTests` (6 tests — all-healthy / one-degraded / sidecar-unhealthy / unknown-check / content-type / AOT-regression manifest)
+    - `ProgramHealthCheckRegistrationTests` (6 tests) — asserts the five registrations exist with the documented tag-sets and failure-statuses; uses `WebApplicationFactory<Program>` with the shared `HealthCheckWebAppFactory` helper (no Program.cs extraction needed — DI inspection was sufficient per Dev Notes §Program.cs testability).
+    - `ReadyEndpointAggregationTests` (4 tests) — in-memory end-to-end via `HealthCheckWebAppFactory`; proves Degraded → 200 / Unhealthy → 503 / `/alive` excludes backend checks / `/ready` payload matches V1 schema. Overrides the live registration of each named check with a `StubHealthCheck`. This is the definitive wire-to-wire guarantee of Risk #1's mitigation.
+    - Integration tests (`tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs`) with `[Trait("Category","Integration")]` now run all four health scenarios end-to-end: all-healthy `/ready`, default `/alive`, FalkorDB-down degraded readiness, and Dapr-sidecar-down unhealthy liveness. `AspireIngestionPipelineFixture` was extended to stop the FalkorDB container and to discover the Dapr sidecar's runtime HTTP port from captured Aspire logs before killing the sidecar process.
+- `docs/dev/health-checks.md` authored (AC #10): endpoint summary, per-check inventory, V1 response schema + degraded example, Kubernetes / Docker / Docker-Compose probe snippets, Aspire dashboard pointer, capability-affected mapping, probe tuning + blast-radius callout, known gaps (graph-axis-optional + manual capability routing + no probe correlation IDs in V1), out-of-scope list. Cross-linked from `docs/dev/telemetry.md` under "Cross-references".
+- No `[LoggerMessage]` emitters added — the `Microsoft.Extensions.Diagnostics.HealthChecks` logger and the `HealthCheckResult` description/exception payloads already surface the diagnostics operators need. The 8100-8199 EventId bank reserved by this story is therefore unused; future state-transition logging can consume it without renumbering.
+- Anti-pattern guard: no per-tenant probing was added; no new endpoint paths; no `Retry-After` headers; the response writer uses anonymous types deliberately (per Task 3.3 + §Anti-patterns #4) and is NOT registered in `MemoriesJsonContext` as a typed contract.
+- Review-fix closeout: fail-closed parsing + cancellation honoring landed in the three Redis-backed checks; `ProgramHealthCheckRegistrationTests` now disposes test hosts correctly and explicitly proves `Degraded -> 200 OK`; `docs/dev/health-checks.md` aggregate semantics were corrected.
+- Risk mitigations confirmed post-implementation: R1 (Degraded=200 preserved via ServiceDefaults status map + backend `failureStatus: Degraded`); R2 (sidecar tagged `live` intentionally; ops guidance documents `failureThreshold ≥3`); R3 (MODULE-LIST parser is lenient — ambiguous shapes classify as Healthy, not Degraded); R6 (camelCase + field-name parity with `TenantIndexStatus`); R7 (trace-exclusion filter unmodified; `TelemetryHealthExclusionTests` continues green); R8 (registration-catalog cross-check tests).
+
 ### File List
+
+**Added:**
+
+- `src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs`
+- `src/Hexalith.Memories.Server/HealthChecks/RedisVectorHealthCheck.cs`
+- `src/Hexalith.Memories.Server/HealthChecks/FalkorDbHealthCheck.cs`
+- `src/Hexalith.Memories.ServiceDefaults/Health/BackendCapabilityCatalog.cs`
+- `src/Hexalith.Memories.ServiceDefaults/Health/BackendHealthResponseWriter.cs`
+- `src/Hexalith.Memories.ServiceDefaults/Health/HealthEndpointPaths.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/RediSearchHealthCheckTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/RedisVectorHealthCheckTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/FalkorDbHealthCheckTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendCapabilityCatalogTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/BackendHealthResponseWriterTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/ReadyEndpointAggregationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/HealthCheckWebAppFactory.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Health/HealthEndpointIntegrationTests.cs`
+- `docs/dev/health-checks.md`
+
+**Modified:**
+
+- `src/Hexalith.Memories.Server/Program.cs` (registrations: add three backend checks; retag `dapr-sidecar` to `["live","ready"]`)
+- `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` (wire `BackendHealthResponseWriter` on all three endpoints; replace private path constants with `HealthEndpointPaths` references)
+- `src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj` (add `ProjectReference` to `Hexalith.Memories.Contracts.csproj`)
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs` (fault-injection helpers for FalkorDB and Dapr sidecar; dynamic Dapr sidecar endpoint discovery from Aspire logs)
+- `docs/dev/telemetry.md` (cross-link to `health-checks.md` under Cross-references)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (`8-1-health-checks-and-readiness: ready-for-dev → review → done`)
+
+## Change Log
+
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-19 | Story implementation complete — Epic 8 kickoff (Observability & System Health). Ships Tasks 1–7: three backend health checks (RediSearch / Redis Vector / FalkorDB), sidecar re-tag to `["live","ready"]`, capability catalog + JSON response writer in `ServiceDefaults/Health/`, path-constants single-source-of-truth, `/ready` aggregation tests (Tier-1 in-memory + Tier-3 Aspire), operator doc `docs/dev/health-checks.md`. 1176 Server.Tests pass; solution builds clean. Status → review. |
+| 2026-04-19 | Review-fix pass complete. Closed six accepted review findings: fail-closed non-array handling, cancellation-token honoring, test-host disposal, explicit `Degraded -> 200 OK` coverage, corrected health-doc aggregate semantics, and full AC #9 health integration coverage. Final validation: focused health server suite `63/63` and health integration suite `4/4`. Status → done.                                                                                                             |

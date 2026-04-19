@@ -1595,6 +1595,38 @@ So that I can ensure data integrity and resolve divergence caused by partial fai
 **Then** it processes units in batches to avoid overwhelming any backend
 **And** progress is visible via workflow status
 
+### Story 8.4: End-to-End Telemetry Integration Tests (Tier-3 / Aspire)
+
+As the Memories release manager,
+I want end-to-end Tier-3 integration tests that verify distributed traces propagate across CLI → Server → backends AND audit events reach the deployed stack's stdout log stream,
+So that I can ship releases with confidence that NFR28 and FR67 hold on real infrastructure — not just on the Tier-2 in-process approximation.
+
+**Acceptance Criteria:**
+
+**Given** the AspireIngestionPipelineFixture is running with in-memory OTLP capture
+**When** the CLI invokes a search via DI against the fixture
+**Then** captured spans share a single TraceId across CLI root → HttpClient → AspNetCore → memories.search activity
+**And** parent-child relationships match W3C TraceContext semantics (NFR28 authoritative gate)
+
+**Given** a search + ingest + traverse + case-access run against the fixture
+**When** the Server container's stdout JSON log stream is captured
+**Then** exactly one AccessTelemetryEvent per operation is emitted with schemaVersion=1 and EventId in 7500-7599 (FR67 authoritative gate)
+**And** health-endpoint probes emit zero AccessTelemetryEvent entries
+
+**Given** the captured memories.search activity and its audit event
+**When** both are cross-referenced
+**Then** the audit event's traceId + spanId match the activity's ids
+
+**Given** the test-side in-memory OTLP capture is absent
+**When** the Server is run without the 8.4 trigger
+**Then** no in-memory exporter is registered and Story 7.5's OpenTelemetryRegistrationTests pass unchanged
+
+**Given** the GitHub Actions workflow matrix
+**When** a PR is opened
+**Then** 8.4's tests run only on the Docker-provisioned merge-queue lane (Tier-2 variants gate per-PR; Tier-3 gates release promotion)
+
+**Source:** Follow-up for Story 7.5 Tasks 11.3 + 11.4 (deferred in Rev 1.3/1.4 on Docker availability). Depends on `AspireIngestionPipelineFixture` (Epic 6) and the `OpenTelemetry.Exporter.InMemory` package (already in `Directory.Packages.props`).
+
 ### Story 8.3: Data Export
 
 As a developer,

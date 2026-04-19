@@ -46,8 +46,8 @@ public sealed class TelemetrySummaryService
 
         TelemetrySearchMetrics searchMetrics = new()
         {
-            Syntactic = BuildAxisCounters(tenantId, "syntactic"),
-            Semantic = BuildAxisCounters(tenantId, "semantic"),
+            Syntactic = BuildAxisCounters(tenantId, "syntactic", "graph-scoped-syntactic"),
+            Semantic = BuildAxisCounters(tenantId, "semantic", "graph-scoped-semantic"),
             Graph = BuildAxisCounters(tenantId, "graph"),
             Hybrid = BuildAxisCounters(tenantId, "hybrid"),
         };
@@ -80,10 +80,28 @@ public sealed class TelemetrySummaryService
         };
     }
 
-    private TelemetryAxisCounters BuildAxisCounters(string tenantId, string axis)
-        => new()
+    private TelemetryAxisCounters BuildAxisCounters(string tenantId, params string[] axes)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(axes);
+
+        long requests = 0;
+        long errors = 0;
+        foreach (string axis in axes)
         {
-            RequestsLast5m = _counterStore.GetLast5MinutesCount(MemoriesMeter.SearchRequestsName, tenantId, axis),
-            ErrorsLast5m = _counterStore.GetLast5MinutesSearchErrorCount(tenantId, axis),
+            if (string.IsNullOrWhiteSpace(axis))
+            {
+                continue;
+            }
+
+            requests += _counterStore.GetLast5MinutesCount(MemoriesMeter.SearchRequestsName, tenantId, axis);
+            errors += _counterStore.GetLast5MinutesSearchErrorCount(tenantId, axis);
+        }
+
+        return new()
+        {
+            RequestsLast5m = requests,
+            ErrorsLast5m = errors,
         };
+    }
 }

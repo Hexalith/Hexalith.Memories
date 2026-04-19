@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-18 # Story 7.5 Search & Access Telemetry: Rev 1.3 Tier-2 pass (Tasks 11.1 + 11.2 landed; 8 new Server tests via WebApplicationFactory<Program>); stays in review
+# last_updated: 2026-04-19 # Story 8.1 review-fix closeout — accepted findings resolved (fail-closed probe parsing, timeout honoring, factory disposal, degraded-200 registration coverage, corrected docs, full health integration coverage). Focused validation green: Server HealthChecks 63/63, HealthEndpointIntegrationTests 4/4. Status → done.
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-18 # Story 7.5 Search & Access Telemetry: Rev 1.3 Tier-2 pass (Tasks 11.1 + 11.2 landed; 8 new Server tests via WebApplicationFactory<Program>); stays in review
+last_updated: 2026-04-19 # Story 8.1 review-fix closeout — accepted findings resolved (fail-closed probe parsing, timeout honoring, factory disposal, degraded-200 registration coverage, corrected docs, full health integration coverage). Focused validation green: Server HealthChecks 63/63, HealthEndpointIntegrationTests 4/4. Status → done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -113,16 +113,17 @@ development_status:
   7-2-output-formats-and-explain-display: done
   7-3-actionable-error-messages-and-discoverable-actions: done
   7-4-quickstart-and-documentation: done
-  7-5-search-and-access-telemetry: review
+  7-5-search-and-access-telemetry: in-progress
   epic-7-retrospective: optional
 
   # --- Phase: MVP — Operations ---
 
   # Epic 8: Observability & System Health
   epic-8: in-progress
-  8-1-health-checks-and-readiness: ready-for-dev
-  8-2-consistency-verification-and-repair: backlog
+  8-1-health-checks-and-readiness: done
+  8-2-consistency-verification-and-repair: ready-for-dev
   8-3-data-export: backlog
+  8-4-end-to-end-telemetry-integration-tests: backlog # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4
   epic-8-retrospective: optional
 
   # --- Phase 1.5 (Fast-Follow) ---

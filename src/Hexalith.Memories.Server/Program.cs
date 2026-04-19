@@ -39,7 +39,7 @@ _ = builder.Services.AddHealthChecks()
     .AddCheck<DaprSidecarHealthCheck>(
         "dapr-sidecar",
         failureStatus: HealthStatus.Unhealthy,
-        tags: ["ready"],
+        tags: ["live", "ready"],
         timeout: healthCheckTimeout)
     .Add(new HealthCheckRegistration(
         "dapr-statestore",
@@ -48,7 +48,22 @@ _ = builder.Services.AddHealthChecks()
             "statestore"),
         failureStatus: HealthStatus.Unhealthy,
         tags: ["ready"],
-        timeout: healthCheckTimeout));
+        timeout: healthCheckTimeout))
+    .AddCheck<RediSearchHealthCheck>(
+        "redisearch",
+        failureStatus: HealthStatus.Degraded,
+        tags: ["ready"],
+        timeout: healthCheckTimeout)
+    .AddCheck<RedisVectorHealthCheck>(
+        "redis-vector",
+        failureStatus: HealthStatus.Degraded,
+        tags: ["ready"],
+        timeout: healthCheckTimeout)
+    .AddCheck<FalkorDbHealthCheck>(
+        "falkordb",
+        failureStatus: HealthStatus.Degraded,
+        tags: ["ready"],
+        timeout: healthCheckTimeout);
 
 builder.Services.AddSingleton<IContentExtractionClient, ContentExtractionClient>();
 builder.Services.AddHttpClient("EmbeddingClient", client =>
@@ -125,6 +140,7 @@ builder.Services.AddSingleton<TenantRegistryService>();
 builder.Services.AddSingleton<TenantStatusGuard>();
 builder.Services.AddSingleton<TenantMetricsService>();
 builder.Services.AddSingleton<RollingCounterStore>();
+builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<RollingCounterStore>());
 builder.Services.AddSingleton<TelemetrySummaryService>();
 builder.Services.AddSingleton<TelemetrySnapshotCache>();
 builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
@@ -1681,16 +1697,37 @@ app.MapGet("/api/search", async (
     [FromQuery] bool explain = false,
     CancellationToken cancellationToken = default) =>
 {
+    static string DetermineSearchAxisMetricTag(string requestedAxis, string? graphScopedStartNodeId)
+    {
+        bool isGraphScoped = !string.IsNullOrWhiteSpace(graphScopedStartNodeId);
+
+        if (string.Equals(requestedAxis, "semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            return isGraphScoped ? "graph-scoped-semantic" : "semantic";
+        }
+
+        if (string.Equals(requestedAxis, "graph", StringComparison.OrdinalIgnoreCase))
+        {
+            return "graph";
+        }
+
+        if (string.Equals(requestedAxis, "hybrid", StringComparison.OrdinalIgnoreCase))
+        {
+            return "hybrid";
+        }
+
+        if (string.Equals(requestedAxis, "syntactic", StringComparison.OrdinalIgnoreCase))
+        {
+            return isGraphScoped ? "graph-scoped-syntactic" : "syntactic";
+        }
+
+        return MemoriesMeter.RejectedTenantTag;
+    }
+
     using System.Diagnostics.Activity? searchActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.SearchRequest);
     searchActivity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationSearch);
     string initialTenantTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
-    string searchAxisTag = string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase)
-        ? "semantic"
-        : string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase)
-            ? "graph"
-            : string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase)
-                ? "hybrid"
-                : "syntactic";
+    string searchAxisTag = DetermineSearchAxisMetricTag(axis, startNodeId);
     using var searchScope = new EndpointTelemetryScope(
         auditLogger,
         searchActivity,

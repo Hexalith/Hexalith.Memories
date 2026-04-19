@@ -597,9 +597,28 @@ public class MemoriesClient
             throw new MemoriesRemoteException(response.StatusCode, error);
         }
 
-        TelemetrySummary? summary = await response.Content
-            .ReadFromJsonAsync<TelemetrySummary>(MemoriesJsonContext.Options, ct)
-            .ConfigureAwait(false);
-        return summary ?? throw new InvalidOperationException("Server returned an empty telemetry summary.");
+        try
+        {
+            TelemetrySummary? summary = await response.Content
+                .ReadFromJsonAsync<TelemetrySummary>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return summary ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty telemetry summary body.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+            or System.IO.IOException
+            or HttpRequestException
+            or NotSupportedException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as TelemetrySummary.",
+                ex);
+        }
     }
 }

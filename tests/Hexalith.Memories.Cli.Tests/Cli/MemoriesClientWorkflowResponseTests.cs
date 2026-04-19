@@ -127,6 +127,47 @@ public sealed class MemoriesClientWorkflowResponseTests
         exception.Error.Code.ShouldBe("INVALID_RESPONSE");
     }
 
+    [Fact]
+    public async Task GetTelemetrySummaryAsync_ThrowsInvalidResponse_WhenBodyEmpty()
+    {
+        using var httpClient = CreateClient(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(string.Empty, Encoding.UTF8, "application/json"),
+        });
+
+        var client = new MemoriesClient(
+            httpClient,
+            Options.Create(new MemoriesClientOptions { Endpoint = httpClient.BaseAddress! }),
+            NullLogger<MemoriesClient>.Instance);
+
+#pragma warning disable HXL001
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(() => client.GetTelemetrySummaryAsync("acme", CancellationToken.None));
+#pragma warning restore HXL001
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
+    [Fact]
+    public async Task GetTelemetrySummaryAsync_ThrowsInvalidResponse_WhenBodyMalformed()
+    {
+        using var httpClient = CreateClient(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{not-json", Encoding.UTF8, "application/json"),
+        });
+
+        var client = new MemoriesClient(
+            httpClient,
+            Options.Create(new MemoriesClientOptions { Endpoint = httpClient.BaseAddress! }),
+            NullLogger<MemoriesClient>.Instance);
+
+#pragma warning disable HXL001
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(() => client.GetTelemetrySummaryAsync("acme", CancellationToken.None));
+#pragma warning restore HXL001
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+        exception.InnerException.ShouldBeOfType<System.Text.Json.JsonException>();
+    }
+
     private static HttpClient CreateClient(HttpResponseMessage response)
         => new(new StaticResponseHandler(response)) { BaseAddress = new Uri("http://127.0.0.1:65010/") };
 

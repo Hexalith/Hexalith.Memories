@@ -1,3 +1,4 @@
+using Hexalith.Memories.ServiceDefaults.Health;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Builder;
@@ -16,9 +17,6 @@ namespace Hexalith.Memories.ServiceDefaults;
 
 public static class Extensions
 {
-    private const string HealthEndpointPath = "/health";
-    private const string AlivenessEndpointPath = "/alive";
-    private const string ReadinessEndpointPath = "/ready";
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
@@ -75,9 +73,9 @@ public static class Extensions
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        return !context.Request.Path.StartsWithSegments(HealthEndpointPath)
-            && !context.Request.Path.StartsWithSegments(AlivenessEndpointPath)
-            && !context.Request.Path.StartsWithSegments(ReadinessEndpointPath);
+        return !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Health)
+            && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Alive)
+            && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Ready);
     }
 
     private static TBuilder AddOpenTelemetryExporters<TBuilder>(this TBuilder builder)
@@ -116,20 +114,23 @@ public static class Extensions
         var healthOptions = new HealthCheckOptions
         {
             ResultStatusCodes = statusCodes,
+            ResponseWriter = BackendHealthResponseWriter.WriteAsync,
         };
 
-        _ = app.MapHealthChecks(HealthEndpointPath, healthOptions);
+        _ = app.MapHealthChecks(HealthEndpointPaths.Health, healthOptions);
 
-        _ = app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
+        _ = app.MapHealthChecks(HealthEndpointPaths.Alive, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("live"),
             ResultStatusCodes = statusCodes,
+            ResponseWriter = BackendHealthResponseWriter.WriteAsync,
         });
 
-        _ = app.MapHealthChecks(ReadinessEndpointPath, new HealthCheckOptions
+        _ = app.MapHealthChecks(HealthEndpointPaths.Ready, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("ready"),
             ResultStatusCodes = statusCodes,
+            ResponseWriter = BackendHealthResponseWriter.WriteAsync,
         });
 
         return app;

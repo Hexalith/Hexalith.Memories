@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Telemetry\Hexalith.Memories.Telemetry.csproj" />
   </ItemGroup>
 

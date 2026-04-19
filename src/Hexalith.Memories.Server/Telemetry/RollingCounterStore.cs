@@ -56,11 +56,7 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _listener.Dispose();
-        return Task.CompletedTask;
-    }
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public void Dispose() => _listener.Dispose();
 
@@ -108,7 +104,7 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
             }
         }
 
-        if (tenantId is null)
+        if (string.IsNullOrWhiteSpace(tenantId))
         {
             return;
         }

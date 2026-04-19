@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Cli.Tests.Telemetry;
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 using Hexalith.Memories.Cli.Execution;
@@ -36,6 +37,94 @@ public sealed class CliTelemetryBootstrapTests
 
         endpoint.ShouldNotBeNull();
         endpoint.ShouldBe(new Uri("https://collector.internal:4318", UriKind.Absolute));
+    }
+
+    [Fact]
+    public void ResolveEndpoint_InvalidEnvVar_FlagFalse_DisablesTelemetry()
+    {
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint("not a valid uri", telemetryFlag: false);
+
+        endpoint.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ResolveEndpoint_InvalidEnvVar_FlagTrue_FallsBackToLocalDevelopmentEndpoint()
+    {
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint("not a valid uri", telemetryFlag: true);
+
+        endpoint.ShouldNotBeNull();
+        endpoint.ShouldBe(new Uri(CliTelemetryBootstrap.LocalDevelopmentOtlpEndpoint, UriKind.Absolute));
+    }
+
+    [Theory]
+    [InlineData("file:///tmp/x")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("mailto:ops@example.com")]
+    [InlineData("ftp://collector.internal")]
+    public void ResolveEndpoint_NonHttpAbsoluteUri_FlagFalse_DisablesTelemetry(string value)
+    {
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(value, telemetryFlag: false);
+
+        endpoint.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("file:///tmp/x")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("mailto:ops@example.com")]
+    [InlineData("ftp://collector.internal")]
+    public void ResolveEndpoint_NonHttpAbsoluteUri_FlagTrue_FallsBackToLocalDevelopmentEndpoint(string value)
+    {
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(value, telemetryFlag: true);
+
+        endpoint.ShouldNotBeNull();
+        endpoint.ShouldBe(new Uri(CliTelemetryBootstrap.LocalDevelopmentOtlpEndpoint, UriKind.Absolute));
+    }
+
+    [Fact]
+    public void ResolveEndpoint_InvalidEnvVar_EmitsWarning()
+    {
+        List<string> warnings = [];
+
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(
+            "not a valid uri",
+            telemetryFlag: true,
+            warn: warnings.Add);
+
+        endpoint.ShouldNotBeNull();
+        warnings.ShouldHaveSingleItem();
+        warnings[0].ShouldContain(CliTelemetryBootstrap.OtlpEndpointEnvVar);
+        warnings[0].ShouldContain("not a valid uri");
+    }
+
+    [Fact]
+    public void ResolveEndpoint_NonHttpScheme_EmitsWarning_EvenWithFlagFalse()
+    {
+        List<string> warnings = [];
+
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(
+            "file:///tmp/x",
+            telemetryFlag: false,
+            warn: warnings.Add);
+
+        endpoint.ShouldBeNull();
+        warnings.ShouldHaveSingleItem();
+        warnings[0].ShouldContain("file:///tmp/x");
+        warnings[0].ShouldContain("Telemetry disabled");
+    }
+
+    [Fact]
+    public void ResolveEndpoint_ValidHttpsUri_DoesNotWarn()
+    {
+        List<string> warnings = [];
+
+        Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(
+            "https://collector.internal:4318",
+            telemetryFlag: false,
+            warn: warnings.Add);
+
+        endpoint.ShouldNotBeNull();
+        warnings.ShouldBeEmpty();
     }
 
     [Fact]

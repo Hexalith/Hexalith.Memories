@@ -304,3 +304,6 @@ NFR28 is validated in 7.5 for:
 - [quickstart.md](quickstart.md) — the post-wizard "regulated environments" caveat is resolved by
   this story's FR67 audit events (operators capture the log stream for SOC 2 / GDPR / HIPAA
   evidence).
+- [health-checks.md](health-checks.md) — liveness/readiness endpoints (Story 8.1): `/alive`,
+  `/ready`, and `/health` contracts for orchestrator probes; health paths are deliberately excluded
+  from this document's AspNetCore trace emission (see AC #5).
