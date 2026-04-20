@@ -355,6 +355,10 @@ public static class ErrorMessageCatalog
                 CliMessage: null,
                 CliSuggestion: "Use --force to overwrite an existing file, or pick a non-existing path. Use --allow-absolute-path to write outside the current working directory.",
                 ExitCode: 2),
+            ["EXPORT_BACKEND_UNAVAILABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Check Redis/FalkorDB connectivity and retry the export.",
+                ExitCode: 2),
 
             // Embedding / vector configuration.
             ["EMBEDDING_UNAVAILABLE"] = new(

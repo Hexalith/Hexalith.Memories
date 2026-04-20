@@ -2,6 +2,9 @@
 
 Status: done
 
+<!-- markdownlint-disable MD013 -->
+<!-- markdownlint-configure-file { "MD007": { "indent": 4 }, "MD012": false } -->
+
 **Effort estimate:** ~5 working days end-to-end — 0.5 day case-export service + snapshot + writer (Task 1), 0.5 day tenant-export service (Task 2), 0.25 day import-key reservation + schema envelope (Task 3), 0.5 day REST endpoints (Task 4), 0.25 day client methods (Task 5), 0.5 day CLI commands + formatters + error codes (Task 6), 1.25 days unit tests (Task 7), 0.25 day integration test (Task 8 — skip-path) or 0.75 day (active), 0.5 day docs + sprint-status + final validation (Task 9). Add 0.5 day rebase cost if Story 8.2 lands additional changes to `Program.cs` or `MemoriesClient.cs` before 8.3 finalizes — 8.2 is currently `review`, so auto-merge is expected on the consistency block but the `MemoriesClient` / `CliJsonContext` / `RootCommandFactory` edges have minor line-adjacency risk.
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
@@ -287,6 +290,7 @@ so that I can back up knowledge, migrate data, or analyze it externally.
         - `8310 ExportCancelled(Warning)` — tenantId + scope + unitsSoFar.
         - `8311 ExportFailed(Error)` — tenantId + scope + exceptionMessage.
     - [ ] 1.6 DI registration in `Program.cs`:
+
         ```csharp
         builder.Services.AddScoped<TenantExportService>();
         ```
@@ -365,7 +369,7 @@ so that I can back up knowledge, migrate data, or analyze it externally.
 
     - [ ] 5.5 Add error codes to `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs`:
         - `EXPORT_TENANT_NOT_FOUND` → recovery: "Run 'memories tenant list' to see available tenants."
-        - `EXPORT_CASE_NOT_FOUND` → recovery: "Run 'memories case list --tenant <t>' to see available cases."
+        - `EXPORT_CASE_NOT_FOUND` → recovery: "Run `memories case list --tenant <t>` to see available cases."
         - `EXPORT_WRITE_FAILED` → recovery: "Check disk space and write permissions; the part-file has been deleted."
         - `EXPORT_OUTPUT_PATH_INVALID` → recovery: "Use --force to overwrite or pick a non-existing path."
     - [ ] 5.6 No new formatters needed — export is a raw byte stream. Document in `ExportCaseCommand.cs` and `ExportTenantCommand.cs` XML doc that `--format` is IGNORED; if `globalOptions.Format` is non-default, print a one-line warning to stderr and proceed.
@@ -393,49 +397,62 @@ so that I can back up knowledge, migrate data, or analyze it externally.
     - [ ] 9.3 Run `dotnet build Hexalith.Memories.slnx` — target: 0 warnings / 0 errors.
     - [ ] 9.4 Manual smoke test: `memories export case --tenant <test> --case <sample-case> | jq .manifest` returns a valid manifest; `memories export tenant --tenant <test> --output /tmp/export.json` writes a valid JSON file; diff against a hand-constructed expected file for the test tenant.
 
-    ### Review Findings
-    Eight chunk-1 review findings were fixed in the follow-up pass; one was reclassified as upstream persistence debt and recorded in `deferred-work.md`.
+### Review Findings
 
-    - [x] `[Review][Fixed]` Incoming and cross-case target edges are no longer omitted — `BuildListEdgesForMemoryUnits` now uses an undirected match and emits `startNode(r)` / `endNode(r)` so incoming incident edges are exported while preserving true edge direction. [src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs]
-    - [x] `[Review][Fixed]` Edge streaming now uses the filtered `exportedMemoryUnitIds` set, so units skipped by the snapshot filter no longer leak edges into the export. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
-    - [x] `[Review][Fixed]` Exported edge types are normalized to camelCase contract values before serialization. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
-    - [x] `[Review][Fixed]` Edge de-dup state is now bounded to exported/processed memory-unit ids plus a batch-local `seenEdgeIds` set, replacing the full-export edge-id accumulator. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
-    - [x] `[Review][Fixed]` Tenant export now fails closed when Redis server enumeration is unavailable instead of silently returning zero units. [src/Hexalith.Memories.Server/Export/TenantExportService.cs, src/Hexalith.Memories.Server/Program.cs]
-    - [x] `[Review][Fixed]` `ExportWriter.FlushAsync` now treats completed/cancelled response pipes as cancellation and aborts enumeration promptly. [src/Hexalith.Memories.Server/Export/ExportWriter.cs]
-    - [x] `[Review][Fixed]` Malformed non-empty edge timestamps are rejected instead of being coerced to defaults that would bypass snapshot filtering. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
-    - [x] `[Review][Fixed]` Tenant configuration export now uses real registry state and `TenantRegistryEntry.LastUpdated` instead of placeholder values / incorrect timestamps. [src/Hexalith.Memories.Server/Tenants/TenantRegistryEntry.cs, src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs, src/Hexalith.Memories.Server/Export/TenantExportService.cs]
-    - [x] `[Review][Deferred]` Classification export remains an upstream persistence gap, not an export-layer bug — `IndexInput` / `IndexSyntacticActivity` do not persist `MemoryUnit.Classification`, so export cannot recover data that never reaches Redis. Follow-up captured in `deferred-work.md`. [src/Hexalith.Memories.Contracts/V1/IndexInput.cs, src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs, src/Hexalith.Memories.Server/Cases/CaseService.cs]
+Eight chunk-1 review findings were fixed in the follow-up pass; one was reclassified as upstream persistence debt and recorded in `deferred-work.md`.
+
+- [x] `[Review][Fixed]` Incoming and cross-case target edges are no longer omitted — `BuildListEdgesForMemoryUnits` now uses an undirected match and emits `startNode(r)` / `endNode(r)` so incoming incident edges are exported while preserving true edge direction. [src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs]
+- [x] `[Review][Fixed]` Edge streaming now uses the filtered `exportedMemoryUnitIds` set, so units skipped by the snapshot filter no longer leak edges into the export. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
+- [x] `[Review][Fixed]` Exported edge types are normalized to camelCase contract values before serialization. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
+- [x] `[Review][Fixed]` Edge de-dup state is now bounded to exported/processed memory-unit ids plus a batch-local `seenEdgeIds` set, replacing the full-export edge-id accumulator. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
+- [x] `[Review][Fixed]` Tenant export now fails closed when Redis server enumeration is unavailable instead of silently returning zero units. [src/Hexalith.Memories.Server/Export/TenantExportService.cs, src/Hexalith.Memories.Server/Program.cs]
+- [x] `[Review][Fixed]` `ExportWriter.FlushAsync` now treats completed/cancelled response pipes as cancellation and aborts enumeration promptly. [src/Hexalith.Memories.Server/Export/ExportWriter.cs]
+- [x] `[Review][Fixed]` Malformed non-empty edge timestamps are rejected instead of being coerced to defaults that would bypass snapshot filtering. [src/Hexalith.Memories.Server/Export/TenantExportService.cs]
+- [x] `[Review][Fixed]` Tenant configuration export now uses real registry state and `TenantRegistryEntry.LastUpdated` instead of placeholder values / incorrect timestamps. [src/Hexalith.Memories.Server/Tenants/TenantRegistryEntry.cs, src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs, src/Hexalith.Memories.Server/Export/TenantExportService.cs]
+- [x] `[Review][Deferred]` Classification export remains an upstream persistence gap, not an export-layer bug — `IndexInput` / `IndexSyntacticActivity` do not persist `MemoryUnit.Classification`, so export cannot recover data that never reaches Redis. Follow-up captured in `deferred-work.md`. [src/Hexalith.Memories.Contracts/V1/IndexInput.cs, src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs, src/Hexalith.Memories.Server/Cases/CaseService.cs]
 
 ## Dev Notes
 
 ### Pre-flight verification (run before Task 1)
 
 1. **Confirm sprint status.**
+
     ```bash
     grep "8-3-data-export" _bmad-output/implementation-artifacts/sprint-status.yaml
     # Expect: 8-3-data-export: ready-for-dev
     ```
+
 2. **Verify Story 8.2 is review or done** (8.3 depends on the consistency block NOT moving post-8.2, and on any `Program.cs` / `MemoriesClient.cs` / `CliJsonContext` edits being settled).
+
     ```bash
     grep "8-2-consistency-verification-and-repair" _bmad-output/implementation-artifacts/sprint-status.yaml
     # Expect: 'review' or 'done'. If 'in-progress' or 'ready-for-dev', coordinate landing order.
     ```
+
 3. **Confirm the Graph query builder methods we rely on are unchanged.**
+
     ```bash
     grep -n "BuildListCaseMemoryUnitIds\|BuildCountCaseMemoryUnits\|BuildMergeCaseNode" src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs
     # Expect: present at lines around 51, 34, 27 (per capture on 2026-04-20).
     ```
+
 4. **Verify `CaseService.ParseMemoryUnitFromHash` + `ParseCaseFromHash` accessibility.**
+
     ```bash
     grep -n "ParseMemoryUnitFromHash\|ParseCaseFromHash" src/Hexalith.Memories.Server/Cases/CaseService.cs
     # If they are private — refactor to `internal static` at Task 1.2 time (keep the existing call sites working).
     ```
+
 5. **Read the existing export-related doc in `docs/dev/` to avoid conflict.**
+
     ```bash
     ls docs/dev/export.md 2>/dev/null && echo "File exists — review before overwrite."
     ```
+
 6. **Confirm DAPR + Aspire package versions.** Use `grep -n "Dapr\|Aspire\|StackExchange.Redis\|NFalkorDB" Directory.Packages.props` to confirm — export does not touch DAPR Workflow (deliberately NO workflow involved); only Redis + FalkorDB clients. Verify package versions are stable.
+
 7. **Confirm Aspire fixture build state (Task 7.1 skip decision).**
+
     ```bash
     dotnet build tests/Hexalith.Memories.IntegrationTests
     # Success → un-skip the two integration tests. Failure with CS0311 → keep the skip.
@@ -868,8 +885,11 @@ Claude Opus 4.7 (1M context) via the BMAD `dev-story` workflow on 2026-04-20.
 
 ### Change Log
 
-| Date       | Author          | Change                                                                                                                                                                                                    |
-| ---------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Date       | Author          | Change                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-04-20 | GitHub Copilot  | Review-fix pass after chunk-1 code review: resolved 8 findings (incident-edge coverage, snapshot-filtered edge streaming, camelCase edge types, bounded edge de-dup, fail-closed Redis enumeration, completed-pipe cancellation, strict edge timestamp parsing, and real tenant `LastUpdated` / configuration capture) and reclassified classification export as upstream persistence debt recorded in `deferred-work.md`. |
-| 2026-04-20 | Claude Opus 4.7 | Dev-story landed: streaming data export (case + tenant) via `TenantExportService` / `ExportWriter`; 6 new V1 contract records; 2 REST endpoints; MemoriesClient export methods; CLI `memories export case | tenant`group with atomic`--output`+ path-traversal guard + byte-count stderr progress;`BuildListEdgesForMemoryUnits`parameterized Cypher; EventId bank 8300-8399;`docs/dev/export.md`; 36 new unit tests (Server.Tests 1279/1279 + Contracts.Tests 318/318 green); 2 integration scenarios skip-gated on the 5.6 Aspire fixture. Story moved to `review`. AC #11 test-inventory gap documented in Completion Notes (TenantExportServiceTests + ExportEndpointTests deferred to review-round follow-up). |
+| 2026-04-20 | Claude Opus 4.7 | Dev-story landed: streaming data export (case + tenant) via `TenantExportService` / `ExportWriter`; 6 new V1 contract records; 2 REST endpoints; MemoriesClient export methods; CLI `memories export case                                                                                                                                                                                                                  | tenant`group with atomic`--output`+ path-traversal guard + byte-count stderr progress;`BuildListEdgesForMemoryUnits`parameterized Cypher; EventId bank 8300-8399;`docs/dev/export.md`; 36 new unit tests (Server.Tests 1279/1279 + Contracts.Tests 318/318 green); 2 integration scenarios skip-gated on the 5.6 Aspire fixture. Story moved to `review`. AC #11 test-inventory gap documented in Completion Notes (TenantExportServiceTests + ExportEndpointTests deferred to review-round follow-up). |
+
+<!-- markdownlint-enable MD013 -->
+<!-- End of story 8.3 -->
 

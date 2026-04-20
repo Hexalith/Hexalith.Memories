@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-20 # Story 8.3 marked done after review-fix pass — export review findings closed (classification gap deferred upstream); focused server/contracts regression tests green.
+# last_updated: 2026-04-20 # Story 7.5 transitioned in-progress → review (Rev 1.5 close-out: Tier-3 tests closed by Story 8.4; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed). Full non-Docker suite green.
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-20 # Story 8.3 marked done after review-fix pass — export review findings closed (classification gap deferred upstream); focused server/contracts regression tests green.
+last_updated: 2026-04-20 # Story 7.5 transitioned in-progress → review (Rev 1.5 close-out: Tier-3 tests closed by Story 8.4; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed). Full non-Docker suite green.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -113,7 +113,7 @@ development_status:
   7-2-output-formats-and-explain-display: done
   7-3-actionable-error-messages-and-discoverable-actions: done
   7-4-quickstart-and-documentation: done
-  7-5-search-and-access-telemetry: in-progress
+  7-5-search-and-access-telemetry: review # Rev 1.5 close-out: Tier-3 (11.3 + 11.4) closed by Story 8.4; Task 11 top-level flipped [~]→[x]; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed. Server 1277 + CLI 300 + Contracts 288 green; 0W/0E under TreatWarningsAsErrors.
   epic-7-retrospective: optional
 
   # --- Phase: MVP — Operations ---

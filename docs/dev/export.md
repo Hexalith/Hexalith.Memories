@@ -39,10 +39,10 @@ a tenant externally (e.g. with `jq`).
 
 ## Endpoint summary
 
-| Endpoint | Path | Consumer | Success status | Typical latency |
-| --- | --- | --- | --- | --- |
-| Case export | `GET /api/tenants/{tenantId}/cases/{caseId}/export` | `memories export case` CLI; operator scripts | `200 OK` + streamed JSON | ~1 s per 1K units |
-| Tenant export | `GET /api/tenants/{tenantId}/export` | `memories export tenant` CLI; operator scripts | `200 OK` + streamed JSON | ~1 s per 1K units |
+| Endpoint      | Path                                                | Consumer                                       | Success status           | Typical latency   |
+| ------------- | --------------------------------------------------- | ---------------------------------------------- | ------------------------ | ----------------- |
+| Case export   | `GET /api/tenants/{tenantId}/cases/{caseId}/export` | `memories export case` CLI; operator scripts   | `200 OK` + streamed JSON | ~1 s per 1K units |
+| Tenant export | `GET /api/tenants/{tenantId}/export`                | `memories export tenant` CLI; operator scripts | `200 OK` + streamed JSON | ~1 s per 1K units |
 
 All responses carry these headers:
 
@@ -53,11 +53,11 @@ All responses carry these headers:
 Expected duration / size (rough baselines — calibrate in your deployment):
 
 | Tenant size | Approx. duration | Approx. JSON size |
-| --- | --- | --- |
-| 1K units | ~1 s | ~5 MB |
-| 10K units | ~10 s | ~50 MB |
-| 100K units | ~2 min | ~500 MB |
-| 1M units | ~20 min | ~5 GB |
+| ----------- | ---------------- | ----------------- |
+| 1K units    | ~1 s             | ~5 MB             |
+| 10K units   | ~10 s            | ~50 MB            |
+| 100K units  | ~2 min           | ~500 MB           |
+| 1M units    | ~20 min          | ~5 GB             |
 
 ## Schema reference
 
@@ -74,70 +74,70 @@ streaming parsers can consume them incrementally):
 
 ```json
 {
-  "manifest": {
-    "schemaVersion": 1,
-    "scope": "case",
-    "tenantId": "acme",
-    "caseId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
-    "exportedAt": "2026-04-20T10:15:30.0000000+00:00",
-    "snapshotAt": "2026-04-20T10:15:30.1234567+00:00"
-  },
-  "case": {
-    "id": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
-    "tenantId": "acme",
-    "name": "Q1 Planning",
-    "status": "active",
-    "createdAt": "2026-02-01T09:30:00+00:00",
-    "lastUpdated": "2026-04-15T10:00:00+00:00",
-    "memoryUnitCount": 3,
-    "members": [
-      {
-        "memberId": "alice@acme.com",
-        "memberType": "user",
-        "addedAt": "2026-02-02T00:00:00Z"
-      }
-    ]
-  },
-  "memoryUnits": [
-    {
-      "unit": {
-        "id": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X0",
+    "manifest": {
+        "schemaVersion": 1,
+        "scope": "case",
         "tenantId": "acme",
         "caseId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
-        "content": "Observation text",
-        "contentHash": "sha256:abc",
-        "sourceUri": "file:///obs.md",
-        "sourceType": "file",
-        "ingestedBy": "alice",
-        "ingestedAt": "2026-02-15T14:00:00+00:00",
-        "lastUpdated": "2026-02-15T14:00:00+00:00",
-        "status": "indexed",
-        "metadata": {},
-        "embeddingProvider": "google",
-        "embeddingModel": "gemini-embedding-001",
-        "embeddingDimensions": 768
-      },
-      "annotationTargets": []
+        "exportedAt": "2026-04-20T10:15:30.0000000+00:00",
+        "snapshotAt": "2026-04-20T10:15:30.1234567+00:00"
+    },
+    "case": {
+        "id": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+        "tenantId": "acme",
+        "name": "Q1 Planning",
+        "status": "active",
+        "createdAt": "2026-02-01T09:30:00+00:00",
+        "lastUpdated": "2026-04-15T10:00:00+00:00",
+        "memoryUnitCount": 3,
+        "members": [
+            {
+                "memberId": "alice@acme.com",
+                "memberType": "user",
+                "addedAt": "2026-02-02T00:00:00Z"
+            }
+        ]
+    },
+    "memoryUnits": [
+        {
+            "unit": {
+                "id": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X0",
+                "tenantId": "acme",
+                "caseId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                "content": "Observation text",
+                "contentHash": "sha256:abc",
+                "sourceUri": "file:///obs.md",
+                "sourceType": "file",
+                "ingestedBy": "alice",
+                "ingestedAt": "2026-02-15T14:00:00+00:00",
+                "lastUpdated": "2026-02-15T14:00:00+00:00",
+                "status": "indexed",
+                "metadata": {},
+                "embeddingProvider": "google",
+                "embeddingModel": "gemini-embedding-001",
+                "embeddingDimensions": 768
+            },
+            "annotationTargets": []
+        }
+    ],
+    "edges": [
+        {
+            "id": "4273",
+            "sourceId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X0",
+            "targetId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X1",
+            "edgeType": "causedBy",
+            "confidence": 0.95,
+            "origin": "inferred",
+            "createdAt": "2026-02-15T14:01:00+00:00",
+            "verifiedBy": null,
+            "previousConfidence": null
+        }
+    ],
+    "statistics": {
+        "memoryUnitCount": 1,
+        "edgeCount": 1,
+        "caseCount": 1
     }
-  ],
-  "edges": [
-    {
-      "id": "4273",
-      "sourceId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X0",
-      "targetId": "01HM5Q9WXGK6T8Q4Z5Y6V7W8X1",
-      "edgeType": "causedBy",
-      "confidence": 0.95,
-      "origin": "inferred",
-      "createdAt": "2026-02-15T14:01:00+00:00",
-      "verifiedBy": null,
-      "previousConfidence": null
-    }
-  ],
-  "statistics": {
-    "memoryUnitCount": 1,
-    "edgeCount": 1,
-    "caseCount": 1
-  }
 }
 ```
 
@@ -196,10 +196,10 @@ Consequence: a future re-importer MUST handle the "dangling target" case.
    in `content`. If a compliance export needs the original PDF / image, the
    operator must capture that separately from the source store.
 5. **`classification` is contract-reserved but not yet persisted upstream.**
-  `MemoryUnit.Classification` exists on the export contract, but the current
-  ingest/index path does not write it into Redis, so exports cannot
-  reconstruct it yet. A future story must persist classification before
-  export can round-trip it.
+   `MemoryUnit.Classification` exists on the export contract, but the current
+   ingest/index path does not write it into Redis, so exports cannot
+   reconstruct it yet. A future story must persist classification before
+   export can round-trip it.
 6. **Export endpoints are NOT in the AccessTelemetryEvent scope
    (Story 7.5).** Export is a data-exfiltration surface, but a dedicated
    audit channel is out of MVP scope — a follow-up story will add an
@@ -248,12 +248,12 @@ payload is raw JSON regardless.
 Errors that occur **before** the response starts streaming are returned as a
 structured `ErrorResponse` body with `Content-Type: application/json`:
 
-| HTTP | Code | Trigger |
-| --- | --- | --- |
-| 400 | `INVALID_TENANT_ID` | Tenant id fails the regex guard. |
-| 400 | `INVALID_CASE_ID` | Case id fails the ULID regex guard. |
-| 404 | `TENANT_NOT_FOUND` | Tenant absent from the registry. |
-| 404 | `CASE_NOT_FOUND` | Case absent in the tenant. |
+| HTTP | Code                | Trigger                             |
+| ---- | ------------------- | ----------------------------------- |
+| 400  | `INVALID_TENANT_ID` | Tenant id fails the regex guard.    |
+| 400  | `INVALID_CASE_ID`   | Case id fails the ULID regex guard. |
+| 404  | `TENANT_NOT_FOUND`  | Tenant absent from the registry.    |
+| 404  | `CASE_NOT_FOUND`    | Case absent in the tenant.          |
 
 Errors **mid-stream** (backend connection loss, writer failure) cannot
 produce a structured response — headers are already committed. The server
@@ -322,3 +322,4 @@ workflow-backed variant:
 
 See the Story 8.3 spec for the full "What does NOT ship" list with
 justifications.
+
