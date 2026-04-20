@@ -5,95 +5,337 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
-/// <summary>
-/// ATDD RED-phase tests for Story 8.2 — <c>memories consistency verify</c> CLI command.
-/// Mirrors the <see cref="StatusTelemetryCommandTests"/> shape: NSubstitute on
-/// <c>MemoriesClient</c>, <c>CliCommandExecutor</c> + <c>OutputFormatterRouter</c>
-/// stdout capture, exit-code assertions.
-/// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 6.1 lands <c>ConsistencyVerifyCommand</c> + formatter
-/// registration in <c>CommandPayloadRegistry</c>.
-/// </remarks>
-public class ConsistencyVerifyCommandTests
-{
-    // Blueprint — uncomment when target command exists (Task 6.1):
-    //
-    // using Hexalith.Memories.Cli.Commands;
-    // using Hexalith.Memories.Client.Rest;
-    // using Hexalith.Memories.Contracts.V1;
-    // using NSubstitute;
-    // using Shouldly;
+using System.Text.Json;
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1. Happy path (no <c>--wait</c>): prints the instance ID +
-    /// status URL and exits success immediately.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerifyCommand (Story 8.2 Task 6.1)")]
+using Hexalith.Memories.Cli;
+using Hexalith.Memories.Cli.Commands;
+using Hexalith.Memories.Cli.Configuration;
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
+using Shouldly;
+
+/// <summary>Story 8.2 — <c>memories consistency verify</c> CLI coverage.</summary>
+public sealed class ConsistencyVerifyCommandTests
+{
+    [Fact]
     public async Task Run_HappyPath_PrintsInstanceIdAndStatusUrl()
     {
-        // Arrange: stub MemoriesClient.StartConsistencyVerificationAsync → returns Uri
-        // "/api/tenants/acme/consistency/verify/verify-consistency-acme-GUID".
-        // Act: invoke `memories consistency verify --tenant acme`.
-        // Expected: exit code 0; stdout contains the instance ID and status URL;
-        // MemoriesClient.GetConsistencyVerificationStatusAsync NOT called (no --wait).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-001) — implement ConsistencyVerifyCommand happy path. "
-            + "Expected: exit 0; stdout includes instanceId + status URL; no status polling when --wait is absent.");
+        ConsistencyStubClient stub = new() { VerifyInstanceId = "verify-consistency-acme-abc" };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stdout.ToString().ShouldContain("verify-consistency-acme-abc");
+        stdout.ToString().ShouldContain("Workflow scheduled: verify");
+        stderr.ToString().ShouldBeEmpty();
+        stub.VerifyStatusCalls.ShouldBe(0);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 + AC #8 (progress visibility).
-    /// With <c>--wait</c>: polls <c>GetConsistencyVerificationStatusAsync</c> on a 5s interval
-    /// (initial) until the workflow reaches <c>Completed</c> / <c>Failed</c>, then prints the
-    /// final <c>ConsistencyVerificationResult</c> through the formatter router.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerifyCommand (Story 8.2 Task 6.1)")]
+    [Fact]
     public async Task Run_WithWait_PollsUntilCompletionAndPrintsResult()
     {
-        // Arrange: status sequence returns Running, Running, Completed with a ConsistencyVerificationResult.
-        // Act: invoke `memories consistency verify --tenant acme --wait`.
-        // Expected: MemoriesClient.GetConsistencyVerificationStatusAsync called >= 3 times;
-        // stdout contains the Total / Consistent / Inconsistent summary line from the Human formatter.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-002) — implement --wait polling loop. "
-            + "Expected: status polled until Completed; final ConsistencyVerificationResult printed "
-            + "via OutputFormatterRouter (Human format summary).");
+        ConsistencyStubClient stub = new()
+        {
+            VerifyInstanceId = "verify-consistency-acme-abc",
+            VerifyStatusSequence =
+            [
+                CreateVerificationStatus("verify-consistency-acme-abc", "Running", result: null),
+                CreateVerificationStatus(
+                    "verify-consistency-acme-abc",
+                    "Completed",
+                    new ConsistencyVerificationResult(
+                        "acme",
+                        TotalUnits: 3,
+                        ConsistentCount: 2,
+                        InconsistentCount: 1,
+                        Discrepancies:
+                        [
+                            new ConsistencyDiscrepancy(
+                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                                SyntacticPresent: true,
+                                SemanticPresent: false,
+                                GraphPresent: true,
+                                ConsistencyRepairRecommendation.ReIndexSemantic),
+                        ],
+                        TotalDiscrepancyCount: 1,
+                        TruncatedAt: null,
+                        EnumerationTruncated: false,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(5))),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stub.VerifyStatusCalls.ShouldBeGreaterThan(0);
+        stdout.ToString().ShouldContain("Consistency verification completed");
+        stdout.ToString().ShouldContain("inconsistent units");
+        stderr.ToString().ShouldBeEmpty();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// Missing required <c>--tenant</c> argument → plumbing exit code + JSON error envelope.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerifyCommand (Story 8.2 Task 6.1)")]
-    public async Task Run_MissingTenant_ReturnsPlumbingExitCodeWithErrorEnvelope()
+    [Fact]
+    public async Task Run_MissingTenant_ReturnsPlumbingExitCode()
     {
-        // Act: invoke `memories consistency verify` (no --tenant).
-        // Expected: exit code = CliExitCodes.ArgumentError (or equivalent plumbing code);
-        // stderr contains an error envelope with code describing the missing argument.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-003) — implement missing-argument handling. "
-            + "Expected: non-zero exit (plumbing tier); stderr carries the error envelope; "
-            + "MemoriesClient never called.");
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Human, stub);
+
+        // System.CommandLine catches missing required options before our handler runs —
+        // it returns non-zero with a diagnostic on stderr (exit code 1 on enforcement).
+        int exit = await InvokeAsync(services, ["verify"]);
+
+        exit.ShouldNotBe(CliExitCodes.Success);
+        stub.VerifyStartCalls.ShouldBe(0);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// <c>--format json</c> emits the <c>ConsistencyVerificationResult</c> as structured JSON
-    /// with the expected <c>command</c> / <c>data</c> envelope shape.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerifyCommand (Story 8.2 Task 6.1)")]
-    public async Task Run_JsonFormat_EmitsVerificationResultEnvelope()
+    [Fact]
+    public async Task Run_JsonFormat_EmitsReceiptEnvelope()
     {
-        // Act: invoke `memories consistency verify --tenant acme --wait --format json`.
-        // Expected: stdout is valid JSON; root contains "command" = "consistency verify" (or
-        // ConsistencyVerifyCommand.CommandName) and "data" = ConsistencyVerificationResult contents.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-004) — implement JSON formatter registration in CommandPayloadRegistry. "
-            + "Expected: JSON envelope with command + data keys; data deserializes as ConsistencyVerificationResult.");
+        ConsistencyStubClient stub = new() { VerifyInstanceId = "verify-consistency-acme-xyz" };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Json, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        doc.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyVerifyCommand.CommandName);
+        doc.RootElement.GetProperty("data").GetProperty("workflowInstanceId").GetString().ShouldBe("verify-consistency-acme-xyz");
+        doc.RootElement.GetProperty("data").GetProperty("kind").GetString().ShouldBe("verify");
+        doc.RootElement.GetProperty("data").GetProperty("statusUrl").GetString().ShouldEndWith("/api/tenants/acme/consistency/verify/verify-consistency-acme-xyz");
+    }
+
+    [Fact]
+    public async Task Run_JsonFormatWithWait_EmitsResultEnvelope()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            VerifyInstanceId = "verify-consistency-acme-json",
+            VerifyStatusSequence =
+            [
+                CreateVerificationStatus(
+                    "verify-consistency-acme-json",
+                    "Completed",
+                    new ConsistencyVerificationResult(
+                        "acme",
+                        TotalUnits: 1,
+                        ConsistentCount: 1,
+                        InconsistentCount: 0,
+                        Discrepancies: [],
+                        TotalDiscrepancyCount: 0,
+                        TruncatedAt: null,
+                        EnumerationTruncated: false,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(1))),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Json, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        doc.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyVerifyCommand.CommandName);
+        doc.RootElement.GetProperty("data").GetProperty("totalUnits").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("data").GetProperty("inconsistentCount").GetInt32().ShouldBe(0);
+    }
+
+    private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)
+    {
+        var root = new System.CommandLine.Command("consistency");
+        root.Subcommands.Add(ConsistencyVerifyCommand.Build(services));
+        return await root.Parse(args).InvokeAsync();
+    }
+
+    internal static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(
+        OutputFormat format,
+        ConsistencyStubClient stubClient,
+        bool isInteractive = false,
+        string? stdin = null)
+    {
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        IServiceCollection collection = CliServices.BuildCollection();
+        collection.AddSingleton(new CliConsole
+        {
+            In = new StringReader(stdin ?? string.Empty),
+            Out = stdout,
+            Error = stderr,
+            Format = format,
+            IsInteractive = isInteractive,
+        });
+        collection.Replace(ServiceDescriptor.Transient<MemoriesClient>(_ => stubClient));
+
+        ServiceProvider provider = collection.BuildServiceProvider();
+        FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
+        flag.Endpoint = new Uri("http://127.0.0.1:65001/");
+        return (provider, stdout, stderr);
+    }
+
+    internal static ConsistencyVerificationStatus CreateVerificationStatus(
+        string instanceId,
+        string status,
+        ConsistencyVerificationResult? result)
+        => new(
+            instanceId,
+            status,
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow,
+            result is null ? new ConsistencyWorkflowProgress("verifying", 1, 2) : new ConsistencyWorkflowProgress("completed", 1, 1),
+            result);
+
+    internal static ConsistencyRepairStatus CreateRepairStatus(
+        string instanceId,
+        string status,
+        ConsistencyRepairResult? result)
+        => new(
+            instanceId,
+            status,
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow,
+            result is null ? new ConsistencyWorkflowProgress("repairing", 1, 2) : new ConsistencyWorkflowProgress("completed", 1, 1),
+            result);
+}
+
+/// <summary>
+/// Test double for <see cref="MemoriesClient"/> that records calls + produces scripted
+/// responses. Shared across the three consistency CLI test classes.
+/// </summary>
+internal sealed class ConsistencyStubClient : MemoriesClient
+{
+    public ConsistencyStubClient()
+        : base(
+            new HttpClient { BaseAddress = new Uri("http://127.0.0.1:65001/") },
+            Options.Create(new MemoriesClientOptions { Endpoint = new Uri("http://127.0.0.1:65001/") }),
+            NullLogger<MemoriesClient>.Instance)
+    {
+    }
+
+    public string VerifyInstanceId { get; set; } = "verify-consistency-acme-stub";
+
+    public string RepairInstanceId { get; set; } = "repair-consistency-acme-stub";
+
+    public int VerifyStartCalls { get; private set; }
+
+    public int RepairStartCalls { get; private set; }
+
+    public int VerifyStatusCalls { get; private set; }
+
+    public int RepairStatusCalls { get; private set; }
+
+    public ConsistencyVerificationRequest? LastVerifyRequest { get; private set; }
+
+    public ConsistencyRepairRequest? LastRepairRequest { get; private set; }
+
+    public ConsistencyInspectionResult InspectionResponse { get; set; } = new(
+        "tenant-stub",
+        "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+        SyntacticPresent: true,
+        SemanticPresent: true,
+        GraphPresent: true,
+        SyntacticDetail: new ConsistencySyntacticDetail(
+            "hash", DateTimeOffset.UtcNow, "file:///x", "file", "case-1", "gemini", "gemini-embedding-001"),
+        SemanticDetail: new ConsistencySemanticDetail(768, "tenant-stub:vec:01HM5Q9WXGK6T8Q4Z5Y6V7W8X9"),
+        GraphDetail: new ConsistencyGraphDetail(1, 2, 1),
+        Recommendation: ConsistencyRepairRecommendation.NoOp,
+        CheckedAt: DateTimeOffset.UtcNow);
+
+    public Exception? InspectionException { get; set; }
+
+    public IReadOnlyList<ConsistencyVerificationStatus>? VerifyStatusSequence { get; set; }
+
+    public IReadOnlyList<ConsistencyRepairStatus>? RepairStatusSequence { get; set; }
+
+    public override Task<Uri> StartConsistencyVerificationAsync(
+        string tenantId, ConsistencyVerificationRequest? request, CancellationToken ct)
+    {
+        VerifyStartCalls++;
+        LastVerifyRequest = request;
+        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/tenants/{tenantId}/consistency/verify/{VerifyInstanceId}"));
+    }
+
+    public override Task<ConsistencyVerificationStatus?> GetConsistencyVerificationStatusAsync(
+        string tenantId, string instanceId, CancellationToken ct)
+    {
+        VerifyStatusCalls++;
+        ConsistencyVerificationStatus? state = VerifyStatusSequence is { Count: > 0 } seq
+            ? seq[Math.Min(VerifyStatusCalls - 1, seq.Count - 1)]
+            : ConsistencyVerifyCommandTests.CreateVerificationStatus(
+                instanceId,
+                "Completed",
+                new ConsistencyVerificationResult(
+                    tenantId,
+                    TotalUnits: 0,
+                    ConsistentCount: 0,
+                    InconsistentCount: 0,
+                    Discrepancies: [],
+                    TotalDiscrepancyCount: 0,
+                    TruncatedAt: null,
+                    EnumerationTruncated: false,
+                    StartedAt: DateTimeOffset.UtcNow.AddSeconds(-1),
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    Duration: TimeSpan.FromSeconds(1)));
+        return Task.FromResult<ConsistencyVerificationStatus?>(state);
+    }
+
+    public override Task<ConsistencyInspectionResult> InspectConsistencyAsync(
+        string tenantId, string memoryUnitId, CancellationToken ct)
+    {
+        if (InspectionException is not null)
+        {
+            throw InspectionException;
+        }
+
+        return Task.FromResult(InspectionResponse);
+    }
+
+    public override Task<Uri> StartConsistencyRepairAsync(
+        string tenantId, ConsistencyRepairRequest? request, CancellationToken ct)
+    {
+        RepairStartCalls++;
+        LastRepairRequest = request;
+        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/tenants/{tenantId}/consistency/repair/{RepairInstanceId}"));
+    }
+
+    public override Task<ConsistencyRepairStatus?> GetConsistencyRepairStatusAsync(
+        string tenantId, string instanceId, CancellationToken ct)
+    {
+        RepairStatusCalls++;
+        ConsistencyRepairStatus? state = RepairStatusSequence is { Count: > 0 } seq
+            ? seq[Math.Min(RepairStatusCalls - 1, seq.Count - 1)]
+            : ConsistencyVerifyCommandTests.CreateRepairStatus(
+                instanceId,
+                "Completed",
+                new ConsistencyRepairResult(
+                    tenantId,
+                    TotalDiscrepancies: 0,
+                    RepairedCount: 0,
+                    UnrepairableCount: 0,
+                    Actions: [],
+                    PassesExecuted: 1,
+                    StartedAt: DateTimeOffset.UtcNow.AddSeconds(-1),
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    Duration: TimeSpan.FromSeconds(1)));
+        return Task.FromResult<ConsistencyRepairStatus?>(state);
     }
 }

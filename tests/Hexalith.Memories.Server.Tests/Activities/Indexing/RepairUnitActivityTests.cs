@@ -5,139 +5,322 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using Dapr.Workflow;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
+using Shouldly;
+
+using StackExchange.Redis;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — AC #4 (re-verify before acting; Risk #1),
-/// AC #5 (orphan removal semantics), AC #6 (re-index semantics), AC #7 (unrepairable
-/// flagging). Covers the full 8-test inventory in AC #9.
+/// Story 8.2 — AC #4 (re-verify before acting; Risk #1), AC #5 (orphan removal), AC #6
+/// (re-index), AC #7 (unrepairable flagging). Covers the 8-test inventory in AC #9.
 /// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 1.3 lands <c>RepairUnitActivity</c>, Task 1.4 lands
-/// input/result records, and Tasks 3.5 / 3.6 land <c>SemanticIndexer</c> /
-/// <c>GraphNodeMerger</c> services.
-/// </remarks>
 public class RepairUnitActivityTests
 {
-    // Blueprint — uncomment when target types exist:
-    //
-    // using Dapr.Workflow;
-    // using Hexalith.Memories.Contracts.V1;
-    // using Hexalith.Memories.Server.Activities.Indexing;
-    // using Hexalith.Memories.Server.Consistency;
-    // using NSubstitute;
-    // using Shouldly;
-    // using StackExchange.Redis;
+    private const string TestTenantId = "tenant-1";
+    private const string TestMemoryUnitId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4 + Risk #1.
-    /// Stale verify snapshot + fresh re-verify reports consistent → NO-OP + no writes.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_ReVerifyReturnsConsistent_SkipsAction()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-007, Risk #1) — implement re-verify-before-act guard. "
-            + "Expected: stale verify snapshot said remove-orphaned, fresh re-verify says (T,T,T) → "
-            + "NO writes dispatched, RepairActionRecord.Applied=NoOp, Succeeded=true.");
+        // Stale recommendation said RemoveOrphanedSemantic; fresh re-verify reports (T,T,T).
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.NoOp,
+            syntactic: true, semantic: true, graph: true);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.RemoveOrphanedSemantic));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        record.Succeeded.ShouldBeTrue();
+
+        // Risk #1: no destructive writes dispatched.
+        await harness.SemanticIndexer.DidNotReceive().ReIndexFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await harness.GraphNodeMerger.DidNotReceive().ReMergeFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await harness.RedisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        harness.GraphQueryBuilder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #5. <c>RemoveOrphanedSemantic</c> → delete vector key.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_RemoveOrphanedSemantic_DeletesVectorKey()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-008) — implement RemoveOrphanedSemantic branch. "
-            + "Expected: KeyDeleteAsync(\"{tenantId}:vec:{id}\") called once; "
-            + "RepairActionRecord.Applied=RemoveOrphanedSemantic; BeforeState/AfterState populated.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.RemoveOrphanedSemantic,
+            syntactic: false, semantic: true, graph: false);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.RemoveOrphanedSemantic));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.RemoveOrphanedSemantic);
+        record.Succeeded.ShouldBeTrue();
+        record.AfterState["syntactic"].ShouldBe("absent");
+        record.BeforeState["semantic"].ShouldBe("present");
+        record.AfterState["semantic"].ShouldBe("absent");
+        record.AfterState["graph"].ShouldBe("absent");
+
+        await harness.RedisDb.Received(1).KeyDeleteAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+            Arg.Any<CommandFlags>());
+        harness.GraphQueryBuilder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #7. Unrepairable → <c>Succeeded=false</c> + reason + EventId 8203.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_Unrepairable_ReturnsSucceededFalseWithReason()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-009) — implement Unrepairable branch. "
-            + "Expected: Applied=Unrepairable, Succeeded=false, FailureReason populated, "
-            + "and LoggerMessage EventId 8203 (UnrepairableDiscrepancy) emitted at Warning level.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.Unrepairable,
+            syntactic: false, semantic: false, graph: false);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable,
+                IncludeUnrepairable: true));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.Unrepairable);
+        record.Succeeded.ShouldBeFalse();
+        record.FailureReason.ShouldNotBeNullOrWhiteSpace();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #5. <c>RemoveOrphanedGraph</c> → FalkorDB DETACH DELETE.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
+    public async Task RunAsync_StaleUnrepairableReverifyConsistent_DowngradesToNoOp()
+    {
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.NoOp,
+            syntactic: true, semantic: true, graph: true);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable,
+                IncludeUnrepairable: true));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        record.Succeeded.ShouldBeTrue();
+        await harness.SemanticIndexer.DidNotReceive().ReIndexFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await harness.GraphNodeMerger.DidNotReceive().ReMergeFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_RemoveOrphanedGraph_InvokesDeleteMemoryUnitNode()
     {
-        // Expected: IGraphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId) called once,
-        // returned query executed against the tenant graph; no semantic-index or syntactic writes.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-008b) — implement RemoveOrphanedGraph branch. "
-            + "Expected: IGraphQueryBuilder.BuildDeleteMemoryUnitNode(id) invoked exactly once; "
-            + "no IDatabase.KeyDeleteAsync calls; RepairActionRecord.Applied=RemoveOrphanedGraph.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.RemoveOrphanedGraph,
+            syntactic: false, semantic: false, graph: true);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.RemoveOrphanedGraph));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.RemoveOrphanedGraph);
+        record.Succeeded.ShouldBeTrue();
+        record.AfterState["syntactic"].ShouldBe("absent");
+        record.AfterState["semantic"].ShouldBe("absent");
+        record.AfterState["graph"].ShouldBe("absent");
+
+        harness.GraphQueryBuilder.Received(1).BuildDeleteMemoryUnitNode(TestMemoryUnitId);
+        await harness.RedisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #5. <c>RemoveOrphanedSemanticAndGraph</c> → BOTH deletes.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_RemoveOrphanedSemanticAndGraph_PerformsBothDeletes()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-008c) — implement RemoveOrphanedSemanticAndGraph branch. "
-            + "Expected: BOTH KeyDeleteAsync(\"{tenantId}:vec:{id}\") AND "
-            + "IGraphQueryBuilder.BuildDeleteMemoryUnitNode(id) invoked; "
-            + "RepairActionRecord captures both before/after transitions.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph,
+            syntactic: false, semantic: true, graph: true);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph);
+        record.Succeeded.ShouldBeTrue();
+
+        await harness.RedisDb.Received(1).KeyDeleteAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+            Arg.Any<CommandFlags>());
+        harness.GraphQueryBuilder.Received(1).BuildDeleteMemoryUnitNode(TestMemoryUnitId);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #6. <c>ReIndexSemantic</c> → delegate to <c>SemanticIndexer</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_ReIndexSemantic_InvokesSemanticIndexer()
     {
-        // Expected: SemanticIndexer.ReIndexFromSyntacticAsync(tenantId, memoryUnitId, ct) called
-        // exactly once; GraphNodeMerger NOT called; RepairActionRecord.Applied=ReIndexSemantic.
-        // The activity MUST read fields from the syntactic {tenantId}:mu:{id} hash first
-        // (via SemanticIndexer) — reuse, not duplicate (Story 8.2 "Factor-vs-duplicate" policy).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010a) — implement ReIndexSemantic branch. "
-            + "Expected: SemanticIndexer.ReIndexFromSyntacticAsync(tenantId, memoryUnitId, ct) invoked "
-            + "exactly once; GraphNodeMerger NOT invoked; RepairActionRecord.Applied=ReIndexSemantic.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.ReIndexSemantic,
+            syntactic: true, semantic: false, graph: true);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.ReIndexSemantic));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+        record.Succeeded.ShouldBeTrue();
+
+        await harness.SemanticIndexer.Received(1).ReIndexFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
+        await harness.GraphNodeMerger.DidNotReceive().ReMergeFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #6. <c>ReIndexGraph</c> → delegate to <c>GraphNodeMerger</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_ReIndexGraph_InvokesGraphNodeMerger()
     {
-        // Expected: GraphNodeMerger.ReMergeFromSyntacticAsync called exactly once;
-        // SemanticIndexer NOT called; RepairActionRecord.Applied=ReIndexGraph.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010b) — implement ReIndexGraph branch. "
-            + "Expected: GraphNodeMerger.ReMergeFromSyntacticAsync(tenantId, memoryUnitId, ct) invoked "
-            + "exactly once; SemanticIndexer NOT invoked; RepairActionRecord.Applied=ReIndexGraph.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.ReIndexGraph,
+            syntactic: true, semantic: true, graph: false);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.ReIndexGraph));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.ReIndexGraph);
+        record.Succeeded.ShouldBeTrue();
+
+        await harness.GraphNodeMerger.Received(1).ReMergeFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
+        await harness.SemanticIndexer.DidNotReceive().ReIndexFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #6. <c>ReIndexSemanticAndGraph</c> → BOTH services called.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting RepairUnitActivity (Story 8.2 Task 1.3)")]
+    [Fact]
     public async Task RunAsync_ReIndexSemanticAndGraph_InvokesBoth()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010c) — implement ReIndexSemanticAndGraph branch. "
-            + "Expected: SemanticIndexer AND GraphNodeMerger both invoked exactly once; "
-            + "RepairActionRecord.Applied=ReIndexSemanticAndGraph; BeforeState/AfterState populated.");
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.ReIndexSemanticAndGraph,
+            syntactic: true, semantic: false, graph: false);
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.ReIndexSemanticAndGraph));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemanticAndGraph);
+        record.Succeeded.ShouldBeTrue();
+
+        await harness.SemanticIndexer.Received(1).ReIndexFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
+        await harness.GraphNodeMerger.Received(1).ReMergeFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task RunAsync_ReIndexSemanticFailure_PreservesBeforeStateOnFailure()
+    {
+        Harness harness = CreateHarness(
+            freshRecommendation: ConsistencyRepairRecommendation.ReIndexSemantic,
+            syntactic: true, semantic: false, graph: true);
+        harness.SemanticIndexer
+            .ReIndexFromSyntacticAsync(TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("semantic pipeline unavailable")));
+
+        RepairActionRecord record = await harness.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.ReIndexSemantic));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+        record.Succeeded.ShouldBeFalse();
+        record.FailureReason.ShouldNotBeNull();
+        record.FailureReason.ShouldContain("semantic pipeline unavailable");
+        record.BeforeState["syntactic"].ShouldBe("present");
+        record.BeforeState["semantic"].ShouldBe("absent");
+        record.BeforeState["graph"].ShouldBe("present");
+        record.AfterState.ShouldBe(record.BeforeState, ignoreOrder: true);
+    }
+
+    private static Harness CreateHarness(
+        ConsistencyRepairRecommendation freshRecommendation,
+        bool syntactic,
+        bool semantic,
+        bool graph)
+    {
+        IConsistencyInspectionService inspection = Substitute.For<IConsistencyInspectionService>();
+        ConsistencyInspectionResult freshResult = new(
+            TestTenantId,
+            TestMemoryUnitId,
+            syntactic,
+            semantic,
+            graph,
+            null,
+            null,
+            null,
+            freshRecommendation,
+            DateTimeOffset.UtcNow);
+        inspection
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(freshResult);
+
+        ISemanticIndexer semanticIndexer = Substitute.For<ISemanticIndexer>();
+        IGraphNodeMerger graphNodeMerger = Substitute.For<IGraphNodeMerger>();
+
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        IConnectionMultiplexer falkorMux = VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []);
+
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = TestMemoryUnitId }));
+
+        RepairUnitActivity activity = new(
+            inspection,
+            semanticIndexer,
+            graphNodeMerger,
+            redis,
+            falkorMux,
+            builder,
+            Substitute.For<ILogger<RepairUnitActivity>>());
+
+        return new Harness(activity, inspection, semanticIndexer, graphNodeMerger, redisDb, builder);
+    }
+
+    private sealed record Harness(
+        RepairUnitActivity Activity,
+        IConsistencyInspectionService Inspection,
+        ISemanticIndexer SemanticIndexer,
+        IGraphNodeMerger GraphNodeMerger,
+        IDatabase RedisDb,
+        IGraphQueryBuilder GraphQueryBuilder);
 }

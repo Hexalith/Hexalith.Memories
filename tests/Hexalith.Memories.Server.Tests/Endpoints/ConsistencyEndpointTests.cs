@@ -5,158 +5,468 @@
 
 namespace Hexalith.Memories.Server.Tests.Endpoints;
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Dapr.Client;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Tenants;
+using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
+using Hexalith.Memories.Server.Workflows;
+
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+
+using Shouldly;
+
+using StackExchange.Redis;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — AC #1, #3, #4 (REST-endpoint shapes for
-/// <c>POST /api/tenants/{tenantId}/consistency/verify</c>, <c>GET .../verify/{instanceId}</c>,
-/// <c>GET .../inspect/{memoryUnitId}</c>, <c>POST .../repair</c>, <c>GET .../repair/{instanceId}</c>).
-/// Also covers Story 7.5 integration invariant: consistency endpoints MUST NOT emit
-/// <c>AccessTelemetryEvent</c> (they are not in the 4-audited-operations scope).
+/// Story 8.2 — HTTP-contract coverage for the five consistency endpoints, including
+/// schedule/status happy paths now that the workflow client is abstracted behind
+/// <see cref="IConsistencyWorkflowService"/>.
 /// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 4.1 lands the five minimal-API endpoints in
-/// <c>Program.cs</c>. AC #9 calls for <c>WebApplicationFactory&lt;Program&gt;</c>;
-/// the factory is already referenced via <c>Microsoft.AspNetCore.Mvc.Testing</c> in the
-/// test csproj (Story 7.5), but <c>Program.cs</c> may require a <c>public partial class
-/// Program { }</c> shim to be accessible from this assembly — flag for the dev agent.
-/// </remarks>
-public class ConsistencyEndpointTests
+public sealed class ConsistencyEndpointTests : IDisposable
 {
-    // Blueprint — uncomment when target endpoints exist (Task 4.1):
-    //
-    // using System.Net;
-    // using System.Net.Http.Json;
-    // using System.Text.Json;
-    // using Hexalith.Memories.Contracts.V1;
-    // using Microsoft.AspNetCore.Mvc.Testing;
-    // using Shouldly;
-    //
-    // private static WebApplicationFactory<Program> CreateFactory(...) { ... }
+    private const string StoreName = "statestore";
+    private const string ValidUlid = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// <c>POST /api/tenants/{tenantId}/consistency/verify</c> schedules the workflow,
-    /// returns <c>202 Accepted</c> with <c>Location</c> header pointing to the status URL.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task PostVerify_ValidTenantAndRequest_Returns202WithLocationHeader()
+    private readonly ConsistencyEndpointFactory _factory = new();
+
+    [Fact]
+    public async Task PostVerify_UnknownTenant_Returns404()
     {
-        // Arrange: WebApplicationFactory<Program> with mocked DaprWorkflowClient, TenantStatusGuard,
-        // ConsistencyInspectionService. POST body: ConsistencyVerificationRequest(tenantId, BatchSize=500).
-        // Expected: status 202; Location header matches "/api/tenants/{tenantId}/consistency/verify/{instanceId}";
-        // instanceId prefix is "verify-consistency-{tenantId}-"; JSON body contains instanceId.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-001) — implement POST /consistency/verify. "
-            + "Expected: 202 Accepted; Location header = /api/tenants/{t}/consistency/verify/{id}; "
-            + "instanceId prefix = verify-consistency-{t}-.");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/unknown-tenant/consistency/verify",
+            new { },
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("TENANT_NOT_FOUND");
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// <c>GET /api/tenants/{tenantId}/consistency/verify/{instanceId}</c> returns the
-    /// DAPR <c>WorkflowState</c> (or projected <c>ConsistencyWorkflowState</c> per Task 4.2).
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task GetVerifyStatus_ExistingInstance_ReturnsWorkflowState()
+    [Fact]
+    public async Task PostVerify_InvalidTenantIdFormat_Returns400()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-002) — implement GET /consistency/verify/{id}. "
-            + "Expected: 200 OK; body deserializes as WorkflowState (or projected ConsistencyWorkflowState); "
-            + "Status field is one of Running / Completed / Failed / Terminated.");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/invalid_tenant/consistency/verify",
+            new { },
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("INVALID_TENANT_ID");
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3.
-    /// <c>GET /api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}</c> returns
-    /// <c>ConsistencyInspectionResult</c> with per-backend detail.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
+    [Fact]
+    public async Task PostVerify_BatchSizeOutOfRange_Returns400WithInvalidBatchSize()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/verify",
+            new ConsistencyVerificationRequest("acme-consistency", BatchSize: 9),
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("INVALID_BATCH_SIZE");
+    }
+
+    [Fact]
+    public async Task PostVerify_ActiveTenant_Returns202WithLocationAndWorkflowId()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/verify",
+            new ConsistencyVerificationRequest("acme-consistency", BatchSize: 250),
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        response.Headers.Location.ShouldNotBeNull();
+        response.Headers.Location!.ToString().ShouldStartWith("/api/tenants/acme-consistency/consistency/verify/");
+
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
+        string workflowInstanceId = body.RootElement.GetProperty("workflowInstanceId").GetString().ShouldNotBeNull();
+        response.Headers.Location!.ToString().ShouldEndWith($"/{workflowInstanceId}");
+
+        await _factory.WorkflowService.Received(1).ScheduleVerificationAsync(
+            Arg.Is<string>(id => id == workflowInstanceId),
+            Arg.Is<ConsistencyVerificationInput>(input => input.TenantId == "acme-consistency" && input.BatchSize == 250),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetVerifyStatus_InstanceIdMismatch_Returns404WithConsistencyVerifyNotFound()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/acme-consistency/consistency/verify/repair-consistency-acme-consistency-abcd",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("CONSISTENCY_VERIFY_NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task GetVerifyStatus_KnownInstance_Returns200WithTypedStatus()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        _factory.WorkflowService
+            .GetVerificationStatusAsync("verify-consistency-acme-consistency-abc123", Arg.Any<CancellationToken>())
+            .Returns(new ConsistencyVerificationStatus(
+                "verify-consistency-acme-consistency-abc123",
+                "Completed",
+                DateTimeOffset.UtcNow.AddMinutes(-1),
+                DateTimeOffset.UtcNow,
+                new ConsistencyWorkflowProgress("completed", 1, 1),
+                new ConsistencyVerificationResult(
+                    "acme-consistency",
+                    TotalUnits: 2,
+                    ConsistentCount: 1,
+                    InconsistentCount: 1,
+                    Discrepancies:
+                    [
+                        new ConsistencyDiscrepancy(
+                            ValidUlid,
+                            SyntacticPresent: true,
+                            SemanticPresent: false,
+                            GraphPresent: true,
+                            ConsistencyRepairRecommendation.ReIndexSemantic),
+                    ],
+                    TotalDiscrepancyCount: 1,
+                    TruncatedAt: null,
+                    EnumerationTruncated: false,
+                    StartedAt: DateTimeOffset.UtcNow.AddMinutes(-2),
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    Duration: TimeSpan.FromSeconds(3))));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/acme-consistency/consistency/verify/verify-consistency-acme-consistency-abc123",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ConsistencyVerificationStatus? status = await response.Content.ReadFromJsonAsync<ConsistencyVerificationStatus>(
+            MemoriesJsonContext.Options,
+            cancellationToken: CancellationToken.None);
+        status.ShouldNotBeNull();
+        status.Progress.ShouldNotBeNull();
+        status.Result.ShouldNotBeNull();
+        status.Result.InconsistentCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GetInspect_MalformedMemoryUnitId_Returns400WithInvalidMemoryUnitId()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ArgumentException("Memory unit ID 'not-a-ulid' is not a valid 26-character Crockford-base32 ULID."));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/acme-consistency/consistency/inspect/01HM5Q9WXGK6T8Q4Z5Y6V7W8XI", // invalid char 'I'
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+        error.Suggestion.ShouldContain("ULID", Shouldly.Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task GetInspect_UnknownMemoryUnit_Returns404WithMemoryUnitNotFound()
+    {
+        _factory.StubTenantActive("acme-consistency");
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new KeyNotFoundException("Memory unit not found"));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
+    }
+
+    [Fact]
     public async Task GetInspect_KnownMemoryUnit_Returns200WithDetail()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-003) — implement GET /consistency/inspect/{id}. "
-            + "Expected: 200 OK with ConsistencyInspectionResult; SyntacticDetail/SemanticDetail/GraphDetail "
-            + "populated when corresponding backend reports present; Recommendation from RepairPlanCalculator.");
+        _factory.StubTenantActive("acme-consistency");
+        ConsistencyInspectionResult stubResult = new(
+            "acme-consistency",
+            ValidUlid,
+            SyntacticPresent: true,
+            SemanticPresent: true,
+            GraphPresent: true,
+            SyntacticDetail: new ConsistencySyntacticDetail(
+                "hash", DateTimeOffset.UtcNow, "file:///sample.md", "file", "case-1", "gemini", "gemini-embedding-001"),
+            SemanticDetail: new ConsistencySemanticDetail(768, $"acme-consistency:vec:{ValidUlid}"),
+            GraphDetail: new ConsistencyGraphDetail(2, 1, 1),
+            Recommendation: ConsistencyRepairRecommendation.NoOp,
+            CheckedAt: DateTimeOffset.UtcNow);
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(stubResult);
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ConsistencyInspectionResult? body = await response.Content
+            .ReadFromJsonAsync<ConsistencyInspectionResult>(
+                MemoriesJsonContext.Options,
+                cancellationToken: CancellationToken.None);
+        body.ShouldNotBeNull();
+        body.Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        body.SyntacticDetail.ShouldNotBeNull();
+        body.SemanticDetail.ShouldNotBeNull();
+        body.GraphDetail.ShouldNotBeNull();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3.
-    /// Unknown memory unit ID → <c>404 MEMORY_UNIT_NOT_FOUND</c> with recovery suggestion.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task GetInspect_UnknownMemoryUnit_Returns404WithErrorResponse()
+    [Fact]
+    public async Task PostRepair_BatchSizeOutOfRange_Returns400WithInvalidBatchSize()
     {
-        // Expected: 404 Not Found; ErrorResponse(code="MEMORY_UNIT_NOT_FOUND", message=..., suggestion=...)
-        // suggestion includes "Run 'memories consistency verify' to audit the tenant or verify the ID ...".
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-004) — implement 404 path. "
-            + "Expected: ErrorResponse.Code=MEMORY_UNIT_NOT_FOUND with recovery suggestion referencing "
-            + "`memories consistency verify`.");
+        _factory.StubTenantActive("acme-consistency");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/repair",
+            new ConsistencyRepairRequest("acme-consistency", BatchSize: 10_000),
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("INVALID_BATCH_SIZE");
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3 + Risk #4.
-    /// Malformed memory unit ID (not Crockford-base32 ULID) → <c>400 INVALID_MEMORY_UNIT_ID</c>.
-    /// Guards against Cypher-injection via path interpolation.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task GetInspect_MalformedMemoryUnitId_Returns400WithErrorResponse()
+    [Fact]
+    public async Task PostRepair_ActiveTenant_Returns202WithLocationAndWorkflowId()
     {
-        // Expected: 400 Bad Request; ErrorResponse(code="INVALID_MEMORY_UNIT_ID", ...);
-        // suggestion: "Memory unit IDs must be 26-character Crockford-base32 ULIDs."
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-005, Risk #4) — implement 400 path for malformed IDs. "
-            + "Expected: ErrorResponse.Code=INVALID_MEMORY_UNIT_ID with recovery suggestion describing the ULID pattern.");
+        _factory.StubTenantActive("acme-consistency");
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/repair",
+            new ConsistencyRepairRequest("acme-consistency", BatchSize: 125, IncludeUnrepairable: true),
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        response.Headers.Location.ShouldNotBeNull();
+        response.Headers.Location!.ToString().ShouldStartWith("/api/tenants/acme-consistency/consistency/repair/");
+
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
+        string workflowInstanceId = body.RootElement.GetProperty("workflowInstanceId").GetString().ShouldNotBeNull();
+        response.Headers.Location!.ToString().ShouldEndWith($"/{workflowInstanceId}");
+
+        await _factory.WorkflowService.Received(1).ScheduleRepairAsync(
+            Arg.Is<string>(id => id == workflowInstanceId),
+            Arg.Is<ConsistencyRepairInput>(input => input.TenantId == "acme-consistency" && input.BatchSize == 125 && input.IncludeUnrepairable),
+            Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4.
-    /// <c>POST /api/tenants/{tenantId}/consistency/repair</c> schedules the repair workflow.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task PostRepair_ValidTenantAndRequest_Returns202WithLocationHeader()
+    [Fact]
+    public async Task GetRepairStatus_KnownInstance_Returns200WithTypedStatus()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-006) — implement POST /consistency/repair. "
-            + "Expected: 202 Accepted; Location header = /api/tenants/{t}/consistency/repair/{id}; "
-            + "instanceId prefix = repair-consistency-{t}-.");
+        _factory.StubTenantActive("acme-consistency");
+        _factory.WorkflowService
+            .GetRepairStatusAsync("repair-consistency-acme-consistency-abc123", Arg.Any<CancellationToken>())
+            .Returns(new ConsistencyRepairStatus(
+                "repair-consistency-acme-consistency-abc123",
+                "Completed",
+                DateTimeOffset.UtcNow.AddMinutes(-1),
+                DateTimeOffset.UtcNow,
+                new ConsistencyWorkflowProgress("completed", 1, 1),
+                new ConsistencyRepairResult(
+                    "acme-consistency",
+                    TotalDiscrepancies: 1,
+                    RepairedCount: 1,
+                    UnrepairableCount: 0,
+                    Actions:
+                    [
+                        new RepairActionRecord(
+                            ValidUlid,
+                            ConsistencyRepairRecommendation.ReIndexSemantic,
+                            Succeeded: true,
+                            FailureReason: null,
+                            BeforeState: new Dictionary<string, string>(),
+                            AfterState: new Dictionary<string, string>()),
+                    ],
+                    PassesExecuted: 1,
+                    StartedAt: DateTimeOffset.UtcNow.AddMinutes(-2),
+                    CompletedAt: DateTimeOffset.UtcNow,
+                    Duration: TimeSpan.FromSeconds(4))));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/acme-consistency/consistency/repair/repair-consistency-acme-consistency-abc123",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ConsistencyRepairStatus? status = await response.Content.ReadFromJsonAsync<ConsistencyRepairStatus>(
+            MemoriesJsonContext.Options,
+            cancellationToken: CancellationToken.None);
+        status.ShouldNotBeNull();
+        status.Progress.ShouldNotBeNull();
+        status.Result.ShouldNotBeNull();
+        status.Result.RepairedCount.ShouldBe(1);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4.
-    /// <c>GET .../consistency/repair/{instanceId}</c> returns the repair <c>WorkflowState</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task GetRepairStatus_ExistingInstance_ReturnsWorkflowState()
+    [Fact]
+    public async Task ConsistencyEndpoints_DoNotEmitAccessTelemetryAuditEvents()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-007) — implement GET /consistency/repair/{id}. "
-            + "Expected: 200 OK; WorkflowState body; mirrors GetVerifyStatus shape with repair- prefix.");
+        _factory.StubTenantActive("acme-consistency");
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new ConsistencyInspectionResult(
+                "acme-consistency",
+                ValidUlid,
+                SyntacticPresent: true,
+                SemanticPresent: true,
+                GraphPresent: true,
+                SyntacticDetail: new ConsistencySyntacticDetail(
+                    "hash", DateTimeOffset.UtcNow, "file:///sample.md", "file", "case-1", "gemini", "gemini-embedding-001"),
+                SemanticDetail: new ConsistencySemanticDetail(768, $"acme-consistency:vec:{ValidUlid}"),
+                GraphDetail: new ConsistencyGraphDetail(1, 2, 1),
+                Recommendation: ConsistencyRepairRecommendation.NoOp,
+                CheckedAt: DateTimeOffset.UtcNow));
+
+        int capturedBefore = _factory.AuditLogs.AccessTelemetryCaptures.Count;
+        using HttpClient client = _factory.CreateClient();
+
+        _ = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/verify",
+            new ConsistencyVerificationRequest("acme-consistency"),
+            CancellationToken.None);
+        _ = await client.GetAsync($"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}", CancellationToken.None);
+        _ = await client.PostAsJsonAsync(
+            "/api/tenants/acme-consistency/consistency/repair",
+            new ConsistencyRepairRequest("acme-consistency", IncludeUnrepairable: true),
+            CancellationToken.None);
+
+        _factory.AuditLogs.AccessTelemetryCaptures.Count.ShouldBe(capturedBefore);
     }
 
+    public void Dispose() => _factory.Dispose();
+
     /// <summary>
-    /// ATDD RED — Story 8.2 Task 4.4 + Story 7.5 AC #4.
-    /// Regression guard: consistency endpoints (verify / inspect / repair) are NOT in the
-    /// <c>AccessTelemetryEvent</c> scope. The 4 audited operations are search / ingest /
-    /// traverse / case-access. A future change that adds these endpoints to the enricher
-    /// would be a silent privacy regression; this test catches it.
+    /// Consistency-specific <see cref="WebApplicationFactory{TEntryPoint}"/> — mirrors the
+    /// telemetry factory shape but adds overrides for <see cref="IConsistencyInspectionService"/>.
     /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting consistency endpoints in Program.cs (Story 8.2 Task 4.1)")]
-    public async Task ConsistencyEndpoints_DoNotEmitAccessTelemetryEvent()
+    private sealed class ConsistencyEndpointFactory : WebApplicationFactory<Program>
     {
-        // Arrange: WebApplicationFactory<Program> with an in-memory AccessTelemetryEvent sink.
-        // Act: invoke each of the five consistency endpoints.
-        // Expected: sink collected zero AccessTelemetryEvent records (consistency is NOT audited).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-ENDPOINT-008, Story 7.5 scope regression guard) — "
-            + "assert AccessTelemetryEnricher does NOT record events for consistency endpoints. "
-            + "The 4 audited operations are search/ingest/traverse/case-access; consistency is out of scope.");
+        public DaprClient DaprClient { get; } = Substitute.For<DaprClient>();
+
+        public IConsistencyInspectionService InspectionService { get; } = Substitute.For<IConsistencyInspectionService>();
+
+        public IConsistencyWorkflowService WorkflowService { get; } = Substitute.For<IConsistencyWorkflowService>();
+
+        public CapturingAuditLoggerProvider AuditLogs { get; } = new();
+
+        public void StubTenantActive(string tenantId)
+        {
+            TenantRegistryEntry entry = new(
+                new TenantInfo(tenantId, tenantId, TenantStatus.Active, DateTimeOffset.UtcNow),
+                WorkflowInstanceId: null);
+
+            DaprClient
+                .GetStateAsync<TenantRegistryEntry?>(
+                    StoreName,
+                    Arg.Is<string>(k => k.Contains(tenantId, StringComparison.Ordinal)),
+                    Arg.Any<ConsistencyMode?>(),
+                    Arg.Any<IReadOnlyDictionary<string, string>?>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(entry);
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Development");
+            builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
+            builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
+
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddKeyedSingleton<IConnectionMultiplexer>(
+                    "redis",
+                    (_, _) => Substitute.For<IConnectionMultiplexer>());
+                services.AddKeyedSingleton<IConnectionMultiplexer>(
+                    "falkordb",
+                    (_, _) => Substitute.For<IConnectionMultiplexer>());
+
+                services.RemoveAll<DaprClient>();
+                services.AddSingleton<DaprClient>(DaprClient);
+
+                services.RemoveAll<IConsistencyInspectionService>();
+                services.AddSingleton<IConsistencyInspectionService>(InspectionService);
+
+                services.RemoveAll<IConsistencyWorkflowService>();
+                services.AddSingleton<IConsistencyWorkflowService>(WorkflowService);
+
+                // Strip DAPR-specific hosted services so nothing tries to open gRPC channels.
+                List<ServiceDescriptor> hostedToRemove = [.. services.Where(s =>
+                    s.ServiceType == typeof(IHostedService) &&
+                    s.ImplementationType is not null &&
+                    s.ImplementationType.Assembly.GetName().Name is string name &&
+                    name.StartsWith("Dapr.", StringComparison.OrdinalIgnoreCase))];
+                foreach (ServiceDescriptor descriptor in hostedToRemove)
+                {
+                    services.Remove(descriptor);
+                }
+
+                services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(AuditLogs);
+            });
+        }
     }
 }

@@ -5,135 +5,228 @@
 
 namespace Hexalith.Memories.Server.Tests.Consistency;
 
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
+using Shouldly;
+
+using StackExchange.Redis;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — AC #3 (per-unit inspection) plus
-/// Risk #4 (Cypher-injection guard via ULID regex validation). Covers the full
-/// 6-test inventory in AC #9.
+/// Story 8.2 — AC #3 (per-unit inspection) + Risk #4 (Cypher-injection guard via ULID regex
+/// validation). Covers the full 6-test inventory in AC #9.
 /// </summary>
-/// <remarks>
-/// Each test is <see cref="FactAttribute.Skip"/>-gated until Story 8.2 Task 3.3
-/// lands <c>Hexalith.Memories.Server.Consistency.ConsistencyInspectionService</c>
-/// and the V1 contract records <c>ConsistencyInspectionResult</c>,
-/// <c>ConsistencySyntacticDetail</c>, <c>ConsistencySemanticDetail</c>,
-/// <c>ConsistencyGraphDetail</c>.
-/// </remarks>
 public class ConsistencyInspectionServiceTests
 {
-    // Blueprint — uncomment when target types exist (Task 3.3):
-    //
-    // using Hexalith.Memories.Contracts.V1;
-    // using Hexalith.Memories.Server.Consistency;
-    // using Hexalith.Memories.Server.Graph;
-    // using Microsoft.Extensions.Logging;
-    // using NSubstitute;
-    // using Shouldly;
-    // using StackExchange.Redis;
-    //
-    // private const string TestTenantId = "tenant-1";
-    // private const string ValidUlid = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9"; // 26 chars, Crockford base32.
-    //
-    // private static ConsistencyInspectionService CreateService(
-    //     bool syntacticPresent = false,
-    //     bool semanticPresent = false,
-    //     bool graphPresent = false,
-    //     IGraphQueryBuilder? builder = null) { /* NSubstitute wiring */ }
+    private const string TestTenantId = "tenant-1";
+    private const string ValidUlid = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Happy path: all three backends present → NoOp.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
+    [Fact]
     public async Task InspectAsync_AllBackendsPresent_ReturnsInspectionResultWithNoOp()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-002) — implement ConsistencyInspectionService.InspectAsync. "
-            + "Expected: all-present probe returns ConsistencyInspectionResult with Recommendation=NoOp "
-            + "and non-null per-backend detail records.");
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: true,
+            graphPresent: true);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.SyntacticPresent.ShouldBeTrue();
+        result.SemanticPresent.ShouldBeTrue();
+        result.GraphPresent.ShouldBeTrue();
+        result.SyntacticDetail.ShouldNotBeNull();
+        result.SemanticDetail.ShouldNotBeNull();
+        result.GraphDetail.ShouldNotBeNull();
+        result.MemoryUnitId.ShouldBe(ValidUlid);
+        result.TenantId.ShouldBe(TestTenantId);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3 + Risk #4 (Cypher injection guard).
-    /// ULID regex validation runs BEFORE <c>IGraphQueryBuilder</c> is invoked.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
-    public async Task InspectAsync_MalformedMemoryUnitId_ThrowsArgumentException()
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-ulid")]
+    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X")] // 25 chars
+    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9A")] // 27 chars
+    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9; DROP GRAPH")] // injection attempt
+    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7I8U9")] // contains I and U which are excluded
+    public async Task InspectAsync_MalformedMemoryUnitId_ThrowsArgumentException(string malformedId)
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-003, Risk #4) — implement ULID regex guard. "
-            + "Expected: ArgumentException for any input not matching ^[0-9A-HJKMNP-TV-Z]{26}$, "
-            + "AND IGraphQueryBuilder.BuildCheckMemoryUnitExists must NOT be called before validation passes.");
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        ConsistencyInspectionService service = CreateService(builder: builder);
+
+        await Should.ThrowAsync<ArgumentException>(
+            () => service.InspectAsync(TestTenantId, malformedId, CancellationToken.None));
+
+        // Risk #4 guard: the query builder must NOT be called before regex validation passes.
+        builder.DidNotReceive().BuildCheckMemoryUnitExists(Arg.Any<string>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Unknown ID (all three backends absent) → 404.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
+    [Fact]
     public async Task InspectAsync_AllBackendsMissing_ThrowsKeyNotFoundException()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-004) — implement all-absent short-circuit. "
-            + "Expected: KeyNotFoundException when syntactic + semantic + graph all report absent "
-            + "(not a result with all-false flags).");
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: false,
+            semanticPresent: false,
+            graphPresent: false);
+
+        await Should.ThrowAsync<KeyNotFoundException>(
+            () => service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None));
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Single backend missing (semantic) returns a result
-    /// with <c>SemanticPresent=false</c> + <c>Recommendation=ReIndexSemantic</c>. The
-    /// two other backends still contribute their detail records.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
+    [Fact]
     public async Task InspectAsync_SemanticMissing_ReturnsReIndexSemanticRecommendation()
     {
-        // Expected: ConsistencyInspectionResult with SyntacticPresent=true, SemanticPresent=false,
-        // GraphPresent=true, Recommendation=ConsistencyRepairRecommendation.ReIndexSemantic;
-        // SemanticDetail is null (absent); SyntacticDetail + GraphDetail non-null.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-002b) — implement single-backend-missing path. "
-            + "Expected: (T, F, T) → Recommendation=ReIndexSemantic; SemanticDetail null; "
-            + "Syntactic + Graph detail records populated from HashGetAll / edge-count queries.");
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: false,
+            graphPresent: true);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+        result.SyntacticPresent.ShouldBeTrue();
+        result.SemanticPresent.ShouldBeFalse();
+        result.GraphPresent.ShouldBeTrue();
+        result.SemanticDetail.ShouldBeNull();
+        result.SyntacticDetail.ShouldNotBeNull();
+        result.GraphDetail.ShouldNotBeNull();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Syntactic missing + semantic + graph present →
-    /// <c>RemoveOrphanedSemanticAndGraph</c>. Fed to 404 only when ALL three are absent
-    /// (guard the earlier 404 short-circuit against false positives).
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
+    [Fact]
+    public async Task InspectAsync_GraphMissing_ReturnsReIndexGraphRecommendation()
+    {
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: true,
+            graphPresent: false);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexGraph);
+        result.SyntacticPresent.ShouldBeTrue();
+        result.SemanticPresent.ShouldBeTrue();
+        result.GraphPresent.ShouldBeFalse();
+        result.GraphDetail.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task InspectAsync_SyntacticMissingOthersPresent_ReturnsRemoveOrphanedRecommendation()
     {
-        // Expected: (F, T, T) → Recommendation=RemoveOrphanedSemanticAndGraph.
-        // Must NOT throw KeyNotFoundException (only all-missing short-circuits to 404).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-002c) — implement syntactic-missing path. "
-            + "Expected: (F, T, T) → Recommendation=RemoveOrphanedSemanticAndGraph; "
-            + "NO KeyNotFoundException (it's an orphan, not absence).");
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: false,
+            semanticPresent: true,
+            graphPresent: true);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph);
+        result.SyntacticPresent.ShouldBeFalse();
+        result.SyntacticDetail.ShouldBeNull();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Cancellation: the <see cref="CancellationToken"/>
-    /// passed by the caller must be observed by the three parallel probes — any probe
-    /// that blocks past cancellation leaks work.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectionService (Story 8.2 Task 3.3)")]
+    [Fact]
     public async Task InspectAsync_CancelledBeforeProbe_ThrowsOperationCanceledException()
     {
-        // Arrange:
-        //
-        // using CancellationTokenSource cts = new();
-        // cts.Cancel(); // already cancelled
-        //
-        // Act + Assert:
-        //
-        // await Should.ThrowAsync<OperationCanceledException>(
-        //     () => service.InspectAsync(TestTenantId, ValidUlid, cts.Token));
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-002d) — implement cancellation propagation. "
-            + "Expected: OperationCanceledException when the CancellationToken is already cancelled; "
-            + "the three probes (HashGetAllAsync + HashGetAllAsync + FalkorDB query) must respect cancellation.");
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: true,
+            graphPresent: true);
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => service.InspectAsync(TestTenantId, ValidUlid, cts.Token));
     }
+
+    private static ConsistencyInspectionService CreateService(
+        bool syntacticPresent = false,
+        bool semanticPresent = false,
+        bool graphPresent = false,
+        IGraphQueryBuilder? builder = null)
+    {
+        IDatabase redisDb = Substitute.For<IDatabase>();
+
+        HashEntry[] syntacticEntries = syntacticPresent
+            ? CreateSyntacticEntries()
+            : [];
+        HashEntry[] semanticEntries = semanticPresent
+            ? CreateSemanticEntries()
+            : [];
+
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")),
+                Arg.Any<CommandFlags>())
+            .Returns(syntacticEntries);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")),
+                Arg.Any<CommandFlags>())
+            .Returns(semanticEntries);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        IConnectionMultiplexer falkorMux = CreateFalkorMultiplexer(graphPresent);
+        IGraphQueryBuilder effectiveBuilder = builder ?? CreateMockBuilder();
+
+        return new ConsistencyInspectionService(
+            redis,
+            falkorMux,
+            effectiveBuilder,
+            Substitute.For<ILogger<ConsistencyInspectionService>>());
+    }
+
+    private static IGraphQueryBuilder CreateMockBuilder()
+    {
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildCheckMemoryUnitExists(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) RETURN m.id", (IDictionary<string, object>)new Dictionary<string, object> { ["id"] = "mock" }));
+        builder.BuildCountMemoryUnitEdges(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) RETURN 0,0,0", (IDictionary<string, object>)new Dictionary<string, object> { ["id"] = "mock" }));
+        return builder;
+    }
+
+    private static IConnectionMultiplexer CreateFalkorMultiplexer(bool nodeExists)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer mux = Substitute.For<IConnectionMultiplexer>();
+        mux.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        RedisResult existsResponse = nodeExists
+            ? Activities.Indexing.VerifyConsistencyActivityTestsFactory.BuildStringIdRows(["node-id"])
+            : Activities.Indexing.VerifyConsistencyActivityTestsFactory.BuildStringIdRows([]);
+        RedisResult edgeCountsResponse =
+            Activities.Indexing.VerifyConsistencyActivityTestsFactory.BuildEdgeCountsResponse(2, 3, 1);
+
+        // First call returns exists-check; second call returns edge counts.
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>()).Returns(existsResponse, edgeCountsResponse);
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(existsResponse, edgeCountsResponse);
+
+        return mux;
+    }
+
+    private static HashEntry[] CreateSyntacticEntries() =>
+    [
+        new("contentHash", "abc123"),
+        new("ingestedAt", "2026-04-20T10:00:00+00:00"),
+        new("sourceUri", "file:///sample.md"),
+        new("sourceType", "file"),
+        new("caseId", "case-1"),
+        new("embeddingProvider", "gemini"),
+        new("embeddingModel", "gemini-embedding-001"),
+    ];
+
+    private static HashEntry[] CreateSemanticEntries() =>
+    [
+        new("embedding", new byte[1536 * sizeof(float)]),
+        new("memoryUnitId", ValidUlid),
+        new("caseId", "case-1"),
+    ];
 }

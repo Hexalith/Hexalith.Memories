@@ -126,6 +126,37 @@ public static class CliServices
             new MemoryUnitJsonFormatter(),
             new MemoryUnitTableFormatter());
 
+        // Story 8.2: consistency formatters.
+        RegisterFormatters<ConsistencyInspectionResult>(
+            services,
+            new ConsistencyInspectionHumanFormatter(),
+            new ConsistencyInspectionJsonFormatter(),
+            new ConsistencyInspectionTableFormatter());
+
+        RegisterFormatters<ConsistencyVerificationResult>(
+            services,
+            new ConsistencyVerificationResultHumanFormatter(),
+            new ConsistencyVerificationResultJsonFormatter(),
+            new ConsistencyVerificationResultTableFormatter());
+
+        RegisterFormatters<ConsistencyRepairResult>(
+            services,
+            new ConsistencyRepairResultHumanFormatter(),
+            new ConsistencyRepairResultJsonFormatter(),
+            new ConsistencyRepairResultTableFormatter());
+
+        RegisterFormatters<ConsistencyWorkflowState>(
+            services,
+            new ConsistencyWorkflowStateHumanFormatter(),
+            new ConsistencyWorkflowStateJsonFormatter(),
+            new ConsistencyWorkflowStateTableFormatter());
+
+        RegisterFormatters<ConsistencyCommandReceipt>(
+            services,
+            new ConsistencyReceiptHumanFormatter(),
+            new ConsistencyReceiptJsonFormatter(),
+            new ConsistencyReceiptTableFormatter());
+
         // Story 7.4: quickstart wizard services.
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IProcessRunner, DefaultProcessRunner>();

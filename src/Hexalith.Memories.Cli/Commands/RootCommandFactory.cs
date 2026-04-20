@@ -53,6 +53,15 @@ Example:
     memories status telemetry --tenant acme
 """;
 
+    private const string ConsistencyCommandDescription = """
+Audit and repair index/graph consistency across the three backends (Story 8.2).
+
+Examples:
+    memories consistency verify --tenant acme
+    memories consistency inspect --tenant acme --id 01HM5Q9WXGK6T8Q4Z5Y6V7W8X9
+    memories consistency repair --tenant acme --yes
+""";
+
     /// <summary>Top-level command groups surfaced in root help (FR53).</summary>
     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
     [
@@ -105,6 +114,14 @@ Example:
         statusCommand.Subcommands.Add(StatusTelemetryCommand.Build(services));
         statusCommand.SetAction(_ => statusCommand.Parse("--help").Invoke());
         root.Subcommands.Add(statusCommand);
+
+        // Story 8.2 — consistency command group (verify / inspect / repair).
+        var consistencyCommand = new Command("consistency", ConsistencyCommandDescription);
+        consistencyCommand.Subcommands.Add(ConsistencyVerifyCommand.Build(services));
+        consistencyCommand.Subcommands.Add(ConsistencyInspectCommand.Build(services));
+        consistencyCommand.Subcommands.Add(ConsistencyRepairCommand.Build(services));
+        consistencyCommand.SetAction(_ => consistencyCommand.Parse("--help").Invoke());
+        root.Subcommands.Add(consistencyCommand);
 
         // Story 7.5: add the global --telemetry flag to the root command.
         root.Options.Add(globalOptions.TelemetryOption);

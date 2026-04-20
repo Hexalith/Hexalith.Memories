@@ -307,3 +307,7 @@ NFR28 is validated in 7.5 for:
 - [health-checks.md](health-checks.md) — liveness/readiness endpoints (Story 8.1): `/alive`,
   `/ready`, and `/health` contracts for orchestrator probes; health paths are deliberately excluded
   from this document's AspNetCore trace emission (see AC #5).
+- [consistency.md](consistency.md) — tenant-scoped consistency verification and repair workflows
+  (Story 8.2). The five consistency endpoints are NOT in the audited scope (the four audited
+  operation types are search / ingest / traverse / case-access); a regression guard in
+  `ConsistencyEndpointTests` pins this invariant.

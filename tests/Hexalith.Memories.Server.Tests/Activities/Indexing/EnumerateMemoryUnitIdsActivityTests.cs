@@ -5,106 +5,260 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using System.Net;
+
+using Dapr.Workflow;
+
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Graph;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
+using Shouldly;
+
+using StackExchange.Redis;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — AC #1 (three-backend enumeration and union),
-/// Risk #3 (orphan in graph/vector missed by syntactic-only enumeration), and Risk #6
-/// (SCAN-vs-KEYS regression guard). Covers the full 5-test inventory in AC #9.
+/// Story 8.2 — AC #1 (three-backend enumeration + union), Risk #3 (orphan in graph/vector
+/// missed by syntactic-only enumeration), Risk #6 (SCAN-vs-KEYS regression guard).
 /// </summary>
-/// <remarks>
-/// Each test is <see cref="FactAttribute.Skip"/>-gated until Story 8.2 Task 1.1 lands
-/// <c>Hexalith.Memories.Server.Activities.Indexing.EnumerateMemoryUnitIdsActivity</c>
-/// and Task 1.2 lands the <c>EnumerateMemoryUnitIdsInput</c> /
-/// <c>EnumerateMemoryUnitIdsResult</c> records.
-/// </remarks>
 public class EnumerateMemoryUnitIdsActivityTests
 {
-    // Blueprint — uncomment when target types exist (Tasks 1.1 + 1.2):
-    //
-    // using Dapr.Workflow;
-    // using Hexalith.Memories.Server.Activities.Indexing;
-    // using Hexalith.Memories.Server.Graph;
-    // using Microsoft.Extensions.Logging;
-    // using NSubstitute;
-    // using Shouldly;
-    // using StackExchange.Redis;
+    private const string TestTenantId = "tenant-1";
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// Union across all three backends is de-duplicated via <c>HashSet&lt;string&gt;</c>.
-    /// IDs present in multiple backends appear exactly once.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting EnumerateMemoryUnitIdsActivity (Story 8.2 Task 1.1)")]
+    [Fact]
     public async Task RunAsync_AllThreeBackendsUnion_ReturnsDeduplicatedIds()
     {
-        // Seed: syntactic returns {a, b}; semantic returns {b, c}; graph returns {c, d}.
-        // Expected: MemoryUnitIds == {a, b, c, d} (no duplicates), TotalUnionCount == 4.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-005a) — implement three-backend union with de-dup. "
-            + "Seed syntactic={a,b}, semantic={b,c}, graph={c,d} → expect sorted [a,b,c,d] with count=4.");
+        EnumerateMemoryUnitIdsActivity activity = CreateActivity(
+            syntacticIds: ["a", "b"],
+            semanticIds: ["b", "c"],
+            graphIds: ["c", "d"]);
+
+        EnumerateMemoryUnitIdsResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId));
+
+        result.MemoryUnitIds.ShouldBe(["a", "b", "c", "d"]);
+        result.TotalUnionCount.ShouldBe(4);
+        result.Truncated.ShouldBeFalse();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 + Risk #3.
-    /// A unit present ONLY in <c>{tenantId}:vec:*</c> (orphan) must survive the union and
-    /// be returned so repair can delete it. Enumerating only syntactic would silently leak
-    /// vector-only orphans into the next verification cycle.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting EnumerateMemoryUnitIdsActivity (Story 8.2 Task 1.1)")]
+    [Fact]
     public async Task RunAsync_OrphanInVectorOnly_IsReturnedInUnion()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-005, Risk #3) — implement tri-backend union. "
-            + "Expected: a memory unit present ONLY in {tenantId}:vec:* must be returned; TotalUnionCount == 1.");
+        EnumerateMemoryUnitIdsActivity activity = CreateActivity(
+            syntacticIds: [],
+            semanticIds: ["orphan-vector"],
+            graphIds: []);
+
+        EnumerateMemoryUnitIdsResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId));
+
+        result.MemoryUnitIds.ShouldContain("orphan-vector");
+        result.TotalUnionCount.ShouldBe(1);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 + Risk #3 variant.
-    /// Graph-only orphan (unit present only as a FalkorDB MemoryUnit node) must survive
-    /// the union. Enumerating only Redis would miss these and let them accumulate.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting EnumerateMemoryUnitIdsActivity (Story 8.2 Task 1.1)")]
+    [Fact]
     public async Task RunAsync_OrphanInGraphOnly_IsReturnedInUnion()
     {
-        // Seed: syntactic + semantic return empty; FalkorDB MATCH (n:MemoryUnit) RETURN n.id
-        // returns ["graph-only-1"].
-        // Expected: MemoryUnitIds contains "graph-only-1", TotalUnionCount == 1.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-005b, Risk #3 variant) — graph-only orphan must be returned. "
-            + "Expected: FalkorDB MATCH (n:MemoryUnit) RETURN n.id result unioned with Redis SCANs.");
+        EnumerateMemoryUnitIdsActivity activity = CreateActivity(
+            syntacticIds: [],
+            semanticIds: [],
+            graphIds: ["graph-only-1"]);
+
+        EnumerateMemoryUnitIdsResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId));
+
+        result.MemoryUnitIds.ShouldContain("graph-only-1");
+        result.TotalUnionCount.ShouldBe(1);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 + Risk #6.
-    /// Cursor-based <c>IServer.KeysAsync</c> (SCAN) — not the blocking <c>KEYS</c> command.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting EnumerateMemoryUnitIdsActivity (Story 8.2 Task 1.1)")]
+    [Fact]
     public async Task RunAsync_UsesCursorScan_NotKeysCommand()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-006, Risk #6) — implement cursor SCAN enumeration. "
-            + "Expected: IServer.KeysAsync(pattern, pageSize) invoked with pageSize > 0; "
-            + "the blocking KEYS command must not be used (it would lock Redis single-threaded).");
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(EmptyAsyncEnumerable());
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
+
+        IConnectionMultiplexer falkorMux = VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []);
+        IGraphQueryBuilder builder = CreateBuilder();
+
+        EnumerateMemoryUnitIdsActivity activity = new(
+            redis, falkorMux, builder, Substitute.For<ILogger<EnumerateMemoryUnitIdsActivity>>());
+
+        _ = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId));
+
+        // Risk #6 guard: KeysAsync (cursor SCAN) must be invoked; a paranoid future refactor
+        // substituting the blocking KEYS command would fail this assertion.
+        _ = server.Received().KeysAsync(
+            Arg.Any<int>(),
+            Arg.Any<RedisValue>(),
+            Arg.Any<int>(),
+            Arg.Any<long>(),
+            Arg.Any<int>(),
+            Arg.Any<CommandFlags>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// Cancellation must terminate the enumeration promptly — no trailing SCAN cursors,
-    /// no lingering FalkorDB queries. The three parallel enumerations observe the token.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting EnumerateMemoryUnitIdsActivity (Story 8.2 Task 1.1)")]
-    public async Task RunAsync_CancelledMidEnumeration_ThrowsOperationCanceledException()
+    [Fact]
+    public async Task RunAsync_SixtyThousandUnits_TruncatesAndFlags()
     {
-        // Seed: syntactic SCAN returns a slow async enumerable; cancellation triggered
-        // after first item.
-        // Expected: OperationCanceledException; no further SCAN opcode invocations;
-        // FalkorDB query aborted via CommandFlags.FireAndForget-safe cancellation.
+        List<string> manyIds = Enumerable.Range(0, 60_000).Select(i => $"unit-{i:D6}").ToList();
+
+        EnumerateMemoryUnitIdsActivity activity = CreateActivity(
+            syntacticIds: manyIds,
+            semanticIds: [],
+            graphIds: []);
+
+        EnumerateMemoryUnitIdsResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId, MaxUnits: 50_000));
+
+        result.Truncated.ShouldBeTrue();
+        result.TotalUnionCount.ShouldBe(60_000);
+        result.MemoryUnitIds.Count.ShouldBe(50_000);
+        result.MemoryUnitIds[0].ShouldBe("unit-000000");
+        result.MemoryUnitIds[^1].ShouldBe("unit-049999");
+    }
+
+    [Fact]
+    public async Task RunAsync_RedisScanFailure_Throws()
+    {
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(ThrowingAsyncEnumerable());
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(EmptyAsyncEnumerable());
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
+
+        EnumerateMemoryUnitIdsActivity activity = new(
+            redis,
+            VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []),
+            CreateBuilder(),
+            Substitute.For<ILogger<EnumerateMemoryUnitIdsActivity>>());
+
+        await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId)));
+    }
+
+    private static EnumerateMemoryUnitIdsActivity CreateActivity(
+        IReadOnlyList<string> syntacticIds,
+        IReadOnlyList<string> semanticIds,
+        IReadOnlyList<string> graphIds)
+    {
+        IConnectionMultiplexer redis = CreateRedisMultiplexer(syntacticIds, semanticIds);
+        IConnectionMultiplexer falkorMux = VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds);
+        IGraphQueryBuilder builder = CreateBuilder();
+
+        return new EnumerateMemoryUnitIdsActivity(
+            redis,
+            falkorMux,
+            builder,
+            Substitute.For<ILogger<EnumerateMemoryUnitIdsActivity>>());
+    }
+
+    private static IConnectionMultiplexer CreateRedisMultiplexer(
+        IReadOnlyList<string> syntacticIds,
+        IReadOnlyList<string> semanticIds)
+    {
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+
+        RedisKey[] syntacticKeys = syntacticIds.Select(id => (RedisKey)$"{TestTenantId}:mu:{id}").ToArray();
+        RedisKey[] semanticKeys = semanticIds.Select(id => (RedisKey)$"{TestTenantId}:vec:{id}").ToArray();
+
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(ToAsyncEnumerable(syntacticKeys));
+
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(ToAsyncEnumerable(semanticKeys));
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
+
+        return redis;
+    }
+
+    private static IGraphQueryBuilder CreateBuilder()
+    {
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+        builder.BuildEnumerateMemoryUnitIds()
+            .Returns(("MATCH (m:MemoryUnit) RETURN m.id", new Dictionary<string, object>()));
+        return builder;
+    }
+
+    private static async IAsyncEnumerable<RedisKey> ToAsyncEnumerable(RedisKey[] keys)
+    {
+        foreach (RedisKey key in keys)
+        {
+            await Task.Yield();
+            yield return key;
+        }
+    }
+
+    private static async IAsyncEnumerable<RedisKey> EmptyAsyncEnumerable()
+    {
         await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-006b) — implement cancellation across the three parallel scans. "
-            + "Expected: OperationCanceledException short-circuits the SCAN cursor + FalkorDB query.");
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<RedisKey> ThrowingAsyncEnumerable()
+    {
+        await Task.Yield();
+        if (DateTime.UtcNow.Ticks >= 0)
+        {
+            throw new RedisException("simulated scan failure");
+        }
+
+        yield break;
     }
 }

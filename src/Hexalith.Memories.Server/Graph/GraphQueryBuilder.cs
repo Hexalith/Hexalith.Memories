@@ -261,6 +261,41 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildEnumerateMemoryUnitIds()
+    {
+        const string query = "MATCH (m:MemoryUnit) RETURN m.id AS memoryUnitId";
+
+        Dictionary<string, object> parameters = [];
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountMemoryUnitEdges(string memoryUnitId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        // Single query returning three counts for the probed memory unit. Using OPTIONAL MATCH
+        // so the result set always has one row even when the unit has no edges.
+        const string query = """
+            MATCH (m:MemoryUnit {id: $id})
+            OPTIONAL MATCH (m)-[out]->()
+            WITH m, count(out) AS outgoing
+            OPTIONAL MATCH ()-[inc]->(m)
+            WITH m, outgoing, count(inc) AS incoming
+            OPTIONAL MATCH (c:Case)-[:CONTAINS]->(m)
+            RETURN outgoing AS outgoingEdges, incoming AS incomingEdges, count(c) AS caseEdges
+            """;
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["id"] = memoryUnitId,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth)
         => BuildTraverseFromNode(startNodeId, depth, caseId: null);

@@ -5,93 +5,122 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
-/// <summary>
-/// ATDD RED-phase tests for Story 8.2 — <c>memories consistency repair</c> CLI command.
-/// Mutating operation with confirmation prompt; also gates on <c>--yes</c> / TTY detection.
-/// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 6.3 lands <c>ConsistencyRepairCommand</c> + formatter
-/// registration for <c>ConsistencyRepairResult</c>.
-/// </remarks>
-public class ConsistencyRepairCommandTests
+using Hexalith.Memories.Cli.Commands;
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+/// <summary>Story 8.2 — <c>memories consistency repair</c> CLI coverage.</summary>
+public sealed class ConsistencyRepairCommandTests
 {
-    // Blueprint — uncomment when target command exists (Task 6.3):
-    //
-    // using Hexalith.Memories.Cli.Commands;
-    // using Hexalith.Memories.Client.Rest;
-    // using Hexalith.Memories.Contracts.V1;
-    // using NSubstitute;
-    // using Shouldly;
-
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4. Happy path (no <c>--wait</c>, with <c>--yes</c>):
-    /// prints instance ID + status URL.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyRepairCommand (Story 8.2 Task 6.3)")]
-    public async Task Run_HappyPathWithYes_PrintsInstanceIdAndStatusUrl()
-    {
-        // Arrange: stub MemoriesClient.StartConsistencyRepairAsync → returns Uri.
-        // Act: `memories consistency repair --tenant acme --yes`.
-        // Expected: exit 0; stdout contains instance ID prefixed with "repair-consistency-".
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-008) — implement ConsistencyRepairCommand happy path. "
-            + "Expected: exit 0; stdout includes instance ID with prefix repair-consistency-; --yes bypasses prompt.");
-    }
-
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4 + Task 9 (progress polling shape).
-    /// With <c>--wait</c> and <c>--yes</c>: polls <c>GetConsistencyRepairStatusAsync</c>
-    /// until completion; prints the final <c>ConsistencyRepairResult</c> summary
-    /// (<c>RepairedCount</c> / <c>UnrepairableCount</c> / <c>TotalDiscrepancies</c>).
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyRepairCommand (Story 8.2 Task 6.3)")]
-    public async Task Run_WithWaitAndYes_PollsUntilCompletionAndPrintsResult()
-    {
-        // Arrange: status sequence Running → Running → Completed with a ConsistencyRepairResult.
-        // Act: `memories consistency repair --tenant acme --wait --yes`.
-        // Expected: GetConsistencyRepairStatusAsync called >= 3 times; stdout includes
-        // "Repaired: N, Unrepairable: M, Total: K" summary from the Human formatter.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-009) — implement repair --wait polling. "
-            + "Expected: status polled until Completed; final result printed via Human formatter "
-            + "with RepairedCount / UnrepairableCount / TotalDiscrepancies.");
-    }
-
-    /// <summary>
-    /// ATDD RED — Story 8.2 Task 6.3 (safety gate).
-    /// Non-TTY stdin (scripts / CI) without <c>--yes</c> → command fails plumbing with
-    /// a clear error envelope. Prevents accidental mutation in automation.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyRepairCommand (Story 8.2 Task 6.3)")]
+    [Fact]
     public async Task Run_NonTtyWithoutYes_FailsPlumbingWithSafetyEnvelope()
     {
-        // Arrange: simulate non-TTY stdin (e.g., redirect/pipe).
-        // Act: `memories consistency repair --tenant acme` (no --yes).
-        // Expected: non-zero exit; stderr envelope explains --yes is required in non-interactive mode;
-        // MemoriesClient.StartConsistencyRepairAsync NEVER called.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-010) — implement non-TTY safety gate. "
-            + "Expected: without --yes and without TTY stdin, the command fails BEFORE dispatching, "
-            + "with a stderr envelope explaining the safety requirement.");
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme"]);
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldContain("CONFIRMATION_REQUIRED");
+        stub.RepairStartCalls.ShouldBe(0);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #7.
-    /// <c>--include-unrepairable</c> flag is forwarded to the server as
-    /// <c>ConsistencyRepairRequest.IncludeUnrepairable = true</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyRepairCommand (Story 8.2 Task 6.3)")]
+    [Fact]
+    public async Task Run_InteractiveWithoutYes_PromptsAndSchedulesRepair()
+    {
+        ConsistencyStubClient stub = new() { RepairInstanceId = "repair-consistency-acme-confirm" };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub, isInteractive: true, stdin: "y\n");
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stub.RepairStartCalls.ShouldBe(1);
+        stderr.ToString().ShouldContain("Repair tenant 'acme' now?");
+        stdout.ToString().ShouldContain("repair-consistency-acme-confirm");
+    }
+
+    [Fact]
+    public async Task Run_HappyPathWithYes_PrintsInstanceIdAndStatusUrl()
+    {
+        ConsistencyStubClient stub = new() { RepairInstanceId = "repair-consistency-acme-abc" };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme", "--yes"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stub.RepairStartCalls.ShouldBe(1);
+        stdout.ToString().ShouldContain("repair-consistency-acme-abc");
+        stdout.ToString().ShouldContain("Workflow scheduled: repair");
+    }
+
+    [Fact]
+    public async Task Run_WithWaitAndYes_PollsUntilCompletionAndPrintsResult()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            RepairInstanceId = "repair-consistency-acme-wait",
+            RepairStatusSequence =
+            [
+                ConsistencyVerifyCommandTests.CreateRepairStatus(
+                    "repair-consistency-acme-wait",
+                    "Completed",
+                    new ConsistencyRepairResult(
+                        "acme",
+                        TotalDiscrepancies: 3,
+                        RepairedCount: 2,
+                        UnrepairableCount: 1,
+                        Actions:
+                        [
+                            new RepairActionRecord(
+                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                                ConsistencyRepairRecommendation.ReIndexSemantic,
+                                Succeeded: true,
+                                FailureReason: null,
+                                BeforeState: new Dictionary<string, string>(),
+                                AfterState: new Dictionary<string, string>()),
+                        ],
+                            PassesExecuted: 2,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                            CompletedAt: DateTimeOffset.UtcNow,
+                            Duration: TimeSpan.FromSeconds(4))),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme", "--yes", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stub.RepairStatusCalls.ShouldBeGreaterThan(0);
+        stdout.ToString().ShouldContain("Consistency repair completed");
+        stdout.ToString().ShouldContain("repaired count");
+    }
+
+    [Fact]
     public async Task Run_IncludeUnrepairableFlag_ForwardedToRequest()
     {
-        // Arrange: capture ConsistencyRepairRequest passed to StartConsistencyRepairAsync.
-        // Act: `memories consistency repair --tenant acme --yes --include-unrepairable`.
-        // Expected: captured request.IncludeUnrepairable == true.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-011) — implement --include-unrepairable propagation. "
-            + "Expected: ConsistencyRepairRequest.IncludeUnrepairable = true when the flag is set on the CLI.");
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme", "--yes", "--include-unrepairable", "--batch-size", "250"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stub.LastRepairRequest.ShouldNotBeNull();
+        stub.LastRepairRequest.IncludeUnrepairable.ShouldBeTrue();
+        stub.LastRepairRequest.BatchSize.ShouldBe(250);
+    }
+
+    private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)
+    {
+        var root = new System.CommandLine.Command("consistency");
+        root.Subcommands.Add(ConsistencyRepairCommand.Build(services));
+        return await root.Parse(args).InvokeAsync();
     }
 }

@@ -5,74 +5,76 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
-/// <summary>
-/// ATDD RED-phase tests for Story 8.2 — <c>memories consistency inspect</c> CLI command.
-/// Synchronous command (no workflow polling); prints a <c>ConsistencyInspectionResult</c>
-/// via the formatter router.
-/// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 6.2 lands <c>ConsistencyInspectCommand</c> + formatter
-/// registration.
-/// </remarks>
-public class ConsistencyInspectCommandTests
-{
-    // Blueprint — uncomment when target command exists (Task 6.2):
-    //
-    // using Hexalith.Memories.Cli.Commands;
-    // using Hexalith.Memories.Client.Rest;
-    // using Hexalith.Memories.Contracts.V1;
-    // using NSubstitute;
-    // using Shouldly;
+using System.Net;
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3. Happy path prints the inspection result.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectCommand (Story 8.2 Task 6.2)")]
+using Hexalith.Memories.Cli.Commands;
+using Hexalith.Memories.Cli.Execution;
+using Hexalith.Memories.Cli.Output;
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Shouldly;
+
+/// <summary>Story 8.2 — <c>memories consistency inspect</c> CLI coverage.</summary>
+public sealed class ConsistencyInspectCommandTests
+{
+    private const string ValidUlid = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
+
+    [Fact]
     public async Task Run_HappyPath_PrintsInspectionResult()
     {
-        // Arrange: MemoriesClient.InspectConsistencyAsync returns a ConsistencyInspectionResult
-        // with Recommendation=NoOp, all three detail records populated.
-        // Act: invoke `memories consistency inspect --tenant acme --id 01HM5Q...`
-        // Expected: exit 0; Human-format stdout includes per-backend presence + contentHash + recommendation.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-005) — implement ConsistencyInspectCommand happy path. "
-            + "Expected: exit 0; stdout includes SyntacticPresent/SemanticPresent/GraphPresent flags + "
-            + "contentHash + recommendation via OutputFormatterRouter Human format.");
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", ValidUlid]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stdout.ToString().ShouldContain("Recommendation:");
+        stdout.ToString().ShouldContain("NoOp");
+        stderr.ToString().ShouldBeEmpty();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3.
-    /// Server returns 404 → CLI prints the error envelope with recovery suggestion
-    /// (including "Run 'memories consistency verify' ...").
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectCommand (Story 8.2 Task 6.2)")]
+    [Fact]
     public async Task Run_404FromServer_PrintsErrorEnvelopeWithRecoverySuggestion()
     {
-        // Arrange: MemoriesClient throws MemoriesRemoteException with ErrorResponse(code=MEMORY_UNIT_NOT_FOUND, ...).
-        // Act: `memories consistency inspect --tenant acme --id 01HM5Q...`
-        // Expected: non-zero exit; stderr envelope contains the recovery suggestion string.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-006) — implement 404 error mapping. "
-            + "Expected: MemoriesRemoteException(MEMORY_UNIT_NOT_FOUND) → stderr envelope with recovery "
-            + "suggestion; exit code maps to CliExitCodes.NotFound or equivalent.");
+        ConsistencyStubClient stub = new()
+        {
+            InspectionException = new MemoriesRemoteException(
+                HttpStatusCode.NotFound,
+                new ErrorResponse("MEMORY_UNIT_NOT_FOUND", "not found", "run verify")),
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", ValidUlid]);
+
+        exit.ShouldBe(CliExitCodes.DomainError);
+        stderr.ToString().ShouldContain("MEMORY_UNIT_NOT_FOUND");
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3 + Risk #4.
-    /// Server returns 400 (malformed ULID) → CLI prints INVALID_MEMORY_UNIT_ID envelope.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyInspectCommand (Story 8.2 Task 6.2)")]
+    [Fact]
     public async Task Run_400FromServer_PrintsInvalidIdEnvelope()
     {
-        // Arrange: MemoriesClient throws MemoriesRemoteException(code=INVALID_MEMORY_UNIT_ID, ...).
-        // Act: `memories consistency inspect --tenant acme --id malformed`.
-        // Expected: non-zero exit; stderr envelope carries INVALID_MEMORY_UNIT_ID + suggestion about ULID format.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLI-007, Risk #4 propagation) — implement 400 error mapping. "
-            + "Expected: MemoriesRemoteException(INVALID_MEMORY_UNIT_ID) → stderr envelope; "
-            + "exit code maps to CliExitCodes.InvalidArgument or equivalent.");
+        ConsistencyStubClient stub = new()
+        {
+            InspectionException = new MemoriesRemoteException(
+                HttpStatusCode.BadRequest,
+                new ErrorResponse("INVALID_MEMORY_UNIT_ID", "bad", "use ULID")),
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", ValidUlid]);
+
+        exit.ShouldBe(CliExitCodes.DomainError);
+        stderr.ToString().ShouldContain("INVALID_MEMORY_UNIT_ID");
+    }
+
+    private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)
+    {
+        var root = new System.CommandLine.Command("consistency");
+        root.Subcommands.Add(ConsistencyInspectCommand.Build(services));
+        return await root.Parse(args).InvokeAsync();
     }
 }

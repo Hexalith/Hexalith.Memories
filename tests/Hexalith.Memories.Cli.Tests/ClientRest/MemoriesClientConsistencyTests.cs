@@ -5,107 +5,190 @@
 
 namespace Hexalith.Memories.Cli.Tests.ClientRest;
 
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+using Hexalith.Memories.Client.Rest;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+
+using Shouldly;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — <c>MemoriesClient</c> consistency methods
-/// (Task 5). Five tests mirror the existing <see cref="MemoriesClientTests"/> pattern
-/// (<c>TestDelegatingHandler</c> + <c>MemoriesJsonContext.Options</c>).
+/// Story 8.2 — <see cref="MemoriesClient"/> consistency methods (Task 5). Mirrors the
+/// <see cref="MemoriesClientTests"/> <c>TestDelegatingHandler</c> pattern.
 /// </summary>
-/// <remarks>
-/// Story AC #9 references a <c>Hexalith.Memories.Client.Rest.Tests</c> project that does
-/// not exist today — new client tests are colocated here alongside
-/// <see cref="MemoriesClientTests"/> to match the project's current convention. Flag for
-/// the dev agent if the separate project is preferred.
-///
-/// Skip-gated until Story 8.2 Task 5 lands the five client methods
-/// (<c>StartConsistencyVerificationAsync</c>, <c>GetConsistencyVerificationStatusAsync</c>,
-/// <c>InspectConsistencyAsync</c>, <c>StartConsistencyRepairAsync</c>,
-/// <c>GetConsistencyRepairStatusAsync</c>).
-/// </remarks>
 public class MemoriesClientConsistencyTests
 {
-    // Blueprint — uncomment when target client methods exist (Task 5.1):
-    //
-    // using System.Net;
-    // using System.Text;
-    // using System.Text.Json;
-    // using Hexalith.Memories.Client.Rest;
-    // using Hexalith.Memories.Contracts.V1;
-    // using Microsoft.Extensions.Logging.Abstractions;
-    // using Microsoft.Extensions.Options;
-    // using Shouldly;
-    //
-    // private static readonly Uri Endpoint = new("http://127.0.0.1:5000/");
+    private static readonly Uri Endpoint = new("http://127.0.0.1:5000/");
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 + Task 5.2.
-    /// <c>StartConsistencyVerificationAsync</c> parses the <c>Location</c> header from a
-    /// <c>202 Accepted</c> response and returns it as the status <see cref="Uri"/>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting MemoriesClient.StartConsistencyVerificationAsync (Story 8.2 Task 5.1)")]
-    public async Task StartConsistencyVerificationAsync_202Response_ParsesLocationHeader()
+    [Fact]
+    public async Task StartConsistencyVerificationAsync_202Response_ReturnsStatusUrl()
     {
-        // Seed: handler returns 202 with Location = /api/tenants/t1/consistency/verify/verify-consistency-t1-GUID.
-        // Expected: returned Uri matches the Location header.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLIENT-001) — implement StartConsistencyVerificationAsync. "
-            + "Expected: returns Uri from 202 response Location header; throws MemoriesRemoteException "
-            + "with INVALID_RESPONSE when Location is missing.");
+        const string TenantId = "tenant-1";
+        const string InstanceId = "verify-consistency-tenant-1-abc123";
+        Uri expected = new(Endpoint, $"api/tenants/{TenantId}/consistency/verify/{InstanceId}");
+
+        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/tenants/{TenantId}/consistency/verify/{InstanceId}", UriKind.Relative));
+
+        Uri result = await client.StartConsistencyVerificationAsync(
+            TenantId,
+            new ConsistencyVerificationRequest(TenantId),
+            CancellationToken.None);
+
+        result.ShouldBe(expected);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// <c>GetConsistencyVerificationStatusAsync</c> deserializes the <c>WorkflowState</c>
-    /// body via <c>MemoriesJsonContext.Options</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting MemoriesClient.GetConsistencyVerificationStatusAsync (Story 8.2 Task 5.1)")]
+    [Fact]
     public async Task GetConsistencyVerificationStatusAsync_200Response_DeserializesWorkflowState()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLIENT-002) — implement GetConsistencyVerificationStatusAsync. "
-            + "Expected: deserialize WorkflowState (or ConsistencyWorkflowState projection) from 200 body "
-            + "using MemoriesJsonContext.Options.");
+        const string InstanceId = "verify-consistency-tenant-1-abc";
+        ConsistencyVerificationStatus state = new(
+            InstanceId,
+            "Completed",
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow,
+            new ConsistencyWorkflowProgress("completed", 1, 1),
+            new ConsistencyVerificationResult(
+                "tenant-1",
+                TotalUnits: 2,
+                ConsistentCount: 1,
+                InconsistentCount: 1,
+                Discrepancies:
+                [
+                    new ConsistencyDiscrepancy(
+                        "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                        SyntacticPresent: true,
+                        SemanticPresent: false,
+                        GraphPresent: true,
+                        ConsistencyRepairRecommendation.ReIndexSemantic),
+                ],
+                TotalDiscrepancyCount: 1,
+                TruncatedAt: null,
+                EnumerationTruncated: false,
+                StartedAt: DateTimeOffset.UtcNow.AddMinutes(-2),
+                CompletedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                Duration: TimeSpan.FromMinutes(1)));
+
+        string body = JsonSerializer.Serialize(state, MemoriesJsonContext.Options);
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+
+        ConsistencyVerificationStatus? result = await client.GetConsistencyVerificationStatusAsync(
+            "tenant-1", InstanceId, CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.InstanceId.ShouldBe(InstanceId);
+        result.Status.ShouldBe("Completed");
+        result.Result.ShouldNotBeNull();
+        result.Result.InconsistentCount.ShouldBe(1);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #3.
-    /// <c>InspectConsistencyAsync</c> deserializes a <c>ConsistencyInspectionResult</c>
-    /// from a 200 response.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting MemoriesClient.InspectConsistencyAsync (Story 8.2 Task 5.1)")]
+    [Fact]
     public async Task InspectConsistencyAsync_200Response_DeserializesInspectionResult()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLIENT-003) — implement InspectConsistencyAsync. "
-            + "Expected: 200 OK → ConsistencyInspectionResult; 404 → MemoriesRemoteException with code "
-            + "MEMORY_UNIT_NOT_FOUND; 400 → MemoriesRemoteException with code INVALID_MEMORY_UNIT_ID.");
+        const string TenantId = "tenant-1";
+        const string MemoryUnitId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
+
+        ConsistencyInspectionResult expected = new(
+            TenantId,
+            MemoryUnitId,
+            SyntacticPresent: true,
+            SemanticPresent: true,
+            GraphPresent: false,
+            SyntacticDetail: new ConsistencySyntacticDetail(
+                "hash", DateTimeOffset.UtcNow, "file:///x", "file", "case-1", "gemini", "gemini-embedding-001"),
+            SemanticDetail: new ConsistencySemanticDetail(768, $"{TenantId}:vec:{MemoryUnitId}"),
+            GraphDetail: null,
+            Recommendation: ConsistencyRepairRecommendation.ReIndexGraph,
+            CheckedAt: DateTimeOffset.UtcNow);
+
+        string body = JsonSerializer.Serialize(expected, MemoriesJsonContext.Options);
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+
+        ConsistencyInspectionResult result = await client.InspectConsistencyAsync(
+            TenantId, MemoryUnitId, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexGraph);
+        result.SyntacticDetail.ShouldNotBeNull();
+        result.GraphDetail.ShouldBeNull();
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4.
-    /// <c>StartConsistencyRepairAsync</c> parses the repair <c>Location</c> header.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting MemoriesClient.StartConsistencyRepairAsync (Story 8.2 Task 5.1)")]
-    public async Task StartConsistencyRepairAsync_202Response_ParsesLocationHeader()
+    [Fact]
+    public async Task InspectConsistencyAsync_404Response_ThrowsMemoriesRemoteExceptionWithCode()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLIENT-004) — implement StartConsistencyRepairAsync. "
-            + "Expected: returns Uri from 202 response Location header; path prefix includes /consistency/repair/.");
+        string body = JsonSerializer.Serialize(
+            new ErrorResponse("MEMORY_UNIT_NOT_FOUND", "not found", "run verify"),
+            MemoriesJsonContext.Options);
+        MemoriesClient client = CreateClient(HttpStatusCode.NotFound, body);
+
+        MemoriesRemoteException ex = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.InspectConsistencyAsync("tenant-1", "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9", CancellationToken.None));
+
+        ex.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ex.Error.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #4.
-    /// <c>GetConsistencyRepairStatusAsync</c> deserializes repair <c>WorkflowState</c>.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting MemoriesClient.GetConsistencyRepairStatusAsync (Story 8.2 Task 5.1)")]
+    [Fact]
+    public async Task StartConsistencyRepairAsync_202Response_ReturnsStatusUrl()
+    {
+        const string TenantId = "tenant-1";
+        const string InstanceId = "repair-consistency-tenant-1-xyz789";
+        Uri expected = new(Endpoint, $"api/tenants/{TenantId}/consistency/repair/{InstanceId}");
+        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/tenants/{TenantId}/consistency/repair/{InstanceId}", UriKind.Relative));
+
+        Uri result = await client.StartConsistencyRepairAsync(
+            TenantId,
+            new ConsistencyRepairRequest(TenantId, IncludeUnrepairable: true),
+            CancellationToken.None);
+
+        result.ShouldBe(expected);
+    }
+
+    [Fact]
     public async Task GetConsistencyRepairStatusAsync_200Response_DeserializesWorkflowState()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-CLIENT-005) — implement GetConsistencyRepairStatusAsync. "
-            + "Expected: deserialize WorkflowState from 200 body; error-path parity with the verify status method.");
+        const string InstanceId = "repair-consistency-tenant-1-xyz";
+        ConsistencyRepairStatus state = new(
+            InstanceId,
+            "Running",
+            DateTimeOffset.UtcNow.AddMinutes(-2),
+            DateTimeOffset.UtcNow,
+            new ConsistencyWorkflowProgress("repairing", 1, 2),
+            null);
+        string body = JsonSerializer.Serialize(state, MemoriesJsonContext.Options);
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+
+        ConsistencyRepairStatus? result = await client.GetConsistencyRepairStatusAsync(
+            "tenant-1", InstanceId, CancellationToken.None);
+
+        result.ShouldNotBeNull();
+        result.InstanceId.ShouldBe(InstanceId);
+        result.Status.ShouldBe("Running");
+        result.Progress.ShouldNotBeNull();
+        result.Progress.CurrentPhase.ShouldBe("repairing");
+    }
+
+    private static MemoriesClient CreateClient(HttpStatusCode status, string body = "", Uri? location = null)
+    {
+        var handler = new TestDelegatingHandler((_, _) =>
+        {
+            HttpResponseMessage response = new(status)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+
+            if (location is not null)
+            {
+                response.Headers.Location = location;
+            }
+
+            return Task.FromResult(response);
+        });
+        var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
+        return new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance);
     }
 }

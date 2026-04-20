@@ -113,6 +113,24 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(TelemetrySearchMetrics))]
 [JsonSerializable(typeof(TelemetryAxisCounters))]
 [JsonSerializable(typeof(TelemetryIngestionMetrics))]
+// Story 8.2: consistency verification + repair contracts.
+[JsonSerializable(typeof(ConsistencyRepairRecommendation))]
+[JsonSerializable(typeof(ConsistencyVerificationRequest))]
+[JsonSerializable(typeof(ConsistencyDiscrepancy))]
+[JsonSerializable(typeof(IReadOnlyList<ConsistencyDiscrepancy>))]
+[JsonSerializable(typeof(ConsistencyVerificationResult))]
+[JsonSerializable(typeof(ConsistencyVerificationStatus))]
+[JsonSerializable(typeof(ConsistencySyntacticDetail))]
+[JsonSerializable(typeof(ConsistencySemanticDetail))]
+[JsonSerializable(typeof(ConsistencyGraphDetail))]
+[JsonSerializable(typeof(ConsistencyInspectionResult))]
+[JsonSerializable(typeof(ConsistencyWorkflowProgress))]
+[JsonSerializable(typeof(ConsistencyRepairRequest))]
+[JsonSerializable(typeof(RepairActionRecord))]
+[JsonSerializable(typeof(IReadOnlyList<RepairActionRecord>))]
+[JsonSerializable(typeof(ConsistencyRepairResult))]
+[JsonSerializable(typeof(ConsistencyRepairStatus))]
+[JsonSerializable(typeof(ConsistencyWorkflowState))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

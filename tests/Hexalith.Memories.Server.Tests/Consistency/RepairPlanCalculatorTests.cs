@@ -5,78 +5,61 @@
 
 namespace Hexalith.Memories.Server.Tests.Consistency;
 
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Consistency;
+
+using Shouldly;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — Consistency Verification &amp; Repair.
-/// Pins AC #2 (discrepancy recommendation field) and AC #7 (unrepairable flagging)
-/// via the pure-function repair-plan calculator. Also guards Risk #8 (authoritative
-/// source ambiguity) by asserting every <c>F</c>-syntactic combination maps to an
+/// Story 8.2 — pins AC #2 (discrepancy recommendation field) and AC #7 (unrepairable
+/// flagging) via the pure-function repair-plan calculator. Also guards Risk #8
+/// (authoritative source ambiguity): every <c>F</c>-syntactic combination maps to an
 /// Orphan or <c>Unrepairable</c> recommendation.
 /// </summary>
-/// <remarks>
-/// Each test is <see cref="FactAttribute.Skip"/>-gated until Story 8.2 Task 3.4
-/// lands <c>Hexalith.Memories.Server.Consistency.RepairPlanCalculator</c> and
-/// <c>Hexalith.Memories.Contracts.V1.ConsistencyRepairRecommendation</c>.
-/// To activate: remove the <c>Skip</c> argument, uncomment the <c>using</c>
-/// directives, and replace <c>Assert.Fail</c> with the assertion shown in
-/// the test's blueprint block.
-/// </remarks>
 public class RepairPlanCalculatorTests
 {
-    // Blueprint — uncomment when target types exist (Task 3.4):
-    //
-    // using Hexalith.Memories.Contracts.V1;
-    // using Hexalith.Memories.Server.Consistency;
-    // using Shouldly;
-    //
-    // public static TheoryData<bool, bool, bool, ConsistencyRepairRecommendation> PresenceCombinations => new()
-    // {
-    //     { true,  true,  true,  ConsistencyRepairRecommendation.NoOp },
-    //     { true,  false, true,  ConsistencyRepairRecommendation.ReIndexSemantic },
-    //     { true,  true,  false, ConsistencyRepairRecommendation.ReIndexGraph },
-    //     { true,  false, false, ConsistencyRepairRecommendation.ReIndexSemanticAndGraph },
-    //     { false, true,  true,  ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph },
-    //     { false, true,  false, ConsistencyRepairRecommendation.RemoveOrphanedSemantic },
-    //     { false, false, true,  ConsistencyRepairRecommendation.RemoveOrphanedGraph },
-    //     { false, false, false, ConsistencyRepairRecommendation.Unrepairable },
-    // };
-
     /// <summary>
-    /// ATDD RED — Story 8.2 AC #2 + AC #7 + Risk #8.
-    /// Expected contract: <c>RepairPlanCalculator.Calculate(bool syntactic, bool semantic, bool graph)</c>
-    /// returns the <c>ConsistencyRepairRecommendation</c> dictated by the presence matrix in the story's
-    /// Section "What 8.2 adds" #7 (lines 53-63 of the story artifact). The function is pure — no DI,
-    /// no ctor, just a switch expression over three booleans. Every combination with syntactic=<c>false</c>
-    /// maps to an Orphan or <c>Unrepairable</c> outcome (Risk #8: syntactic hash is authoritative).
+    /// Story 8.2 AC #2 + AC #7 + Risk #8. Pure mapping — every one of the eight presence
+    /// combinations maps to the recommendation prescribed by the story's "What 8.2 adds" #7
+    /// table. Syntactic-false rows map to <c>RemoveOrphaned*</c> or <c>Unrepairable</c>.
     /// </summary>
-    [Theory(Skip = "ATDD RED — awaiting RepairPlanCalculator (Story 8.2 Task 3.4)")]
-    [InlineData(true, true, true, "NoOp")]
-    [InlineData(true, false, true, "ReIndexSemantic")]
-    [InlineData(true, true, false, "ReIndexGraph")]
-    [InlineData(true, false, false, "ReIndexSemanticAndGraph")]
-    [InlineData(false, true, true, "RemoveOrphanedSemanticAndGraph")]
-    [InlineData(false, true, false, "RemoveOrphanedSemantic")]
-    [InlineData(false, false, true, "RemoveOrphanedGraph")]
-    [InlineData(false, false, false, "Unrepairable")]
+    [Theory]
+    [InlineData(true, true, true, ConsistencyRepairRecommendation.NoOp)]
+    [InlineData(true, false, true, ConsistencyRepairRecommendation.ReIndexSemantic)]
+    [InlineData(true, true, false, ConsistencyRepairRecommendation.ReIndexGraph)]
+    [InlineData(true, false, false, ConsistencyRepairRecommendation.ReIndexSemanticAndGraph)]
+    [InlineData(false, true, true, ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph)]
+    [InlineData(false, true, false, ConsistencyRepairRecommendation.RemoveOrphanedSemantic)]
+    [InlineData(false, false, true, ConsistencyRepairRecommendation.RemoveOrphanedGraph)]
+    [InlineData(false, false, false, ConsistencyRepairRecommendation.Unrepairable)]
     public void Calculate_EveryPresenceCombination_MapsToExpectedRecommendation(
         bool syntactic,
         bool semantic,
         bool graph,
-        string expectedRecommendation)
+        ConsistencyRepairRecommendation expected)
     {
-        // Arrange (activate when RepairPlanCalculator exists):
-        //
-        // ConsistencyRepairRecommendation expected = Enum.Parse<ConsistencyRepairRecommendation>(expectedRecommendation);
-        //
-        // Act:
-        //
-        // ConsistencyRepairRecommendation actual = RepairPlanCalculator.Calculate(syntactic, semantic, graph);
-        //
-        // Assert:
-        //
-        // actual.ShouldBe(expected);
+        ConsistencyRepairRecommendation actual = RepairPlanCalculator.Calculate(syntactic, semantic, graph);
 
-        Assert.Fail(
-            $"ATDD RED (8.2-UNIT-001) — implement RepairPlanCalculator.Calculate. "
-            + $"Expected Calculate({syntactic}, {semantic}, {graph}) == ConsistencyRepairRecommendation.{expectedRecommendation}.");
+        actual.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// Risk #8 regression guard: every syntactic-missing row must be either an orphan removal
+    /// or unrepairable. A future refactor that accidentally returns a re-index recommendation
+    /// when syntactic is absent would attempt to re-derive content from embeddings — which is
+    /// impossible and would produce corrupt state.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void Calculate_SyntacticMissing_DoesNotRecommendReIndex(bool semantic, bool graph)
+    {
+        ConsistencyRepairRecommendation actual = RepairPlanCalculator.Calculate(syntactic: false, semantic, graph);
+
+        actual.ShouldNotBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+        actual.ShouldNotBe(ConsistencyRepairRecommendation.ReIndexGraph);
+        actual.ShouldNotBe(ConsistencyRepairRecommendation.ReIndexSemanticAndGraph);
     }
 }

@@ -59,6 +59,18 @@ public interface IGraphQueryBuilder
     /// <summary>Counts memory unit nodes in the tenant graph.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCountMemoryUnits();
 
+    /// <summary>
+    /// Story 8.2: enumerates all memory unit IDs in the tenant graph. Used by
+    /// <c>EnumerateMemoryUnitIdsActivity</c> to detect graph-only orphans.
+    /// </summary>
+    (string Query, IDictionary<string, object> Parameters) BuildEnumerateMemoryUnitIds();
+
+    /// <summary>
+    /// Story 8.2: returns outgoing, incoming and CONTAINS-edge counts for a single
+    /// memory unit in one roundtrip. Used by <c>ConsistencyInspectionService</c>.
+    /// </summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountMemoryUnitEdges(string memoryUnitId);
+
     /// <summary>Builds a bidirectional graph traversal query from a starting node up to depth.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth);

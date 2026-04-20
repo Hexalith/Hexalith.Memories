@@ -5,147 +5,292 @@
 
 namespace Hexalith.Memories.Server.Tests.Workflows;
 
+using Dapr.Workflow;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Workflows;
+
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
+using Shouldly;
+
 /// <summary>
-/// ATDD RED-phase seminal tests for Story 8.2 — AC #1 (workflow orchestration), AC #2 (count
-/// invariant + discrepancy shape), AC #8 (batched processing), Risk #2 (bounded fan-out),
-/// Risk #7 (10K truncation). Covers the full 7-test inventory in AC #9.
+/// Story 8.2 — AC #1 (workflow orchestration), AC #2 (count invariant + discrepancy shape),
+/// AC #8 (batched processing), Risk #2 (bounded fan-out), Risk #7 (10K truncation).
 /// </summary>
-/// <remarks>
-/// Skip-gated until Story 8.2 Task 2.1 lands <c>ConsistencyVerificationWorkflow</c> and
-/// Task 2.6 lands <c>ConsistencyVerificationInput</c>. Mirror the NSubstitute
-/// <c>WorkflowContext</c> pattern from <c>TenantDeletionWorkflowTests</c>.
-/// </remarks>
 public class ConsistencyVerificationWorkflowTests
 {
-    // Blueprint — uncomment when target types exist:
-    //
-    // using Dapr.Workflow;
-    // using Hexalith.Memories.Contracts.V1;
-    // using Hexalith.Memories.Server.Activities.Indexing;
-    // using Hexalith.Memories.Server.Workflows;
-    // using NSubstitute;
-    // using Shouldly;
+    private const string TestTenantId = "tenant-1";
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1.
-    /// Empty tenant (zero units) → zero discrepancies, zero consistent, zero total.
-    /// Workflow completes normally — does NOT throw when there is nothing to probe.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_EmptyTenant_ReturnsZeroDiscrepancies()
     {
-        // Seed: EnumerateMemoryUnitIdsActivity returns empty list + TotalUnionCount=0 + IsComplete=true.
-        // Expected: TotalUnits=0, ConsistentCount=0, InconsistentCount=0, Discrepancies empty,
-        // VerifyConsistencyActivity never called (no units to probe).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010a) — implement empty-tenant short-circuit. "
-            + "Expected: zero-counts result, no VerifyConsistencyActivity dispatches.");
+        WorkflowContext context = CreateContext();
+        SetEnumeration(context, []);
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.TotalUnits.ShouldBe(0);
+        result.ConsistentCount.ShouldBe(0);
+        result.InconsistentCount.ShouldBe(0);
+        result.Discrepancies.Count.ShouldBe(0);
+
+        // No probe dispatches on empty tenant.
+        await context.DidNotReceive().CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Any<ConsistencyInput>(),
+            Arg.Any<WorkflowTaskOptions>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1. All-consistent tenant → zero discrepancies.
-    /// Every unit's probe returns <c>(T, T, T)</c> → <c>RepairPlanCalculator</c> returns
-    /// <c>NoOp</c> → NOT emitted as a discrepancy.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_AllConsistent_ReturnsZeroDiscrepancies()
     {
-        // Seed: 10 units; every VerifyConsistencyActivity call returns ConsistencyResult(true, true, true).
-        // Expected: TotalUnits=10, ConsistentCount=10, InconsistentCount=0, Discrepancies.Count=0.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010b) — implement all-consistent path. "
-            + "Expected: 10 units, (T,T,T) each → ConsistentCount=10, InconsistentCount=0, "
-            + "Discrepancies empty (NoOp recommendations are NOT emitted).");
+        WorkflowContext context = CreateContext();
+        List<string> ids = Enumerable.Range(0, 10).Select(i => $"u{i:D4}").ToList();
+        SetEnumeration(context, ids);
+        SetAllProbes(context, new ConsistencyResult(true, true, true));
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.TotalUnits.ShouldBe(10);
+        result.ConsistentCount.ShouldBe(10);
+        result.InconsistentCount.ShouldBe(0);
+        result.Discrepancies.Count.ShouldBe(0);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #2 (count invariant holds on mixed states).
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_AggregateCounts_InvariantHolds()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010) — implement aggregate counting. "
-            + "Expected invariant: ConsistentCount + InconsistentCount == TotalUnits; "
-            + "Discrepancies.Count == InconsistentCount.");
+        WorkflowContext context = CreateContext();
+        List<string> ids = ["c0", "c1", "c2", "i0", "i1"];
+        SetEnumeration(context, ids);
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('c')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true));
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('i')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, false, true));
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        (result.ConsistentCount + result.InconsistentCount).ShouldBe(result.TotalUnits);
+        result.Discrepancies.Count.ShouldBe(result.InconsistentCount);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #2. One discrepancy of each type — covers all 7 non-<c>NoOp</c>
-    /// rows of the <c>RepairPlanCalculator</c> table (Story 8.2 "What 8.2 adds" #7).
-    /// Ensures the workflow correctly maps <c>ConsistencyResult</c> → <c>ConsistencyDiscrepancy</c>
-    /// with the correct <c>Recommendation</c> for each presence pattern.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_OneOfEachDiscrepancyType_AllRecommendationsRepresented()
     {
-        // Seed: 7 units, each producing one of the non-NoOp presence combinations:
-        //   (T,F,T), (T,T,F), (T,F,F), (F,T,T), (F,T,F), (F,F,T), (F,F,F).
-        // Expected: Discrepancies.Count=7; distinct set of Recommendations includes:
-        //   ReIndexSemantic, ReIndexGraph, ReIndexSemanticAndGraph,
-        //   RemoveOrphanedSemanticAndGraph, RemoveOrphanedSemantic, RemoveOrphanedGraph, Unrepairable.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010c) — implement recommendation coverage. "
-            + "Seed 7 units with every non-NoOp presence combination → expect 7 distinct recommendations "
-            + "in the Discrepancies list.");
+        WorkflowContext context = CreateContext();
+
+        Dictionary<string, ConsistencyResult> perUnit = new()
+        {
+            ["tft"] = new(true, false, true),   // ReIndexSemantic
+            ["ttf"] = new(true, true, false),   // ReIndexGraph
+            ["tff"] = new(true, false, false),  // ReIndexSemanticAndGraph
+            ["ftt"] = new(false, true, true),   // RemoveOrphanedSemanticAndGraph
+            ["ftf"] = new(false, true, false),  // RemoveOrphanedSemantic
+            ["fft"] = new(false, false, true),  // RemoveOrphanedGraph
+            ["fff"] = new(false, false, false), // Unrepairable
+        };
+
+        SetEnumeration(context, perUnit.Keys.ToList());
+
+        foreach ((string id, ConsistencyResult probe) in perUnit)
+        {
+            string capturedId = id;
+            ConsistencyResult capturedProbe = probe;
+            context.CallActivityAsync<ConsistencyResult>(
+                    nameof(VerifyConsistencyActivity),
+                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == capturedId),
+                    Arg.Any<WorkflowTaskOptions>())
+                .Returns(capturedProbe);
+        }
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.Discrepancies.Count.ShouldBe(7);
+        IReadOnlySet<ConsistencyRepairRecommendation> distinct = result.Discrepancies
+            .Select(d => d.Recommendation)
+            .ToHashSet();
+
+        distinct.ShouldBe(new HashSet<ConsistencyRepairRecommendation>
+        {
+            ConsistencyRepairRecommendation.ReIndexSemantic,
+            ConsistencyRepairRecommendation.ReIndexGraph,
+            ConsistencyRepairRecommendation.ReIndexSemanticAndGraph,
+            ConsistencyRepairRecommendation.RemoveOrphanedSemantic,
+            ConsistencyRepairRecommendation.RemoveOrphanedGraph,
+            ConsistencyRepairRecommendation.RemoveOrphanedSemanticAndGraph,
+            ConsistencyRepairRecommendation.Unrepairable,
+        }, ignoreOrder: true);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #8 + Risk #2.
-    /// Bounded fan-out: within one batch, the workflow dispatches ≤<c>batchSize</c> activities
-    /// concurrently; batches run sequentially. Prevents unbounded fan-out on 1M-unit tenants
-    /// from overwhelming FalkorDB.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_BatchedFanOut_DoesNotExceedBatchSize()
     {
-        // Seed: 2000 units, BatchSize=500. Use a counting mock for VerifyConsistencyActivity that
-        // increments an "in-flight" counter on entry and decrements on exit; assert the peak
-        // in-flight count never exceeds 500.
-        // Expected: peakInFlight <= 500 across all 4 batches.
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010d, Risk #2) — implement bounded fan-out. "
-            + "Expected: peak concurrent VerifyConsistencyActivity invocations never exceeds BatchSize=500 "
-            + "across the 4 batches of 2000 units. Use a counting mock to measure peak in-flight.");
+        WorkflowContext context = CreateContext();
+        List<string> ids = Enumerable.Range(0, 2000).Select(i => $"u{i:D5}").ToList();
+        SetEnumeration(context, ids);
+
+        int inFlight = 0;
+        int maxInFlight = 0;
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Any<ConsistencyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => AwaitProbeAsync());
+
+        async Task<ConsistencyResult> AwaitProbeAsync()
+        {
+            int active = Interlocked.Increment(ref inFlight);
+            UpdateMax(ref maxInFlight, active);
+            if (active == 500)
+            {
+                gate.TrySetResult();
+            }
+
+            await gate.Task.ConfigureAwait(false);
+            _ = Interlocked.Decrement(ref inFlight);
+            return new ConsistencyResult(true, true, true);
+        }
+
+        ConsistencyVerificationWorkflow workflow = new();
+        await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId, BatchSize: 500));
+
+        maxInFlight.ShouldBe(500);
+        await context.Received(2000).CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Any<ConsistencyInput>(),
+            Arg.Any<WorkflowTaskOptions>());
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #8 + Risk #7.
-    /// 10_001 discrepancies → <c>Discrepancies</c> truncated to 10_000, <c>TotalDiscrepancyCount=10001</c>,
-    /// <c>TruncatedAt</c> non-null, and EventId 8201 emitted per discrepancy.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_TenThousandAndOneDiscrepancies_ResultTruncatedAt10000()
     {
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-011, Risk #7) — implement 10K truncation cap. "
-            + "Expected: Discrepancies.Count <= 10_000 && TotalDiscrepancyCount == 10_001 && "
-            + "TruncatedAt is set && LogDiscrepancyDetected (EventId 8201) emitted for every entry.");
+        WorkflowContext context = CreateContext();
+        List<string> ids = Enumerable.Range(0, 10_001).Select(i => $"u{i:D6}").ToList();
+        SetEnumeration(context, ids);
+        SetAllProbes(context, new ConsistencyResult(false, true, false)); // RemoveOrphanedSemantic
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
+
+        result.Discrepancies.Count.ShouldBe(10_000);
+        result.TotalDiscrepancyCount.ShouldBe(10_001);
+        result.TruncatedAt.ShouldNotBeNull();
+        result.InconsistentCount.ShouldBe(10_001);
     }
 
-    /// <summary>
-    /// ATDD RED — Story 8.2 AC #1 (idempotent re-entry).
-    /// DAPR Workflow replay: running the same workflow input twice (simulating a DAPR
-    /// replay) must produce the same <c>ConsistencyVerificationResult</c>. No side-effects,
-    /// no non-deterministic ordering.
-    /// </summary>
-    [Fact(Skip = "ATDD RED — awaiting ConsistencyVerificationWorkflow (Story 8.2 Task 2.1)")]
+    [Fact]
     public async Task RunAsync_IdempotentReEntry_DeterministicResult()
     {
-        // Seed: same context (NSubstitute WorkflowContext) with deterministic activity responses.
-        // Run workflow twice with identical ConsistencyVerificationInput.
-        // Expected: result1 == result2 across TotalUnits, ConsistentCount, InconsistentCount,
-        // and the ordered Discrepancies list (sorted by memoryUnitId).
-        await Task.Yield();
-        Assert.Fail(
-            "ATDD RED (8.2-UNIT-010e) — implement idempotent re-entry. "
-            + "Expected: two workflow runs with identical input and activity responses produce "
-            + "identical ConsistencyVerificationResult (same counts, same sorted Discrepancies).");
+        List<string> ids = ["a", "b", "c"];
+
+        async Task<ConsistencyVerificationResult> RunOnce()
+        {
+            WorkflowContext context = CreateContext();
+            SetEnumeration(context, ids);
+            context.CallActivityAsync<ConsistencyResult>(
+                    nameof(VerifyConsistencyActivity),
+                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "a"),
+                    Arg.Any<WorkflowTaskOptions>())
+                .Returns(new ConsistencyResult(true, true, true));
+            context.CallActivityAsync<ConsistencyResult>(
+                    nameof(VerifyConsistencyActivity),
+                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "b"),
+                    Arg.Any<WorkflowTaskOptions>())
+                .Returns(new ConsistencyResult(true, false, true));
+            context.CallActivityAsync<ConsistencyResult>(
+                    nameof(VerifyConsistencyActivity),
+                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "c"),
+                    Arg.Any<WorkflowTaskOptions>())
+                .Returns(new ConsistencyResult(false, false, false));
+
+            ConsistencyVerificationWorkflow workflow = new();
+            return await workflow.RunAsync(context, new ConsistencyVerificationInput(TestTenantId));
+        }
+
+        ConsistencyVerificationResult first = await RunOnce();
+        ConsistencyVerificationResult second = await RunOnce();
+
+        first.TotalUnits.ShouldBe(second.TotalUnits);
+        first.ConsistentCount.ShouldBe(second.ConsistentCount);
+        first.InconsistentCount.ShouldBe(second.InconsistentCount);
+
+        IEnumerable<(string, ConsistencyRepairRecommendation)> firstKeys =
+            first.Discrepancies.Select(d => (d.MemoryUnitId, d.Recommendation));
+        IEnumerable<(string, ConsistencyRepairRecommendation)> secondKeys =
+            second.Discrepancies.Select(d => (d.MemoryUnitId, d.Recommendation));
+
+        firstKeys.ShouldBe(secondKeys);
+    }
+
+    private static WorkflowContext CreateContext()
+    {
+        WorkflowContext context = Substitute.For<WorkflowContext>();
+        context.InstanceId.Returns($"verify-consistency-{TestTenantId}-test");
+        context.CreateReplaySafeLogger<ConsistencyVerificationWorkflow>()
+            .Returns(Substitute.For<ILogger>());
+        context.CurrentUtcDateTime.Returns(DateTime.UtcNow);
+        return context;
+    }
+
+    private static void SetEnumeration(WorkflowContext context, IReadOnlyList<string> ids)
+    {
+        context.CallActivityAsync<EnumerateMemoryUnitIdsResult>(
+                nameof(EnumerateMemoryUnitIdsActivity),
+                Arg.Any<EnumerateMemoryUnitIdsInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new EnumerateMemoryUnitIdsResult(ids, ids.Count, Truncated: false));
+    }
+
+    private static void SetAllProbes(WorkflowContext context, ConsistencyResult result)
+    {
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Any<ConsistencyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(result);
+    }
+
+    private static void UpdateMax(ref int max, int candidate)
+    {
+        int snapshot;
+        do
+        {
+            snapshot = max;
+            if (candidate <= snapshot)
+            {
+                return;
+            }
+        }
+        while (Interlocked.CompareExchange(ref max, candidate, snapshot) != snapshot);
     }
 }

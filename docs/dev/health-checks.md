@@ -268,3 +268,12 @@ next to the orchestrator config.
   configured in ServiceDefaults (Story 7.5).
 - `Retry-After` headers on 503 responses — orchestrator probes have their own
   retry cadence (`periodSeconds`).
+
+## See also
+
+- [consistency.md](./consistency.md) — per-tenant data-consistency verification
+  and repair workflows (Story 8.2). Orthogonal to health checks: `/ready`
+  answers "is the backend reachable?", while consistency answers "is the data
+  consistent?"
+- [telemetry.md](./telemetry.md) — rolling counters, trace propagation, access
+  telemetry.

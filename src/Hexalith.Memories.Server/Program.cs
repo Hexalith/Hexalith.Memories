@@ -11,6 +11,7 @@ using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Cases;
+using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
@@ -192,7 +193,19 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<DeleteFalkorDbGraphFinalizerActivity>();
     options.RegisterActivity<DeleteTenantDataKeysActivity>();
     options.RegisterActivity<GetTenantRegistryActivity>();
+
+    // Story 8.2: consistency verification & repair.
+    options.RegisterWorkflow<ConsistencyVerificationWorkflow>();
+    options.RegisterWorkflow<ConsistencyRepairWorkflow>();
+    options.RegisterActivity<EnumerateMemoryUnitIdsActivity>();
+    options.RegisterActivity<RepairUnitActivity>();
 });
+
+// Story 8.2: consistency services.
+builder.Services.AddScoped<IConsistencyInspectionService, ConsistencyInspectionService>();
+builder.Services.AddScoped<IConsistencyWorkflowService, ConsistencyWorkflowService>();
+builder.Services.AddScoped<ISemanticIndexer, SemanticIndexer>();
+builder.Services.AddScoped<IGraphNodeMerger, GraphNodeMerger>();
 
 builder.Services.AddActors(options =>
 {
@@ -1041,6 +1054,217 @@ app.MapPost("/api/tenants/{tenantId}/verify", async (
             new ErrorResponse("BACKEND_UNAVAILABLE", $"Backend unavailable: {ex.Message}", "Check Redis/FalkorDB connectivity and retry."),
             statusCode: 503);
     }
+});
+
+// Story 8.2: consistency verification & repair endpoints
+app.MapPost("/api/tenants/{tenantId}/consistency/verify", async (
+    IConsistencyWorkflowService workflowService,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    ConsistencyVerificationRequest? request,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    int batchSize = request?.BatchSize ?? 500;
+    if (batchSize < ConsistencyVerificationWorkflow.MinBatchSize ||
+        batchSize > ConsistencyVerificationWorkflow.MaxBatchSize)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_BATCH_SIZE",
+            $"BatchSize {batchSize} is out of range.",
+            $"Use a value between {ConsistencyVerificationWorkflow.MinBatchSize} and {ConsistencyVerificationWorkflow.MaxBatchSize}."));
+    }
+
+    // Consistency endpoints are diagnostic — allow on non-Active tenants.
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    string instanceId = $"verify-consistency-{tenantId}-{Guid.NewGuid():N}";
+
+    try
+    {
+        await workflowService.ScheduleVerificationAsync(
+            instanceId,
+            new ConsistencyVerificationInput(tenantId, batchSize),
+            cancellationToken);
+    }
+    catch (Dapr.DaprException ex)
+    {
+        return Results.Json(
+            new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
+            statusCode: 503);
+    }
+
+    return Results.Accepted(
+        $"/api/tenants/{tenantId}/consistency/verify/{instanceId}",
+        new { workflowInstanceId = instanceId });
+});
+
+app.MapGet("/api/tenants/{tenantId}/consistency/verify/{instanceId}", async (
+    IConsistencyWorkflowService workflowService,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    string instanceId,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    if (!instanceId.StartsWith($"verify-consistency-{tenantId}-", StringComparison.Ordinal))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "CONSISTENCY_VERIFY_NOT_FOUND",
+            $"Verification workflow '{instanceId}' was not found for tenant '{tenantId}'.",
+            "Use the workflowInstanceId returned by POST /api/tenants/{tenantId}/consistency/verify for the same tenant."));
+    }
+
+    ConsistencyVerificationStatus? status = await workflowService.GetVerificationStatusAsync(instanceId, cancellationToken);
+    return status is null ? Results.NotFound() : Results.Ok(status);
+});
+
+app.MapGet("/api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}", async (
+    IConsistencyInspectionService inspectionService,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    string memoryUnitId,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    try
+    {
+        ConsistencyInspectionResult result = await inspectionService.InspectAsync(
+            tenantId, memoryUnitId, cancellationToken);
+        return Results.Ok(result);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_MEMORY_UNIT_ID",
+            ex.Message,
+            "Memory unit IDs must be 26-character Crockford-base32 ULIDs."));
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "MEMORY_UNIT_NOT_FOUND",
+            ex.Message,
+            "Run 'memories consistency verify' to audit the tenant or verify the ID via the ingest system."));
+    }
+    catch (RedisException ex)
+    {
+        return Results.Json(
+            new ErrorResponse("BACKEND_UNAVAILABLE", $"Backend unavailable: {ex.Message}", "Check Redis/FalkorDB connectivity and retry."),
+            statusCode: 503);
+    }
+});
+
+app.MapPost("/api/tenants/{tenantId}/consistency/repair", async (
+    IConsistencyWorkflowService workflowService,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    ConsistencyRepairRequest? request,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    int batchSize = request?.BatchSize ?? 500;
+    if (batchSize < ConsistencyVerificationWorkflow.MinBatchSize ||
+        batchSize > ConsistencyVerificationWorkflow.MaxBatchSize)
+    {
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_BATCH_SIZE",
+            $"BatchSize {batchSize} is out of range.",
+            $"Use a value between {ConsistencyVerificationWorkflow.MinBatchSize} and {ConsistencyVerificationWorkflow.MaxBatchSize}."));
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    string instanceId = $"repair-consistency-{tenantId}-{Guid.NewGuid():N}";
+
+    try
+    {
+        await workflowService.ScheduleRepairAsync(
+            instanceId,
+            new ConsistencyRepairInput(tenantId, batchSize, request?.IncludeUnrepairable ?? false),
+            cancellationToken);
+    }
+    catch (Dapr.DaprException ex)
+    {
+        return Results.Json(
+            new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
+            statusCode: 503);
+    }
+
+    return Results.Accepted(
+        $"/api/tenants/{tenantId}/consistency/repair/{instanceId}",
+        new { workflowInstanceId = instanceId });
+});
+
+app.MapGet("/api/tenants/{tenantId}/consistency/repair/{instanceId}", async (
+    IConsistencyWorkflowService workflowService,
+    TenantStatusGuard tenantGuard,
+    string tenantId,
+    string instanceId,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
+    if (tenantExistsError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantExistsError);
+    }
+
+    if (!instanceId.StartsWith($"repair-consistency-{tenantId}-", StringComparison.Ordinal))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "CONSISTENCY_REPAIR_NOT_FOUND",
+            $"Repair workflow '{instanceId}' was not found for tenant '{tenantId}'.",
+            "Use the workflowInstanceId returned by POST /api/tenants/{tenantId}/consistency/repair for the same tenant."));
+    }
+
+    ConsistencyRepairStatus? status = await workflowService.GetRepairStatusAsync(instanceId, cancellationToken);
+    return status is null ? Results.NotFound() : Results.Ok(status);
 });
 
 app.MapPost("/api/tenants/{tenantId}/cases", async (

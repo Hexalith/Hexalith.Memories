@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-19 # Story 8.1 review-fix closeout — accepted findings resolved (fail-closed probe parsing, timeout honoring, factory disposal, degraded-200 registration coverage, corrected docs, full health integration coverage). Focused validation green: Server HealthChecks 63/63, HealthEndpointIntegrationTests 4/4. Status → done.
+# last_updated: 2026-04-20 # Story 8.4 create-story handoff — promoted 8-4-end-to-end-telemetry-integration-tests from backlog to ready-for-dev; closes Story 7.5 Tasks 11.3 + 11.4 deferral via the AspireIngestionPipelineFixture + in-memory OTLP capture. Prior note: Story 8.2 review fix pass 1 — resolved fail-closed enumeration, deterministic truncation/exact union counts, orphan after-state snapshots, and repair discrepancy totals.
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-19 # Story 8.1 review-fix closeout — accepted findings resolved (fail-closed probe parsing, timeout honoring, factory disposal, degraded-200 registration coverage, corrected docs, full health integration coverage). Focused validation green: Server HealthChecks 63/63, HealthEndpointIntegrationTests 4/4. Status → done.
+last_updated: 2026-04-20 # Story 8.4 create-story handoff — promoted 8-4-end-to-end-telemetry-integration-tests from backlog to ready-for-dev; closes Story 7.5 Tasks 11.3 + 11.4 deferral via the AspireIngestionPipelineFixture + in-memory OTLP capture. Prior note: Story 8.2 review fix pass 1 — resolved fail-closed enumeration, deterministic truncation/exact union counts, orphan after-state snapshots, and repair discrepancy totals.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -121,9 +121,9 @@ development_status:
   # Epic 8: Observability & System Health
   epic-8: in-progress
   8-1-health-checks-and-readiness: done
-  8-2-consistency-verification-and-repair: ready-for-dev
-  8-3-data-export: backlog
-  8-4-end-to-end-telemetry-integration-tests: backlog # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4
+  8-2-consistency-verification-and-repair: in-progress
+  8-3-data-export: in-progress
+  8-4-end-to-end-telemetry-integration-tests: ready-for-dev # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4
   epic-8-retrospective: optional
 
   # --- Phase 1.5 (Fast-Follow) ---

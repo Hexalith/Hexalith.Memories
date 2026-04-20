@@ -316,6 +316,28 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Verify the provisioning-tracking id and retry.",
                 ExitCode: 1),
 
+            // Story 8.2: consistency verification & repair codes.
+            ["CONSISTENCY_VERIFY_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Re-run 'memories consistency verify --tenant <id>' without --wait to re-schedule the audit.",
+                ExitCode: 1),
+            ["CONSISTENCY_REPAIR_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Re-run 'memories consistency repair --tenant <id> --yes' without --wait to re-schedule the repair.",
+                ExitCode: 1),
+            ["CONSISTENCY_WORKFLOW_TIMEOUT"] = new(
+                CliMessage: null,
+                CliSuggestion: "The workflow has exceeded the CLI's 30-minute poll budget. Poll status separately via the server's GET /api/tenants/{id}/consistency/verify/{instanceId}.",
+                ExitCode: 2),
+            ["CONFIRMATION_REQUIRED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Repair is a mutating operation. Re-run with --yes to confirm.",
+                ExitCode: 1),
+            ["INVALID_BATCH_SIZE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use a batch size between 10 and 5000.",
+                ExitCode: 1),
+
             // Embedding / vector configuration.
             ["EMBEDDING_UNAVAILABLE"] = new(
                 CliMessage: null,

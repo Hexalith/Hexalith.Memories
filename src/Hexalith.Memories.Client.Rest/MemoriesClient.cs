@@ -621,4 +621,231 @@ public class MemoriesClient
                 ex);
         }
     }
+
+    /// <summary>
+    /// Story 8.2 — schedules a consistency verification workflow for the tenant. Fire-and-forget;
+    /// poll status via <see cref="GetConsistencyVerificationStatusAsync"/>.
+    /// </summary>
+    /// <param name="tenantId">The tenant to audit.</param>
+    /// <param name="request">Optional batch-size override; omit to use server default (500).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow-status URI returned by the server's <c>Location</c> header.</returns>
+    public virtual async Task<Uri> StartConsistencyVerificationAsync(
+        string tenantId,
+        ConsistencyVerificationRequest? request,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify";
+        ConsistencyVerificationRequest body = request ?? new ConsistencyVerificationRequest(tenantId);
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync(path, body, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        return await ReadWorkflowStatusUriAsync(
+            response,
+            propertyName: "workflowInstanceId",
+            relativePath: $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify",
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Story 8.2 — fetches the current state of a consistency-verification workflow.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="instanceId">The workflow instance id returned by <see cref="StartConsistencyVerificationAsync"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow state, or <see langword="null"/> if the instance no longer exists.</returns>
+    public virtual async Task<ConsistencyVerificationStatus?> GetConsistencyVerificationStatusAsync(
+        string tenantId,
+        string instanceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify/{Uri.EscapeDataString(instanceId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            return await response.Content
+                .ReadFromJsonAsync<ConsistencyVerificationStatus>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as ConsistencyVerificationStatus.",
+                jsonException);
+        }
+    }
+
+    /// <summary>
+    /// Story 8.2 — synchronous per-unit consistency probe. Returns the full inspection result
+    /// when the unit is present in at least one backend.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory unit identifier (must match the ULID pattern).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The inspection result.</returns>
+    /// <exception cref="MemoriesRemoteException">
+    /// Thrown with a 400 <c>INVALID_MEMORY_UNIT_ID</c> envelope on malformed IDs or
+    /// 404 <c>MEMORY_UNIT_NOT_FOUND</c> when the unit is absent from all three backends.
+    /// </exception>
+    public virtual async Task<ConsistencyInspectionResult> InspectConsistencyAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/inspect/{Uri.EscapeDataString(memoryUnitId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            ConsistencyInspectionResult? result = await response.Content
+                .ReadFromJsonAsync<ConsistencyInspectionResult>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return result ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty inspection body.");
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as ConsistencyInspectionResult.",
+                jsonException);
+        }
+    }
+
+    /// <summary>
+    /// Story 8.2 — schedules a consistency repair workflow. Fire-and-forget;
+    /// poll status via <see cref="GetConsistencyRepairStatusAsync"/>.
+    /// </summary>
+    /// <param name="tenantId">The tenant to repair.</param>
+    /// <param name="request">Optional repair request (batch size, include-unrepairable).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow-status URI returned by the server's <c>Location</c> header.</returns>
+    public virtual async Task<Uri> StartConsistencyRepairAsync(
+        string tenantId,
+        ConsistencyRepairRequest? request,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair";
+        ConsistencyRepairRequest body = request ?? new ConsistencyRepairRequest(tenantId);
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync(path, body, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        return await ReadWorkflowStatusUriAsync(
+            response,
+            propertyName: "workflowInstanceId",
+            relativePath: $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair",
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Story 8.2 — fetches the current state of a consistency-repair workflow.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="instanceId">The workflow instance id returned by <see cref="StartConsistencyRepairAsync"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow state, or <see langword="null"/> if the instance no longer exists.</returns>
+    public virtual async Task<ConsistencyRepairStatus?> GetConsistencyRepairStatusAsync(
+        string tenantId,
+        string instanceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair/{Uri.EscapeDataString(instanceId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            return await response.Content
+                .ReadFromJsonAsync<ConsistencyRepairStatus>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as ConsistencyRepairStatus.",
+                jsonException);
+        }
+    }
+
+    private async Task<Uri> ReadWorkflowStatusUriAsync(
+        HttpResponseMessage response,
+        string propertyName,
+        string relativePath,
+        CancellationToken ct)
+    {
+        if (response.Headers.Location is { } location)
+        {
+            return location.IsAbsoluteUri || _httpClient.BaseAddress is null
+                ? location
+                : new Uri(_httpClient.BaseAddress, location);
+        }
+
+        string instanceId = await ReadInstanceIdAsync(response, propertyName, ct).ConfigureAwait(false);
+        string normalizedPath = relativePath.TrimEnd('/');
+        string statusPath = $"{normalizedPath}/{Uri.EscapeDataString(instanceId)}";
+
+        return _httpClient.BaseAddress is { } baseAddress
+            ? new Uri(baseAddress, statusPath)
+            : new Uri(statusPath, UriKind.Relative);
+    }
 }

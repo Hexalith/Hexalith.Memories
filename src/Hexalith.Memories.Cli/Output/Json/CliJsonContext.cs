@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Quickstart;
 using Hexalith.Memories.Contracts.V1;
 
@@ -24,11 +25,18 @@ using Hexalith.Memories.Contracts.V1;
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]
 [JsonSerializable(typeof(CliOutputEnvelope<QuickstartEnvelopeData>))]
+// Story 8.2 CLI envelopes.
+[JsonSerializable(typeof(CliOutputEnvelope<ConsistencyInspectionResult>))]
+[JsonSerializable(typeof(CliOutputEnvelope<ConsistencyVerificationResult>))]
+[JsonSerializable(typeof(CliOutputEnvelope<ConsistencyRepairResult>))]
+[JsonSerializable(typeof(CliOutputEnvelope<ConsistencyWorkflowState>))]
+[JsonSerializable(typeof(CliOutputEnvelope<ConsistencyCommandReceipt>))]
 [JsonSerializable(typeof(ConfigShowData))]
 [JsonSerializable(typeof(CliErrorPayload))]
 [JsonSerializable(typeof(QuickstartEnvelopeData))]
 [JsonSerializable(typeof(QuickstartStepResult))]
 [JsonSerializable(typeof(QuickstartStepStatus))]
+[JsonSerializable(typeof(ConsistencyCommandReceipt))]
 internal sealed partial class CliJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared CLI JSON serialization options — envelope-first, indented, camelCase.</summary>
