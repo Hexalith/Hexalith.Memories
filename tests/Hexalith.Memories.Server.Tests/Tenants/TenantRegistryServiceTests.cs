@@ -48,6 +48,7 @@ public class TenantRegistryServiceTests
                 t.Tenant.Id == "acme"
                 && t.Tenant.DisplayName == "Acme Corp"
                 && t.Tenant.Status == TenantStatus.Provisioning
+                && t.LastUpdated != default
                 && t.WorkflowInstanceId == null),
             Arg.Any<string>(),
             cancellationToken: Arg.Any<CancellationToken>());
@@ -140,7 +141,12 @@ public class TenantRegistryServiceTests
     public async Task UpdateTenantStatusAsync_UpdatesStatusAndClearsWorkflowOwnership()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
-        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Provisioning, "workflow-123");
+        TenantRegistryEntry existing = CreateEntry(
+            "tenant-1",
+            "Test",
+            TenantStatus.Provisioning,
+            "workflow-123",
+            new DateTimeOffset(2026, 4, 20, 8, 0, 0, TimeSpan.Zero));
         daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(existing);
 
@@ -151,7 +157,10 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).SaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
-            Arg.Is<TenantRegistryEntry>(t => t.Tenant.Status == TenantStatus.Active && t.WorkflowInstanceId == null),
+            Arg.Is<TenantRegistryEntry>(t =>
+                t.Tenant.Status == TenantStatus.Active
+                && t.WorkflowInstanceId == null
+                && t.LastUpdated > existing.LastUpdated),
             cancellationToken: Arg.Any<CancellationToken>());
     }
 
@@ -315,7 +324,11 @@ public class TenantRegistryServiceTests
     [Fact]
     public async Task UpdateTenantDisplayNameAsync_UpdatesDisplayName_AndEmitsLog()
     {
-        TenantRegistryEntry existing = CreateEntry("acme", "Old Name", TenantStatus.Active);
+        TenantRegistryEntry existing = CreateEntry(
+            "acme",
+            "Old Name",
+            TenantStatus.Active,
+            lastUpdated: new DateTimeOffset(2026, 4, 20, 8, 0, 0, TimeSpan.Zero));
         DaprClient daprClient = Substitute.For<DaprClient>();
         daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
                 "statestore",
@@ -345,7 +358,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-acme",
-            Arg.Is<TenantRegistryEntry>(e => e.Tenant.DisplayName == "Acme Inc"),
+            Arg.Is<TenantRegistryEntry>(e => e.Tenant.DisplayName == "Acme Inc" && e.LastUpdated > existing.LastUpdated),
             "etag-42",
             cancellationToken: Arg.Any<CancellationToken>());
 
@@ -440,8 +453,16 @@ public class TenantRegistryServiceTests
             => sink.Add((logLevel, eventId, formatter(state, exception)));
     }
 
-    private static TenantRegistryEntry CreateEntry(string tenantId, string displayName, TenantStatus status, string? workflowInstanceId = null)
-        => new(new TenantInfo(tenantId, displayName, status, DateTimeOffset.UtcNow), workflowInstanceId);
+    private static TenantRegistryEntry CreateEntry(
+        string tenantId,
+        string displayName,
+        TenantStatus status,
+        string? workflowInstanceId = null,
+        DateTimeOffset? lastUpdated = null)
+        => new(
+            new TenantInfo(tenantId, displayName, status, DateTimeOffset.UtcNow),
+            workflowInstanceId,
+            lastUpdated ?? DateTimeOffset.UtcNow);
 
     private static TenantRegistryService CreateService(DaprClient daprClient)
     {

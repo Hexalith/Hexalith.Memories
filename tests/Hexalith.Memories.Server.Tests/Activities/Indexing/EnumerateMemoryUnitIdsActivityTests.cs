@@ -82,6 +82,10 @@ public class EnumerateMemoryUnitIdsActivityTests
     {
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
+
+        // Return a FRESH IAsyncEnumerable per invocation — NSubstitute caches the single
+        // returned instance, and a compiler-generated async iterator cannot be iterated
+        // concurrently by the two parallel ScanAsync calls (syntactic + semantic).
         server.KeysAsync(
                 Arg.Any<int>(),
                 Arg.Any<RedisValue>(),
@@ -89,7 +93,7 @@ public class EnumerateMemoryUnitIdsActivityTests
                 Arg.Any<long>(),
                 Arg.Any<int>(),
                 Arg.Any<CommandFlags>())
-            .Returns(EmptyAsyncEnumerable());
+            .Returns(_ => EmptyAsyncEnumerable());
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         EndPoint endpoint = new DnsEndPoint("localhost", 6379);
@@ -136,6 +140,48 @@ public class EnumerateMemoryUnitIdsActivityTests
         result.MemoryUnitIds.Count.ShouldBe(50_000);
         result.MemoryUnitIds[0].ShouldBe("unit-000000");
         result.MemoryUnitIds[^1].ShouldBe("unit-049999");
+    }
+
+    [Fact]
+    public async Task RunAsync_RedisScanOperationCanceled_BubblesUp()
+    {
+        // DAPR activities do not receive a caller cancellation token today (`RunAsync` uses
+        // `CancellationToken.None`). This guard only proves that an OperationCanceledException
+        // coming out of the SCAN async enumerable bubbles up unchanged instead of being mapped
+        // to the RedisException failure path.
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(OperationCanceledAsyncEnumerable());
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(EmptyAsyncEnumerable());
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
+
+        EnumerateMemoryUnitIdsActivity activity = new(
+            redis,
+            VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []),
+            CreateBuilder(),
+            Substitute.For<ILogger<EnumerateMemoryUnitIdsActivity>>());
+
+        await Should.ThrowAsync<OperationCanceledException>(() => activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId)));
     }
 
     [Fact]
@@ -257,6 +303,17 @@ public class EnumerateMemoryUnitIdsActivityTests
         if (DateTime.UtcNow.Ticks >= 0)
         {
             throw new RedisException("simulated scan failure");
+        }
+
+        yield break;
+    }
+
+    private static async IAsyncEnumerable<RedisKey> OperationCanceledAsyncEnumerable()
+    {
+        await Task.Yield();
+        if (DateTime.UtcNow.Ticks >= 0)
+        {
+            throw new OperationCanceledException("simulated cancellation");
         }
 
         yield break;

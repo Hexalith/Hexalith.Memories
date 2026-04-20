@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Diagnostics;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -74,7 +76,7 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
     {
         ArgumentNullException.ThrowIfNull(input);
         TenantIdGuard.Validate(input.TenantId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
+        string memoryUnitId = ConsistencyInspectionService.NormalizeMemoryUnitId(input.MemoryUnitId);
 
         CancellationToken ct = CancellationToken.None;
 
@@ -82,14 +84,23 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
         // opted out of attempting it, surface the flag directly without re-probing.
         if (input.Recommendation == ConsistencyRepairRecommendation.Unrepairable && !input.IncludeUnrepairable)
         {
-            LogUnrepairable(_logger, input.TenantId, input.MemoryUnitId);
+            IReadOnlyDictionary<string, string> absent = PresenceMap(false, false, false);
+            LogUnrepairable(_logger, input.TenantId, memoryUnitId);
+            LogRepairActionApplied(
+                _logger,
+                input.TenantId,
+                memoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable.ToString(),
+                FormatPresence(absent),
+                FormatPresence(absent),
+                durationMs: 0);
             return new RepairActionRecord(
-                input.MemoryUnitId,
+                memoryUnitId,
                 ConsistencyRepairRecommendation.Unrepairable,
                 Succeeded: false,
                 FailureReason: "Unrepairable — nothing remains in any backend or syntactic source is gone.",
-                BeforeState: PresenceMap(false, false, false),
-                AfterState: PresenceMap(false, false, false));
+                BeforeState: absent,
+                AfterState: absent);
         }
 
         // Risk #1: fresh re-verify before any write. If the unit is consistent now, skip.
@@ -97,19 +108,32 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
         try
         {
             freshInspection = await _inspectionService
-                .InspectAsync(input.TenantId, input.MemoryUnitId, ct)
+                .InspectAsync(input.TenantId, memoryUnitId, ct)
                 .ConfigureAwait(false);
         }
         catch (KeyNotFoundException)
         {
-            // All three backends now report absent — nothing to repair.
+            // Fresh (F,F,F) — unit is absent from all three backends at re-verify time. Per
+            // RepairPlanCalculator this maps to Unrepairable (not NoOp, which is reserved for
+            // the (T,T,T) consistent case). Reporting Succeeded=false keeps the distinction
+            // visible to operators: "nothing anywhere" is a bookkeeping gap they must resolve.
+            IReadOnlyDictionary<string, string> absent = PresenceMap(false, false, false);
+            LogUnrepairable(_logger, input.TenantId, memoryUnitId);
+            LogRepairActionApplied(
+                _logger,
+                input.TenantId,
+                memoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable.ToString(),
+                FormatPresence(absent),
+                FormatPresence(absent),
+                durationMs: 0);
             return new RepairActionRecord(
-                input.MemoryUnitId,
-                ConsistencyRepairRecommendation.NoOp,
-                Succeeded: true,
-                FailureReason: null,
-                BeforeState: PresenceMap(false, false, false),
-                AfterState: PresenceMap(false, false, false));
+                memoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable,
+                Succeeded: false,
+                FailureReason: "Unrepairable — unit is absent from all three backends on fresh re-check; cannot re-derive state.",
+                BeforeState: absent,
+                AfterState: absent);
         }
 
         IReadOnlyDictionary<string, string> beforeState = PresenceMap(
@@ -121,9 +145,17 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
 
         if (recommendation == ConsistencyRepairRecommendation.NoOp)
         {
-            LogNoOpRepair(_logger, input.TenantId, input.MemoryUnitId);
+            LogNoOpRepair(_logger, input.TenantId, memoryUnitId);
+            LogRepairActionApplied(
+                _logger,
+                input.TenantId,
+                memoryUnitId,
+                ConsistencyRepairRecommendation.NoOp.ToString(),
+                FormatPresence(beforeState),
+                FormatPresence(beforeState),
+                durationMs: 0);
             return new RepairActionRecord(
-                input.MemoryUnitId,
+                memoryUnitId,
                 ConsistencyRepairRecommendation.NoOp,
                 Succeeded: true,
                 FailureReason: null,
@@ -133,9 +165,17 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
 
         if (recommendation == ConsistencyRepairRecommendation.Unrepairable)
         {
-            LogUnrepairable(_logger, input.TenantId, input.MemoryUnitId);
+            LogUnrepairable(_logger, input.TenantId, memoryUnitId);
+            LogRepairActionApplied(
+                _logger,
+                input.TenantId,
+                memoryUnitId,
+                ConsistencyRepairRecommendation.Unrepairable.ToString(),
+                FormatPresence(beforeState),
+                FormatPresence(beforeState),
+                durationMs: 0);
             return new RepairActionRecord(
-                input.MemoryUnitId,
+                memoryUnitId,
                 ConsistencyRepairRecommendation.Unrepairable,
                 Succeeded: false,
                 FailureReason: "Unrepairable — nothing remains in any backend or syntactic source is gone.",
@@ -143,22 +183,27 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
                 AfterState: beforeState);
         }
 
+        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
             IReadOnlyDictionary<string, string> afterState = await ApplyRepairAsync(
                 input.TenantId,
-                input.MemoryUnitId,
+                memoryUnitId,
                 recommendation,
                 ct).ConfigureAwait(false);
+            stopwatch.Stop();
 
             LogRepairActionApplied(
                 _logger,
                 input.TenantId,
-                input.MemoryUnitId,
-                recommendation.ToString());
+                memoryUnitId,
+                recommendation.ToString(),
+                FormatPresence(beforeState),
+                FormatPresence(afterState),
+                stopwatch.ElapsedMilliseconds);
 
             return new RepairActionRecord(
-                input.MemoryUnitId,
+                memoryUnitId,
                 recommendation,
                 Succeeded: true,
                 FailureReason: null,
@@ -167,14 +212,56 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
         }
         catch (Exception ex)
         {
-            LogRepairActionFailed(_logger, input.TenantId, input.MemoryUnitId, recommendation.ToString(), ex.Message);
+            stopwatch.Stop();
+            IReadOnlyDictionary<string, string> afterState = await CaptureAfterFailureStateAsync(
+                input.TenantId,
+                memoryUnitId,
+                beforeState,
+                ct).ConfigureAwait(false);
+            LogRepairActionFailed(
+                _logger,
+                input.TenantId,
+                memoryUnitId,
+                recommendation.ToString(),
+                FormatPresence(beforeState),
+                FormatPresence(afterState),
+                stopwatch.ElapsedMilliseconds,
+                ex.Message);
             return new RepairActionRecord(
-                input.MemoryUnitId,
+                memoryUnitId,
                 recommendation,
                 Succeeded: false,
                 FailureReason: ex.Message,
                 BeforeState: beforeState,
-                AfterState: beforeState);
+                AfterState: afterState);
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> CaptureAfterFailureStateAsync(
+        string tenantId,
+        string memoryUnitId,
+        IReadOnlyDictionary<string, string> fallback,
+        CancellationToken ct)
+    {
+        try
+        {
+            ConsistencyInspectionResult inspection = await _inspectionService
+                .InspectAsync(tenantId, memoryUnitId, ct)
+                .ConfigureAwait(false);
+
+            return PresenceMap(
+                inspection.SyntacticPresent,
+                inspection.SemanticPresent,
+                inspection.GraphPresent);
+        }
+        catch (KeyNotFoundException)
+        {
+            return PresenceMap(false, false, false);
+        }
+        catch (Exception ex)
+        {
+            LogRepairFailureStateProbeFailed(_logger, tenantId, memoryUnitId, ex.Message);
+            return fallback;
         }
     }
 
@@ -239,12 +326,21 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
             ["graph"] = graph ? "present" : "absent",
         };
 
+    private static string FormatPresence(IReadOnlyDictionary<string, string> state)
+        => $"syntactic={state["syntactic"]};semantic={state["semantic"]};graph={state["graph"]}";
+
     [LoggerMessage(
         EventId = 8202,
         Level = LogLevel.Information,
-        Message = "RepairActionApplied tenant '{TenantId}' unit '{MemoryUnitId}' action {Recommendation}")]
+        Message = "RepairActionApplied tenant '{TenantId}' unit '{MemoryUnitId}' action {Recommendation} before=[{BeforeState}] after=[{AfterState}] duration={DurationMs}ms")]
     private static partial void LogRepairActionApplied(
-        ILogger logger, string tenantId, string memoryUnitId, string recommendation);
+        ILogger logger,
+        string tenantId,
+        string memoryUnitId,
+        string recommendation,
+        string beforeState,
+        string afterState,
+        long durationMs);
 
     [LoggerMessage(
         EventId = 8203,
@@ -261,7 +357,24 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
     [LoggerMessage(
         EventId = 8223,
         Level = LogLevel.Error,
-        Message = "RepairActionFailed tenant '{TenantId}' unit '{MemoryUnitId}' action {Recommendation}: {Error}")]
+        Message = "RepairActionFailed tenant '{TenantId}' unit '{MemoryUnitId}' action {Recommendation} before=[{BeforeState}] after=[{AfterState}] duration={DurationMs}ms: {Error}")]
     private static partial void LogRepairActionFailed(
-        ILogger logger, string tenantId, string memoryUnitId, string recommendation, string error);
+        ILogger logger,
+        string tenantId,
+        string memoryUnitId,
+        string recommendation,
+        string beforeState,
+        string afterState,
+        long durationMs,
+        string error);
+
+    [LoggerMessage(
+        EventId = 8224,
+        Level = LogLevel.Warning,
+        Message = "RepairFailureStateProbeFailed tenant '{TenantId}' unit '{MemoryUnitId}': {Error}")]
+    private static partial void LogRepairFailureStateProbeFailed(
+        ILogger logger,
+        string tenantId,
+        string memoryUnitId,
+        string error);
 }

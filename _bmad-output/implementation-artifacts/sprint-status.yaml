@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-20 # Story 8.4 create-story handoff — promoted 8-4-end-to-end-telemetry-integration-tests from backlog to ready-for-dev; closes Story 7.5 Tasks 11.3 + 11.4 deferral via the AspireIngestionPipelineFixture + in-memory OTLP capture. Prior note: Story 8.2 review fix pass 1 — resolved fail-closed enumeration, deterministic truncation/exact union counts, orphan after-state snapshots, and repair discrepancy totals.
+# last_updated: 2026-04-20 # Story 8.3 marked done after review-fix pass — export review findings closed (classification gap deferred upstream); focused server/contracts regression tests green.
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-20 # Story 8.4 create-story handoff — promoted 8-4-end-to-end-telemetry-integration-tests from backlog to ready-for-dev; closes Story 7.5 Tasks 11.3 + 11.4 deferral via the AspireIngestionPipelineFixture + in-memory OTLP capture. Prior note: Story 8.2 review fix pass 1 — resolved fail-closed enumeration, deterministic truncation/exact union counts, orphan after-state snapshots, and repair discrepancy totals.
+last_updated: 2026-04-20 # Story 8.3 marked done after review-fix pass — export review findings closed (classification gap deferred upstream); focused server/contracts regression tests green.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -121,16 +121,16 @@ development_status:
   # Epic 8: Observability & System Health
   epic-8: in-progress
   8-1-health-checks-and-readiness: done
-  8-2-consistency-verification-and-repair: in-progress
-  8-3-data-export: in-progress
-  8-4-end-to-end-telemetry-integration-tests: ready-for-dev # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4
+  8-2-consistency-verification-and-repair: done
+  8-3-data-export: done
+  8-4-end-to-end-telemetry-integration-tests: review # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4 — implemented + 8/8 Tier-3 tests green; Story 7.5 Tasks 11.3 + 11.4 closed.
   epic-8-retrospective: optional
 
   # --- Phase 1.5 (Fast-Follow) ---
 
   # Epic 9: EventStore Integration & Zero-Code Memory
-  epic-9: backlog
-  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: backlog
+  epic-9: in-progress
+  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev
   9-2-dual-embedding-and-causal-chain-indexing: backlog
   9-3-handler-registration-and-mismatch-detection: backlog
   epic-9-retrospective: optional

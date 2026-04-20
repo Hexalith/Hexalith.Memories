@@ -131,6 +131,13 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(ConsistencyRepairResult))]
 [JsonSerializable(typeof(ConsistencyRepairStatus))]
 [JsonSerializable(typeof(ConsistencyWorkflowState))]
+// Story 8.3: data export envelope contracts.
+[JsonSerializable(typeof(ExportManifest))]
+[JsonSerializable(typeof(ExportScope))]
+[JsonSerializable(typeof(ExportStatistics))]
+[JsonSerializable(typeof(ExportedEdge))]
+[JsonSerializable(typeof(ExportedTenantConfig))]
+[JsonSerializable(typeof(ExportedMemoryUnit))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

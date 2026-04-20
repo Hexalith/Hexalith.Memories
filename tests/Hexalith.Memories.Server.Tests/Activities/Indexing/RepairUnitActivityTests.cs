@@ -104,6 +104,61 @@ public class RepairUnitActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_FreshReVerifyReportsAllAbsent_ReturnsUnrepairableNotNoOp()
+    {
+        // Stale recommendation said RemoveOrphanedSemantic; fresh re-verify throws
+        // KeyNotFoundException (unit absent in all three backends). Per the repair plan
+        // (F,F,F) row, the result must be Unrepairable/Succeeded=false — NOT NoOp. NoOp is
+        // reserved for the (T,T,T) consistent case.
+        IConsistencyInspectionService inspection = Substitute.For<IConsistencyInspectionService>();
+        inspection
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<ConsistencyInspectionResult>(_ => throw new KeyNotFoundException("absent everywhere"));
+
+        ISemanticIndexer semanticIndexer = Substitute.For<ISemanticIndexer>();
+        IGraphNodeMerger graphNodeMerger = Substitute.For<IGraphNodeMerger>();
+
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        IConnectionMultiplexer falkorMux = VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []);
+        IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
+
+        RepairUnitActivity activity = new(
+            inspection,
+            semanticIndexer,
+            graphNodeMerger,
+            redis,
+            falkorMux,
+            builder,
+            Substitute.For<ILogger<RepairUnitActivity>>());
+
+        RepairActionRecord record = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.RemoveOrphanedSemantic));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.Unrepairable);
+        record.Succeeded.ShouldBeFalse();
+        record.FailureReason.ShouldNotBeNullOrWhiteSpace();
+        record.BeforeState["syntactic"].ShouldBe("absent");
+        record.BeforeState["semantic"].ShouldBe("absent");
+        record.BeforeState["graph"].ShouldBe("absent");
+        record.AfterState.ShouldBe(record.BeforeState, ignoreOrder: true);
+
+        // No destructive writes dispatched.
+        await semanticIndexer.DidNotReceive().ReIndexFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await graphNodeMerger.DidNotReceive().ReMergeFromSyntacticAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        builder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
+    }
+
+    [Fact]
     public async Task RunAsync_StaleUnrepairableReverifyConsistent_DowngradesToNoOp()
     {
         Harness harness = CreateHarness(
@@ -239,6 +294,79 @@ public class RepairUnitActivityTests
         await harness.SemanticIndexer.Received(1).ReIndexFromSyntacticAsync(
             TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
         await harness.GraphNodeMerger.Received(1).ReMergeFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_ReIndexSemanticAndGraph_GraphMergeFailure_RecordsObservedAfterState()
+    {
+        IConsistencyInspectionService inspection = Substitute.For<IConsistencyInspectionService>();
+        inspection
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ConsistencyInspectionResult(
+                    TestTenantId,
+                    TestMemoryUnitId,
+                    SyntacticPresent: true,
+                    SemanticPresent: false,
+                    GraphPresent: false,
+                    null,
+                    null,
+                    null,
+                    ConsistencyRepairRecommendation.ReIndexSemanticAndGraph,
+                    DateTimeOffset.UtcNow),
+                new ConsistencyInspectionResult(
+                    TestTenantId,
+                    TestMemoryUnitId,
+                    SyntacticPresent: true,
+                    SemanticPresent: true,
+                    GraphPresent: false,
+                    null,
+                    new ConsistencySemanticDetail(1536, $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+                    null,
+                    ConsistencyRepairRecommendation.ReIndexGraph,
+                    DateTimeOffset.UtcNow));
+
+        ISemanticIndexer semanticIndexer = Substitute.For<ISemanticIndexer>();
+        IGraphNodeMerger graphNodeMerger = Substitute.For<IGraphNodeMerger>();
+        graphNodeMerger
+            .ReMergeFromSyntacticAsync(TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("graph merge failed")));
+
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        RepairUnitActivity activity = new(
+            inspection,
+            semanticIndexer,
+            graphNodeMerger,
+            redis,
+            VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds: []),
+            Substitute.For<IGraphQueryBuilder>(),
+            Substitute.For<ILogger<RepairUnitActivity>>());
+
+        RepairActionRecord record = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RepairUnitInput(
+                TestTenantId,
+                TestMemoryUnitId,
+                ConsistencyRepairRecommendation.ReIndexSemanticAndGraph));
+
+        record.Applied.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemanticAndGraph);
+        record.Succeeded.ShouldBeFalse();
+        record.FailureReason.ShouldNotBeNull();
+        record.FailureReason.ShouldContain("graph merge failed");
+        record.BeforeState["syntactic"].ShouldBe("present");
+        record.BeforeState["semantic"].ShouldBe("absent");
+        record.BeforeState["graph"].ShouldBe("absent");
+        record.AfterState["syntactic"].ShouldBe("present");
+        record.AfterState["semantic"].ShouldBe("present");
+        record.AfterState["graph"].ShouldBe("absent");
+
+        await semanticIndexer.Received(1).ReIndexFromSyntacticAsync(
+            TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
+        await graphNodeMerger.Received(1).ReMergeFromSyntacticAsync(
             TestTenantId, TestMemoryUnitId, Arg.Any<CancellationToken>());
     }
 

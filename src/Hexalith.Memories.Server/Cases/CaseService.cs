@@ -934,7 +934,9 @@ internal sealed class CaseService
         return result.Count > 0;
     }
 
-    private static Case? ParseCaseFromHash(HashEntry[] entries, string tenantId)
+    // Promoted to internal static (Story 8.3 Task 1.2) so TenantExportService can reuse the
+    // canonical hash->record mapping without drifting from the read path.
+    internal static Case? ParseCaseFromHash(HashEntry[] entries, string tenantId)
     {
         Dictionary<string, string> fields = [];
         foreach (HashEntry entry in entries)
@@ -975,7 +977,9 @@ internal sealed class CaseService
             MemoryUnitCount: 0);
     }
 
-    private static MemoryUnit? ParseMemoryUnitFromHash(HashEntry[] entries, string tenantId, string fallbackId)
+    // Promoted to internal static (Story 8.3 Task 1.2) so TenantExportService can reuse the
+    // canonical hash->record mapping without drifting from the read path.
+    internal static MemoryUnit? ParseMemoryUnitFromHash(HashEntry[] entries, string tenantId, string fallbackId)
     {
         Dictionary<string, string> fields = [];
         foreach (HashEntry entry in entries)

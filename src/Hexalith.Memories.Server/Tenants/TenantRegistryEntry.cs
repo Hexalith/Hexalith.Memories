@@ -8,4 +8,4 @@ namespace Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Contracts.V1;
 
 /// <summary>Internal tenant registry state persisted in DAPR, including workflow ownership for in-flight provisioning.</summary>
-public sealed record TenantRegistryEntry(TenantInfo Tenant, string? WorkflowInstanceId);
+public sealed record TenantRegistryEntry(TenantInfo Tenant, string? WorkflowInstanceId, DateTimeOffset LastUpdated = default);

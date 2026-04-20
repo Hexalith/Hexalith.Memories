@@ -186,7 +186,7 @@ public class GraphQueryBuilderTests
             "source", "target", EdgeType.Contains, 1.0f, EdgeOrigin.Explicit);
 
         query.ShouldContain("MERGE");
-        query.ShouldContain("SET r.confidence = $confidence, r.origin = $origin");
+        query.ShouldContain("SET r.createdAt = coalesce(r.createdAt, $createdAt), r.confidence = $confidence, r.origin = $origin");
         query.ShouldNotContain("{confidence: $confidence");
     }
 
@@ -198,6 +198,7 @@ public class GraphQueryBuilderTests
 
         query.ShouldContain("$sourceId");
         query.ShouldContain("$targetId");
+        query.ShouldContain("$createdAt");
         query.ShouldContain("$confidence");
         query.ShouldContain("$origin");
         query.ShouldContain("MATCH (s:MemoryUnit {id: $sourceId}), (t:MemoryUnit {id: $targetId})");
@@ -439,6 +440,30 @@ public class GraphQueryBuilderTests
 
         query.ShouldNotContain(adversarialCaseId);
         parameters["caseId"].ShouldBe(adversarialCaseId);
+    }
+
+    [Fact]
+    public void BuildListEdgesForMemoryUnits_ShouldReturnParameterizedQuery()
+    {
+        List<string> ids = ["mu-1", "mu-2", "mu-3"];
+        (string query, IDictionary<string, object> parameters) = _builder.BuildListEdgesForMemoryUnits(ids);
+
+        query.ShouldContain("UNWIND $ids AS muId");
+        query.ShouldContain("MATCH (m:MemoryUnit {id: muId})-[r]-(n:MemoryUnit)");
+        query.ShouldContain("id(r) AS edgeId");
+        query.ShouldContain("startNode(r).id AS sourceId");
+        query.ShouldContain("endNode(r).id AS targetId");
+        query.ShouldContain("type(r) AS edgeType");
+        query.ShouldContain("r.confidence");
+        query.ShouldContain("r.verifiedBy");
+        query.ShouldContain("r.previousConfidence");
+        parameters["ids"].ShouldBe(ids);
+    }
+
+    [Fact]
+    public void BuildListEdgesForMemoryUnits_NullIds_ShouldThrow()
+    {
+        Should.Throw<ArgumentNullException>(() => _builder.BuildListEdgesForMemoryUnits(null!));
     }
 
     [Fact]

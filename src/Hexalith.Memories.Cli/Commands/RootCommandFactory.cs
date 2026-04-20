@@ -62,6 +62,14 @@ Examples:
     memories consistency repair --tenant acme --yes
 """;
 
+    private const string ExportCommandDescription = """
+Export memories and edges for a case or tenant as portable JSON (Story 8.3).
+
+Examples:
+    memories export case --tenant acme --case 01HM5Q9WXGK6T8Q4Z5Y6V7W8X9 --output case.json
+    memories export tenant --tenant acme | jq .manifest
+""";
+
     /// <summary>Top-level command groups surfaced in root help (FR53).</summary>
     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
     [
@@ -122,6 +130,13 @@ Examples:
         consistencyCommand.Subcommands.Add(ConsistencyRepairCommand.Build(services));
         consistencyCommand.SetAction(_ => consistencyCommand.Parse("--help").Invoke());
         root.Subcommands.Add(consistencyCommand);
+
+        // Story 8.3 — export command group (case / tenant).
+        var exportCommand = new Command("export", ExportCommandDescription);
+        exportCommand.Subcommands.Add(ExportCaseCommand.Build(services));
+        exportCommand.Subcommands.Add(ExportTenantCommand.Build(services));
+        exportCommand.SetAction(_ => exportCommand.Parse("--help").Invoke());
+        root.Subcommands.Add(exportCommand);
 
         // Story 7.5: add the global --telemetry flag to the root command.
         root.Options.Add(globalOptions.TelemetryOption);

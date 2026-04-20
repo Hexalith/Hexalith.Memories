@@ -105,6 +105,112 @@ public sealed class OpenTelemetryRegistrationTests
     }
 
     [Fact]
+    public void InMemoryTelemetry_EnvVarUnset_NoCollectorRegistered_AndContainerBuilds()
+    {
+        // Story 8.4 AC #5 + Task 1.4 regression guard: when HEXALITH_MEMORIES_TELEMETRY_INMEMORY is
+        // unset, the env-var branch in AddOpenTelemetryExporters MUST be skipped — no IActivityCollector
+        // resolution is attempted, the production OpenTelemetry pipeline stays unchanged, and the
+        // service container builds without throwing on a missing IActivityCollector registration.
+        string? previous = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
+        Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, null);
+        try
+        {
+            HostApplicationBuilder builder = BuildHostBuilder();
+            using ServiceProvider provider = builder.Services.BuildServiceProvider();
+
+            // The branch is skipped → no IActivityCollector requirement → BuildServiceProvider succeeds
+            // and resolving TracerProvider does not throw.
+            provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
+            provider.GetService<IActivityCollector>().ShouldBeNull(
+                "Production code MUST NOT register IActivityCollector when the env-var trigger is unset.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, previous);
+        }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("true")]
+    [InlineData("True")]
+    [InlineData("TRUE")]
+    [InlineData("on")]
+    [InlineData("yes")]
+    [InlineData(" 1")]
+    [InlineData("1 ")]
+    [InlineData("01")]
+    [InlineData("10")]
+    public void InMemoryTelemetry_EnvVarParseStrictness_OnlyExactOneActivates(string envValue)
+    {
+        // Story 8.4 Task 1.1.5 (Risk 7 mitigation): the env-var contract is "exact string match on \"1\"".
+        // A developer who uses truthy variants ("true", "on", " 1", "01") gets ZERO capture activation
+        // — a misconfiguration that should never silently look like it worked. This test pins the contract
+        // so a future code-cleanup pass cannot loosen the comparison to OrdinalIgnoreCase or numeric parse.
+        InMemoryTelemetryEnvironment.IsEnabled(envValue).ShouldBeFalse(
+            $"Only the exact string \"{InMemoryTelemetryEnvironment.EnabledValue}\" must activate; got '{envValue}'.");
+    }
+
+    [Fact]
+    public void InMemoryTelemetry_EnvVarParseStrictness_ExactOneActivates()
+    {
+        // Positive case: the canonical activator string MUST evaluate to true. Pairs with the negative
+        // theory above so the round-trip is fully pinned.
+        InMemoryTelemetryEnvironment.IsEnabled(InMemoryTelemetryEnvironment.EnabledValue).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void InMemoryTelemetry_FormatIgnoredValueWarning_HasStableShape()
+    {
+        // Story 8.4 Task 1.1.5 — pin the warning text so test logs and operator triage docs can rely
+        // on the exact phrasing. A drift here would break grep-based triage.
+        string warning = InMemoryTelemetryEnvironment.FormatIgnoredValueWarning("true");
+        warning.ShouldBe("[telemetry] HEXALITH_MEMORIES_TELEMETRY_INMEMORY=true — only \"1\" activates; ignoring");
+    }
+
+    [Fact]
+    public void InMemoryTelemetry_EnvVarSet_BranchRegistersInMemoryProcessor_AndCapturesActivities()
+    {
+        // Story 8.4 Task 1.1 happy-path: when the env var IS exactly "1" AND an IActivityCollector
+        // is registered in DI, the env-var branch appends a CollectingActivityProcessor that drains
+        // emitted activities into the collector. Validates the wiring end-to-end without booting Aspire.
+        string? previous = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
+        Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, InMemoryTelemetryEnvironment.EnabledValue);
+        try
+        {
+            TestActivityCollector collector = new();
+            HostApplicationBuilder builder = BuildHostBuilder();
+            builder.Services.AddSingleton<IActivityCollector>(collector);
+
+            using ServiceProvider provider = builder.Services.BuildServiceProvider();
+            TracerProvider tracerProvider = provider.GetRequiredService<TracerProvider>();
+
+            using (Activity? activity = MemoriesActivitySource.Instance.StartActivity("env-var-branch-probe"))
+            {
+                activity.ShouldNotBeNull();
+            }
+
+            tracerProvider.ForceFlush();
+
+            collector.Activities.ShouldContain(
+                a => a.Source.Name == MemoriesActivitySource.SourceName && a.OperationName == "env-var-branch-probe",
+                "Env-var branch did not append CollectingActivityProcessor — activity was not captured.");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, previous);
+        }
+    }
+
+    private sealed class TestActivityCollector : IActivityCollector
+    {
+        private readonly List<Activity> _activities = [];
+
+        public ICollection<Activity> Activities => _activities;
+    }
+
+    [Fact]
     public void Program_RegistersRollingCounterStore_AsSingletonAndHostedService()
     {
         HostApplicationBuilder builder = BuildHostBuilder();

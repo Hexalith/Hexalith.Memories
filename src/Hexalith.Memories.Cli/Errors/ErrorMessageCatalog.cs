@@ -338,6 +338,24 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Use a batch size between 10 and 5000.",
                 ExitCode: 1),
 
+            // Story 8.3: data export codes.
+            ["EXPORT_TENANT_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Run 'memories tenant list' to see available tenants.",
+                ExitCode: 1),
+            ["EXPORT_CASE_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Run 'memories case list --tenant <t>' to see available cases.",
+                ExitCode: 1),
+            ["EXPORT_WRITE_FAILED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Check disk space and write permissions; the part-file has been deleted.",
+                ExitCode: 1),
+            ["EXPORT_OUTPUT_PATH_INVALID"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use --force to overwrite an existing file, or pick a non-existing path. Use --allow-absolute-path to write outside the current working directory.",
+                ExitCode: 2),
+
             // Embedding / vector configuration.
             ["EMBEDDING_UNAVAILABLE"] = new(
                 CliMessage: null,

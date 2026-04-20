@@ -827,6 +827,77 @@ public class MemoriesClient
         }
     }
 
+    /// <summary>
+    /// Story 8.3: streams a case export as raw JSON. The returned <see cref="Stream"/> wraps the
+    /// response body — the caller MUST dispose it so the underlying <see cref="HttpResponseMessage"/>
+    /// and network buffers are released. The request uses
+    /// <see cref="HttpCompletionOption.ResponseHeadersRead"/> so the stream is available before the
+    /// full body is downloaded.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier to export.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A read-only stream of export JSON bytes.</returns>
+    public virtual async Task<Stream> ExportCaseAsync(string tenantId, string caseId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/export";
+        HttpRequestMessage request = new(HttpMethod.Get, path);
+        HttpResponseMessage response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            try
+            {
+                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+                throw new MemoriesRemoteException(response.StatusCode, error);
+            }
+            finally
+            {
+                response.Dispose();
+            }
+        }
+
+        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Story 8.3: streams a tenant export as raw JSON. See <see cref="ExportCaseAsync"/> for
+    /// stream-ownership semantics.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A read-only stream of export JSON bytes.</returns>
+    public virtual async Task<Stream> ExportTenantAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/export";
+        HttpRequestMessage request = new(HttpMethod.Get, path);
+        HttpResponseMessage response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            try
+            {
+                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+                throw new MemoriesRemoteException(response.StatusCode, error);
+            }
+            finally
+            {
+                response.Dispose();
+            }
+        }
+
+        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+    }
+
     private async Task<Uri> ReadWorkflowStatusUriAsync(
         HttpResponseMessage response,
         string propertyName,

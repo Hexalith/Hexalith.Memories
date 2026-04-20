@@ -64,10 +64,12 @@ public sealed partial class TenantRegistryService
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
+        DateTimeOffset now = DateTimeOffset.UtcNow;
         string stateKey = GetTenantStateKey(tenantId);
         TenantRegistryEntry entry = new(
-            new TenantInfo(tenantId, displayName, TenantStatus.Provisioning, DateTimeOffset.UtcNow),
-            workflowInstanceId);
+            new TenantInfo(tenantId, displayName, TenantStatus.Provisioning, now),
+            workflowInstanceId,
+            now);
 
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
@@ -162,6 +164,7 @@ public sealed partial class TenantRegistryService
         TenantRegistryEntry updatedEntry = entry with
         {
             Tenant = updated,
+            LastUpdated = DateTimeOffset.UtcNow,
             WorkflowInstanceId = status == TenantStatus.Provisioning ? workflowInstanceId ?? entry.WorkflowInstanceId : null,
         };
         await _daprClient.SaveStateAsync(StoreName, stateKey, updatedEntry, cancellationToken: ct).ConfigureAwait(false);
@@ -219,6 +222,7 @@ public sealed partial class TenantRegistryService
 
             TenantRegistryEntry updated = existing with
             {
+                LastUpdated = DateTimeOffset.UtcNow,
                 Tenant = existing.Tenant with { Status = TenantStatus.Deleting },
                 WorkflowInstanceId = workflowInstanceId,
             };
@@ -327,7 +331,11 @@ public sealed partial class TenantRegistryService
                 return existing.Tenant;
             }
 
-            TenantRegistryEntry updated = existing with { Tenant = existing.Tenant with { DisplayName = displayName } };
+            TenantRegistryEntry updated = existing with
+            {
+                Tenant = existing.Tenant with { DisplayName = displayName },
+                LastUpdated = occurredAt,
+            };
             bool saved = await _daprClient
                 .TrySaveStateAsync(StoreName, stateKey, updated, etag, cancellationToken: ct)
                 .ConfigureAwait(false);

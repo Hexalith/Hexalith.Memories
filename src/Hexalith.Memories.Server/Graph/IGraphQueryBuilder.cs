@@ -108,6 +108,16 @@ public interface IGraphQueryBuilder
     /// <summary>Batch-counts annotations for multiple memory units in a single query.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildBatchCountAnnotations(IReadOnlyList<string> memoryUnitIds);
 
+    /// <summary>
+    /// Story 8.3: lists edges incident to a batch of memory units in one roundtrip. Returns the
+    /// full edge shape needed by the export envelope (see <c>ExportedEdge</c>): internal edge id,
+    /// source, target, type label, confidence, origin, creation timestamp, and the promotion audit
+    /// fields populated by Story 4.3. Edge id is returned as the FalkorDB internal numeric id
+    /// (<c>id(r)</c>) — stable within a graph lifetime only.
+    /// </summary>
+    /// <param name="memoryUnitIds">Memory unit identifiers; incoming and outgoing edges are both returned.</param>
+    (string Query, IDictionary<string, object> Parameters) BuildListEdgesForMemoryUnits(IReadOnlyList<string> memoryUnitIds);
+
     /// <summary>Counts all nodes in the tenant graph (used by batched tenant deletion).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCountAllNodes();
 

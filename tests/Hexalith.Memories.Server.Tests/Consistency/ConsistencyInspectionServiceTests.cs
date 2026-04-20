@@ -18,8 +18,8 @@ using Shouldly;
 using StackExchange.Redis;
 
 /// <summary>
-/// Story 8.2 — AC #3 (per-unit inspection) + Risk #4 (Cypher-injection guard via ULID regex
-/// validation). Covers the full 6-test inventory in AC #9.
+/// Story 8.2 — AC #3 (per-unit inspection) + Risk #4 (Cypher-injection guard via
+/// memory-unit ID validation/canonicalization). Covers the full 6-test inventory in AC #9.
 /// </summary>
 public class ConsistencyInspectionServiceTests
 {
@@ -55,6 +55,8 @@ public class ConsistencyInspectionServiceTests
     [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9A")] // 27 chars
     [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9; DROP GRAPH")] // injection attempt
     [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7I8U9")] // contains I and U which are excluded
+    [InlineData("{e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80}")] // GUID with braces (rejected)
+    [InlineData("e8b1d6c2_7e3f_4a21_9f2d_3c4e5a6b7c80")] // underscores instead of hyphens
     public async Task InspectAsync_MalformedMemoryUnitId_ThrowsArgumentException(string malformedId)
     {
         IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
@@ -65,6 +67,60 @@ public class ConsistencyInspectionServiceTests
 
         // Risk #4 guard: the query builder must NOT be called before regex validation passes.
         builder.DidNotReceive().BuildCheckMemoryUnitExists(Arg.Any<string>());
+    }
+
+    [Theory]
+    [InlineData("e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80")] // hyphenated GUID (D format) — legacy ingest path
+    [InlineData("E8B1D6C27E3F4A219F2D3C4E5A6B7C80")] // 32-hex GUID (N format)
+    public static void ValidateMemoryUnitIdFormat_LegacyGuid_DoesNotThrow(string legacyId)
+    {
+        // Policy (review fix pass 2): ULID is preferred but the operator-facing API accepts
+        // any legacy GUID-shaped ID so existing units ingested via the pre-ULID fallback
+        // remain inspectable + repairable.
+        Should.NotThrow(() => ConsistencyInspectionService.ValidateMemoryUnitIdFormat(legacyId));
+    }
+
+    [Fact]
+    public static void ValidateMemoryUnitIdFormat_ValidUlid_DoesNotThrow()
+    {
+        Should.NotThrow(() => ConsistencyInspectionService.ValidateMemoryUnitIdFormat(ValidUlid));
+    }
+
+    [Fact]
+    public async Task InspectAsync_LegacyGuidNFormat_CanonicalizesToStoredDFormat()
+    {
+        const string storedGuid = "e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80";
+        const string legacyAlias = "E8B1D6C27E3F4A219F2D3C4E5A6B7C80";
+
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns([]);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:mu:{storedGuid}"),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateSyntacticEntries());
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{storedGuid}"),
+                Arg.Any<CommandFlags>())
+            .Returns([]);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = new(
+            redis,
+            CreateFalkorMultiplexer(nodeExists: false),
+            builder,
+            Substitute.For<ILogger<ConsistencyInspectionService>>());
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, legacyAlias, CancellationToken.None);
+
+        result.MemoryUnitId.ShouldBe(storedGuid);
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:mu:{storedGuid}"),
+            Arg.Any<CommandFlags>());
+        builder.Received(1).BuildCheckMemoryUnitExists(storedGuid);
     }
 
     [Fact]

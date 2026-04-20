@@ -197,7 +197,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         _factory.StubTenantActive("acme-consistency");
         _factory.InspectionService
             .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new ArgumentException("Memory unit ID 'not-a-ulid' is not a valid 26-character Crockford-base32 ULID."));
+            .ThrowsAsync(new ArgumentException("Memory unit ID 'not-a-ulid' must be a 26-character Crockford-base32 ULID or a GUID (D or N format)."));
 
         using HttpClient client = _factory.CreateClient();
 

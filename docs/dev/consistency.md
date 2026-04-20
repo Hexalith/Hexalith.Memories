@@ -252,5 +252,8 @@ The following are explicitly NOT delivered by Story 8.2:
   contract.
 - [telemetry.md](./telemetry.md) — access telemetry, rolling counters,
   telemetry summary endpoint.
+- [export.md](./export.md) — case and tenant data export (Story 8.3). Running
+  `memories consistency verify` before a compliance-critical export is
+  recommended.
 - [experimental-apis.md](./experimental-apis.md) — suppression protocol for
   HXL001-tagged client surfaces.

@@ -44,7 +44,7 @@ Example:
 
         var idOption = new Option<string>("--id")
         {
-            Description = "Memory unit identifier (26-char Crockford-base32 ULID).",
+            Description = "Memory unit identifier (26-char Crockford-base32 ULID or legacy GUID).",
             Required = true,
         };
 

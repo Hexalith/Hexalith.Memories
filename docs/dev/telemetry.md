@@ -296,6 +296,162 @@ NFR28 is validated in 7.5 for:
 
 ---
 
+## End-to-end trace verification (Story 8.4 — Tier-3 Aspire integration tests)
+
+Story 8.4 closes Story 7.5 Tasks 11.3 + 11.4 with two `[Trait("Category", "Integration")]` test
+classes that prove the NFR28 HTTP-hop gate (W3C `traceparent` propagation across CLI → Server) and
+the FR67 authoritative gate (audit events surface on the Server container's stdout) on the deployed
+stack.
+
+### Tier split
+
+| Tier | Runs on | Gates | Story |
+| ---- | ------- | ----- | ----- |
+| Tier-1 (unit) | Every PR | Substrate correctness — `MemoriesActivitySource`, `MemoriesMeter`, `EndpointTelemetryScope`, `RollingCounterStore`, `AccessTelemetryLog`, `OpenTelemetryRegistrationTests` (incl. Story 8.4's env-var-branch happy path + Risk 7 parse-strictness theory + AC #5 regression guard) | 7.5 Tasks 8-10 + 8.4 Task 1 |
+| Tier-2 (`WebApplicationFactory`) | Every PR | In-process trace + audit invariants — `TracePropagationNoDockerTests`, `AuditLogStreamTests`, `TelemetrySummaryEndpointTests`, `TelemetryHealthExclusionTests` | 7.5 Tasks 11.1, 11.2 |
+| Tier-3 (Aspire fixture, Docker) | Merge-queue / nightly lane | End-to-end NFR28 HTTP-hop gate + FR67 audit-stream gate against the deployed stack | **8.4 (this story)** |
+
+### How to run locally
+
+Tier-3 tests need Docker running (the Aspire fixture spins up Redis + FalkorDB + the DAPR sidecar +
+the Memories Server). With Docker available:
+
+```bash
+# Tier-3 only (Aspire telemetry tests + the rest of the Aspire-backed integration suite)
+dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj \
+    --filter "Category=Integration"
+
+# Just the new Story 8.4 telemetry classes (faster iteration)
+dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj \
+    --filter "FullyQualifiedName~AspireEndToEndTraceTests|FullyQualifiedName~AuditLogStreamIntegrationTests"
+```
+
+The fixture cold-boot is ~30–60s; once boot completes, both 8.4 test classes share the same Aspire
+environment via `[Collection("AspireIngestionPipeline")]` so the boot cost is amortized across all
+methods. For per-PR runs, exclude the Tier-3 lane: `--filter "Category!=Integration"`.
+
+### What each captured signal proves
+
+- **CLI in-memory span collector (`InMemorySpanCollector`)** — captures the CLI root span
+  (`memories.cli.invoke`) and the outbound `System.Net.Http.HttpRequestOut` span. Proves the CLI
+  side of the W3C trace context (root TraceId + HttpClient instrumentation injecting `traceparent`).
+- **Server stdout audit log line (`AuditEventStreamReader`)** — parses Aspire-captured Server
+  stdout JSON and extracts the `AccessTelemetryEvent` ToString payload (AddJsonConsole does not
+  natively destructure record-typed `{@AuditEvent}` placeholders to JSON, so the reader extracts
+  fields from the formatted message via regex). Proves FR67 — the Server's audit emission survives
+  the deployed pipeline and reaches stdout where an operator's SIEM / log aggregator can consume it.
+- **TraceId equality** — the Server-side audit event's `TraceId` MUST equal the CLI root span's
+  `TraceId`. This is the W3C HTTP-hop propagation invariant (NFR28 HTTP-hop gate per Story 8.4
+  AC #8 — the DAPR service-invocation hop is deferred to Epic 10's MCP story).
+
+### Failure interpretation cheatsheet
+
+- **Tier-1 (unit) failure** → substrate regression (activity source rename, meter rename, EventId
+  bank drift, env-var contract loosening). Fix at the substrate; never make Tier-3 paper over it.
+- **Tier-2 (`WebApplicationFactory`) failure** → in-process trace or audit emission regression
+  (e.g. `EndpointTelemetryScope` dispose order, validation-fail audit emission missing, audit log
+  category mis-spelled). Fix at the endpoint wrapper.
+- **Tier-3 `AspireEndToEndTraceTests` failure** → either OTLP / HttpClient instrumentation broke
+  on the CLI side (no in-memory spans captured), OR the Server stopped propagating the W3C
+  traceparent header (audit event TraceId differs from CLI root TraceId), OR Aspire stopped
+  surfacing Server stdout into the AppHost log pipeline (no audit lines arrive within the
+  configured timeout — see `TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS`).
+- **Tier-3 `AuditLogStreamIntegrationTests` failure** → audit-event emission broke at the deployed
+  stack (Server's `AddJsonConsole` mis-configured, the `[LoggerMessage]` source-generated emitter
+  removed, EventId outside the 7501-7599 bank, or the `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory`
+  category renamed without updating `AuditEventStreamReader`'s suffix filter).
+
+### CI configuration knobs
+
+- `TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS` (default `10`) — overrides the per-test polling timeout
+  for `AuditEventStreamReader.ReadAsync`. Bump on slow merge-queue runners; lower for local
+  iteration.
+- `HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1` — activates the env-var branch in
+  `ServiceDefaults.AddOpenTelemetryExporters` that appends a `CollectingActivityProcessor`
+  resolving an `IActivityCollector` from DI. Used by the Tier-3 `CliTracingHarness` to drain CLI
+  spans into the in-memory collector. Production deployments leave this unset; AC #5 regression
+  guard test pins that "unset" means zero in-memory exporter registration.
+
+---
+
+## ADR-8.4-001 — CI lane split (Tier-2 per-PR vs Tier-3 merge-queue)
+
+**Status:** Accepted (2026-04-20). **Decision:** Story 8.4's two `[Trait("Category", "Integration")]`
+test classes run on the **merge-queue / release lane**, NOT the per-PR lane. **Rationale:** running
+two Tier-3 classes on every PR roughly doubles CI minutes (Aspire cold-boot is ~30–60s; the existing
+~40 Aspire-backed integration tests already incur this cost on the merge-queue lane only, per the
+existing `Category=Integration` filter convention from Stories 7.1–7.4). The Tier-2 variants
+(`TracePropagationNoDockerTests`, `AuditLogStreamTests`, `TelemetrySummaryEndpointTests`) gate every
+PR and cover ~80% of what can break without Docker; Tier-3 gates release promotion.
+
+**Consequences:** A regression in the deployed-stack-only path (e.g. AddJsonConsole behavior under
+Aspire orchestration, container stdout buffering) lands in main between merge-queue runs and the
+PR author who introduced it doesn't see immediate CI feedback. **Mitigation:** the Tier-2 coverage
+catches the substrate-level regressions; the Tier-3 lane is a **required blocking check** on the
+merge-queue (Task 4.4 — see Epic 11 CI/CD when it lands). Until Epic 11's merge-queue workflow ships,
+a `nightly.yml` bridge workflow MUST run Tier-3 once per day (DoD item 8 from Story 8.4); the
+nightly bridge is itself the blocking gate when Epic 11 hasn't landed.
+
+**Note (2026-04-20):** Epic 11 (CI/CD pipeline) is in `backlog` status as of Story 8.4 merge. The
+`.github/workflows/` directory does not yet exist in this repo. The merge-queue workflow + the
+required-check configuration will land with Epic 11; until then, document the local-run procedure
+above for contributors and capture the bridge requirement as a soft-dependency on Epic 11. When
+Epic 11 lands, update this ADR with the exact `.github/workflows/` filename + the protected-branch
+required-check rule.
+
+---
+
+## ADR-8.4-002 — Test-only `InMemorySpanCollector` placement (option B)
+
+**Status:** Accepted (2026-04-20, Winston party-mode review). **Decision:** the
+`InMemorySpanCollector` implementation lives at
+`tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs` (NOT
+in `src/Hexalith.Memories.Telemetry/`). The interface `IActivityCollector` lives in the production
+`Hexalith.Memories.Telemetry` assembly so `ServiceDefaults.AddOpenTelemetryExporters` can resolve it
+from DI without taking a test-only dependency, but the concrete sink is test-only.
+
+**Rationale:** a production-visible static mutable activity collector in a consumer-facing package
+is a foot-gun for plugin authors across the Hexalith ecosystem, even when gated with
+`[Experimental("HXL008")]` + `[EditorBrowsable(Never)]`. Test-only placement keeps the blast radius
+bounded.
+
+**Addendum (Story 8.4 implementation):** the Tier-3 `AspireIngestionPipelineFixture` runs the
+Memories Server resource as a **separate process** (Aspire 13's default project-resource execution
+model). Cross-process DI sharing of `IActivityCollector` is therefore architecturally infeasible —
+the original Task 1.1.6 "AsyncLocal vs static accessor" pivot does not apply. The Tier-3 tests use
+a **hybrid capture model**: CLI-side spans captured in-test-process via `IActivityCollector`;
+Server-side activity evidence proxied through the audit log's `TraceId`/`SpanId` fields (which
+`AccessTelemetryLog.CreateEvent` populates from `Activity.Current` on the Server side at audit
+emission time). The Task 1.1 production wiring still ships; it's used CLI-side today and is ready
+for any future in-process Server hosting variant.
+
+---
+
+## ADR-8.4-003 — Audit-event capture path per test
+
+**Status:** Accepted (2026-04-20, Rev 0.5 elicitation pass) — implemented per the cross-process
+adaptation. **Decision:** the audit event capture path is uniform under the cross-process model:
+the Server's stdout JSON line is the single source of truth for both `AspireEndToEndTraceTests`
+(AC #4 cross-reference between activity and audit event) and `AuditLogStreamIntegrationTests`
+(AC #3 FR67 gate). The reader (`AuditEventStreamReader`) parses Aspire-captured stdout lines and
+extracts `AccessTelemetryEvent` fields from the C# record's `ToString()` output (AddJsonConsole
+doesn't natively destructure record-typed `{@AuditEvent}` placeholders to JSON in
+`Microsoft.Extensions.Logging` versions current at story merge time).
+
+**Why one path, not two:** the original Rev 0.5 design split capture into "in-memory log exporter
+(in-process, deterministic)" for AC #4 vs "container stdout via Aspire log stream" for AC #3. With
+the Server running as a separate process, the in-memory log exporter cannot capture Server log
+records — they emit in the Server's process and are inaccessible from the test. So both ACs go
+through the stdout reader. The reader is fast enough (Tier-3 audit tests run in 200-300ms each)
+that the original "use stdout for the slow case, in-memory for the fast case" optimization does
+not apply.
+
+**Future re-evaluation:** if Aspire / .NET ships an in-process project-resource execution mode (or
+Microsoft.Extensions.Logging adds native record-destructuring to AddJsonConsole), revisit this ADR
+and consider re-splitting the capture path per the original Rev 0.5 framing.
+
+---
+
 ## Cross-references
 
 - [cli-config.md](cli-config.md) — `--telemetry` flag + `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var.
@@ -311,3 +467,7 @@ NFR28 is validated in 7.5 for:
   (Story 8.2). The five consistency endpoints are NOT in the audited scope (the four audited
   operation types are search / ingest / traverse / case-access); a regression guard in
   `ConsistencyEndpointTests` pins this invariant.
+- [export.md](export.md) — case and tenant data export (Story 8.3). Export endpoints are
+  deliberately NOT in the `AccessTelemetryEvent` audited scope. A follow-up story will ship a
+  dedicated `ExportTelemetryEvent` bank (EventId 8320-8329 reserved) so operators get a
+  per-export audit trail.

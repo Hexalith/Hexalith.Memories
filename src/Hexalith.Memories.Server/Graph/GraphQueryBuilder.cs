@@ -192,12 +192,13 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         string edgeLabel = ToUpperSnakeCase(edgeType);
         (string sourceLabel, string targetLabel) = GetNodeLabels(edgeType);
 
-        string query = $"MATCH (s:{sourceLabel} {{id: $sourceId}}), (t:{targetLabel} {{id: $targetId}}) MERGE (s)-[r:{edgeLabel}]->(t) SET r.confidence = $confidence, r.origin = $origin";
+        string query = $"MATCH (s:{sourceLabel} {{id: $sourceId}}), (t:{targetLabel} {{id: $targetId}}) MERGE (s)-[r:{edgeLabel}]->(t) SET r.createdAt = coalesce(r.createdAt, $createdAt), r.confidence = $confidence, r.origin = $origin";
 
         Dictionary<string, object> parameters = new()
         {
             ["sourceId"] = sourceNodeId,
             ["targetId"] = targetNodeId,
+            ["createdAt"] = DateTimeOffset.UtcNow.ToString("o"),
             ["confidence"] = confidence,
             ["origin"] = ToCamelCase(origin),
         };
@@ -474,6 +475,26 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         ArgumentNullException.ThrowIfNull(memoryUnitIds);
 
         const string query = "UNWIND $ids AS muId OPTIONAL MATCH (a:MemoryUnit)-[:ANNOTATES]->(m:MemoryUnit {id: muId}) RETURN muId, count(a) AS count";
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["ids"] = memoryUnitIds,
+        };
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildListEdgesForMemoryUnits(IReadOnlyList<string> memoryUnitIds)
+    {
+        ArgumentNullException.ThrowIfNull(memoryUnitIds);
+
+        // MATCH (not OPTIONAL) filters out memory units with no edges — the caller only needs
+        // edges, not "memory unit had no edges" markers. The undirected pattern includes both
+        // incoming and outgoing edges for each anchor memory unit; the caller de-duplicates within
+        // the current batch and suppresses cross-batch repeats using the exported memory-unit ids.
+        // startNode/endNode preserve the original edge direction even though the match is undirected.
+        const string query = "UNWIND $ids AS muId MATCH (m:MemoryUnit {id: muId})-[r]-(n:MemoryUnit) RETURN id(r) AS edgeId, startNode(r).id AS sourceId, endNode(r).id AS targetId, type(r) AS edgeType, r.confidence AS confidence, r.origin AS origin, r.createdAt AS createdAt, r.verifiedBy AS verifiedBy, r.previousConfidence AS previousConfidence";
 
         Dictionary<string, object> parameters = new()
         {
