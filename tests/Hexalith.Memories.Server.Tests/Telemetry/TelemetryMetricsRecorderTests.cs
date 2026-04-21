@@ -106,6 +106,21 @@ public sealed class TelemetryMetricsRecorderTests
     }
 
     [Fact]
+    public void RecordIngestSuccess_WithMultipleDocuments_EmitsProvidedCount()
+    {
+        List<CapturedLongMeasurement> hits = [];
+
+        using MeterListener listener = BuildLongListener(MemoriesMeter.IngestionDocumentsName, hits);
+        listener.Start();
+
+        TelemetryMetricsRecorder.RecordIngestSuccess("acme", documentCount: 7);
+
+        hits.ShouldHaveSingleItem();
+        hits[0].Value.ShouldBe(7);
+        AssertTagsEqual(hits[0].Tags, ("tenant_id", "acme"));
+    }
+
+    [Fact]
     public void RecordIngestFailure_RejectedTenantTag_FlowsThroughRecorder()
     {
         // Cardinality injection mitigation (Rev 0.3 finding 1b): caller is expected to pass

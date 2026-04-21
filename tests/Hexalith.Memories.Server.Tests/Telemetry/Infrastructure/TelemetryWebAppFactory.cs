@@ -59,6 +59,27 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
     /// (e.g. a known tenant in the registry) configure it directly via NSubstitute before building a client.</summary>
     public DaprClient DaprClient { get; } = Substitute.For<DaprClient>();
 
+    /// <summary>Fake actor-proxy factory exposed to tests so endpoint paths can inject actor failures.</summary>
+    public Dapr.Actors.Client.IActorProxyFactory ActorProxyFactory { get; } = Substitute.For<Dapr.Actors.Client.IActorProxyFactory>();
+
+    /// <summary>Fake Redis multiplexer exposed to tests for path-specific backend behavior.</summary>
+    public IConnectionMultiplexer RedisMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
+
+    /// <summary>Fake FalkorDB multiplexer exposed to tests for traversal-specific backend behavior.</summary>
+    public IConnectionMultiplexer FalkorDbMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
+
+    /// <summary>Fake Redis database surfaced for tests that need to script Redis-path calls.</summary>
+    public IDatabase RedisDatabase { get; } = Substitute.For<IDatabase>();
+
+    /// <summary>Fake FalkorDB database surfaced for tests that need to script graph-path calls.</summary>
+    public IDatabase FalkorDbDatabase { get; } = Substitute.For<IDatabase>();
+
+    public TelemetryWebAppFactory()
+    {
+        RedisMultiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(RedisDatabase);
+        FalkorDbMultiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(FalkorDbDatabase);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
@@ -75,10 +96,13 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
             //    keyed descriptor wins, so later AddKeyedSingleton calls override the production factory.
             services.AddKeyedSingleton<IConnectionMultiplexer>(
                 "redis",
-                (_, _) => Substitute.For<IConnectionMultiplexer>());
+                (_, _) => RedisMultiplexer);
             services.AddKeyedSingleton<IConnectionMultiplexer>(
                 "falkordb",
-                (_, _) => Substitute.For<IConnectionMultiplexer>());
+                (_, _) => FalkorDbMultiplexer);
+
+            services.RemoveAll<Dapr.Actors.Client.IActorProxyFactory>();
+            services.AddSingleton(ActorProxyFactory);
 
             // 2. Replace DaprClient with the shared fake so DI resolution and health-probe wiring does not
             //    attempt to connect to a non-existent sidecar, and tests can stub registry calls via

@@ -27,10 +27,15 @@ internal static class TelemetryMetricsRecorder
         MemoriesMeter.SearchDuration.Record(elapsedMs, tags);
     }
 
-    public static void RecordIngestSuccess(string tenantIdTag)
+    public static void RecordIngestSuccess(string tenantIdTag, long documentCount = 1)
     {
+        if (documentCount <= 0)
+        {
+            return;
+        }
+
         var tags = new TagList { { "tenant_id", tenantIdTag } };
-        MemoriesMeter.IngestionDocuments.Add(1, tags);
+        MemoriesMeter.IngestionDocuments.Add(documentCount, tags);
     }
 
     public static void RecordIngestFailure(string tenantIdTag, string errorCode)

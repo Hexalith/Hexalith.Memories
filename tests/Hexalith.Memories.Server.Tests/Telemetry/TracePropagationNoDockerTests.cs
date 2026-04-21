@@ -8,9 +8,14 @@ namespace Hexalith.Memories.Server.Tests.Telemetry;
 using System.Diagnostics;
 using System.Net;
 
+using Dapr.Client;
+
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -31,6 +36,8 @@ using Shouldly;
 [Collection(Infrastructure.TelemetryTestCollection.Name)]
 public sealed class TracePropagationNoDockerTests : IDisposable
 {
+    private const string StoreName = "statestore";
+
     private readonly TelemetryWebAppFactory _factory;
     private readonly ActivityListener _listener;
     private readonly List<Activity> _capturedActivities = [];
@@ -143,8 +150,8 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         Activity searchActivity = GetMemoriesSearchActivity(root.TraceId);
 
         // Activity must have real ids — W3C TraceContext guarantees 128-bit trace id when sampling is on.
-        searchActivity.TraceId.ToString().ShouldNotBe("00000000000000000000000000000000");
-        searchActivity.SpanId.ToString().ShouldNotBe("0000000000000000");
+        searchActivity.TraceId.ToString().ShouldNotBe(new string('0', 32));
+        searchActivity.SpanId.ToString().ShouldNotBe(new string('0', 16));
 
         AuditLogCapture capture = GetAuditCaptureForTrace(root.TraceId);
         capture.AuditEvent.ShouldNotBeNull();
@@ -152,6 +159,59 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         capture.AuditEvent.SpanId.ShouldNotBeNull();
         capture.AuditEvent.TraceId.ShouldBe(searchActivity.TraceId.ToString());
         capture.AuditEvent.SpanId.ShouldBe(searchActivity.SpanId.ToString());
+    }
+
+    [Fact]
+    public async Task SearchEndpoint_WithCaseId_EmitsCaseIdTag()
+    {
+        using HttpClient client = _factory.CreateClient();
+        using TestRootScope root = new();
+
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/search?tenantId=&query=foo&caseId=case-42", root.TraceId);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        Activity searchActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.SearchRequest);
+        searchActivity.GetTagItem(MemoriesActivitySource.TagCaseId).ShouldBe("case-42");
+    }
+
+    [Fact]
+    public async Task TraverseEndpoint_WithCaseId_EmitsCaseIdTag()
+    {
+        using HttpClient client = _factory.CreateClient();
+        using TestRootScope root = new();
+
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/tenants/bad~id/traverse?startNodeId=s1&caseId=case-42", root.TraceId);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        Activity traverseActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.TraverseRequest);
+        traverseActivity.GetTagItem(MemoriesActivitySource.TagCaseId).ShouldBe("case-42");
+    }
+
+    [Fact]
+    public async Task SearchEndpoint_InvalidAxis_DoesNotEmitRejectedAxisTag()
+    {
+        const string tenantId = "acme-telemetry";
+        TenantRegistryEntry entry = new(
+            new TenantInfo(tenantId, "Acme Telemetry", TenantStatus.Active, DateTimeOffset.UtcNow),
+            WorkflowInstanceId: null);
+
+        _factory.DaprClient
+            .GetStateAsync<TenantRegistryEntry?>(
+                StoreName,
+                Arg.Is<string>(key => key.Contains(tenantId, StringComparison.Ordinal)),
+                Arg.Any<ConsistencyMode?>(),
+                Arg.Any<System.Collections.Generic.IReadOnlyDictionary<string, string>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(entry);
+
+        using HttpClient client = _factory.CreateClient();
+        using TestRootScope root = new();
+
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, $"/api/search?tenantId={tenantId}&query=foo&axis=bogus", root.TraceId);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        Activity searchActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.SearchRequest);
+        searchActivity.GetTagItem(MemoriesActivitySource.TagAxis).ShouldBeNull();
     }
 
     public void Dispose()
@@ -173,14 +233,19 @@ public sealed class TracePropagationNoDockerTests : IDisposable
 
     private Activity GetMemoriesSearchActivity(string traceId)
     {
+        return GetMemoriesActivity(traceId, MemoriesActivitySource.SearchRequest);
+    }
+
+    private Activity GetMemoriesActivity(string traceId, string operationName)
+    {
         lock (_capturedActivities)
         {
             Activity? match = _capturedActivities.SingleOrDefault(a =>
                 a.Source.Name == MemoriesActivitySource.SourceName &&
-                a.OperationName == MemoriesActivitySource.SearchRequest &&
+                a.OperationName == operationName &&
                 a.TraceId.ToString() == traceId);
             match.ShouldNotBeNull(
-                $"Expected a single memories.search activity with traceId {traceId}.");
+                $"Expected a single {operationName} activity with traceId {traceId}.");
             return match!;
         }
     }

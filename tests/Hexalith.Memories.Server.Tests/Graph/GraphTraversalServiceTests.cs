@@ -62,6 +62,25 @@ public class GraphTraversalServiceTests
         result.TotalNodeCount.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task TraverseAsync_WhenGraphQueryTimesOut_ShouldBubbleTimeoutException()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = new GraphQueryBuilder();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns<RedisResult>(_ => throw new TimeoutException("graph query timed out"));
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns<RedisResult>(_ => throw new TimeoutException("graph query timed out"));
+
+        // Act / Assert
+        _ = await Should.ThrowAsync<TimeoutException>(() => service.TraverseAsync("tenant-1", "mu-001", 3, null, null, CancellationToken.None));
+    }
+
     // --- ParseEdgeType mapping tests ---
 
     [Theory]

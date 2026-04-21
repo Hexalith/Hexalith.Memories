@@ -150,6 +150,30 @@ public sealed class RollingCounterStoreTests
     }
 
     [Fact]
+    public async Task GetLast5MinutesCount_ExpiredBuckets_AreSweptFromTheStore()
+    {
+        FakeTimeProvider time = new(DateTimeOffset.Parse("2026-04-18T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
+        using var store = new RollingCounterStore(time);
+        await store.StartAsync(CancellationToken.None);
+        try
+        {
+            TelemetryMetricsRecorder.RecordSearch(Tenant, "hybrid", elapsedMs: 1);
+            TelemetryMetricsRecorder.RecordSearch("globex", "semantic", elapsedMs: 1);
+
+            store.ActiveBucketCount.ShouldBe(2);
+
+            time.Advance(TimeSpan.FromMinutes(6));
+
+            store.GetLast5MinutesCount(SearchRequestsMetric, Tenant, "hybrid").ShouldBe(0);
+            store.ActiveBucketCount.ShouldBe(0);
+        }
+        finally
+        {
+            await store.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public void RecordSearchError_IsScopedByAxis()
     {
         FakeTimeProvider time = new(DateTimeOffset.Parse("2026-04-18T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));

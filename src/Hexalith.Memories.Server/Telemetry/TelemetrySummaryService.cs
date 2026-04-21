@@ -14,35 +14,29 @@ using Hexalith.Memories.Telemetry;
 
 /// <summary>
 /// Story 7.5 — composes the <c>GET /api/tenants/{tenantId}/telemetry/summary</c> response (AC #6).
-/// Reader over <see cref="TenantMetricsService"/> (index sizes + health),
-/// <see cref="PerTenantConcurrencyGate"/> (queue depth), and <see cref="RollingCounterStore"/>
-/// (search + ingest counter deltas). ADR-7.5-003: operator-facing poke, NOT a metrics backend.
+/// Reader over <see cref="TelemetrySnapshotCache"/> (the same cached substrate that feeds the observable
+/// gauges) and <see cref="RollingCounterStore"/> (search + ingest counter deltas).
+/// ADR-7.5-003: operator-facing poke, NOT a metrics backend.
 /// </summary>
 public sealed class TelemetrySummaryService
 {
-    private readonly TenantMetricsService _metrics;
-    private readonly PerTenantConcurrencyGate _gate;
+    private readonly TelemetrySnapshotCache _snapshotCache;
     private readonly RollingCounterStore _counterStore;
 
     public TelemetrySummaryService(
-        TenantMetricsService metrics,
-        PerTenantConcurrencyGate gate,
+        TelemetrySnapshotCache snapshotCache,
         RollingCounterStore counterStore)
     {
-        _metrics = metrics;
-        _gate = gate;
+        _snapshotCache = snapshotCache;
         _counterStore = counterStore;
     }
 
-    public async Task<TelemetrySummary> GetSummaryAsync(string tenantId, CancellationToken ct)
+    public Task<TelemetrySummary> GetSummaryAsync(string tenantId, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ct.ThrowIfCancellationRequested();
 
-        (TenantIndexSizes sizes, TenantIndexStatus health) = await _metrics
-            .GetIndexSizesAsync(tenantId, ct)
-            .ConfigureAwait(false);
-
-        int queueDepth = _gate.GetCurrentDepth(tenantId);
+        TelemetrySnapshotCache.TenantSnapshot snapshot = _snapshotCache.GetTenantSnapshot(tenantId);
 
         TelemetrySearchMetrics searchMetrics = new()
         {
@@ -56,28 +50,28 @@ public sealed class TelemetrySummaryService
         {
             DocumentsLast5m = _counterStore.GetLast5MinutesCount(MemoriesMeter.IngestionDocumentsName, tenantId, axis: null),
             FailuresLast5m = _counterStore.GetLast5MinutesCount(MemoriesMeter.IngestionFailuresName, tenantId, axis: null),
-            QueueDepth = queueDepth,
+            QueueDepth = snapshot.QueueDepth,
         };
 
-        return new TelemetrySummary
+        return Task.FromResult(new TelemetrySummary
         {
             TenantId = tenantId,
             AsOf = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             IndexSizes = new TelemetryIndexSizes
             {
-                Syntactic = sizes.RediSearchKeyCount,
-                Semantic = sizes.RedisVectorKeyCount,
-                Graph = sizes.FalkorDbNodeCount,
+                Syntactic = snapshot.IndexSizes.RediSearchKeyCount,
+                Semantic = snapshot.IndexSizes.RedisVectorKeyCount,
+                Graph = snapshot.IndexSizes.FalkorDbNodeCount,
             },
             IndexHealth = new TelemetryIndexHealth
             {
-                Syntactic = health.RediSearch,
-                Semantic = health.RedisVector,
-                Graph = health.FalkorDb,
+                Syntactic = snapshot.IndexStatus.RediSearch,
+                Semantic = snapshot.IndexStatus.RedisVector,
+                Graph = snapshot.IndexStatus.FalkorDb,
             },
             SearchMetrics = searchMetrics,
             IngestionMetrics = ingestionMetrics,
-        };
+        });
     }
 
     private TelemetryAxisCounters BuildAxisCounters(string tenantId, params string[] axes)

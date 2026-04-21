@@ -28,6 +28,7 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
     private readonly MeterListener _listener = new();
     private readonly ConcurrentDictionary<CounterKey, CounterRing> _rings = new();
     private readonly TimeProvider _time;
+    private long _lastSweepMinute = long.MinValue;
 
     public RollingCounterStore(TimeProvider? timeProvider = null)
     {
@@ -59,6 +60,8 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public void Dispose() => _listener.Dispose();
+
+    internal int ActiveBucketCount => _rings.Count;
 
     /// <summary>Returns the sum over the last 5 minutes of the measurements tagged with the given key.</summary>
     public long GetLast5MinutesCount(string metricName, string tenantId, string? axis)
@@ -119,19 +122,41 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
             return;
         }
 
+        long currentMinute = GetCurrentMinute();
+        SweepStaleKeys(currentMinute);
         CounterRing ring = _rings.GetOrAdd(new CounterKey(metricName, tenantId, axis), _ => new CounterRing());
-        ring.Add(GetCurrentMinute(), measurement);
+        ring.Add(currentMinute, measurement);
     }
 
     private long GetLast5MinutesCountCore(CounterKey key)
-        => _rings.TryGetValue(key, out CounterRing? ring)
-            ? ring.Sum(GetCurrentMinute())
+    {
+        long currentMinute = GetCurrentMinute();
+        SweepStaleKeys(currentMinute);
+        return _rings.TryGetValue(key, out CounterRing? ring)
+            ? ring.Sum(currentMinute)
             : 0;
+    }
 
     private long GetCurrentMinute() => _time.GetUtcNow().ToUnixTimeSeconds() / SlotDurationSeconds;
 
     private static int GetSlotIndex(long minute)
         => (int)(((minute % SlotCount) + SlotCount) % SlotCount);
+
+    private void SweepStaleKeys(long currentMinute)
+    {
+        if (Interlocked.Exchange(ref _lastSweepMinute, currentMinute) == currentMinute)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<CounterKey, CounterRing> pair in _rings)
+        {
+            if (pair.Value.IsStale(currentMinute))
+            {
+                _ = _rings.TryRemove(pair.Key, out _);
+            }
+        }
+    }
 
     private sealed class CounterRing
     {
@@ -175,6 +200,30 @@ public sealed class RollingCounterStore : IHostedService, IDisposable
                 }
 
                 return sum;
+            }
+        }
+
+        public bool IsStale(long currentMinute)
+        {
+            long earliestMinute = currentMinute - (SlotCount - 1);
+
+            lock (_gate)
+            {
+                bool hasActiveMeasurement = false;
+                for (int i = 0; i < SlotCount; i++)
+                {
+                    long stampedMinute = _minutes[i];
+                    if (stampedMinute < earliestMinute || stampedMinute > currentMinute)
+                    {
+                        _minutes[i] = 0;
+                        _values[i] = 0;
+                        continue;
+                    }
+
+                    hasActiveMeasurement = true;
+                }
+
+                return !hasActiveMeasurement;
             }
         }
     }

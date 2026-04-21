@@ -1,5 +1,5 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-20 # Story 7.5 transitioned in-progress → review (Rev 1.5 close-out: Tier-3 tests closed by Story 8.4; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed). Full non-Docker suite green.
+# last_updated: 2026-04-21 # Story 7.5 Search & Access Telemetry transitioned review → done after review close-out aligned the Tier-3 gate with Story 8.4's HTTP-hop proof and the 2026-04-21 server-runtime telemetry follow-ups validated green.
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-20 # Story 7.5 transitioned in-progress → review (Rev 1.5 close-out: Tier-3 tests closed by Story 8.4; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed). Full non-Docker suite green.
+last_updated: 2026-04-21 # Story 7.5 Search & Access Telemetry transitioned review → done after review close-out aligned the Tier-3 gate with Story 8.4's HTTP-hop proof and the 2026-04-21 server-runtime telemetry follow-ups validated green.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -108,12 +108,12 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: CLI & Developer Experience
-  epic-7: in-progress
+  epic-7: done
   7-1-cli-foundation-and-command-structure: done
   7-2-output-formats-and-explain-display: done
   7-3-actionable-error-messages-and-discoverable-actions: done
   7-4-quickstart-and-documentation: done
-  7-5-search-and-access-telemetry: review # Rev 1.5 close-out: Tier-3 (11.3 + 11.4) closed by Story 8.4; Task 11 top-level flipped [~]→[x]; EXPORT_BACKEND_UNAVAILABLE catalog drift fixed. Server 1277 + CLI 300 + Contracts 288 green; 0W/0E under TreatWarningsAsErrors.
+  7-5-search-and-access-telemetry: done # Rev 1.6 review close-out: accepted Story 8.4's HTTP-hop Tier-3 proof, aligned Story 7.5 AC/DoD wording with the actual gate, and revalidated the 2026-04-21 server-runtime follow-ups (full Server.Tests 1297/1297).
   epic-7-retrospective: optional
 
   # --- Phase: MVP — Operations ---
@@ -131,7 +131,7 @@ development_status:
   # Epic 9: EventStore Integration & Zero-Code Memory
   epic-9: in-progress
   9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev
-  9-2-dual-embedding-and-causal-chain-indexing: backlog
+  9-2-dual-embedding-and-causal-chain-indexing: ready-for-dev
   9-3-handler-registration-and-mismatch-detection: backlog
   epic-9-retrospective: optional
 

@@ -20,7 +20,11 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 public sealed class TelemetrySnapshotCache
 {
-    private static readonly Snapshot EmptySnapshot = new(DateTimeOffset.MinValue, [], []);
+    private static readonly Snapshot EmptySnapshot = new(
+        DateTimeOffset.MinValue,
+        [],
+        [],
+        new Dictionary<string, TenantSnapshot>(StringComparer.Ordinal));
     private static readonly TimeSpan SnapshotTtl = TimeSpan.FromSeconds(30);
 
     private readonly TenantRegistryService _registry;
@@ -59,6 +63,17 @@ public sealed class TelemetrySnapshotCache
         return snapshot.QueueDepths;
     }
 
+    /// <summary>Returns the cached tenant snapshot that also backs the observable gauges.</summary>
+    public TenantSnapshot GetTenantSnapshot(string tenantId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        Snapshot snapshot = GetSnapshot();
+        return snapshot.Tenants.TryGetValue(tenantId, out TenantSnapshot? tenantSnapshot)
+            ? tenantSnapshot
+            : TenantSnapshot.Empty;
+    }
+
     private Snapshot GetSnapshot()
     {
         Snapshot snapshot = Volatile.Read(ref _snapshot);
@@ -87,6 +102,7 @@ public sealed class TelemetrySnapshotCache
             IReadOnlyList<TenantInfo> tenants = await _registry.ListTenantsAsync(CancellationToken.None).ConfigureAwait(false);
             var indexSizeMeasurements = new List<Measurement<long>>(tenants.Count * 3);
             var queueDepthMeasurements = new List<Measurement<int>>(tenants.Count);
+            Dictionary<string, TenantSnapshot> tenantSnapshots = new(StringComparer.Ordinal);
 
             foreach (TenantInfo tenant in tenants)
             {
@@ -95,20 +111,23 @@ public sealed class TelemetrySnapshotCache
                     continue;
                 }
 
-                (TenantIndexSizes sizes, _) = await _metrics.GetIndexSizesAsync(tenant.Id, CancellationToken.None).ConfigureAwait(false);
+                (TenantIndexSizes sizes, TenantIndexStatus health) = await _metrics.GetIndexSizesAsync(tenant.Id, CancellationToken.None).ConfigureAwait(false);
+                int queueDepth = _gate.GetCurrentDepth(tenant.Id);
 
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "syntactic", sizes.RediSearchKeyCount);
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "semantic", sizes.RedisVectorKeyCount);
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "graph", sizes.FalkorDbNodeCount);
 
                 queueDepthMeasurements.Add(new Measurement<int>(
-                    _gate.GetCurrentDepth(tenant.Id),
+                    queueDepth,
                     new KeyValuePair<string, object?>("tenant_id", tenant.Id)));
+
+                tenantSnapshots[tenant.Id] = new TenantSnapshot(sizes, health, queueDepth);
             }
 
             Volatile.Write(
                 ref _snapshot,
-                new Snapshot(_time.GetUtcNow(), indexSizeMeasurements, queueDepthMeasurements));
+                new Snapshot(_time.GetUtcNow(), indexSizeMeasurements, queueDepthMeasurements, tenantSnapshots));
         }
         catch (Exception ex)
         {
@@ -140,5 +159,17 @@ public sealed class TelemetrySnapshotCache
     private sealed record Snapshot(
         DateTimeOffset RefreshedAt,
         IReadOnlyList<Measurement<long>> IndexSizes,
-        IReadOnlyList<Measurement<int>> QueueDepths);
+        IReadOnlyList<Measurement<int>> QueueDepths,
+        IReadOnlyDictionary<string, TenantSnapshot> Tenants);
+
+    public sealed record TenantSnapshot(
+        TenantIndexSizes IndexSizes,
+        TenantIndexStatus IndexStatus,
+        int QueueDepth)
+    {
+        public static TenantSnapshot Empty { get; } = new(
+            new TenantIndexSizes(null, null, null),
+            new TenantIndexStatus(IndexHealth.Unknown, IndexHealth.Unknown, IndexHealth.Unknown),
+            QueueDepth: 0);
+    }
 }

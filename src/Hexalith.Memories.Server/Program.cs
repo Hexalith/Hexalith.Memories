@@ -246,6 +246,7 @@ app.MapPost("/api/ingest", async (
     using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
     activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
     string tenantIdTag = string.IsNullOrWhiteSpace(input.TenantId) ? MemoriesMeter.RejectedTenantTag : input.TenantId;
+    long scheduledDocumentCount = 1;
     using var scope = new EndpointTelemetryScope(
         auditLogger,
         activity,
@@ -261,18 +262,12 @@ app.MapPost("/api/ingest", async (
             }
             else
             {
-                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
             }
         });
     scope.CaseId = input.CaseId;
     scope.User = string.IsNullOrWhiteSpace(input.IngestedBy) ? AccessTelemetryLog.UserAnonymous : input.IngestedBy;
-    scope.QueryParams = new Dictionary<string, object?>
-    {
-        ["sourceType"] = input.SourceType.ToString(),
-        ["sourceUriPresent"] = !string.IsNullOrWhiteSpace(input.SourceUri),
-        ["contentBytes"] = input.ContentBytes?.Length ?? 0,
-        ["metadataCount"] = input.Metadata.Count,
-    };
+    scope.QueryParams = CreateIngestAuditQueryParams(input.SourceType, input.ContentType, input.ContentBytes?.Length ?? 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
     activity?.SetTag(MemoriesActivitySource.TagSourceType, input.SourceType.ToString().ToLowerInvariant());
@@ -294,7 +289,6 @@ app.MapPost("/api/ingest", async (
         }
 
         string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
-        scope.ResultCount = 1;
         return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
     }
     catch (Exception ex)
@@ -322,6 +316,7 @@ app.MapPost("/api/ingest/url", async (
     using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
     activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
     string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
+    long scheduledDocumentCount = 1;
     using var scope = new EndpointTelemetryScope(
         auditLogger,
         activity,
@@ -337,17 +332,12 @@ app.MapPost("/api/ingest/url", async (
             }
             else
             {
-                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
             }
         });
     scope.CaseId = request.CaseId;
     scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
-    Dictionary<string, object?> urlQueryParams = new()
-    {
-        ["urlPresent"] = !string.IsNullOrWhiteSpace(request.Url),
-        ["metadataCount"] = request.Metadata.Count,
-    };
-    scope.QueryParams = urlQueryParams;
+    scope.QueryParams = CreateIngestAuditQueryParams(SourceType.Url, contentType: null, bytes: 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
     activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.Url.ToString().ToLowerInvariant());
@@ -368,8 +358,6 @@ app.MapPost("/api/ingest/url", async (
                 validationError.Code);
             return Results.BadRequest(validationError);
         }
-
-        urlQueryParams["urlHost"] = url.Host;
 
         ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(request.TenantId, cancellationToken);
         if (tenantStatusError is not null)
@@ -400,7 +388,6 @@ app.MapPost("/api/ingest/url", async (
 
         string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
 
-        scope.ResultCount = 1;
         IngestionEndpointLog.LogUrlIngestionScheduled(
             urlLogger,
             request.TenantId,
@@ -430,6 +417,7 @@ app.MapPost("/api/ingest/directory", async (
     using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
     activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
     string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
+    long scheduledDocumentCount = 0;
     using var scope = new EndpointTelemetryScope(
         auditLogger,
         activity,
@@ -445,17 +433,12 @@ app.MapPost("/api/ingest/directory", async (
             }
             else
             {
-                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag);
+                TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
             }
         });
     scope.CaseId = request.CaseId;
     scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
-    scope.QueryParams = new Dictionary<string, object?>
-    {
-        ["directoryPathPresent"] = !string.IsNullOrWhiteSpace(request.DirectoryPath),
-        ["recursive"] = request.Recursive,
-        ["metadataCount"] = request.Metadata.Count,
-    };
+    scope.QueryParams = CreateIngestAuditQueryParams(SourceType.File, contentType: null, bytes: 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
     activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.File.ToString().ToLowerInvariant());
@@ -546,7 +529,7 @@ app.MapPost("/api/ingest/directory", async (
         }
 
         DirectoryIngestionOutcome outcome = result.Outcome!;
-        scope.ResultCount = outcome.Enqueued;
+        scheduledDocumentCount = outcome.Enqueued;
         IngestionEndpointLog.LogDirectoryBatchScheduled(
             dirLogger,
             request.TenantId,
@@ -1533,6 +1516,7 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}",
     CaseService caseService,
     FailedUnitsRegistry registry,
     ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
     using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CaseAccess);
@@ -1544,6 +1528,7 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}",
         successEventId: 7504,
         errorEventId: 7514,
         tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
+    scope.User = ResolveReadOperationUser(httpContext, activity);
     scope.CaseId = caseId;
     scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
     {
@@ -2060,7 +2045,7 @@ app.MapGet("/api/search", async (
     [FromQuery] bool explain = false,
     CancellationToken cancellationToken = default) =>
 {
-    static string DetermineSearchAxisMetricTag(string requestedAxis, string? graphScopedStartNodeId)
+    static string? DetermineSearchAxisMetricTag(string requestedAxis, string? graphScopedStartNodeId)
     {
         bool isGraphScoped = !string.IsNullOrWhiteSpace(graphScopedStartNodeId);
 
@@ -2084,13 +2069,13 @@ app.MapGet("/api/search", async (
             return isGraphScoped ? "graph-scoped-syntactic" : "syntactic";
         }
 
-        return MemoriesMeter.RejectedTenantTag;
+        return null;
     }
 
     using System.Diagnostics.Activity? searchActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.SearchRequest);
     searchActivity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationSearch);
     string initialTenantTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
-    string searchAxisTag = DetermineSearchAxisMetricTag(axis, startNodeId);
+    string? searchAxisTag = DetermineSearchAxisMetricTag(axis, startNodeId);
     using var searchScope = new EndpointTelemetryScope(
         auditLogger,
         searchActivity,
@@ -2100,12 +2085,16 @@ app.MapGet("/api/search", async (
         tenantIdTag: initialTenantTag,
         recordMetricOnDispose: s =>
         {
-            TelemetryMetricsRecorder.RecordSearch(s.TenantIdTag, searchAxisTag, s.ElapsedMs);
-            if (s.Outcome == AccessTelemetryLog.OutcomeError)
+            if (!string.IsNullOrWhiteSpace(searchAxisTag))
             {
-                rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
+                TelemetryMetricsRecorder.RecordSearch(s.TenantIdTag, searchAxisTag, s.ElapsedMs);
+                if (s.Outcome == AccessTelemetryLog.OutcomeError)
+                {
+                    rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
+                }
             }
         });
+    searchScope.User = ResolveReadOperationUser(httpContext, searchActivity);
     searchScope.CaseId = caseId;
     Dictionary<string, object?> searchQueryParams = new(System.StringComparer.Ordinal)
     {
@@ -2119,7 +2108,11 @@ app.MapGet("/api/search", async (
         ["explain"] = explain,
     };
     searchScope.QueryParams = searchQueryParams;
-    searchActivity?.SetTag(MemoriesActivitySource.TagAxis, searchAxisTag);
+    searchActivity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+    if (!string.IsNullOrWhiteSpace(searchAxisTag))
+    {
+        searchActivity?.SetTag(MemoriesActivitySource.TagAxis, searchAxisTag);
+    }
 
     void SetResolvedSearchAxis(string resolvedAxis)
     {
@@ -2307,6 +2300,16 @@ app.MapGet("/api/search", async (
                 enabledAxes = new HashSet<string>(
                     axes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                     StringComparer.OrdinalIgnoreCase);
+
+                if (enabledAxes.Count == 0)
+                {
+                    return SearchError(
+                        "INVALID_AXIS",
+                        Results.BadRequest(new ErrorResponse(
+                            "INVALID_AXIS",
+                            "Parameter 'axes' must specify at least one search axis. Valid axes: syntactic, semantic, graph.",
+                            "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic.")));
+                }
             }
 
             string? invalidAxis = HybridSearchService.FindInvalidAxis(enabledAxes);
@@ -2337,6 +2340,7 @@ app.MapGet("/api/search", async (
             string? effectiveGraphStartNodeId = !string.IsNullOrWhiteSpace(graphStartNodeId)
                 ? graphStartNodeId
                 : startNodeId;
+            Exception? semanticConfigFailure = null;
 
             if (enabledAxes.Contains("semantic"))
             {
@@ -2351,10 +2355,21 @@ app.MapGet("/api/search", async (
                 {
                     throw;
                 }
-                catch
+                catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
                 {
+                    semanticConfigFailure = ex;
                     preUnavailableAxes.Add("semantic");
                 }
+            }
+
+            bool hasHybridFallbackAxis = enabledAxes.Contains("syntactic")
+                || (enabledAxes.Contains("graph") && !string.IsNullOrWhiteSpace(effectiveGraphStartNodeId));
+
+            if (semanticConfigFailure is not null && !hasHybridFallbackAxis)
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, semanticConfigFailure));
             }
 
             int clampedDepth = Math.Clamp(depth, 0, 10);
@@ -2438,7 +2453,22 @@ app.MapGet("/api/search", async (
 
                 bool innerSearchStarted = false;
 
-                TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+                TenantEmbeddingConfig config;
+                try
+                {
+                    config = await actor.GetEmbeddingConfigAsync();
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
+                {
+                    return SearchError(
+                        "BACKEND_UNAVAILABLE",
+                        SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
+                }
+
                 SearchResult result;
 
                 try
@@ -2601,7 +2631,22 @@ app.MapGet("/api/search", async (
                 .CreateActorProxy<ITenantConfigurationActor>(
                     new ActorId(tenantId), nameof(TenantConfigurationActor));
 
-            TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+            TenantEmbeddingConfig config;
+            try
+            {
+                config = await actor.GetEmbeddingConfigAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, ex));
+            }
+
             SearchResult searchResult;
             try
             {
@@ -2720,6 +2765,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
         successEventId: 7503,
         errorEventId: 7513,
         tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
+    scope.User = ResolveReadOperationUser(httpContext, activity);
     scope.CaseId = caseId;
     scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
     {
@@ -2727,6 +2773,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
         ["depth"] = depth,
         ["edgeTypes"] = edgeTypes,
     };
+    activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
 
     if (string.IsNullOrWhiteSpace(tenantId))
     {
@@ -2798,6 +2845,11 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     {
         scope.MarkValidationError("GRAPH_UNAVAILABLE");
         return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(httpContext, logger, tenantId, startNodeId, ex);
+    }
+    catch (TimeoutException)
+    {
+        scope.MarkValidationError("GRAPH_TIMEOUT");
+        return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
     }
     catch (Exception ex)
     {
@@ -2903,6 +2955,44 @@ static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configur
             $"Connection string '{connectionName}' is required. Start the server through AppHost or set ConnectionStrings__{connectionName}.");
 
     return ConnectionMultiplexer.Connect(connectionString);
+}
+
+static IReadOnlyDictionary<string, object?> CreateIngestAuditQueryParams(
+    SourceType sourceType,
+    string? contentType,
+    int? bytes)
+    => new Dictionary<string, object?>(System.StringComparer.Ordinal)
+    {
+        ["sourceType"] = sourceType.ToString(),
+        ["contentType"] = string.IsNullOrWhiteSpace(contentType) ? null : contentType,
+        ["bytes"] = bytes ?? 0,
+    };
+
+static string ResolveReadOperationUser(HttpContext httpContext, System.Diagnostics.Activity? activity)
+{
+    ArgumentNullException.ThrowIfNull(httpContext);
+
+    string? user = httpContext.Request.Headers["x-user-id"].ToString();
+    if (string.IsNullOrWhiteSpace(user))
+    {
+        return AccessTelemetryLog.UserAnonymous;
+    }
+
+    if (string.Equals(user, AccessTelemetryLog.UserQuickstartWizard, StringComparison.Ordinal))
+    {
+        activity?.SetTag(MemoriesActivitySource.TagWizardOrigin, true);
+    }
+
+    return user;
+}
+
+static bool IsSemanticConfigUnavailable(Exception ex)
+{
+    ArgumentNullException.ThrowIfNull(ex);
+
+    return ex is Dapr.DaprException
+        or TimeoutException
+        or System.Net.Http.HttpRequestException;
 }
 
 static ErrorResponse? ValidateUrlIngestionRequest(UrlIngestionRequest request, UrlFetcherOptions options, out Uri? url)

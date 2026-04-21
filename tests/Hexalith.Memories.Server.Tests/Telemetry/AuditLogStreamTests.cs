@@ -117,12 +117,38 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.User.ShouldBe("tests");
         auditEvent.CaseId.ShouldBe("case-1");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
+        auditEvent.ResultCount.ShouldBeNull();
 
         // AC #4: ingest queryParams stays bounded — NEVER contains the content body.
         auditEvent.QueryParams.ShouldNotBeNull();
         auditEvent.QueryParams!.Keys.ShouldNotContain("content");
         auditEvent.QueryParams!.Keys.ShouldNotContain("contentBody");
         auditEvent.QueryParams!.Keys.ShouldContain("sourceType");
+        auditEvent.QueryParams!.Keys.ShouldContain("contentType");
+        auditEvent.QueryParams!.Keys.ShouldContain("bytes");
+        auditEvent.QueryParams!.Keys.ShouldNotContain("sourceUriPresent");
+        auditEvent.QueryParams!.Keys.ShouldNotContain("contentBytes");
+        auditEvent.QueryParams!.Keys.ShouldNotContain("metadataCount");
+        auditEvent.QueryParams!["sourceType"].ShouldBe(SourceType.Event.ToString());
+        auditEvent.QueryParams!["contentType"].ShouldBe("text/plain");
+        auditEvent.QueryParams!["bytes"].ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SearchEndpoint_XUserIdHeader_EmitsHeaderValueAsAuditUser()
+    {
+        using HttpClient client = _factory.CreateClient();
+        using Activity? root = TestRootSource.StartActivity("search-user-header-test");
+        string traceId = root?.TraceId.ToString() ?? string.Empty;
+
+        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/search?tenantId=&query=foo", traceId);
+        request.Headers.Add("x-user-id", "reader-42");
+
+        HttpResponseMessage response = await client.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
+        auditEvent.User.ShouldBe("reader-42");
     }
 
     [Fact]
