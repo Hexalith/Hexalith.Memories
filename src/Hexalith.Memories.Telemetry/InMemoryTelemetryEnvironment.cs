@@ -20,6 +20,12 @@ public static class InMemoryTelemetryEnvironment
     /// <summary>The single value that activates the branch.</summary>
     public const string EnabledValue = "1";
 
+    /// <summary>
+    /// Prefix used by the test-only server activity breadcrumbs emitted to stderr when
+    /// <see cref="EnvVar"/> is enabled.
+    /// </summary>
+    public const string ActivityBreadcrumbPrefix = "__hexalith_activity__";
+
     /// <summary>Returns <c>true</c> when the supplied value exactly equals <see cref="EnabledValue"/>.</summary>
     /// <param name="value">Raw env-var value (may be null or empty).</param>
     /// <returns><c>true</c> if exactly <c>"1"</c>; <c>false</c> otherwise (including null / empty / variants like "true").</returns>

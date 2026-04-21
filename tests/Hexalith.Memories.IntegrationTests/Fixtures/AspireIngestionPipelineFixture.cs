@@ -18,6 +18,8 @@ using Dapr.Actors.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -40,6 +42,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
     private HttpClientHandler? _actorHttpMessageHandler;
+    private EnvVarScope? _telemetryInMemoryScope;
     private readonly TestLogProvider _logProvider = new();
     private static readonly Regex DaprHttpPortRegex = new(
         @"HTTP server listening on TCP address: :(?<port>\d+)",
@@ -100,6 +103,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _previousAllowPrivateHosts = Environment.GetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts");
         _previousDaprAppId = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
         _previousRedisVolumeName = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
+        _telemetryInMemoryScope = EnvVarScope.Set(
+            InMemoryTelemetryEnvironment.EnvVar,
+            InMemoryTelemetryEnvironment.EnabledValue);
 
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
         Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Development");
@@ -150,6 +156,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", _previousAllowPrivateHosts);
         Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _previousDaprAppId);
         Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _previousRedisVolumeName);
+        _telemetryInMemoryScope?.Dispose();
+        _telemetryInMemoryScope = null;
     }
 
     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
@@ -174,7 +182,20 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _ = _builder.Services.AddLogging(logging =>
         {
             _ = logging.SetMinimumLevel(LogLevel.Warning);
-            _ = logging.AddFilter("Aspire.", LogLevel.Warning);
+            _ = logging.AddFilter((category, level) =>
+            {
+                if (category?.StartsWith("Aspire.", StringComparison.Ordinal) == true)
+                {
+                    return level >= LogLevel.Warning;
+                }
+
+                if (category?.Contains("memories-server", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    return level >= LogLevel.Information;
+                }
+
+                return level >= LogLevel.Warning;
+            });
             _ = logging.AddProvider(_logProvider);
         });
 

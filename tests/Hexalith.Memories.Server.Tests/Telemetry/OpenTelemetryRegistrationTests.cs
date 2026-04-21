@@ -13,6 +13,7 @@ using System.Linq;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.ServiceDefaults;
 using Hexalith.Memories.Telemetry;
+using Hexalith.Memories.TestHelpers.Process;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -111,23 +112,32 @@ public sealed class OpenTelemetryRegistrationTests
         // unset, the env-var branch in AddOpenTelemetryExporters MUST be skipped — no IActivityCollector
         // resolution is attempted, the production OpenTelemetry pipeline stays unchanged, and the
         // service container builds without throwing on a missing IActivityCollector registration.
-        string? previous = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
-        Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, null);
-        try
-        {
-            HostApplicationBuilder builder = BuildHostBuilder();
-            using ServiceProvider provider = builder.Services.BuildServiceProvider();
+        using EnvVarScope _ = EnvVarScope.Set(InMemoryTelemetryEnvironment.EnvVar, null);
+        HostApplicationBuilder builder = BuildHostBuilder();
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
 
-            // The branch is skipped → no IActivityCollector requirement → BuildServiceProvider succeeds
-            // and resolving TracerProvider does not throw.
-            provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
-            provider.GetService<IActivityCollector>().ShouldBeNull(
-                "Production code MUST NOT register IActivityCollector when the env-var trigger is unset.");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, previous);
-        }
+        // The branch is skipped → no IActivityCollector requirement → BuildServiceProvider succeeds
+        // and resolving TracerProvider does not throw.
+        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
+        provider.GetService<IActivityCollector>().ShouldBeNull(
+            "Production code MUST NOT register IActivityCollector when the env-var trigger is unset.");
+    }
+
+    [Fact]
+    public void InMemoryTelemetry_EnvVarSet_WithoutCollector_ContainerStillBuilds()
+    {
+        // Story 8.4 telemetry fixture enables the env-var gate for the separate server process, which does
+        // NOT register an IActivityCollector. The branch must therefore remain safe when the collector is
+        // absent: build succeeds, TracerProvider resolves, and the optional breadcrumb emission still works.
+        using EnvVarScope _ = EnvVarScope.Set(
+            InMemoryTelemetryEnvironment.EnvVar,
+            InMemoryTelemetryEnvironment.EnabledValue);
+
+        HostApplicationBuilder builder = BuildHostBuilder();
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+
+        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
+        provider.GetService<IActivityCollector>().ShouldBeNull();
     }
 
     [Theory]
@@ -175,32 +185,27 @@ public sealed class OpenTelemetryRegistrationTests
         // Story 8.4 Task 1.1 happy-path: when the env var IS exactly "1" AND an IActivityCollector
         // is registered in DI, the env-var branch appends a CollectingActivityProcessor that drains
         // emitted activities into the collector. Validates the wiring end-to-end without booting Aspire.
-        string? previous = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
-        Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, InMemoryTelemetryEnvironment.EnabledValue);
-        try
+        using EnvVarScope _ = EnvVarScope.Set(
+            InMemoryTelemetryEnvironment.EnvVar,
+            InMemoryTelemetryEnvironment.EnabledValue);
+
+        TestActivityCollector collector = new();
+        HostApplicationBuilder builder = BuildHostBuilder();
+        builder.Services.AddSingleton<IActivityCollector>(collector);
+
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+        TracerProvider tracerProvider = provider.GetRequiredService<TracerProvider>();
+
+        using (Activity? activity = MemoriesActivitySource.Instance.StartActivity("env-var-branch-probe"))
         {
-            TestActivityCollector collector = new();
-            HostApplicationBuilder builder = BuildHostBuilder();
-            builder.Services.AddSingleton<IActivityCollector>(collector);
-
-            using ServiceProvider provider = builder.Services.BuildServiceProvider();
-            TracerProvider tracerProvider = provider.GetRequiredService<TracerProvider>();
-
-            using (Activity? activity = MemoriesActivitySource.Instance.StartActivity("env-var-branch-probe"))
-            {
-                activity.ShouldNotBeNull();
-            }
-
-            tracerProvider.ForceFlush();
-
-            collector.Activities.ShouldContain(
-                a => a.Source.Name == MemoriesActivitySource.SourceName && a.OperationName == "env-var-branch-probe",
-                "Env-var branch did not append CollectingActivityProcessor — activity was not captured.");
+            activity.ShouldNotBeNull();
         }
-        finally
-        {
-            Environment.SetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar, previous);
-        }
+
+        tracerProvider.ForceFlush();
+
+        collector.Activities.ShouldContain(
+            a => a.Source.Name == MemoriesActivitySource.SourceName && a.OperationName == "env-var-branch-probe",
+            "Env-var branch did not append the integration activity processor — activity was not captured.");
     }
 
     private sealed class TestActivityCollector : IActivityCollector

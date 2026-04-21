@@ -37,12 +37,12 @@ public sealed class Ac2SkipReviewByTests
         // already-elapsed (or near-elapsed) date, this test fails LOUDLY before the merge lands —
         // the review-by mechanism degenerates into silent tech debt otherwise.
         DateOnly horizon = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(60));
-        Ac2RedisSkipReviewBy.ReviewByDate.ShouldBeGreaterThan(
-            horizon,
+        Ac2RedisSkipReviewBy.ReviewByDate.DayNumber.ShouldBeGreaterThanOrEqualTo(
+            horizon.DayNumber,
             $"Ac2RedisSkipReviewBy.ReviewByDate ({Ac2RedisSkipReviewBy.ReviewByDate:yyyy-MM-dd}) must be at least " +
             $"60 days in the future (horizon: {horizon:yyyy-MM-dd}). Either register Redis OTEL instrumentation " +
             $"on the Memories Server's tracer (and convert AC #2 into a hard assertion) or extend " +
-            $"Ac2RedisSkipReviewBy.ReviewByDate with a linked tracking issue. Tracking: {Ac2RedisSkipReviewBy.TrackingIssueUrl}");
+            $"Ac2RedisSkipReviewBy.ReviewByDate with a linked tracking issue. Tracking: {Ac2RedisSkipReviewBy.TrackingReference}");
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public sealed class Ac2SkipReviewByTests
         // The review-by date itself is exclusive: AC2 must already have been re-evaluated by then.
         InvalidOperationException ex = Should.Throw<InvalidOperationException>(
             () => Ac2RedisSkipReviewBy.AssertWithinReviewWindow(Ac2RedisSkipReviewBy.ReviewByDate));
-        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingIssueUrl);
+        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingReference);
         ex.Message.ShouldContain(Ac2RedisSkipReviewBy.ReviewByDate.ToString("yyyy-MM-dd"));
     }
 
@@ -70,6 +70,6 @@ public sealed class Ac2SkipReviewByTests
         InvalidOperationException ex = Should.Throw<InvalidOperationException>(
             () => Ac2RedisSkipReviewBy.AssertWithinReviewWindow(later));
         ex.Message.ShouldContain("Either register");
-        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingIssueUrl);
+        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingReference);
     }
 }

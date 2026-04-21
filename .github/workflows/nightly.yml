@@ -1,0 +1,39 @@
+name: Nightly Integration Tests
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  integration-tests:
+    name: Tier 3 integration lane
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx
+
+      - name: Run Tier 3 integration tests
+        run: bash ./tools/test.sh --filter "Category=Integration"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-integration-artifacts
+          path: |
+            **/TestResults/**
+            artifacts/**
+          if-no-files-found: ignore

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 
 using Hexalith.Memories.ServiceDefaults.Health;
 using Hexalith.Memories.Telemetry;
@@ -92,19 +93,24 @@ public static class Extensions
             _ = builder.Services.AddOpenTelemetry().UseOtlpExporter();
         }
 
-        // Story 8.4 Task 1.1 — env-var-triggered in-memory activity exporter for Tier-3 integration tests.
+        // Story 8.4 Task 1.1 — env-var-triggered integration-only activity capture for Tier-3 tests.
         // ADR-8.4-002 (option B): the IActivityCollector implementation lives in the integration-test
-        // assembly; ServiceDefaults only resolves the abstraction at processor-creation time. AC #5:
-        // when the env var is unset (or set to anything other than the exact string "1"), no extra
-        // processor is registered and the production OpenTelemetry pipeline stays unchanged.
+        // assembly; ServiceDefaults resolves it opportunistically at processor-creation time when one is
+        // registered, but the env-var branch MUST remain safe when the hosting process does not register a
+        // collector (for example the separate Memories Server process under Aspire).
+        //
+        // In addition to the optional in-memory collector sink, the branch emits test-only server-side
+        // activity breadcrumbs to stderr for relevant spans. The telemetry integration tests parse those
+        // breadcrumbs from the Aspire-captured resource log stream to prove the real server-side
+        // memories.search + AspNetCore spans exist without standing up a separate OTLP receiver.
         string? inMemoryFlag = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
         if (InMemoryTelemetryEnvironment.IsEnabled(inMemoryFlag))
         {
             _ = builder.Services.AddOpenTelemetry()
                 .WithTracing(tracing => tracing.AddProcessor(sp =>
                 {
-                    IActivityCollector collector = sp.GetRequiredService<IActivityCollector>();
-                    return new CollectingActivityProcessor(collector.Activities);
+                    ICollection<Activity>? collectorActivities = sp.GetService<IActivityCollector>()?.Activities;
+                    return new IntegrationActivityProcessor(collectorActivities);
                 }));
         }
         else if (!string.IsNullOrEmpty(inMemoryFlag))
@@ -118,27 +124,49 @@ public static class Extensions
     }
 
     /// <summary>
-    /// Story 8.4 — minimal <see cref="BaseProcessor{T}"/> that appends each completed
-    /// <see cref="Activity"/> to the supplied collection. Avoids taking a production-side
-    /// dependency on <c>OpenTelemetry.Exporter.InMemory</c> (kept as a test-only package).
-    /// Public so the integration-test assembly can introspect or share the processor type if
-    /// needed — but the processor itself is harmless when no env-var trigger is set, since the
-    /// branch in <see cref="AddOpenTelemetryExporters{TBuilder}"/> never registers it.
+    /// Story 8.4 — integration-only <see cref="BaseProcessor{T}"/> used under the
+    /// <see cref="InMemoryTelemetryEnvironment.EnvVar"/> test gate. When an
+    /// <see cref="IActivityCollector"/> is present it appends completed activities to the supplied
+    /// collection; regardless of collector presence it emits test-only server activity breadcrumbs to
+    /// stderr for the server-side spans the telemetry integration tests need to observe.
     /// </summary>
-    private sealed class CollectingActivityProcessor : BaseProcessor<Activity>
+    private sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
     {
-        private readonly ICollection<Activity> _target;
+        private readonly ICollection<Activity>? _target;
 
-        public CollectingActivityProcessor(ICollection<Activity> target)
-        {
-            ArgumentNullException.ThrowIfNull(target);
-            _target = target;
-        }
+        public IntegrationActivityProcessor(ICollection<Activity>? target) => _target = target;
 
         public override void OnEnd(Activity data)
         {
             ArgumentNullException.ThrowIfNull(data);
-            _target.Add(data);
+            _target?.Add(data);
+
+            if (ShouldEmitActivityBreadcrumb(data))
+            {
+                Console.Error.WriteLine(FormatActivityBreadcrumb(data));
+            }
+        }
+
+        private static string FormatActivityBreadcrumb(Activity data)
+            => InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix + JsonSerializer.Serialize(new
+            {
+                sourceName = data.Source.Name,
+                operationName = data.OperationName,
+                traceId = data.TraceId.ToString(),
+                spanId = data.SpanId.ToString(),
+                parentSpanId = NormalizeSpanId(data.ParentSpanId),
+                kind = data.Kind.ToString(),
+            });
+
+        private static bool ShouldEmitActivityBreadcrumb(Activity data)
+            => string.Equals(data.Source.Name, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
+                || (data.Kind == ActivityKind.Server
+                    && data.Source.Name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase));
+
+        private static string? NormalizeSpanId(ActivitySpanId spanId)
+        {
+            string value = spanId.ToString();
+            return value == "0000000000000000" ? null : value;
         }
     }
 

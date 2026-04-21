@@ -7,6 +7,8 @@ namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 
 using System;
 
+using SharedEnvVarScope = Hexalith.Memories.TestHelpers.Process.EnvVarScope;
+
 /// <summary>
 /// Story 8.4 (Amelia, party-mode review 2026-04-20) — disposable that snapshots a process env var on
 /// construction and restores the prior value on dispose. Use everywhere the integration tests set
@@ -19,27 +21,17 @@ using System;
 /// </summary>
 internal sealed class EnvVarScope : IDisposable
 {
-    private readonly string _name;
-    private readonly string? _previousValue;
+    private readonly SharedEnvVarScope _inner;
 
-    private EnvVarScope(string name, string? previousValue)
-    {
-        _name = name;
-        _previousValue = previousValue;
-    }
+    private EnvVarScope(SharedEnvVarScope inner) => _inner = inner;
 
     /// <summary>Sets the env var to <paramref name="value"/> after snapshotting the prior value.</summary>
     /// <param name="name">Env var name.</param>
     /// <param name="value">Value to set (use <c>null</c> to clear within the scope).</param>
     /// <returns>A scope that restores the previous value on dispose.</returns>
     public static EnvVarScope Set(string name, string? value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        string? previous = Environment.GetEnvironmentVariable(name);
-        Environment.SetEnvironmentVariable(name, value);
-        return new EnvVarScope(name, previous);
-    }
+        => new(SharedEnvVarScope.Set(name, value));
 
     /// <inheritdoc/>
-    public void Dispose() => Environment.SetEnvironmentVariable(_name, _previousValue);
+    public void Dispose() => _inner.Dispose();
 }

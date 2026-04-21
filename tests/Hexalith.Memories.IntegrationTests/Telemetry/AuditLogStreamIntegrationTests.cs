@@ -7,16 +7,22 @@ namespace Hexalith.Memories.IntegrationTests.Telemetry;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using Shouldly;
 
@@ -42,6 +48,14 @@ using Xunit.Abstractions;
 [Trait("Category", "Integration")]
 public sealed class AuditLogStreamIntegrationTests
 {
+    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
+    private const string OperationSearch = "search";
+    private const string OperationIngest = "ingest";
+    private const string OperationTraverse = "traverse";
+    private const string OperationCaseAccess = "case-access";
+    private const string OutcomeOk = "ok";
+    private const string OutcomeError = "error";
+
     private readonly AspireIngestionPipelineFixture _fixture;
     private readonly ITestOutputHelper _output;
 
@@ -54,38 +68,47 @@ public sealed class AuditLogStreamIntegrationTests
     [Fact]
     public async Task SearchOperation_EmitsOneAuditEvent_WithAC4Schema()
     {
-        // Use the empty-tenantId validation-fail path so EndpointTelemetryScope emits its
-        // Warning-level error audit event (7511 LogSearchAccessError). The fixture's TestLogProvider
-        // runs at LogLevel.Warning minimum — Information-bank success events (7501) are filtered.
-        // Validation-fail vs success doesn't change the schema the test asserts; both go through the
-        // same EndpointTelemetryScope wrapper.
+        string tenantId = await EnsureProvisionedTenantAsync();
+        string query = $"absent-syntactic-{Guid.NewGuid():N}";
+
         await AssertOperationEmitsExpectedAuditEventAsync(
-            operationType: "search",
+            operationType: OperationSearch,
+            expectedTenantId: tenantId,
+            expectedOutcome: OutcomeOk,
+            expectedErrorCode: null,
             invokeAsync: async client =>
             {
                 using HttpResponseMessage r = await client.GetAsync(
-                    "/api/search?tenantId=&query=stream-probe&axis=syntactic");
-                r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+                    $"/api/search?tenantId={tenantId}&query={query}&axis=syntactic");
+                r.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+                SearchResult? result = await r.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+                result.ShouldNotBeNull();
+                result.Results.ShouldBeEmpty();
             });
     }
 
     [Fact]
     public async Task IngestOperation_EmitsOneAuditEvent_WithAC4Schema()
     {
-        // Hit a validation-fail path so we don't have to fully orchestrate Kreuzberg + embeddings.
-        // EndpointTelemetryScope still emits one ingest audit event (Tier-2 AuditLogStreamTests proves
-        // this at the substrate level; Tier-3 proves it survives the deployed pipeline).
+        string tenantId = await EnsureProvisionedTenantAsync();
+        string caseId = await CreateCaseAsync(tenantId);
+
         await AssertOperationEmitsExpectedAuditEventAsync(
-            operationType: "ingest",
+            operationType: OperationIngest,
+            expectedTenantId: tenantId,
+            expectedOutcome: OutcomeOk,
+            expectedErrorCode: null,
             invokeAsync: async client =>
             {
                 IngestionInput input = new()
                 {
-                    TenantId = string.Empty, // empty → INVALID_INPUT
-                    CaseId = "case-stream-probe",
-                    SourceUri = "test://stream",
+                    TenantId = tenantId,
+                    CaseId = caseId,
+                    SourceUri = $"test://telemetry/{Guid.NewGuid():N}",
+                    ContentBytes = System.Text.Encoding.UTF8.GetBytes($"ingest-probe-{Guid.NewGuid():N}"),
                     ContentType = "text/plain",
-                    SourceType = SourceType.Event,
+                    SourceType = SourceType.File,
                     IngestedBy = "tests-8-4",
                 };
 
@@ -93,19 +116,23 @@ public sealed class AuditLogStreamIntegrationTests
                     "/api/ingest",
                     input,
                     options: MemoriesJsonContext.Options);
-                r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+                r.StatusCode.ShouldBe(HttpStatusCode.Accepted);
             });
     }
 
     [Fact]
     public async Task TraverseOperation_EmitsOneAuditEvent_WithAC4Schema()
     {
-        // Provide a malformed tenant id to exercise INVALID_TENANT_ID — emits one traverse audit event.
+        string tenantId = await EnsureProvisionedTenantAsync();
+
         await AssertOperationEmitsExpectedAuditEventAsync(
-            operationType: "traverse",
+            operationType: OperationTraverse,
+            expectedTenantId: tenantId,
+            expectedOutcome: OutcomeError,
+            expectedErrorCode: "MISSING_START_NODE",
             invokeAsync: async client =>
             {
-                using HttpResponseMessage r = await client.GetAsync("/api/tenants/bad~tenant/traverse?startNodeId=s1");
+                using HttpResponseMessage r = await client.GetAsync($"/api/tenants/{tenantId}/traverse?depth=1");
                 r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
             });
     }
@@ -113,13 +140,90 @@ public sealed class AuditLogStreamIntegrationTests
     [Fact]
     public async Task CaseAccessOperation_EmitsOneAuditEvent_WithAC4Schema()
     {
+        string tenantId = await EnsureProvisionedTenantAsync();
+
         await AssertOperationEmitsExpectedAuditEventAsync(
-            operationType: "case-access",
+            operationType: OperationCaseAccess,
+            expectedTenantId: tenantId,
+            expectedOutcome: OutcomeError,
+            expectedErrorCode: "MEMORY_UNIT_NOT_FOUND",
             invokeAsync: async client =>
             {
-                using HttpResponseMessage r = await client.GetAsync("/api/tenants/bad~tenant/cases/c1/memory-units/m1");
-                r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+                using HttpResponseMessage r = await client.GetAsync(
+                    $"/api/tenants/{tenantId}/cases/case-missing/memory-units/memory-unit-missing");
+                r.StatusCode.ShouldBe(HttpStatusCode.NotFound);
             });
+    }
+
+    [Fact]
+    public async Task SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus()
+    {
+        string tenantId = await EnsureProvisionedTenantAsync();
+        string startNodeId = $"retry-probe-{Guid.NewGuid():N}";
+        int logStartIndex = _fixture.LogEntryCount;
+
+        await _fixture.StopFalkorDbContainerAsync();
+
+        using Activity retryRoot = new Activity("telemetry-retry-sequence-root")
+            .SetIdFormat(ActivityIdFormat.W3C)
+            .Start();
+
+        using (Activity firstAttempt = new Activity("telemetry-retry-attempt-1").Start())
+        {
+            using HttpResponseMessage first = await _fixture.MemoriesClient.GetAsync(
+                $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
+            first.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        }
+
+        await _fixture.RestartTopologyAsync();
+        await WaitForTenantActiveAsync(tenantId);
+
+        string traceId = retryRoot.TraceId.ToString();
+
+        using Activity secondAttempt = new Activity("telemetry-retry-attempt-2").Start();
+        using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+        retryResult.ShouldNotBeNull();
+
+        TimeSpan timeout = TimeSpan.FromMinutes(4);
+        using CancellationTokenSource cts = new(timeout);
+        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
+            _fixture,
+            logStartIndex,
+            minimumEvents: 2,
+            timeout,
+            cts.Token,
+            matchPredicate: captured =>
+                string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
+                && string.Equals(captured.AuditEvent.TraceId, traceId, StringComparison.Ordinal));
+
+        IReadOnlyList<CapturedAuditEvent> matching =
+            [.. events.Where(captured =>
+                string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
+                && string.Equals(captured.AuditEvent.TraceId, traceId, StringComparison.Ordinal))];
+
+        matching.Count.ShouldBeGreaterThanOrEqualTo(2);
+        matching.Count(captured => string.Equals(captured.AuditEvent.Outcome, OutcomeError, StringComparison.Ordinal))
+            .ShouldBeGreaterThanOrEqualTo(1);
+        matching.Count(captured => string.Equals(captured.AuditEvent.Outcome, OutcomeOk, StringComparison.Ordinal))
+            .ShouldBeGreaterThanOrEqualTo(1);
+
+        HashSet<(string, string, string, string)> tuples =
+            [.. matching.Select(captured =>
+            {
+                AccessTelemetryEvent audit = captured.AuditEvent;
+                return (
+                    audit.TraceId ?? "<null>",
+                    audit.SpanId ?? "<null>",
+                    audit.OperationType,
+                    FormatStatusProxy(audit));
+            })];
+
+        tuples.Count.ShouldBe(
+            matching.Count,
+            "Retry sequence must not be rejected as a duplicate emission when statuses differ across attempts.");
     }
 
     [Fact]
@@ -164,16 +268,17 @@ public sealed class AuditLogStreamIntegrationTests
     {
         // Future-proofing: aggregate across one of each operation type and assert every captured event
         // carries schemaVersion == 1. A breaking field change that bumped the version would fail loudly.
+        string tenantId = await EnsureProvisionedTenantAsync();
         int logStartIndex = _fixture.LogEntryCount;
 
-        // Run one of each operation via validation-fail paths so EndpointTelemetryScope emits the
-        // Warning-level error audit events (the only ones the fixture's Warning-min log provider sees).
+        // Mix a successful search with a valid-tenant traverse validation error so both Information and
+        // Warning audit events are covered on the deployed stack.
         using HttpResponseMessage searchResp = await _fixture.MemoriesClient.GetAsync(
-            "/api/search?tenantId=&query=v-probe&axis=syntactic");
-        searchResp.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            $"/api/search?tenantId={tenantId}&query=schema-probe-{Guid.NewGuid():N}&axis=syntactic");
+        searchResp.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         using HttpResponseMessage traverseResp = await _fixture.MemoriesClient.GetAsync(
-            "/api/tenants/bad~v/traverse?startNodeId=s1");
+            $"/api/tenants/{tenantId}/traverse?depth=1");
         traverseResp.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
@@ -183,7 +288,11 @@ public sealed class AuditLogStreamIntegrationTests
             logStartIndex,
             minimumEvents: 2,
             timeout,
-            cts.Token);
+            cts.Token,
+            matchPredicate: captured =>
+                string.Equals(captured.AuditEvent.TenantId, tenantId, StringComparison.Ordinal)
+                && (string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
+                    || string.Equals(captured.AuditEvent.OperationType, OperationTraverse, StringComparison.Ordinal)));
 
         try
         {
@@ -192,7 +301,7 @@ public sealed class AuditLogStreamIntegrationTests
                 "Expected at least 2 audit events (one search + one traverse). " +
                 "If fewer were captured, AC #3 stdout-emission gate is broken at the deployed stack.");
 
-            foreach (CapturedAuditEvent captured in events)
+            foreach (CapturedAuditEvent captured in events.Where(captured => string.Equals(captured.AuditEvent.TenantId, tenantId, StringComparison.Ordinal)))
             {
                 captured.AuditEvent.SchemaVersion.ShouldBe(
                     AccessTelemetryEvent.CurrentSchemaVersion,
@@ -210,6 +319,9 @@ public sealed class AuditLogStreamIntegrationTests
 
     private async Task AssertOperationEmitsExpectedAuditEventAsync(
         string operationType,
+        string expectedTenantId,
+        string expectedOutcome,
+        string? expectedErrorCode,
         Func<HttpClient, Task> invokeAsync)
     {
         int logStartIndex = _fixture.LogEntryCount;
@@ -223,7 +335,10 @@ public sealed class AuditLogStreamIntegrationTests
             logStartIndex,
             minimumEvents: 1,
             timeout,
-            cts.Token);
+            cts.Token,
+            matchPredicate: captured =>
+                string.Equals(captured.AuditEvent.OperationType, operationType, StringComparison.Ordinal)
+                && string.Equals(captured.AuditEvent.TenantId, expectedTenantId, StringComparison.Ordinal));
 
         try
         {
@@ -234,10 +349,12 @@ public sealed class AuditLogStreamIntegrationTests
                 $"{timeout.TotalSeconds}s; got 0. Override via {AuditEventStreamReader.TimeoutEnvVar} if the runner is slow.");
 
             IReadOnlyList<CapturedAuditEvent> matching =
-                [.. events.Where(e => string.Equals(e.AuditEvent.OperationType, operationType, StringComparison.Ordinal))];
+                [.. events.Where(e =>
+                    string.Equals(e.AuditEvent.OperationType, operationType, StringComparison.Ordinal)
+                    && string.Equals(e.AuditEvent.TenantId, expectedTenantId, StringComparison.Ordinal))];
             matching.Count.ShouldBeGreaterThanOrEqualTo(
                 1,
-                $"Expected at least one event with operationType='{operationType}'. " +
+                $"Expected at least one event with operationType='{operationType}' and tenantId='{expectedTenantId}'. " +
                 $"Got operationTypes: {string.Join(",", events.Select(e => e.AuditEvent.OperationType))}.");
 
             // De-duplication tuple (TraceId, SpanId, OperationType, HttpStatus) — the HttpStatus axis tolerates
@@ -248,7 +365,7 @@ public sealed class AuditLogStreamIntegrationTests
             foreach (CapturedAuditEvent c in matching)
             {
                 AccessTelemetryEvent ev = c.AuditEvent;
-                string statusProxy = $"{ev.Outcome}/{ev.ErrorCode ?? "<none>"}";
+                string statusProxy = FormatStatusProxy(ev);
                 tuples.Add((ev.TraceId ?? "<null>", ev.SpanId ?? "<null>", ev.OperationType, statusProxy));
             }
 
@@ -263,13 +380,15 @@ public sealed class AuditLogStreamIntegrationTests
                 AccessTelemetryEvent ev = c.AuditEvent;
                 ev.SchemaVersion.ShouldBe(AccessTelemetryEvent.CurrentSchemaVersion);
                 ev.EventId.ShouldBeInRange(AuditEventStreamReader.MinEventId, AuditEventStreamReader.MaxEventId);
-                ev.TenantId.ShouldNotBeNullOrWhiteSpace();
+                ev.TenantId.ShouldBe(expectedTenantId);
                 ev.OperationType.ShouldBe(operationType);
                 ev.TraceId.ShouldNotBeNullOrWhiteSpace();
                 ev.SpanId.ShouldNotBeNullOrWhiteSpace();
                 ev.DurationMs.ShouldBeGreaterThanOrEqualTo(0);
                 ev.Timestamp.ShouldNotBeNullOrWhiteSpace();
                 ev.QueryParams.ShouldNotBeNull();
+                ev.Outcome.ShouldBe(expectedOutcome);
+                ev.ErrorCode.ShouldBe(expectedErrorCode);
             }
         }
         catch
@@ -278,6 +397,68 @@ public sealed class AuditLogStreamIntegrationTests
             throw;
         }
     }
+
+    private async Task<string> EnsureProvisionedTenantAsync()
+    {
+        string tenantId = $"tenant-telemetry-audit-{Guid.NewGuid():N}";
+        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
+        return tenantId;
+    }
+
+    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
+    {
+        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
+            "/api/tenants",
+            new TenantProvisioningInput(tenantId, displayName),
+            MemoriesJsonContext.Options);
+        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        await WaitForTenantActiveAsync(tenantId);
+    }
+
+    private async Task WaitForTenantActiveAsync(string tenantId)
+    {
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
+            if (tenantResponse.StatusCode == HttpStatusCode.OK)
+            {
+                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
+                if (tenant?.Status == TenantStatus.Active)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+        }
+
+        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {ActivationTimeout}.");
+    }
+
+    private async Task<string> CreateCaseAsync(string tenantId)
+    {
+        using var http = new HttpClient
+        {
+            BaseAddress = _fixture.MemoriesClient.BaseAddress,
+            Timeout = TimeSpan.FromSeconds(60),
+        };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
+        {
+            Endpoint = _fixture.MemoriesClient.BaseAddress,
+        });
+        var client = new MemoriesClient(http, options, NullLogger<MemoriesClient>.Instance);
+
+#pragma warning disable HXL001
+        Hexalith.Memories.Contracts.V1.Case created = await client.CreateCaseAsync(tenantId, $"case-{Guid.NewGuid():N}", null, CancellationToken.None);
+#pragma warning restore HXL001
+        return created.Id;
+    }
+
+    private static string FormatStatusProxy(AccessTelemetryEvent auditEvent)
+        => $"{auditEvent.Outcome}/{auditEvent.ErrorCode ?? "<none>"}";
 
     private void DumpDiagnostics(int logStartIndex)
     {

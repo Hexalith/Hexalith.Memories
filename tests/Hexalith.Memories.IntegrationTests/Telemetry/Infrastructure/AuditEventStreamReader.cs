@@ -76,6 +76,8 @@ internal static class AuditEventStreamReader
     /// <param name="minimumEvents">Minimum number of matching events to wait for before returning early. Use 1 for "at least one" semantics.</param>
     /// <param name="timeout">Polling timeout (use <see cref="ResolveTimeout"/> for the env-var-aware default).</param>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <param name="matchPredicate">Optional predicate determining which captured events count toward the
+    /// early-return threshold. When omitted, every parsed audit event counts.</param>
     /// <returns>Captured <see cref="AccessTelemetryEvent"/> records in emission order, with their
     /// originating raw stdout JSON line for triage on assertion failure.</returns>
     public static async Task<IReadOnlyList<CapturedAuditEvent>> ReadAsync(
@@ -83,7 +85,8 @@ internal static class AuditEventStreamReader
         int logStartIndex,
         int minimumEvents,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<CapturedAuditEvent, bool>? matchPredicate = null)
     {
         ArgumentNullException.ThrowIfNull(fixture);
         ArgumentOutOfRangeException.ThrowIfNegative(logStartIndex);
@@ -96,7 +99,10 @@ internal static class AuditEventStreamReader
         while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
         {
             latest = ScanCapturedLogs(fixture, logStartIndex);
-            if (latest.Count >= minimumEvents)
+            int matchingCount = matchPredicate is null
+                ? latest.Count
+                : latest.Count(matchPredicate);
+            if (matchingCount >= minimumEvents)
             {
                 return latest;
             }
@@ -193,17 +199,18 @@ internal static class AuditEventStreamReader
                 return null;
             }
 
-            string? category = null;
-            if (root.TryGetProperty("Category", out JsonElement categoryElement)
-                && categoryElement.ValueKind == JsonValueKind.String)
+            if (!root.TryGetProperty("Category", out JsonElement categoryElement)
+                || categoryElement.ValueKind != JsonValueKind.String)
             {
-                category = categoryElement.GetString();
+                return null;
             }
+
+            string? category = categoryElement.GetString();
 
             // Filter to the AccessTelemetryCategory specifically — other Server-side logs that happen to
             // share the EventId range would be a contract violation, but we belt-and-suspender it here.
-            if (!string.IsNullOrEmpty(category)
-                && !category.EndsWith("AccessTelemetryCategory", StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(category)
+                || !category.EndsWith("AccessTelemetryCategory", StringComparison.Ordinal))
             {
                 return null;
             }
@@ -301,41 +308,104 @@ internal static class AuditEventStreamReader
             return null;
         }
 
+        if (!TryParseRequiredInt(fields, "SchemaVersion", out int schemaVersion)
+            || !TryParseRequiredInt(fields, "EventId", out int parsedEventId)
+            || parsedEventId != eventId
+            || !TryParseRequiredLong(fields, "DurationMs", out long durationMs)
+            || !TryParseOptionalInt(fields.GetValueOrDefault("ResultCount"), out int? resultCount))
+        {
+            return null;
+        }
+
+        string? timestamp = GetRequiredString(fields, "Timestamp");
+        string? tenantId = GetRequiredString(fields, "TenantId");
+        string? operationType = GetRequiredString(fields, "OperationType");
+        string? user = GetRequiredString(fields, "User");
+        string? outcome = GetRequiredString(fields, "Outcome");
+        string? traceId = GetRequiredString(fields, "TraceId");
+        string? spanId = GetRequiredString(fields, "SpanId");
+        if (timestamp is null
+            || tenantId is null
+            || operationType is null
+            || user is null
+            || outcome is null
+            || traceId is null
+            || spanId is null
+            || !fields.ContainsKey("QueryParams"))
+        {
+            return null;
+        }
+
         return new AccessTelemetryEvent
         {
             EventId = eventId,
-            SchemaVersion = TryParseInt(fields, "SchemaVersion", AccessTelemetryEvent.CurrentSchemaVersion),
-            Timestamp = NullIfEmpty(fields.GetValueOrDefault("Timestamp")) ?? string.Empty,
-            TenantId = NullIfEmpty(fields.GetValueOrDefault("TenantId")) ?? string.Empty,
-            OperationType = NullIfEmpty(fields.GetValueOrDefault("OperationType")) ?? string.Empty,
+            SchemaVersion = schemaVersion,
+            Timestamp = timestamp,
+            TenantId = tenantId,
+            OperationType = operationType,
             CaseId = NullIfEmpty(fields.GetValueOrDefault("CaseId")),
-            User = NullIfEmpty(fields.GetValueOrDefault("User")) ?? string.Empty,
+            User = user,
             QueryParams = new Dictionary<string, object?>(0),
-            ResultCount = TryParseNullableInt(fields.GetValueOrDefault("ResultCount")),
-            DurationMs = TryParseLong(fields, "DurationMs", 0),
-            Outcome = NullIfEmpty(fields.GetValueOrDefault("Outcome")) ?? string.Empty,
+            ResultCount = resultCount,
+            DurationMs = durationMs,
+            Outcome = outcome,
             ErrorCode = NullIfEmpty(fields.GetValueOrDefault("ErrorCode")),
-            TraceId = NullIfEmpty(fields.GetValueOrDefault("TraceId")),
-            SpanId = NullIfEmpty(fields.GetValueOrDefault("SpanId")),
+            TraceId = traceId,
+            SpanId = spanId,
         };
     }
 
-    private static int TryParseInt(Dictionary<string, string> fields, string name, int fallback)
-        => fields.TryGetValue(name, out string? raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v)
-            ? v
-            : fallback;
-
-    private static long TryParseLong(Dictionary<string, string> fields, string name, long fallback)
-        => fields.TryGetValue(name, out string? raw) && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long v)
-            ? v
-            : fallback;
-
-    private static int? TryParseNullableInt(string? raw)
-        => !string.IsNullOrEmpty(raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v)
-            ? v
+    private static string? GetRequiredString(Dictionary<string, string> fields, string name)
+        => fields.TryGetValue(name, out string? raw)
+            ? NullIfEmpty(raw)
             : null;
 
-    private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+    private static bool TryParseRequiredInt(Dictionary<string, string> fields, string name, out int value)
+    {
+        value = 0;
+        return fields.TryGetValue(name, out string? raw)
+            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool TryParseRequiredLong(Dictionary<string, string> fields, string name, out long value)
+    {
+        value = 0;
+        return fields.TryGetValue(name, out string? raw)
+            && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool TryParseOptionalInt(string? raw, out int? value)
+    {
+        string? normalized = NullIfEmpty(raw);
+        if (normalized is null)
+        {
+            value = null;
+            return true;
+        }
+
+        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+        {
+            value = parsed;
+            return true;
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static string? NullIfEmpty(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        string trimmed = value.Trim();
+        return string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, "<null>", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : trimmed;
+    }
 
     /// <summary>Captures the body of `AccessTelemetryEvent { ... }` (the toString-format payload).</summary>
     private static readonly Regex RecordToStringPattern = new(
