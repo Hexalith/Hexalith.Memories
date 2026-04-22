@@ -53,7 +53,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnDefaultSyntactic_ShouldIncludeSyntacticExplanation()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string content = "default explain axis content";
         await SeedIndexedDocumentAsync(tenantId, "mu-default-explain", content);
 
@@ -76,7 +76,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnSemanticAxis_ShouldIncludeSemanticExplanation()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string content = "semantic explain axis content";
         await SeedIndexedDocumentAsync(tenantId, "mu-semantic-explain", content);
 
@@ -98,7 +98,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnPureGraphAxis_ShouldIncludeGraphExplanation()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         await SeedGraphChainAsync(tenantId, caseId, "mu-graph-explain-a", "mu-graph-explain-b");
         await SeedSyntacticHashAsync(tenantId, "mu-graph-explain-a", "Graph explain alpha content");
@@ -122,7 +122,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnGraphScopedSyntactic_ShouldIncludeSyntacticExplanation()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         string content = "graph scoped syntactic explain content";
         await SeedGraphChainAsync(tenantId, caseId, "mu-syntactic-scope-a", "mu-syntactic-scope-b");
@@ -146,7 +146,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnGraphScopedSemantic_ShouldIncludeSemanticExplanation()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         string content = "graph scoped semantic explain content";
         await SeedGraphChainAsync(tenantId, caseId, "mu-semantic-scope-a", "mu-semantic-scope-b");
@@ -170,7 +170,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithExplainEnabledOnHybridGraphAxis_ShouldIncludeGraphExplanationAndWeights()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         await SeedGraphChainAsync(tenantId, caseId, "mu-hybrid-explain-a", "mu-hybrid-explain-b");
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-explain-a", "Hybrid graph explain alpha");
@@ -197,7 +197,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithHybridExplainDisabled_ShouldOmitExplanationFromJson()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         await SeedGraphChainAsync(tenantId, caseId, "mu-hybrid-no-explain-a", "mu-hybrid-no-explain-b");
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-no-explain-a", "Hybrid graph hidden explain alpha");
@@ -219,7 +219,7 @@ public sealed class ExplainSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithHybridGraphRequestedWithoutStartNode_ShouldExplainOnlyExecutedSemanticAxis()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string content = "hybrid explain fallback content";
         await SeedIndexedDocumentAsync(tenantId, "mu-hybrid-fallback", content);
 

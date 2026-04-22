@@ -79,7 +79,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         string memoryUnitId = await WaitForDedupResolutionAsync(instanceId);
         MemoryUnit indexed = await WaitForMemoryUnitAsync(tenantId, caseId, memoryUnitId);
         indexed.Status.ShouldBe(MemoryUnitStatus.Indexed);
-        indexed.Content.ShouldContain(queryToken, Case.Sensitive);
+        indexed.Content.ShouldContain(queryToken, Shouldly.Case.Sensitive);
         indexed.Metadata.ShouldContainKey("cloudevent.subject");
         indexed.Metadata["cloudevent.subject"].Value.ShouldBe(subject);
 

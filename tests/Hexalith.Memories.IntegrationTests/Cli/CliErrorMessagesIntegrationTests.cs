@@ -66,9 +66,13 @@ public sealed class CliErrorMessagesIntegrationTests
         JsonElement error = doc.RootElement.GetProperty("error");
         string code = error.GetProperty("code").GetString()!;
 
+        // The /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId} endpoint intentionally
+        // does NOT run TenantStatusGuard (failed units must remain inspectable for tenants in unusual
+        // states), so the validation order for a nonexistent tenant resolves to MEMORY_UNIT_NOT_FOUND —
+        // the first miss the endpoint can observe without a tenant-registry lookup. See Program.cs:1543+.
         code.ShouldBe(
-            "CASE_NOT_FOUND",
-            customMessage: $"Expected CASE_NOT_FOUND but got {code}. Validation order in Program.cs:1026 may have changed — update the pinned code or the test accordingly.");
+            "MEMORY_UNIT_NOT_FOUND",
+            customMessage: $"Expected MEMORY_UNIT_NOT_FOUND but got {code}. Validation order in Program.cs:1543 may have changed — update the pinned code or add a TenantStatusGuard check to the endpoint.");
 
         ErrorTranslation translation = ErrorMessageCatalog.Resolve(code);
         exitCode.ShouldBe(

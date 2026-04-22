@@ -34,7 +34,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PostCase_ThenList_ShouldReturnCreatedCase()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         DateTimeOffset beforeCreate = DateTimeOffset.UtcNow;
         CreateCaseInput input = new("ignored-body-tenant", "Claims Pilot", "First investigation case");
 
@@ -74,7 +74,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task GetCase_WhenMissing_ShouldReturnNotFoundErrorResponse()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"01{Guid.NewGuid():N}"[..26].ToUpperInvariant();
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
@@ -90,7 +90,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PostCase_ThenIngest_ShouldReportMemoryUnitCountAndContainsEdge()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput createInput = new(tenantId, "Claims Pilot", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
@@ -138,7 +138,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task PutMember_ThenList_ThenDelete_ShouldRoundTrip()
     {
         // Create a case first
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Member Test Case", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -189,7 +189,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task PutMember_Idempotent_ShouldReturn201Then200()
     {
         // Create a case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Idempotent Member Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -227,7 +227,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PutMember_WhenBodyOmitsMemberType_ShouldReturn400()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Missing MemberType Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -251,7 +251,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PutMember_WhenCaseNotFound_ShouldReturn404()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsJsonAsync(
@@ -269,7 +269,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task DeleteMember_WhenNotFound_ShouldReturn404()
     {
         // Create a case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -293,7 +293,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task ListCasesAsync_AfterAddingMembers_ShouldNotCountMembersKeyAsCase()
     {
         // Create a case and add members, then verify list returns exactly one case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Members Key Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -325,7 +325,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task GetCaseStatus_AfterAddingMembers_ShouldIncludeMemberCount()
     {
         // Create a case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Status Member Count", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -362,7 +362,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task PutMember_WhenLimitReached_ShouldReturn400MemberLimitExceeded()
     {
         // Create a case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Limit Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -399,7 +399,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PutMember_WhenCaseAtLimitButMemberAlreadyExists_ShouldReturn200()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Limit Replay Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -434,7 +434,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task PutMember_ConcurrentSameMember_ShouldProduceExactlyOneMemberAddedEvent()
     {
         // Create a case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Concurrency Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases",
@@ -481,7 +481,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PostAnnotation_WhenTargetNotFullyIndexed_ShouldReturn400()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Annotation Validation Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
@@ -522,7 +522,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PostAnnotation_ThenList_ShouldReturnStoredAnnotationWithMetadata()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Roundtrip Case", "annotation-roundtrip");
         string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
 
@@ -556,7 +556,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task PostAnnotation_TwiceOnSameTarget_ShouldListTwoDistinctAnnotations()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Multiplicity Case", "annotation-multi");
         string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
 
@@ -596,7 +596,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task GetAnnotations_WhenMemoryUnitMissingOrWrongCase_ShouldReturn404()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string targetMuId = await CreateIndexedMemoryUnitAsync(tenantId, "Annotation Missing Target Case", "annotation-missing");
         string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
 
@@ -629,7 +629,7 @@ public sealed partial class CaseEndpointIntegrationTests
     public async Task DeleteMemoryUnit_Roundtrip_ShouldReturn204AndRemoveFromCase()
     {
         // Create case
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string searchToken = $"delete-mu-{Guid.NewGuid():N}";
         CreateCaseInput caseInput = new("ignored", "Delete MU Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
@@ -689,7 +689,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteMemoryUnit_NotFound_ShouldReturn404()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete MU 404 Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
@@ -705,7 +705,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteMemoryUnit_WrongCase_ShouldReturn404AndLeaveOriginalMemoryUnit()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string searchToken = $"wrong-case-{Guid.NewGuid():N}";
 
         using HttpResponseMessage createCaseAResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
@@ -764,7 +764,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task GetCaseStatus_WhenDeleting_ShouldReturnDeletingWithDeletionStartedAt()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         DateTimeOffset deletionStartedAt = DateTimeOffset.Parse("2026-04-13T09:00:00+00:00");
         CreateCaseInput caseInput = new("ignored", "Deleting Status Test", null);
 
@@ -795,7 +795,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteMemoryUnit_WhenCaseDeleting_ShouldReturn409()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete MU Conflict Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
@@ -842,7 +842,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_EmptyCase_ShouldReturn204AndRemoveCase()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Empty Case Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
@@ -864,7 +864,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_WithIndexedMemoryUnits_ShouldRemoveAllBackendState()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string searchToken = $"delete-case-{Guid.NewGuid():N}";
         CreateCaseInput caseInput = new("ignored", "Delete Populated Case Test", null);
 
@@ -917,7 +917,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_WithMembers_ShouldReturn204AndCleanUp()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Case Members Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
@@ -952,7 +952,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_NotFound_ShouldReturn404()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/nonexistent-case-id");
@@ -962,7 +962,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_ListCasesShouldNoLongerIncludeDeletedCase()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Case List Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
@@ -987,7 +987,7 @@ public sealed partial class CaseEndpointIntegrationTests
     [Fact]
     public async Task DeleteCase_Idempotent_SecondDeleteReturns404()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Idempotent Delete Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
             $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);

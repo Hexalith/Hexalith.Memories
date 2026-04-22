@@ -7,6 +7,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -138,6 +139,84 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <param name="startIndex">The 0-based index from which to read newly-captured log entries.</param>
     /// <returns>The captured log entries after the starting index.</returns>
     public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
+
+    /// <summary>Default wait budget for a tenant to reach <see cref="TenantStatus.Active"/>.</summary>
+    public static readonly TimeSpan DefaultTenantActivationTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Provisions a new tenant via <c>POST /api/tenants</c> and waits for it to reach
+    /// <see cref="TenantStatus.Active"/>. Use in tests that need a tenant in place before
+    /// calling case, search, or ingestion endpoints — <see cref="Hexalith.Memories.Server.Tenants.TenantStatusGuard"/>
+    /// rejects operations against unknown or non-Active tenants with 404/409.
+    /// </summary>
+    /// <param name="tenantId">Optional tenant identifier. When null, a random one is generated.</param>
+    /// <param name="displayName">Optional display name. Defaults to the tenant id.</param>
+    /// <param name="activationTimeout">Max wait for Active status. Defaults to <see cref="DefaultTenantActivationTimeout"/>.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>The provisioned tenant id.</returns>
+    public async Task<string> ProvisionActiveTenantAsync(
+        string? tenantId = null,
+        string? displayName = null,
+        TimeSpan? activationTimeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        string id = tenantId ?? $"tenant-it-{Guid.NewGuid():N}";
+        string name = displayName ?? $"Tenant {id}";
+
+        using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
+            "/api/tenants",
+            new TenantProvisioningInput(id, name),
+            MemoriesJsonContext.Options,
+            cancellationToken).ConfigureAwait(false);
+
+        // 202 Accepted on fresh provision; 409 Conflict when the caller passed a pre-existing id —
+        // treat both as "tenant exists" so callers can idempotently re-use a deterministic id.
+        if (provisionResponse.StatusCode is not (HttpStatusCode.Accepted or HttpStatusCode.Conflict))
+        {
+            string body = await provisionResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException(
+                $"Unexpected POST /api/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
+        }
+
+        await WaitForTenantActiveAsync(id, activationTimeout ?? DefaultTenantActivationTimeout, cancellationToken).ConfigureAwait(false);
+        return id;
+    }
+
+    /// <summary>Polls <c>GET /api/tenants/{tenantId}</c> until the tenant reports <see cref="TenantStatus.Active"/>.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="timeout">Max wait duration.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    public async Task WaitForTenantActiveAsync(
+        string tenantId,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        TimeSpan budget = timeout ?? DefaultTenantActivationTimeout;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(budget);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using HttpResponseMessage tenantResponse = await MemoriesClient.GetAsync(
+                $"/api/tenants/{tenantId}",
+                cancellationToken).ConfigureAwait(false);
+            if (tenantResponse.StatusCode == HttpStatusCode.OK)
+            {
+                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(
+                    MemoriesJsonContext.Options,
+                    cancellationToken).ConfigureAwait(false);
+                if (tenant?.Status == TenantStatus.Active)
+                {
+                    return;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {budget}.");
+    }
 
     /// <summary>Stops the FalkorDB container hosted by the Aspire topology.</summary>
     /// <param name="cancellationToken">Cancellation token.</param>

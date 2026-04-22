@@ -194,10 +194,12 @@ public sealed class TenantDeletionIntegrationTests
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         await WaitForTenantDeletedAsync(tenantId);
 
-        // Search should return an error because tenant no longer exists (guard blocks it)
+        // Search should return 404 because the tenant no longer exists in the registry. Per
+        // TenantStatusGuard.ToHttpResult, TENANT_NOT_FOUND maps to 404; 409 Conflict is reserved for
+        // non-Active-but-existing states (Deleting/Provisioning/Failed).
         using HttpResponseMessage postDeleteSearch = await _fixture.MemoriesClient.GetAsync(
             $"/api/search?tenantId={tenantId}&query=searchzero");
-        postDeleteSearch.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        postDeleteSearch.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         ErrorResponse? error = await postDeleteSearch.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
         error.ShouldNotBeNull();

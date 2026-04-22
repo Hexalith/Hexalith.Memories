@@ -25,7 +25,7 @@ public sealed class HybridSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithGraphStartNodeIdAlias_ShouldReturnHybridGraphResultsAsync()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         await SeedGraphChainAsync(tenantId, caseId, "mu-hybrid-a", "mu-hybrid-b");
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-a", "Alpha content");

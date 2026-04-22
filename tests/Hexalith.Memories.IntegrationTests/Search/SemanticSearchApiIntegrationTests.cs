@@ -42,7 +42,7 @@ public sealed class SemanticSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithInvalidAxis_ShouldReturnBadRequestErrorResponse()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
             $"/api/search?tenantId={tenantId}&query=test&axis=not-a-real-axis");
@@ -58,7 +58,7 @@ public sealed class SemanticSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithoutAxis_ShouldDefaultToSyntacticResults()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         await SeedDocumentAsync(tenantId, "mu-default", "routing default axis content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
@@ -75,7 +75,7 @@ public sealed class SemanticSearchApiIntegrationTests
     [Fact]
     public async Task GetSearch_WithSemanticAxis_ShouldReturnSemanticResults()
     {
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         await SeedDocumentAsync(tenantId, "mu-semantic", "routing semantic axis content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(

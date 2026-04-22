@@ -35,7 +35,7 @@ public sealed class IngestionPipelineTests
     public async Task PostIngest_ShouldIndexMemoryUnitAcrossAllBackends()
     {
         // Arrange
-        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
         string caseId = $"case-{Guid.NewGuid():N}";
         string sourceUri = $"file:///{Guid.NewGuid():N}.txt";
         IngestionInput input = new()
