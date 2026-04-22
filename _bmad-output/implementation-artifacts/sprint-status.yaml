@@ -1,6 +1,8 @@
 # generated: 2026-03-26
-# last_updated: 2026-04-22 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription remains in review; follow-up validation restored the Aspire roundtrip acceptance test (1/1 green) while subscription discovery + latency/replay nightly follow-ups remain deferred per deferred-work.md.
+# last_updated: 2026-04-22 # Story 8.4 code-review cleanup fixed EnvVarScope OS/async-flow guards and moved Aspire fixture env-var overrides onto scoped guards; focused server regressions and a ready-endpoint Aspire smoke test passed, while AC #2 / DoD item 10 remain deferred.
 # previous last_updated entries:
+# last_updated: 2026-04-22 # Story 8.4 End-to-End Telemetry Integration Tests re-entered review after the Rev 0.8 follow-up fix pass closed 17 of 20 outstanding Review Findings from the 2026-04-22 adversarial review (3 edge-case items reclassified as [Defer] with rationale); Tier-2 telemetry 128/128 green, Ac2 unit 4/4 green, no telemetry regressions.
+# last_updated: 2026-04-22 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription remains in review; follow-up validation restored the Aspire roundtrip acceptance test (1/1 green) while subscription discovery + latency/replay nightly follow-ups remain deferred per deferred-work.md.
 # last_updated: 2026-04-21 # Story 7.5 Search & Access Telemetry transitioned review → done after review close-out aligned the Tier-3 gate with Story 8.4's HTTP-hop proof and the 2026-04-21 server-runtime telemetry follow-ups validated green.
 # project: Hexalith.Memories
 # project_key: NOKEY
@@ -37,7 +39,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-22 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription remains review; Aspire roundtrip acceptance coverage is now restored and green (1/1), while subscription discovery + latency/replay nightly follow-ups stay deferred.
+last_updated: 2026-04-22 # Story 8.4 remains in-progress after the 2026-04-22 code-review cleanup fixed EnvVarScope OS/async-flow guards and migrated fixture env vars onto scoped guards; focused server regressions + a ready-endpoint Aspire smoke test passed, but AC #2 / DoD item 10 remain deferred.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -125,7 +127,7 @@ development_status:
   8-1-health-checks-and-readiness: done
   8-2-consistency-verification-and-repair: done
   8-3-data-export: done
-  8-4-end-to-end-telemetry-integration-tests: review # Tier-3 Aspire follow-up for Story 7.5 Tasks 11.3 + 11.4 — implemented + 8/8 Tier-3 tests green; Story 7.5 Tasks 11.3 + 11.4 closed.
+  8-4-end-to-end-telemetry-integration-tests: in-progress # Code-review cleanup 2026-04-22 fixed EnvVarScope OS/async-flow guards and moved fixture env vars onto scoped guards. Focused server regressions (22/22) and a ready-endpoint Aspire smoke test (1/1) passed. AC #2 + DoD item 10 still deferred (tracking issue not yet filed).
   epic-8-retrospective: optional
 
   # --- Phase 1.5 (Fast-Follow) ---

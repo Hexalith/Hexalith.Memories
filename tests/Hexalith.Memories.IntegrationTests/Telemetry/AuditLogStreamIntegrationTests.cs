@@ -48,7 +48,6 @@ using Xunit.Abstractions;
 [Trait("Category", "Integration")]
 public sealed class AuditLogStreamIntegrationTests
 {
-    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
     private const string OperationSearch = "search";
     private const string OperationIngest = "ingest";
     private const string OperationTraverse = "traverse";
@@ -165,11 +164,23 @@ public sealed class AuditLogStreamIntegrationTests
 
         await _fixture.StopFalkorDbContainerAsync();
 
-        using Activity retryRoot = new Activity("telemetry-retry-sequence-root")
-            .SetIdFormat(ActivityIdFormat.W3C)
-            .Start();
+        // Register an ActivityListener so the test-owned ActivitySource activates and
+        // Activity.Current propagates a real W3C trace id. Without an active listener,
+        // new Activity(...).Start() does NOT generate a W3C trace id (Activity.Current
+        // stays null or empty) and the traceId-based poll predicate below never matches.
+        using ActivitySource retrySource = new($"telemetry-retry-{Guid.NewGuid():N}");
+        using ActivityListener listener = new()
+        {
+            ShouldListenTo = source => ReferenceEquals(source, retrySource),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            SampleUsingParentId = (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllData,
+        };
+        ActivitySource.AddActivityListener(listener);
 
-        using (Activity firstAttempt = new Activity("telemetry-retry-attempt-1").Start())
+        using Activity? retryRoot = retrySource.StartActivity("telemetry-retry-sequence-root", ActivityKind.Client);
+        retryRoot.ShouldNotBeNull("ActivityListener registration failed — retry trace id capture will not work.");
+
+        using (Activity? firstAttempt = retrySource.StartActivity("telemetry-retry-attempt-1"))
         {
             using HttpResponseMessage first = await _fixture.MemoriesClient.GetAsync(
                 $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
@@ -177,11 +188,11 @@ public sealed class AuditLogStreamIntegrationTests
         }
 
         await _fixture.RestartTopologyAsync();
-        await WaitForTenantActiveAsync(tenantId);
+        await _fixture.WaitForTenantActiveAsync(tenantId);
 
         string traceId = retryRoot.TraceId.ToString();
 
-        using Activity secondAttempt = new Activity("telemetry-retry-attempt-2").Start();
+        using Activity? secondAttempt = retrySource.StartActivity("telemetry-retry-attempt-2");
         using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
             $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -233,7 +244,51 @@ public sealed class AuditLogStreamIntegrationTests
         // Story 7.5 AC #5 + Story 8.4 AC #3 regression guard at the deployed-stack level. Health
         // endpoints (/health, /alive, /ready) are NOT in the four enumerated operation types, so
         // no EndpointTelemetryScope runs and no audit event is emitted on the deployed stack.
-        int logStartIndex = _fixture.LogEntryCount;
+        //
+        // The test has two phases to defend against both false-positive ("a prior test's late-
+        // arriving audit event flipped the zero-events assertion") AND false-negative ("the entire
+        // audit pipeline is broken but the test passes vacuously because zero events is the always-
+        // true answer") failure modes:
+        //
+        //   1. Sentinel phase — provision a tenant and run ONE search to prove the audit pipeline is
+        //      alive. Wait for its audit event to land. This both (a) proves the pipeline works and
+        //      (b) drains any in-flight events from prior tests in the shared Aspire collection.
+        //   2. Probe phase — record a post-sentinel log start index, run the health probes, wait the
+        //      full negative window, and scan once for any audit events emitted after the start index.
+        string sentinelTenantId = await EnsureProvisionedTenantAsync();
+        int sentinelLogStart = _fixture.LogEntryCount;
+        string sentinelQuery = $"health-probe-sentinel-{Guid.NewGuid():N}";
+        using (HttpResponseMessage sentinelResp = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={sentinelTenantId}&query={sentinelQuery}&axis=syntactic"))
+        {
+            sentinelResp.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+
+        TimeSpan sentinelTimeout = AuditEventStreamReader.ResolveTimeout();
+        using CancellationTokenSource sentinelCts = new(sentinelTimeout);
+        IReadOnlyList<CapturedAuditEvent> sentinelEvents = await AuditEventStreamReader.ReadAsync(
+            _fixture,
+            sentinelLogStart,
+            minimumEvents: 1,
+            sentinelTimeout,
+            sentinelCts.Token,
+            matchPredicate: captured =>
+                string.Equals(captured.AuditEvent.TenantId, sentinelTenantId, StringComparison.Ordinal)
+                && string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal));
+
+        sentinelEvents.Count(captured =>
+            string.Equals(captured.AuditEvent.TenantId, sentinelTenantId, StringComparison.Ordinal)
+            && string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal))
+            .ShouldBeGreaterThanOrEqualTo(
+                1,
+                "Sentinel search did not emit an audit event — the audit pipeline is broken at the " +
+                "deployed stack level, so the zero-events assertion that follows would pass vacuously. " +
+                "Fix the audit emission path before re-running HealthProbes_EmitZeroAuditEvents.");
+
+        // Short drain window to let any straggling audit events from prior tests in the shared
+        // collection land before we capture the probe-phase start index.
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        int probeLogStart = _fixture.LogEntryCount;
 
         for (int i = 0; i < 5; i++)
         {
@@ -245,23 +300,19 @@ public sealed class AuditLogStreamIntegrationTests
             ready.IsSuccessStatusCode.ShouldBeTrue();
         }
 
-        // Use a short polling window for the negative assertion — we don't want to burn the full
-        // 10s default for a test that asserts emptiness. 3s is enough for any spurious audit event
-        // to surface; if zero arrive in 3s we trust zero is the steady state.
+        // Wait the full negative window before scanning — a polling Read with minimumEvents: 1 would
+        // return early on the first spurious event from any concurrent activity, defeating the
+        // negative-space assertion. We want "no events emitted during or shortly after the probe
+        // phase", which requires a full-window wait + one-shot scan.
         TimeSpan negativeWindow = TimeSpan.FromSeconds(3);
-        using CancellationTokenSource cts = new(negativeWindow);
-        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
-            _fixture,
-            logStartIndex,
-            minimumEvents: 1,
-            negativeWindow,
-            cts.Token);
+        await Task.Delay(negativeWindow);
 
-        events.Count.ShouldBe(
+        IReadOnlyList<CapturedAuditEvent> probeEvents = AuditEventStreamReader.Scan(_fixture, probeLogStart);
+        probeEvents.Count.ShouldBe(
             0,
             "Health probes (/health, /alive, /ready) MUST emit zero AccessTelemetryEvent entries " +
             "(AC #5 regression guard from Story 7.5). Captured events: " +
-            string.Join(", ", events.Select(e => $"{e.EventId}/{e.AuditEvent.OperationType}")));
+            string.Join(", ", probeEvents.Select(e => $"{e.EventId}/{e.AuditEvent.OperationType}/{e.AuditEvent.TenantId}")));
     }
 
     [Fact]
@@ -399,45 +450,10 @@ public sealed class AuditLogStreamIntegrationTests
         }
     }
 
-    private async Task<string> EnsureProvisionedTenantAsync()
-    {
-        string tenantId = $"tenant-telemetry-audit-{Guid.NewGuid():N}";
-        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
-        return tenantId;
-    }
-
-    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
-    {
-        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/tenants",
-            new TenantProvisioningInput(tenantId, displayName),
-            MemoriesJsonContext.Options);
-        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
-
-        await WaitForTenantActiveAsync(tenantId);
-    }
-
-    private async Task WaitForTenantActiveAsync(string tenantId)
-    {
-
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
-            if (tenantResponse.StatusCode == HttpStatusCode.OK)
-            {
-                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
-                if (tenant?.Status == TenantStatus.Active)
-                {
-                    return;
-                }
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-        }
-
-        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {ActivationTimeout}.");
-    }
+    private Task<string> EnsureProvisionedTenantAsync(CancellationToken cancellationToken = default)
+        => _fixture.ProvisionActiveTenantAsync(
+            tenantId: $"tenant-telemetry-audit-{Guid.NewGuid():N}",
+            cancellationToken: cancellationToken);
 
     private async Task<string> CreateCaseAsync(string tenantId)
     {

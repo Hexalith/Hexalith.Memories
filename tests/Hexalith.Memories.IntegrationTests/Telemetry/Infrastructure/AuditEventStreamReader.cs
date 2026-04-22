@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,8 +30,9 @@ using Hexalith.Memories.IntegrationTests.Fixtures;
 /// <para>
 /// Timing tolerance: the reader polls the captured log entries every 200ms up to a configurable
 /// timeout (default 10s, overridable via <c>TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS</c> per Task 3.6).
-/// The polling avoids <c>Thread.Sleep</c>; cancellation honors the supplied
-/// <see cref="CancellationToken"/>.
+/// The polling avoids <c>Thread.Sleep</c>; caller-initiated cancellation of the supplied
+/// <see cref="CancellationToken"/> propagates as <see cref="OperationCanceledException"/> so callers
+/// can distinguish cancellation from deadline-elapsed-with-empty-match.
 /// </para>
 /// </summary>
 internal static class AuditEventStreamReader
@@ -51,31 +51,42 @@ internal static class AuditEventStreamReader
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>Returns the effective polling timeout — env-var override if present and parses to
-    /// a positive integer; default otherwise.</summary>
+    /// a positive integer; default otherwise. Surfaces a stderr warning when the env var is set
+    /// but rejected (non-integer, non-positive) so the fallback is not silent.</summary>
     /// <returns>The configured timeout.</returns>
     public static TimeSpan ResolveTimeout()
     {
         string? raw = Environment.GetEnvironmentVariable(TimeoutEnvVar);
-        if (!string.IsNullOrWhiteSpace(raw)
-            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds)
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return DefaultTimeout;
+        }
+
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds)
             && seconds > 0)
         {
             return TimeSpan.FromSeconds(seconds);
         }
 
+        Console.Error.WriteLine(
+            $"[telemetry] {TimeoutEnvVar}={raw} — only positive integers (seconds) activate; " +
+            $"ignoring and falling back to default {DefaultTimeout.TotalSeconds}s");
         return DefaultTimeout;
     }
 
     /// <summary>Polls the fixture's captured log stream for <see cref="AccessTelemetryEvent"/>
     /// records emitted since <paramref name="logStartIndex"/>. Returns once at least
-    /// <paramref name="minimumEvents"/> matching events are found, OR the timeout elapses (in
+    /// <paramref name="minimumEvents"/> matching events are found, OR the polling deadline elapses (in
     /// which case the reader returns whatever it has collected, including an empty list — the
-    /// caller's count-first assertion fails loudly with the captured stdout dump).</summary>
+    /// caller's count-first assertion fails loudly with the captured stdout dump).
+    /// <para>Caller-initiated cancellation via <paramref name="cancellationToken"/> surfaces as
+    /// <see cref="OperationCanceledException"/> so callers can distinguish cancellation from
+    /// a deadline-elapsed empty match.</para></summary>
     /// <param name="fixture">The shared Aspire fixture exposing the captured log stream.</param>
     /// <param name="logStartIndex">The 0-based index in the captured log buffer to start scanning from.</param>
     /// <param name="minimumEvents">Minimum number of matching events to wait for before returning early. Use 1 for "at least one" semantics.</param>
     /// <param name="timeout">Polling timeout (use <see cref="ResolveTimeout"/> for the env-var-aware default).</param>
-    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <param name="cancellationToken">Cooperative cancellation. Rethrows <see cref="OperationCanceledException"/> on caller-initiated cancellation.</param>
     /// <param name="matchPredicate">Optional predicate determining which captured events count toward the
     /// early-return threshold. When omitted, every parsed audit event counts.</param>
     /// <returns>Captured <see cref="AccessTelemetryEvent"/> records in emission order, with their
@@ -96,8 +107,9 @@ internal static class AuditEventStreamReader
         TimeSpan pollInterval = TimeSpan.FromMilliseconds(200);
 
         IReadOnlyList<CapturedAuditEvent> latest = [];
-        while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             latest = ScanCapturedLogs(fixture, logStartIndex);
             int matchingCount = matchPredicate is null
                 ? latest.Count
@@ -111,8 +123,15 @@ internal static class AuditEventStreamReader
             {
                 await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                // Caller-initiated cancellation distinguishable from deadline-elapsed: rethrow.
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                // Delay cancellation not attributable to our CT (highly unlikely) — treat as
+                // deadline elapse and exit the poll with the last-scanned snapshot.
                 break;
             }
         }
@@ -120,12 +139,24 @@ internal static class AuditEventStreamReader
         return latest;
     }
 
+    /// <summary>Scans once with no polling window — useful for negative-space assertions where the
+    /// caller has already waited for stragglers to land and just wants the current snapshot.</summary>
+    /// <param name="fixture">Shared Aspire fixture.</param>
+    /// <param name="logStartIndex">Start index in the captured log buffer.</param>
+    /// <returns>All audit events parsed from the captured log stream since the start index.</returns>
+    public static IReadOnlyList<CapturedAuditEvent> Scan(AspireIngestionPipelineFixture fixture, int logStartIndex)
+    {
+        ArgumentNullException.ThrowIfNull(fixture);
+        ArgumentOutOfRangeException.ThrowIfNegative(logStartIndex);
+        return ScanCapturedLogs(fixture, logStartIndex);
+    }
+
     /// <summary>Returns the last <paramref name="maxLines"/> raw stdout lines (any category) since
     /// <paramref name="logStartIndex"/>. Used for diagnostic dumps on test failure when no audit
     /// events arrive — gives a future debugger the immediate context.</summary>
     /// <param name="fixture">Shared Aspire fixture.</param>
     /// <param name="logStartIndex">Start index in the captured log buffer.</param>
-    /// <param name="maxLines">Maximum number of trailing lines to return.</param>
+    /// <param name="maxLines">Maximum number of trailing lines to return. Must be positive.</param>
     /// <returns>The trailing log lines.</returns>
     public static IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> TailRawLogs(
         AspireIngestionPipelineFixture fixture,
@@ -133,6 +164,8 @@ internal static class AuditEventStreamReader
         int maxLines = 50)
     {
         ArgumentNullException.ThrowIfNull(fixture);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLines);
+
         IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> all = fixture.GetLogEntriesSince(logStartIndex);
         if (all.Count <= maxLines)
         {
@@ -191,7 +224,8 @@ internal static class AuditEventStreamReader
             // record-type arguments to nested JSON — it serializes via record.ToString(). The resulting
             // top-level "Message" field carries the C# record `ToString()` output (e.g.
             // `Search access error AccessTelemetryEvent { SchemaVersion = 1, EventId = 7511, ..., TraceId = ..., SpanId = ... }`)
-            // and so does State."@AuditEvent". We extract fields from that string with regex.
+            // and so does State."@AuditEvent". We extract fields from that string with a stateful tokenizer
+            // that tolerates nested `{}` / `[]` in field values (Dictionary`2[...] etc.).
             if (!TryReadEventId(root, out int eventId)
                 || eventId < MinEventId
                 || eventId > MaxEventId)
@@ -282,27 +316,30 @@ internal static class AuditEventStreamReader
 
     private static AccessTelemetryEvent? TryParseRecordToString(string text, int eventId)
     {
-        // Locate the `AccessTelemetryEvent { ... }` substring inside the formatted message.
-        Match recordMatch = RecordToStringPattern.Match(text);
-        if (!recordMatch.Success)
+        // Locate the `AccessTelemetryEvent { ... }` substring using a balanced-brace scanner so
+        // nested `{}` inside field values (e.g. user-supplied strings, dict representations in future
+        // schemas) do NOT truncate the body prematurely. The previous `[^}]*` regex could not handle
+        // nested braces at all; the stateful tokenizer below tolerates `{}` + `[]` at any depth.
+        int typeIndex = text.IndexOf("AccessTelemetryEvent", StringComparison.Ordinal);
+        if (typeIndex < 0)
         {
             return null;
         }
 
-        string body = recordMatch.Groups["body"].Value;
-
-        // Split on `, FieldName = ` boundaries. The split-and-pair approach tolerates field values that
-        // themselves contain commas (e.g. `Dictionary`2[System.String,System.Object]`) by anchoring each
-        // boundary to a `, <PascalIdentifier> =` lookahead.
-        Dictionary<string, string> fields = new(StringComparer.Ordinal);
-        MatchCollection fieldMatches = RecordFieldPattern.Matches(body);
-        foreach (Match m in fieldMatches)
+        int braceStart = text.IndexOf('{', typeIndex);
+        if (braceStart < 0)
         {
-            string name = m.Groups["name"].Value;
-            string value = m.Groups["value"].Value.Trim();
-            fields[name] = value;
+            return null;
         }
 
+        int braceEnd = FindMatchingBrace(text, braceStart);
+        if (braceEnd < 0)
+        {
+            return null;
+        }
+
+        string body = text[(braceStart + 1)..braceEnd];
+        Dictionary<string, string> fields = TokenizeRecordFields(body);
         if (fields.Count == 0)
         {
             return null;
@@ -324,6 +361,10 @@ internal static class AuditEventStreamReader
         string? outcome = GetRequiredString(fields, "Outcome");
         string? traceId = GetRequiredString(fields, "TraceId");
         string? spanId = GetRequiredString(fields, "SpanId");
+
+        // Every required field (per the AccessTelemetryEvent contract) MUST parse; a missing field
+        // means the record ToString shape has changed or the line was truncated — refuse to return a
+        // half-populated event that would satisfy "ShouldNotBeNull" assertions vacuously.
         if (timestamp is null
             || tenantId is null
             || operationType is null
@@ -336,6 +377,12 @@ internal static class AuditEventStreamReader
             return null;
         }
 
+        // QueryParams is rendered by C# record ToString as the type name
+        // ("System.Collections.Generic.Dictionary`2[...]") — the actual key/value content is NOT
+        // recoverable from ToString. We mark the field as "present" via ObservedFromToString by
+        // returning an empty dictionary here, but a test that asserts specific QueryParam values
+        // cannot work against the stdout-capture path (ADR-8.4-003 documents this limitation). Use
+        // the Tier-2 in-process log capture if you need to assert QueryParam content.
         return new AccessTelemetryEvent
         {
             EventId = eventId,
@@ -353,6 +400,167 @@ internal static class AuditEventStreamReader
             TraceId = traceId,
             SpanId = spanId,
         };
+    }
+
+    /// <summary>
+    /// Given the position of an opening <c>{</c> in <paramref name="text"/>, returns the matching
+    /// closing <c>}</c> index (0-based), honoring nested <c>{}</c> and <c>[]</c> pairs so embedded
+    /// dictionary / array notations do not terminate the outer record prematurely. Returns -1 when
+    /// no matching close exists (truncated input).
+    /// </summary>
+    private static int FindMatchingBrace(string text, int openBraceIndex)
+    {
+        int braceDepth = 0;
+        int bracketDepth = 0;
+        for (int i = openBraceIndex; i < text.Length; i++)
+        {
+            switch (text[i])
+            {
+                case '{':
+                    braceDepth++;
+                    break;
+                case '}':
+                    braceDepth--;
+                    if (braceDepth == 0 && bracketDepth == 0)
+                    {
+                        return i;
+                    }
+
+                    break;
+                case '[':
+                    bracketDepth++;
+                    break;
+                case ']':
+                    bracketDepth--;
+                    break;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Tokenizes the body of a C# record <c>ToString()</c> output (already stripped of the outer
+    /// <c>{ ... }</c>). Field boundaries are recognized only when the scanner is at depth zero of
+    /// nested <c>{}</c> and <c>[]</c>; values can therefore contain commas and even full nested
+    /// record forms without being mis-split.
+    /// </summary>
+    /// <param name="body">Body text — the contents between the outer braces.</param>
+    /// <returns>Map of field name to raw value text, preserving the first occurrence per name.</returns>
+    private static Dictionary<string, string> TokenizeRecordFields(string body)
+    {
+        Dictionary<string, string> result = new(StringComparer.Ordinal);
+        int cursor = 0;
+        while (cursor < body.Length)
+        {
+            while (cursor < body.Length && (body[cursor] == ' ' || body[cursor] == ','))
+            {
+                cursor++;
+            }
+
+            if (cursor >= body.Length)
+            {
+                break;
+            }
+
+            int nameStart = cursor;
+            if (!char.IsUpper(body[cursor]))
+            {
+                // Not a field boundary token — skip a character and continue scanning.
+                cursor++;
+                continue;
+            }
+
+            while (cursor < body.Length && (char.IsLetterOrDigit(body[cursor]) || body[cursor] == '_'))
+            {
+                cursor++;
+            }
+
+            string name = body[nameStart..cursor];
+
+            // Expect " = " between field name and value.
+            while (cursor < body.Length && body[cursor] == ' ')
+            {
+                cursor++;
+            }
+
+            if (cursor >= body.Length || body[cursor] != '=')
+            {
+                // Name but no '=' — not a field boundary after all; bail on further parsing.
+                break;
+            }
+
+            cursor++; // consume '='
+            while (cursor < body.Length && body[cursor] == ' ')
+            {
+                cursor++;
+            }
+
+            int valueStart = cursor;
+            int braceDepth = 0;
+            int bracketDepth = 0;
+            while (cursor < body.Length)
+            {
+                char current = body[cursor];
+                if (current == '{')
+                {
+                    braceDepth++;
+                }
+                else if (current == '}')
+                {
+                    braceDepth--;
+                }
+                else if (current == '[')
+                {
+                    bracketDepth++;
+                }
+                else if (current == ']')
+                {
+                    bracketDepth--;
+                }
+                else if (current == ',' && braceDepth == 0 && bracketDepth == 0)
+                {
+                    // Look-ahead: a real field boundary starts with ", " followed by an UpperCase identifier
+                    // and an '='. Commas inside values (e.g. "Dictionary`2[System.String,System.Object]")
+                    // are already shielded by the bracket depth; this safeguards against spaces varying.
+                    int look = cursor + 1;
+                    while (look < body.Length && body[look] == ' ')
+                    {
+                        look++;
+                    }
+
+                    if (look < body.Length && char.IsUpper(body[look]))
+                    {
+                        int idStart = look;
+                        while (look < body.Length && (char.IsLetterOrDigit(body[look]) || body[look] == '_'))
+                        {
+                            look++;
+                        }
+
+                        int idEnd = look;
+                        while (look < body.Length && body[look] == ' ')
+                        {
+                            look++;
+                        }
+
+                        if (idEnd > idStart && look < body.Length && body[look] == '=')
+                        {
+                            break;
+                        }
+                    }
+                }
+
+                cursor++;
+            }
+
+            string value = body[valueStart..cursor].TrimEnd();
+            if (!result.ContainsKey(name))
+            {
+                result[name] = value;
+            }
+        }
+
+        return result;
     }
 
     private static string? GetRequiredString(Dictionary<string, string> fields, string name)
@@ -406,18 +614,6 @@ internal static class AuditEventStreamReader
             ? null
             : trimmed;
     }
-
-    /// <summary>Captures the body of `AccessTelemetryEvent { ... }` (the toString-format payload).</summary>
-    private static readonly Regex RecordToStringPattern = new(
-        @"AccessTelemetryEvent\s*\{\s*(?<body>[^}]*)\}",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>Splits the body into `Name = value` pairs. Each value runs up to (but not including) the
-    /// next `, PascalIdentifier =` boundary or end-of-body. Tolerates field values that contain commas
-    /// (e.g. <c>Dictionary`2[System.String,System.Object]</c>) by anchoring on the next field boundary.</summary>
-    private static readonly Regex RecordFieldPattern = new(
-        @"(?<name>[A-Z]\w*)\s*=\s*(?<value>.*?)(?=,\s*[A-Z]\w*\s*=|$)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 }
 
 /// <summary>Captured Server-side audit log entry along with the original raw JSON line for triage.</summary>

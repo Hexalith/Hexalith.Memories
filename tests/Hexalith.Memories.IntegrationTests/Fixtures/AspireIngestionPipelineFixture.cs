@@ -21,6 +21,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
+using Hexalith.Memories.TestHelpers.Process;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -32,19 +33,19 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
     private DistributedApplication? _app;
     private IDistributedApplicationTestingBuilder? _builder;
-    private string? _previousAspNetCoreEnvironment;
-    private string? _previousDotNetEnvironment;
-    private string? _previousFakeEmbedding;
-    private string? _previousAllowPrivateHosts;
-    private string? _previousDaprAppId;
-    private string? _previousRedisVolumeName;
-    private string? _previousEventStoreSourceMap;
     private string _daprAppId = string.Empty;
     private string _redisVolumeName = string.Empty;
     private string _eventStoreMappedTenantId = string.Empty;
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
     private HttpClientHandler? _actorHttpMessageHandler;
+    private EnvVarScope? _aspNetCoreEnvironmentScope;
+    private EnvVarScope? _dotNetEnvironmentScope;
+    private EnvVarScope? _fakeEmbeddingScope;
+    private EnvVarScope? _allowPrivateHostsScope;
+    private EnvVarScope? _daprAppIdScope;
+    private EnvVarScope? _redisVolumeNameScope;
+    private EnvVarScope? _eventStoreSourceMapScope;
     private EnvVarScope? _telemetryInMemoryScope;
     private readonly TestLogProvider _logProvider = new();
     private static readonly Regex DaprHttpPortRegex = new(
@@ -106,33 +107,57 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <inheritdoc/>
     public async Task InitializeAsync()
     {
-        _previousAspNetCoreEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        _previousDotNetEnvironment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-        _previousFakeEmbedding = Environment.GetEnvironmentVariable("Memories__Testing__UseFakeEmbedding");
-        _previousAllowPrivateHosts = Environment.GetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts");
-        _previousDaprAppId = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
-        _previousRedisVolumeName = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
-        _previousEventStoreSourceMap = Environment.GetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims");
-        _telemetryInMemoryScope = EnvVarScope.Set(
-            InMemoryTelemetryEnvironment.EnvVar,
-            InMemoryTelemetryEnvironment.EnabledValue);
-
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
-        Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Development");
-        Environment.SetEnvironmentVariable("Memories__Testing__UseFakeEmbedding", "true");
-        Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
-
         _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
         _eventStoreMappedTenantId = $"tenant-eventstore-{Guid.NewGuid():N}";
-        Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _daprAppId);
-        Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
-        Environment.SetEnvironmentVariable(
-            "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
-            _eventStoreMappedTenantId);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-        await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+        // If anything after the env-var scopes are acquired fails, xUnit does NOT call DisposeAsync
+        // (the fixture failed to initialize). Acquire every process-wide override via EnvVarScope so
+        // the shared serialization helper protects cross-assembly tests from snapshot/restore races,
+        // then tear the scopes down on failure.
+        try
+        {
+            _telemetryInMemoryScope = EnvVarScope.Set(
+                InMemoryTelemetryEnvironment.EnvVar,
+                InMemoryTelemetryEnvironment.EnabledValue);
+            _aspNetCoreEnvironmentScope = EnvVarScope.Set("ASPNETCORE_ENVIRONMENT", "Development");
+            _dotNetEnvironmentScope = EnvVarScope.Set("DOTNET_ENVIRONMENT", "Development");
+            _fakeEmbeddingScope = EnvVarScope.Set("Memories__Testing__UseFakeEmbedding", "true");
+            _allowPrivateHostsScope = EnvVarScope.Set("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
+            _daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", _daprAppId);
+            _redisVolumeNameScope = EnvVarScope.Set("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
+            _eventStoreSourceMapScope = EnvVarScope.Set(
+                "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
+                _eventStoreMappedTenantId);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            DisposeEnvVarScopes();
+            throw;
+        }
+    }
+
+    private void DisposeEnvVarScopes()
+    {
+        _eventStoreSourceMapScope?.Dispose();
+        _eventStoreSourceMapScope = null;
+        _redisVolumeNameScope?.Dispose();
+        _redisVolumeNameScope = null;
+        _daprAppIdScope?.Dispose();
+        _daprAppIdScope = null;
+        _allowPrivateHostsScope?.Dispose();
+        _allowPrivateHostsScope = null;
+        _fakeEmbeddingScope?.Dispose();
+        _fakeEmbeddingScope = null;
+        _dotNetEnvironmentScope?.Dispose();
+        _dotNetEnvironmentScope = null;
+        _aspNetCoreEnvironmentScope?.Dispose();
+        _aspNetCoreEnvironmentScope = null;
+        _telemetryInMemoryScope?.Dispose();
+        _telemetryInMemoryScope = null;
     }
 
     /// <summary>Returns a snapshot of log entries captured since the specified starting index.</summary>
@@ -241,16 +266,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
-
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", _previousAspNetCoreEnvironment);
-        Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", _previousDotNetEnvironment);
-        Environment.SetEnvironmentVariable("Memories__Testing__UseFakeEmbedding", _previousFakeEmbedding);
-        Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", _previousAllowPrivateHosts);
-        Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _previousDaprAppId);
-        Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _previousRedisVolumeName);
-        Environment.SetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims", _previousEventStoreSourceMap);
-        _telemetryInMemoryScope?.Dispose();
-        _telemetryInMemoryScope = null;
+        DisposeEnvVarScopes();
     }
 
     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
@@ -282,7 +298,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     return level >= LogLevel.Warning;
                 }
 
-                if (category?.Contains("memories-server", StringComparison.OrdinalIgnoreCase) == true)
+                if (IsMemoriesServerCategory(category))
                 {
                     return level >= LogLevel.Information;
                 }
@@ -310,7 +326,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             TimeSpan.FromMinutes(3),
             TimeSpan.FromSeconds(2)).ConfigureAwait(false);
 
-        DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
+        DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
 
         Uri redisEndpoint = _app.GetEndpoint("redis", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("falkordb", "falkordb");
@@ -326,6 +342,58 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         };
         _actorHttpMessageHandler = new HttpClientHandler();
         _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
+    }
+
+    /// <summary>
+    /// Accepts the Aspire resource-log category for the Memories Server resource. The Aspire runtime prefixes
+    /// category names with the resource id ("memories-server") followed by either the end of the category or
+    /// a "-" / "." separator (for related sub-resources such as "memories-server-dapr-cli"). A substring
+    /// <c>Contains</c> match is too broad — any unrelated future test-runner category that happens to embed
+    /// "memories-server" would be elevated above the Warning floor and add noise to the captured stream.
+    /// </summary>
+    /// <param name="category">The logger category name as provided by the logging pipeline.</param>
+    /// <returns><c>true</c> when the category identifies the Memories Server resource or one of its sub-resources.</returns>
+    private static bool IsMemoriesServerCategory(string? category)
+    {
+        if (string.IsNullOrEmpty(category))
+        {
+            return false;
+        }
+
+        const string resourceId = "memories-server";
+        if (!category.StartsWith(resourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (category.Length == resourceId.Length)
+        {
+            return true;
+        }
+
+        char next = category[resourceId.Length];
+        return next is '-' or '.';
+    }
+
+    private Uri ResolveDaprSidecarHttpEndpoint(int logStartIndex)
+    {
+        if (_app is not null)
+        {
+            foreach (string resourceName in new[] { "memories-server-dapr", "memories-server-dapr-cli" })
+            {
+                try
+                {
+                    return _app.GetEndpoint(resourceName, "http");
+                }
+                catch (ArgumentException)
+                {
+                    // Fall back to the historical log-scrape path below when the sidecar resource
+                    // does not expose a directly allocated endpoint under this name.
+                }
+            }
+        }
+
+        return ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
     }
 
     private static Uri ResolveDaprSidecarHttpEndpoint(IReadOnlyList<CapturedLogEntry> entries)

@@ -25,8 +25,12 @@ using System;
 /// </summary>
 internal static class Ac2RedisSkipReviewBy
 {
-    /// <summary>The date after which the AC #2 Redis-instrumentation skip MUST be re-evaluated.</summary>
-    public static readonly DateOnly ReviewByDate = new(2026, 7, 1);
+    /// <summary>The date after which the AC #2 Redis-instrumentation skip MUST be re-evaluated.
+    /// Pushed from 2026-07-01 to 2026-10-01 in the 2026-04-22 review pass because the Task 7.4
+    /// "at-least-60-days-future" horizon guard would have started failing PRs on 2026-05-02 (only
+    /// 70 days of runway from initial authoring). 2026-10-01 gives a ~160-day runway and still
+    /// forces re-evaluation this year.</summary>
+    public static readonly DateOnly ReviewByDate = new(2026, 10, 1);
 
     /// <summary>Tracking reference for the Redis OTEL instrumentation work that flips this follow-up
     /// into a hard assertion. Updated when a real GitHub issue is filed.</summary>

@@ -11,9 +11,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -58,7 +55,6 @@ using Xunit.Abstractions;
 [Trait("Category", "Integration")]
 public sealed class AspireEndToEndTraceTests
 {
-    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
     private const string SearchOperationType = "search";
 
     private readonly AspireIngestionPipelineFixture _fixture;
@@ -80,9 +76,8 @@ public sealed class AspireEndToEndTraceTests
         // The CLI spans are captured in-process by CliTracingHarness. The server-side AspNetCore +
         // memories.search spans are emitted as test-only activity breadcrumbs to the server's stderr under
         // HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1 and parsed from the Aspire log stream.
-        string tenantId = $"tenant-telemetry-trace-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-telemetry-trace-{Guid.NewGuid():N}");
         string query = $"trace-probe-{Guid.NewGuid():N}";
-        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         await using CliTracingHarness harness = CliTracingHarness.Create();
         int logStartIndex = _fixture.LogEntryCount;
@@ -111,15 +106,13 @@ public sealed class AspireEndToEndTraceTests
                 2,
                 "Expected at least one CLI root span and one HttpClient span; got fewer. Capture wiring broken?");
 
-            Activity cliRootSpan = capturedSpans.SingleOrDefault(a =>
-                string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal))
-                ?? throw new ShouldAssertException(
-                    $"Expected a single CLI root span ({MemoriesActivitySource.CliInvoke}); see span dump for what was captured.");
+            Activity cliRootSpan = SelectSingle(
+                capturedSpans.Where(a => string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal)).ToList(),
+                $"CLI root span ({MemoriesActivitySource.CliInvoke})");
 
-            Activity httpClientSpan = capturedSpans.SingleOrDefault(a => a.Source.Name == "System.Net.Http")
-                ?? throw new ShouldAssertException(
-                    "Expected exactly one outbound HttpClient span (System.Net.Http source). " +
-                    "If HttpClient instrumentation drift adds a wrapper span, this lookup may need to broaden.");
+            Activity httpClientSpan = SelectSingle(
+                capturedSpans.Where(a => a.Source.Name == "System.Net.Http").ToList(),
+                "outbound HttpClient span (System.Net.Http source)");
 
             httpSpanId = httpClientSpan.SpanId.ToString();
             string expectedTraceId = cliRootSpan.TraceId.ToString();
@@ -146,15 +139,13 @@ public sealed class AspireEndToEndTraceTests
                 $"Expected at least one AspNetCore server span and one memories.search span for trace {expectedTraceId}. " +
                 "If fewer were captured, the server-side activity breadcrumb path is broken.");
 
-            CapturedServerActivity aspNetCoreSpan = matchingServerActivities.SingleOrDefault(IsAspNetCoreServerSpan)
-                ?? throw new ShouldAssertException(
-                    $"Expected one AspNetCore server span for trace {expectedTraceId}; got " +
-                    $"{matchingServerActivities.Count(a => IsAspNetCoreServerSpan(a))}.");
+            CapturedServerActivity aspNetCoreSpan = SelectSingle(
+                matchingServerActivities.Where(IsAspNetCoreServerSpan).ToList(),
+                $"AspNetCore server span for trace {expectedTraceId}");
 
-            CapturedServerActivity searchSpan = matchingServerActivities.SingleOrDefault(IsSearchActivity)
-                ?? throw new ShouldAssertException(
-                    $"Expected one {MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}; got " +
-                    $"{matchingServerActivities.Count(a => IsSearchActivity(a))}.");
+            CapturedServerActivity searchSpan = SelectSingle(
+                matchingServerActivities.Where(IsSearchActivity).ToList(),
+                $"{MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}");
 
             List<TraceNode> relevantNodes =
             [
@@ -195,9 +186,8 @@ public sealed class AspireEndToEndTraceTests
     {
         // AC #4: cross-reference the actual captured server-side memories.search span against the audit
         // event emitted for that same request.
-        string tenantId = $"tenant-telemetry-cross-ref-{Guid.NewGuid():N}";
+        string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-telemetry-cross-ref-{Guid.NewGuid():N}");
         string query = $"cross-ref-probe-{Guid.NewGuid():N}";
-        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         await using CliTracingHarness harness = CliTracingHarness.Create();
         int logStartIndex = _fixture.LogEntryCount;
@@ -216,9 +206,9 @@ public sealed class AspireEndToEndTraceTests
 
         try
         {
-            Activity cliRootSpan = harness.Collector.Snapshot().SingleOrDefault(a =>
-                string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal))
-                ?? throw new ShouldAssertException("Expected a CLI root span but captured none.");
+            Activity cliRootSpan = SelectSingle(
+                harness.Collector.Snapshot().Where(a => string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal)).ToList(),
+                $"CLI root span ({MemoriesActivitySource.CliInvoke})");
             string expectedTraceId = cliRootSpan.TraceId.ToString();
 
             TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
@@ -233,11 +223,11 @@ public sealed class AspireEndToEndTraceTests
                     string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
                     && IsSearchActivity(activity));
 
-            CapturedServerActivity searchActivity = serverActivities.SingleOrDefault(activity =>
+            CapturedServerActivity searchActivity = SelectSingle(
+                serverActivities.Where(activity =>
                     string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
-                    && IsSearchActivity(activity))
-                ?? throw new ShouldAssertException(
-                    $"Expected one captured server-side {MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}.");
+                    && IsSearchActivity(activity)).ToList(),
+                $"server-side {MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}");
 
             IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
                 _fixture,
@@ -249,11 +239,11 @@ public sealed class AspireEndToEndTraceTests
                     string.Equals(captured.AuditEvent.OperationType, SearchOperationType, StringComparison.Ordinal)
                     && string.Equals(captured.AuditEvent.TraceId, expectedTraceId, StringComparison.Ordinal));
 
-            CapturedAuditEvent serverAudit = events.SingleOrDefault(captured =>
+            CapturedAuditEvent serverAudit = SelectSingle(
+                events.Where(captured =>
                     string.Equals(captured.AuditEvent.OperationType, SearchOperationType, StringComparison.Ordinal)
-                    && string.Equals(captured.AuditEvent.TraceId, expectedTraceId, StringComparison.Ordinal))
-                ?? throw new ShouldAssertException(
-                    $"Expected one search audit event for trace {expectedTraceId}; got {events.Count} candidate events.");
+                    && string.Equals(captured.AuditEvent.TraceId, expectedTraceId, StringComparison.Ordinal)).ToList(),
+                $"search audit event for trace {expectedTraceId}");
 
             serverAudit.AuditEvent.TraceId.ShouldBe(searchActivity.TraceId);
             serverAudit.AuditEvent.SpanId.ShouldBe(searchActivity.SpanId);
@@ -265,33 +255,6 @@ public sealed class AspireEndToEndTraceTests
             DumpDiagnostics(harness, logStartIndex, spanId: string.Empty, cliStdout, cliStderr);
             throw;
         }
-    }
-
-    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
-    {
-        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/tenants",
-            new TenantProvisioningInput(tenantId, displayName),
-            MemoriesJsonContext.Options);
-        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
-
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
-            if (tenantResponse.StatusCode == HttpStatusCode.OK)
-            {
-                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
-                if (tenant?.Status == TenantStatus.Active)
-                {
-                    return;
-                }
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-        }
-
-        false.ShouldBeTrue($"Tenant '{tenantId}' did not reach Active within {ActivationTimeout}.");
     }
 
     private async Task<CliInvocationResult> InvokeCliSearchAsync(string tenantId, string query)
@@ -321,6 +284,32 @@ public sealed class AspireEndToEndTraceTests
         return new CliInvocationResult(exitCode, stdout.ToString(), stderr.ToString());
     }
 
+    /// <summary>
+    /// Returns the single element of <paramref name="candidates"/>, throwing a Shouldly-shaped diagnostic when
+    /// the set is empty or contains more than one match. Replaces <c>SingleOrDefault(...) ?? throw</c> patterns
+    /// so the failure message names the expected element and includes the actual count — where
+    /// <c>SingleOrDefault</c> throws a raw <see cref="InvalidOperationException"/> on multiple matches and loses
+    /// the Shouldly diagnostic surface.
+    /// </summary>
+    private static T SelectSingle<T>(IReadOnlyList<T> candidates, string expectationLabel)
+    {
+        if (candidates.Count == 0)
+        {
+            throw new ShouldAssertException(
+                $"Expected exactly one {expectationLabel}, but captured none. " +
+                "See span / audit diagnostics dump for the full list of observed entries.");
+        }
+
+        if (candidates.Count > 1)
+        {
+            throw new ShouldAssertException(
+                $"Expected exactly one {expectationLabel}, but captured {candidates.Count} matching entries. " +
+                "Instrumentation drift may have introduced duplicates — see diagnostics dump.");
+        }
+
+        return candidates[0];
+    }
+
     private static void AssertParentChainReachesCliRoot(
         TraceNode start,
         TraceNode expectedRootSpan,
@@ -330,6 +319,19 @@ public sealed class AspireEndToEndTraceTests
         //   (i)   cycle detection — visited set fails any chain that revisits a span id
         //   (ii)  max-depth ceiling = 16 — chains longer than 16 hops fail with a diagnostic
         //   (iii) root-termination — chain MUST terminate at the CLI root span (null-parent + name == memories.cli.invoke)
+        //
+        // Precondition: the expected CLI root span MUST be present in the captured node set. Without this check,
+        // a missed ForceFlushAsync on the root span would turn the HttpClient span into the apparent orphan and
+        // produce a misleading diagnostic ("HttpClient has no parent"). Verifying presence up-front means the
+        // failure clearly attributes the problem to capture wiring rather than to trace topology.
+        if (!nodesBySpanId.ContainsKey(expectedRootSpan.SpanId))
+        {
+            throw new ShouldAssertException(
+                $"CLI root span ({expectedRootSpan.OperationName}, span={expectedRootSpan.SpanId}) is missing from " +
+                "the captured node set. This typically indicates a missed ForceFlushAsync on the tracer provider " +
+                "or a CLI-side capture-wiring regression — fix the flush, not the traversal.");
+        }
+
         const int MaxDepth = 16;
         HashSet<string> visited = [];
         TraceNode? current = start;
@@ -424,7 +426,7 @@ public sealed class AspireEndToEndTraceTests
             activity.Kind);
 
     private static string? NormalizeSpanId(string? value)
-        => string.IsNullOrWhiteSpace(value) || value == "0000000000000000"
+        => string.IsNullOrWhiteSpace(value) || value == InMemoryTelemetryEnvironment.EmptySpanIdHex
             ? null
             : value;
 

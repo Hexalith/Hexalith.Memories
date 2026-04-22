@@ -64,18 +64,6 @@ internal sealed class CliTracingHarness : IAsyncDisposable
         return new CliTracingHarness(tracerProvider, collector);
     }
 
-    /// <summary>Starts a CLI root activity (<c>memories.cli.invoke</c>) that becomes the parent of
-    /// any HttpClient spans emitted under it. Tests pass the disposable through their <c>using</c>
-    /// scope so the activity stops + flushes after the request completes.</summary>
-    /// <param name="commandName">CLI command name tag (e.g. <c>"search"</c>).</param>
-    /// <returns>The started activity, or <c>null</c> if no listener attached (should not happen with this harness).</returns>
-    public Activity? StartCliRootActivity(string commandName)
-    {
-        Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CliInvoke);
-        activity?.SetTag(MemoriesActivitySource.TagCommand, commandName);
-        return activity;
-    }
-
     /// <summary>Force-flushes both the tracer provider so all in-flight activities reach the
     /// collector before assertions read it (Risk 10 mitigation for the activity side).</summary>
     /// <param name="timeout">Flush timeout.</param>

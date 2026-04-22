@@ -132,6 +132,7 @@ public static class Extensions
     /// </summary>
     private sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
     {
+        private const string AspNetCoreSourceName = "Microsoft.AspNetCore";
         private readonly ICollection<Activity>? _target;
 
         public IntegrationActivityProcessor(ICollection<Activity>? target) => _target = target;
@@ -141,9 +142,22 @@ public static class Extensions
             ArgumentNullException.ThrowIfNull(data);
             _target?.Add(data);
 
-            if (ShouldEmitActivityBreadcrumb(data))
+            if (!ShouldEmitActivityBreadcrumb(data))
+            {
+                return;
+            }
+
+            // Serialization or stderr-write failure must NOT propagate into OpenTelemetry's
+            // processor pipeline, or it silently kills subsequent span emission. The breadcrumb
+            // is test-only diagnostic output; swallow + log a one-line marker on failure.
+            try
             {
                 Console.Error.WriteLine(FormatActivityBreadcrumb(data));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"{InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix}<breadcrumb-error:{ex.GetType().Name}>");
             }
         }
 
@@ -161,12 +175,12 @@ public static class Extensions
         private static bool ShouldEmitActivityBreadcrumb(Activity data)
             => string.Equals(data.Source.Name, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
                 || (data.Kind == ActivityKind.Server
-                    && data.Source.Name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(data.Source.Name, AspNetCoreSourceName, StringComparison.Ordinal));
 
         private static string? NormalizeSpanId(ActivitySpanId spanId)
         {
             string value = spanId.ToString();
-            return value == "0000000000000000" ? null : value;
+            return value == InMemoryTelemetryEnvironment.EmptySpanIdHex ? null : value;
         }
     }
 

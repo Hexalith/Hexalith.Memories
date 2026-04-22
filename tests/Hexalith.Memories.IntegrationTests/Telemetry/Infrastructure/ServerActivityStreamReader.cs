@@ -35,8 +35,9 @@ internal static class ServerActivityStreamReader
         TimeSpan pollInterval = TimeSpan.FromMilliseconds(200);
 
         IReadOnlyList<CapturedServerActivity> latest = [];
-        while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             latest = ScanCapturedLogs(fixture, logStartIndex);
             int matchingCount = matchPredicate is null
                 ? latest.Count
@@ -50,7 +51,12 @@ internal static class ServerActivityStreamReader
             {
                 await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Caller-initiated cancellation distinguishable from deadline elapse: rethrow.
+                throw;
+            }
+            catch (OperationCanceledException)
             {
                 break;
             }

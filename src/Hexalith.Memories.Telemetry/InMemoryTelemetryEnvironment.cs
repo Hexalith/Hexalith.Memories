@@ -26,6 +26,12 @@ public static class InMemoryTelemetryEnvironment
     /// </summary>
     public const string ActivityBreadcrumbPrefix = "__hexalith_activity__";
 
+    /// <summary>The canonical string representation of an empty 8-byte <see cref="System.Diagnostics.ActivitySpanId"/>
+    /// ("0000000000000000"). Tests and telemetry helpers use this constant instead of duplicating the
+    /// hex sentinel string — <see cref="System.Diagnostics.ActivitySpanId"/> has no public empty-value
+    /// comparison, so string comparison against this constant is the load-bearing check.</summary>
+    public const string EmptySpanIdHex = "0000000000000000";
+
     /// <summary>Returns <c>true</c> when the supplied value exactly equals <see cref="EnabledValue"/>.</summary>
     /// <param name="value">Raw env-var value (may be null or empty).</param>
     /// <returns><c>true</c> if exactly <c>"1"</c>; <c>false</c> otherwise (including null / empty / variants like "true").</returns>
