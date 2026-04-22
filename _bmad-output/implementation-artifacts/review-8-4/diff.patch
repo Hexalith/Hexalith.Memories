@@ -1,0 +1,3052 @@
+diff --git a/.github/workflows/nightly.yml b/.github/workflows/nightly.yml
+new file mode 100644
+index 0000000..b7710f7
+--- /dev/null
++++ b/.github/workflows/nightly.yml
+@@ -0,0 +1,68 @@
++name: Nightly Integration Tests
++
++"on":
++  workflow_dispatch:
++  schedule:
++    - cron: '0 3 * * *'
++
++permissions:
++  contents: read
++
++jobs:
++  integration-fast:
++    name: Tier 3 integration (fast lane)
++    runs-on: ubuntu-latest
++    timeout-minutes: 30
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Setup .NET SDK
++        uses: actions/setup-dotnet@v4
++        with:
++          global-json-file: global.json
++
++      - name: Restore solution
++        run: dotnet restore Hexalith.Memories.slnx
++
++      - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow)
++        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow"
++
++      - name: Upload test artifacts
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: nightly-integration-fast-artifacts
++          path: |
++            **/TestResults/**
++            artifacts/**
++          if-no-files-found: ignore
++
++  integration-slow:
++    name: Tier 3 integration (slow lane)
++    runs-on: ubuntu-latest
++    timeout-minutes: 60
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Setup .NET SDK
++        uses: actions/setup-dotnet@v4
++        with:
++          global-json-file: global.json
++
++      - name: Restore solution
++        run: dotnet restore Hexalith.Memories.slnx
++
++      - name: Run Tier 3 integration tests (slow lane only)
++        run: bash ./tools/test.sh --filter "Category=IntegrationSlow"
++
++      - name: Upload test artifacts
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: nightly-integration-slow-artifacts
++          path: |
++            **/TestResults/**
++            artifacts/**
++          if-no-files-found: ignore
+diff --git a/docs/dev/telemetry.md b/docs/dev/telemetry.md
+index d49559e..c6561e3 100644
+--- a/docs/dev/telemetry.md
++++ b/docs/dev/telemetry.md
+@@ -14,13 +14,13 @@ per-tenant custom metrics (NFR29), and per-tenant audit events for every search
+ 
+ ## What you need to see these
+ 
+-| Environment | Tool | Endpoint / config |
+-|---|---|---|
+-| Local dev (Aspire) | Aspire Dashboard | `http://localhost:18888` (UI), `http://localhost:18889` (OTLP) |
+-| Production — Jaeger | Jaeger OTLP collector | `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317` |
+-| Production — Tempo | Grafana Tempo | `OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317` |
+-| Production — Datadog | Datadog Agent | `OTEL_EXPORTER_OTLP_ENDPOINT=http://dd-agent:4318` |
+-| Production — Honeycomb | Honeycomb ingest | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io:443` |
++| Environment            | Tool                  | Endpoint / config                                              |
++| ---------------------- | --------------------- | -------------------------------------------------------------- |
++| Local dev (Aspire)     | Aspire Dashboard      | `http://localhost:18888` (UI), `http://localhost:18889` (OTLP) |
++| Production — Jaeger    | Jaeger OTLP collector | `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317`               |
++| Production — Tempo     | Grafana Tempo         | `OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317`                |
++| Production — Datadog   | Datadog Agent         | `OTEL_EXPORTER_OTLP_ENDPOINT=http://dd-agent:4318`             |
++| Production — Honeycomb | Honeycomb ingest      | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io:443`     |
+ 
+ CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
+ `memories` subcommand to export CLI spans.
+@@ -36,13 +36,13 @@ server). Do NOT create per-request sources.
+ 
+ ### Activity names
+ 
+-| Activity | Emitted by | Tags |
+-|---|---|---|
+-| `memories.search` | `GET /api/search` | `memories.tenant_id`, `memories.operation`, `memories.axis` |
+-| `memories.ingest` | `POST /api/ingest` (+`/url`, `/directory`) | `memories.tenant_id`, `memories.operation`, `memories.source_type` |
+-| `memories.traverse` | `GET /api/tenants/{id}/traverse` | `memories.tenant_id`, `memories.operation` |
+-| `memories.case-access` | `GET /api/.../memory-units/{id}` | `memories.tenant_id`, `memories.case_id`, `memories.memory_unit_id` |
+-| `memories.cli.invoke` | CLI root span (opt-in) | `memories.command` |
++| Activity               | Emitted by                                 | Tags                                                                |
++| ---------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
++| `memories.search`      | `GET /api/search`                          | `memories.tenant_id`, `memories.operation`, `memories.axis`         |
++| `memories.ingest`      | `POST /api/ingest` (+`/url`, `/directory`) | `memories.tenant_id`, `memories.operation`, `memories.source_type`  |
++| `memories.traverse`    | `GET /api/tenants/{id}/traverse`           | `memories.tenant_id`, `memories.operation`                          |
++| `memories.case-access` | `GET /api/.../memory-units/{id}`           | `memories.tenant_id`, `memories.case_id`, `memories.memory_unit_id` |
++| `memories.cli.invoke`  | CLI root span (opt-in)                     | `memories.command`                                                  |
+ 
+ ---
+ 
+@@ -50,14 +50,14 @@ server). Do NOT create per-request sources.
+ 
+ Single meter: **`Hexalith.Memories`** (declared by `MemoriesMeter.Name`).
+ 
+-| Metric | Type | Unit | Tag keys | Description |
+-|---|---|---|---|---|
+-| `memories.ingestion.documents` | Counter&lt;long&gt; | `{documents}` | `tenant_id` | Total documents ingested successfully |
+-| `memories.ingestion.failures` | Counter&lt;long&gt; | `{documents}` | `tenant_id`, `error_code` | Total ingestion scheduling failures |
+-| `memories.search.requests` | Counter&lt;long&gt; | `{requests}` | `tenant_id`, `axis` | Total search requests per resolved axis |
+-| `memories.search.duration` | Histogram&lt;double&gt; | `ms` | `tenant_id`, `axis` | Request latency for the resolved axis |
+-| `memories.index.size` | ObservableGauge&lt;long&gt; | `{documents}` | `tenant_id`, `axis` | Per-tenant per-axis index size |
+-| `memories.pipeline.queue_depth` | ObservableGauge&lt;int&gt; | `{items}` | `tenant_id` | Per-tenant ingestion queue depth |
++| Metric                          | Type                        | Unit          | Tag keys                  | Description                             |
++| ------------------------------- | --------------------------- | ------------- | ------------------------- | --------------------------------------- |
++| `memories.ingestion.documents`  | Counter&lt;long&gt;         | `{documents}` | `tenant_id`               | Total documents ingested successfully   |
++| `memories.ingestion.failures`   | Counter&lt;long&gt;         | `{documents}` | `tenant_id`, `error_code` | Total ingestion scheduling failures     |
++| `memories.search.requests`      | Counter&lt;long&gt;         | `{requests}`  | `tenant_id`, `axis`       | Total search requests per resolved axis |
++| `memories.search.duration`      | Histogram&lt;double&gt;     | `ms`          | `tenant_id`, `axis`       | Request latency for the resolved axis   |
++| `memories.index.size`           | ObservableGauge&lt;long&gt; | `{documents}` | `tenant_id`, `axis`       | Per-tenant per-axis index size          |
++| `memories.pipeline.queue_depth` | ObservableGauge&lt;int&gt;  | `{items}`     | `tenant_id`               | Per-tenant ingestion queue depth        |
+ 
+ ### Tag-key policy
+ 
+@@ -65,6 +65,7 @@ Single meter: **`Hexalith.Memories`** (declared by `MemoriesMeter.Name`).
+ Case id goes in the audit log (free-form, bounded by request rate); user identity likewise.
+ 
+ Adding a new tag key requires:
++
+ 1. Updating `MemoriesMeter.MetricTagKeyPolicy` constant.
+ 2. Updating `MemoriesMetricsTests.AllRegisteredMetricsHaveExpectedTagKeys`.
+ 3. Updating this document.
+@@ -85,20 +86,20 @@ EventId bank: **7500–7599** (success 7501–7505, error 7511–7515).
+ 
+ ```jsonc
+ {
+-  "schemaVersion": 1,           // bump only on breaking schema changes
+-  "eventId": 7501,              // 7500-7599 bank
+-  "timestamp": "2026-04-17T12:34:56.789Z",
+-  "tenantId": "acme",           // or "__rejected__" if guard rejected
+-  "operationType": "search",    // search | ingest | traverse | case-access | delete
+-  "caseId": null,
+-  "user": "anonymous",          // ADR-7.5-004 resolution rules
+-  "queryParams": { "query": "...", "axis": "hybrid", "maxResults": 10 },
+-  "resultCount": 3,             // null for write/schedule operations
+-  "durationMs": 42,
+-  "outcome": "ok",              // ok | partial | error
+-  "errorCode": null,
+-  "traceId": "<W3C trace id>",
+-  "spanId": "<W3C span id>"
++    "schemaVersion": 1, // bump only on breaking schema changes
++    "eventId": 7501, // 7500-7599 bank
++    "timestamp": "2026-04-17T12:34:56.789Z",
++    "tenantId": "acme", // or "__rejected__" if guard rejected
++    "operationType": "search", // search | ingest | traverse | case-access | delete
++    "caseId": null,
++    "user": "anonymous", // ADR-7.5-004 resolution rules
++    "queryParams": { "query": "...", "axis": "hybrid", "maxResults": 10 },
++    "resultCount": 3, // null for write/schedule operations
++    "durationMs": 42,
++    "outcome": "ok", // ok | partial | error
++    "errorCode": null,
++    "traceId": "<W3C trace id>",
++    "spanId": "<W3C span id>",
+ }
+ ```
+ 
+@@ -129,20 +130,20 @@ Example `appsettings.Production.json`:
+ 
+ ```jsonc
+ {
+-  "Logging": {
+-    "LogLevel": {
+-      "Default": "Information",
+-      "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "Information"
++    "Logging": {
++        "LogLevel": {
++            "Default": "Information",
++            "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "Information",
++        },
++        "Console": {
++            "LogLevel": {
++                "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "None",
++            },
++        },
++        // Direct the audit category to a dedicated JSON file sink via your log pipeline of choice
++        // (Serilog, Seq, filebeat, fluentd). The structured JSON produced by AddJsonConsole is the
++        // canonical form; route it per your org policy.
+     },
+-    "Console": {
+-      "LogLevel": {
+-        "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "None"
+-      }
+-    }
+-    // Direct the audit category to a dedicated JSON file sink via your log pipeline of choice
+-    // (Serilog, Seq, filebeat, fluentd). The structured JSON produced by AddJsonConsole is the
+-    // canonical form; route it per your org policy.
+-  }
+ }
+ ```
+ 
+@@ -184,18 +185,18 @@ If tenant count grows beyond ~100:
+ 1. **Drop high-cardinality dimensions at the OTLP collector.** Example (OpenTelemetry Collector
+    `processors/filter`):
+ 
+-   ```yaml
+-   processors:
+-     filter/drop_tenant_axis_metrics:
+-       metrics:
+-         include:
+-           match_type: regexp
+-           metric_names: [ "memories\\.search\\..*" ]
+-         exclude:
+-           resource_attributes:
+-             - key: service.name
+-               value: hexalith.memories
+-   ```
++    ```yaml
++    processors:
++        filter/drop_tenant_axis_metrics:
++            metrics:
++                include:
++                    match_type: regexp
++                    metric_names: ["memories\\.search\\..*"]
++                exclude:
++                    resource_attributes:
++                        - key: service.name
++                          value: hexalith.memories
++    ```
+ 
+ 2. **Sample traces aggressively.** Per-activity sampling policies at the collector.
+ 3. **Move to a pull-based metrics pipeline** (Prometheus) with recording rules that aggregate away
+@@ -229,12 +230,12 @@ their observability stack.
+ 
+ Back-of-envelope (MVP assumptions):
+ 
+-| Parameter | Value |
+-|---|---|
+-| Event size | ~300 bytes (compact JSON) |
+-| Search rate per tenant | 10 req/s (high end) |
+-| Active tenants per node | 10 |
+-| Nodes | 1 (single-node dev); scales with tenant count |
++| Parameter               | Value                                         |
++| ----------------------- | --------------------------------------------- |
++| Event size              | ~300 bytes (compact JSON)                     |
++| Search rate per tenant  | 10 req/s (high end)                           |
++| Active tenants per node | 10                                            |
++| Nodes                   | 1 (single-node dev); scales with tenant count |
+ 
+ Per-node volume: 10 × 10 × 300 B = **30 KB/s** audit log throughput ≈ 2.5 GB/day per node.
+ `AddJsonConsole` is async in the default `ILogger` pipeline — does not block the request path. Log
+@@ -256,21 +257,33 @@ JSON shape:
+ 
+ ```json
+ {
+-  "schemaVersion": 1,
+-  "command": "status telemetry",
+-  "data": {
+-    "tenantId": "acme",
+-    "asOf": "2026-04-17T...",
+-    "indexSizes": { "rediSearchKeyCount": 1234, "redisVectorKeyCount": 1230, "falkorDbNodeCount": 5000 },
+-    "indexHealth": { "rediSearch": "Ready", "redisVector": "Ready", "falkorDb": "Ready" },
+-    "searchMetrics": {
+-      "syntactic": { "requestsLast5m": 120, "errorsLast5m": 0 },
+-      "semantic":  { "requestsLast5m": 45,  "errorsLast5m": 0 },
+-      "graph":     { "requestsLast5m": 10,  "errorsLast5m": 0 },
+-      "hybrid":    { "requestsLast5m": 30,  "errorsLast5m": 0 }
+-    },
+-    "ingestionMetrics": { "documentsLast5m": 40, "failuresLast5m": 0, "queueDepth": 0 }
+-  }
++    "schemaVersion": 1,
++    "command": "status telemetry",
++    "data": {
++        "tenantId": "acme",
++        "asOf": "2026-04-17T...",
++        "indexSizes": {
++            "rediSearchKeyCount": 1234,
++            "redisVectorKeyCount": 1230,
++            "falkorDbNodeCount": 5000
++        },
++        "indexHealth": {
++            "rediSearch": "Ready",
++            "redisVector": "Ready",
++            "falkorDb": "Ready"
++        },
++        "searchMetrics": {
++            "syntactic": { "requestsLast5m": 120, "errorsLast5m": 0 },
++            "semantic": { "requestsLast5m": 45, "errorsLast5m": 0 },
++            "graph": { "requestsLast5m": 10, "errorsLast5m": 0 },
++            "hybrid": { "requestsLast5m": 30, "errorsLast5m": 0 }
++        },
++        "ingestionMetrics": {
++            "documentsLast5m": 40,
++            "failuresLast5m": 0,
++            "queueDepth": 0
++        }
++    }
+ }
+ ```
+ 
+@@ -296,6 +309,167 @@ NFR28 is validated in 7.5 for:
+ 
+ ---
+ 
++## End-to-end trace verification (Story 8.4 — Tier-3 Aspire integration tests)
++
++Story 8.4 closes Story 7.5 Tasks 11.3 + 11.4 with two `[Trait("Category", "Integration")]` test
++classes that prove the NFR28 HTTP-hop gate (W3C `traceparent` propagation across CLI → Server) and
++the FR67 authoritative gate (audit events surface on the Server container's stdout) on the deployed
++stack.
++
++### Tier split
++
++| Tier                             | Runs on                    | Gates                                                                                                                                                                                                                                                                              | Story                       |
++| -------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
++| Tier-1 (unit)                    | Every PR                   | Substrate correctness — `MemoriesActivitySource`, `MemoriesMeter`, `EndpointTelemetryScope`, `RollingCounterStore`, `AccessTelemetryLog`, `OpenTelemetryRegistrationTests` (incl. Story 8.4's env-var-branch happy path + Risk 7 parse-strictness theory + AC #5 regression guard) | 7.5 Tasks 8-10 + 8.4 Task 1 |
++| Tier-2 (`WebApplicationFactory`) | Every PR                   | In-process trace + audit invariants — `TracePropagationNoDockerTests`, `AuditLogStreamTests`, `TelemetrySummaryEndpointTests`, `TelemetryHealthExclusionTests`                                                                                                                     | 7.5 Tasks 11.1, 11.2        |
++| Tier-3 (Aspire fixture, Docker)  | Merge-queue / nightly lane | End-to-end NFR28 HTTP-hop gate + FR67 audit-stream gate against the deployed stack                                                                                                                                                                                                 | **8.4 (this story)**        |
++
++### How to run locally
++
++Tier-3 tests need Docker running (the Aspire fixture spins up Redis + FalkorDB + the DAPR sidecar +
++the Memories Server). With Docker available:
++
++```bash
++# Tier-3 only (Aspire telemetry tests + the rest of the Aspire-backed integration suite)
++dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj \
++    --filter "Category=Integration"
++
++# Just the new Story 8.4 telemetry classes (faster iteration)
++dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj \
++    --filter "FullyQualifiedName~AspireEndToEndTraceTests|FullyQualifiedName~AuditLogStreamIntegrationTests"
++```
++
++The fixture cold-boot is ~30–60s; once boot completes, both 8.4 test classes share the same Aspire
++environment via `[Collection("AspireIngestionPipeline")]` so the boot cost is amortized across all
++methods. For per-PR runs, exclude the Tier-3 lane: `--filter "Category!=Integration"`.
++
++### What each captured signal proves
++
++- **CLI in-memory span collector (`InMemorySpanCollector`)** — captures the CLI root span
++  (`memories.cli.invoke`) and the outbound `System.Net.Http.HttpRequestOut` span. Proves the CLI
++  side of the W3C trace context (root TraceId + HttpClient instrumentation injecting `traceparent`).
++- **Server activity breadcrumb (`ServerActivityStreamReader`)** — parses the test-only
++  `__hexalith_activity__{...}` stderr breadcrumbs emitted for relevant server spans when
++  `HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1`. Proves the deployed server process created the
++  AspNetCore inbound span and the `memories.search` activity for the same trace the CLI started.
++- **Server stdout audit log line (`AuditEventStreamReader`)** — parses Aspire-captured Server
++  stdout JSON and extracts the `AccessTelemetryEvent` ToString payload (AddJsonConsole does not
++  natively destructure record-typed `{@AuditEvent}` placeholders to JSON, so the reader extracts
++  fields from the formatted message via regex). Proves FR67 — the Server's audit emission survives
++  the deployed pipeline and reaches stdout where an operator's SIEM / log aggregator can consume it.
++- **Trace/span cross-reference** — the Server-side `memories.search` activity and the correlated
++  audit event MUST share the same `TraceId` and `SpanId`. This is the W3C HTTP-hop propagation +
++  correlation invariant (NFR28 HTTP-hop gate per Story 8.4 AC #8 — the DAPR service-invocation hop
++  is deferred to Epic 10's MCP story).
++
++### Failure interpretation cheatsheet
++
++- **Tier-1 (unit) failure** → substrate regression (activity source rename, meter rename, EventId
++  bank drift, env-var contract loosening). Fix at the substrate; never make Tier-3 paper over it.
++- **Tier-2 (`WebApplicationFactory`) failure** → in-process trace or audit emission regression
++  (e.g. `EndpointTelemetryScope` dispose order, validation-fail audit emission missing, audit log
++  category mis-spelled). Fix at the endpoint wrapper.
++- **Tier-3 `AspireEndToEndTraceTests` failure** → either OTLP / HttpClient instrumentation broke
++  on the CLI side (no in-memory spans captured), OR the Server stopped propagating the W3C
++  traceparent header (the captured server-side AspNetCore / `memories.search` breadcrumbs carry a
++  different TraceId), OR Aspire stopped surfacing Server stderr/stdout into the AppHost log
++  pipeline (no activity breadcrumbs or audit lines arrive within the configured timeout — see
++  `TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS`).
++- **Tier-3 `AuditLogStreamIntegrationTests` failure** → audit-event emission broke at the deployed
++  stack (Server's `AddJsonConsole` mis-configured, the `[LoggerMessage]` source-generated emitter
++  removed, EventId outside the 7501-7599 bank, or the `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory`
++  category renamed without updating `AuditEventStreamReader`'s suffix filter).
++
++### CI configuration knobs
++
++- `TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS` (default `10`) — overrides the per-test polling timeout
++  for `AuditEventStreamReader.ReadAsync`. Bump on slow merge-queue runners; lower for local
++  iteration.
++- `HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1` — activates the env-var branch in
++  `ServiceDefaults.AddOpenTelemetryExporters` that appends a `CollectingActivityProcessor`
++  resolving an optional `IActivityCollector` from DI and emits server-side activity breadcrumbs for
++  the telemetry integration tests. Production deployments leave this unset; AC #5 regression guard
++  test pins that "unset" means zero extra in-memory/test-only telemetry processors.
++
++---
++
++## ADR-8.4-001 — CI lane split (Tier-2 per-PR vs Tier-3 merge-queue)
++
++**Status:** Accepted (2026-04-20). **Decision:** Story 8.4's two `[Trait("Category", "Integration")]`
++test classes run on the **merge-queue / release lane**, NOT the per-PR lane. **Rationale:** running
++two Tier-3 classes on every PR roughly doubles CI minutes (Aspire cold-boot is ~30–60s; the existing
++~40 Aspire-backed integration tests already incur this cost on the merge-queue lane only, per the
++existing `Category=Integration` filter convention from Stories 7.1–7.4). The Tier-2 variants
++(`TracePropagationNoDockerTests`, `AuditLogStreamTests`, `TelemetrySummaryEndpointTests`) gate every
++PR and cover ~80% of what can break without Docker; Tier-3 gates release promotion.
++
++**Consequences:** A regression in the deployed-stack-only path (e.g. AddJsonConsole behavior under
++Aspire orchestration, container stdout buffering) lands in main between merge-queue runs and the
++PR author who introduced it doesn't see immediate CI feedback. **Mitigation:** the Tier-2 coverage
++catches the substrate-level regressions; the Tier-3 lane is a **required blocking check** on the
++merge-queue (Task 4.4 — see Epic 11 CI/CD when it lands). Until Epic 11's merge-queue workflow ships,
++a `nightly.yml` bridge workflow MUST run Tier-3 once per day (DoD item 8 from Story 8.4); the
++nightly bridge is itself the blocking gate when Epic 11 hasn't landed.
++
++**Note (2026-04-21):** Epic 11 (CI/CD pipeline) is still in `backlog`, so the merge-queue workflow +
++protected-branch required-check configuration have not landed yet. The bridge is now committed as
++`.github/workflows/nightly.yml`, which runs `bash ./tools/test.sh --filter "Category=Integration"`
++on a nightly schedule and via manual dispatch. When Epic 11 lands, update this ADR with the exact
++merge-queue workflow filename + required-check rule and either retire or repurpose the nightly bridge.
++
++---
++
++## ADR-8.4-002 — Test-only `InMemorySpanCollector` placement (option B)
++
++**Status:** Accepted (2026-04-20, Winston party-mode review). **Decision:** the
++`InMemorySpanCollector` implementation lives at
++`tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs` (NOT
++in `src/Hexalith.Memories.Telemetry/`). The interface `IActivityCollector` lives in the production
++`Hexalith.Memories.Telemetry` assembly so `ServiceDefaults.AddOpenTelemetryExporters` can resolve it
++from DI without taking a test-only dependency, but the concrete sink is test-only.
++
++**Rationale:** a production-visible static mutable activity collector in a consumer-facing package
++is a foot-gun for plugin authors across the Hexalith ecosystem, even when gated with
++`[Experimental("HXL008")]` + `[EditorBrowsable(Never)]`. Test-only placement keeps the blast radius
++bounded.
++
++**Addendum (Story 8.4 implementation):** the Tier-3 `AspireIngestionPipelineFixture` runs the
++Memories Server resource as a **separate process** (Aspire 13's default project-resource execution
++model). Cross-process DI sharing of `IActivityCollector` is therefore architecturally infeasible —
++the original Task 1.1.6 "AsyncLocal vs static accessor" pivot does not apply. The Tier-3 tests use
++a **hybrid capture model**: CLI-side spans captured in-test-process via `IActivityCollector`;
++Server-side activity evidence proxied through the audit log's `TraceId`/`SpanId` fields (which
++`AccessTelemetryLog.CreateEvent` populates from `Activity.Current` on the Server side at audit
++emission time). The Task 1.1 production wiring still ships; it's used CLI-side today and is ready
++for any future in-process Server hosting variant.
++
++---
++
++## ADR-8.4-003 — Audit-event capture path per test
++
++**Status:** Accepted (2026-04-20, Rev 0.5 elicitation pass) — implemented per the cross-process
++adaptation. **Decision:** the audit event capture path is uniform under the cross-process model:
++the Server's stdout JSON line is the single source of truth for both `AspireEndToEndTraceTests`
++(AC #4 cross-reference between activity and audit event) and `AuditLogStreamIntegrationTests`
++(AC #3 FR67 gate). The reader (`AuditEventStreamReader`) parses Aspire-captured stdout lines and
++extracts `AccessTelemetryEvent` fields from the C# record's `ToString()` output (AddJsonConsole
++doesn't natively destructure record-typed `{@AuditEvent}` placeholders to JSON in
++`Microsoft.Extensions.Logging` versions current at story merge time).
++
++**Why one path, not two:** the original Rev 0.5 design split capture into "in-memory log exporter
++(in-process, deterministic)" for AC #4 vs "container stdout via Aspire log stream" for AC #3. With
++the Server running as a separate process, the in-memory log exporter cannot capture Server log
++records — they emit in the Server's process and are inaccessible from the test. So both ACs go
++through the stdout reader. The reader is fast enough (Tier-3 audit tests run in 200-300ms each)
++that the original "use stdout for the slow case, in-memory for the fast case" optimization does
++not apply.
++
++**Future re-evaluation:** if Aspire / .NET ships an in-process project-resource execution mode (or
++Microsoft.Extensions.Logging adds native record-destructuring to AddJsonConsole), revisit this ADR
++and consider re-splitting the capture path per the original Rev 0.5 framing.
++
++---
++
+ ## Cross-references
+ 
+ - [cli-config.md](cli-config.md) — `--telemetry` flag + `HEXALITH_MEMORIES_OTEL_ENDPOINT` env var.
+@@ -311,3 +485,7 @@ NFR28 is validated in 7.5 for:
+   (Story 8.2). The five consistency endpoints are NOT in the audited scope (the four audited
+   operation types are search / ingest / traverse / case-access); a regression guard in
+   `ConsistencyEndpointTests` pins this invariant.
++- [export.md](export.md) — case and tenant data export (Story 8.3). Export endpoints are
++  deliberately NOT in the `AccessTelemetryEvent` audited scope. A follow-up story will ship a
++  dedicated `ExportTelemetryEvent` bank (EventId 8320-8329 reserved) so operators get a
++  per-export audit trail.
+diff --git a/src/Hexalith.Memories.ServiceDefaults/Extensions.cs b/src/Hexalith.Memories.ServiceDefaults/Extensions.cs
+index ea2aaa1..284717a 100644
+--- a/src/Hexalith.Memories.ServiceDefaults/Extensions.cs
++++ b/src/Hexalith.Memories.ServiceDefaults/Extensions.cs
+@@ -1,3 +1,8 @@
++using System;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Text.Json;
++
+ using Hexalith.Memories.ServiceDefaults.Health;
+ using Hexalith.Memories.Telemetry;
+ 
+@@ -88,9 +93,83 @@ public static class Extensions
+             _ = builder.Services.AddOpenTelemetry().UseOtlpExporter();
+         }
+ 
++        // Story 8.4 Task 1.1 — env-var-triggered integration-only activity capture for Tier-3 tests.
++        // ADR-8.4-002 (option B): the IActivityCollector implementation lives in the integration-test
++        // assembly; ServiceDefaults resolves it opportunistically at processor-creation time when one is
++        // registered, but the env-var branch MUST remain safe when the hosting process does not register a
++        // collector (for example the separate Memories Server process under Aspire).
++        //
++        // In addition to the optional in-memory collector sink, the branch emits test-only server-side
++        // activity breadcrumbs to stderr for relevant spans. The telemetry integration tests parse those
++        // breadcrumbs from the Aspire-captured resource log stream to prove the real server-side
++        // memories.search + AspNetCore spans exist without standing up a separate OTLP receiver.
++        string? inMemoryFlag = Environment.GetEnvironmentVariable(InMemoryTelemetryEnvironment.EnvVar);
++        if (InMemoryTelemetryEnvironment.IsEnabled(inMemoryFlag))
++        {
++            _ = builder.Services.AddOpenTelemetry()
++                .WithTracing(tracing => tracing.AddProcessor(sp =>
++                {
++                    ICollection<Activity>? collectorActivities = sp.GetService<IActivityCollector>()?.Activities;
++                    return new IntegrationActivityProcessor(collectorActivities);
++                }));
++        }
++        else if (!string.IsNullOrEmpty(inMemoryFlag))
++        {
++            // Risk 7 mitigation: when the env var is set but to a non-activating value, surface a
++            // one-line warning so a misconfigured developer sees why capture did nothing.
++            Console.Error.WriteLine(InMemoryTelemetryEnvironment.FormatIgnoredValueWarning(inMemoryFlag));
++        }
++
+         return builder;
+     }
+ 
++    /// <summary>
++    /// Story 8.4 — integration-only <see cref="BaseProcessor{T}"/> used under the
++    /// <see cref="InMemoryTelemetryEnvironment.EnvVar"/> test gate. When an
++    /// <see cref="IActivityCollector"/> is present it appends completed activities to the supplied
++    /// collection; regardless of collector presence it emits test-only server activity breadcrumbs to
++    /// stderr for the server-side spans the telemetry integration tests need to observe.
++    /// </summary>
++    private sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
++    {
++        private readonly ICollection<Activity>? _target;
++
++        public IntegrationActivityProcessor(ICollection<Activity>? target) => _target = target;
++
++        public override void OnEnd(Activity data)
++        {
++            ArgumentNullException.ThrowIfNull(data);
++            _target?.Add(data);
++
++            if (ShouldEmitActivityBreadcrumb(data))
++            {
++                Console.Error.WriteLine(FormatActivityBreadcrumb(data));
++            }
++        }
++
++        private static string FormatActivityBreadcrumb(Activity data)
++            => InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix + JsonSerializer.Serialize(new
++            {
++                sourceName = data.Source.Name,
++                operationName = data.OperationName,
++                traceId = data.TraceId.ToString(),
++                spanId = data.SpanId.ToString(),
++                parentSpanId = NormalizeSpanId(data.ParentSpanId),
++                kind = data.Kind.ToString(),
++            });
++
++        private static bool ShouldEmitActivityBreadcrumb(Activity data)
++            => string.Equals(data.Source.Name, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
++                || (data.Kind == ActivityKind.Server
++                    && data.Source.Name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase));
++
++        private static string? NormalizeSpanId(ActivitySpanId spanId)
++        {
++            string value = spanId.ToString();
++            return value == "0000000000000000" ? null : value;
++        }
++    }
++
+     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
+         where TBuilder : IHostApplicationBuilder
+     {
+diff --git a/src/Hexalith.Memories.Telemetry/IActivityCollector.cs b/src/Hexalith.Memories.Telemetry/IActivityCollector.cs
+new file mode 100644
+index 0000000..51bd00e
+--- /dev/null
++++ b/src/Hexalith.Memories.Telemetry/IActivityCollector.cs
+@@ -0,0 +1,26 @@
++// <copyright file="IActivityCollector.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Telemetry;
++
++using System.Collections.Generic;
++using System.Diagnostics;
++
++/// <summary>
++/// Story 8.4 — abstraction over the in-memory <see cref="Activity"/> sink used by the Tier-3
++/// integration tests. The implementation lives in the integration-test assembly
++/// (<c>tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs</c>)
++/// per ADR-8.4-002 (option B — test-only placement). This interface stays in the production
++/// telemetry assembly so <c>ServiceDefaults.ConfigureOpenTelemetry</c> can resolve the collector
++/// from DI at processor-creation time without taking a test-only dependency.
++/// </summary>
++public interface IActivityCollector
++{
++    /// <summary>Gets the mutable collection that the in-memory exporter appends to. Implementations
++    /// MUST return a thread-safe collection (<see cref="System.Collections.Concurrent.ConcurrentBag{T}"/>
++    /// or equivalent) — the OpenTelemetry exporter calls <see cref="ICollection{T}.Add"/> from arbitrary
++    /// background threads when activities stop.</summary>
++    ICollection<Activity> Activities { get; }
++}
+diff --git a/src/Hexalith.Memories.Telemetry/InMemoryTelemetryEnvironment.cs b/src/Hexalith.Memories.Telemetry/InMemoryTelemetryEnvironment.cs
+new file mode 100644
+index 0000000..7a752a7
+--- /dev/null
++++ b/src/Hexalith.Memories.Telemetry/InMemoryTelemetryEnvironment.cs
+@@ -0,0 +1,40 @@
++// <copyright file="InMemoryTelemetryEnvironment.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Telemetry;
++
++/// <summary>
++/// Story 8.4 — env-var contract that activates the in-memory OTLP capture branch in
++/// <c>ServiceDefaults.ConfigureOpenTelemetry</c>. Only the exact string <c>"1"</c> activates the
++/// branch (Risk 7 mitigation): values like <c>"true"</c>, <c>"on"</c>, <c>" 1"</c>, <c>"01"</c>
++/// silently leave the in-memory exporter unregistered, but the consumer is warned via
++/// <c>Console.Error</c> when a non-empty mismatching value is observed.
++/// </summary>
++public static class InMemoryTelemetryEnvironment
++{
++    /// <summary>Env var name. Set to exactly <c>"1"</c> to activate the in-memory tracing + logging exporters.</summary>
++    public const string EnvVar = "HEXALITH_MEMORIES_TELEMETRY_INMEMORY";
++
++    /// <summary>The single value that activates the branch.</summary>
++    public const string EnabledValue = "1";
++
++    /// <summary>
++    /// Prefix used by the test-only server activity breadcrumbs emitted to stderr when
++    /// <see cref="EnvVar"/> is enabled.
++    /// </summary>
++    public const string ActivityBreadcrumbPrefix = "__hexalith_activity__";
++
++    /// <summary>Returns <c>true</c> when the supplied value exactly equals <see cref="EnabledValue"/>.</summary>
++    /// <param name="value">Raw env-var value (may be null or empty).</param>
++    /// <returns><c>true</c> if exactly <c>"1"</c>; <c>false</c> otherwise (including null / empty / variants like "true").</returns>
++    public static bool IsEnabled(string? value) => string.Equals(value, EnabledValue, System.StringComparison.Ordinal);
++
++    /// <summary>Returns the warning text emitted to stderr when the env var is set but to a non-activating value.
++    /// Extracted as a method so unit tests can assert the exact text without re-deriving it.</summary>
++    /// <param name="value">The non-activating value the consumer supplied.</param>
++    /// <returns>Warning text suitable for <c>Console.Error.WriteLine</c>.</returns>
++    public static string FormatIgnoredValueWarning(string value)
++        => $"[telemetry] {EnvVar}={value} — only \"{EnabledValue}\" activates; ignoring";
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs b/tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
+index c072377..07aa86c 100644
+--- a/tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
++++ b/tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
+@@ -7,6 +7,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
+ 
+ using System.Diagnostics;
+ using System.Net;
++using System.Net.Http.Json;
+ using System.Text;
+ using System.Text.RegularExpressions;
+ 
+@@ -18,6 +19,8 @@ using Dapr.Actors.Client;
+ 
+ using Hexalith.Memories.Contracts.V1;
+ using Hexalith.Memories.Server.Actors;
++using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++using Hexalith.Memories.Telemetry;
+ 
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.Logging;
+@@ -35,11 +38,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+     private string? _previousAllowPrivateHosts;
+     private string? _previousDaprAppId;
+     private string? _previousRedisVolumeName;
++    private string? _previousEventStoreSourceMap;
+     private string _daprAppId = string.Empty;
+     private string _redisVolumeName = string.Empty;
++    private string _eventStoreMappedTenantId = string.Empty;
+     private ActorProxyFactory? _actorProxyFactory;
+     private ActorProxyOptions? _actorProxyOptions;
+     private HttpClientHandler? _actorHttpMessageHandler;
++    private EnvVarScope? _telemetryInMemoryScope;
+     private readonly TestLogProvider _logProvider = new();
+     private static readonly Regex DaprHttpPortRegex = new(
+         @"HTTP server listening on TCP address: :(?<port>\d+)",
+@@ -51,6 +57,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
+     public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");
+ 
++    /// <summary>Gets the tenant id bound to the default integration-test EventStore source prefix.</summary>
++    public string EventStoreMappedTenantId => _eventStoreMappedTenantId;
++
++    /// <summary>Gets the CloudEvents <c>source</c> prefix mapped to <see cref="EventStoreMappedTenantId"/>.</summary>
++    public string EventStoreMappedSourcePrefix => "enterprise.claims";
++
+     /// <summary>Gets the number of captured log entries.</summary>
+     public int LogEntryCount => _logProvider.Count;
+ 
+@@ -100,6 +112,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+         _previousAllowPrivateHosts = Environment.GetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts");
+         _previousDaprAppId = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
+         _previousRedisVolumeName = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
++        _previousEventStoreSourceMap = Environment.GetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims");
++        _telemetryInMemoryScope = EnvVarScope.Set(
++            InMemoryTelemetryEnvironment.EnvVar,
++            InMemoryTelemetryEnvironment.EnabledValue);
+ 
+         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
+         Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Development");
+@@ -108,8 +124,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+ 
+         _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
+         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
++        _eventStoreMappedTenantId = $"tenant-eventstore-{Guid.NewGuid():N}";
+         Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _daprAppId);
+         Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
++        Environment.SetEnvironmentVariable(
++            "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
++            _eventStoreMappedTenantId);
+ 
+         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+         await StartTopologyAsync(cts.Token).ConfigureAwait(false);
+@@ -120,6 +140,84 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+     /// <returns>The captured log entries after the starting index.</returns>
+     public IReadOnlyList<CapturedLogEntry> GetLogEntriesSince(int startIndex) => _logProvider.GetEntriesSince(startIndex);
+ 
++    /// <summary>Default wait budget for a tenant to reach <see cref="TenantStatus.Active"/>.</summary>
++    public static readonly TimeSpan DefaultTenantActivationTimeout = TimeSpan.FromMinutes(2);
++
++    /// <summary>
++    /// Provisions a new tenant via <c>POST /api/tenants</c> and waits for it to reach
++    /// <see cref="TenantStatus.Active"/>. Use in tests that need a tenant in place before
++    /// calling case, search, or ingestion endpoints — <see cref="Hexalith.Memories.Server.Tenants.TenantStatusGuard"/>
++    /// rejects operations against unknown or non-Active tenants with 404/409.
++    /// </summary>
++    /// <param name="tenantId">Optional tenant identifier. When null, a random one is generated.</param>
++    /// <param name="displayName">Optional display name. Defaults to the tenant id.</param>
++    /// <param name="activationTimeout">Max wait for Active status. Defaults to <see cref="DefaultTenantActivationTimeout"/>.</param>
++    /// <param name="cancellationToken">Cooperative cancellation.</param>
++    /// <returns>The provisioned tenant id.</returns>
++    public async Task<string> ProvisionActiveTenantAsync(
++        string? tenantId = null,
++        string? displayName = null,
++        TimeSpan? activationTimeout = null,
++        CancellationToken cancellationToken = default)
++    {
++        string id = tenantId ?? $"tenant-it-{Guid.NewGuid():N}";
++        string name = displayName ?? $"Tenant {id}";
++
++        using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
++            "/api/tenants",
++            new TenantProvisioningInput(id, name),
++            MemoriesJsonContext.Options,
++            cancellationToken).ConfigureAwait(false);
++
++        // 202 Accepted on fresh provision; 409 Conflict when the caller passed a pre-existing id —
++        // treat both as "tenant exists" so callers can idempotently re-use a deterministic id.
++        if (provisionResponse.StatusCode is not (HttpStatusCode.Accepted or HttpStatusCode.Conflict))
++        {
++            string body = await provisionResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
++            throw new InvalidOperationException(
++                $"Unexpected POST /api/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
++        }
++
++        await WaitForTenantActiveAsync(id, activationTimeout ?? DefaultTenantActivationTimeout, cancellationToken).ConfigureAwait(false);
++        return id;
++    }
++
++    /// <summary>Polls <c>GET /api/tenants/{tenantId}</c> until the tenant reports <see cref="TenantStatus.Active"/>.</summary>
++    /// <param name="tenantId">Tenant identifier.</param>
++    /// <param name="timeout">Max wait duration.</param>
++    /// <param name="cancellationToken">Cooperative cancellation.</param>
++    public async Task WaitForTenantActiveAsync(
++        string tenantId,
++        TimeSpan? timeout = null,
++        CancellationToken cancellationToken = default)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
++
++        TimeSpan budget = timeout ?? DefaultTenantActivationTimeout;
++        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(budget);
++        while (DateTimeOffset.UtcNow < deadline)
++        {
++            cancellationToken.ThrowIfCancellationRequested();
++            using HttpResponseMessage tenantResponse = await MemoriesClient.GetAsync(
++                $"/api/tenants/{tenantId}",
++                cancellationToken).ConfigureAwait(false);
++            if (tenantResponse.StatusCode == HttpStatusCode.OK)
++            {
++                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(
++                    MemoriesJsonContext.Options,
++                    cancellationToken).ConfigureAwait(false);
++                if (tenant?.Status == TenantStatus.Active)
++                {
++                    return;
++                }
++            }
++
++            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
++        }
++
++        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {budget}.");
++    }
++
+     /// <summary>Stops the FalkorDB container hosted by the Aspire topology.</summary>
+     /// <param name="cancellationToken">Cancellation token.</param>
+     /// <returns>A task that completes when the container has stopped.</returns>
+@@ -150,6 +248,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+         Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", _previousAllowPrivateHosts);
+         Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _previousDaprAppId);
+         Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _previousRedisVolumeName);
++        Environment.SetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims", _previousEventStoreSourceMap);
++        _telemetryInMemoryScope?.Dispose();
++        _telemetryInMemoryScope = null;
+     }
+ 
+     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
+@@ -174,7 +275,20 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
+         _ = _builder.Services.AddLogging(logging =>
+         {
+             _ = logging.SetMinimumLevel(LogLevel.Warning);
+-            _ = logging.AddFilter("Aspire.", LogLevel.Warning);
++            _ = logging.AddFilter((category, level) =>
++            {
++                if (category?.StartsWith("Aspire.", StringComparison.Ordinal) == true)
++                {
++                    return level >= LogLevel.Warning;
++                }
++
++                if (category?.Contains("memories-server", StringComparison.OrdinalIgnoreCase) == true)
++                {
++                    return level >= LogLevel.Information;
++                }
++
++                return level >= LogLevel.Warning;
++            });
+             _ = logging.AddProvider(_logProvider);
+         });
+ 
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Ac2SkipReviewByTests.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Ac2SkipReviewByTests.cs
+new file mode 100644
+index 0000000..cb3fea9
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Ac2SkipReviewByTests.cs
+@@ -0,0 +1,75 @@
++// <copyright file="Ac2SkipReviewByTests.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry;
++
++using System;
++
++using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using Shouldly;
++
++/// <summary>
++/// Story 8.4 Task 7 — unit-tier tests for the self-expiring AC #2 skip infrastructure.
++/// <para>
++/// AC #2 (Redis OTEL instrumentation, optional downstream span attribution) is informational-only
++/// in the cross-process Aspire model — the test process cannot reflect on the Server's
++/// <c>TracerProvider</c> registered sources from another process. To prevent the informational
++/// status from silently persisting forever (Risk 9), <see cref="Ac2RedisSkipReviewBy.ReviewByDate"/>
++/// pins a date past which the skip is no longer acceptable. This test class enforces that contract.
++/// </para>
++/// <para>
++/// Marked <c>[Trait("Category", "Unit")]</c> so it runs on the per-PR lane (not Tier-3) — the
++/// review-by date check is fast and deterministic, and a stale date should fail BEFORE the slow
++/// merge-queue lane wastes minutes.
++/// </para>
++/// </summary>
++[Trait("Category", "Unit")]
++public sealed class Ac2SkipReviewByTests
++{
++    [Fact]
++    public void Ac2SkipReviewBy_IsNotInThePast_AtStoryMergeTime()
++    {
++        // Story 8.4 Task 7.4 regression guard: at any merge time, the AC #2 review-by date MUST
++        // be at least 60 days in the future. If a contributor tries to extend by merging an
++        // already-elapsed (or near-elapsed) date, this test fails LOUDLY before the merge lands —
++        // the review-by mechanism degenerates into silent tech debt otherwise.
++        DateOnly horizon = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(60));
++        Ac2RedisSkipReviewBy.ReviewByDate.DayNumber.ShouldBeGreaterThanOrEqualTo(
++            horizon.DayNumber,
++            $"Ac2RedisSkipReviewBy.ReviewByDate ({Ac2RedisSkipReviewBy.ReviewByDate:yyyy-MM-dd}) must be at least " +
++            $"60 days in the future (horizon: {horizon:yyyy-MM-dd}). Either register Redis OTEL instrumentation " +
++            $"on the Memories Server's tracer (and convert AC #2 into a hard assertion) or extend " +
++            $"Ac2RedisSkipReviewBy.ReviewByDate with a linked tracking issue. Tracking: {Ac2RedisSkipReviewBy.TrackingReference}");
++    }
++
++    [Fact]
++    public void AssertWithinReviewWindow_DoesNotThrow_BeforeReviewByDate()
++    {
++        // A "now" one day before the review-by date is still within the skip window.
++        DateOnly justBefore = Ac2RedisSkipReviewBy.ReviewByDate.AddDays(-1);
++        Should.NotThrow(() => Ac2RedisSkipReviewBy.AssertWithinReviewWindow(justBefore));
++    }
++
++    [Fact]
++    public void AssertWithinReviewWindow_Throws_OnReviewByDate()
++    {
++        // The review-by date itself is exclusive: AC2 must already have been re-evaluated by then.
++        InvalidOperationException ex = Should.Throw<InvalidOperationException>(
++            () => Ac2RedisSkipReviewBy.AssertWithinReviewWindow(Ac2RedisSkipReviewBy.ReviewByDate));
++        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingReference);
++        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.ReviewByDate.ToString("yyyy-MM-dd"));
++    }
++
++    [Fact]
++    public void AssertWithinReviewWindow_Throws_AfterReviewByDate()
++    {
++        DateOnly later = Ac2RedisSkipReviewBy.ReviewByDate.AddDays(30);
++        InvalidOperationException ex = Should.Throw<InvalidOperationException>(
++            () => Ac2RedisSkipReviewBy.AssertWithinReviewWindow(later));
++        ex.Message.ShouldContain("Either register");
++        ex.Message.ShouldContain(Ac2RedisSkipReviewBy.TrackingReference);
++    }
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs
+new file mode 100644
+index 0000000..84d43ff
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs
+@@ -0,0 +1,440 @@
++// <copyright file="AspireEndToEndTraceTests.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry;
++
++using System;
++using System.CommandLine;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.IO;
++using System.Linq;
++using System.Net;
++using System.Net.Http.Json;
++using System.Text.Json;
++using System.Threading;
++using System.Threading.Tasks;
++
++using Hexalith.Memories.Cli;
++using Hexalith.Memories.Cli.Commands;
++using Hexalith.Memories.Cli.Execution;
++using Hexalith.Memories.Contracts.V1;
++using Hexalith.Memories.IntegrationTests.Fixtures;
++using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++using Hexalith.Memories.Telemetry;
++
++using Microsoft.Extensions.DependencyInjection;
++
++using Shouldly;
++
++using Xunit.Abstractions;
++
++/// <summary>
++/// Story 8.4 Task 2 — Tier-3 Aspire end-to-end trace propagation tests. Closes Story 7.5 Task 11.3.
++/// <para>
++/// Hybrid capture model (Story 8.4 Change Log Rev 0.6): the Memories Server runs as a separate
++/// process under Aspire orchestration, so the in-test-process tracer cannot directly capture
++/// Server-side activities. CLI-side spans (CLI root + HttpClient) are captured via
++/// <see cref="CliTracingHarness"/> in this process; Server-side activity evidence is proxied via
++/// the audit-event JSON line (which carries Activity.Current TraceId/SpanId from the Server's
++/// process). Both invariants — AC #1 (single TraceId end-to-end via W3C traceparent) and AC #4
++/// (audit ↔ activity cross-reference) — are still proven; the audit log line is the Server-side
++/// evidence.
++/// </para>
++/// <para>
++/// AC #2 (optional Redis OTEL instrumentation) is informational-only in cross-process mode (the
++/// in-test-process tracer cannot reflect on the Server's TracerProvider). The accompanying
++/// <c>Ac2SkipReviewByTests</c> unit class enforces the self-expiring review-by date so the
++/// informational status cannot silently persist forever (Task 7).
++/// </para>
++/// <para>
++/// Lane: <c>[Trait("Category", "Integration")]</c>. Excluded from per-PR runs via
++/// <c>--filter Category!=Integration</c>; runs on the Docker-provisioned merge-queue lane (ADR-8.4-001).
++/// </para>
++/// </summary>
++[Collection("AspireIngestionPipeline")]
++[Trait("Category", "Integration")]
++public sealed class AspireEndToEndTraceTests
++{
++    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
++    private const string SearchOperationType = "search";
++
++    private readonly AspireIngestionPipelineFixture _fixture;
++    private readonly ITestOutputHelper _output;
++
++    public AspireEndToEndTraceTests(AspireIngestionPipelineFixture fixture, ITestOutputHelper output)
++    {
++        _fixture = fixture;
++        _output = output;
++    }
++
++    [Fact]
++    public async Task CliSearch_EndToEnd_SingleTraceIdAcrossAllHops()
++    {
++        // AC #1 (NFR28 HTTP-hop gate): invoke the real CLI `memories search query ...` path in-process via
++        // the DI-rooted System.CommandLine tree, then prove the combined CLI + server span chain:
++        //   memories.cli.invoke → System.Net.Http → AspNetCore server span → memories.search.
++        //
++        // The CLI spans are captured in-process by CliTracingHarness. The server-side AspNetCore +
++        // memories.search spans are emitted as test-only activity breadcrumbs to the server's stderr under
++        // HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1 and parsed from the Aspire log stream.
++        string tenantId = $"tenant-telemetry-trace-{Guid.NewGuid():N}";
++        string query = $"trace-probe-{Guid.NewGuid():N}";
++        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
++
++        await using CliTracingHarness harness = CliTracingHarness.Create();
++        int logStartIndex = _fixture.LogEntryCount;
++        string httpSpanId = string.Empty;
++        string cliStdout = string.Empty;
++        string cliStderr = string.Empty;
++
++        CliInvocationResult invocation = await InvokeCliSearchAsync(tenantId, query);
++        cliStdout = invocation.Stdout;
++        cliStderr = invocation.Stderr;
++        invocation.ExitCode.ShouldBe(
++            CliExitCodes.Success,
++            $"CLI search command failed. stdout:{Environment.NewLine}{cliStdout}{Environment.NewLine}stderr:{Environment.NewLine}{cliStderr}");
++        cliStderr.ShouldBeEmpty($"CLI stderr must stay empty on the happy path. stdout:{Environment.NewLine}{cliStdout}");
++        cliStdout.ShouldNotBeNullOrWhiteSpace();
++
++        await harness.ForceFlushAsync(TimeSpan.FromSeconds(2));
++
++        // Count-first guard (Risk R1, Dev Notes "count-first, content-second" convention): empty
++        // collections satisfy LINQ .All(...) vacuously, so we MUST check Count BEFORE any predicate
++        // that could pass on empty.
++        IReadOnlyList<Activity> capturedSpans = harness.Collector.Snapshot();
++        try
++        {
++            capturedSpans.Count.ShouldBeGreaterThanOrEqualTo(
++                2,
++                "Expected at least one CLI root span and one HttpClient span; got fewer. Capture wiring broken?");
++
++            Activity cliRootSpan = capturedSpans.SingleOrDefault(a =>
++                string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal))
++                ?? throw new ShouldAssertException(
++                    $"Expected a single CLI root span ({MemoriesActivitySource.CliInvoke}); see span dump for what was captured.");
++
++            Activity httpClientSpan = capturedSpans.SingleOrDefault(a => a.Source.Name == "System.Net.Http")
++                ?? throw new ShouldAssertException(
++                    "Expected exactly one outbound HttpClient span (System.Net.Http source). " +
++                    "If HttpClient instrumentation drift adds a wrapper span, this lookup may need to broaden.");
++
++            httpSpanId = httpClientSpan.SpanId.ToString();
++            string expectedTraceId = cliRootSpan.TraceId.ToString();
++
++            TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
++            using CancellationTokenSource cts = new(timeout);
++            IReadOnlyList<CapturedServerActivity> serverActivities = await ServerActivityStreamReader.ReadAsync(
++                _fixture,
++                logStartIndex,
++                minimumEvents: 2,
++                timeout,
++                cts.Token,
++                matchPredicate: activity =>
++                    string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
++                    && (IsAspNetCoreServerSpan(activity) || IsSearchActivity(activity)));
++
++            IReadOnlyList<CapturedServerActivity> matchingServerActivities =
++                [.. serverActivities.Where(activity =>
++                    string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
++                    && (IsAspNetCoreServerSpan(activity) || IsSearchActivity(activity)))];
++
++            matchingServerActivities.Count.ShouldBeGreaterThanOrEqualTo(
++                2,
++                $"Expected at least one AspNetCore server span and one memories.search span for trace {expectedTraceId}. " +
++                "If fewer were captured, the server-side activity breadcrumb path is broken.");
++
++            CapturedServerActivity aspNetCoreSpan = matchingServerActivities.SingleOrDefault(IsAspNetCoreServerSpan)
++                ?? throw new ShouldAssertException(
++                    $"Expected one AspNetCore server span for trace {expectedTraceId}; got " +
++                    $"{matchingServerActivities.Count(a => IsAspNetCoreServerSpan(a))}.");
++
++            CapturedServerActivity searchSpan = matchingServerActivities.SingleOrDefault(IsSearchActivity)
++                ?? throw new ShouldAssertException(
++                    $"Expected one {MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}; got " +
++                    $"{matchingServerActivities.Count(a => IsSearchActivity(a))}.");
++
++            List<TraceNode> relevantNodes =
++            [
++                ToTraceNode(cliRootSpan),
++                ToTraceNode(httpClientSpan),
++                ToTraceNode(aspNetCoreSpan),
++                ToTraceNode(searchSpan),
++            ];
++
++            relevantNodes.Count.ShouldBeGreaterThanOrEqualTo(
++                4,
++                "Expected the four required chain nodes (CLI root, HttpClient, AspNetCore, memories.search). " +
++                "A missing node means the end-to-end span-chain proof is incomplete.");
++
++            // AC #1 invariant 1: shared TraceId across the in-process spans.
++            cliRootSpan.TraceId.ShouldBe(httpClientSpan.TraceId);
++            cliRootSpan.TraceId.ToString().ShouldBe(expectedTraceId);
++            relevantNodes.ShouldAllBe(node => node.TraceId == expectedTraceId);
++
++            // AC #1 invariant 2: ancestor-descendant reachability across the full chain, not just the
++            // in-process CLI subset. Parent ids are reconstructed from the CLI activities and the
++            // server-side activity breadcrumbs.
++            IReadOnlyDictionary<string, TraceNode> nodesBySpanId = relevantNodes.ToDictionary(node => node.SpanId, StringComparer.Ordinal);
++            TraceNode cliRootNode = relevantNodes.Single(node => node.OperationName == MemoriesActivitySource.CliInvoke);
++            AssertParentChainReachesCliRoot(relevantNodes.Single(node => node.SourceName == "System.Net.Http"), cliRootNode, nodesBySpanId);
++            AssertParentChainReachesCliRoot(relevantNodes.Single(node => IsAspNetCoreServerSpan(node)), cliRootNode, nodesBySpanId);
++            AssertParentChainReachesCliRoot(relevantNodes.Single(node => node.OperationName == MemoriesActivitySource.SearchRequest), cliRootNode, nodesBySpanId);
++        }
++        catch
++        {
++            DumpDiagnostics(harness, logStartIndex, httpSpanId, cliStdout, cliStderr);
++            throw;
++        }
++    }
++
++    [Fact]
++    public async Task CliSearch_AuditEvent_TraceIdMatchesSpan()
++    {
++        // AC #4: cross-reference the actual captured server-side memories.search span against the audit
++        // event emitted for that same request.
++        string tenantId = $"tenant-telemetry-cross-ref-{Guid.NewGuid():N}";
++        string query = $"cross-ref-probe-{Guid.NewGuid():N}";
++        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
++
++        await using CliTracingHarness harness = CliTracingHarness.Create();
++        int logStartIndex = _fixture.LogEntryCount;
++        string cliStdout = string.Empty;
++        string cliStderr = string.Empty;
++
++        CliInvocationResult invocation = await InvokeCliSearchAsync(tenantId, query);
++        cliStdout = invocation.Stdout;
++        cliStderr = invocation.Stderr;
++        invocation.ExitCode.ShouldBe(
++            CliExitCodes.Success,
++            $"CLI search command failed. stdout:{Environment.NewLine}{cliStdout}{Environment.NewLine}stderr:{Environment.NewLine}{cliStderr}");
++        cliStderr.ShouldBeEmpty();
++
++        await harness.ForceFlushAsync(TimeSpan.FromSeconds(2));
++
++        try
++        {
++            Activity cliRootSpan = harness.Collector.Snapshot().SingleOrDefault(a =>
++                string.Equals(a.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal))
++                ?? throw new ShouldAssertException("Expected a CLI root span but captured none.");
++            string expectedTraceId = cliRootSpan.TraceId.ToString();
++
++            TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
++            using CancellationTokenSource cts = new(timeout);
++            IReadOnlyList<CapturedServerActivity> serverActivities = await ServerActivityStreamReader.ReadAsync(
++                _fixture,
++                logStartIndex,
++                minimumEvents: 1,
++                timeout,
++                cts.Token,
++                matchPredicate: activity =>
++                    string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
++                    && IsSearchActivity(activity));
++
++            CapturedServerActivity searchActivity = serverActivities.SingleOrDefault(activity =>
++                    string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal)
++                    && IsSearchActivity(activity))
++                ?? throw new ShouldAssertException(
++                    $"Expected one captured server-side {MemoriesActivitySource.SearchRequest} activity for trace {expectedTraceId}.");
++
++            IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
++                _fixture,
++                logStartIndex,
++                minimumEvents: 1,
++                timeout,
++                cts.Token,
++                matchPredicate: captured =>
++                    string.Equals(captured.AuditEvent.OperationType, SearchOperationType, StringComparison.Ordinal)
++                    && string.Equals(captured.AuditEvent.TraceId, expectedTraceId, StringComparison.Ordinal));
++
++            CapturedAuditEvent serverAudit = events.SingleOrDefault(captured =>
++                    string.Equals(captured.AuditEvent.OperationType, SearchOperationType, StringComparison.Ordinal)
++                    && string.Equals(captured.AuditEvent.TraceId, expectedTraceId, StringComparison.Ordinal))
++                ?? throw new ShouldAssertException(
++                    $"Expected one search audit event for trace {expectedTraceId}; got {events.Count} candidate events.");
++
++            serverAudit.AuditEvent.TraceId.ShouldBe(searchActivity.TraceId);
++            serverAudit.AuditEvent.SpanId.ShouldBe(searchActivity.SpanId);
++            serverAudit.AuditEvent.SchemaVersion.ShouldBe(AccessTelemetryEvent.CurrentSchemaVersion);
++            serverAudit.AuditEvent.OperationType.ShouldBe(SearchOperationType);
++        }
++        catch
++        {
++            DumpDiagnostics(harness, logStartIndex, spanId: string.Empty, cliStdout, cliStderr);
++            throw;
++        }
++    }
++
++    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
++    {
++        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
++            "/api/tenants",
++            new TenantProvisioningInput(tenantId, displayName),
++            MemoriesJsonContext.Options);
++        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
++
++        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
++        while (DateTimeOffset.UtcNow < deadline)
++        {
++            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
++            if (tenantResponse.StatusCode == HttpStatusCode.OK)
++            {
++                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
++                if (tenant?.Status == TenantStatus.Active)
++                {
++                    return;
++                }
++            }
++
++            await Task.Delay(TimeSpan.FromMilliseconds(500));
++        }
++
++        false.ShouldBeTrue($"Tenant '{tenantId}' did not reach Active within {ActivationTimeout}.");
++    }
++
++    private async Task<CliInvocationResult> InvokeCliSearchAsync(string tenantId, string query)
++    {
++        var stdout = new StringWriter();
++        var stderr = new StringWriter();
++        IServiceCollection services = CliServices.BuildCollection();
++        services.AddSingleton(new CliConsole { Out = stdout, Error = stderr });
++        using ServiceProvider provider = services.BuildServiceProvider();
++
++        CliGlobalOptions options = provider.GetRequiredService<CliGlobalOptions>();
++        RootCommand root = RootCommandFactory.Build(provider, options);
++        ParseResult parse = root.Parse(
++            new[]
++            {
++                "--format", "json",
++                "--endpoint", _fixture.MemoriesClient.BaseAddress!.ToString(),
++                "search",
++                "query",
++                "--tenant", tenantId,
++                "--query", query,
++                "--axis", "syntactic",
++            });
++
++        RootCommandFactory.ApplyGlobalOptions(provider, parse, options);
++        int exitCode = await parse.InvokeAsync();
++        return new CliInvocationResult(exitCode, stdout.ToString(), stderr.ToString());
++    }
++
++    private static void AssertParentChainReachesCliRoot(
++        TraceNode start,
++        TraceNode expectedRootSpan,
++        IReadOnlyDictionary<string, TraceNode> nodesBySpanId)
++    {
++        // AC #1 traversal rules (Story Rev 0.5):
++        //   (i)   cycle detection — visited set fails any chain that revisits a span id
++        //   (ii)  max-depth ceiling = 16 — chains longer than 16 hops fail with a diagnostic
++        //   (iii) root-termination — chain MUST terminate at the CLI root span (null-parent + name == memories.cli.invoke)
++        const int MaxDepth = 16;
++        HashSet<string> visited = [];
++        TraceNode? current = start;
++        int depth = 0;
++        while (current is not null)
++        {
++            string spanId = current.SpanId;
++            if (!visited.Add(spanId))
++            {
++                throw new ShouldAssertException(
++                    $"Parent-chain cycle detected at span {spanId} (operation={current.OperationName}). " +
++                    "AC #1 invariant violated.");
++            }
++
++            if (++depth > MaxDepth)
++            {
++                throw new ShouldAssertException(
++                    $"Parent-chain depth exceeds {MaxDepth} hops starting at {start.OperationName} " +
++                    $"({start.SpanId}); no legitimate in-process trace exceeds this. AC #1 invariant violated.");
++            }
++
++            if (string.Equals(current.SpanId, expectedRootSpan.SpanId, StringComparison.Ordinal))
++            {
++                return; // reached CLI root via reachability — pass.
++            }
++
++            if (current.ParentSpanId is null)
++            {
++                if (string.Equals(current.OperationName, MemoriesActivitySource.CliInvoke, StringComparison.Ordinal))
++                {
++                    return;
++                }
++
++                throw new ShouldAssertException(
++                    $"Orphan span detected: {current.OperationName} has no parent and is not the CLI root span. " +
++                    "AC #1 root-termination rule violated.");
++            }
++
++            if (!nodesBySpanId.TryGetValue(current.ParentSpanId, out TraceNode? parent))
++            {
++                throw new ShouldAssertException(
++                    $"Parent span '{current.ParentSpanId}' for operation {current.OperationName} was not captured. " +
++                    "AC #1 ancestor chain is incomplete.");
++            }
++
++            current = parent;
++        }
++    }
++
++    private void DumpDiagnostics(CliTracingHarness harness, int logStartIndex, string spanId, string cliStdout, string cliStderr)
++    {
++        _output.WriteLine($"--- Story 8.4 AspireEndToEndTraceTests diagnostics ---");
++        _output.WriteLine($"httpClientSpanId={spanId}");
++        _output.WriteLine($"cliStdout={cliStdout}");
++        _output.WriteLine($"cliStderr={cliStderr}");
++        _output.WriteLine(harness.Collector.FormatSpanTree());
++        _output.WriteLine($"--- Last server stdout lines (max 50) ---");
++        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in AuditEventStreamReader.TailRawLogs(_fixture, logStartIndex, maxLines: 50))
++        {
++            _output.WriteLine($"[{entry.Level}] {entry.Category}: {entry.Message}");
++        }
++    }
++
++    private static bool IsAspNetCoreServerSpan(CapturedServerActivity activity)
++        => string.Equals(activity.Kind, ActivityKind.Server.ToString(), StringComparison.Ordinal)
++            && activity.SourceName.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase);
++
++    private static bool IsAspNetCoreServerSpan(TraceNode node)
++        => string.Equals(node.Kind, ActivityKind.Server.ToString(), StringComparison.Ordinal)
++            && node.SourceName.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase);
++
++    private static bool IsSearchActivity(CapturedServerActivity activity)
++        => string.Equals(activity.SourceName, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
++            && string.Equals(activity.OperationName, MemoriesActivitySource.SearchRequest, StringComparison.Ordinal);
++
++    private static TraceNode ToTraceNode(Activity activity)
++        => new(
++            activity.OperationName,
++            activity.Source.Name,
++            activity.TraceId.ToString(),
++            activity.SpanId.ToString(),
++            NormalizeSpanId(activity.ParentSpanId.ToString()),
++            activity.Kind.ToString());
++
++    private static TraceNode ToTraceNode(CapturedServerActivity activity)
++        => new(
++            activity.OperationName,
++            activity.SourceName,
++            activity.TraceId,
++            activity.SpanId,
++            NormalizeSpanId(activity.ParentSpanId),
++            activity.Kind);
++
++    private static string? NormalizeSpanId(string? value)
++        => string.IsNullOrWhiteSpace(value) || value == "0000000000000000"
++            ? null
++            : value;
++
++    private sealed record CliInvocationResult(int ExitCode, string Stdout, string Stderr);
++
++    private sealed record TraceNode(
++        string OperationName,
++        string SourceName,
++        string TraceId,
++        string SpanId,
++        string? ParentSpanId,
++        string Kind);
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/AuditLogStreamIntegrationTests.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/AuditLogStreamIntegrationTests.cs
+new file mode 100644
+index 0000000..f71c35e
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/AuditLogStreamIntegrationTests.cs
+@@ -0,0 +1,473 @@
++// <copyright file="AuditLogStreamIntegrationTests.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry;
++
++using System;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Linq;
++using System.Net;
++using System.Net.Http;
++using System.Net.Http.Json;
++using System.Text.Json;
++using System.Threading;
++using System.Threading.Tasks;
++
++using Hexalith.Memories.Client.Rest;
++using Hexalith.Memories.Contracts.V1;
++using Hexalith.Memories.IntegrationTests.Fixtures;
++using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++
++using Shouldly;
++
++using Xunit.Abstractions;
++
++/// <summary>
++/// Story 8.4 Task 3 — Tier-3 audit log stream integration tests. Closes Story 7.5 Task 11.4.
++/// <para>
++/// FR67 authoritative gate: every instrumented operation (search / ingest / traverse / case-access)
++/// MUST surface a structured <see cref="AccessTelemetryEvent"/> on the Server container's stdout
++/// stream. The reader (<see cref="AuditEventStreamReader"/>) parses Aspire-captured stdout JSON
++/// lines and asserts the AC #4 schema (Story 7.5).
++/// </para>
++/// <para>
++/// Health-probe regression guard mirrors the Tier-2 pattern at
++/// <c>TelemetryHealthExclusionTests</c> — health endpoints (<c>/health</c>, <c>/alive</c>,
++/// <c>/ready</c>) MUST emit zero <see cref="AccessTelemetryEvent"/> entries (AC #5 from Story 7.5,
++/// re-asserted here against the deployed stack to catch any regression in the
++/// <c>ShouldTraceHttpRequest</c> filter at the cross-process boundary).
++/// </para>
++/// </summary>
++[Collection("AspireIngestionPipeline")]
++[Trait("Category", "Integration")]
++public sealed class AuditLogStreamIntegrationTests
++{
++    private static readonly TimeSpan ActivationTimeout = TimeSpan.FromMinutes(2);
++    private const string OperationSearch = "search";
++    private const string OperationIngest = "ingest";
++    private const string OperationTraverse = "traverse";
++    private const string OperationCaseAccess = "case-access";
++    private const string OutcomeOk = "ok";
++    private const string OutcomeError = "error";
++
++    private readonly AspireIngestionPipelineFixture _fixture;
++    private readonly ITestOutputHelper _output;
++
++    public AuditLogStreamIntegrationTests(AspireIngestionPipelineFixture fixture, ITestOutputHelper output)
++    {
++        _fixture = fixture;
++        _output = output;
++    }
++
++    [Fact]
++    public async Task SearchOperation_EmitsOneAuditEvent_WithAC4Schema()
++    {
++        string tenantId = await EnsureProvisionedTenantAsync();
++        string query = $"absent-syntactic-{Guid.NewGuid():N}";
++
++        await AssertOperationEmitsExpectedAuditEventAsync(
++            operationType: OperationSearch,
++            expectedTenantId: tenantId,
++            expectedOutcome: OutcomeOk,
++            expectedErrorCode: null,
++            invokeAsync: async client =>
++            {
++                using HttpResponseMessage r = await client.GetAsync(
++                    $"/api/search?tenantId={tenantId}&query={query}&axis=syntactic");
++                r.StatusCode.ShouldBe(HttpStatusCode.OK);
++
++                SearchResult? result = await r.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
++                result.ShouldNotBeNull();
++                result.Results.ShouldBeEmpty();
++            });
++    }
++
++    [Fact]
++    public async Task IngestOperation_EmitsOneAuditEvent_WithAC4Schema()
++    {
++        string tenantId = await EnsureProvisionedTenantAsync();
++        string caseId = await CreateCaseAsync(tenantId);
++
++        await AssertOperationEmitsExpectedAuditEventAsync(
++            operationType: OperationIngest,
++            expectedTenantId: tenantId,
++            expectedOutcome: OutcomeOk,
++            expectedErrorCode: null,
++            invokeAsync: async client =>
++            {
++                IngestionInput input = new()
++                {
++                    TenantId = tenantId,
++                    CaseId = caseId,
++                    SourceUri = $"test://telemetry/{Guid.NewGuid():N}",
++                    ContentBytes = System.Text.Encoding.UTF8.GetBytes($"ingest-probe-{Guid.NewGuid():N}"),
++                    ContentType = "text/plain",
++                    SourceType = SourceType.File,
++                    IngestedBy = "tests-8-4",
++                };
++
++                using HttpResponseMessage r = await client.PostAsJsonAsync(
++                    "/api/ingest",
++                    input,
++                    options: MemoriesJsonContext.Options);
++                r.StatusCode.ShouldBe(HttpStatusCode.Accepted);
++            });
++    }
++
++    [Fact]
++    public async Task TraverseOperation_EmitsOneAuditEvent_WithAC4Schema()
++    {
++        string tenantId = await EnsureProvisionedTenantAsync();
++
++        await AssertOperationEmitsExpectedAuditEventAsync(
++            operationType: OperationTraverse,
++            expectedTenantId: tenantId,
++            expectedOutcome: OutcomeError,
++            expectedErrorCode: "MISSING_START_NODE",
++            invokeAsync: async client =>
++            {
++                using HttpResponseMessage r = await client.GetAsync($"/api/tenants/{tenantId}/traverse?depth=1");
++                r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
++            });
++    }
++
++    [Fact]
++    public async Task CaseAccessOperation_EmitsOneAuditEvent_WithAC4Schema()
++    {
++        string tenantId = await EnsureProvisionedTenantAsync();
++
++        await AssertOperationEmitsExpectedAuditEventAsync(
++            operationType: OperationCaseAccess,
++            expectedTenantId: tenantId,
++            expectedOutcome: OutcomeError,
++            expectedErrorCode: "MEMORY_UNIT_NOT_FOUND",
++            invokeAsync: async client =>
++            {
++                using HttpResponseMessage r = await client.GetAsync(
++                    $"/api/tenants/{tenantId}/cases/case-missing/memory-units/memory-unit-missing");
++                r.StatusCode.ShouldBe(HttpStatusCode.NotFound);
++            });
++    }
++
++    [Fact]
++    [Trait("Category", "IntegrationSlow")]
++    public async Task SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus()
++    {
++        string tenantId = await EnsureProvisionedTenantAsync();
++        string startNodeId = $"retry-probe-{Guid.NewGuid():N}";
++        int logStartIndex = _fixture.LogEntryCount;
++
++        await _fixture.StopFalkorDbContainerAsync();
++
++        using Activity retryRoot = new Activity("telemetry-retry-sequence-root")
++            .SetIdFormat(ActivityIdFormat.W3C)
++            .Start();
++
++        using (Activity firstAttempt = new Activity("telemetry-retry-attempt-1").Start())
++        {
++            using HttpResponseMessage first = await _fixture.MemoriesClient.GetAsync(
++                $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
++            first.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
++        }
++
++        await _fixture.RestartTopologyAsync();
++        await WaitForTenantActiveAsync(tenantId);
++
++        string traceId = retryRoot.TraceId.ToString();
++
++        using Activity secondAttempt = new Activity("telemetry-retry-attempt-2").Start();
++        using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
++            $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
++        second.StatusCode.ShouldBe(HttpStatusCode.OK);
++        SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
++        retryResult.ShouldNotBeNull();
++
++        TimeSpan timeout = TimeSpan.FromMinutes(4);
++        using CancellationTokenSource cts = new(timeout);
++        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
++            _fixture,
++            logStartIndex,
++            minimumEvents: 2,
++            timeout,
++            cts.Token,
++            matchPredicate: captured =>
++                string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
++                && string.Equals(captured.AuditEvent.TraceId, traceId, StringComparison.Ordinal));
++
++        IReadOnlyList<CapturedAuditEvent> matching =
++            [.. events.Where(captured =>
++                string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
++                && string.Equals(captured.AuditEvent.TraceId, traceId, StringComparison.Ordinal))];
++
++        matching.Count.ShouldBeGreaterThanOrEqualTo(2);
++        matching.Count(captured => string.Equals(captured.AuditEvent.Outcome, OutcomeError, StringComparison.Ordinal))
++            .ShouldBeGreaterThanOrEqualTo(1);
++        matching.Count(captured => string.Equals(captured.AuditEvent.Outcome, OutcomeOk, StringComparison.Ordinal))
++            .ShouldBeGreaterThanOrEqualTo(1);
++
++        HashSet<(string, string, string, string)> tuples =
++            [.. matching.Select(captured =>
++            {
++                AccessTelemetryEvent audit = captured.AuditEvent;
++                return (
++                    audit.TraceId ?? "<null>",
++                    audit.SpanId ?? "<null>",
++                    audit.OperationType,
++                    FormatStatusProxy(audit));
++            })];
++
++        tuples.Count.ShouldBe(
++            matching.Count,
++            "Retry sequence must not be rejected as a duplicate emission when statuses differ across attempts.");
++    }
++
++    [Fact]
++    public async Task HealthProbes_EmitZeroAuditEvents()
++    {
++        // Story 7.5 AC #5 + Story 8.4 AC #3 regression guard at the deployed-stack level. Health
++        // endpoints (/health, /alive, /ready) are NOT in the four enumerated operation types, so
++        // no EndpointTelemetryScope runs and no audit event is emitted on the deployed stack.
++        int logStartIndex = _fixture.LogEntryCount;
++
++        for (int i = 0; i < 5; i++)
++        {
++            using HttpResponseMessage health = await _fixture.MemoriesClient.GetAsync("/health");
++            health.IsSuccessStatusCode.ShouldBeTrue();
++            using HttpResponseMessage alive = await _fixture.MemoriesClient.GetAsync("/alive");
++            alive.IsSuccessStatusCode.ShouldBeTrue();
++            using HttpResponseMessage ready = await _fixture.MemoriesClient.GetAsync("/ready");
++            ready.IsSuccessStatusCode.ShouldBeTrue();
++        }
++
++        // Use a short polling window for the negative assertion — we don't want to burn the full
++        // 10s default for a test that asserts emptiness. 3s is enough for any spurious audit event
++        // to surface; if zero arrive in 3s we trust zero is the steady state.
++        TimeSpan negativeWindow = TimeSpan.FromSeconds(3);
++        using CancellationTokenSource cts = new(negativeWindow);
++        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
++            _fixture,
++            logStartIndex,
++            minimumEvents: 1,
++            negativeWindow,
++            cts.Token);
++
++        events.Count.ShouldBe(
++            0,
++            "Health probes (/health, /alive, /ready) MUST emit zero AccessTelemetryEvent entries " +
++            "(AC #5 regression guard from Story 7.5). Captured events: " +
++            string.Join(", ", events.Select(e => $"{e.EventId}/{e.AuditEvent.OperationType}")));
++    }
++
++    [Fact]
++    public async Task SchemaVersion_IsOneForAllEmittedEvents()
++    {
++        // Future-proofing: aggregate across one of each operation type and assert every captured event
++        // carries schemaVersion == 1. A breaking field change that bumped the version would fail loudly.
++        string tenantId = await EnsureProvisionedTenantAsync();
++        int logStartIndex = _fixture.LogEntryCount;
++
++        // Mix a successful search with a valid-tenant traverse validation error so both Information and
++        // Warning audit events are covered on the deployed stack.
++        using HttpResponseMessage searchResp = await _fixture.MemoriesClient.GetAsync(
++            $"/api/search?tenantId={tenantId}&query=schema-probe-{Guid.NewGuid():N}&axis=syntactic");
++        searchResp.StatusCode.ShouldBe(HttpStatusCode.OK);
++
++        using HttpResponseMessage traverseResp = await _fixture.MemoriesClient.GetAsync(
++            $"/api/tenants/{tenantId}/traverse?depth=1");
++        traverseResp.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
++
++        TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
++        using CancellationTokenSource cts = new(timeout);
++        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
++            _fixture,
++            logStartIndex,
++            minimumEvents: 2,
++            timeout,
++            cts.Token,
++            matchPredicate: captured =>
++                string.Equals(captured.AuditEvent.TenantId, tenantId, StringComparison.Ordinal)
++                && (string.Equals(captured.AuditEvent.OperationType, OperationSearch, StringComparison.Ordinal)
++                    || string.Equals(captured.AuditEvent.OperationType, OperationTraverse, StringComparison.Ordinal)));
++
++        try
++        {
++            events.Count.ShouldBeGreaterThanOrEqualTo(
++                2,
++                "Expected at least 2 audit events (one search + one traverse). " +
++                "If fewer were captured, AC #3 stdout-emission gate is broken at the deployed stack.");
++
++            foreach (CapturedAuditEvent captured in events.Where(captured => string.Equals(captured.AuditEvent.TenantId, tenantId, StringComparison.Ordinal)))
++            {
++                captured.AuditEvent.SchemaVersion.ShouldBe(
++                    AccessTelemetryEvent.CurrentSchemaVersion,
++                    $"Audit event for operationType={captured.AuditEvent.OperationType} carries " +
++                    $"schemaVersion={captured.AuditEvent.SchemaVersion}; expected " +
++                    $"{AccessTelemetryEvent.CurrentSchemaVersion}. A breaking schema change must bump the version.");
++            }
++        }
++        catch
++        {
++            DumpDiagnostics(logStartIndex);
++            throw;
++        }
++    }
++
++    private async Task AssertOperationEmitsExpectedAuditEventAsync(
++        string operationType,
++        string expectedTenantId,
++        string expectedOutcome,
++        string? expectedErrorCode,
++        Func<HttpClient, Task> invokeAsync)
++    {
++        int logStartIndex = _fixture.LogEntryCount;
++
++        await invokeAsync(_fixture.MemoriesClient);
++
++        TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();
++        using CancellationTokenSource cts = new(timeout);
++        IReadOnlyList<CapturedAuditEvent> events = await AuditEventStreamReader.ReadAsync(
++            _fixture,
++            logStartIndex,
++            minimumEvents: 1,
++            timeout,
++            cts.Token,
++            matchPredicate: captured =>
++                string.Equals(captured.AuditEvent.OperationType, operationType, StringComparison.Ordinal)
++                && string.Equals(captured.AuditEvent.TenantId, expectedTenantId, StringComparison.Ordinal));
++
++        try
++        {
++            // Count-first guard (Risk R1): empty .All(...) is vacuously true.
++            events.Count.ShouldBeGreaterThanOrEqualTo(
++                1,
++                $"Expected at least one Server-side audit event for operationType='{operationType}' within " +
++                $"{timeout.TotalSeconds}s; got 0. Override via {AuditEventStreamReader.TimeoutEnvVar} if the runner is slow.");
++
++            IReadOnlyList<CapturedAuditEvent> matching =
++                [.. events.Where(e =>
++                    string.Equals(e.AuditEvent.OperationType, operationType, StringComparison.Ordinal)
++                    && string.Equals(e.AuditEvent.TenantId, expectedTenantId, StringComparison.Ordinal))];
++            matching.Count.ShouldBeGreaterThanOrEqualTo(
++                1,
++                $"Expected at least one event with operationType='{operationType}' and tenantId='{expectedTenantId}'. " +
++                $"Got operationTypes: {string.Join(",", events.Select(e => e.AuditEvent.OperationType))}.");
++
++            // De-duplication tuple (TraceId, SpanId, OperationType, HttpStatus) — the HttpStatus axis tolerates
++            // legitimate retry chains (5xx → 2xx) by treating distinct statuses as distinct emissions; same-attempt
++            // duplications still fail. We approximate HttpStatus via Outcome+ErrorCode since the audit event
++            // doesn't directly carry httpStatus.
++            HashSet<(string, string, string, string)> tuples = [];
++            foreach (CapturedAuditEvent c in matching)
++            {
++                AccessTelemetryEvent ev = c.AuditEvent;
++                string statusProxy = FormatStatusProxy(ev);
++                tuples.Add((ev.TraceId ?? "<null>", ev.SpanId ?? "<null>", ev.OperationType, statusProxy));
++            }
++
++            tuples.Count.ShouldBe(
++                matching.Count,
++                $"Duplicate audit events detected for operationType='{operationType}' on the same trace+span+status. " +
++                "AC #3 de-duplication guard violated.");
++
++            // AC #4 schema (Story 7.5): every matching event has the required fields populated.
++            foreach (CapturedAuditEvent c in matching)
++            {
++                AccessTelemetryEvent ev = c.AuditEvent;
++                ev.SchemaVersion.ShouldBe(AccessTelemetryEvent.CurrentSchemaVersion);
++                ev.EventId.ShouldBeInRange(AuditEventStreamReader.MinEventId, AuditEventStreamReader.MaxEventId);
++                ev.TenantId.ShouldBe(expectedTenantId);
++                ev.OperationType.ShouldBe(operationType);
++                ev.TraceId.ShouldNotBeNullOrWhiteSpace();
++                ev.SpanId.ShouldNotBeNullOrWhiteSpace();
++                ev.DurationMs.ShouldBeGreaterThanOrEqualTo(0);
++                ev.Timestamp.ShouldNotBeNullOrWhiteSpace();
++                ev.QueryParams.ShouldNotBeNull();
++                ev.Outcome.ShouldBe(expectedOutcome);
++                ev.ErrorCode.ShouldBe(expectedErrorCode);
++            }
++        }
++        catch
++        {
++            DumpDiagnostics(logStartIndex);
++            throw;
++        }
++    }
++
++    private async Task<string> EnsureProvisionedTenantAsync()
++    {
++        string tenantId = $"tenant-telemetry-audit-{Guid.NewGuid():N}";
++        await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
++        return tenantId;
++    }
++
++    private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
++    {
++        using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
++            "/api/tenants",
++            new TenantProvisioningInput(tenantId, displayName),
++            MemoriesJsonContext.Options);
++        provisionResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
++
++        await WaitForTenantActiveAsync(tenantId);
++    }
++
++    private async Task WaitForTenantActiveAsync(string tenantId)
++    {
++
++        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(ActivationTimeout);
++        while (DateTimeOffset.UtcNow < deadline)
++        {
++            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
++            if (tenantResponse.StatusCode == HttpStatusCode.OK)
++            {
++                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
++                if (tenant?.Status == TenantStatus.Active)
++                {
++                    return;
++                }
++            }
++
++            await Task.Delay(TimeSpan.FromMilliseconds(500));
++        }
++
++        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {ActivationTimeout}.");
++    }
++
++    private async Task<string> CreateCaseAsync(string tenantId)
++    {
++        using var http = new HttpClient
++        {
++            BaseAddress = _fixture.MemoriesClient.BaseAddress,
++            Timeout = TimeSpan.FromSeconds(60),
++        };
++        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
++        {
++            Endpoint = _fixture.MemoriesClient.BaseAddress,
++        });
++        var client = new MemoriesClient(http, options, NullLogger<MemoriesClient>.Instance);
++
++#pragma warning disable HXL001
++        Hexalith.Memories.Contracts.V1.Case created = await client.CreateCaseAsync(tenantId, $"case-{Guid.NewGuid():N}", null, CancellationToken.None);
++#pragma warning restore HXL001
++        return created.Id;
++    }
++
++    private static string FormatStatusProxy(AccessTelemetryEvent auditEvent)
++        => $"{auditEvent.Outcome}/{auditEvent.ErrorCode ?? "<none>"}";
++
++    private void DumpDiagnostics(int logStartIndex)
++    {
++        _output.WriteLine($"--- Story 8.4 AuditLogStreamIntegrationTests diagnostics ---");
++        _output.WriteLine($"--- Last server stdout lines (max 50) ---");
++        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in AuditEventStreamReader.TailRawLogs(_fixture, logStartIndex, maxLines: 50))
++        {
++            _output.WriteLine($"[{entry.Level}] {entry.Category}: {entry.Message}");
++        }
++    }
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/Ac2RedisSkipReviewBy.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/Ac2RedisSkipReviewBy.cs
+new file mode 100644
+index 0000000..c217261
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/Ac2RedisSkipReviewBy.cs
+@@ -0,0 +1,52 @@
++// <copyright file="Ac2RedisSkipReviewBy.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System;
++
++/// <summary>
++/// Story 8.4 Task 7 — self-expiring skip infrastructure for AC #2 (Redis OTEL instrumentation).
++/// AC #2 was framed as "informational only" until <c>StackExchange.Redis.Extensions.OpenTelemetry</c>
++/// instrumentation registers on the Server's tracer pipeline; without a review trigger the skip
++/// could silently persist for months.
++/// <para>
++/// This constant is the date AFTER WHICH the skip is no longer acceptable without an explicit
++/// renewal. The unit test <c>Ac2SkipReviewBy_IsNotInThePast_AtStoryMergeTime</c> in this assembly
++/// asserts the date sits at least 60 days in the future at merge time — so a contributor cannot
++/// merge an extension that is already-expired (Task 7.4 regression guard).
++/// </para>
++/// <para>
++/// Tracking reference (replace with a real GitHub issue URL when the follow-up is filed): see Story 8.4
++/// Change Log review-fix note. As of the current review pass, no GitHub issue exists yet.
++/// </para>
++/// </summary>
++internal static class Ac2RedisSkipReviewBy
++{
++    /// <summary>The date after which the AC #2 Redis-instrumentation skip MUST be re-evaluated.</summary>
++    public static readonly DateOnly ReviewByDate = new(2026, 7, 1);
++
++    /// <summary>Tracking reference for the Redis OTEL instrumentation work that flips this follow-up
++    /// into a hard assertion. Updated when a real GitHub issue is filed.</summary>
++    public const string TrackingReference = "UNFILED (no GitHub issue exists as of 2026-04-21)";
++
++    /// <summary>Throws an <see cref="InvalidOperationException"/> with a triage diagnostic when
++    /// the current UTC date is on or after <see cref="ReviewByDate"/>. Caller is the AC #2 test;
++    /// the diagnostic instructs the future contributor to either register the instrumentation
++    /// (flipping the skip into a hard assertion) or to extend <see cref="ReviewByDate"/> with a
++    /// linked tracking issue reference.</summary>
++    /// <param name="now">The current UTC date (test injects for determinism).</param>
++    public static void AssertWithinReviewWindow(DateOnly now)
++    {
++        if (now >= ReviewByDate)
++        {
++            throw new InvalidOperationException(
++                $"AC #2 Redis-instrumentation skip review-by date ({ReviewByDate:yyyy-MM-dd}) has elapsed (now: {now:yyyy-MM-dd}). " +
++                $"Either register `StackExchange.Redis.Extensions.OpenTelemetry` instrumentation on the Memories Server's tracer " +
++                $"and convert this assertion into a hard check, OR extend `Ac2RedisSkipReviewBy.ReviewByDate` in source with a " +
++                $"linked tracking issue reference. Tracking reference: {TrackingReference}");
++        }
++    }
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/AuditEventStreamReader.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/AuditEventStreamReader.cs
+new file mode 100644
+index 0000000..76167bc
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/AuditEventStreamReader.cs
+@@ -0,0 +1,434 @@
++// <copyright file="AuditEventStreamReader.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.Linq;
++using System.Text.Json;
++using System.Text.RegularExpressions;
++using System.Threading;
++using System.Threading.Tasks;
++
++using Hexalith.Memories.Contracts.V1;
++using Hexalith.Memories.IntegrationTests.Fixtures;
++
++/// <summary>
++/// Story 8.4 — extracts <see cref="AccessTelemetryEvent"/> records from the Aspire fixture's
++/// captured Server-resource log stream. The Memories Server uses <c>AddJsonConsole</c>; Aspire
++/// orchestration captures the Server's stdout and surfaces each line into the AppHost's logging
++/// pipeline (which the fixture's <c>_logProvider</c> taps via <c>GetLogEntriesSince</c>).
++/// <para>
++/// FR67 path: this reader is the operator-pipeline gate per ADR-8.4-003. Every emitted audit event
++/// (EventId 7501-7515) MUST surface here for an operator's SIEM / log aggregator to receive it. If
++/// the read returns zero matching lines, EITHER the Server didn't emit OR Aspire's stdout pipe
++/// dropped the line — both are observable failures the test should call out.
++/// </para>
++/// <para>
++/// Timing tolerance: the reader polls the captured log entries every 200ms up to a configurable
++/// timeout (default 10s, overridable via <c>TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS</c> per Task 3.6).
++/// The polling avoids <c>Thread.Sleep</c>; cancellation honors the supplied
++/// <see cref="CancellationToken"/>.
++/// </para>
++/// </summary>
++internal static class AuditEventStreamReader
++{
++    /// <summary>EventId range allocated to Story 7.5 audit events (7501-7515 inclusive — the
++    /// success bank 7501-7505 + the error bank 7511-7515; 7516-7599 reserved for future bumps).</summary>
++    public const int MinEventId = 7501;
++
++    /// <summary>Inclusive upper bound on Story 7.5 audit event ids.</summary>
++    public const int MaxEventId = 7599;
++
++    /// <summary>Env var name overriding the default polling timeout in seconds (Task 3.6).</summary>
++    public const string TimeoutEnvVar = "TELEMETRY_E2E_STDOUT_TIMEOUT_SECONDS";
++
++    /// <summary>Default polling timeout when <see cref="TimeoutEnvVar"/> is unset.</summary>
++    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
++
++    /// <summary>Returns the effective polling timeout — env-var override if present and parses to
++    /// a positive integer; default otherwise.</summary>
++    /// <returns>The configured timeout.</returns>
++    public static TimeSpan ResolveTimeout()
++    {
++        string? raw = Environment.GetEnvironmentVariable(TimeoutEnvVar);
++        if (!string.IsNullOrWhiteSpace(raw)
++            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int seconds)
++            && seconds > 0)
++        {
++            return TimeSpan.FromSeconds(seconds);
++        }
++
++        return DefaultTimeout;
++    }
++
++    /// <summary>Polls the fixture's captured log stream for <see cref="AccessTelemetryEvent"/>
++    /// records emitted since <paramref name="logStartIndex"/>. Returns once at least
++    /// <paramref name="minimumEvents"/> matching events are found, OR the timeout elapses (in
++    /// which case the reader returns whatever it has collected, including an empty list — the
++    /// caller's count-first assertion fails loudly with the captured stdout dump).</summary>
++    /// <param name="fixture">The shared Aspire fixture exposing the captured log stream.</param>
++    /// <param name="logStartIndex">The 0-based index in the captured log buffer to start scanning from.</param>
++    /// <param name="minimumEvents">Minimum number of matching events to wait for before returning early. Use 1 for "at least one" semantics.</param>
++    /// <param name="timeout">Polling timeout (use <see cref="ResolveTimeout"/> for the env-var-aware default).</param>
++    /// <param name="cancellationToken">Cooperative cancellation.</param>
++    /// <param name="matchPredicate">Optional predicate determining which captured events count toward the
++    /// early-return threshold. When omitted, every parsed audit event counts.</param>
++    /// <returns>Captured <see cref="AccessTelemetryEvent"/> records in emission order, with their
++    /// originating raw stdout JSON line for triage on assertion failure.</returns>
++    public static async Task<IReadOnlyList<CapturedAuditEvent>> ReadAsync(
++        AspireIngestionPipelineFixture fixture,
++        int logStartIndex,
++        int minimumEvents,
++        TimeSpan timeout,
++        CancellationToken cancellationToken,
++        Func<CapturedAuditEvent, bool>? matchPredicate = null)
++    {
++        ArgumentNullException.ThrowIfNull(fixture);
++        ArgumentOutOfRangeException.ThrowIfNegative(logStartIndex);
++        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumEvents);
++
++        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
++        TimeSpan pollInterval = TimeSpan.FromMilliseconds(200);
++
++        IReadOnlyList<CapturedAuditEvent> latest = [];
++        while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
++        {
++            latest = ScanCapturedLogs(fixture, logStartIndex);
++            int matchingCount = matchPredicate is null
++                ? latest.Count
++                : latest.Count(matchPredicate);
++            if (matchingCount >= minimumEvents)
++            {
++                return latest;
++            }
++
++            try
++            {
++                await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
++            }
++            catch (TaskCanceledException)
++            {
++                break;
++            }
++        }
++
++        return latest;
++    }
++
++    /// <summary>Returns the last <paramref name="maxLines"/> raw stdout lines (any category) since
++    /// <paramref name="logStartIndex"/>. Used for diagnostic dumps on test failure when no audit
++    /// events arrive — gives a future debugger the immediate context.</summary>
++    /// <param name="fixture">Shared Aspire fixture.</param>
++    /// <param name="logStartIndex">Start index in the captured log buffer.</param>
++    /// <param name="maxLines">Maximum number of trailing lines to return.</param>
++    /// <returns>The trailing log lines.</returns>
++    public static IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> TailRawLogs(
++        AspireIngestionPipelineFixture fixture,
++        int logStartIndex,
++        int maxLines = 50)
++    {
++        ArgumentNullException.ThrowIfNull(fixture);
++        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> all = fixture.GetLogEntriesSince(logStartIndex);
++        if (all.Count <= maxLines)
++        {
++            return all;
++        }
++
++        return [.. all.Skip(all.Count - maxLines)];
++    }
++
++    private static IReadOnlyList<CapturedAuditEvent> ScanCapturedLogs(
++        AspireIngestionPipelineFixture fixture,
++        int logStartIndex)
++    {
++        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries = fixture.GetLogEntriesSince(logStartIndex);
++        List<CapturedAuditEvent> matches = [];
++        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in entries)
++        {
++            if (string.IsNullOrEmpty(entry.Message))
++            {
++                continue;
++            }
++
++            // Aspire's resource-log forwarder prepends a sequence + timestamp prefix
++            // (e.g. "24: 2026-04-20T14:21:50.9890000Z {...json...}") to each captured stdout line, so the
++            // line does not start with '{'. Locate the first '{' to find the JSON payload boundary.
++            int braceIndex = entry.Message.IndexOf('{', StringComparison.Ordinal);
++            if (braceIndex < 0)
++            {
++                continue;
++            }
++
++            string jsonLine = entry.Message[braceIndex..];
++            CapturedAuditEvent? captured = TryParse(entry, jsonLine);
++            if (captured is not null)
++            {
++                matches.Add(captured);
++            }
++        }
++
++        return matches;
++    }
++
++    private static CapturedAuditEvent? TryParse(
++        AspireIngestionPipelineFixture.CapturedLogEntry entry,
++        string jsonLine)
++    {
++        try
++        {
++            using JsonDocument doc = JsonDocument.Parse(jsonLine);
++            JsonElement root = doc.RootElement;
++
++            // AddJsonConsole emits the structured log shape {"EventId":<int>,"LogLevel":...,
++            // "Category":...,"Message":"<formatted>","State":{...}}. Microsoft.Extensions.Logging's
++            // [LoggerMessage] source-generated emitters PASS the AccessTelemetryEvent record to the
++            // structured `{@AuditEvent}` placeholder, but AddJsonConsole does NOT natively destructure
++            // record-type arguments to nested JSON — it serializes via record.ToString(). The resulting
++            // top-level "Message" field carries the C# record `ToString()` output (e.g.
++            // `Search access error AccessTelemetryEvent { SchemaVersion = 1, EventId = 7511, ..., TraceId = ..., SpanId = ... }`)
++            // and so does State."@AuditEvent". We extract fields from that string with regex.
++            if (!TryReadEventId(root, out int eventId)
++                || eventId < MinEventId
++                || eventId > MaxEventId)
++            {
++                return null;
++            }
++
++            if (!root.TryGetProperty("Category", out JsonElement categoryElement)
++                || categoryElement.ValueKind != JsonValueKind.String)
++            {
++                return null;
++            }
++
++            string? category = categoryElement.GetString();
++
++            // Filter to the AccessTelemetryCategory specifically — other Server-side logs that happen to
++            // share the EventId range would be a contract violation, but we belt-and-suspender it here.
++            if (string.IsNullOrWhiteSpace(category)
++                || !category.EndsWith("AccessTelemetryCategory", StringComparison.Ordinal))
++            {
++                return null;
++            }
++
++            string? auditFormatted = ExtractAuditEventToStringText(root);
++            if (string.IsNullOrEmpty(auditFormatted))
++            {
++                return null;
++            }
++
++            AccessTelemetryEvent? auditEvent = TryParseRecordToString(auditFormatted, eventId);
++            return auditEvent is null
++                ? null
++                : new CapturedAuditEvent(entry.Category, entry.Level, eventId, jsonLine, auditEvent);
++        }
++        catch (JsonException)
++        {
++            // Not a valid JSON entry — skip silently. Operators triaging can read TailRawLogs() to inspect.
++            return null;
++        }
++    }
++
++    private static bool TryReadEventId(JsonElement root, out int eventId)
++    {
++        eventId = 0;
++        if (root.TryGetProperty("EventId", out JsonElement element)
++            || root.TryGetProperty("eventId", out element))
++        {
++            return element.ValueKind switch
++            {
++                JsonValueKind.Number => element.TryGetInt32(out eventId),
++                JsonValueKind.String => int.TryParse(element.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out eventId),
++                _ => false,
++            };
++        }
++
++        return false;
++    }
++
++    private static string? ExtractAuditEventToStringText(JsonElement root)
++    {
++        // Preferred path: top-level "Message" string contains the formatted log line, which embeds the
++        // record ToString. Format: "<prefix>AccessTelemetryEvent { ... }".
++        if (root.TryGetProperty("Message", out JsonElement messageElement)
++            && messageElement.ValueKind == JsonValueKind.String)
++        {
++            string? message = messageElement.GetString();
++            if (!string.IsNullOrEmpty(message)
++                && message.Contains("AccessTelemetryEvent {", StringComparison.Ordinal))
++            {
++                return message;
++            }
++        }
++
++        // Alternate path: State.@AuditEvent or State.AuditEvent string field.
++        if (root.TryGetProperty("State", out JsonElement state) && state.ValueKind == JsonValueKind.Object)
++        {
++            foreach (string key in new[] { "@AuditEvent", "AuditEvent" })
++            {
++                if (state.TryGetProperty(key, out JsonElement audit) && audit.ValueKind == JsonValueKind.String)
++                {
++                    return audit.GetString();
++                }
++            }
++        }
++
++        return null;
++    }
++
++    private static AccessTelemetryEvent? TryParseRecordToString(string text, int eventId)
++    {
++        // Locate the `AccessTelemetryEvent { ... }` substring inside the formatted message.
++        Match recordMatch = RecordToStringPattern.Match(text);
++        if (!recordMatch.Success)
++        {
++            return null;
++        }
++
++        string body = recordMatch.Groups["body"].Value;
++
++        // Split on `, FieldName = ` boundaries. The split-and-pair approach tolerates field values that
++        // themselves contain commas (e.g. `Dictionary`2[System.String,System.Object]`) by anchoring each
++        // boundary to a `, <PascalIdentifier> =` lookahead.
++        Dictionary<string, string> fields = new(StringComparer.Ordinal);
++        MatchCollection fieldMatches = RecordFieldPattern.Matches(body);
++        foreach (Match m in fieldMatches)
++        {
++            string name = m.Groups["name"].Value;
++            string value = m.Groups["value"].Value.Trim();
++            fields[name] = value;
++        }
++
++        if (fields.Count == 0)
++        {
++            return null;
++        }
++
++        if (!TryParseRequiredInt(fields, "SchemaVersion", out int schemaVersion)
++            || !TryParseRequiredInt(fields, "EventId", out int parsedEventId)
++            || parsedEventId != eventId
++            || !TryParseRequiredLong(fields, "DurationMs", out long durationMs)
++            || !TryParseOptionalInt(fields.GetValueOrDefault("ResultCount"), out int? resultCount))
++        {
++            return null;
++        }
++
++        string? timestamp = GetRequiredString(fields, "Timestamp");
++        string? tenantId = GetRequiredString(fields, "TenantId");
++        string? operationType = GetRequiredString(fields, "OperationType");
++        string? user = GetRequiredString(fields, "User");
++        string? outcome = GetRequiredString(fields, "Outcome");
++        string? traceId = GetRequiredString(fields, "TraceId");
++        string? spanId = GetRequiredString(fields, "SpanId");
++        if (timestamp is null
++            || tenantId is null
++            || operationType is null
++            || user is null
++            || outcome is null
++            || traceId is null
++            || spanId is null
++            || !fields.ContainsKey("QueryParams"))
++        {
++            return null;
++        }
++
++        return new AccessTelemetryEvent
++        {
++            EventId = eventId,
++            SchemaVersion = schemaVersion,
++            Timestamp = timestamp,
++            TenantId = tenantId,
++            OperationType = operationType,
++            CaseId = NullIfEmpty(fields.GetValueOrDefault("CaseId")),
++            User = user,
++            QueryParams = new Dictionary<string, object?>(0),
++            ResultCount = resultCount,
++            DurationMs = durationMs,
++            Outcome = outcome,
++            ErrorCode = NullIfEmpty(fields.GetValueOrDefault("ErrorCode")),
++            TraceId = traceId,
++            SpanId = spanId,
++        };
++    }
++
++    private static string? GetRequiredString(Dictionary<string, string> fields, string name)
++        => fields.TryGetValue(name, out string? raw)
++            ? NullIfEmpty(raw)
++            : null;
++
++    private static bool TryParseRequiredInt(Dictionary<string, string> fields, string name, out int value)
++    {
++        value = 0;
++        return fields.TryGetValue(name, out string? raw)
++            && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
++    }
++
++    private static bool TryParseRequiredLong(Dictionary<string, string> fields, string name, out long value)
++    {
++        value = 0;
++        return fields.TryGetValue(name, out string? raw)
++            && long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
++    }
++
++    private static bool TryParseOptionalInt(string? raw, out int? value)
++    {
++        string? normalized = NullIfEmpty(raw);
++        if (normalized is null)
++        {
++            value = null;
++            return true;
++        }
++
++        if (int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
++        {
++            value = parsed;
++            return true;
++        }
++
++        value = null;
++        return false;
++    }
++
++    private static string? NullIfEmpty(string? value)
++    {
++        if (string.IsNullOrWhiteSpace(value))
++        {
++            return null;
++        }
++
++        string trimmed = value.Trim();
++        return string.Equals(trimmed, "null", StringComparison.OrdinalIgnoreCase)
++            || string.Equals(trimmed, "<null>", StringComparison.OrdinalIgnoreCase)
++            ? null
++            : trimmed;
++    }
++
++    /// <summary>Captures the body of `AccessTelemetryEvent { ... }` (the toString-format payload).</summary>
++    private static readonly Regex RecordToStringPattern = new(
++        @"AccessTelemetryEvent\s*\{\s*(?<body>[^}]*)\}",
++        RegexOptions.Compiled | RegexOptions.CultureInvariant);
++
++    /// <summary>Splits the body into `Name = value` pairs. Each value runs up to (but not including) the
++    /// next `, PascalIdentifier =` boundary or end-of-body. Tolerates field values that contain commas
++    /// (e.g. <c>Dictionary`2[System.String,System.Object]</c>) by anchoring on the next field boundary.</summary>
++    private static readonly Regex RecordFieldPattern = new(
++        @"(?<name>[A-Z]\w*)\s*=\s*(?<value>.*?)(?=,\s*[A-Z]\w*\s*=|$)",
++        RegexOptions.Compiled | RegexOptions.CultureInvariant);
++}
++
++/// <summary>Captured Server-side audit log entry along with the original raw JSON line for triage.</summary>
++/// <param name="Category">Log entry category as captured by the AppHost log provider.</param>
++/// <param name="Level">Log level.</param>
++/// <param name="EventId">EventId from the JSON line (7501-7515 for Story 7.5 audit events).</param>
++/// <param name="RawJsonLine">Original raw JSON line; included so test failure diagnostics show the actual stdout content.</param>
++/// <param name="AuditEvent">Deserialized <see cref="AccessTelemetryEvent"/>.</param>
++internal sealed record CapturedAuditEvent(
++    string Category,
++    Microsoft.Extensions.Logging.LogLevel Level,
++    int EventId,
++    string RawJsonLine,
++    AccessTelemetryEvent AuditEvent);
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/CliTracingHarness.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/CliTracingHarness.cs
+new file mode 100644
+index 0000000..74565b1
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/CliTracingHarness.cs
+@@ -0,0 +1,117 @@
++// <copyright file="CliTracingHarness.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System;
++using System.Diagnostics;
++using System.Threading.Tasks;
++
++using Hexalith.Memories.Telemetry;
++
++using OpenTelemetry;
++using OpenTelemetry.Resources;
++using OpenTelemetry.Trace;
++
++/// <summary>
++/// Story 8.4 — in-test-process CLI-side tracing harness. Builds a <see cref="TracerProvider"/> that
++/// listens on the <see cref="MemoriesActivitySource"/> (CLI root span) and the
++/// <c>System.Net.Http</c> source (HttpClient instrumentation) and drains every emitted activity
++/// into the supplied <see cref="InMemorySpanCollector"/>.
++/// <para>
++/// This is the CLI-side leg of the hybrid capture model documented in the story Change Log Rev 0.6:
++/// the Memories Server runs as a separate process under Aspire orchestration, so the in-test-process
++/// tracer cannot capture Server-emitted activities. Server-side evidence is recovered via the audit
++/// log JSON line that <c>AccessTelemetryLog.CreateEvent</c> stamps with
++/// <see cref="Activity.Current"/> trace + span ids on the Server side; the test reads that line via
++/// the fixture's <c>_logProvider</c> and asserts trace-id equality with the CLI's emitted spans —
++/// proof that the W3C <c>traceparent</c> header propagated across the HTTP boundary.
++/// </para>
++/// <para>
++/// The harness uses <see cref="AlwaysOnSampler"/> (Sampler invariant from Dev Notes) so head-based
++/// sampling cannot silently drop the root span and make AC #1 flaky.
++/// </para>
++/// </summary>
++internal sealed class CliTracingHarness : IAsyncDisposable
++{
++    private readonly TracerProvider _tracerProvider;
++
++    private CliTracingHarness(TracerProvider tracerProvider, InMemorySpanCollector collector)
++    {
++        _tracerProvider = tracerProvider;
++        Collector = collector;
++    }
++
++    /// <summary>Gets the in-memory span collector the harness drains into.</summary>
++    public InMemorySpanCollector Collector { get; }
++
++    /// <summary>Builds the harness with a fresh collector. The returned harness owns the tracer
++    /// provider; dispose to flush + tear down.</summary>
++    /// <returns>A configured harness with collector ready to capture.</returns>
++    public static CliTracingHarness Create()
++    {
++        InMemorySpanCollector collector = new();
++        TracerProvider tracerProvider = Sdk.CreateTracerProviderBuilder()
++            .ConfigureResource(r => r.AddService("Hexalith.Memories.Cli", serviceVersion: "8.4"))
++            .SetSampler(new AlwaysOnSampler())
++            .AddSource(MemoriesActivitySource.SourceName)
++            .AddHttpClientInstrumentation()
++            .AddProcessor(new SimpleActivityExportProcessor(new CollectionExporter(collector)))
++            .Build()!;
++
++        return new CliTracingHarness(tracerProvider, collector);
++    }
++
++    /// <summary>Starts a CLI root activity (<c>memories.cli.invoke</c>) that becomes the parent of
++    /// any HttpClient spans emitted under it. Tests pass the disposable through their <c>using</c>
++    /// scope so the activity stops + flushes after the request completes.</summary>
++    /// <param name="commandName">CLI command name tag (e.g. <c>"search"</c>).</param>
++    /// <returns>The started activity, or <c>null</c> if no listener attached (should not happen with this harness).</returns>
++    public Activity? StartCliRootActivity(string commandName)
++    {
++        Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CliInvoke);
++        activity?.SetTag(MemoriesActivitySource.TagCommand, commandName);
++        return activity;
++    }
++
++    /// <summary>Force-flushes both the tracer provider so all in-flight activities reach the
++    /// collector before assertions read it (Risk 10 mitigation for the activity side).</summary>
++    /// <param name="timeout">Flush timeout.</param>
++    /// <returns>A task that completes when flush is done.</returns>
++    public Task ForceFlushAsync(TimeSpan timeout)
++    {
++        // OpenTelemetry's TracerProvider.ForceFlush(int) is synchronous; wrap in Task.Run so callers
++        // can await with a timeout enforced by their own CancellationToken.
++        return Task.Run(() => _tracerProvider.ForceFlush((int)timeout.TotalMilliseconds));
++    }
++
++    /// <inheritdoc/>
++    public async ValueTask DisposeAsync()
++    {
++        await ForceFlushAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
++        _tracerProvider.Dispose();
++    }
++
++    /// <summary>Tiny <see cref="BaseExporter{T}"/> that drains each batch into a collector.
++    /// Avoids taking a hard dependency on <c>OpenTelemetry.Exporter.InMemory</c> in the integration
++    /// test assembly (the package is fine to add, but writing a 6-line exporter keeps the dep
++    /// surface small and makes the export contract explicit at the test boundary).</summary>
++    private sealed class CollectionExporter : BaseExporter<Activity>
++    {
++        private readonly InMemorySpanCollector _collector;
++
++        public CollectionExporter(InMemorySpanCollector collector) => _collector = collector;
++
++        public override ExportResult Export(in Batch<Activity> batch)
++        {
++            foreach (Activity activity in batch)
++            {
++                _collector.Activities.Add(activity);
++            }
++
++            return ExportResult.Success;
++        }
++    }
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/EnvVarScope.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/EnvVarScope.cs
+new file mode 100644
+index 0000000..277456b
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/EnvVarScope.cs
+@@ -0,0 +1,37 @@
++// <copyright file="EnvVarScope.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System;
++
++using SharedEnvVarScope = Hexalith.Memories.TestHelpers.Process.EnvVarScope;
++
++/// <summary>
++/// Story 8.4 (Amelia, party-mode review 2026-04-20) — disposable that snapshots a process env var on
++/// construction and restores the prior value on dispose. Use everywhere the integration tests set
++/// <c>HEXALITH_MEMORIES_OTEL_ENDPOINT</c> or <c>HEXALITH_MEMORIES_TELEMETRY_INMEMORY</c> so static
++/// env-var state cannot bleed across parallel test collections (Tier-2 + Tier-3 may both touch the
++/// same process under <c>dotnet test</c>).
++/// <para>
++/// Usage: <c>using var _ = EnvVarScope.Set(InMemoryTelemetryEnvironment.EnvVar, "1");</c>
++/// </para>
++/// </summary>
++internal sealed class EnvVarScope : IDisposable
++{
++    private readonly SharedEnvVarScope _inner;
++
++    private EnvVarScope(SharedEnvVarScope inner) => _inner = inner;
++
++    /// <summary>Sets the env var to <paramref name="value"/> after snapshotting the prior value.</summary>
++    /// <param name="name">Env var name.</param>
++    /// <param name="value">Value to set (use <c>null</c> to clear within the scope).</param>
++    /// <returns>A scope that restores the previous value on dispose.</returns>
++    public static EnvVarScope Set(string name, string? value)
++        => new(SharedEnvVarScope.Set(name, value));
++
++    /// <inheritdoc/>
++    public void Dispose() => _inner.Dispose();
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs
+new file mode 100644
+index 0000000..bcd585b
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/InMemorySpanCollector.cs
+@@ -0,0 +1,154 @@
++// <copyright file="InMemorySpanCollector.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System.Collections;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Linq;
++using System.Text;
++
++using Hexalith.Memories.Telemetry;
++
++/// <summary>
++/// Story 8.4 Task 1.1 — test-only <see cref="IActivityCollector"/> implementation. Stored under
++/// <c>tests/</c> per ADR-8.4-002 (option B): the collector is NOT a production-visible surface
++/// because a static mutable activity sink in a consumer-facing package is a foot-gun for plugin
++/// authors across the Hexalith ecosystem (Winston, party-mode review 2026-04-20).
++/// <para>
++/// Thread-safety: <see cref="Activities"/> exposes a synchronized <see cref="ICollection{T}"/>
++/// wrapper backed by a <see cref="List{T}"/> with internal lock on every mutation. The
++/// OpenTelemetry simple-export processor invokes <c>Add</c> on the activity-emitting thread, but
++/// concurrent activities on parallel threads CAN race; the lock keeps the list consistent.
++/// </para>
++/// <para>
++/// Reset semantics: callers MUST <c>await TracerProvider.ForceFlushAsync(...)</c> BEFORE invoking
++/// <see cref="Reset"/> to avoid the activity-drain / reset race documented in Risk 10. The test
++/// fixture's <c>DisposeAsync</c> follows that protocol.
++/// </para>
++/// </summary>
++internal sealed class InMemorySpanCollector : IActivityCollector
++{
++    private readonly SynchronizedActivityList _activities = new();
++
++    /// <inheritdoc/>
++    public ICollection<Activity> Activities => _activities;
++
++    /// <summary>Returns a stable snapshot of currently-collected activities, ordered by start time.</summary>
++    public IReadOnlyList<Activity> Snapshot() => _activities.SnapshotOrderedByStart();
++
++    /// <summary>Clears the collected activities. Callers MUST flush the tracer provider first
++    /// (see class-level Risk 10 note).</summary>
++    public void Reset() => _activities.Clear();
++
++    /// <summary>Story 8.4 Task 2.3.5 — formats the captured span tree for triage on test failure.
++    /// Each line: <c>{SpanId} parent={ParentSpanId} name={OperationName} trace={TraceId} source={Source.Name}</c>,
++    /// sorted by start time. Surfaces instrumentation changes (added intermediate spans, missing expected
++    /// spans) in one readable block so a future dev does not need to re-run with breakpoints.</summary>
++    /// <returns>A multi-line string suitable for <c>TestContext.Output</c> attachment.</returns>
++    public string FormatSpanTree()
++    {
++        StringBuilder sb = new();
++        IReadOnlyList<Activity> ordered = Snapshot();
++        sb.AppendLine($"InMemorySpanCollector: {ordered.Count} captured activities (ordered by StartTimeUtc):");
++        foreach (Activity a in ordered)
++        {
++            sb.AppendLine(
++                $"  {a.SpanId} parent={a.ParentSpanId} name={a.OperationName} trace={a.TraceId} source={a.Source.Name}");
++        }
++
++        return sb.ToString();
++    }
++
++    /// <summary>Synchronized <see cref="ICollection{T}"/> wrapper. <see cref="System.Collections.Concurrent.ConcurrentBag{T}"/>
++    /// only implements <c>IProducerConsumerCollection&lt;T&gt;</c>, not <c>ICollection&lt;T&gt;</c> (no remove
++    /// semantics), so OpenTelemetry's <c>AddInMemoryExporter(ICollection&lt;Activity&gt;)</c>-style API rejects
++    /// it. This wrapper gives us thread-safe Add semantics with the right interface — minimal surface,
++    /// reads via snapshot copy.</summary>
++    private sealed class SynchronizedActivityList : ICollection<Activity>
++    {
++        private readonly object _gate = new();
++        private readonly List<Activity> _items = [];
++
++        public int Count
++        {
++            get
++            {
++                lock (_gate)
++                {
++                    return _items.Count;
++                }
++            }
++        }
++
++        public bool IsReadOnly => false;
++
++        public void Add(Activity item)
++        {
++            lock (_gate)
++            {
++                _items.Add(item);
++            }
++        }
++
++        public void Clear()
++        {
++            lock (_gate)
++            {
++                _items.Clear();
++            }
++        }
++
++        public bool Contains(Activity item)
++        {
++            lock (_gate)
++            {
++                return _items.Contains(item);
++            }
++        }
++
++        public void CopyTo(Activity[] array, int arrayIndex)
++        {
++            lock (_gate)
++            {
++                _items.CopyTo(array, arrayIndex);
++            }
++        }
++
++        public bool Remove(Activity item)
++        {
++            lock (_gate)
++            {
++                return _items.Remove(item);
++            }
++        }
++
++        public IEnumerator<Activity> GetEnumerator()
++        {
++            // Snapshot under lock so iteration does not race with concurrent Add.
++            Activity[] snapshot;
++            lock (_gate)
++            {
++                snapshot = [.. _items];
++            }
++
++            return ((IEnumerable<Activity>)snapshot).GetEnumerator();
++        }
++
++        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
++
++        public IReadOnlyList<Activity> SnapshotOrderedByStart()
++        {
++            Activity[] snapshot;
++            lock (_gate)
++            {
++                snapshot = [.. _items];
++            }
++
++            return [.. snapshot.OrderBy(a => a.StartTimeUtc)];
++        }
++    }
++}
+diff --git a/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs
+new file mode 100644
+index 0000000..acdab2f
+--- /dev/null
++++ b/tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs
+@@ -0,0 +1,148 @@
++// <copyright file="ServerActivityStreamReader.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
++
++using System.Text.Json;
++
++using Hexalith.Memories.IntegrationTests.Fixtures;
++using Hexalith.Memories.Telemetry;
++
++using Microsoft.Extensions.Logging;
++
++/// <summary>
++/// Reads server-side test-only activity breadcrumbs emitted by
++/// <see cref="Hexalith.Memories.ServiceDefaults.Extensions"/> when
++/// <see cref="InMemoryTelemetryEnvironment.EnvVar"/> is enabled.
++/// </summary>
++internal static class ServerActivityStreamReader
++{
++    public static async Task<IReadOnlyList<CapturedServerActivity>> ReadAsync(
++        AspireIngestionPipelineFixture fixture,
++        int logStartIndex,
++        int minimumEvents,
++        TimeSpan timeout,
++        CancellationToken cancellationToken,
++        Func<CapturedServerActivity, bool>? matchPredicate = null)
++    {
++        ArgumentNullException.ThrowIfNull(fixture);
++        ArgumentOutOfRangeException.ThrowIfNegative(logStartIndex);
++        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(minimumEvents);
++
++        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
++        TimeSpan pollInterval = TimeSpan.FromMilliseconds(200);
++
++        IReadOnlyList<CapturedServerActivity> latest = [];
++        while (DateTimeOffset.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
++        {
++            latest = ScanCapturedLogs(fixture, logStartIndex);
++            int matchingCount = matchPredicate is null
++                ? latest.Count
++                : latest.Count(matchPredicate);
++            if (matchingCount >= minimumEvents)
++            {
++                return latest;
++            }
++
++            try
++            {
++                await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
++            }
++            catch (TaskCanceledException)
++            {
++                break;
++            }
++        }
++
++        return latest;
++    }
++
++    private static IReadOnlyList<CapturedServerActivity> ScanCapturedLogs(
++        AspireIngestionPipelineFixture fixture,
++        int logStartIndex)
++    {
++        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries = fixture.GetLogEntriesSince(logStartIndex);
++        List<CapturedServerActivity> matches = [];
++        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in entries)
++        {
++            if (string.IsNullOrEmpty(entry.Message))
++            {
++                continue;
++            }
++
++            int prefixIndex = entry.Message.IndexOf(InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix, StringComparison.Ordinal);
++            if (prefixIndex < 0)
++            {
++                continue;
++            }
++
++            string json = entry.Message[(prefixIndex + InMemoryTelemetryEnvironment.ActivityBreadcrumbPrefix.Length)..].Trim();
++            CapturedServerActivity? captured = TryParse(entry, json);
++            if (captured is not null)
++            {
++                matches.Add(captured);
++            }
++        }
++
++        return matches;
++    }
++
++    private static CapturedServerActivity? TryParse(
++        AspireIngestionPipelineFixture.CapturedLogEntry entry,
++        string json)
++    {
++        try
++        {
++            using JsonDocument doc = JsonDocument.Parse(json);
++            JsonElement root = doc.RootElement;
++
++            string? sourceName = TryReadString(root, "sourceName");
++            string? operationName = TryReadString(root, "operationName");
++            string? traceId = TryReadString(root, "traceId");
++            string? spanId = TryReadString(root, "spanId");
++            string? kind = TryReadString(root, "kind");
++            if (string.IsNullOrWhiteSpace(sourceName)
++                || string.IsNullOrWhiteSpace(operationName)
++                || string.IsNullOrWhiteSpace(traceId)
++                || string.IsNullOrWhiteSpace(spanId)
++                || string.IsNullOrWhiteSpace(kind))
++            {
++                return null;
++            }
++
++            return new CapturedServerActivity(
++                entry.Category,
++                entry.Level,
++                sourceName,
++                operationName,
++                traceId,
++                spanId,
++                TryReadString(root, "parentSpanId"),
++                kind,
++                json);
++        }
++        catch (JsonException)
++        {
++            return null;
++        }
++    }
++
++    private static string? TryReadString(JsonElement root, string propertyName)
++        => root.TryGetProperty(propertyName, out JsonElement element) && element.ValueKind == JsonValueKind.String
++            ? element.GetString()
++            : null;
++}
++
++/// <summary>Captured server-side activity breadcrumb written by the integration-only activity processor.</summary>
++internal sealed record CapturedServerActivity(
++    string Category,
++    LogLevel Level,
++    string SourceName,
++    string OperationName,
++    string TraceId,
++    string SpanId,
++    string? ParentSpanId,
++    string Kind,
++    string RawJsonPayload);
+\ No newline at end of file
+diff --git a/tests/Hexalith.Memories.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs b/tests/Hexalith.Memories.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs
+index 6f67785..3be5e0e 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Telemetry/OpenTelemetryRegistrationTests.cs
+@@ -13,6 +13,7 @@ using System.Linq;
+ using Hexalith.Memories.Server.Telemetry;
+ using Hexalith.Memories.ServiceDefaults;
+ using Hexalith.Memories.Telemetry;
++using Hexalith.Memories.TestHelpers.Process;
+ 
+ using Microsoft.AspNetCore.Http;
+ using Microsoft.Extensions.DependencyInjection;
+@@ -104,6 +105,116 @@ public sealed class OpenTelemetryRegistrationTests
+         Extensions.ShouldTraceHttpRequest(ContextFor("/")).ShouldBeTrue();
+     }
+ 
++    [Fact]
++    public void InMemoryTelemetry_EnvVarUnset_NoCollectorRegistered_AndContainerBuilds()
++    {
++        // Story 8.4 AC #5 + Task 1.4 regression guard: when HEXALITH_MEMORIES_TELEMETRY_INMEMORY is
++        // unset, the env-var branch in AddOpenTelemetryExporters MUST be skipped — no IActivityCollector
++        // resolution is attempted, the production OpenTelemetry pipeline stays unchanged, and the
++        // service container builds without throwing on a missing IActivityCollector registration.
++        using EnvVarScope _ = EnvVarScope.Set(InMemoryTelemetryEnvironment.EnvVar, null);
++        HostApplicationBuilder builder = BuildHostBuilder();
++        using ServiceProvider provider = builder.Services.BuildServiceProvider();
++
++        // The branch is skipped → no IActivityCollector requirement → BuildServiceProvider succeeds
++        // and resolving TracerProvider does not throw.
++        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
++        provider.GetService<IActivityCollector>().ShouldBeNull(
++            "Production code MUST NOT register IActivityCollector when the env-var trigger is unset.");
++    }
++
++    [Fact]
++    public void InMemoryTelemetry_EnvVarSet_WithoutCollector_ContainerStillBuilds()
++    {
++        // Story 8.4 telemetry fixture enables the env-var gate for the separate server process, which does
++        // NOT register an IActivityCollector. The branch must therefore remain safe when the collector is
++        // absent: build succeeds, TracerProvider resolves, and the optional breadcrumb emission still works.
++        using EnvVarScope _ = EnvVarScope.Set(
++            InMemoryTelemetryEnvironment.EnvVar,
++            InMemoryTelemetryEnvironment.EnabledValue);
++
++        HostApplicationBuilder builder = BuildHostBuilder();
++        using ServiceProvider provider = builder.Services.BuildServiceProvider();
++
++        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
++        provider.GetService<IActivityCollector>().ShouldBeNull();
++    }
++
++    [Theory]
++    [InlineData("")]
++    [InlineData("0")]
++    [InlineData("true")]
++    [InlineData("True")]
++    [InlineData("TRUE")]
++    [InlineData("on")]
++    [InlineData("yes")]
++    [InlineData(" 1")]
++    [InlineData("1 ")]
++    [InlineData("01")]
++    [InlineData("10")]
++    public void InMemoryTelemetry_EnvVarParseStrictness_OnlyExactOneActivates(string envValue)
++    {
++        // Story 8.4 Task 1.1.5 (Risk 7 mitigation): the env-var contract is "exact string match on \"1\"".
++        // A developer who uses truthy variants ("true", "on", " 1", "01") gets ZERO capture activation
++        // — a misconfiguration that should never silently look like it worked. This test pins the contract
++        // so a future code-cleanup pass cannot loosen the comparison to OrdinalIgnoreCase or numeric parse.
++        InMemoryTelemetryEnvironment.IsEnabled(envValue).ShouldBeFalse(
++            $"Only the exact string \"{InMemoryTelemetryEnvironment.EnabledValue}\" must activate; got '{envValue}'.");
++    }
++
++    [Fact]
++    public void InMemoryTelemetry_EnvVarParseStrictness_ExactOneActivates()
++    {
++        // Positive case: the canonical activator string MUST evaluate to true. Pairs with the negative
++        // theory above so the round-trip is fully pinned.
++        InMemoryTelemetryEnvironment.IsEnabled(InMemoryTelemetryEnvironment.EnabledValue).ShouldBeTrue();
++    }
++
++    [Fact]
++    public void InMemoryTelemetry_FormatIgnoredValueWarning_HasStableShape()
++    {
++        // Story 8.4 Task 1.1.5 — pin the warning text so test logs and operator triage docs can rely
++        // on the exact phrasing. A drift here would break grep-based triage.
++        string warning = InMemoryTelemetryEnvironment.FormatIgnoredValueWarning("true");
++        warning.ShouldBe("[telemetry] HEXALITH_MEMORIES_TELEMETRY_INMEMORY=true — only \"1\" activates; ignoring");
++    }
++
++    [Fact]
++    public void InMemoryTelemetry_EnvVarSet_BranchRegistersInMemoryProcessor_AndCapturesActivities()
++    {
++        // Story 8.4 Task 1.1 happy-path: when the env var IS exactly "1" AND an IActivityCollector
++        // is registered in DI, the env-var branch appends a CollectingActivityProcessor that drains
++        // emitted activities into the collector. Validates the wiring end-to-end without booting Aspire.
++        using EnvVarScope _ = EnvVarScope.Set(
++            InMemoryTelemetryEnvironment.EnvVar,
++            InMemoryTelemetryEnvironment.EnabledValue);
++
++        TestActivityCollector collector = new();
++        HostApplicationBuilder builder = BuildHostBuilder();
++        builder.Services.AddSingleton<IActivityCollector>(collector);
++
++        using ServiceProvider provider = builder.Services.BuildServiceProvider();
++        TracerProvider tracerProvider = provider.GetRequiredService<TracerProvider>();
++
++        using (Activity? activity = MemoriesActivitySource.Instance.StartActivity("env-var-branch-probe"))
++        {
++            activity.ShouldNotBeNull();
++        }
++
++        tracerProvider.ForceFlush();
++
++        collector.Activities.ShouldContain(
++            a => a.Source.Name == MemoriesActivitySource.SourceName && a.OperationName == "env-var-branch-probe",
++            "Env-var branch did not append the integration activity processor — activity was not captured.");
++    }
++
++    private sealed class TestActivityCollector : IActivityCollector
++    {
++        private readonly List<Activity> _activities = [];
++
++        public ICollection<Activity> Activities => _activities;
++    }
++
+     [Fact]
+     public void Program_RegistersRollingCounterStore_AsSingletonAndHostedService()
+     {
+diff --git a/tests/Hexalith.Memories.TestHelpers/Process/EnvVarScope.cs b/tests/Hexalith.Memories.TestHelpers/Process/EnvVarScope.cs
+new file mode 100644
+index 0000000..78805a3
+--- /dev/null
++++ b/tests/Hexalith.Memories.TestHelpers/Process/EnvVarScope.cs
+@@ -0,0 +1,71 @@
++namespace Hexalith.Memories.TestHelpers.Process;
++
++using System.Collections.Concurrent;
++using System.Threading;
++
++/// <summary>
++/// Process-wide environment-variable scope with per-key serialization.
++/// </summary>
++/// <remarks>
++/// <para>
++/// Tests in this repository run in parallel across assemblies. Plain snapshot/restore helpers are unsafe when
++/// two callers overlap on the same variable: the later scope can snapshot the already-mutated value and restore
++/// the wrong state. This helper serializes scopes per env-var name for the lifetime of the scope so overlapping
++/// same-key mutations cannot interleave.
++/// </para>
++/// <para>
++/// Different env-var names still proceed concurrently.
++/// </para>
++/// </remarks>
++public sealed class EnvVarScope : IDisposable
++{
++    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
++
++    private readonly SemaphoreSlim _gate;
++    private readonly string _name;
++    private readonly string? _previousValue;
++    private bool _disposed;
++
++    private EnvVarScope(string name, string? previousValue, SemaphoreSlim gate)
++    {
++        _name = name;
++        _previousValue = previousValue;
++        _gate = gate;
++    }
++
++    /// <summary>Sets the env var to <paramref name="value"/> after snapshotting the prior value.</summary>
++    /// <param name="name">Env var name.</param>
++    /// <param name="value">Value to set (use <see langword="null"/> to clear within the scope).</param>
++    /// <returns>A scope that restores the previous value on dispose.</returns>
++    public static EnvVarScope Set(string name, string? value)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(name);
++
++        SemaphoreSlim gate = Gates.GetOrAdd(name, static _ => new SemaphoreSlim(1, 1));
++        gate.Wait();
++        try
++        {
++            string? previous = Environment.GetEnvironmentVariable(name);
++            Environment.SetEnvironmentVariable(name, value);
++            return new EnvVarScope(name, previous, gate);
++        }
++        catch
++        {
++            gate.Release();
++            throw;
++        }
++    }
++
++    /// <inheritdoc/>
++    public void Dispose()
++    {
++        if (_disposed)
++        {
++            return;
++        }
++
++        _disposed = true;
++        Environment.SetEnvironmentVariable(_name, _previousValue);
++        _gate.Release();
++    }
++}
+\ No newline at end of file
