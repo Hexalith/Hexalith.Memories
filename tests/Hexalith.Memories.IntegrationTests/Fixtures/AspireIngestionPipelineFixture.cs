@@ -37,8 +37,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private string? _previousAllowPrivateHosts;
     private string? _previousDaprAppId;
     private string? _previousRedisVolumeName;
+    private string? _previousEventStoreSourceMap;
     private string _daprAppId = string.Empty;
     private string _redisVolumeName = string.Empty;
+    private string _eventStoreMappedTenantId = string.Empty;
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
     private HttpClientHandler? _actorHttpMessageHandler;
@@ -53,6 +55,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
     public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");
+
+    /// <summary>Gets the tenant id bound to the default integration-test EventStore source prefix.</summary>
+    public string EventStoreMappedTenantId => _eventStoreMappedTenantId;
+
+    /// <summary>Gets the CloudEvents <c>source</c> prefix mapped to <see cref="EventStoreMappedTenantId"/>.</summary>
+    public string EventStoreMappedSourcePrefix => "enterprise.claims";
 
     /// <summary>Gets the number of captured log entries.</summary>
     public int LogEntryCount => _logProvider.Count;
@@ -103,6 +111,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _previousAllowPrivateHosts = Environment.GetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts");
         _previousDaprAppId = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
         _previousRedisVolumeName = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
+        _previousEventStoreSourceMap = Environment.GetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims");
         _telemetryInMemoryScope = EnvVarScope.Set(
             InMemoryTelemetryEnvironment.EnvVar,
             InMemoryTelemetryEnvironment.EnabledValue);
@@ -114,8 +123,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
+        _eventStoreMappedTenantId = $"tenant-eventstore-{Guid.NewGuid():N}";
         Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _daprAppId);
         Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
+        Environment.SetEnvironmentVariable(
+            "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
+            _eventStoreMappedTenantId);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
         await StartTopologyAsync(cts.Token).ConfigureAwait(false);
@@ -156,6 +169,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("Ingestion__UrlFetcher__AllowPrivateHosts", _previousAllowPrivateHosts);
         Environment.SetEnvironmentVariable("MEMORIES_DAPR_APP_ID", _previousDaprAppId);
         Environment.SetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME", _previousRedisVolumeName);
+        Environment.SetEnvironmentVariable("EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims", _previousEventStoreSourceMap);
         _telemetryInMemoryScope?.Dispose();
         _telemetryInMemoryScope = null;
     }

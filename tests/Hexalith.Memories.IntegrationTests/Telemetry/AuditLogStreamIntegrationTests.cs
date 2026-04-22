@@ -156,6 +156,7 @@ public sealed class AuditLogStreamIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus()
     {
         string tenantId = await EnsureProvisionedTenantAsync();

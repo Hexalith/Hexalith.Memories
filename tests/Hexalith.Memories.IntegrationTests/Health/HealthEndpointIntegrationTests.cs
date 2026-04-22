@@ -74,6 +74,7 @@ public sealed class HealthEndpointIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task ReadyEndpoint_FalkorDbDown_ReturnsDegradedWithCapabilities()
     {
         try
@@ -100,6 +101,7 @@ public sealed class HealthEndpointIntegrationTests
     }
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task AliveEndpoint_DaprSidecarDown_Returns503Unhealthy()
     {
         try

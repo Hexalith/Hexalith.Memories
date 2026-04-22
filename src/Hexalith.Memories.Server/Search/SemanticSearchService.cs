@@ -78,7 +78,7 @@ public sealed partial class SemanticSearchService
 
         // Step 3: Convert vector to bytes and build KNN query
         byte[] queryVectorBytes = MemoryMarshal.AsBytes(queryVector.AsSpan()).ToArray();
-        string queryString = BuildKnnQueryString(maxResults, query.CaseId, query.SourceTypeFilter);
+        string queryString = BuildKnnQueryString(maxResults, query.CaseId, query.SourceTypeFilter, query.CloudEventSubject);
 
         var redisQuery = new Query(queryString)
             .AddParam("query_vec", queryVectorBytes)
@@ -160,7 +160,11 @@ public sealed partial class SemanticSearchService
     /// <param name="caseId">An optional case identifier for TAG filtering.</param>
     /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
     /// <returns>The KNN query string for FT.SEARCH.</returns>
-    internal static string BuildKnnQueryString(int maxResults, string? caseId, string? sourceTypeFilter = null)
+    internal static string BuildKnnQueryString(
+        int maxResults,
+        string? caseId,
+        string? sourceTypeFilter = null,
+        string? cloudEventSubject = null)
     {
         List<string> filterParts = [];
 
@@ -172,6 +176,11 @@ public sealed partial class SemanticSearchService
         if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
         {
             filterParts.Add($"@sourceType:{{{EscapeTagValue(sourceTypeFilter)}}}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(cloudEventSubject))
+        {
+            filterParts.Add($"@cloudeventSubject:{{{EscapeTagValue(cloudEventSubject)}}}");
         }
 
         string preFilter = filterParts.Count > 0 ? string.Join(" ", filterParts) : "*";

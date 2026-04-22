@@ -23,6 +23,10 @@ public sealed record SearchQuery
     /// <summary>Gets an optional metadata text query to filter results by metadata content.</summary>
     public string? MetadataQuery { get; init; }
 
+    /// <summary>Gets an optional exact-match filter for the stored <c>cloudevent.subject</c> value.
+    /// When supplied, search backends use the dedicated subject TAG index instead of a fuzzy text match.</summary>
+    public string? CloudEventSubject { get; init; }
+
     /// <summary>Gets the maximum number of results to return (default 10).</summary>
     public int MaxResults { get; init; } = 10;
 

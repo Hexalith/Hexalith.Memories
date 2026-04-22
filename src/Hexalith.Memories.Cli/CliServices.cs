@@ -157,6 +157,9 @@ public static class CliServices
             new ConsistencyReceiptJsonFormatter(),
             new ConsistencyReceiptTableFormatter());
 
+        // Story 8.2: consistency verify/repair poll cadence — overridable by tests.
+        services.AddOptions<ConsistencyPollOptions>();
+
         // Story 7.4: quickstart wizard services.
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IProcessRunner, DefaultProcessRunner>();

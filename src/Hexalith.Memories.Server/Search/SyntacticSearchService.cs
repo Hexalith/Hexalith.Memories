@@ -74,7 +74,7 @@ public sealed partial class SyntacticSearchService
         var ft = db.FT();
 
         string searchTerms = BuildSearchTermsQuery(query.Query);
-        string queryString = BuildQueryString(searchTerms, query.CaseId, query.SourceTypeFilter, query.MetadataQuery);
+        string queryString = BuildQueryString(searchTerms, query.CaseId, query.SourceTypeFilter, query.MetadataQuery, query.CloudEventSubject);
 
         var redisQuery = new Query(queryString)
             .SetWithScores(true)
@@ -165,7 +165,12 @@ public sealed partial class SyntacticSearchService
     /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
     /// <param name="metadataQuery">An optional metadata text query for TEXT filtering.</param>
     /// <returns>The query string for FT.SEARCH.</returns>
-    internal static string BuildQueryString(string searchTerms, string? caseId, string? sourceTypeFilter = null, string? metadataQuery = null)
+    internal static string BuildQueryString(
+        string searchTerms,
+        string? caseId,
+        string? sourceTypeFilter = null,
+        string? metadataQuery = null,
+        string? cloudEventSubject = null)
     {
         List<string> parts = [];
 
@@ -177,6 +182,11 @@ public sealed partial class SyntacticSearchService
         if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
         {
             parts.Add($"@sourceType:{{{EscapeRedisQuery(sourceTypeFilter)}}}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(cloudEventSubject))
+        {
+            parts.Add($"@cloudeventSubject:{{{EscapeRedisQuery(cloudEventSubject)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(metadataQuery))

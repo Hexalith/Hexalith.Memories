@@ -49,6 +49,7 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
 
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
+        string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
 
         string indexName = IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId);
         string hashKey = $"{input.TenantId}:vec:{input.MemoryUnitId}";
@@ -66,13 +67,19 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
             _logger.LogWarning("Redis Vector index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
         }
 
-        await db.HashSetAsync(
-            hashKey,
-            [
-                new HashEntry("embedding", vectorBytes),
-                new HashEntry("memoryUnitId", input.MemoryUnitId),
-                new HashEntry("caseId", input.CaseId),
-            ]).ConfigureAwait(false);
+        List<HashEntry> hashEntries =
+        [
+            new HashEntry("embedding", vectorBytes),
+            new HashEntry("memoryUnitId", input.MemoryUnitId),
+            new HashEntry("caseId", input.CaseId),
+        ];
+
+        if (!string.IsNullOrWhiteSpace(cloudEventSubject))
+        {
+            hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
+        }
+
+        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Indexed memory unit {MemoryUnitId} in Redis Vector for tenant {TenantId}",
@@ -180,4 +187,9 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
 
     private static string? TryGetString(RedisResult result)
         => result.ToString();
+
+    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, MetadataField> metadata, string key)
+        => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)
+            ? field.Value
+            : null;
 }

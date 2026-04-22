@@ -1,0 +1,121 @@
+// <copyright file="EventIngestionControllerTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.EventStore.Tests;
+
+using System.Text.Json;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.EventStore;
+
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+using NSubstitute;
+
+using Shouldly;
+
+public sealed class EventIngestionControllerTests
+{
+    private static readonly JsonElement AnyEnvelope = JsonDocument.Parse("""
+        { "id": "evt-1", "source": "/x", "type": "a.b.c", "data": { } }
+        """).RootElement;
+
+    private static EventIngestionController BuildController(EventIngestionProcessResult processResult)
+    {
+        IEventIngestionService service = Substitute.For<IEventIngestionService>();
+        service.ProcessAsync(Arg.Any<JsonElement>(), Arg.Any<CancellationToken>())
+            .Returns(processResult);
+        return new EventIngestionController(service);
+    }
+
+    [Fact]
+    public async Task OnEvent_Accepted_Returns200WithResponse()
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(EventIngestionOutcome.Accepted, EventIngestionResponse.Accepted("wf-1")));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        OkObjectResult ok = actionResult.ShouldBeOfType<OkObjectResult>();
+        EventIngestionResponse response = ok.Value.ShouldBeOfType<EventIngestionResponse>();
+        response.Status.ShouldBe(EventIngestionResponse.StatusAccepted);
+        response.InstanceId.ShouldBe("wf-1");
+    }
+
+    [Fact]
+    public async Task OnEvent_Duplicate_Returns200WithWasDuplicateTrue()
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(EventIngestionOutcome.Duplicate, EventIngestionResponse.Duplicate()));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        OkObjectResult ok = actionResult.ShouldBeOfType<OkObjectResult>();
+        EventIngestionResponse response = ok.Value.ShouldBeOfType<EventIngestionResponse>();
+        response.WasDuplicate.ShouldBeTrue();
+        response.InstanceId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task OnEvent_InvalidCloudEvent_Returns400WithErrorResponse()
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(
+                EventIngestionOutcome.InvalidCloudEvent,
+                EventIngestionResponse.Invalid("cloudevent.data missing")));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        BadRequestObjectResult bad = actionResult.ShouldBeOfType<BadRequestObjectResult>();
+        ErrorResponse error = bad.Value.ShouldBeOfType<ErrorResponse>();
+        error.Code.ShouldBe("INVALID_CLOUDEVENT");
+        error.Message.ShouldBe("cloudevent.data missing");
+    }
+
+    [Fact]
+    public async Task OnEvent_TenantProvisioning_Returns500ForRetry()
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(
+                EventIngestionOutcome.TenantProvisioning,
+                EventIngestionResponse.Drop("tenant-provisioning", "Tenant is provisioning")));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        ObjectResult status = actionResult.ShouldBeOfType<ObjectResult>();
+        status.StatusCode.ShouldBe(StatusCodes.Status500InternalServerError);
+    }
+
+    [Fact]
+    public async Task OnEvent_ScheduleFailed_Returns500ForRetry()
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(
+                EventIngestionOutcome.ScheduleFailed,
+                EventIngestionResponse.Drop("schedule-failed", "dapr sidecar down")));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        ObjectResult status = actionResult.ShouldBeOfType<ObjectResult>();
+        status.StatusCode.ShouldBe(StatusCodes.Status500InternalServerError);
+    }
+
+    [Theory]
+    [InlineData(EventIngestionOutcome.UnknownSource)]
+    [InlineData(EventIngestionOutcome.TenantNotFound)]
+    [InlineData(EventIngestionOutcome.TenantDeleting)]
+    [InlineData(EventIngestionOutcome.AutoCreateDisabled)]
+    [InlineData(EventIngestionOutcome.CaseCapExceeded)]
+    public async Task OnEvent_DropOutcomes_Return200(EventIngestionOutcome outcome)
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(outcome, EventIngestionResponse.Drop("drop", "reason")));
+
+        IActionResult actionResult = await controller.OnEvent(AnyEnvelope, CancellationToken.None);
+
+        actionResult.ShouldBeOfType<OkObjectResult>();
+    }
+}

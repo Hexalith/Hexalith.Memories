@@ -1,0 +1,26 @@
+# Story 9.1 — DAPR pub/sub component.
+#
+# Reuses the existing Redis dependency (same host as statestore.yaml). Keep this file aligned with the
+# AppHost wiring in src/Hexalith.Memories.AppHost/Program.cs: both register a component named "pubsub"
+# backed by pubsub.redis and source the Redis host/password from the same environment values.
+#
+# Production deployment guidance:
+#   - Substitute ${PUBSUB_REDIS_HOST} and ${PUBSUB_REDIS_PASSWORD} via environment interpolation or a
+#     platform secret manager rather than hard-coding credentials.
+#   - Restrict publisher access with `publishAllowedTopics` and component-level access control — this is
+#     the MVP mitigation for the publisher-spoofing threat documented in
+#     docs/dev/eventstore-integration.md (Story 9.1 Risk #17).
+#   - The topic the subscriber listens on is driven by MEMORIES_EVENTSTORE_TOPIC. Set it to the same
+#     value as TenantEventRoutingOptions.Topic (appsettings EventStoreIntegration:Routing:Topic).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: "${PUBSUB_REDIS_HOST:-redis:6379}"
+    - name: redisPassword
+      value: "${PUBSUB_REDIS_PASSWORD:-}"

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Hexalith.Memories.EventStore</PackageId>
+    <Description>Zero-code DAPR pub/sub subscription for Hexalith.Memories. Auto-discovers
+      CloudEvents and ingests event payloads into the Memories ingestion pipeline without
+      developer-written mapping code.</Description>
+    <Authors>ITANEO</Authors>
+    <Company>ITANEO</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
+    <PackageTags>hexalith;memories;dapr;pubsub;cloudevents;eventstore</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.EventStore.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Server" />
+    <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.AspNetCore" />
+    <PackageReference Include="Dapr.Client" />
+    <PackageReference Include="Dapr.Workflow" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

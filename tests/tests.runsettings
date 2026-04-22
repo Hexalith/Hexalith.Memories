@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
-  <RunConfiguration>
-    <!-- Test timeout: 30 seconds per test (unit), override per-collection for integration -->
-    <TestSessionTimeout>300000</TestSessionTimeout>
-  </RunConfiguration>
+  <!--
+    Shared coverage/runsettings used by `tools/test.ps1 -Coverage` and `tools/test.sh --coverage`.
+    Deliberately omits <TestSessionTimeout>: a session-wide cap was confusing (the prior 300 000 ms
+    value matched neither its comment nor integration reality — 17 min) and duplicated job-level
+    timeouts in .github/workflows/nightly.yml. Rely on per-test `[Fact(Timeout = ...)]` and CI
+    job timeouts instead.
+  -->
 
   <DataCollectionRunSettings>
     <DataCollectors>

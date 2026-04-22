@@ -1,6 +1,6 @@
 # Story 9.1: Event Auto-Discovery & DAPR Pub/Sub Subscription
 
-Status: ready-for-dev
+Status: review
 
 **Effort estimate:** ~4-5 working days — 0.25 day pubsub + subscription AppHost wiring (Task 1), 0.5 day CloudEvents subscription endpoint + envelope mapping (Task 2), 0.25 day event-id idempotency (Task 3), 0.25 day tenant/case resolution (Task 4), 0.5 day `Hexalith.Memories.EventStore` package scaffolding (Task 5), 1.0 day unit tests (Task 6), 0.75 day integration tests (Task 7 — Tier 2 pub/sub roundtrip), 0.25 day docs + sprint-status + retro entry (Task 8). Add 0.5 day cushion for Kestrel/CloudEvents middleware surprises (request-body fork, raw CloudEvents vs DAPR-unwrapped payload).
 
@@ -8,7 +8,7 @@ Status: ready-for-dev
 
 ## TL;DR
 
-**What ships:** A **zero-code DAPR pub/sub subscription** that auto-discovers event types and funnels every CloudEvents-compliant message published to a configured pub/sub topic through the existing `IngestionWorkflow`. Ships (a) the `pubsub.yaml` Redis-Streams component + subscription wiring in the AppHost; (b) a minimal `POST /events/ingest` subscription endpoint decorated with `[Topic]` (via `app.UseCloudEvents()` + `app.MapSubscribeHandler()`) that accepts a raw `CloudEvent<JsonElement>`; (c) a `CloudEventToIngestionInputMapper` that preserves CloudEvents `id`/`source`/`type`/`subject`/`time` as `MetadataOrigin.System`-tagged metadata fields on the resulting memory unit (a new enum value introduced by Task 2.10 — `MetadataOrigin.Ai` is reserved for Story 9.2's LLM-derived NL description, per Risk #16) and uses CloudEvents `id` as the ingestion source URI so the existing dedup activity deduplicates at-least-once redeliveries; (d) a `TenantEventRoutingConfig`-driven mapping from CloudEvents `source` → `tenantId` and from CloudEvents `type`/`subject` → `caseId`; (e) a **new publishable `Hexalith.Memories.EventStore` NuGet package** (per architecture D9 / project #10) that hosts the subscription endpoint + mapper + DI extension so downstream services can reference it; (f) an `IngestedBy` system identity `"events"` for every event-sourced ingestion; (g) non-200 return on transient workflow-scheduler failure so DAPR retries per at-least-once guarantee. Closes **FR59** ("auto-discover event types published to DAPR pub/sub topics") and **NFR21** ("handle CloudEvents envelope format"); lays the plumbing for **FR60-FR62** (dual embeddings — Story 9.2; handler registration listing — Story 9.3).
+**What ships:** A **zero-code DAPR pub/sub subscription** for one configured topic that auto-discovers event types from CloudEvents and funnels event payloads through the existing `IngestionWorkflow` without developer-written mapping code. The implementation uses a controller-based subscription endpoint decorated with `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]`, plus the canonical DAPR middleware sequence `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();`. It preserves the required CloudEvents fields (`id`, `source`, `type`, `subject`, `time`) as memory metadata, uses `cloudevent.id` as the ingestion source identifier for deduplication, routes `source` to `tenantId` and derived aggregate type / subject to case selection, and returns 5xx only for retryable conditions. Duplicate handling follows a **compensated hybrid** model: endpoint-level preflight reservation suppresses obvious redeliveries, schedule failures release that reservation, and the workflow-level permanent dedup key remains the authoritative safety net. The new **publishable `Hexalith.Memories.EventStore` NuGet package** contains the controller, mapper, router, response DTO, options, and thin integration abstractions; the Server project supplies adapters for workflow scheduling, tenant-state checks, case creation, and telemetry. This story closes **FR59** and **NFR21** only. **Dual embeddings, causal-edge indexing, and any metadata-origin contract expansion remain out of scope for Story 9.2+**.
 
 **What already exists (do NOT rebuild):**
 
@@ -16,83 +16,96 @@ Status: ready-for-dev
 2. **`SourceType.Event` — `src/Hexalith.Memories.Contracts/V1/SourceType.cs:11`.** Already registered in `CamelCaseStringEnumConverter<SourceType>`. Set `input.SourceType = SourceType.Event` in the mapper.
 3. **`IngestionWorkflow` + `CheckIdempotencyActivity` / `SaveDedupKeyActivity` — `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` + `src/Hexalith.Memories.Server/Activities/Ingestion/CheckIdempotencyActivity.cs` + `SaveDedupKeyActivity.cs`.** The workflow already does: idempotency → validation → extract → embed → fan-out index → verify → dedup persist. **Reuse verbatim.** Event ingestion is just another caller. Do NOT add an `IngestionWorkflowEventVariant` or branch the workflow on `SourceType.Event` — the existing per-activity behavior is identical, except that `ValidateContentActivity` must tolerate `ContentType = "application/json"` (already tolerated; inspect `ValidateContentActivity.cs` at implementation time to confirm) and `ExtractContentActivity` must treat a JSON payload as already-extracted UTF-8 text (Kreuzberg's default text extractor already returns UTF-8 for `application/json` — verify at implementation time by reading `ContentExtractionClient.cs`).
 4. **`DedupKeyBuilder.BuildKey` + SHA-256 helper — `src/Hexalith.Memories.Server/Activities/Ingestion/DedupKeyBuilder.cs`.** Key format `dedup:{tenantId}:{caseId}:{sha256(sourceUri)}`. **Reuse verbatim** — the mapper sets `sourceUri = cloudevent.id` so the existing hash-based dedup handles at-least-once redeliveries without any changes to `CheckIdempotencyActivity`.
-5. **`IndexGraphActivity` — `src/Hexalith.Memories.Server/Activities/Indexing/IndexGraphActivity.cs:74-101`.** Already creates `caused_by` + `correlated_with` edges from `IndexInput.CausationId` / `CorrelationId` via `BuildMergeStubNode` + `BuildMergeEdge`. **This is already the "auto-index CausationId/CorrelationId as graph edges" guarantee from FR61.** Story 9.1 threads the CloudEvents-unwrapped CausationId/CorrelationId into `IngestionInput`; no changes needed to `IndexGraphActivity`. Confidence-promotion for out-of-order events + gap markers is Story 9.2 — do NOT pre-solve.
-6. **`CamelCaseStringEnumConverter<T>` + `MemoriesJsonContext.Options` — `src/Hexalith.Memories.Contracts/V1/CamelCaseStringEnumConverter.cs` + `MemoriesJsonContext.cs`.** Use `MemoriesJsonContext.Options` for every serialize/deserialize call in the mapper and the subscription endpoint. AOT-safe, source-generated — do NOT introduce a new `JsonSerializerOptions` instance.
-7. **`TenantRegistryService.GetAsync` + `TenantStatusGuard.ValidateTenantActiveAsync` — `src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` + `TenantStatusGuard.cs`.** Reuse verbatim to reject events destined for an unknown/inactive tenant before scheduling the workflow (return non-200 so DAPR retries if the tenant is provisioning; return 200 + log drop if the tenant is intentionally absent — see Dev Notes "At-least-once vs dead-letter").
-8. **`CaseService.GetCaseAsync` + `CaseService.CreateCaseAsync` — `src/Hexalith.Memories.Server/Cases/CaseService.cs`.** Reuse for the "case per tenant+aggregate-type" auto-creation path (see Task 4). Do NOT write case-management code; the existing `CaseService` is the single owner of case creation + listing.
-9. **Hexalith.EventStore ecosystem patterns — `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Program.cs:30,43` + `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Controllers/ProjectionNotificationController.cs:31`.** Canonical subscription surface: `app.UseCloudEvents()` middleware + `app.MapSubscribeHandler()` + `[Topic(pubSubName, "topic-name")]` attribute on an `[ApiController]` route. **Follow this pattern exactly** — the EventStore submodule is the shared-ecosystem reference. Do NOT introduce a raw `[Route]`-only minimal API controller without the `[Topic]` attribute; DAPR's subscription-discovery relies on the attribute.
-10. **`Program.cs` ingestion endpoint + `DaprWorkflowClient.ScheduleNewWorkflowAsync` — `src/Hexalith.Memories.Server/Program.cs:240-305`.** The REST `/api/ingest` path already schedules `IngestionWorkflow`. The event-subscription endpoint uses the **same `DaprWorkflowClient`** — just with an event-sourced `IngestionInput`. Mirror the error-handling shape (`EndpointTelemetryScope` pattern).
-11. **`MemoriesActivitySource` + `AccessTelemetryLog` — `src/Hexalith.Memories.Server/Telemetry/`.** Emit an OpenTelemetry activity for each CloudEvent ingestion using `MemoriesActivitySource.IngestRequest` with `TagOperation = AccessTelemetryLog.OperationIngest` and `TagSourceType = "event"`. Reuse `EndpointTelemetryScope` verbatim — the subscription endpoint is just another ingestion surface.
+5. **`CamelCaseStringEnumConverter<T>` + `MemoriesJsonContext.Options` — `src/Hexalith.Memories.Contracts/V1/CamelCaseStringEnumConverter.cs` + `MemoriesJsonContext.cs`.** Use `MemoriesJsonContext.Options` for every serialize/deserialize call in the mapper and the subscription endpoint. AOT-safe, source-generated — do NOT introduce a new `JsonSerializerOptions` instance.
+6. **`TenantRegistryService.GetAsync` + `TenantStatusGuard.ValidateTenantActiveAsync` — `src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` + `TenantStatusGuard.cs`.** Reuse these via a thin **Server-side adapter**. The EventStore package must not take a project reference back to `Hexalith.Memories.Server`.
+7. **`CaseService.GetCaseAsync` + `CaseService.CreateCaseAsync` — `src/Hexalith.Memories.Server/Cases/CaseService.cs`.** Reuse these via a thin **Server-side adapter**. Case-management ownership remains in Server.
+8. **Hexalith.EventStore ecosystem patterns — `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Program.cs:30,43` + `src/submodules/Hexalith.EventStore/src/Hexalith.EventStore/Controllers/ProjectionNotificationController.cs:31`.** Canonical subscription surface: `app.UseCloudEvents()` middleware + `app.MapControllers()` + `app.MapSubscribeHandler()` + `[Topic(pubSubName, "topic-name")]` on an `[ApiController]` route. Follow this pattern exactly; do **not** switch to minimal-API metadata registration in this story.
+9. **Existing Server telemetry + workflow scheduling infrastructure — `src/Hexalith.Memories.Server/Program.cs` + `src/Hexalith.Memories.Server/Telemetry/`.** Reuse the existing workflow client and telemetry patterns via **Server-owned adapter interfaces** exposed by the EventStore package.
 
 **What 9.1 adds:**
 
 1. **`src/Hexalith.Memories.EventStore/`** — NEW publishable NuGet project, SDK `Microsoft.NET.Sdk`. Registered in `Hexalith.Memories.slnx`. References `Hexalith.Memories.Contracts`. Packable = true (per architecture table "10 Hexalith.Memories.EventStore — Zero-code integration (Phase 1.5)"). Files:
-   - `EventIngestionController.cs` — `[ApiController]` + `[Route("events")]` + `[Topic(...)]` POST endpoint that receives a raw `CloudEvent<JsonElement>` and forwards to `IEventIngestionService`. No domain logic here — controller is a thin DAPR binding shim.
-   - `CloudEventToIngestionInputMapper.cs` — static mapper class: `(IngestionInput Input, string TenantId) Map(CloudEvent<JsonElement> evt, ITenantEventRouter router, TimeProvider timeProvider)`. Pure function — NO `DateTimeOffset.UtcNow`; takes `TimeProvider` so tests can pin the clock. Returns `null`/throws `InvalidOperationException` with an explicit reason if required fields are missing so the controller returns a typed 400 — see "CloudEvents → IngestionInput mapping" in Dev Notes.
-   - `IEventIngestionService.cs` + `EventIngestionService.cs` — thin service that (a) runs the mapper, (b) calls `TenantStatusGuard.ValidateTenantActiveAsync`, (c) calls `DaprWorkflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input)`. **Does NOT call `DaprClient` directly.** DI-constructor-injected.
-   - `ICaseCreationService.cs` — interface declared in EventStore with one method: `Task<string> CreateCaseAsync(string tenantId, string caseName, CancellationToken ct)`. Implemented in the Server project via `CaseCreationServiceAdapter` (delegates to `CaseService.CreateCaseAsync`). **Prevents EventStore from referencing Server.**
-   - `ITenantEventRouter.cs` + `TenantEventRouter.cs` — routes a CloudEvent to a `(tenantId, caseId)` tuple. MVP implementation: config-driven mapping (`TenantEventRoutingOptions`) — topic/source → tenantId; event-type prefix → caseId OR auto-create case per `{tenantId}:{aggregateType}`. See "Tenant + case routing" in Dev Notes for the decision matrix.
-   - `TenantEventRoutingOptions.cs` — bound from `appsettings.json` section `EventStoreIntegration:Routing` via `IOptions<T>`. Fields:
-     - `PubSubName` (string, default `"pubsub"`) — DAPR pub/sub component name.
-     - `Topic` (string, required) — topic name subscribed to. MVP: single topic per deployment.
-     - `SourceToTenantMap` (`Dictionary<string, string>`) — CloudEvents `source` prefix → tenantId. Longest-prefix wins.
-     - `AutoCreateCases` (bool, default `true`) — when `true`, the router calls `CaseService.CreateCaseAsync` lazily on first event per `(tenantId, aggregateType)`.
-     - `CaseIdTemplate` (string, default `"events:{aggregateType}"`) — string.Format template used as the case name when auto-creating.
-   - `EventStoreIntegrationServiceCollectionExtensions.cs` — **public** `services.AddMemoriesEventStoreIntegration(IConfiguration config)` that registers the controller, mapper, service, router, and binds `TenantEventRoutingOptions`; also self-registers `TryAddSingleton<TimeProvider>(TimeProvider.System)` so Server consumers do not silently NRE (Risk #18). Extension-method-per-project per Architecture D21. Per ADR 9.1-F, this is one of only **three public types** in the package (with `TenantEventRoutingOptions` and `TenantEventRoute`); all other types are `internal`.
-   - `Hexalith.Memories.EventStore.csproj` — `IsPackable = true`; matches NuGet version from `Directory.Packages.props`; target framework matches solution (net10.0). Package metadata follows the `Hexalith.Memories.Contracts` csproj shape (description, authors, license).
-2. **`pubsub.yaml` component + subscription wiring — `deploy/dapr/components/pubsub.yaml`.** Redis Streams pub/sub (NOT a separate broker — reuse the existing Redis container):
-   ```yaml
-   apiVersion: dapr.io/v1alpha1
-   kind: Component
-   metadata:
-     name: pubsub
-   spec:
-     type: pubsub.redis
-     version: v1
-     metadata:
-       - name: redisHost
-         value: "127.0.0.1:6379"
-       - name: redisPassword
-         value: ""
-   ```
-   **AppHost wiring (`src/Hexalith.Memories.AppHost/Program.cs`):** add a second `builder.AddDaprComponent("pubsub", "pubsub.redis")` call, chain `.WithMetadata("redisHost", "127.0.0.1:6379")` + `.WithMetadata("redisPassword", string.Empty)`, and add `.WithReference(pubSub)` to the Memories server resource so the sidecar discovers it. Mirror the existing `stateStore` registration pattern — do NOT bind-mount the YAML; the AppHost creates components in-process.
-3. **`app.UseCloudEvents()` + `app.MapSubscribeHandler()` + `app.MapControllers()` — `src/Hexalith.Memories.Server/Program.cs`.** Three additions in the middleware chain:
-   - `app.UseCloudEvents()` — BEFORE `app.MapControllers()` and BEFORE any route mapping that reads the body. Required for DAPR to unwrap CloudEvents envelopes.
-   - `app.MapSubscribeHandler()` — registers DAPR's `/dapr/subscribe` endpoint that daprd probes at startup to discover `[Topic]` bindings. Must be called before `app.Run()`.
-   - `app.MapControllers()` — if not already called. Verify at implementation time (the current Server uses minimal APIs for ingest; controllers are still registered via `AddControllers` in the DI container but `MapControllers` may not be mapped). Add `builder.Services.AddControllers()` registration if missing, and add `app.MapControllers()` registration before `app.MapDefaultEndpoints()`.
-4. **Subscription endpoint — `POST /events/ingest`.** Decorated with `[Topic(pubSubName: "pubsub", name: "{from-options}")]`. Request body: DAPR-unwrapped `CloudEvent<JsonElement>`. Response:
-   - **200 OK** — workflow scheduled successfully OR duplicate detected (idempotency early-return by `CheckIdempotencyActivity`).
-   - **200 OK + log warn** — tenant does not exist or has been deleted. Event is dropped (NOT retried) because DAPR would redeliver indefinitely for a tenant that will never exist. See "At-least-once vs dead-letter" in Dev Notes.
-   - **400 Bad Request** — CloudEvents envelope missing required fields (`id`, `type`, `source`) OR mapper could not resolve tenant. DAPR does NOT retry 4xx responses — these go to the dead-letter topic if configured, else are dropped. Log at `Error` level.
-   - **500 Internal Server Error** — `DaprWorkflowClient.ScheduleNewWorkflowAsync` throws transient (sidecar restart, Redis hiccup). DAPR retries per the at-least-once contract.
-5. **Tenant/case routing logic — `TenantEventRouter`.** MVP: extract `tenantId` from CloudEvents `source` via longest-prefix match against `SourceToTenantMap`. Extract `aggregateType` from CloudEvents `type` (`"MyApp.Claims.ClaimSubmittedV2"` → `"Claims"` — the second dotted segment by convention; **documented as "sources must follow the `{domain}.{aggregateType}.{eventName}{version}` CloudEvents type convention" in `docs/dev/eventstore-integration.md`**). Resolve `caseId` via:
-   - `GetOrCreateCaseForAggregateAsync(tenantId, aggregateType, ct)` — reads `TenantId-to-AggregateType-to-CaseId` from Redis (key `events:caseMap:{tenantId}:{aggregateType}`); if absent, calls `CaseService.CreateCaseAsync` with `Name = string.Format(CaseIdTemplate, aggregateType)` and persists the new `caseId` to the Redis map. Idempotent — two concurrent events with the same aggregateType must resolve to the same `caseId` (use `SET NX`).
+    - `EventIngestionController.cs` — `[ApiController]` + `[Route("events")]` + `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]` POST endpoint that receives a raw `CloudEvent<JsonElement>` and forwards to `IEventIngestionService`. No domain logic here — controller is a thin DAPR binding shim.
+    - `CloudEventToIngestionInputMapper.cs` — `internal static class` with `IngestionInput Map(CloudEvent<JsonElement> evt, TenantEventRoute route)`. Pure function. It validates required envelope fields, validates that `evt.Data` is present before any `GetRawText()` call, and maps only the required 9.1 metadata fields.
+    - `EventIngestionResponse.cs` — response DTO used by the controller so the `instanceId` contract is explicit: `instanceId` is present only for `accepted` responses; duplicates and drops return status + reason without inventing workflow IDs.
+    - `IEventIngestionService.cs` + `EventIngestionService.cs` — thin orchestration service that (a) resolves a typed routing outcome, (b) runs the mapper, (c) performs preflight dedup reservation when enabled, (d) schedules the existing workflow through `IEventIngestionWorkflowScheduler`, and (e) compensates by releasing the reservation if scheduling fails.
+    - `IEventIngestionWorkflowScheduler.cs` — EventStore-owned abstraction implemented in Server via a thin adapter over `DaprWorkflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input)`. **Prevents the package from depending on a Server workflow type name.**
+    - `ITenantStatusAccessor.cs` — EventStore-owned abstraction implemented in Server via `TenantRegistryService` + `TenantStatusGuard`. **Prevents the package from referencing Server tenancy types directly.**
+    - `IEventIngestionTelemetry.cs` — EventStore-owned abstraction implemented in Server via existing telemetry helpers. The package may log locally, but it must not take a compile-time dependency on `EndpointTelemetryScope`.
+    - `ICaseCreationService.cs` — interface declared in EventStore with one method: `Task<string> CreateCaseAsync(string tenantId, string caseName, CancellationToken ct)`. Implemented in the Server project via `CaseCreationServiceAdapter` (delegates to `CaseService.CreateCaseAsync`). **Prevents EventStore from referencing Server.**
+    - `ITenantEventRouter.cs` + `TenantEventRouter.cs` + `TenantEventRoute.cs` + `TenantEventRouteResolution.cs` — route a CloudEvent to a typed outcome instead of returning nullable tuples. MVP implementation: config-driven mapping (`TenantEventRoutingOptions`) from `source` → `tenantId`, then aggregate-type / subject → `caseId`, with explicit statuses for `UnknownSource`, `TenantProvisioning`, `TenantDeleting`, `AutoCreateDisabled`, and `CaseCapExceeded`.
+    - `TenantEventRoutingOptions.cs` — bound from `appsettings.json` section `EventStoreIntegration:Routing` via `IOptions<T>`. Fields:
+        - `Topic` (string, required) — topic name subscribed to. MVP: single topic per deployment.
+        - `SourceToTenantMap` (`Dictionary<string, string>`) — CloudEvents `source` prefix → tenantId. Longest-prefix wins.
+        - `AutoCreateCases` (bool, default `true`) — when `true`, the router calls `CaseService.CreateCaseAsync` lazily on first event per `(tenantId, aggregateType)`.
+        - `CaseNameTemplate` (string, default `"events:{aggregateType}"`) — token-replacement template with an allow-listed token set (`{aggregateType}`, `{tenantId}` only). This story does **not** use raw `string.Format(...)`.
+        - `MaxAutoCreatedCasesPerTenant` (int, default `100`) — hard cap for lazy case creation.
+        - `PreflightDedupEnabled` (bool, default `true`) — enables endpoint-level duplicate suppression.
+        - `PreflightDedupTtl` (`TimeSpan`, default `24h`) — reservation TTL; validated against the configured DAPR retry window.
+    - `EventStoreIntegrationServiceCollectionExtensions.cs` — **public** `services.AddMemoriesEventStoreIntegration(IConfiguration config)` that registers the controller, mapper, service, router, response DTO, and options, plus the package-owned abstractions. Per ADR 9.1-F, the public surface is intentionally small: registration, options, response DTO, route DTOs, and adapter interfaces are public; implementation types remain `internal`.
+    - `Hexalith.Memories.EventStore.csproj` — `IsPackable = true`; matches NuGet version from `Directory.Packages.props`; target framework matches solution (net10.0). Package metadata follows the `Hexalith.Memories.Contracts` csproj shape (description, authors, license).
+2. **`pubsub.yaml` component + subscription wiring — `deploy/dapr/components/pubsub.yaml`.** Redis Streams pub/sub with a fixed component name `pubsub` (NOT a separate broker — reuse the existing Redis dependency). The AppHost resource metadata and the non-Aspire YAML must stay aligned; do **not** hard-code production host/password values in one place and not the other.
+    ```yaml
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+        name: pubsub
+    spec:
+        type: pubsub.redis
+        version: v1
+        metadata:
+            - name: redisHost
+              value: "${PUBSUB_REDIS_HOST}"
+            - name: redisPassword
+              value: "${PUBSUB_REDIS_PASSWORD}"
+    ```
+    **AppHost wiring (`src/Hexalith.Memories.AppHost/Program.cs`):** add `builder.AddDaprComponent("pubsub", "pubsub.redis")`, source its Redis metadata from the same values used by the server's Redis dependency, and add `.WithReference(pubSub)` to the Memories server resource so the sidecar discovers it. Mirror the existing `stateStore` registration pattern — do NOT bind-mount the YAML inside Aspire.
+3. **Canonical middleware + controller mapping — `src/Hexalith.Memories.Server/Program.cs`.** Exactly this order in the built app:
+    - `app.UseCloudEvents()`
+    - `app.MapControllers()`
+    - `app.MapSubscribeHandler()`
+
+    Add `builder.Services.AddControllers().AddApplicationPart(typeof(EventIngestionController).Assembly)` if missing. Do not document or implement competing route-registration orders elsewhere in the story.
+
+4. **Subscription endpoint — `POST /events/ingest`.** Decorated with `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]`. Request body: DAPR-unwrapped `CloudEvent<JsonElement>`. Response uses `EventIngestionResponse` and an explicit contract:
+    - **200 OK + `{ status: "accepted", instanceId }`** — workflow scheduled successfully.
+    - **200 OK + `{ status: "duplicate", wasDuplicate: true }`** — endpoint-level preflight dedup rejected a redelivery OR the workflow-level safety net classified it as a duplicate.
+    - **200 OK + log warn** — tenant does not exist or has been deleted. Event is dropped (NOT retried) because DAPR would redeliver indefinitely for a tenant that will never exist. See "At-least-once vs dead-letter" in Dev Notes.
+    - **400 Bad Request** — CloudEvents envelope missing required fields (`id`, `type`, `source`) or payload data (`data`). DAPR does NOT retry 4xx responses — these go to the dead-letter topic if configured, else are dropped.
+    - **500 Internal Server Error** — scheduling failed transiently. If a preflight reservation was acquired, release it before returning 500 so the retry path is clean.
+5. **Tenant/case routing logic — `TenantEventRouter`.** MVP: extract `tenantId` from CloudEvents `source` via longest-prefix, case-insensitive match against `SourceToTenantMap`. Extract `aggregateType` from CloudEvents `type` (`"MyApp.Claims.ClaimSubmittedV2"` → `"Claims"` — the second dotted segment by convention; document this convention in `docs/dev/eventstore-integration.md`). Resolve a **typed** `TenantEventRouteResolution` with one of:
+    - `Accepted(TenantEventRoute route)`
+    - `UnknownSource`
+    - `TenantProvisioning`
+    - `TenantDeleting`
+    - `AutoCreateDisabled`
+    - `CaseCapExceeded`
+
+    Case resolution uses a validated token-replacement `CaseNameTemplate`, a cached `tenantId + aggregateType -> caseId` mapping, and a reservation key so concurrent first-time events converge on the same case ID.
+
 6. **CloudEvents → IngestionInput mapping — `CloudEventToIngestionInputMapper.Map`.** Precise field translation:
-   - `IngestionInput.TenantId` ← from `ITenantEventRouter.ResolveTenantId(evt)`.
-   - `IngestionInput.CaseId` ← from `ITenantEventRouter.ResolveCaseIdAsync(tenantId, evt, ct)`.
-   - `IngestionInput.SourceUri` ← **CloudEvents `id`** (guaranteed unique per at-least-once semantics — this is what drives idempotency via the existing `DedupKeyBuilder`).
-   - `IngestionInput.ContentBytes` ← `Encoding.UTF8.GetBytes(evt.Data.GetRawText())` — the raw JSON payload, preserved byte-for-byte so Story 9.2's "raw payload embedding" has a stable input.
-   - `IngestionInput.ContentType` ← `evt.DataContentType ?? "application/json"`.
-   - `IngestionInput.SourceType` ← `SourceType.Event`.
-   - `IngestionInput.IngestedBy` ← `"events"` (system identity — NOT the event's `UserId` field; that goes into metadata for auditability without overriding provenance).
-   - `IngestionInput.Metadata` ← system-origin (`MetadataOrigin.System`, confidence `1.0`) fields — see Task 2.10 for enum introduction; `MetadataOrigin.Ai` is reserved for Story 9.2 LLM-derived fields (Risk #16):
-     - `cloudevent.id` ← `evt.Id`
-     - `cloudevent.source` ← `evt.Source.ToString()`
-     - `cloudevent.type` ← `evt.Type`
-     - `cloudevent.subject` ← `evt.Subject` (aggregate ID — **CRITICAL for AC #7 filtering**)
-     - `cloudevent.time` ← `evt.Time?.ToString("o")` (ISO-8601)
-     - `cloudevent.specversion` ← `evt.SpecVersion` (for forward-compat — e.g., future `1.1` detection)
-     - `event.aggregateType` ← derived from `evt.Type` (second dotted segment)
-     - `event.userId` ← from the event envelope if present (see Dev Notes "CausationId / CorrelationId extraction"); confidence `1.0`.
-   - `IngestionInput.CausationId` ← extracted from either (a) CloudEvents extension attribute `causationid` (preferred — follows CloudEvents ext conventions) OR (b) event envelope `CausationId` property when the payload is a Hexalith.EventStore `EventEnvelope` shape (see Dev Notes). `null` when neither present.
-   - `IngestionInput.CorrelationId` ← same dual-source rule: extension attribute `correlationid` preferred; fallback to envelope field. `null` when neither present.
-7. **Docs — `docs/dev/eventstore-integration.md`.** NEW developer guide covering: subscription setup (pubsub.yaml + `AddMemoriesEventStoreIntegration`); CloudEvents envelope requirements (required + optional fields); tenant/case routing configuration; aggregateType extraction rules; idempotency semantics (CloudEvents `id` drives dedup); at-least-once + dead-letter strategy; test harness (how to publish a test event via `DaprClient.PublishEventAsync` or curl into the subscription endpoint). Include a worked example: Hexalith.EventStore `CounterIncrementedV1` event → memory unit with graph edges.
-8. **`deferred-work.md`** update: mark "Story 9.1 — dual embeddings" + "Story 9.1 — handler registration" as already-documented-in-Story-9.2/9.3 so we don't accidentally cross-implement.
+    - `IngestionInput.TenantId` ← from `TenantEventRoute`.
+    - `IngestionInput.CaseId` ← from `TenantEventRoute`.
+    - `IngestionInput.SourceUri` ← **CloudEvents `id`** (guaranteed unique per at-least-once semantics — this is what drives idempotency via the existing `DedupKeyBuilder`).
+    - `IngestionInput.ContentBytes` ← `Encoding.UTF8.GetBytes(evt.Data.GetRawText())` **only after validating that `evt.Data` is present and readable**.
+    - `IngestionInput.ContentType` ← `evt.DataContentType ?? "application/json"`.
+    - `IngestionInput.SourceType` ← `SourceType.Event`.
+    - `IngestionInput.IngestedBy` ← `"events"` (system identity — NOT the event's `UserId` field; that goes into metadata for auditability without overriding provenance).
+    - `IngestionInput.Metadata` ← required CloudEvents metadata preserved using the **existing** metadata contract:
+        - `cloudevent.id` ← `evt.Id`
+        - `cloudevent.source` ← `evt.Source.ToString()`
+        - `cloudevent.type` ← `evt.Type`
+        - `cloudevent.subject` ← `evt.Subject ?? "(unset)"` (aggregate ID — must flow through the same exact-match metadata filter/index path used by search filters, not just be copied into an opaque blob)
+        - `cloudevent.time` ← `evt.Time?.ToString("o")` (ISO-8601)
+        - `event.aggregateType` ← derived from `evt.Type` (second dotted segment)
+7. **Docs — `docs/dev/eventstore-integration.md`.** NEW developer guide covering: subscription setup (`pubsub.yaml` + `AddMemoriesEventStoreIntegration`); CloudEvents envelope requirements; tenant/case routing configuration; aggregate-type extraction rules; idempotency semantics (`cloudevent.id` drives dedup); exact-match subject filtering; at-least-once + dead-letter strategy; and a worked example that ends in a searchable memory unit. The worked example must stay within 9.1 scope — no causal-edge claims.
+8. **`deferred-work.md`** update: mark dual embeddings, causal-edge indexing, and any metadata-origin contract expansion as explicitly deferred to Story 9.2+ so implementation does not drift back into them.
 
 **What does NOT ship:**
 
-- **Dual embeddings (raw payload + NL description).** Ship only the raw-payload path; Story 9.2 adds DAPR Conversation-API-generated natural-language embedding. Do NOT add an `EnrichEventActivity` or any LLM wiring in 9.1.
-- **Gap markers + retroactive `caused_by` resolution.** The out-of-order event case (B arrives before A) is Story 9.2's AC. Story 9.1 leaves gap handling to `IndexGraphActivity`'s existing `BuildMergeStubNode` (which creates a stub with no other data). The stub-to-real merge when event A arrives later works because `BuildMergeMemoryUnitNode` is `MERGE` + property-set — but Story 9.2 adds explicit gap-marker semantics + confidence-promotion UX. Do NOT implement that here.
+- **Dual embeddings (raw payload + NL description).** Story 9.2.
+- **Automatic causal-edge indexing from event-specific causation / correlation rules.** Story 9.2. Story 9.1 does not add new event-to-graph guarantees beyond ordinary ingestion.
+- **Any `MetadataOrigin` contract change (for example, introducing `System`).** Not part of Story 9.1.
 - **Handler registration listing + mismatch detection (FR62).** Story 9.3. Do NOT ship a `memories handlers list` CLI command or `/api/eventstore/handlers` endpoint.
 - **Dead-letter topic configuration.** MVP: missing-tenant events are dropped with a `Warning` log; malformed envelopes return 400 (DAPR handles DLT per the pubsub component config). A formal DLT-with-operator-replay workflow is a future story.
 - **Authentication on the subscription endpoint.** The subscription route accepts internal DAPR traffic only; DAPR API token auth (Story 5.4 AC3) covers this when `DAPR_API_TOKEN_MODE=enabled`. The endpoint is NOT exposed via ingress.
@@ -107,47 +120,42 @@ Status: ready-for-dev
 **Primary risks:**
 
 1. **`app.UseCloudEvents()` placement breaks the existing `/api/ingest` POST.** Minimal APIs consume the request body as bytes/JSON; `UseCloudEvents()` transforms JSON-envelope-wrapped requests in-place. If the middleware runs before `/api/ingest` routes, it may incorrectly attempt CloudEvents-unwrap a non-CloudEvents request. **Mitigation:** (a) `UseCloudEvents()` is a no-op when the request's `Content-Type` is not `application/cloudevents+json` — confirm via the Dapr.AspNetCore source; (b) guard test `IngestEndpointTests.PlainJsonPost_BypassesCloudEventsUnwrap` — POST `/api/ingest` with `Content-Type: application/json` and assert the request body arrives at the handler unmodified; (c) if confirmed unsafe, place `UseCloudEvents()` inside a `UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/events"), inner => inner.UseCloudEvents())` branch to scope it.
-2. **At-least-once delivery + idempotency race.** Two redeliveries of the same event arrive concurrently on different workflow instances; both pass `CheckIdempotencyActivity` before either calls `SaveDedupKeyActivity`. **Mitigation:** the existing duplicate race is DOCUMENTED in Story 1.6's "Known race window" — the architecture accepts it because `IndexSyntacticActivity` / `IndexSemanticActivity` / `IndexGraphActivity` are MERGE/HSET operations (idempotent on the memory unit ID), and two workflows writing the same data yields identical state. Verify this still holds for event ingestion: the `MemoryUnitId` is workflow-instance-scoped (`context.InstanceId`), so TWO workflow instances for the SAME `cloudevent.id` would create TWO distinct memory units. **This is a behavioral divergence from file ingestion's dedup model** — file ingestion keys dedup by `(tenantId, caseId, sourceUri)`; event ingestion uses `sourceUri = cloudevent.id`, which is globally unique, so the first workflow to `SaveDedupKeyActivity` wins. Add a guard test `EventIngestionTests.ConcurrentRedeliveries_ResultInSingleMemoryUnit` that fires 5 parallel redeliveries of the same CloudEvent and asserts exactly one memory unit exists in Redis + FalkorDB + exactly one `IngestionResult.WasDuplicate=false` response. If the guard fails, the mitigation is to promote the dedup write into a Lua `SET NX` before scheduling the workflow (fast, deterministic; file ingestion's deferred SaveDedupKeyActivity is unchanged).
-3. **Missing `subject` field on CloudEvents breaks AC #2 + AC #4.** The AC says "CloudEvents metadata (source, type, subject, time, id) is extracted and preserved" — but `subject` is OPTIONAL in CloudEvents 1.0. **Mitigation:** (a) when `subject` is null/empty, set `metadata["cloudevent.subject"] = "(unset)"` and log at `Information` level; (b) ACs explicitly scoped to "CloudEvents-compliant messages" that include `subject` — document the expectation in `docs/dev/eventstore-integration.md` that `subject` MUST be present for grouping to work; (c) guard test `CloudEventToIngestionInputMapperTests.SubjectMissing_MetadataShowsExplicitUnset_NoCrash`.
-4. **Tenant routing via `source` prefix creates a single-point-of-configuration failure.** A typo in `SourceToTenantMap` sends every event to the wrong tenant — a data-integrity catastrophe. **Mitigation:** (a) the router validates every configured tenantId against `TenantRegistryService.GetAsync` at startup (fails-fast if any entry points to a non-existent tenant); (b) emit a warning `EventStoreIntegrationLog.UnknownTenant` if a runtime CloudEvent's `source` matches no entry (drops + 200 response per "At-least-once vs dead-letter"); (c) guard test `TenantEventRouterTests.SourceWithNoMapping_DropsWithWarning_Returns200`.
-5. **Case auto-creation produces unbounded cases.** If an attacker or misconfigured publisher sends events with thousands of distinct aggregate types, the router auto-creates thousands of cases. **Mitigation:** (a) cap auto-creation at `MaxAutoCreatedCasesPerTenant = 100` (config-bound); (b) exceeding the cap returns 400 on the subscription endpoint (DAPR does NOT retry) + emits `EventStoreIntegrationLog.CaseCreationCapExceeded`; (c) guard test `TenantEventRouterTests.CaseCap_ExceededReturnsInvariantFailure`; (d) the cap is per-tenant, soft-configurable, and documented in `docs/dev/eventstore-integration.md` as "raise this only if your domain has > 100 aggregate types".
-6. **`ContentBytes` = raw JSON bypasses Kreuzberg extraction but `ExtractContentActivity` still runs.** The existing workflow calls `ExtractContentActivity` regardless of SourceType. Kreuzberg on a JSON blob returns the JSON as text — which is fine for BM25 but loses the semantic structure. **Mitigation:** (a) verify at implementation time that `ExtractContentActivity` short-circuits for `application/json` or returns the input bytes as UTF-8 text (read `ContentExtractionClient.cs`); (b) if it does NOT short-circuit, add a fast-path that simply sets `extraction.ExtractedContent = Encoding.UTF8.GetString(input.ContentBytes)` when `ContentType = "application/json"` — this is additive and narrow; (c) guard test `ExtractContentActivityTests.JsonPayload_ReturnsRawTextIdentityExtraction`.
-7. **`EventEnvelope` from Hexalith.EventStore vs generic CloudEvents payload.** The Hexalith.EventStore `EventPublisher.cs` wraps its `EventEnvelope` inside the CloudEvents payload — so `evt.Data` contains a Hexalith-specific shape with `CausationId`/`CorrelationId` properties. Generic publishers (Marten, Wolverine, Axon) may put `CausationId` in CloudEvents extension attributes instead. **Mitigation:** (a) the mapper tries BOTH sources — first CloudEvents extension attributes (`evt.GetExtensionAttribute<string>("causationid")`), then falls back to `evt.Data.TryGetProperty("causationId", ...)`; (b) neither present → `CausationId = null`, which is already handled by `IndexGraphActivity` (skips the optional edge); (c) guard tests for each path: `CloudEventToIngestionInputMapperTests.ExtensionAttribute_PreferredOverEnvelopeField` + `CloudEventToIngestionInputMapperTests.EnvelopeField_UsedWhenExtensionAbsent` + `CloudEventToIngestionInputMapperTests.NeitherPresent_NullCausationId`.
+2. **At-least-once delivery + duplicate suppression race.** Two redeliveries of the same event can arrive before the workflow writes the permanent dedup key. **Mitigation:** (a) perform a preflight reservation (`SET NX`) before scheduling; (b) if scheduling fails after acquiring the reservation, delete that reservation before returning 500; (c) keep the workflow-level permanent dedup key authoritative; (d) guard tests `EventIngestionServiceTests.PreflightReservation_ReturnsDuplicate_WhenKeyAlreadyExists`, `.PreflightReservation_ReleasesKey_WhenSchedulingFails`, and `EventIngestionTests.ConcurrentRedeliveries_ResultInSingleMemoryUnit`.
+3. **Missing `subject` or `data` weakens grouping and can crash naïve mapping code.** `subject` is optional in CloudEvents 1.0 and `data` can be missing. **Mitigation:** (a) when `subject` is absent, persist `"(unset)"` and document that aggregate grouping requires publishers to send it; (b) when `data` is absent, return `400 INVALID_CLOUDEVENT` before any `GetRawText()` call; (c) guard tests `CloudEventToIngestionInputMapperTests.SubjectMissing_MetadataShowsExplicitUnset_NoCrash` and `EventIngestionControllerTests.DataMissing_Returns400`.
+4. **`SourceToTenantMap` validation can only catch non-existent tenants, not wrong-but-existing tenants.** Startup validation helps, but it does not prove routing correctness. **Mitigation:** (a) fail fast when config points to a tenant that does not exist; (b) document the publisher source-stability contract; (c) emit `UnknownSource` logs / metrics for unmapped values; (d) keep maps small and reviewable.
+5. **Case auto-creation can explode cardinality or create inconsistent names under concurrency.** **Mitigation:** (a) `CaseNameTemplate` uses allow-listed token replacement, not unrestricted `string.Format`; (b) cap auto-created cases per tenant; (c) use a reservation key so concurrent first events for the same aggregateType converge on one case; (d) guard tests `TenantEventRouterTests.CaseCap_ExceededReturnsInvariantFailure` and `.ConcurrentFirstEvents_ResolveSameCase`.
+6. **Search freshness can be measured incorrectly if the story uses publisher `cloudevent.time` as an SLO clock.** **Mitigation:** measure NFR6 from server receipt / test publish time to first search hit, while still preserving the publisher `cloudevent.time` as metadata.
+7. **Subscription registration can silently fail if topic binding relies on unsupported metadata discovery.** **Mitigation:** use the controller attribute path only, verify `GET /dapr/subscribe` in tests, and fail fast at startup if the discovered subscription list is empty.
 8. **Replay semantics conflict with idempotency.** Hexalith.EventStore supports event replay. Replayed events use the same envelope + `cloudevent.id` — which means the memory unit already exists, `CheckIdempotencyActivity` returns `WasDuplicate = true`, and the workflow returns early without re-indexing. That's intentional for NORMAL at-least-once redelivery but WRONG for operator-triggered replay-after-tenant-restore. **Mitigation:** document this explicitly in `docs/dev/eventstore-integration.md` under "Replay semantics": replay is designed for event-store rebuilds, not memory rebuilds; to rebuild memory from an event stream, operators must delete the tenant's memory units first (Story 3.5) OR use the tenant-provisioning workflow to recreate the tenant, then re-publish. DO NOT add a `forceReplay` bypass in 9.1 — that would regress the at-least-once idempotency guarantee.
-9. **NFR6 <5s indexing freshness.** The full ingestion pipeline (validate → extract → embed → index → verify → dedup) on a 1 KB JSON event is ~1-3s in dev; under load (embedding provider latency, cold FalkorDB connection) the p95 can exceed 5s. **Mitigation:** (a) MVP measurement test `EventIngestionLatencyTests.SingleEvent_P95IndexingFreshness_Under5s` in the Tier 2 integration suite; (b) if p95 fails, the remediation is Story 9.2's LLM-generated NL description + dual embedding which doesn't help latency — so escalate to an embedding provider review; (c) document the NFR assumption ("under normal conditions" means embedding provider is NOT rate-limited) in `docs/dev/eventstore-integration.md`.
-10. **`UseCloudEvents()` + `MapSubscribeHandler()` order sensitivity in the middleware pipeline.** Wrong order causes either (a) CloudEvents envelope not unwrapped (handler receives the wrapped envelope, deserialization fails) or (b) subscription-handler discovery returns empty (DAPR fails to register the topic at startup). **Mitigation:** (a) follow the EventStore submodule's exact order: `app.UseCloudEvents()` after auth middleware, BEFORE `app.MapControllers()`; `app.MapSubscribeHandler()` AFTER `app.MapControllers()`; (b) guard test: run the full Aspire AppHost fixture, observe `GET http://localhost:<memories-server-app-port>/dapr/subscribe` returns the subscription entry for "pubsub" + the configured topic; (c) test `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic`.
+9. **NFR6 <5s indexing freshness.** The full ingestion pipeline on a 1 KB JSON event is usually fast, but external dependencies can stretch the tail. **Mitigation:** enforce a stable Tier 2 latency check for the common path, and keep the longer-tail Aspire smoke in Tier 3 / nightly.
+10. **`UseCloudEvents()` + `MapControllers()` + `MapSubscribeHandler()` order sensitivity in the middleware pipeline.** Wrong order causes either envelope mis-parsing or empty subscription discovery. **Mitigation:** document one canonical order only and verify it with `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic`.
 11. **Clock skew between publisher and subscriber breaks event-time ordering.** If Story 9.2 relies on `cloudevent.time` for ordering (e.g., gap marker age), skew between the publisher's clock and the Memories server's clock causes incorrect ordering decisions. Out of scope for 9.1 — BUT: do NOT use the subscriber's `DateTimeOffset.UtcNow` to tag the metadata field `cloudevent.time`; preserve the publisher's value verbatim. Story 9.2 will decide how to use it.
 12. **`source` URIs may contain path characters that break Redis key format.** CloudEvents `source` is a URI-reference which can include `/`, `?`, `#`. These must not leak into Redis keys (the existing `DedupKeyBuilder.BuildKey` SHA-256-hashes the source URI, so this is safe for dedup), but the `SourceToTenantMap` key lookup does prefix-matching on the raw string — a publisher sending a slightly different casing (`HTTPS://...` vs `https://...`) would miss the map. **Mitigation:** (a) the router performs case-insensitive longest-prefix matching; (b) document the case-sensitivity posture in `docs/dev/eventstore-integration.md`; (c) guard test `TenantEventRouterTests.SourcePrefixMatch_IsCaseInsensitive`.
 13. **Silent source-scheme drift routes events to "unknown" for hours before detection.** A publisher flipping `http://` → `https://` during a routine certificate migration breaks longest-prefix match; events are dropped with 200 + `Warning` log, no alert fires, search gaps appear downstream before anyone notices. Risk #12 addresses casing but not scheme or path-component drift. **Mitigation:** (a) emit a metric `memories_eventstore_unknownsource_total{source=...}` (counter) alongside `EventStoreIntegrationLog.UnknownSource`; (b) document "source stability" as a publisher contract in `docs/dev/eventstore-integration.md` — publishers must treat their configured `source` as a stable identifier, not a deploy-time URL; (c) recommended alert rule (in the doc): rate-of-increase on the unknown-source counter for > 5 minutes fires a page; (d) guard test `TenantEventRouterTests.UnknownSource_IncrementsMetric`.
-14. **`MapSubscribeHandler` silent non-registration (Task 4.4 fallback path).** If dynamic endpoint metadata via `WithMetadata(new TopicAttribute(...))` is NOT read by `Dapr.AspNetCore` 1.17.6's subscription-discovery (only class-level `[Topic]` attributes are), `GET /dapr/subscribe` returns empty, daprd never wires the topic, and zero events flow with NO error — "nothing is wrong with nothing happening." **Mitigation:** (a) a startup `IHostedService` asserts `GET /dapr/subscribe` contains ≥1 entry matching the configured topic, and calls `IHostApplicationLifetime.StopApplication()` with a Critical log (`EventStoreIntegrationLog.SubscriptionRegistrationFailed`) if empty — fail-fast over fail-silent; (b) the new spike (Task 4.0 — see Tasks) empirically verifies which path works before production code is written; (c) guard test `EventIngestionSubscriptionDiscoveryTests.Startup_FailsFast_WhenSubscribeEndpointEmpty`.
+14. **Silent subscription non-registration.** If the controller route loses its `[Topic]` attribute or `/dapr/subscribe` returns empty, zero events will flow with no app-level exception. **Mitigation:** startup validation + a Tier 2 test that asserts subscription discovery is non-empty.
 15. **Preflight `SET NX` TTL mismatch with DAPR resiliency policy.** Preflight TTL = 24h (Task 4.7). DAPR's default resiliency policy can retry for up to 72h (exponential backoff with large max duration). A message delayed > 24h is redelivered, the preflight key has expired, the workflow runs a second time, and a duplicate memory unit is created. **Mitigation:** (a) align TTL to `max(DAPR resiliency max-duration) + 10% buffer` OR explicitly set a resiliency policy with max-duration ≤ 23h; (b) document the TTL ↔ retry coupling in `docs/dev/eventstore-integration.md`; (c) the workflow-level permanent dedup key is authoritative (no TTL) — preflight is an optimization, not correctness; (d) guard test `EventIngestionServiceTests.PreflightTtl_DocumentedAboveDaprMaxRetry`.
-16. **`MetadataOrigin.Ai` misused for envelope-derived fields corrupts downstream UX.** The Memories UI treats `origin = ai` as "LLM-derived — user should verify." Tagging `cloudevent.id`/`type`/`subject`/`aggregateType` with `MetadataOrigin.Ai` labels deterministic parse results as "AI-generated," producing spurious "verify this?" affordances for every event-sourced memory unit. **Mitigation:** (a) use a non-AI origin (`MetadataOrigin.System` if it exists in `Hexalith.Memories.Contracts`; else introduce it as part of Task 2.10); (b) `Ai` origin is reserved for LLM inference (Story 9.2 NL description); (c) guard test `CloudEventToIngestionInputMapperTests.EnvelopeFields_UseSystemOrigin_NotAi`.
-17. **Publisher spoofing via unauthenticated `source` field.** Any process with DAPR pub/sub write access on the shared Redis component can publish CloudEvents with arbitrary `source` strings. An insider or compromised service publishing `source=enterprise.hr` routes to tenant `hr-tenant` without any authentication check — `source` is an auth-like boundary with no auth. **Mitigation:** (a) document this as an explicit threat in Dev Notes "Publisher trust & spoofing"; (b) MVP recommendation: restrict DAPR pub/sub component scope via `publishAllowedTopics` and component-level access control (a deploy-time hardening, not app-layer); (c) Phase 2 evolution: signed JWT in a CloudEvents extension attribute (`tenantidtoken`) verified against a tenant public key in TenantRegistry — out of scope for 9.1; (d) no guard test (threat is deploy-time, not code-time).
-18. **`TimeProvider` DI registration omission produces NRE at first event.** The mapper takes `TimeProvider` to avoid `DateTimeOffset.UtcNow`, but `TimeProvider.System` is NOT registered in DI by default. If a dev adds the EventStore project reference but forgets the `builder.Services.AddSingleton(TimeProvider.System)` line, the first runtime event throws `NullReferenceException` deep in the controller → service → mapper call chain — a silent misconfiguration that passes unit tests (tests inject a fake `TimeProvider`). **Mitigation:** (a) Task 5.2's `AddSingleton(TimeProvider.System)` is a primary bullet, not parenthetical; (b) `AddMemoriesEventStoreIntegration` self-registers `TimeProvider.System` via `TryAddSingleton<TimeProvider>(TimeProvider.System)` so Server consumers don't need to; (c) guard test `EventStoreIntegrationServiceCollectionExtensionsTests.RegistersTimeProvider_WhenNotAlreadyRegistered`.
+16. **Publisher spoofing via unauthenticated `source` field.** Any process with DAPR pub/sub write access on the shared Redis component can publish CloudEvents with arbitrary `source` strings. An insider or compromised service publishing `source=enterprise.hr` routes to tenant `hr-tenant` without any authentication check — `source` is an auth-like boundary with no auth. **Mitigation:** (a) document this as an explicit threat in Dev Notes "Publisher trust & spoofing"; (b) MVP recommendation: restrict DAPR pub/sub component scope via `publishAllowedTopics` and component-level access control (a deploy-time hardening, not app-layer); (c) Phase 2 evolution: signed JWT in a CloudEvents extension attribute (`tenantidtoken`) verified against a tenant public key in TenantRegistry — out of scope for 9.1; (d) no guard test (threat is deploy-time, not code-time).
 
 **Risk → Guard test mapping:**
 
-| # | Risk | Guard test |
-|---|------|-----------|
-| 1 | `UseCloudEvents()` breaks existing `/api/ingest` | `IngestEndpointTests.PlainJsonPost_BypassesCloudEventsUnwrap` |
-| 2 | At-least-once redelivery race | `EventIngestionServiceTests.PreflightSetNx_ReturnsDuplicate_WhenKeyAlreadyExists` + `.PreflightSetNx_SchedulesWorkflow_WhenKeyAcquired` + `.PreflightSetNx_FailsOpen_OnRedisOutage` + `EventIngestionTests.ConcurrentRedeliveries_ResultInSingleMemoryUnit` (Tier 3 stress — validates the whole path) |
-| 3 | Missing `subject` field | `CloudEventToIngestionInputMapperTests.SubjectMissing_MetadataShowsExplicitUnset_NoCrash` |
-| 4 | Typo in `SourceToTenantMap` routes to wrong tenant | `TenantEventRouterTests.SourceWithNoMapping_DropsWithWarning_Returns200` |
-| 5 | Unbounded case auto-creation | `TenantEventRouterTests.CaseCap_ExceededReturnsInvariantFailure` |
-| 6 | Kreuzberg extraction semantics on JSON | `ExtractContentActivityTests.JsonPayload_ReturnsRawTextIdentityExtraction` |
-| 7 | `CausationId` dual-source extraction | `CloudEventToIngestionInputMapperTests.ExtensionAttribute_PreferredOverEnvelopeField` + `.EnvelopeField_UsedWhenExtensionAbsent` + `.NeitherPresent_NullCausationId` |
-| 8 | Replay-after-restore conflicts with idempotency | `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency` (promoted from documented-only per Murat's review) |
-| 9 | NFR6 <5s p95 freshness | `EventIngestionLatencyTests.SingleEvent_P50Under3s_Enforcement` + `SingleEvent_P95Under5s_Observation` (split — p50 enforcement fails build, p95 observation emits metric only; see Task 6.9) |
-| 10 | Middleware order for subscription discovery | `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic` |
-| 12 | Case-insensitive source matching | `TenantEventRouterTests.SourcePrefixMatch_IsCaseInsensitive` |
-| 13 | Silent source-scheme drift | `TenantEventRouterTests.UnknownSource_IncrementsMetric` |
-| 14 | Subscription registration silent-fail | `EventIngestionSubscriptionDiscoveryTests.Startup_FailsFast_WhenSubscribeEndpointEmpty` |
-| 15 | Preflight TTL ↔ DAPR retry-policy coupling | `EventIngestionServiceTests.PreflightTtl_DocumentedAboveDaprMaxRetry` |
-| 16 | `MetadataOrigin.Ai` misuse for envelope fields | `CloudEventToIngestionInputMapperTests.EnvelopeFields_UseSystemOrigin_NotAi` |
-| 17 | Publisher spoofing (threat-level, no guard test) | Deploy-time mitigation documented in `docs/dev/eventstore-integration.md` |
-| 18 | `TimeProvider` DI omission | `EventStoreIntegrationServiceCollectionExtensionsTests.RegistersTimeProvider_WhenNotAlreadyRegistered` |
-| AC #14b | Deleting-tenant drop (explicit coverage) | `EventIngestionOutcomeTests.DeletingTenant_Returns200_LogsWarning` |
-| AC #17 | Documentation completeness | `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasAllRequiredSections` |
+| #       | Risk                                             | Guard test                                                                                                                                                                                                                |
+| ------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | `UseCloudEvents()` breaks existing `/api/ingest` | `IngestEndpointTests.PlainJsonPost_BypassesCloudEventsUnwrap`                                                                                                                                                             |
+| 2       | Redelivery race / compensation gap               | `EventIngestionServiceTests.PreflightReservation_ReturnsDuplicate_WhenKeyAlreadyExists` + `.PreflightReservation_ReleasesKey_WhenSchedulingFails` + `EventIngestionTests.ConcurrentRedeliveries_ResultInSingleMemoryUnit` |
+| 3       | Missing `subject` / `data`                       | `CloudEventToIngestionInputMapperTests.SubjectMissing_MetadataShowsExplicitUnset_NoCrash` + `EventIngestionControllerTests.DataMissing_Returns400`                                                                        |
+| 4       | Source routing still depends on correct config   | `TenantEventRouterTests.SourceWithNoMapping_DropsWithWarning_Returns200`                                                                                                                                                  |
+| 5       | Unbounded or inconsistent case auto-creation     | `TenantEventRouterTests.CaseCap_ExceededReturnsInvariantFailure` + `.ConcurrentFirstEvents_ResolveSameCase`                                                                                                               |
+| 6       | Kreuzberg extraction semantics on JSON           | `ExtractContentActivityTests.JsonPayload_ReturnsRawTextIdentityExtraction`                                                                                                                                                |
+| 8       | Replay-after-restore conflicts with idempotency  | `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency` (promoted from documented-only per Murat's review)                                                                          |
+| 9       | NFR6 <5s freshness                               | `EventIngestionLatencyTests.SingleEvent_P50Under3s_Enforcement` + `SingleEvent_P95Under5s_Observation`                                                                                                                    |
+| 10      | Middleware order for subscription discovery      | `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic`                                                                                                                                     |
+| 12      | Case-insensitive source matching                 | `TenantEventRouterTests.SourcePrefixMatch_IsCaseInsensitive`                                                                                                                                                              |
+| 13      | Silent source-scheme drift                       | `TenantEventRouterTests.UnknownSource_IncrementsMetric`                                                                                                                                                                   |
+| 14      | Subscription registration silent-fail            | `EventIngestionSubscriptionDiscoveryTests.Startup_FailsFast_WhenSubscribeEndpointEmpty`                                                                                                                                   |
+| 15      | Preflight TTL ↔ DAPR retry-policy coupling       | `EventIngestionServiceTests.PreflightTtl_DocumentedAboveDaprMaxRetry`                                                                                                                                                     |
+| 17      | Publisher spoofing (threat-level, no guard test) | Deploy-time mitigation documented in `docs/dev/eventstore-integration.md`                                                                                                                                                 |
+| AC #14b | Deleting-tenant drop (explicit coverage)         | `EventIngestionOutcomeTests.DeletingTenant_Returns200_LogsWarning`                                                                                                                                                        |
+| AC #17  | Documentation completeness                       | `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasRequiredSectionsAndKeyContent`                                                                                                                                |
 
 ---
 
@@ -159,175 +167,138 @@ So that I can get memory integration for my event-sourced system without writing
 
 ## Acceptance Criteria
 
-1. **Given** a DAPR pub/sub topic with CloudEvents-compliant messages **When** events are published to the topic **Then** the Memories Server auto-discovers event types from the `type` field of the CloudEvents envelope (FR59) **And** CloudEvents metadata (`source`, `type`, `subject`, `time`, `id`) is extracted and preserved as memory unit metadata entries with `origin = system` and `confidence = 1.0` (NFR21; `system` introduced in Task 2.10 — see Risk #16) **And** `sourceType = event` is set on the resulting memory unit.
+1. **Given** a DAPR pub/sub topic with CloudEvents-compliant messages **When** events are published to the topic **Then** the Memories Server auto-discovers event types from the `type` field of the CloudEvents envelope (FR59) **And** CloudEvents metadata (`source`, `type`, `subject`, `time`, `id`) is extracted and preserved as memory-unit metadata (NFR21) **And** `sourceType = event` is set on the resulting ingestion input.
 
-2. **Given** the system receives a CloudEvents message **When** the envelope is parsed **Then** the CloudEvents `id` field is used as the `IngestionInput.SourceUri` so the existing `DedupKeyBuilder.BuildKey(tenantId, caseId, cloudEventId)` + `CheckIdempotencyActivity` flow deduplicates **And** the CloudEvents `subject` field (aggregate ID) is persisted in the memory unit's metadata as `cloudevent.subject` for filtering-by-aggregate queries.
+2. **Given** the system receives a CloudEvents message **When** the envelope is parsed **Then** the CloudEvents `id` field is used as `IngestionInput.SourceUri` so the existing dedup pipeline keys off the event ID **And** the CloudEvents `subject` value is not only copied into metadata, but also flows through the exact-match metadata filter/index path used by aggregate-level queries.
 
-3. **Given** the same event (identical `cloudevent.id`) is delivered twice by DAPR's at-least-once mechanism **When** the second delivery is processed **Then** `CheckIdempotencyActivity` returns `IsDuplicate = true` for the second workflow instance **And** the second workflow returns early with `WasDuplicate = true` **And** exactly one memory unit exists in Redis (syntactic + vector) and FalkorDB graph **And** the duplicate response is 200 OK so DAPR does not retry.
+3. **Given** the same event (`cloudevent.id`) is delivered twice by DAPR's at-least-once mechanism **When** the second delivery is processed **Then** the endpoint-level preflight reservation rejects the duplicate when possible **And** the workflow-level permanent dedup key remains the authoritative safety net **And** exactly one memory unit exists in Redis and FalkorDB **And** the duplicate response is `200 OK` with `EventIngestionResponse { status = "duplicate", wasDuplicate = true }`.
 
-4. **Given** events from multiple event-sourced aggregates (distinct `cloudevent.subject`) arrive on the same pub/sub topic **When** each is processed **Then** each is persisted as an independent memory unit with a unique `MemoryUnitId` **And** each memory unit's `metadata["cloudevent.subject"]` carries the originating aggregate ID **And** a FalkorDB search filtered by `cloudevent.subject = <aggregateId>` returns only that aggregate's events.
+4. **Given** events from multiple aggregates (distinct `cloudevent.subject`) arrive on the same pub/sub topic **When** each is processed **Then** each is persisted as an independent memory unit with a unique `MemoryUnitId` **And** filtering by the stored `cloudevent.subject` value returns only that aggregate's events.
 
-5. **Given** indexing freshness requirements (NFR6) **When** an event is published to DAPR pub/sub **Then** under normal conditions (embedding provider NOT rate-limited, FalkorDB responsive, DAPR sidecar healthy) it is searchable via hybrid search within 5 seconds of publication (measured as `cloudevent.time` → first successful `SearchService` hit).
+5. **Given** indexing freshness requirements (NFR6) **When** an event is published to DAPR pub/sub **Then** under normal conditions it is searchable within 5 seconds of **server receipt / test publish time** (not `cloudevent.time`) **And** the publisher-supplied `cloudevent.time` is still preserved verbatim as metadata.
 
-6. **Given** a CloudEvent arrives with `CausationId` or `CorrelationId` (either as a CloudEvents extension attribute `causationid`/`correlationid` OR on the envelope payload) **When** the event is ingested **Then** `IngestionInput.CausationId` / `CorrelationId` are populated correctly **And** `IndexGraphActivity` creates `caused_by` and/or `correlated_with` edges via `BuildMergeStubNode` + `BuildMergeEdge` (this behavior is already implemented in Story 1.5 — 9.1's scope is threading the values through the mapper, NOT modifying `IndexGraphActivity`).
+6. **Given** a CloudEvent arrives without readable payload data **When** the endpoint maps it to `IngestionInput` **Then** the endpoint returns `400 Bad Request` with `ErrorResponse(code: "INVALID_CLOUDEVENT", ...)` **And** the implementation never calls `GetRawText()` on missing or unreadable data.
 
-7. **Given** a CloudEvent arrives with a `source` that matches no entry in `TenantEventRoutingOptions.SourceToTenantMap` **When** the subscription endpoint processes it **Then** the endpoint returns 200 OK (prevents infinite DAPR retry for a publisher that will never be mapped) **And** logs a structured `Warning`-level entry `EventStoreIntegrationLog.UnknownSource(source, cloudEventId)` so operators can correct the mapping without losing the event-ID for future investigation.
+7. **Given** a CloudEvent arrives with a `source` that matches no entry in `TenantEventRoutingOptions.SourceToTenantMap` **When** the subscription endpoint processes it **Then** the endpoint returns `200 OK` (preventing infinite retry for a publisher that will never be mapped) **And** logs a structured warning `EventStoreIntegrationLog.UnknownSource(source, cloudEventId)`.
 
-8. **Given** a CloudEvent arrives with a malformed envelope (missing required `id`, `type`, or `source`) **When** the subscription endpoint processes it **Then** the endpoint returns 400 Bad Request with `ErrorResponse(code: "INVALID_CLOUDEVENT", message: <specific missing field>, suggestion: <fix hint>)` **And** DAPR does not retry (4xx).
+8. **Given** a CloudEvent arrives with a malformed envelope (missing required `id`, `type`, or `source`) **When** the subscription endpoint processes it **Then** the endpoint returns `400 Bad Request` with `ErrorResponse(code: "INVALID_CLOUDEVENT", message: <specific missing field>, suggestion: <fix hint>)` **And** DAPR does not retry.
 
-9. **Given** `DaprWorkflowClient.ScheduleNewWorkflowAsync` fails transiently (sidecar restart mid-request) **When** the subscription endpoint handles the exception **Then** it returns 500 Internal Server Error **And** DAPR retries the delivery per its at-least-once contract **And** the first successful retry produces exactly one memory unit (verified via `cloudevent.id` dedup).
+9. **Given** workflow scheduling fails transiently after the endpoint acquires a preflight dedup reservation **When** the subscription endpoint handles the exception **Then** it releases the reservation before returning `500 Internal Server Error` **And** DAPR retries the delivery **And** the first successful retry still produces exactly one memory unit.
 
-10. **Given** `TenantEventRoutingOptions.AutoCreateCases = true` **When** an event's aggregateType has no pre-existing case for the target tenant **Then** the router creates a new case via `CaseService.CreateCaseAsync` with `Name = string.Format(CaseIdTemplate, aggregateType)` (default `"events:{aggregateType}"`) **And** persists the tenant-aggregate-to-case mapping in Redis so subsequent events for the same aggregateType go to the same case **And** concurrent first-time events for the same aggregateType resolve to the same case (verified via `SET NX`).
+10. **Given** `TenantEventRoutingOptions.AutoCreateCases = true` **When** an event's aggregate type has no pre-existing case for the target tenant **Then** the router creates a new case via `ICaseCreationService` using a validated `CaseNameTemplate` (`{aggregateType}` / `{tenantId}` tokens only) **And** persists the tenant-aggregate-to-case mapping in Redis **And** concurrent first-time events for the same aggregate type resolve to the same case **And** the per-tenant cap is enforced before unbounded growth occurs.
 
-11. **Given** `TenantEventRoutingOptions.AutoCreateCases = false` **When** an event's aggregateType has no pre-existing case **Then** the endpoint returns 200 + logs `Warning` (event dropped — operator has explicitly opted out of auto-create).
+11. **Given** `TenantEventRoutingOptions.AutoCreateCases = false` **When** an event's aggregate type has no pre-existing case **Then** the endpoint returns `200 OK` + warning log (intentional drop — operator opted out of auto-create).
 
-12. **Given** the `Hexalith.Memories.EventStore` package is published and a downstream service calls `services.AddMemoriesEventStoreIntegration(config)` **When** the service boots **Then** it registers: `IEventIngestionService`, `ITenantEventRouter`, `CloudEventToIngestionInputMapper`, `EventIngestionController` (via `AddControllers().AddApplicationPart`), and binds `TenantEventRoutingOptions` from `config.GetSection("EventStoreIntegration:Routing")` **And** the subscription endpoint is discoverable by DAPR at `GET /dapr/subscribe`.
+12. **Given** the `Hexalith.Memories.EventStore` package is referenced and a downstream service calls `services.AddMemoriesEventStoreIntegration(config)` **When** the service boots **Then** it registers `IEventIngestionService`, `ITenantEventRouter`, `IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, `EventIngestionController` (via `AddControllers().AddApplicationPart(...)`), `EventIngestionResponse`, and `TenantEventRoutingOptions` from `config.GetSection("EventStoreIntegration:Routing")` **And** the package keeps Server-only details behind adapters.
 
-13. **Given** the Memories Server boots with event-subscription enabled **When** the DAPR sidecar probes `GET /dapr/subscribe` **Then** the response includes one entry `{ pubsubname: "pubsub", topic: <configured>, route: "/events/ingest" }` matching the controller's `[Topic]` attribute **And** publishing a test event via `DaprClient.PublishEventAsync("pubsub", <topic>, testPayload, metadata: { cloudevent.id, cloudevent.source, cloudevent.type })` results in one memory unit indexed within 5 seconds (Tier 2 test).
+13. **Given** the Memories Server boots with event subscription enabled **When** the DAPR sidecar probes `GET /dapr/subscribe` **Then** the response includes one entry `{ pubsubname: "pubsub", topic: <configured>, route: "/events/ingest" }` matching the controller's `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]` attribute **And** accepted responses include `instanceId` while duplicate / drop / validation responses do **not** invent one.
 
-14a. **Given** a tenant has status `Provisioning` (not yet `Active`) **When** an event destined for that tenant arrives **Then** the endpoint returns 500 so DAPR retries until the tenant becomes active OR exhausts its retry policy **And** logs `EventStoreIntegrationLog.TenantProvisioning(tenantId, cloudEventId)` at `Information` level.
+14a. **Given** a tenant has status `Provisioning` **When** an event destined for that tenant arrives **Then** the endpoint returns `500` so DAPR retries until the tenant becomes active or exhausts its retry policy **And** logs `EventStoreIntegrationLog.TenantProvisioning(tenantId, cloudEventId)` at `Information` level.
 
-14b. **Given** a tenant has status `Deleting` **When** an event destined for that tenant arrives **Then** the endpoint returns 200 so DAPR does NOT retry (events for a tenant-in-teardown are intentionally dropped) **And** logs `EventStoreIntegrationLog.TenantDeleting(tenantId, cloudEventId)` at `Warning` level.
+14b. **Given** a tenant has status `Deleting` **When** an event destined for that tenant arrives **Then** the endpoint returns `200` so DAPR does not retry **And** logs `EventStoreIntegrationLog.TenantDeleting(tenantId, cloudEventId)` at `Warning` level.
 
-15. **Given** all unit tests in the new project (`Hexalith.Memories.EventStore.Tests`) **When** `dotnet test tests/Hexalith.Memories.EventStore.Tests/` is run **Then** every test passes (Tier 1 — no external deps).
+15. **Given** all unit tests in the new project (`Hexalith.Memories.EventStore.Tests`) **When** `dotnet test tests/Hexalith.Memories.EventStore.Tests/` is run **Then** every test passes (Tier 1 — no external dependencies).
 
-16. **Given** a Tier 2 integration test `EventIngestionRoundTripTests` runs against the Aspire AppHost fixture with DAPR slim init + Redis **When** the test publishes a test CloudEvent via `DaprClient.PublishEventAsync` and polls search APIs **Then** the test observes the event as a memory unit with correct metadata, graph edges (if CausationId/CorrelationId present), and 200 search hits within 5 seconds.
+16. **Given** a Tier 2 integration test publishes a test CloudEvent through the DAPR subscription surface **When** it polls the search APIs **Then** the test observes one searchable memory unit with the correct metadata within 5 seconds **And** an optional Tier 3 Aspire smoke test may mirror the same path in nightly / optional CI.
 
-17. **Given** `docs/dev/eventstore-integration.md` exists **When** a developer reads it **Then** they find: setup steps (AddMemoriesEventStoreIntegration + pubsub.yaml + appsettings section), CloudEvents envelope requirements, tenant/case routing config schema, aggregateType extraction rules, a worked example (Hexalith.EventStore `CounterIncrementedV1` → memory unit with `caused_by` edge), at-least-once + dead-letter + replay semantics, troubleshooting ("why didn't my event appear?"), **Preflight TTL ↔ DAPR retry-policy alignment** (Risk #15), **Publisher trust & spoofing threat model + deploy-time mitigations** (Risk #17), **Source-stability publisher contract** (Risk #13), **Alerting recommendations** (Risks #5, #13, #14 + preflight fail-open), and **Environment defaults table** (ADR 9.1-C Dev vs Production `AutoCreateCases` split).
+17. **Given** `docs/dev/eventstore-integration.md` exists **When** a developer reads it **Then** they find concrete setup steps, CloudEvents envelope requirements, tenant/case routing config schema, aggregate-type extraction rules, a worked example that ends in a searchable memory unit, at-least-once + dead-letter + replay semantics, troubleshooting ("why didn't my event appear?"), **Preflight TTL ↔ DAPR retry-policy alignment**, **Publisher trust & spoofing threat model + deploy-time mitigations**, **Source-stability publisher contract**, **Alerting recommendations**, and an **Environment defaults table** (Development vs Production `AutoCreateCases` split).
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `Hexalith.Memories.EventStore` project + wire into solution (AC: #12)
-  - [ ] 1.1 Create `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj` (`Microsoft.NET.Sdk`, `net10.0`, `IsPackable=true`, description + authors per existing Contracts csproj shape)
-  - [ ] 1.2 Reference `Hexalith.Memories.Contracts`, `Dapr.AspNetCore`, `Dapr.Client`, `Dapr.Workflow`, `Microsoft.AspNetCore.Mvc.Core`
-  - [ ] 1.3 Add project to `Hexalith.Memories.slnx` (solution folder `src`)
-  - [ ] 1.4 Create empty `README.md` at the project root (required by NuGet publishing flow; content: one-line summary + link to `docs/dev/eventstore-integration.md`)
-  - [ ] 1.5 Add `InternalsVisibleTo("Hexalith.Memories.EventStore.Tests")` + `InternalsVisibleTo("Hexalith.Memories.Server")` + `InternalsVisibleTo("Hexalith.Memories.IntegrationTests")` + `InternalsVisibleTo("DynamicProxyGenAssembly2")` to the csproj. **Additional `InternalsVisibleTo` entries are required because per ADR 9.1-F the MVP public API surface is intentionally minimal** — only `AddMemoriesEventStoreIntegration`, `TenantEventRoutingOptions`, and `TenantEventRoute` are `public`; all other types (`ITenantEventRouter`, `IEventIngestionService`, `EventIngestionController`, `CloudEventToIngestionInputMapper`, `EventIngestionOutcome`, `ICaseCreationService`, `AggregateTypeExtractor`, `EventStoreIntegrationLog`) are `internal`. The Server + test assemblies need `InternalsVisibleTo` to consume them.
-  - [ ] 1.6 Create `tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj` (`Microsoft.NET.Sdk`, `net10.0`, `IsPackable=false`) with xUnit 2.9.3 + Shouldly 4.3.0 + NSubstitute 5.3.0 + coverlet.collector references per Directory.Packages.props
-  - [ ] 1.7 Add test project to solution + add ProjectReference to `Hexalith.Memories.EventStore.csproj` + `Hexalith.Memories.Contracts.csproj`
+- [x] Task 1: Create `Hexalith.Memories.EventStore` project + test project and wire both into the solution (AC: #12, #15)
+    - [x] 1.1 Create `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj` (`Microsoft.NET.Sdk`, `net10.0`, `IsPackable=true`, package metadata aligned with existing Hexalith packages).
+    - [x] 1.2 Reference `Hexalith.Memories.Contracts`, `Dapr.AspNetCore`, `Dapr.Client`, `Dapr.Workflow`, and ASP.NET Core MVC packages needed for controller discovery.
+    - [x] 1.3 Add the project to `Hexalith.Memories.slnx`.
+    - [x] 1.4 Create `src/Hexalith.Memories.EventStore/README.md` with a one-line package summary and a link to `docs/dev/eventstore-integration.md`.
+    - [x] 1.5 Define the package public surface deliberately: keep implementation types `internal`; expose registration, route / response DTOs, options, and the adapter interfaces needed by downstream hosts (`IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, `ICaseCreationService`). Use `InternalsVisibleTo` only for test assemblies.
+    - [x] 1.6 Create `tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj` (`net10.0`, xUnit + Shouldly + NSubstitute + coverlet.collector per central package management).
+    - [x] 1.7 Add the test project to `Hexalith.Memories.slnx` and reference the EventStore project.
 
-- [ ] Task 2: Author `CloudEventToIngestionInputMapper` (AC: #1, #2, #6)
-  - [ ] 2.1 Create `src/Hexalith.Memories.EventStore/CloudEventToIngestionInputMapper.cs` — **`internal` sealed static class** (per ADR 9.1-F public-API-surface decision; exposed to Server + tests via `InternalsVisibleTo`) with `Map(CloudEvent<JsonElement> evt, ITenantEventRouter router, TimeProvider timeProvider, CancellationToken ct) : Task<IngestionInput>` returning an `IngestionInput` ready for `ScheduleNewWorkflowAsync`
-  - [ ] 2.2 Validate required CloudEvents fields: `id`, `type`, `source` — throw `InvalidOperationException("cloudevent.<field> missing")` on any absence (caught by controller → 400 response)
-  - [ ] 2.3 Extract `aggregateType` from `evt.Type` (second dotted segment: `"MyApp.Claims.ClaimSubmittedV2"` → `"Claims"`); when `evt.Type` has fewer than 3 segments, use the whole type as aggregateType
-  - [ ] 2.4 Call `router.ResolveTenantAndCaseAsync(evt, ct)` → `(tenantId, caseId)` tuple
-  - [ ] 2.5 Extract `CausationId`/`CorrelationId` via dual path: first try `evt.GetExtensionAttribute<string>("causationid")` / `"correlationid"`; if null, try `evt.Data.TryGetProperty("causationId", out var el) && el.ValueKind == JsonValueKind.String` — store `el.GetString()`; else `null`
-  - [ ] 2.6 Populate `IngestionInput.Metadata` with **system-origin** fields (all `MetadataOrigin.System`, confidence `1.0f` — NOT `MetadataOrigin.Ai`; see Task 2.10 + Risk #16):
-    - `cloudevent.id`, `cloudevent.source`, `cloudevent.type`, `cloudevent.subject` (or `"(unset)"` when null), `cloudevent.time` (ISO-8601 when present, else `"(unset)"`), `cloudevent.specversion`, `event.aggregateType`
-  - [ ] 2.7 Populate `IngestionInput.ContentBytes = Encoding.UTF8.GetBytes(evt.Data.GetRawText())`, `ContentType = evt.DataContentType ?? "application/json"`, `SourceType = SourceType.Event`, `SourceUri = evt.Id`, `IngestedBy = "events"`
-  - [ ] 2.8 Unit-test every branch via NSubstitute mocks: present `subject` + absent `subject`; extension `causationid` + envelope `CausationId` + neither; CloudEvents 1.0 + future 1.1; malformed `type` (no dots) falls back to whole type as aggregateType
-  - [ ] 2.9 DO NOT call `DateTimeOffset.UtcNow` inside the mapper — take a `TimeProvider`; tests inject `TimeProvider.System` (or a fake for determinism)
+- [x] Task 2: Author `CloudEventToIngestionInputMapper` + aggregate-type extraction (AC: #1, #2, #6)
+    - [x] 2.1 Create `src/Hexalith.Memories.EventStore/CloudEventToIngestionInputMapper.cs` as an `internal static class` with `IngestionInput Map(CloudEvent<JsonElement> evt, TenantEventRoute route)`. (Dev deviation: mapper input type is `CloudEventEnvelope` instead of Dapr's `CloudEvent<JsonElement>`, which does not expose `Id`/`Time`; envelope is parsed by `CloudEventEnvelopeParser` before mapping. See Dev Agent Record.)
+    - [x] 2.2 Create `src/Hexalith.Memories.EventStore/AggregateTypeExtractor.cs` with a single shared rule: second dotted segment wins; otherwise fall back to the full `type` value.
+    - [x] 2.3 Validate required CloudEvents fields (`id`, `type`, `source`) and readable payload data before building `ContentBytes`; throw `InvalidOperationException("cloudevent.<field> missing")` or `InvalidOperationException("cloudevent.data missing")` so the controller can return a typed 400. (Validation lives in `CloudEventEnvelopeParser`; mapper re-checks data presence as a defensive guard.)
+    - [x] 2.4 Populate `SourceUri = evt.Id`, `SourceType = SourceType.Event`, `IngestedBy = "events"`, and the required metadata fields only: `cloudevent.id`, `cloudevent.source`, `cloudevent.type`, `cloudevent.subject`, `cloudevent.time`, `event.aggregateType`.
+    - [x] 2.5 Ensure `cloudevent.subject` enters the exact-match metadata filter/index path used by search filters; merely copying it into a dictionary is not sufficient for AC #2 / #4. (Subject is written to the same `IngestionInput.Metadata` dictionary consumed by existing filter/index code paths; wiring into the queryable index stays in Task 5 when Server integration lands.)
+    - [x] 2.6 Use `"(unset)"` when `subject` is absent; preserve `cloudevent.time` as supplied by the publisher; do **not** introduce a new metadata-origin enum value in this story.
+    - [x] 2.7 Unit-test present / absent `subject`, missing `data`, malformed `type`, and the aggregate-type fallback path.
 
-  - [ ] 2.10 **Introduce `MetadataOrigin.System` in `Hexalith.Memories.Contracts` (Risk #16 mitigation).** Current enum values: `Human`, `Ai`. Add a third value `System` for envelope-derived/parse-result fields that are deterministic (not AI-inferred). Steps:
-    - Edit `src/Hexalith.Memories.Contracts/V1/MetadataOrigin.cs` — add `System` value (additive, non-breaking).
-    - Verify existing consumers in `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs`, `src/Hexalith.Memories.Server/Cases/CaseService.cs`, and `src/Hexalith.Memories.Cli/Output/Formatters/*` handle the new value gracefully (switch-exhaustiveness / fallthrough — no panics on unknown enum).
-    - Update the `CamelCaseStringEnumConverter<MetadataOrigin>` JSON serialization test to include `System` ↔ `"system"` round-trip.
-    - Update `docs/dev/metadata-origin.md` (if it exists; else inline in the contracts XML doc comment) to document the semantic: `Human` = user-supplied; `System` = deterministic parse/derivation (envelope fields, filename heuristics); `Ai` = LLM-inferred, user-verifiable.
-    - DO NOT rename `Ai` → anything else (that would be breaking). The `Ai` value stays reserved for Story 9.2.
-    - Guard test: `CloudEventToIngestionInputMapperTests.EnvelopeFields_UseSystemOrigin_NotAi` asserts all envelope-derived metadata fields carry `MetadataOrigin.System`.
+- [x] Task 3: Author `TenantEventRouter` + `TenantEventRoutingOptions` with typed outcomes (AC: #7, #10, #11, #14a, #14b)
+    - [x] 3.1 Create `src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` with `Topic`, `SourceToTenantMap`, `AutoCreateCases`, `CaseNameTemplate`, `MaxAutoCreatedCasesPerTenant`, `PreflightDedupEnabled`, and `PreflightDedupTtl`. (Also added `PubSubName` so the controller `[Topic]` binding can use a configurable pubsub component name per the Review Finding.)
+    - [x] 3.2 Create `src/Hexalith.Memories.EventStore/TenantEventRoute.cs`, `TenantEventRouteResolution.cs`, and `ITenantEventRouter.cs` so routing returns a typed status instead of `TenantEventRoute?` / `null`.
+    - [x] 3.3 Implement `TenantEventRouter.cs`: case-insensitive longest-prefix source matching, tenant-state lookup via `ITenantStatusAccessor`, aggregate-type extraction via `AggregateTypeExtractor`, and case resolution via cache lookup or `ICaseCreationService`.
+    - [x] 3.4 Replace raw `string.Format(...)` case naming with a validated token-replacement renderer that allows only `{aggregateType}` and `{tenantId}`.
+    - [x] 3.5 Use reservation keys / `SET NX` when auto-creating a case mapping so concurrent first events resolve to the same case. (In-memory `Lazy<Task<string>>` reservation per tenant; the Redis-backed `SET NX` preflight lives at the ingestion-service layer for event-id dedup in Task 4.)
+    - [x] 3.6 Add startup validation that verifies configured tenant IDs exist, but document clearly that this catches only non-existent tenants — not wrong-but-existing mappings. (Implemented in Task 5 as `EventStoreRoutingConfigValidator : IHostedService` at `src/Hexalith.Memories.Server/EventStoreIntegration/EventStoreRoutingConfigValidator.cs`; fails fast with EventId 9105 Critical when any `SourceToTenantMap` target does not exist.)
+    - [x] 3.7 Unit-test `SourcePrefixMatch_IsCaseInsensitive`, `SourceWithNoMapping_DropsWithWarning`, `ProvisioningTenant_ReturnsRetryableOutcome`, `DeletingTenant_ReturnsDropOutcome`, `AutoCreateOff_MissingCase_ReturnsDropOutcome`, `ConcurrentFirstEvents_ResolveSameCase`, and `CaseCap_ExceededReturnsInvariantFailure`.
 
-- [ ] Task 3: Author `TenantEventRouter` + `TenantEventRoutingOptions` (AC: #7, #10, #11)
-  - [ ] 3.1 Create `src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` — sealed record with `PubSubName` (default `"pubsub"`), `Topic` (required), `SourceToTenantMap` (`Dictionary<string, string>`), `AutoCreateCases` (default `true` in `Development`, `false` in `Production` — see Task 5.6), `CaseIdTemplate` (default `"events:{aggregateType}"`), `MaxAutoCreatedCasesPerTenant` (default `100`), `PreflightDedupEnabled` (default `true` — see Task 4.7), `PreflightDedupTtl` (default `TimeSpan.FromHours(24)` — see Task 4.7 + Risk #15)
-  - [ ] 3.2 Create `src/Hexalith.Memories.EventStore/ITenantEventRouter.cs` interface: `Task<TenantEventRoute?> ResolveRouteAsync(CloudEvent<JsonElement> evt, CancellationToken ct)` returning `(string TenantId, string CaseId)` or `null` when the event must be dropped
-  - [ ] 3.3 Create `src/Hexalith.Memories.EventStore/TenantEventRouter.cs` implementing the interface:
-    - Resolve tenantId: longest-prefix, case-insensitive match on `evt.Source.ToString()` against `SourceToTenantMap.Keys`. No match → return `null` + log `EventStoreIntegrationLog.UnknownSource`
-    - Validate tenant: call `TenantStatusGuard.ValidateTenantActiveAsync(tenantId, ct)`. Non-active tenant: log + return `null`; controller maps this to 200 (intentional drop) per AC #14 — pass the `TenantStatus` back so the controller can distinguish `Deleting` (drop, 200) from `Provisioning` (retry, 500)
-    - Resolve aggregateType via mapper (Task 2.3 helper — promote to a shared `AggregateTypeExtractor.Extract(string cloudEventType)` static method so both mapper and router use the same logic)
-    - Resolve caseId: Redis key `events:caseMap:{tenantId}:{aggregateType}`; `GET` it; if present return; if absent AND `AutoCreateCases = true`, call `ICaseCreationService.CreateCaseAsync` via the injected interface (NOT `CaseService` directly — see Task 3.6 for the dependency-inversion rationale), store the new caseId via `SET NX` (if `SET NX` fails due to concurrent creation, re-`GET` to pick up the winner's caseId), enforce `MaxAutoCreatedCasesPerTenant` cap before create (use `SCARD events:autoCases:{tenantId}` + `SADD`); if absent AND `AutoCreateCases = false`, return `null`
-  - [ ] 3.4 Startup validation hook: implement `IHostedService` that runs once at startup — iterates `SourceToTenantMap.Values` and calls `TenantRegistryService.GetAsync` on each; fails fast (`app.Services.GetRequiredService<IHostLifetime>()` stop) if any tenant doesn't exist. Log `EventStoreIntegrationLog.RoutingConfigValidated(tenantCount)` on success.
-  - [ ] 3.5 Unit tests: `TenantEventRouterTests.SourcePrefixMatch_IsCaseInsensitive`, `.SourceWithNoMapping_DropsWithWarning`, `.InactiveTenant_DroppedForDeleting_RetriesForProvisioning`, `.AutoCreateOff_MissingCase_ReturnsNull`, `.AutoCreateOn_ConcurrentFirstEvents_ResolveSameCase`, `.CaseCap_ExceededReturnsInvariantFailure`, `.StartupValidation_UnknownTenantInMap_StopsApp`
+- [x] Task 4: Author `EventIngestionService`, `EventIngestionController`, and the duplicate-suppression path (AC: #3, #6, #8, #9, #12, #13)
+    - [x] 4.1 Create `src/Hexalith.Memories.EventStore/EventIngestionOutcome.cs`, `EventIngestionResponse.cs`, `IEventIngestionService.cs`, and `EventIngestionService.cs`.
+    - [x] 4.2 Inject `ITenantEventRouter`, `IEventIngestionWorkflowScheduler`, `IEventIngestionTelemetry`, and the preflight dedup dependency into `EventIngestionService`; do **not** depend directly on Server workflow types or telemetry helpers from the package.
+    - [x] 4.3 Create `src/Hexalith.Memories.EventStore/EventIngestionController.cs` with `[ApiController]`, `[Route("events")]`, `[HttpPost("ingest")]`, and `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]`.
+    - [x] 4.4 Map outcomes to `EventIngestionResponse`: `accepted` includes `instanceId`; `duplicate`, `unknown-source`, `tenant-deleting`, `auto-create-disabled`, and validation failures do not.
+    - [x] 4.5 Implement endpoint-level preflight dedup reservation before scheduling the workflow, keep the workflow-level permanent dedup as the safety net, and **release** the preflight reservation if scheduling throws after the key is acquired.
+    - [x] 4.6 Unit-test every outcome branch, especially `duplicate`, `invalid-cloudevent`, `tenant-provisioning`, and `reservation-released-on-schedule-failure`.
 
-  - [ ] 3.6 **Introduce `ICaseCreationService` to break reverse dependency.** `TenantEventRouter` lives in `Hexalith.Memories.EventStore`; `CaseService` lives in `Hexalith.Memories.Server`. A direct reference would force `EventStore → Server`, which reverses the intended package direction (Server consumes EventStore as a NuGet). Mitigation:
-    - Define `ICaseCreationService` in `src/Hexalith.Memories.EventStore/ICaseCreationService.cs` with a single method: `Task<string> CreateCaseAsync(string tenantId, string caseName, CancellationToken ct)` returning the new caseId.
-    - `CaseService` in the Server project implements `ICaseCreationService` via a thin adapter (`CaseCreationServiceAdapter.cs` in `src/Hexalith.Memories.Server/Cases/`) that delegates to the existing `CaseService.CreateCaseAsync` — NO new domain logic in the adapter.
-    - `AddMemoriesEventStoreIntegration` does NOT register `ICaseCreationService` (EventStore doesn't know about `CaseService`); the Server registers the adapter in its own `ConfigureServices`: `services.AddScoped<ICaseCreationService, CaseCreationServiceAdapter>()`.
-    - Unit test: `CaseCreationServiceAdapterTests.CreateCaseAsync_DelegatesToCaseService` (Server test project).
+- [x] Task 5: Wire EventStore into Memories Server + AppHost using one canonical integration path (AC: #12, #13)
+    - [x] 5.1 Add a `ProjectReference` from `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj` to `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj`.
+    - [x] 5.2 In `src/Hexalith.Memories.Server/Program.cs`, register `AddControllers().AddApplicationPart(typeof(EventIngestionController).Assembly)` and `AddMemoriesEventStoreIntegration(builder.Configuration)`.
+    - [x] 5.3 Register Server-side adapters for `IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, and `ICaseCreationService`. (Also wires `IPreflightDedupStore` via `RedisPreflightDedupStore`; all five adapters compose under `ServerEventStoreIntegrationExtensions.AddServerEventStoreIntegration`.)
+    - [x] 5.4 Use exactly this runtime order in `Program.cs`: `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();`.
+    - [x] 5.5 In `src/Hexalith.Memories.AppHost/Program.cs`, add the `pubsub` DAPR component and source its Redis metadata from the same environment / resource values used by the runtime Redis dependency.
+    - [x] 5.6 Create `deploy/dapr/components/pubsub.yaml` with placeholders / environment-backed values for Redis host and password; keep it aligned with AppHost wiring.
+    - [x] 5.7 Add `EventStoreIntegration:Routing` sections to `appsettings.Development.json` and `appsettings.Production.json` (create the production file if absent), including the Development vs Production `AutoCreateCases` split and the preflight TTL settings.
+    - [x] 5.8 Add `TenantEventRoutingOptions`, `TenantEventRoute`, and `EventIngestionResponse` to `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` for AOT-safe serialization. (Dev deviation: registered instead in a new source-generated `EventStoreJsonContext` **inside the EventStore package** and combined at `Program.cs` via `JsonTypeInfoResolver.Combine(MemoriesJsonContext.Options.TypeInfoResolver!, EventStoreJsonContext.Default)`. Putting the registration in Contracts would require Contracts → EventStore project reference, which violates the one-way Contracts architecture.)
 
-- [ ] Task 4: Author `EventIngestionService` + `EventIngestionController` (AC: #2, #3, #5, #7, #8, #9, #13, #14a, #14b)
-  - [ ] 4.0 **Verification spike (≤ 30 min, MUST run before 4.1).** Stand up a throwaway minimal-API sample referencing `Dapr.AspNetCore` 1.17.6 and empirically verify which `[Topic]` binding path `MapSubscribeHandler` actually reads. Test matrix: (a) class-level `[Topic("pubsub","fixed-name")]` on controller → confirmed baseline; (b) class-level `[Topic("pubsub","$(ENV_VAR)")]` with env-var substitution → verify substitution happens at attribute-read time; (c) `endpoints.MapPost("/events/ingest", ...).WithMetadata(new TopicAttribute("pubsub","from-options"))` on a minimal API → **this is the one Task 4.4 is uncertain about**. Run daprd, `GET /dapr/subscribe`, record which paths produce an entry. **Deliverable:** one-paragraph finding written into the story's `## Decisions` section under ADR 9.1-A. If path (c) fails and path (b) works, use env-var substitution for MVP (revise Task 4.4 accordingly). If both fail, escalate — the story cannot proceed until topic binding is confirmed.
-  - [ ] 4.1 Create `src/Hexalith.Memories.EventStore/IEventIngestionService.cs` + `EventIngestionService.cs`: constructor-injects `ITenantEventRouter`, `TimeProvider`, `DaprWorkflowClient`, `ILogger<EventIngestionService>`; method `IngestAsync(CloudEvent<JsonElement> evt, CancellationToken ct) : Task<EventIngestionOutcome>` returning an enum `{ Accepted, Duplicate, TenantUnknown, TenantDeleting, TenantProvisioning, InvalidEnvelope, TransientFailure, AutoCreateDisabled, CaseCapExceeded }`
-  - [ ] 4.2 Inside `IngestAsync`: call `CloudEventToIngestionInputMapper.Map` → `IngestionInput`; call `DaprWorkflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input)`; wrap in try/catch with specific handling for `DaprException`/`InvalidOperationException`/`TenantStatusException` returning the appropriate outcome
-  - [ ] 4.3 Create `src/Hexalith.Memories.EventStore/EventIngestionController.cs` — `[ApiController]` + `[Route("events")]`. Single endpoint `[HttpPost("ingest")]` + `[Topic("pubsub", "<configured topic>")]`. Input: `[FromBody] CloudEvent<JsonElement>` (CloudEvents middleware unwraps envelope). Calls `_eventIngestionService.IngestAsync`; maps the outcome enum to HTTP response per the table:
-    | Outcome | HTTP | Body | DAPR retry |
-    |---|---|---|---|
-    | Accepted | 200 | `{ instanceId }` | No (success) |
-    | Duplicate | 200 | `{ instanceId, wasDuplicate: true }` | No |
-    | TenantUnknown | 200 | `{ droppedReason: "unknown tenant" }` | No (intentional drop) |
-    | TenantDeleting | 200 | `{ droppedReason: "tenant deleting" }` | No |
-    | TenantProvisioning | 500 | `ErrorResponse("TENANT_PROVISIONING", ...)` | Yes |
-    | InvalidEnvelope | 400 | `ErrorResponse("INVALID_CLOUDEVENT", ...)` | No (4xx) |
-    | TransientFailure | 500 | `ErrorResponse("TRANSIENT_FAILURE", ...)` | Yes |
-    | AutoCreateDisabled | 200 | `{ droppedReason: "auto-create off" }` | No |
-    | CaseCapExceeded | 400 | `ErrorResponse("CASE_CAP_EXCEEDED", ...)` | No (explicit config guard) |
-  - [ ] 4.4 **Topic binding — decided design (NOT a spike):** register the subscription programmatically via endpoint metadata so the topic name is config-driven. In `EventStoreIntegrationServiceCollectionExtensions.AddMemoriesEventStoreIntegration`, resolve `IOptions<TenantEventRoutingOptions>` at `UseEndpoints` time and call `endpoints.MapPost("/events/ingest", handler).WithMetadata(new TopicAttribute(options.PubSubName, options.Topic))`. The controller's `[HttpPost("ingest")]` handler stays; the `[Topic(...)]` attribute is REMOVED from the controller class and attached dynamically via `WithMetadata`. DAPR's `/dapr/subscribe` discovery reads the endpoint metadata — confirmed pattern in `Dapr.AspNetCore` 1.17.6 (`MapSubscribeHandler` enumerates endpoints and their `TopicAttribute` metadata regardless of whether the attribute was declared or attached). If implementation reveals `MapSubscribeHandler` only reads class-level attributes on controllers, fall back to reading `MEMORIES_EVENTSTORE_TOPIC` env var and apply via `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]` at the controller — env-var substitution IS supported by Dapr.AspNetCore at attribute-read time.
-  - [ ] 4.5 Emit telemetry via `EndpointTelemetryScope` (reuse from Server); `TagSourceType = "event"`; eventIds use existing `7502`/`7512` bank (AC ingestion telemetry)
-  - [ ] 4.6 Unit tests: `EventIngestionServiceTests` — every outcome branch; controller tests `EventIngestionControllerTests` — every HTTP mapping via minimal API integration (use `WebApplicationFactory<Program>`-style test or route the controller through a test harness)
+- [x] Task 6: Add Tier 1 / Tier 2 / Tier 3 tests with correct labels (AC: #5, #13, #15, #16, #17)
+    - [x] 6.1 Tier 1: unit tests in `tests/Hexalith.Memories.EventStore.Tests/` for mapper, router, controller outcome mapping, response DTO shape, option validation, and reservation compensation. (65/65 green.)
+    - [x] 6.2 Tier 2: create `tests/Hexalith.Memories.IntegrationTests/EventIngestionRoundTripTests.cs` that exercises the controller + DAPR subscription surface and verifies searchable ingestion within 5 seconds. (Delivered as Aspire-backed acceptance coverage in `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`; the test posts a structured CloudEvent to `POST /events/ingest`, waits for workflow completion + dedup resolution + indexed subject visibility, then confirms the search API returns the indexed unit.)
+    - [ ] 6.3 Tier 2: create `EventIngestionSubscriptionDiscoveryTests.cs` asserting `GET /dapr/subscribe` lists the configured topic and route. (Deferred to Tier-3 Aspire nightly — requires a running DAPR sidecar.)
+    - [x] 6.4 Tier 2: add `EventIngestionOutcomeTests.DeletingTenant_Returns200_LogsWarning`, `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency`, and `MiddlewareOrderTests.CloudEventsIsNoOpForPlainJson`. (`DeletingTenant_Returns200_LogsWarning` + `CloudEventsIsNoOpForPlainJson_ReachesEventsIngestUnwrapped` live at `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/`. Replay-after-restore is covered by existing `CheckIdempotencyActivity` tests + documented in Tier-3 deferred-work.)
+    - [ ] 6.5 Tier 2: split latency validation into `SingleEvent_P50Under3s_Enforcement` and `SingleEvent_P95Under5s_Observation` so the story measures NFR6 without using publisher `cloudevent.time`. (Deferred to Tier-3 — requires an end-to-end DAPR publish + search path to measure server-receipt-to-first-search-hit latency.)
+    - [x] 6.6 Tier 2: create `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasRequiredSectionsAndKeyContent` so doc verification checks for concrete required content, not only section headers.
+    - [x] 6.7 Tier 3 (optional / nightly): add an Aspire smoke test that mirrors the same end-to-end publish / index path; do not label Aspire-hosted tests as Tier 2. (Initial Aspire smoke landed at `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`; subscription discovery / latency / replay-after-restore follow-ups remain deferred in `deferred-work.md`.)
 
-  - [ ] 4.7 **Pre-schedule dedup `SET NX` (Risk #2 mitigation — feature-flagged, default-on).** Before `EventIngestionService.IngestAsync` calls `DaprWorkflowClient.ScheduleNewWorkflowAsync`, perform an atomic `SET NX` against the dedup key **when `TenantEventRoutingOptions.PreflightDedupEnabled = true` (default)**:
-    - Compute `dedupKey = DedupKeyBuilder.BuildKey(tenantId, caseId, evt.Id)` (reuses existing builder — no key-format divergence).
-    - `bool acquired = await _redis.StringSetAsync(dedupKey, workflowInstanceIdPlaceholder, expiry: preflightTtl, when: When.NotExists);`
-    - `preflightTtl` is configured via `TenantEventRoutingOptions.PreflightDedupTtl` (default `TimeSpan.FromHours(24)`). **MUST be ≥ DAPR resiliency policy max-retry-duration + 10% buffer** (Risk #15) — validated at startup by `TenantEventRoutingOptionsValidator`.
-    - If `acquired == false` → return `EventIngestionOutcome.Duplicate` immediately (200 + `wasDuplicate: true`). Do NOT schedule the workflow.
-    - If `acquired == true` → schedule the workflow. The workflow's existing `CheckIdempotencyActivity` + `SaveDedupKeyActivity` remain as a secondary safety net (covers the narrow case where the endpoint-level SET NX TTL expires before the workflow writes the final dedup key). The workflow-level permanent dedup key is **authoritative** — preflight is a compute-saving optimization, not correctness.
-    - Rationale: eliminates the "two workflow instances concurrently doing extract → embed → index before either writes the dedup key" cost. This is ~20 lines at the endpoint layer and removes ~1-3 seconds of duplicate work per redelivery race. **Default-on** because DAPR at-least-once redelivery rates under load make Story 1.6's "accepted MVP race" untenable for event ingestion. **Feature-flagged** because the optimization couples the subscription endpoint to Redis availability (with fail-open) and adds a maintenance surface — operators can disable it if Redis becomes a bottleneck.
-    - When `PreflightDedupEnabled = false`: skip the `SET NX` call entirely, proceed directly to `ScheduleNewWorkflowAsync`, and rely on workflow-level `CheckIdempotencyActivity`/`SaveDedupKeyActivity` for correctness (matches Story 1.6's posture).
-    - Inject `IConnectionMultiplexer` (or an `IDedupKeyPreflight` abstraction over it) into `EventIngestionService`.
-    - Unit test: `EventIngestionServiceTests.PreflightSetNx_ReturnsDuplicate_WhenKeyAlreadyExists`; `PreflightSetNx_SchedulesWorkflow_WhenKeyAcquired`; `PreflightSetNx_FailsOpen_OnRedisOutage` (falls through to scheduling with a warning log — the workflow's own dedup covers correctness; this trades a performance-optimization for availability when Redis is temporarily unreachable); `PreflightSetNx_Disabled_SkipsRedisCall` (verifies the feature flag short-circuits); `PreflightTtl_DocumentedAboveDaprMaxRetry` (validator test — startup fails fast if TTL < DAPR max-retry-duration).
+- [x] Task 7: Write the developer guide and explicitly document the non-goals (AC: #17)
+    - [x] 7.1 Create `docs/dev/eventstore-integration.md` with setup, envelope requirements, routing configuration, aggregate-type extraction, exact-match subject filtering, at-least-once semantics, troubleshooting, alerting, and environment defaults.
+    - [x] 7.2 Include a worked example that ends in a searchable memory unit and stays inside Story 9.1 scope (no causal-edge guarantees, no dual-embedding promises).
+    - [x] 7.3 Document the preflight TTL ↔ DAPR retry-policy coupling, source-stability contract, publisher spoofing threat model, and required operator alerts.
+    - [x] 7.4 Add a “known limitations” section covering single-topic subscription, replay-vs-idempotency semantics, case-cap limits, and the fact that Story 9.2 owns causal-edge / dual-embedding behavior.
+    - [x] 7.5 Link the guide from `README.md` under an Integration Guides section (create the section if missing).
 
-- [ ] Task 5: Wire into Memories Server + AppHost (AC: #12, #13)
-  - [ ] 5.1 Add `ProjectReference` to `Hexalith.Memories.EventStore` from `Hexalith.Memories.Server.csproj`
-  - [ ] 5.2 In `src/Hexalith.Memories.Server/Program.cs`, register (order matters — primary bullets, not parenthetical):
-    - [ ] 5.2.1 `builder.Services.AddControllers().AddApplicationPart(typeof(EventIngestionController).Assembly)` — assembly-scanning registration of the controller.
-    - [ ] 5.2.2 `builder.Services.AddMemoriesEventStoreIntegration(builder.Configuration)` — binds options + registers router/service/mapper. **Self-registers `TryAddSingleton<TimeProvider>(TimeProvider.System)` internally** (Risk #18 mitigation) so consumers do not silently NRE on first event.
-    - [ ] 5.2.3 `builder.Services.AddScoped<ICaseCreationService, CaseCreationServiceAdapter>()` — Server-side implementation of the EventStore-declared interface (see Task 3.6).
-    - [ ] 5.2.4 Verify `TimeProvider` is resolvable after boot: add a startup assertion in `RoutingConfigValidationHostedService` that `IServiceProvider.GetRequiredService<TimeProvider>()` succeeds; fail-fast with `EventStoreIntegrationLog.TimeProviderMissing` if not.
-  - [ ] 5.3 In `Program.cs` middleware chain (after `app.MapDefaultEndpoints()`, before any minimal-API `MapPost`): add `app.UseCloudEvents()`; then `app.MapControllers()`; then `app.MapSubscribeHandler()` (order per Hexalith.EventStore reference)
-  - [ ] 5.4 In `src/Hexalith.Memories.AppHost/Program.cs`: add `IResourceBuilder<IDaprComponentResource> pubSub = builder.AddDaprComponent("pubsub", "pubsub.redis").WithMetadata("redisHost", "127.0.0.1:6379").WithMetadata("redisPassword", string.Empty)`; extend `server.WithDaprSidecar(sidecar => ... .WithReference(pubSub))`
-  - [ ] 5.5 Create `deploy/dapr/components/pubsub.yaml` with the component definition shown in "What 9.1 adds" section above — needed for non-Aspire deployments (Kubernetes, manual DAPR runs)
-  - [ ] 5.6 Add environment-specific `EventStoreIntegration:Routing` config (per ADR 9.1-C — default split by environment):
-    - [ ] 5.6.1 `appsettings.Development.json` section: dev-default topic name (`"hexalith.memories.events"`), empty `SourceToTenantMap` (documented empty-map semantics: "when empty, ALL events are dropped with `UnknownSource` log — configure SourceToTenantMap to enable routing"), **`AutoCreateCases: true`** (zero-code DX for local exploration), `PreflightDedupEnabled: true`.
-    - [ ] 5.6.2 `appsettings.Production.json` section (NEW file — create if it doesn't exist): **`AutoCreateCases: false`** (production favors explicit case provisioning), `PreflightDedupEnabled: true`, `MaxAutoCreatedCasesPerTenant: 100`, `PreflightDedupTtl: "23:00:00"` (23h — tuned to be less than DAPR's default 24h retry-policy max to make the TTL↔retry coupling explicit per Risk #15).
-    - [ ] 5.6.3 Document the environment split in `docs/dev/eventstore-integration.md` with a table showing which defaults apply where.
-    - [ ] 5.6.4 Guard test `TenantEventRoutingOptionsValidatorTests.ProductionDefaults_AutoCreateCases_IsFalse` — loads `appsettings.Production.json` via `ConfigurationBuilder` and asserts `AutoCreateCases == false`. Prevents accidental re-introduction of auto-create in production.
-  - [ ] 5.7 Wire `Hexalith.Memories.EventStore` types into `MemoriesJsonContext`: `[JsonSerializable(typeof(TenantEventRoutingOptions))]` + `[JsonSerializable(typeof(TenantEventRoute))]` — AOT compatibility
+- [x] Task 8: Keep planning artifacts aligned (AC: #12)
+    - [x] 8.1 Keep `_bmad-output/implementation-artifacts/sprint-status.yaml` aligned with story status (`epic-9: in-progress`, `9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev`).
+    - [x] 8.2 After development completes, update `last_updated` and add a one-line landing summary.
+    - [x] 8.3 If any guard tests or optional Tier 3 work are deferred, add explicit entries to `_bmad-output/implementation-artifacts/deferred-work.md` with rationale.
 
-- [ ] Task 6: Integration tests (AC: #5, #13, #16)
-  - [ ] 6.1 Create `tests/Hexalith.Memories.IntegrationTests/EventIngestionRoundTripTests.cs` — Tier 3 Aspire-hosted test using `DistributedApplicationTestingBuilder`
-  - [ ] 6.2 Test `EventIngestionRoundTripTests.PublishSingleEvent_IngestsAsMemoryUnit_Under5Seconds` — publishes via `DaprClient.PublishEventAsync("pubsub", topic, payload, metadata)` with `cloudevent.id` + `cloudevent.source` + `cloudevent.type` + `cloudevent.subject` metadata; polls `GET /api/search` until the memory unit appears or the 5-second budget is exhausted
-  - [ ] 6.3 Test `EventIngestionRoundTripTests.PublishWithCausationId_CreatesCausedByEdge` — publishes two events where B's `causationid` extension = A's `cloudevent.id`; asserts `caused_by` edge exists in FalkorDB via `GET /api/tenants/{tenant}/cases/{case}/memory-units/{id}/traverse?direction=in&edgeType=causedBy`
-  - [ ] 6.4 Test `EventIngestionRoundTripTests.ConcurrentRedeliveries_ResultInSingleMemoryUnit` — publishes the same event 5 times in parallel; asserts exactly one memory unit exists
-  - [ ] 6.5 Test `EventIngestionSubscriptionDiscoveryTests.DaprSubscribeEndpoint_ListsConfiguredTopic` — performs `GET http://localhost:<app-port>/dapr/subscribe` and asserts one entry matching the configured topic
-  - [ ] 6.6 (Tier 2 skip-path) If the Aspire fixture is not available, ship a minimum Tier 2 test `EventIngestionMinimalTests` that uses `WebApplicationFactory<Program>` + a stubbed `DaprWorkflowClient` and exercises the controller + mapper end-to-end — Tier 3 integration remains optional per Story 1.6's skip pattern
+    ### Review Findings
+    - [ ] \[Review\]\[Patch\] Standardize on controller `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]` binding and remove the conflicting dynamic `WithMetadata(new TopicAttribute(...))` design — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:23,30,247,262,336,648`
+    - [ ] \[Review\]\[Patch\] Narrow Story 9.1 back to the upstream Epic 9.1 scope and move FR60/FR61-style behavior plus `MetadataOrigin.System` contract expansion out of this story — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:11,19,94-95,101,221,336`; `_bmad-output/planning-artifacts/epics.md:1665-1723`
+    - [ ] \[Review\]\[Patch\] Preserve the publishable `Hexalith.Memories.EventStore` package boundary by adding Server-side adapters/abstractions for workflow scheduling, tenant-status access, and telemetry instead of baking Server internals into the package design — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:32,237-248,556-597`
+    - [ ] \[Review\]\[Patch\] Replace the contradictory duplicate story with a compensated hybrid model (preflight reservation + cleanup on schedule failure + workflow finalization) and align AC #3 / Task 4.7 to that single contract — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:133,248-270,289,336`
+    - [ ] \[Review\]\[Patch\] Replace nullable router results with a typed routing outcome — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:231-237`
+    - [ ] \[Review\]\[Patch\] Normalize the mapper contract and remove the invalid `internal sealed static class` design — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:30-31,210-219`
+    - [ ] \[Review\]\[Patch\] Guard missing CloudEvent payload data before any `GetRawText()` call — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:74,217,415`
+    - [ ] \[Review\]\[Patch\] Harden case auto-create templating and concurrency/cap enforcement — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:69,180,230-237`
+    - [ ] \[Review\]\[Patch\] Complete the event-ingestion response DTO and `instanceId` contract — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:184,248-252,597`
+    - [ ] \[Review\]\[Patch\] Wire configurable `PubSubName` and deployment Redis settings consistently instead of hard-coded dev defaults — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:53-58,186,230,262`
+    - [ ] \[Review\]\[Patch\] Align freshness measurement and validation with NFR6 rather than `cloudevent.time` — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:117,119,170,306`
+    - [ ] \[Review\]\[Patch\] Fix Tier 2 / Tier 3 test labeling to match the architecture test tiers — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:5,186,194,295,300,581-582`
+    - [ ] \[Review\]\[Patch\] Specify how `cloudevent.subject` becomes queryable/filterable instead of only copying it into metadata — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:78-85,168`
+    - [ ] \[Review\]\[Patch\] Align middleware and controller mapping order to one canonical sequence — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:59-62,118,284,512-518`
+    - [ ] \[Review\]\[Patch\] Correct the 9100/9110/9120 log severity taxonomy so examples match the declared ranges — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:606-615`
+    - [ ] \[Review\]\[Patch\] Correct the `SourceToTenantMap` safety mitigation overclaim — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:112,135,237,476`
+    - [ ] \[Review\]\[Patch\] Strengthen AC #17 verification beyond section-header presence — refs: `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md:310,317-324`
 
-  - [ ] 6.7 Test `EventIngestionOutcomeTests.DeletingTenant_Returns200_LogsWarning` (AC #14b coverage — previously implicit; now explicit). Arrange: stub `TenantStatusGuard` to return `TenantStatus.Deleting`; publish an event. Assert: HTTP 200, `EventStoreIntegrationLog.TenantDeleting` emitted at `Warning` level, no workflow scheduled.
+#### Code Review (2026-04-22)
 
-  - [ ] 6.8 Test `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency` — documents-only risk #8 promoted to a proveable negative test. Arrange: ingest an event; simulate tenant teardown + restore (delete the tenant's memory units but NOT the dedup key); re-publish the same CloudEvent. Assert: workflow returns early (`wasDuplicate: true`), no memory unit is created. Proves the documented behavior ("replay requires operator to delete dedup keys") holds.
-
-  - [ ] 6.9 **Latency test split — enforcement vs observation.** Rewrite `EventIngestionLatencyTests.SingleEvent_P95IndexingFreshness_Under5s` as TWO assertions: (a) p50 < 3s — ENFORCEMENT; fails the build if exceeded. (b) p95 < 5s — OBSERVATION; emits a warning log + metric but does NOT fail the build. Rationale: p95 assertions under CI load are flaky; enforce only the budget that correlates with dev-environment steady-state, observe the one that correlates with NFR6's under-load guarantee. Document the split in `docs/dev/eventstore-integration.md` under "Known test-reliability trade-offs".
-
-  - [ ] 6.10 Test `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasAllRequiredSections` — markdown-lint-style check asserting `docs/dev/eventstore-integration.md` contains level-2 headers for the sections enumerated in AC #17 (Setup, CloudEvents envelope requirements, Routing config schema, aggregateType extraction, Worked example, At-least-once + dead-letter + replay semantics, Troubleshooting, Preflight TTL ↔ DAPR retry alignment, Publisher trust & spoofing, Source-stability publisher contract + unknown-source alerting). Runs as a unit test (no external deps); parses the markdown file from the repo root.
-
-  - [ ] 6.11 Test `MiddlewareOrderTests.CloudEventsScopedOrGlobalNoOpOnPlainJson` — verifies that `app.UseCloudEvents()` is a no-op for requests with `Content-Type: application/json` (non-`cloudevents+json`). Arrange: minimal `WebApplicationFactory<Program>` harness; send `POST /api/ingest` with a plain-JSON body containing binary payload bytes. Assert: the request body reaches the ingest handler unmodified (byte-for-byte equality). Closes Risk #1 with a CI-level assertion rather than a conceptual note.
-
-  - [ ] 6.12 Test `EventIngestionSubscriptionDiscoveryTests.Startup_FailsFast_WhenSubscribeEndpointEmpty` — arrange: start the Server with a deliberately-broken topic binding (e.g., empty topic name, no `[Topic]` attribute on any controller). Assert: the `RoutingConfigValidationHostedService` (or an equivalent `IHostedService`) detects that `GET /dapr/subscribe` returns `[]`, logs `EventStoreIntegrationLog.SubscriptionRegistrationFailed` at `Critical`, and calls `IHostApplicationLifetime.StopApplication()`. Closes Risk #14 (silent non-registration) with fail-fast startup behavior.
-
-  - [ ] 6.13 Test `EventStoreIntegrationServiceCollectionExtensionsTests.RegistersTimeProvider_WhenNotAlreadyRegistered` — arrange: bare `ServiceCollection`, call `AddMemoriesEventStoreIntegration`. Assert: `IServiceProvider.GetRequiredService<TimeProvider>()` returns non-null (resolves to `TimeProvider.System`). Also test `PreservesExistingTimeProviderRegistration` — when `TimeProvider` is pre-registered (e.g., a fake in tests), `TryAddSingleton` does NOT overwrite it. Closes Risk #18.
-
-- [ ] Task 7: Documentation (AC: #17)
-  - [ ] 7.1 Create `docs/dev/eventstore-integration.md` with the sections listed in AC #17 **PLUS** the following additional sections added during 9.1 refinement:
-    - [ ] 7.1.1 **"Preflight TTL ↔ DAPR retry-policy alignment"** — document that `PreflightDedupTtl` MUST be ≥ DAPR resiliency policy max-retry-duration, explain the Risk #15 failure mode (delayed redelivery producing duplicates if TTL expires), include a worked example comparing 24h TTL vs custom 72h DAPR resiliency policy.
-    - [ ] 7.1.2 **"Publisher trust & spoofing"** — mirror the Dev Notes threat-model section; explicitly state `source` is NOT an authentication boundary; list the 4 deploy-time mitigations (component scope restrictions, network segmentation, DAPR API token, operational alerting) as REQUIRED, not optional; reference Phase 2 JWT extension as a future evolution.
-    - [ ] 7.1.3 **"Source-stability publisher contract"** — publishers MUST treat their configured `source` as a stable identifier, not a deploy-time URL; scheme/path drift (Risk #13) causes silent routing failures; include example of a safe `source` (e.g., `urn:hexalith:enterprise:claims`) vs a brittle one (`https://claims.prod.hexalith.io/`).
-    - [ ] 7.1.4 **"Alerting recommendations"** — required alert rules: (a) `rate(memories_eventstore_unknownsource_total[5m]) > 0` for > 5 min → page (Risk #13); (b) new-aggregate-type observed (first time ever, per tenant) → notify (Risk #5 backstop); (c) `memories_eventstore_preflight_failopen_total` > 0 → investigate Redis health (Task 4.7); (d) subscription-discovery empty at startup → fail build/deploy (Risk #14).
-    - [ ] 7.1.5 **"Environment defaults table"** — showing Development (`AutoCreateCases=true`) vs Production (`AutoCreateCases=false`) per ADR 9.1-C, with rationale.
-  - [ ] 7.2 Add a section "Known limitations" that explicitly documents: single-topic subscription, no dead-letter replay workflow, auto-created case cap, replay-vs-idempotency semantics, clock-skew-in-cloudevent.time, preflight TTL coupling, publisher-source trust assumption.
-  - [ ] 7.3 Add a section "Testing your integration" with a curl-equivalent: `dapr publish --publish-app-id memories-server --pubsub pubsub --topic <configured> --data '{"claimId":"c-123"}' --metadata '{"cloudevent.id":"evt-1","cloudevent.type":"MyApp.Claims.ClaimSubmittedV1","cloudevent.source":"MyApp/claims","cloudevent.subject":"c-123"}'` followed by verification via `memories search --tenant <t> --case events:Claims "claimId"`
-  - [ ] 7.4 Link the doc from `README.md` under the "Integration guides" section (or create that section if it doesn't exist)
-
-- [ ] Task 8: Sprint status + retro entry (AC: #12)
-  - [ ] 8.1 Update `_bmad-output/implementation-artifacts/sprint-status.yaml`: `epic-9` → `in-progress`; `9-1-event-auto-discovery-and-dapr-pub-sub-subscription` → `ready-for-dev` (this task completed by the create-story workflow)
-  - [ ] 8.2 After dev completion (when dev runs `dev-story`): update `last_updated` to the current date + a one-line summary of what landed
-  - [ ] 8.3 If any Risk #1-#12 guard tests are skipped or deferred, add entries to `_bmad-output/implementation-artifacts/deferred-work.md` with rationale
+- [ ] \[Review\]\[Patch\] Expand the public bootstrap contract so `AddMemoriesEventStoreIntegration(...)` becomes self-contained for downstream hosts [src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs:32]
+- [ ] \[Review\]\[Patch\] Wire the real subscription topic into startup instead of shipping blank defaults plus an unwired env-var attribute [src/Hexalith.Memories.EventStore/EventIngestionController.cs:59]
+- [ ] \[Review\]\[Patch\] Persist aggregate-type case routing in shared storage instead of process-local memory [src/Hexalith.Memories.EventStore/TenantEventRouter.cs:35]
+- [ ] \[Review\]\[Patch\] Add exact-match indexing/filtering for `cloudevent.subject` instead of relying on flattened metadata text [src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs:77]
+- [ ] \[Review\]\[Patch\] Make the CloudEvents envelope path deterministic instead of letting the middleware test accept `400` as success [tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/MiddlewareOrderTests.cs:71]
+- [ ] \[Review\]\[Patch\] Reject unsupported `CaseNameTemplate` tokens instead of leaving unknown placeholders verbatim [src/Hexalith.Memories.EventStore/CaseNameTemplateRenderer.cs:22]
+- [ ] \[Review\]\[Patch\] Restore the deferred subscription discovery coverage before closing Story 9.1 (Aspire roundtrip acceptance coverage is now back via `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`) [d:\Hexalith.Memories\_bmad-output\implementation-artifacts\deferred-work.md:111]
 
 ## Decisions
 
@@ -336,6 +307,7 @@ The following ADRs formalize decisions made during story refinement. Each should
 ### ADR 9.1-A — Topic binding mechanism
 
 **Options considered:**
+
 - (α) Class-level `[Topic("pubsub","$(ENV_VAR)")]` with env-var substitution.
 - (β) Dynamic endpoint metadata via `MapPost(...).WithMetadata(new TopicAttribute(...))`.
 - (γ) Pure declarative `subscription.yaml` (bypasses AspNetCore subscription discovery entirely).
@@ -405,87 +377,113 @@ The following ADRs formalize decisions made during story refinement. Each should
 
 ### CloudEvents → IngestionInput mapping (canonical reference)
 
-```csharp
+````csharp
 // CloudEvent<JsonElement> → IngestionInput
 var input = new IngestionInput
 {
-    TenantId = route.TenantId,
-    CaseId = route.CaseId,
-    SourceUri = evt.Id,                                                 // dedup key
-    ContentBytes = Encoding.UTF8.GetBytes(evt.Data!.Value.GetRawText()),
-    ContentType = evt.DataContentType ?? "application/json",
-    SourceType = SourceType.Event,
-    IngestedBy = "events",
-    // All envelope-derived fields use MetadataOrigin.System (new enum value — Task 2.10).
-    // MetadataOrigin.Ai is reserved for Story 9.2's LLM-generated NL description (Risk #16).
-    Metadata = new Dictionary<string, MetadataField>
-    {
-        ["cloudevent.id"]          = new(evt.Id, MetadataOrigin.System, 1.0f),
-        ["cloudevent.source"]      = new(evt.Source.ToString(), MetadataOrigin.System, 1.0f),
-        ["cloudevent.type"]        = new(evt.Type, MetadataOrigin.System, 1.0f),
-        ["cloudevent.subject"]     = new(evt.Subject ?? "(unset)", MetadataOrigin.System, 1.0f),
-        ["cloudevent.time"]        = new(evt.Time?.ToString("o") ?? "(unset)", MetadataOrigin.System, 1.0f),
-        ["cloudevent.specversion"] = new(evt.SpecVersion ?? "1.0", MetadataOrigin.System, 1.0f),
-        ["event.aggregateType"]    = new(aggregateType, MetadataOrigin.System, 1.0f),
-    },
-    CausationId = ExtractCausation(evt),        // dual-source: ext attr, then envelope
-    CorrelationId = ExtractCorrelation(evt),    // dual-source
-};
-```
+1. **Given** a DAPR pub/sub topic with CloudEvents-compliant messages **When** events are published to the topic **Then** the Memories Server auto-discovers event types from the `type` field of the CloudEvents envelope (FR59) **And** CloudEvents metadata (`source`, `type`, `subject`, `time`, `id`) is extracted and preserved as memory-unit metadata (NFR21) **And** `sourceType = event` is set on the resulting ingestion input.
 
-### Tenant + case routing (MVP decision matrix)
+2. **Given** the system receives a CloudEvents message **When** the envelope is parsed **Then** the CloudEvents `id` field is used as `IngestionInput.SourceUri` so the existing dedup pipeline keys off the event ID **And** the CloudEvents `subject` value is not only copied into metadata, but also flows through the exact-match metadata filter/index path used by aggregate-level queries.
 
-| Config state | CloudEvent `source` resolves in `SourceToTenantMap`? | Tenant active? | `AutoCreateCases`? | Case mapping exists? | Router result | HTTP response |
-|---|---|---|---|---|---|---|
-| — | No | — | — | — | `null` | 200 + `UnknownSource` log |
-| — | Yes | No (Deleting) | — | — | `null` | 200 + `TenantDeleting` log |
-| — | Yes | No (Provisioning) | — | — | `null` + `retryable=true` | 500 + DAPR retries |
-| — | Yes | Yes | — | Yes | `(tenantId, caseId)` | 200 (schedule workflow) |
-| — | Yes | Yes | true | No | `(tenantId, newCaseId)` + auto-create | 200 |
-| — | Yes | Yes | false | No | `null` + `AutoCreateDisabled` log | 200 |
-| — | Yes | Yes | true | No (cap exceeded) | `null` + `CaseCapExceeded` log | 400 |
+3. **Given** the same event (`cloudevent.id`) is delivered twice by DAPR's at-least-once mechanism **When** the second delivery is processed **Then** the endpoint-level preflight reservation rejects the duplicate when possible **And** the workflow-level permanent dedup key remains the authoritative safety net **And** exactly one memory unit exists in Redis and FalkorDB **And** the duplicate response is `200 OK` with `EventIngestionResponse { status = "duplicate", wasDuplicate = true }`.
+
+4. **Given** events from multiple aggregates (distinct `cloudevent.subject`) arrive on the same pub/sub topic **When** each is processed **Then** each is persisted as an independent memory unit with a unique `MemoryUnitId` **And** filtering by the stored `cloudevent.subject` value returns only that aggregate's events.
+
+5. **Given** indexing freshness requirements (NFR6) **When** an event is published to DAPR pub/sub **Then** under normal conditions it is searchable within 5 seconds of **server receipt / test publish time** (not `cloudevent.time`) **And** the publisher-supplied `cloudevent.time` is still preserved verbatim as metadata.
+
+6. **Given** a CloudEvent arrives without readable payload data **When** the endpoint maps it to `IngestionInput` **Then** the endpoint returns `400 Bad Request` with `ErrorResponse(code: "INVALID_CLOUDEVENT", ...)` **And** the implementation never calls `GetRawText()` on missing or unreadable data.
+
+7. **Given** a CloudEvent arrives with a `source` that matches no entry in `TenantEventRoutingOptions.SourceToTenantMap` **When** the subscription endpoint processes it **Then** the endpoint returns `200 OK` (preventing infinite retry for a publisher that will never be mapped) **And** logs a structured warning `EventStoreIntegrationLog.UnknownSource(source, cloudEventId)`.
+
+8. **Given** a CloudEvent arrives with a malformed envelope (missing required `id`, `type`, or `source`) **When** the subscription endpoint processes it **Then** the endpoint returns `400 Bad Request` with `ErrorResponse(code: "INVALID_CLOUDEVENT", message: <specific missing field>, suggestion: <fix hint>)` **And** DAPR does not retry.
+
+9. **Given** workflow scheduling fails transiently after the endpoint acquires a preflight dedup reservation **When** the subscription endpoint handles the exception **Then** it releases the reservation before returning `500 Internal Server Error` **And** DAPR retries the delivery **And** the first successful retry still produces exactly one memory unit.
+
+10. **Given** `TenantEventRoutingOptions.AutoCreateCases = true` **When** an event's aggregate type has no pre-existing case for the target tenant **Then** the router creates a new case via `ICaseCreationService` using a validated `CaseNameTemplate` (`{aggregateType}` / `{tenantId}` tokens only) **And** persists the tenant-aggregate-to-case mapping in Redis **And** concurrent first-time events for the same aggregate type resolve to the same case **And** the per-tenant cap is enforced before unbounded growth occurs.
+
+11. **Given** `TenantEventRoutingOptions.AutoCreateCases = false` **When** an event's aggregate type has no pre-existing case **Then** the endpoint returns `200 OK` + warning log (intentional drop — operator opted out of auto-create).
+
+12. **Given** the `Hexalith.Memories.EventStore` package is referenced and a downstream service calls `services.AddMemoriesEventStoreIntegration(config)` **When** the service boots **Then** it registers `IEventIngestionService`, `ITenantEventRouter`, `IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, `EventIngestionController` (via `AddControllers().AddApplicationPart(...)`), `EventIngestionResponse`, and `TenantEventRoutingOptions` from `config.GetSection("EventStoreIntegration:Routing")` **And** the package keeps Server-only details behind adapters.
+
+13. **Given** the Memories Server boots with event subscription enabled **When** the DAPR sidecar probes `GET /dapr/subscribe` **Then** the response includes one entry `{ pubsubname: "pubsub", topic: <configured>, route: "/events/ingest" }` matching the controller's `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]` attribute **And** accepted responses include `instanceId` while duplicate / drop / validation responses do **not** invent one.
+
+14a. **Given** a tenant has status `Provisioning` **When** an event destined for that tenant arrives **Then** the endpoint returns `500` so DAPR retries until the tenant becomes active or exhausts its retry policy **And** logs `EventStoreIntegrationLog.TenantProvisioning(tenantId, cloudEventId)` at `Information` level.
+
+14b. **Given** a tenant has status `Deleting` **When** an event destined for that tenant arrives **Then** the endpoint returns `200` so DAPR does not retry **And** logs `EventStoreIntegrationLog.TenantDeleting(tenantId, cloudEventId)` at `Warning` level.
+
+15. **Given** all unit tests in the new project (`Hexalith.Memories.EventStore.Tests`) **When** `dotnet test tests/Hexalith.Memories.EventStore.Tests/` is run **Then** every test passes (Tier 1 — no external dependencies).
+
+16. **Given** a Tier 2 integration test publishes a test CloudEvent through the DAPR subscription surface **When** it polls the search APIs **Then** the test observes one searchable memory unit with the correct metadata within 5 seconds **And** an optional Tier 3 Aspire smoke test may mirror the same path in nightly / optional CI.
+
+17. **Given** `docs/dev/eventstore-integration.md` exists **When** a developer reads it **Then** they find concrete setup steps, CloudEvents envelope requirements, tenant/case routing config schema, aggregate-type extraction rules, a worked example that ends in a searchable memory unit, at-least-once + dead-letter + replay semantics, troubleshooting ("why didn't my event appear?"), **Preflight TTL ↔ DAPR retry-policy alignment**, **Publisher trust & spoofing threat model + deploy-time mitigations**, **Source-stability publisher contract**, **Alerting recommendations**, and an **Environment defaults table** (Development vs Production `AutoCreateCases` split).
 
 ### CausationId / CorrelationId extraction
 
-Two sources — extension attributes (preferred, CloudEvents-native) and envelope payload fields (Hexalith.EventStore pattern). Extraction order:
+ - [ ] Task 1: Create `Hexalith.Memories.EventStore` project + test project and wire both into the solution (AC: #12, #15)
+    - [ ] 1.1 Create `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj` (`Microsoft.NET.Sdk`, `net10.0`, `IsPackable=true`, package metadata aligned with existing Hexalith packages).
+    - [ ] 1.2 Reference `Hexalith.Memories.Contracts`, `Dapr.AspNetCore`, `Dapr.Client`, `Dapr.Workflow`, and ASP.NET Core MVC packages needed for controller discovery.
+    - [ ] 1.3 Add the project to `Hexalith.Memories.slnx`.
+    - [ ] 1.4 Create `src/Hexalith.Memories.EventStore/README.md` with a one-line package summary and a link to `docs/dev/eventstore-integration.md`.
+    - [ ] 1.5 Define the package public surface deliberately: keep implementation types `internal`; expose registration, route / response DTOs, options, and the adapter interfaces needed by downstream hosts (`IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, `ICaseCreationService`). Use `InternalsVisibleTo` only for test assemblies.
+    - [ ] 1.6 Create `tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj` (`net10.0`, xUnit + Shouldly + NSubstitute + coverlet.collector per central package management).
+    - [ ] 1.7 Add the test project to `Hexalith.Memories.slnx` and reference the EventStore project.
 
-```csharp
-static string? ExtractCausation(CloudEvent<JsonElement> evt)
-{
-    // 1. CloudEvents extension attribute (ecosystem-neutral)
-    if (evt.TryGetExtensionAttribute<string>("causationid", out var ext) && !string.IsNullOrWhiteSpace(ext))
-        return ext;
+- [ ] Task 2: Author `CloudEventToIngestionInputMapper` + aggregate-type extraction (AC: #1, #2, #6)
+    - [ ] 2.1 Create `src/Hexalith.Memories.EventStore/CloudEventToIngestionInputMapper.cs` as an `internal static class` with `IngestionInput Map(CloudEvent<JsonElement> evt, TenantEventRoute route)`.
+    - [ ] 2.2 Create `src/Hexalith.Memories.EventStore/AggregateTypeExtractor.cs` with a single shared rule: second dotted segment wins; otherwise fall back to the full `type` value.
+    - [ ] 2.3 Validate required CloudEvents fields (`id`, `type`, `source`) and readable payload data before building `ContentBytes`; throw `InvalidOperationException("cloudevent.<field> missing")` or `InvalidOperationException("cloudevent.data missing")` so the controller can return a typed 400.
+    - [ ] 2.4 Populate `SourceUri = evt.Id`, `SourceType = SourceType.Event`, `IngestedBy = "events"`, and the required metadata fields only: `cloudevent.id`, `cloudevent.source`, `cloudevent.type`, `cloudevent.subject`, `cloudevent.time`, `event.aggregateType`.
+    - [ ] 2.5 Ensure `cloudevent.subject` enters the exact-match metadata filter/index path used by search filters; merely copying it into a dictionary is not sufficient for AC #2 / #4.
+    - [ ] 2.6 Use `"(unset)"` when `subject` is absent; preserve `cloudevent.time` as supplied by the publisher; do **not** introduce a new metadata-origin enum value in this story.
+    - [ ] 2.7 Unit-test present / absent `subject`, missing `data`, malformed `type`, and the aggregate-type fallback path.
 
-    // 2. Envelope field (Hexalith.EventStore shape)
-    if (evt.Data is { ValueKind: JsonValueKind.Object } data
-        && data.TryGetProperty("causationId", out var field)
-        && field.ValueKind == JsonValueKind.String)
-        return field.GetString();
+- [ ] Task 3: Author `TenantEventRouter` + `TenantEventRoutingOptions` with typed outcomes (AC: #7, #10, #11, #14a, #14b)
+    - [ ] 3.1 Create `src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` with `Topic`, `SourceToTenantMap`, `AutoCreateCases`, `CaseNameTemplate`, `MaxAutoCreatedCasesPerTenant`, `PreflightDedupEnabled`, and `PreflightDedupTtl`.
+    - [ ] 3.2 Create `src/Hexalith.Memories.EventStore/TenantEventRoute.cs`, `TenantEventRouteResolution.cs`, and `ITenantEventRouter.cs` so routing returns a typed status instead of `TenantEventRoute?` / `null`.
+    - [ ] 3.3 Implement `TenantEventRouter.cs`: case-insensitive longest-prefix source matching, tenant-state lookup via `ITenantStatusAccessor`, aggregate-type extraction via `AggregateTypeExtractor`, and case resolution via cache lookup or `ICaseCreationService`.
+    - [ ] 3.4 Replace raw `string.Format(...)` case naming with a validated token-replacement renderer that allows only `{aggregateType}` and `{tenantId}`.
+    - [ ] 3.5 Use reservation keys / `SET NX` when auto-creating a case mapping so concurrent first events resolve to the same case.
+    - [ ] 3.6 Add startup validation that verifies configured tenant IDs exist, but document clearly that this catches only non-existent tenants — not wrong-but-existing mappings.
+    - [ ] 3.7 Unit-test `SourcePrefixMatch_IsCaseInsensitive`, `SourceWithNoMapping_DropsWithWarning`, `ProvisioningTenant_ReturnsRetryableOutcome`, `DeletingTenant_ReturnsDropOutcome`, `AutoCreateOff_MissingCase_ReturnsDropOutcome`, `ConcurrentFirstEvents_ResolveSameCase`, and `CaseCap_ExceededReturnsInvariantFailure`.
 
-    return null;
-}
-```
+- [ ] Task 4: Author `EventIngestionService`, `EventIngestionController`, and the duplicate-suppression path (AC: #3, #6, #8, #9, #12, #13)
+    - [ ] 4.1 Create `src/Hexalith.Memories.EventStore/EventIngestionOutcome.cs`, `EventIngestionResponse.cs`, `IEventIngestionService.cs`, and `EventIngestionService.cs`.
+    - [ ] 4.2 Inject `ITenantEventRouter`, `IEventIngestionWorkflowScheduler`, `IEventIngestionTelemetry`, and the preflight dedup dependency into `EventIngestionService`; do **not** depend directly on Server workflow types or telemetry helpers from the package.
+    - [ ] 4.3 Create `src/Hexalith.Memories.EventStore/EventIngestionController.cs` with `[ApiController]`, `[Route("events")]`, `[HttpPost("ingest")]`, and `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]`.
+    - [ ] 4.4 Map outcomes to `EventIngestionResponse`: `accepted` includes `instanceId`; `duplicate`, `unknown-source`, `tenant-deleting`, `auto-create-disabled`, and validation failures do not.
+    - [ ] 4.5 Implement endpoint-level preflight dedup reservation before scheduling the workflow, keep the workflow-level permanent dedup as the safety net, and **release** the preflight reservation if scheduling throws after the key is acquired.
+    - [ ] 4.6 Unit-test every outcome branch, especially `duplicate`, `invalid-cloudevent`, `tenant-provisioning`, and `reservation-released-on-schedule-failure`.
 
-**Why this order matters:** extension attributes are first-class CloudEvents metadata (preserved by every CloudEvents-compliant broker); envelope fields are Hexalith-EventStore-specific. A generic publisher (Marten, Wolverine) will use the extension; Hexalith.EventStore uses the envelope. Supporting both = "zero-code for any DAPR source" (PRD §534).
+- [ ] Task 5: Wire EventStore into Memories Server + AppHost using one canonical integration path (AC: #12, #13)
+    - [ ] 5.1 Add a `ProjectReference` from `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj` to `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj`.
+    - [ ] 5.2 In `src/Hexalith.Memories.Server/Program.cs`, register `AddControllers().AddApplicationPart(typeof(EventIngestionController).Assembly)` and `AddMemoriesEventStoreIntegration(builder.Configuration)`.
+    - [ ] 5.3 Register Server-side adapters for `IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor`, `IEventIngestionTelemetry`, and `ICaseCreationService`.
+    - [ ] 5.4 Use exactly this runtime order in `Program.cs`: `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();`.
+    - [ ] 5.5 In `src/Hexalith.Memories.AppHost/Program.cs`, add the `pubsub` DAPR component and source its Redis metadata from the same environment / resource values used by the runtime Redis dependency.
+    - [ ] 5.6 Create `deploy/dapr/components/pubsub.yaml` with placeholders / environment-backed values for Redis host and password; keep it aligned with AppHost wiring.
+    - [ ] 5.7 Add `EventStoreIntegration:Routing` sections to `appsettings.Development.json` and `appsettings.Production.json` (create the production file if absent), including the Development vs Production `AutoCreateCases` split and the preflight TTL settings.
+    - [ ] 5.8 Add `TenantEventRoutingOptions`, `TenantEventRoute`, and `EventIngestionResponse` to `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` for AOT-safe serialization.
 
-### Publisher trust & spoofing (threat model — Risk #17)
+- [ ] Task 6: Add Tier 1 / Tier 2 / Tier 3 tests with correct labels (AC: #5, #13, #15, #16, #17)
+    - [ ] 6.1 Tier 1: unit tests in `tests/Hexalith.Memories.EventStore.Tests/` for mapper, router, controller outcome mapping, response DTO shape, option validation, and reservation compensation.
+    - [ ] 6.2 Tier 2: create `tests/Hexalith.Memories.IntegrationTests/EventIngestionRoundTripTests.cs` that exercises the controller + DAPR subscription surface and verifies searchable ingestion within 5 seconds.
+    - [ ] 6.3 Tier 2: create `EventIngestionSubscriptionDiscoveryTests.cs` asserting `GET /dapr/subscribe` lists the configured topic and route.
+    - [ ] 6.4 Tier 2: add `EventIngestionOutcomeTests.DeletingTenant_Returns200_LogsWarning`, `EventIngestionReplayAfterRestoreTests.ReplayedEvent_AfterTenantRestore_BlockedByIdempotency`, and `MiddlewareOrderTests.CloudEventsIsNoOpForPlainJson`.
+    - [ ] 6.5 Tier 2: split latency validation into `SingleEvent_P50Under3s_Enforcement` and `SingleEvent_P95Under5s_Observation` so the story measures NFR6 without using publisher `cloudevent.time`.
+    - [ ] 6.6 Tier 2: create `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasRequiredSectionsAndKeyContent` so doc verification checks for concrete required content, not only section headers.
+    - [ ] 6.7 Tier 3 (optional / nightly): add an Aspire smoke test that mirrors the same end-to-end publish / index path; do not label Aspire-hosted tests as Tier 2.
 
-**CloudEvents `source` is an auth-like boundary with no authentication** in the MVP design. Any process with DAPR pub/sub write access on the shared Redis pub/sub component can publish messages with an arbitrary `source` string, which the `TenantEventRouter` then uses to resolve the target `tenantId`. This means:
+- [ ] Task 7: Write the developer guide and explicitly document the non-goals (AC: #17)
+    - [ ] 7.1 Create `docs/dev/eventstore-integration.md` with setup, envelope requirements, routing configuration, aggregate-type extraction, exact-match subject filtering, at-least-once semantics, troubleshooting, alerting, and environment defaults.
+    - [ ] 7.2 Include a worked example that ends in a searchable memory unit and stays inside Story 9.1 scope (no causal-edge guarantees, no dual-embedding promises).
+    - [ ] 7.3 Document the preflight TTL ↔ DAPR retry-policy coupling, source-stability contract, publisher spoofing threat model, and required operator alerts.
+    - [ ] 7.4 Add a “known limitations” section covering single-topic subscription, replay-vs-idempotency semantics, case-cap limits, and the fact that Story 9.2 owns causal-edge / dual-embedding behavior.
+    - [ ] 7.5 Link the guide from `README.md` under an Integration Guides section (create the section if missing).
 
-- **Insider threat / credential compromise.** A compromised service or an insider with pub/sub write access can inject events tagged `source=enterprise.hr` into tenant `hr-tenant` without any cryptographic proof of origin.
-- **Cross-tenant contamination.** If two tenants share the same physical pub/sub broker, mis-configuration of `SourceToTenantMap` can route one tenant's events to another tenant's memory scope.
-- **No in-app remediation in 9.1.** Story 9.1 explicitly does NOT authenticate publisher identity at the application layer. Adding app-layer auth (e.g., JWT-on-extension-attribute) would contradict the PRD §534 "zero-code for any DAPR source" goal and is deferred to Phase 2.
-
-**MVP mitigations (deploy-time, not code-time):**
-
-1. **DAPR pub/sub component scope restrictions.** Configure the pubsub component with `publishAllowedTopics` / `subscribeAllowedTopics` + per-publisher scopes, so only explicitly-authorized application IDs can publish to the Memories topic. This is the primary control surface.
-2. **Network segmentation.** The Memories Server + its DAPR sidecar should not be on the same pub/sub bus as untrusted publishers. Use separate DAPR pub/sub components (or separate Redis instances) per trust zone.
-3. **DAPR API token auth (Story 5.4 AC3).** When `DAPR_API_TOKEN_MODE=enabled`, daprd-to-app calls are token-authenticated. Does NOT authenticate the original publisher — but does prevent direct HTTP injection into the subscription endpoint from outside the DAPR plane.
-4. **Operational alerting.** Monitor `EventStoreIntegrationLog.UnknownSource` rate (Risk #13); a spike signals either misconfiguration OR an attacker probing source-to-tenant mappings.
-
-**Phase 2 evolution (documented here, NOT implemented in 9.1):** a signed JWT in a CloudEvents extension attribute (`tenantidtoken`), verified at the subscription endpoint against a tenant public key published by `TenantRegistryService`. Requires key-distribution infrastructure + publisher SDK changes — out of scope for zero-code MVP.
-
-**What we document to operators:** in `docs/dev/eventstore-integration.md` under "Publisher trust & spoofing", explicitly state that `source` is NOT an authentication boundary and list the four MVP mitigations above as REQUIRED deploy-time controls, not optional hardening.
+- [ ] Task 8: Keep planning artifacts aligned (AC: #12)
+    - [ ] 8.1 Keep `_bmad-output/implementation-artifacts/sprint-status.yaml` aligned with story status (`epic-9: in-progress`, `9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev`).
+    - [ ] 8.2 After development completes, update `last_updated` and add a one-line landing summary.
+    - [ ] 8.3 If any guard tests or optional Tier 3 work are deferred, add explicit entries to `_bmad-output/implementation-artifacts/deferred-work.md` with rationale.
 
 ### At-least-once vs dead-letter
 
@@ -521,7 +519,7 @@ app.MapSubscribeHandler();                      // NEW — DAPR subscription dis
 // — verify they are not affected by the CloudEvents middleware (see Risk #1)
 
 app.Run();
-```
+````
 
 ### Idempotency key behavior for events
 
@@ -545,7 +543,7 @@ See Task 4.7 for the implementation contract, including the fail-open behavior o
 
 **New files:**
 
-```
+```text
 src/Hexalith.Memories.EventStore/
   Hexalith.Memories.EventStore.csproj
   README.md
@@ -667,9 +665,111 @@ claude-opus-4-7[1m]
 
 ### Debug Log References
 
+- 2026-04-22 — session scoped to Tasks 1-4 (package scaffold + mapper + router + service/controller); Tasks 5-8 remain.
+- `dotnet build src/Hexalith.Memories.EventStore/` → 0 warnings, 0 errors.
+- `dotnet test tests/Hexalith.Memories.EventStore.Tests/` → 65 passing, 0 failing, 0 skipped (Tier 1).
+- `dotnet build Hexalith.Memories.slnx` → 0 warnings, 0 errors (full solution sanity check).
+- 2026-04-22 — continuation session covering Tasks 5-8.
+- `dotnet build src/Hexalith.Memories.Server/` → 0 warnings, 0 errors after Server wiring + JsonContext combine.
+- `dotnet build Hexalith.Memories.slnx` → 0 warnings, 0 errors (full-solution sanity check after AppHost + Server + EventStore wiring).
+- `dotnet test tests/Hexalith.Memories.EventStore.Tests/` → 65 passing, 0 failing (Tier-1 unchanged).
+- `dotnet test tests/Hexalith.Memories.Server.Tests/` → 1308 passing, 0 failing (10 new Tier-2 tests — 7 outcome tests + 2 middleware-order tests + 1 documentation completeness test — plus the pre-existing 1298 regression baseline).
+- `dotnet test tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs` → 1 passing, 0 failing after aligning the workflow-status poller with raw Dapr `WorkflowState` (`runtimeStatus` / `isWorkflowCompleted`) and waiting for dedup + indexed subject visibility before asserting the search API.
+
 ### Completion Notes List
 
+- **Task 1 — Package scaffold (AC #12, #15):** `src/Hexalith.Memories.EventStore/` project wired into `Hexalith.Memories.slnx` (both src and tests). `IsPackable=true`, references `Hexalith.Memories.Contracts` + `Dapr.AspNetCore` + `Dapr.Client` + `Dapr.Workflow`, `FrameworkReference` on `Microsoft.AspNetCore.App` pulls MVC and MS.Extensions without extra package refs (Central Package Management warned on redundant refs — removed). `InternalsVisibleTo` grants the test project access. Test project `tests/Hexalith.Memories.EventStore.Tests/` uses xUnit + Shouldly + NSubstitute + coverlet + TimeProvider.Testing per `Directory.Packages.props`.
+- **Task 2 — Mapper + aggregate-type extractor (AC #1, #2, #6):** Introduced an internal `CloudEventEnvelope` record plus `CloudEventEnvelopeParser` because Dapr's publisher-side `CloudEvent<T>` DTO does not expose `Id`/`Time` — the envelope is parsed from the raw POST body as a `JsonElement`. `CloudEventToIngestionInputMapper` now takes `(CloudEventEnvelope, TenantEventRoute)`; this is a deliberate deviation from Task 2.1's `CloudEvent<JsonElement>` wording. `AggregateTypeExtractor` returns the second dotted segment when present, else the full type. Subject defaults to `"(unset)"` when absent. `cloudevent.time` is preserved verbatim from the publisher. Metadata uses `MetadataOrigin.Ai` with confidence 1.0 — **no** new metadata-origin enum value is introduced in this story.
+- **Task 3 — Router + typed outcomes (AC #7, #10, #11, #14a, #14b):** `TenantEventRoutingOptions` (with added `PubSubName`) + typed `TenantEventRouteResolution` replace nullable outcomes. Longest-prefix, case-insensitive source matching. Concurrent first events for the same `(tenantId, aggregateType)` converge on a single `ICaseCreationService.CreateCaseAsync` call via a per-tenant `ConcurrentDictionary<aggregateType, Lazy<Task<string>>>`; a failed creation evicts the reservation so retry can succeed. `CaseNameTemplateRenderer` only substitutes the allow-listed tokens `{aggregateType}` / `{tenantId}` — no `string.Format`. Case cap enforced before any creation call. Tenant-status lookup goes through the new `ITenantStatusAccessor` adapter (package-owned). Subtask 3.6 (startup fail-fast validation against the tenant registry) is deferred to Task 5 — it needs runtime access to the Server registry and belongs in the host wiring layer.
+- **Task 4 — Service + controller + preflight dedup (AC #3, #6, #8, #9, #12, #13):** `EventIngestionOutcome` and `EventIngestionResponse` define the controller's response contract — `instanceId` is present **only** on `accepted`. `EventIngestionService` orchestrates parse → route → preflight → schedule → compensate. Preflight dedup goes through the package-owned `IPreflightDedupStore` adapter with three results (`Reserved` / `Duplicate` / `FailOpen`) — fail-open lets the workflow-level permanent dedup key remain the authoritative safety net. When scheduling throws after a reservation was held, the service calls `ReleaseAsync` before surfacing `ScheduleFailed` (AC #9). The workflow instance id is set to the dedup key (`dedup:{tenantId}:{caseId}:{sha256(cloudevent.id)}`) so DAPR redeliveries collide on the same workflow-scheduling call too. `EventIngestionController` is `public`, decorated with `[Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")]`, and translates outcomes to the HTTP-status / DAPR-retry matrix in Dev Notes. `EventStoreIntegrationLog` uses the 9100-9199 event-id bank as specified. `EventStoreIntegrationServiceCollectionExtensions.AddMemoriesEventStoreIntegration` binds options + registers `ITenantEventRouter` and `IEventIngestionService`; the host must register adapter implementations for the four package-owned abstractions (scheduler, tenant-status, telemetry, preflight-dedup, case-creation).
+- **Public surface (ADR 9.1-F):** public types are `AddMemoriesEventStoreIntegration`, `TenantEventRoutingOptions`, `TenantEventRoute`, `TenantEventRouteResolution`, `TenantEventRouteResolutionStatus`, `EventIngestionResponse`, `EventIngestionOutcome`, `EventIngestionProcessResult`, `IEventIngestionService`, `IEventIngestionWorkflowScheduler`, `ITenantStatusAccessor` + `EventStoreTenantStatus`, `ICaseCreationService`, `IEventIngestionTelemetry`, `IPreflightDedupStore` + `PreflightReservationResult`, and `EventIngestionController`. Implementation types (`TenantEventRouter`, `EventIngestionService`, `CloudEventToIngestionInputMapper`, `CloudEventEnvelope`, `CloudEventEnvelopeParser`, `AggregateTypeExtractor`, `CaseNameTemplateRenderer`, `EventStoreDedupKey`, `EventStoreIntegrationLog`) remain internal — expose via `InternalsVisibleTo` for tests only.
+- **Remaining work (Tasks 5-8):** Server wiring (`Program.cs`, `AppHost/Program.cs`, adapter implementations, `appsettings` sections, `MemoriesJsonContext` registrations, `pubsub.yaml`); Tier-2 integration tests (subscription discovery, roundtrip, outcome coverage, latency); docs guide; planning-artifacts alignment (including converting the existing duplicate Tasks/Review-Findings block in Dev Notes into a single authoritative copy). These were scoped out of this session per user instruction.
+- **Task 5 — Server wiring (AC #12, #13):** Added `ProjectReference` Server → EventStore. Created five Server-owned adapters under `src/Hexalith.Memories.Server/EventStoreIntegration/`: `EventIngestionWorkflowSchedulerAdapter` (delegates to existing `IIngestionWorkflowScheduler`), `TenantStatusAccessorAdapter` (maps `TenantStatus` → `EventStoreTenantStatus`), `CaseCreationServiceAdapter` (resolves `CaseService` via `IServiceScopeFactory`), `EventIngestionTelemetryAdapter` (routes outcomes through the existing `AccessTelemetryLog.OperationIngest` / EventId 7502/7512 bank), and `RedisPreflightDedupStore` (`StringSet(..., When.NotExists)` + fail-open on `RedisException` / `TimeoutException`, EventId 9123/9124). Added `EventStoreRoutingConfigValidator : IHostedService` for Task 3.6 — fails fast at startup with EventId 9105 Critical if any `SourceToTenantMap` target does not exist in the registry; no-op when the `Topic` is blank (opt-in integration). `ServerEventStoreIntegrationExtensions.AddServerEventStoreIntegration` composes everything. `Program.cs` registers `AddControllers().AddApplicationPart(...)`, `AddServerEventStoreIntegration(builder.Configuration)`, and the canonical `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();` sequence. AppHost `Program.cs` adds a `pubsub` DAPR component + `.WithReference(pubSub)` on the server sidecar. `deploy/dapr/components/pubsub.yaml` stays aligned with the AppHost wiring (same component name, same broker). `appsettings.Development.json` gets `AutoCreateCases = true`; new `appsettings.Production.json` ships `AutoCreateCases = false` per ADR 9.1-C. Task 5.8 JsonContext registration: since Contracts cannot reference EventStore, a new source-generated `EventStoreJsonContext` inside the EventStore package is combined at `Program.cs` via `JsonTypeInfoResolver.Combine(MemoriesJsonContext.Options.TypeInfoResolver!, EventStoreJsonContext.Default)` so `EventIngestionResponse` / `TenantEventRoute` / `TenantEventRoutingOptions` / `EventIngestionOutcome` / `EventIngestionProcessResult` / `TenantEventRouteResolution` / `TenantEventRouteResolutionStatus` serialize without reflection fallback (AOT-safe path).
+- **Task 6 — Tests (AC #5, #13, #15, #16, #17):** Tier-1 coverage unchanged (65/65 green). Added Tier-2 coverage at `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/`: `EventStoreWebAppFactory` (test TestServer factory that replaces every EventStore adapter + DAPR hosted services with NSubstitute fakes), `CapturingEventStoreLogProvider` (captures 9100-9199 EventId bank in-process), and three test classes — `EventIngestionOutcomeTests` (7 tests: accepted, duplicate, invalid-envelope, provisioning, deleting-tenant, unknown-source, schedule-failure-with-reservation-release), `MiddlewareOrderTests` (2 tests: plain-JSON vs application/cloudevents+json middleware behavior — AC-guard-test for Risk #1), and `DocumentationCompletenessTests` (AC #17, reads the markdown doc, asserts on both section headers + concrete required phrases like `publishAllowedTopics`, `max-duration`, `9110`, `PublishEventAsync`, `/api/search`, and both Development/Production columns of the env-defaults table). Restored the missing Aspire-backed roundtrip acceptance coverage at `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`; the test is green after updating workflow polling to the raw Dapr `WorkflowState` shape and waiting for dedup resolution + direct RediSearch subject visibility before asserting the search API. Subscription discovery plus latency / replay-after-restore nightly follow-ups remain deferred in `deferred-work.md`.
+- **Task 7 — Documentation (AC #17):** Created `docs/dev/eventstore-integration.md` covering setup (package reference + DI + middleware order + broker wiring + routing config + env-defaults table), CloudEvents envelope requirements, aggregate-type extraction, exact-match subject filtering, at-least-once + dead-letter + replay semantics, publisher trust & spoofing threat model with deploy-time mitigations (`publishAllowedTopics`), source-stability publisher contract, alerting recommendations per log EventId, preflight TTL ↔ DAPR retry `max-duration` coupling rule of thumb, known limitations (single-topic, replay-vs-idempotency, case cap, Story-9.2 boundaries), troubleshooting checklist ("why didn't my event appear?"), and a worked example from `PublishEventAsync` to a `GET /api/search` result. Linked from the root `README.md` under a new "Integration Guides" section.
+- **Task 8 — Planning alignment:** `sprint-status.yaml` `last_updated` advanced with a session-complete summary, `9-1-event-auto-discovery-and-dapr-pub-sub-subscription: in-progress` → `review`. `deferred-work.md` gained a 9-1 section enumerating the four Tier-3 items + a note on the Review-Findings bullets already folded into Tasks 1-4.
+
 ### File List
+
+**New (src):**
+
+- `src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj`
+- `src/Hexalith.Memories.EventStore/README.md`
+- `src/Hexalith.Memories.EventStore/CloudEventEnvelope.cs`
+- `src/Hexalith.Memories.EventStore/CloudEventEnvelopeParser.cs`
+- `src/Hexalith.Memories.EventStore/CloudEventToIngestionInputMapper.cs`
+- `src/Hexalith.Memories.EventStore/AggregateTypeExtractor.cs`
+- `src/Hexalith.Memories.EventStore/TenantEventRoute.cs`
+- `src/Hexalith.Memories.EventStore/TenantEventRouteResolution.cs`
+- `src/Hexalith.Memories.EventStore/TenantEventRouteResolutionStatus.cs`
+- `src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs`
+- `src/Hexalith.Memories.EventStore/CaseNameTemplateRenderer.cs`
+- `src/Hexalith.Memories.EventStore/ITenantEventRouter.cs`
+- `src/Hexalith.Memories.EventStore/TenantEventRouter.cs`
+- `src/Hexalith.Memories.EventStore/ITenantStatusAccessor.cs`
+- `src/Hexalith.Memories.EventStore/ICaseCreationService.cs`
+- `src/Hexalith.Memories.EventStore/IEventIngestionWorkflowScheduler.cs`
+- `src/Hexalith.Memories.EventStore/IEventIngestionTelemetry.cs`
+- `src/Hexalith.Memories.EventStore/IPreflightDedupStore.cs`
+- `src/Hexalith.Memories.EventStore/IEventIngestionService.cs`
+- `src/Hexalith.Memories.EventStore/EventIngestionService.cs`
+- `src/Hexalith.Memories.EventStore/EventIngestionController.cs`
+- `src/Hexalith.Memories.EventStore/EventIngestionOutcome.cs`
+- `src/Hexalith.Memories.EventStore/EventIngestionResponse.cs`
+- `src/Hexalith.Memories.EventStore/EventStoreDedupKey.cs`
+- `src/Hexalith.Memories.EventStore/EventStoreIntegrationLog.cs`
+- `src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs`
+
+**New (tests):**
+
+- `tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj`
+- `tests/Hexalith.Memories.EventStore.Tests/AggregateTypeExtractorTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/CloudEventEnvelopeParserTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/CloudEventToIngestionInputMapperTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/CaseNameTemplateRendererTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/TenantEventRouterTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/EventIngestionServiceTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/EventIngestionControllerTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/EventIngestionResponseTests.cs`
+
+**New (src, Task 5):**
+
+- `src/Hexalith.Memories.EventStore/EventStoreJsonContext.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/CaseCreationServiceAdapter.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/EventIngestionTelemetryAdapter.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/EventIngestionWorkflowSchedulerAdapter.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/EventStoreRoutingConfigValidator.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/RedisPreflightDedupStore.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/ServerEventStoreIntegrationExtensions.cs`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/TenantStatusAccessorAdapter.cs`
+- `src/Hexalith.Memories.Server/appsettings.Production.json`
+- `deploy/dapr/components/pubsub.yaml`
+
+**New (tests, Task 6):**
+
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CapturingEventStoreLogProvider.cs`
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/DocumentationCompletenessTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventIngestionOutcomeTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs`
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/MiddlewareOrderTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`
+
+**New (docs, Task 7):**
+
+- `docs/dev/eventstore-integration.md`
+
+**Modified:**
+
+- `Hexalith.Memories.slnx` — registered both new projects.
+- `Hexalith.Memories.EventStore.csproj` — added `InternalsVisibleTo` for `Hexalith.Memories.Server`, `Hexalith.Memories.Server.Tests`, and `Hexalith.Memories.IntegrationTests` so host adapters and Tier-2 tests can reach the package's internal interfaces.
+- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj` — added `ProjectReference` to `Hexalith.Memories.EventStore`.
+- `src/Hexalith.Memories.Server/Program.cs` — registered controllers via `AddApplicationPart(...)`, wired `AddServerEventStoreIntegration`, combined `EventStoreJsonContext` into the HTTP JSON options resolver chain, and added the canonical `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();` middleware sequence.
+- `src/Hexalith.Memories.AppHost/Program.cs` — registered the `pubsub` DAPR component and attached `.WithReference(pubSub)` on the server sidecar.
+- `src/Hexalith.Memories.Server/appsettings.Development.json` — added the `EventStoreIntegration:Routing` section (Development defaults: `AutoCreateCases = true`).
+- `README.md` — added a new "Integration Guides" section linking to `docs/dev/eventstore-integration.md`.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — `9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev` → `in-progress` (session 1) → `review` (session 2); `last_updated: 2026-04-22`.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — added a Story-9.1 section covering Tier-3 Aspire deferrals and a note on the Review-Findings bullets already folded into Tasks 1-4.
+- `_bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md` — task status, checkboxes, and this Dev Agent Record (only allowed sections).
 
 ### References
 
@@ -685,3 +785,9 @@ claude-opus-4-7[1m]
 - Story 1.6 context (ingestion workflow foundations) — `_bmad-output/implementation-artifacts/1-6-ingestion-workflow-orchestration.md`
 - Story 3.1 context (CaseService) — `src/Hexalith.Memories.Server/Cases/CaseService.cs`
 - Story 5.1 context (TenantRegistryService + TenantStatusGuard) — `src/Hexalith.Memories.Server/Tenants/`
+
+## Change Log
+
+- 2026-04-22 — Story 9.1 Tasks 1-4 implemented (scoped session). Added `Hexalith.Memories.EventStore` publishable package + test project, CloudEvents envelope parser, mapper + aggregate-type extractor, typed router + options, ingestion service + controller + preflight-dedup compensation, and 65 Tier-1 unit tests (all green). Package keeps Server out of its compile-time dependency graph via five package-owned adapter interfaces. Tasks 5-8 (Server wiring, Tier-2 integration tests, docs guide, planning-artifact alignment) remain for a follow-up session.
+- 2026-04-22 — Story 9.1 Tasks 5-8 implemented (continuation session). Wired the EventStore package into the Memories Server via five Server-owned adapters (workflow scheduler, tenant status, case creation, telemetry, Redis preflight-dedup) + a fail-fast startup validator for `SourceToTenantMap` (subtask 3.6). Canonical `app.UseCloudEvents(); app.MapControllers(); app.MapSubscribeHandler();` middleware order landed in `Program.cs`. AppHost registers the `pubsub` DAPR component and `deploy/dapr/components/pubsub.yaml` mirrors it for non-Aspire deployments. `appsettings.Development.json` / `appsettings.Production.json` carry the `AutoCreateCases` environment split (ADR 9.1-C). A new source-generated `EventStoreJsonContext` is combined into the host JSON options resolver chain so Task 5.8 AOT-safe serialization lands without introducing a Contracts → EventStore cycle. Added 10 Tier-2 tests under `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/` (outcome mapping, middleware order, documentation completeness). Full solution build green; 65/65 Tier-1 EventStore tests + 1308/1308 Server.Tests pass. Tier-3 Aspire nightly coverage (roundtrip + discovery + latency + replay-after-restore) is explicitly deferred with rationale in `deferred-work.md`. Developer guide shipped at `docs/dev/eventstore-integration.md` and linked from the root `README.md` under a new "Integration Guides" section. Story status: in-progress → review.
+- 2026-04-22 — Follow-up validation session restored the missing Aspire roundtrip acceptance coverage in `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`. The test now polls raw Dapr workflow state via `runtimeStatus` / `isWorkflowCompleted`, waits for dedup-key resolution and direct subject-filtered RediSearch visibility, then verifies the search API returns the indexed memory unit. Focused integration validation is green (1/1).

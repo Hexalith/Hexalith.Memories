@@ -38,6 +38,7 @@ public sealed class CliSearchIntegrationTests
     public CliSearchIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task HybridSearchAsync_AfterIngestion_ReturnsCompositeScoreAndCaveat()
     {
         // Arrange — unique identifiers so this test is isolated from peer integration tests.

@@ -29,6 +29,7 @@ using MemoriesCase = Hexalith.Memories.Contracts.V1.Case;
 /// </summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
+[Trait("Category", "IntegrationSlow")]
 [Trait("Category", "Performance")]
 public sealed class PipelinePersistencePerformanceTests
 {

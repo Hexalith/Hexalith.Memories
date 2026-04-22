@@ -171,12 +171,21 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
+    public void BuildKnnQueryString_WithCloudEventSubject_ShouldAddTagFilter()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(10, null, null, "claim-42");
+
+        result.ShouldBe(@"@cloudeventSubject:{claim\-42}=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Fact]
     public void BuildKnnQueryString_WithCaseIdAndSourceType_ShouldCombineFilters()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, "case-1", "file");
+        string result = SemanticSearchService.BuildKnnQueryString(10, "case-1", "file", "claim-42");
 
         result.ShouldContain(@"@caseId:{case\-1}");
         result.ShouldContain("@sourceType:{file}");
+        result.ShouldContain(@"@cloudeventSubject:{claim\-42}");
         result.ShouldContain("=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 

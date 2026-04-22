@@ -229,12 +229,21 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildQueryString_WithCloudEventSubject_ShouldAddExactMatchTagFilter()
+    {
+        string result = SyntacticSearchService.BuildQueryString("terms", null, null, null, "claim-42");
+
+        result.ShouldBe(@"@cloudeventSubject:{claim\-42} terms");
+    }
+
+    [Fact]
     public void BuildQueryString_WithAllFilters_ShouldCombineWithAnd()
     {
-        string result = SyntacticSearchService.BuildQueryString("terms", "case-1", "file", "important");
+        string result = SyntacticSearchService.BuildQueryString("terms", "case-1", "file", "important", "claim-42");
 
         result.ShouldContain(@"@caseId:{case\-1}");
         result.ShouldContain("@sourceType:{file}");
+        result.ShouldContain(@"@cloudeventSubject:{claim\-42}");
         result.ShouldContain("@metadataText:(important)");
         result.ShouldContain("terms");
     }

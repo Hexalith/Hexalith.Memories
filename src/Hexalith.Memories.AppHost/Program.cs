@@ -39,6 +39,15 @@ IResourceBuilder<IDaprComponentResource> stateStore = builder
     .WithMetadata("redisPassword", string.Empty)
     .WithMetadata("actorStateStore", "true");
 
+// Story 9.1: DAPR pub/sub component shared with the Redis dependency. Must stay aligned with
+// deploy/dapr/components/pubsub.yaml (same component name, same broker). Local dev uses localhost:6379
+// because Aspire pins the Redis endpoint on the host; production deployments should bind-mount
+// deploy/dapr/components/pubsub.yaml and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
+IResourceBuilder<IDaprComponentResource> pubSub = builder
+    .AddDaprComponent("pubsub", "pubsub.redis")
+    .WithMetadata("redisHost", "127.0.0.1:6379")
+    .WithMetadata("redisPassword", string.Empty);
+
 IResourceBuilder<IDaprComponentResource> secretStore = builder
     .AddDaprComponent("secretstore", "secretstores.local.file")
     .WithMetadata("secretsFile", secretsFile)
@@ -67,6 +76,7 @@ IResourceBuilder<ProjectResource> server = builder
                 Config = daprConfigPath,
             })
             .WithReference(stateStore)
+            .WithReference(pubSub)
             .WithReference(secretStore);
     })
     .WithEnvironment(
@@ -83,6 +93,10 @@ IResourceBuilder<ProjectResource> server = builder
 // — appsettings.json keeps AllowedDirectoryRoots empty, so the endpoint is disabled by default.
 string testDataRoot = EnsureTestDataRoot();
 server = server.WithEnvironment("Ingestion__AllowedDirectoryRoots__0", testDataRoot);
+
+// Story 9.1: the controller subscription binding uses [Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")].
+// Keep the runtime env var aligned with the route/topic config so /dapr/subscribe is deterministic.
+server = server.WithEnvironment("MEMORIES_EVENTSTORE_TOPIC", "memories-events");
 
 // Story 5.4 AC3 — application-side token injection.
 // The AppHost now propagates both APP_API_TOKEN and DAPR_API_TOKEN to the application resource and the

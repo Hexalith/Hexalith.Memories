@@ -14,6 +14,7 @@ using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Story 8.2 — builds <c>memories consistency verify</c>. Schedules
@@ -25,10 +26,10 @@ public static class ConsistencyVerifyCommand
     /// <summary>Command name used in JSON error envelopes (ADR-7.3-002).</summary>
     public const string CommandName = "consistency verify";
 
-    /// <summary>Poll interval used when <c>--wait</c> is set.</summary>
+    /// <summary>Poll interval used when <c>--wait</c> is set and no <see cref="ConsistencyPollOptions"/> override is registered.</summary>
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(5);
 
-    /// <summary>Hard cap on the <c>--wait</c> poll duration.</summary>
+    /// <summary>Hard cap on the <c>--wait</c> poll duration when no <see cref="ConsistencyPollOptions"/> override is registered.</summary>
     public static readonly TimeSpan DefaultPollTimeout = TimeSpan.FromMinutes(30);
 
     private const string CommandDescription = """
@@ -101,6 +102,9 @@ Examples:
             return CliExitCodes.Plumbing;
         }
 
+        ConsistencyPollOptions pollOptions = services.GetService<IOptions<ConsistencyPollOptions>>()?.Value
+            ?? new ConsistencyPollOptions();
+
         return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
@@ -124,6 +128,7 @@ Examples:
                 instanceId,
                 fetch: (tid, id, c) => client.GetConsistencyVerificationStatusAsync(tid, id, c),
                 isTerminal: state => IsTerminalStatus(state.Status),
+                pollOptions,
                 innerCt).ConfigureAwait(false);
 
             if (finalStatus is null)
@@ -143,7 +148,7 @@ Examples:
                     console,
                     CommandName,
                     code: "CONSISTENCY_WORKFLOW_TIMEOUT",
-                    message: $"Verification workflow '{instanceId}' did not complete within {DefaultPollTimeout}.",
+                    message: $"Verification workflow '{instanceId}' did not complete within {pollOptions.PollTimeout}.",
                     suggestion: $"Poll '{statusUrl}' directly or rerun without --wait to receive the scheduling receipt immediately.");
                 return CliExitCodes.Plumbing;
             }
@@ -181,10 +186,13 @@ Examples:
         string instanceId,
         Func<string, string, CancellationToken, Task<TStatus?>> fetch,
         Func<TStatus, bool> isTerminal,
+        ConsistencyPollOptions options,
         CancellationToken ct)
         where TStatus : class
     {
-        using var timeoutCts = new CancellationTokenSource(DefaultPollTimeout);
+        ArgumentNullException.ThrowIfNull(options);
+
+        using var timeoutCts = new CancellationTokenSource(options.PollTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         TStatus? lastStatus = null;
@@ -202,9 +210,14 @@ Examples:
                 return lastStatus;
             }
 
+            if (options.PollInterval <= TimeSpan.Zero)
+            {
+                continue;
+            }
+
             try
             {
-                await Task.Delay(DefaultPollInterval, linkedCts.Token).ConfigureAwait(false);
+                await Task.Delay(options.PollInterval, linkedCts.Token).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {

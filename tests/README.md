@@ -28,12 +28,21 @@ dotnet test --filter "Category!=Integration"
 
 ### Integration coverage
 
+Integration tests split into two lanes by wall-clock cost:
+
+- `Category=Integration&Category!=IntegrationSlow` — PR-fast lane (~5 min budget)
+- `Category=IntegrationSlow` — nightly-only tests that restart the full Aspire topology or exercise long retry loops (individual tests >20 s)
+
 ```bash
-dotnet test --filter "Category=Integration"
+dotnet test --filter "Category=Integration"                               # all integration tests (~17 min)
+dotnet test --filter "Category=Integration&Category!=IntegrationSlow"    # PR-fast lane
+dotnet test --filter "Category=IntegrationSlow"                           # slow lane only
 ```
 
 ```powershell
 ./tools/test.ps1 -Filter 'Category=Integration'
+./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow'
+./tools/test.ps1 -Filter 'Category=IntegrationSlow'
 ```
 
 ### Full suite

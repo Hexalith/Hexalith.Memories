@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
@@ -223,8 +224,20 @@ builder.Services.AddActors(options =>
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = MemoriesJsonContext.Options.PropertyNamingPolicy;
-    options.SerializerOptions.TypeInfoResolver = MemoriesJsonContext.Options.TypeInfoResolver;
+    // Story 9.1: combine EventStore package's source-generated types so event subscription responses
+    // serialize without falling back to reflection (AOT-safe path).
+    options.SerializerOptions.TypeInfoResolver = System.Text.Json.Serialization.Metadata.JsonTypeInfoResolver.Combine(
+        MemoriesJsonContext.Options.TypeInfoResolver!,
+        Hexalith.Memories.EventStore.EventStoreJsonContext.Default);
 });
+
+// Story 9.1: EventStore pub/sub subscription surface. Registers the controller (via application-part
+// discovery), the EventStore package, and the Server-side adapters (workflow scheduler, tenant status,
+// case creation, telemetry, preflight dedup). See deploy/dapr/components/pubsub.yaml for the broker
+// component definition and docs/dev/eventstore-integration.md for the operator guide.
+builder.Services.AddServerEventStoreIntegration(builder.Configuration);
+
+string eventStoreTopic = ResolveEventStoreTopic(builder.Configuration);
 
 WebApplication app = builder.Build();
 
@@ -232,6 +245,24 @@ RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<Ingestion
 
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
+
+// Story 9.1: canonical DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for
+// plain-JSON requests (guards the /api/ingest POST from accidental envelope unwrapping); MapControllers()
+// registers EventIngestionController; MapSubscribeHandler() exposes /dapr/subscribe so the sidecar can
+// discover the [Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")] binding at startup.
+app.UseMiddleware<Hexalith.Memories.EventStore.CloudEventEnvelopeCaptureMiddleware>();
+app.UseCloudEvents();
+app.MapControllers();
+app.MapGet("/dapr/subscribe", () => Results.Json(new[]
+{
+    new
+    {
+        pubsubname = Hexalith.Memories.EventStore.EventIngestionController.PubSubName,
+        topic = eventStoreTopic,
+        route = "/events/ingest",
+    },
+}));
+
 TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
 MemoriesMeter.EnsureObservableGaugesCreated(
     telemetrySnapshotCache.GetIndexSizeMeasurements,
@@ -2035,6 +2066,7 @@ app.MapGet("/api/search", async (
     [FromQuery] string? caseId,
     [FromQuery] string? sourceType = null,
     [FromQuery] string? metadataQuery = null,
+    [FromQuery] string? subject = null,
     [FromQuery] int maxResults = 10,
     [FromQuery] int offset = 0,
     [FromQuery] string axis = "syntactic",
@@ -2104,6 +2136,7 @@ app.MapGet("/api/search", async (
         ["maxResults"] = maxResults,
         ["offset"] = offset,
         ["sourceType"] = sourceType,
+        ["subject"] = subject,
         ["metadataFilterCount"] = string.IsNullOrWhiteSpace(metadataQuery) ? 0 : metadataQuery.Split(',').Length,
         ["explain"] = explain,
     };
@@ -2235,6 +2268,7 @@ app.MapGet("/api/search", async (
                 CaseId = caseId,
                 SourceTypeFilter = sourceType,
                 MetadataQuery = metadataQuery,
+                CloudEventSubject = subject,
                 MaxResults = clampedMaxResults,
                 Offset = Math.Max(offset, 0),
             };
@@ -2330,6 +2364,7 @@ app.MapGet("/api/search", async (
                 CaseId = caseId,
                 SourceTypeFilter = sourceType,
                 MetadataQuery = metadataQuery,
+                CloudEventSubject = subject,
                 MaxResults = Math.Clamp(maxResults, 1, 100),
                 Offset = Math.Max(offset, 0),
             };
@@ -2437,6 +2472,7 @@ app.MapGet("/api/search", async (
             CaseId = caseId,
             SourceTypeFilter = sourceType,
             MetadataQuery = metadataQuery,
+            CloudEventSubject = subject,
             MaxResults = clampedMax,
             Offset = clampedOff,
         };
@@ -2947,6 +2983,18 @@ app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (
 });
 
 app.Run();
+
+static string ResolveEventStoreTopic(IConfiguration configuration)
+{
+    string? configuredTopic = configuration["EventStoreIntegration:Routing:Topic"];
+    if (!string.IsNullOrWhiteSpace(configuredTopic))
+    {
+        return configuredTopic.Trim();
+    }
+
+    string? environmentTopic = Environment.GetEnvironmentVariable(Hexalith.Memories.EventStore.EventIngestionController.TopicEnvVar);
+    return string.IsNullOrWhiteSpace(environmentTopic) ? "memories-events" : environmentTopic.Trim();
+}
 
 static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
 {

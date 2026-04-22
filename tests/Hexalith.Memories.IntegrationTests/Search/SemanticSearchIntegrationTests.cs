@@ -146,6 +146,43 @@ public class SemanticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_CloudEventSubjectFilter_ShouldUseExactMatchTagFiltering()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-subject-a",
+            "claim event content",
+            metadata: new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-42", MetadataOrigin.Ai, 1.0f),
+            });
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-subject-b",
+            "claim event content",
+            metadata: new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-99", MetadataOrigin.Ai, 1.0f),
+            });
+
+        SemanticSearchService service = CreateService();
+
+        SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = "claim event",
+                CloudEventSubject = "claim-42",
+            },
+            _embeddingConfig,
+            CancellationToken.None);
+
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-subject-a"]);
+    }
+
+    [Fact]
     public async Task SearchAsync_CosineSimilarityRange_AllScoresShouldBeInRange()
     {
         // Arrange
@@ -506,7 +543,8 @@ public class SemanticSearchIntegrationTests
         string? sourceUri = null,
         SourceType sourceType = SourceType.File,
         EmbeddingClient? embeddingClient = null,
-        float[]? embeddingVector = null)
+        float[]? embeddingVector = null,
+        Dictionary<string, MetadataField>? metadata = null)
     {
         // Generate deterministic vector from content text (fake embedding mode)
         EmbeddingClient client = embeddingClient ?? _embeddingClient;
@@ -521,7 +559,11 @@ public class SemanticSearchIntegrationTests
             sourceUri: sourceUri,
             sourceType: sourceType,
             embeddingVector: vector,
-            embeddingDimensions: TestDimensions);
+            embeddingDimensions: TestDimensions)
+            with
+        {
+            Metadata = metadata ?? [],
+        };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
 

@@ -219,10 +219,25 @@ public class TokenRedactionTests
         // Replace the console with our capture writers.
         services.AddSingleton(new CliConsole { Out = stdout, Error = stderr, Verbose = verbose });
 
+        // Replace the primary HTTP handler so transport-failure tests don't perform real TCP
+        // connects (previously ~2s per refused-connection attempt on Windows). The throw mirrors
+        // what HttpClient surfaces for a refused endpoint, keeping the CLI's error-mapping path
+        // under test.
+        services.AddHttpClient<Hexalith.Memories.Client.Rest.MemoriesClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => new ThrowingHandler());
+
         ServiceProvider provider = services.BuildServiceProvider();
         FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
         flag.Endpoint = new Uri(endpoint);
         flag.ApiToken = token;
         return provider;
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+            => throw new HttpRequestException("Connection refused (test stub)");
     }
 }

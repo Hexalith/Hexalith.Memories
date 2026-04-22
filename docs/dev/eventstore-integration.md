@@ -1,0 +1,299 @@
+# EventStore Integration — DAPR Pub/Sub Subscription (Story 9.1)
+
+Zero-code DAPR pub/sub subscription for `Hexalith.Memories`. Configure one topic, publish CloudEvents
+to it, and the Memories server ingests the event payload into the existing ingestion workflow —
+no mapping code required. Scope: **one topic per deployment**; dual-embeddings and causal-edge
+indexing are Story 9.2+.
+
+- **Status:** Phase 1.5
+- **Package:** [`Hexalith.Memories.EventStore`](../../src/Hexalith.Memories.EventStore/) (NuGet-publishable)
+- **Server wiring:** [`Hexalith.Memories.Server/EventStoreIntegration/`](../../src/Hexalith.Memories.Server/EventStoreIntegration/)
+- **Broker component:** [`deploy/dapr/components/pubsub.yaml`](../../deploy/dapr/components/pubsub.yaml)
+
+---
+
+## 1. Setup
+
+### 1.1 Add the package (consumer) or project reference (in-repo host)
+
+In-repo host (Memories Server already does this):
+
+```xml
+<ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
+```
+
+Downstream hosts referencing the NuGet package:
+
+```bash
+dotnet add package Hexalith.Memories.EventStore
+```
+
+### 1.2 Register services
+
+```csharp
+builder.Services
+    .AddControllers()
+    .AddApplicationPart(typeof(Hexalith.Memories.EventStore.EventIngestionController).Assembly);
+
+// In the Memories Server, this calls AddMemoriesEventStoreIntegration and wires the five adapter
+// implementations (workflow scheduler, tenant status, case creation, telemetry, preflight dedup).
+builder.Services.AddServerEventStoreIntegration(builder.Configuration);
+
+var app = builder.Build();
+
+// Canonical middleware + controller mapping order (ADR 9.1 Middleware order).
+app.UseCloudEvents();
+app.MapControllers();
+app.MapSubscribeHandler();
+```
+
+### 1.3 Wire the pub/sub broker
+
+Production deployments bind-mount `deploy/dapr/components/pubsub.yaml` and inject:
+
+- `PUBSUB_REDIS_HOST` — broker endpoint.
+- `PUBSUB_REDIS_PASSWORD` — broker credential (via the platform secret manager).
+- `MEMORIES_EVENTSTORE_TOPIC` — topic name to subscribe to. **Must match** `EventStoreIntegration:Routing:Topic`.
+
+Aspire (local dev) registers the component programmatically in
+[`src/Hexalith.Memories.AppHost/Program.cs`](../../src/Hexalith.Memories.AppHost/Program.cs) — the broker
+reuses the existing Redis dependency.
+
+### 1.4 Configure routing
+
+`appsettings.Development.json`:
+
+```json
+{
+    "EventStoreIntegration": {
+        "Routing": {
+            "PubSubName": "pubsub",
+            "Topic": "memories-events",
+            "SourceToTenantMap": {
+                "enterprise/claims": "acme-claims",
+                "enterprise/billing": "acme-billing"
+            },
+            "AutoCreateCases": true,
+            "CaseNameTemplate": "events:{aggregateType}",
+            "MaxAutoCreatedCasesPerTenant": 100,
+            "PreflightDedupEnabled": true,
+            "PreflightDedupTtl": "1.00:00:00"
+        }
+    }
+}
+```
+
+### 1.5 Environment defaults table
+
+| Option                         | Development | Production                                              | Rationale                                                                                                                                                                    |
+| ------------------------------ | ----------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AutoCreateCases`              | `true`      | `false`                                                 | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
+| `MaxAutoCreatedCasesPerTenant` | `100`       | `100`                                                   | Hard cap is a safety backstop regardless of environment.                                                                                                                     |
+| `PreflightDedupEnabled`        | `true`      | `true`                                                  | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B.                                                                        |
+| `PreflightDedupTtl`            | `24h`       | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling.                                                                                                                                                         |
+
+---
+
+## 2. CloudEvents envelope requirements
+
+| Field             | Required | Notes                                                                                                                                                                     |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | **Yes**  | Drives idempotency — the existing `DedupKeyBuilder` hashes this as `sourceUri`. Must be globally unique per at-least-once semantics.                                      |
+| `source`          | **Yes**  | Publisher-supplied URI-reference. Matched longest-prefix (case-insensitive) against `SourceToTenantMap`.                                                                  |
+| `type`            | **Yes**  | Aggregate type extracted from the **second dotted segment** (e.g. `MyApp.Claims.ClaimSubmittedV2` → `Claims`). Falls back to the full type when no second segment exists. |
+| `subject`         | Optional | Aggregate identifier. Absent values persist as `(unset)`. Exact-match filterable via the `cloudevent.subject` metadata field (AC #2, #4).                                 |
+| `time`            | Optional | ISO-8601 publisher-supplied timestamp. Preserved verbatim; **never replaced with server time** (clock-skew risk).                                                         |
+| `datacontenttype` | Optional | Defaults to `application/json` when absent.                                                                                                                               |
+| `data`            | **Yes**  | Event payload. Missing or null `data` returns `400 INVALID_CLOUDEVENT`.                                                                                                   |
+
+### 2.1 Aggregate-type extraction
+
+The convention `<Namespace>.<Aggregate>.<Event>V<n>` keeps `Aggregate` stable across event versions.
+Publishers using different conventions must either send the aggregate name as the second dotted
+segment or fall back to the full type string (the router handles this automatically).
+
+### 2.2 Exact-match subject filtering
+
+`cloudevent.subject` is copied into `IngestionInput.Metadata` and flows through the same exact-match
+metadata index path used by search filters. Queries filtering on `cloudevent.subject` return events
+for a specific aggregate without scanning the entire topic's backlog. Use `GET /api/search?...&subject=<value>`
+to drive the dedicated exact-match TAG filter instead of a fuzzy metadata text match.
+
+---
+
+## 3. At-least-once + dead-letter + replay semantics
+
+DAPR pub/sub is at-least-once. The subscription endpoint translates each outcome to the HTTP-status
+DAPR expects:
+
+| Situation                                                | HTTP                                    | DAPR behavior                                                 |
+| -------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------- |
+| Accepted — workflow scheduled                            | 200 + `accepted`                        | No retry.                                                     |
+| Duplicate — preflight or workflow-level dedup rejected   | 200 + `duplicate`                       | No retry.                                                     |
+| Unknown source                                           | 200 + `unknown-source` + Warning log    | No retry (publisher never mapped).                            |
+| Tenant not found                                         | 200 + `tenant-not-found`                | No retry.                                                     |
+| Tenant deleting                                          | 200 + `tenant-deleting` + Warning log   | No retry (tenant exiting).                                    |
+| Auto-create disabled                                     | 200 + `auto-create-disabled`            | No retry (operator opted out).                                |
+| Case cap exceeded                                        | 200 + `case-cap-exceeded` + Warning log | No retry.                                                     |
+| Tenant provisioning                                      | 500                                     | Retries until tenant becomes active or retry budget exhausts. |
+| Malformed envelope (`id`/`source`/`type`/`data` missing) | 400 + `INVALID_CLOUDEVENT`              | Dead-letter topic (if configured); else dropped.              |
+| Transient scheduling failure                             | 500 (preflight reservation released)    | DAPR retries on clean key.                                    |
+
+### 3.1 Replay semantics
+
+Hexalith.EventStore supports event replay. Replayed events use the same envelope + `cloudevent.id` —
+the memory unit already exists, `CheckIdempotencyActivity` returns duplicate, the workflow returns
+early. This is intentional for normal at-least-once redelivery but **WRONG for operator-triggered
+replay-after-tenant-restore**.
+
+To rebuild memory from an event stream, operators must first delete the tenant's memory units
+(Story 3.5) **OR** recreate the tenant via the provisioning workflow, then re-publish. Story 9.1
+does NOT add a `forceReplay` bypass — that would regress the at-least-once idempotency guarantee.
+
+### 3.2 Routing-config changes must quiesce the stream
+
+If an operator flips `AutoCreateCases` off → on or renames a `SourceToTenantMap` entry between
+two redeliveries of the same event, the case mapping changes and the second delivery produces a
+second memory unit (different `caseId` → different dedup key). Document this at the operator level:
+"routing config changes require a quiesce of the publisher first, then a drain of in-flight events,
+then the flip."
+
+---
+
+## 4. Publisher trust & spoofing — deploy-time mitigations
+
+**Threat:** any process with DAPR pub/sub write access can publish CloudEvents with an arbitrary
+`source` string. An insider or compromised service publishing `source=enterprise/hr` routes to the
+`hr-tenant` without any authentication check. `source` is an auth-like boundary with no auth.
+
+**MVP mitigations (deploy-time, not code):**
+
+1. Restrict publisher access via `publishAllowedTopics` and component-level access control in
+   [`deploy/dapr/components/pubsub.yaml`](../../deploy/dapr/components/pubsub.yaml).
+2. Do not expose the broker externally. All publisher traffic must go through an authenticated
+   service mesh or sidecar with a mutual-TLS policy.
+3. Log `memories_eventstore_unknownsource_total{source}` per-source (EventId 9110) and alert on
+   unexpected sources (§6 Alerting).
+
+**Phase 2 evolution (out of scope for 9.1):** signed JWT in a CloudEvents extension attribute
+(e.g. `tenantidtoken`) verified against a tenant public key in TenantRegistry. Out of scope here.
+
+---
+
+## 5. Source-stability publisher contract
+
+Publishers MUST treat `source` as a stable identifier, not a deploy-time URL. A routine
+certificate-migration or hostname-flip that changes `https://` ↔ `http://` or adds a port number
+breaks longest-prefix matching and causes events to be silently dropped as `UnknownSource`.
+
+**Contract:**
+
+- `source` is an opaque identifier chosen at publisher design time.
+- Operators configuring `SourceToTenantMap` should match on a semantic prefix
+  (e.g. `enterprise/claims`) — not a full URL.
+- Publishers changing `source` must coordinate a `SourceToTenantMap` config update + rolling
+  deploy with the subscriber; a unilateral change on the publisher side is a breaking change.
+
+---
+
+## 6. Alerting recommendations
+
+| Signal                                                | Source            | Recommended alert                                                                                                           |
+| ----------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `memories_eventstore_unknownsource_total{source=...}` | EventId 9110      | Rate of increase > 0 for 5 min pages the subscriber team. Indicates publisher drift or a misconfigured `SourceToTenantMap`. |
+| EventId 9121 (invalid-envelope)                       | Error             | Rate > 5/min pages. Indicates a publisher is emitting malformed CloudEvents.                                                |
+| EventId 9120 (schedule-failed)                        | Error             | Rate > 1/min pages. Transient DAPR sidecar / workflow runtime problem.                                                      |
+| EventId 9105 (routing-config-unknown-tenant)          | Critical, startup | Fail-fast crash — do not restart the pod without fixing config.                                                             |
+| EventId 9114 (case-cap-exceeded)                      | Warning           | Warn operator; likely aggregate-type cardinality misconfiguration (e.g. `type` encoded into an id).                         |
+
+---
+
+## 7. Preflight TTL ↔ DAPR retry-policy alignment
+
+`TenantEventRoutingOptions.PreflightDedupTtl` (default `24h`) MUST be aligned with the DAPR
+resiliency policy `max-duration`. If a message delayed longer than `PreflightDedupTtl` is
+redelivered, the preflight key has expired, the workflow runs a second time, and a duplicate
+memory unit is created. The workflow-level permanent dedup key (no TTL) remains authoritative so
+this is a correctness **optimization**, not a correctness hole — but operators should still align
+the two so the fast path stays fast.
+
+**Rule of thumb:** `PreflightDedupTtl ≥ DAPR resiliency max-duration + 10%`. If your retry policy
+allows 72h, set `PreflightDedupTtl` to at least `79:12:00` (79.2 h). Or explicitly cap the
+resiliency policy's `max-duration` at `23h` so the default 24h TTL covers it.
+
+---
+
+## 8. Known limitations
+
+- **Single-topic subscription per deployment.** A consumer needing N topics runs N deployments.
+  Multi-topic routing is a future refinement.
+- **Replay vs idempotency.** See §3.1. Story 9.1 does not provide a force-replay bypass.
+- **Case cap.** Each tenant is hard-capped at 100 auto-created cases (`MaxAutoCreatedCasesPerTenant`);
+  once exceeded, new aggregate-types drop with `case-cap-exceeded` until operators raise the cap
+  or pre-provision cases.
+- **Causal-edge indexing and dual embeddings.** Story 9.2 owns these. Story 9.1 adds exactly one
+  memory unit per event with standard single-embedding ingestion.
+- **Subject may be absent.** Missing `subject` is preserved as `(unset)` — grouping by aggregate
+  requires the publisher to send a subject.
+- **Publisher spoofing.** `source` is not authenticated. See §4.
+- **No dead-letter configuration in-repo.** `pubsub.yaml` does not define a DLT; operators opt into
+  DAPR DLT at the component level when needed.
+
+---
+
+## 9. Troubleshooting — "Why didn't my event appear?"
+
+1. **Check subscription discovery.** `curl $DAPR_HTTP_ENDPOINT/dapr/subscribe` should include an
+   entry with `pubsubname=pubsub` + your configured topic + `route=/events/ingest`. If empty, the
+   controller's `[Topic]` attribute did not resolve. Usually means `MEMORIES_EVENTSTORE_TOPIC` is
+   not set or does not match `EventStoreIntegration:Routing:Topic`.
+2. **Check source mapping.** If you see EventId 9110 (`UnknownSource`) for your event, the `source`
+   field does not match any `SourceToTenantMap` prefix. Matching is case-insensitive longest-prefix.
+3. **Check tenant status.** EventId 9111 → tenant is deleting (drop); 9102 → tenant is provisioning
+   (retry); 9112 → tenant does not exist (drop). Register the tenant first.
+4. **Check malformed envelope.** EventId 9121 → the envelope is missing `id`/`source`/`type`/`data`.
+   Review the publisher to ensure all required fields are present and non-empty.
+5. **Check workflow scheduling.** EventId 9120 → DAPR workflow scheduling threw. Check the DAPR
+   sidecar and the workflow runtime health.
+6. **Check case cap.** EventId 9114 → the tenant hit `MaxAutoCreatedCasesPerTenant`. Raise the cap
+   or pre-create the case.
+7. **Check replay drift.** If you re-published an event and it didn't re-index: this is expected
+   (idempotency). See §3.1.
+
+---
+
+## 10. Worked example — from publish to searchable memory
+
+```csharp
+// Publisher (downstream service).
+var daprClient = new DaprClientBuilder().Build();
+await daprClient.PublishEventAsync(
+    pubsubName: "pubsub",
+    topicName: "memories-events",
+    data: new { amount = 100, currency = "EUR", claimId = "claim-42" },
+    metadata: new Dictionary<string, string>
+    {
+        ["cloudevent.id"] = $"claim-{Guid.NewGuid():N}",
+        ["cloudevent.source"] = "enterprise/claims",
+        ["cloudevent.type"] = "MyApp.Claims.ClaimSubmittedV2",
+        ["cloudevent.subject"] = "claim-42",
+    });
+```
+
+Expected server behavior (all green):
+
+1. DAPR sidecar POSTs the CloudEvent to `/events/ingest`.
+2. `EventIngestionController` → `EventIngestionService` → routes `source=enterprise/claims` →
+   `acme-claims` tenant → case `events:Claims` (auto-created on first event for this aggregate-type).
+3. Preflight dedup reserves `dedup:acme-claims:<caseId>:<sha256(cloudeventid)>`.
+4. `IngestionWorkflow` extracts the JSON payload, generates an embedding, indexes it syntactically,
+   semantically, and into the graph.
+5. Within 5 s (NFR6), the memory unit is searchable:
+
+```bash
+curl "$MEMORIES_URL/api/search?tenantId=acme-claims&query=claim-42&axis=syntactic"
+# → HybridSearchResult containing the new memory unit
+```
+
+Story 9.1 scope: the memory unit is searchable. Causal-edge indexing and a second NL-description
+embedding come in Story 9.2.

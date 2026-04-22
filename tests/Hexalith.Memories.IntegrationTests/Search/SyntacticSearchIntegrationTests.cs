@@ -104,6 +104,40 @@ public class SyntacticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_CloudEventSubjectFilter_ShouldUseExactMatchTagFiltering()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-subject-a",
+            "claim event content",
+            metadata: new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-42", MetadataOrigin.Ai, 1.0f),
+            });
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-subject-b",
+            "claim event content",
+            metadata: new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-99", MetadataOrigin.Ai, 1.0f),
+            });
+
+        SyntacticSearchService service = CreateService();
+
+        SearchResult result = await service.SearchAsync(new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = "claim event",
+            CloudEventSubject = "claim-42",
+        });
+
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-subject-a"]);
+    }
+
+    [Fact]
     public async Task SearchAsync_EmptyResults_ShouldReturnEmptySet()
     {
         // Arrange
@@ -433,14 +467,19 @@ public class SyntacticSearchIntegrationTests
         string memoryUnitId,
         string content,
         string? caseId = null,
-        SourceType sourceType = SourceType.File)
+        SourceType sourceType = SourceType.File,
+        Dictionary<string, MetadataField>? metadata = null)
     {
         IndexInput input = IndexInputFactory.Create(
             tenantId: tenantId,
             memoryUnitId: memoryUnitId,
             content: content,
             caseId: caseId ?? "default-case",
-            sourceType: sourceType);
+            sourceType: sourceType)
+            with
+        {
+            Metadata = metadata ?? [],
+        };
 
         IndexSyntacticActivity activity = new(
             _redis.Connection,

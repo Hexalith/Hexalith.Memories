@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Redis\Hexalith.Memories.Redis.csproj" />
     <ProjectReference
       Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />

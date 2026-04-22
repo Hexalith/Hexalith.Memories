@@ -186,6 +186,10 @@ public sealed class ConsistencyVerifyCommandTests
         });
         collection.Replace(ServiceDescriptor.Transient<MemoriesClient>(_ => stubClient));
 
+        // Collapse the --wait polling interval so tests don't pay a real 5-second delay per
+        // non-terminal status. Production default is 5s; tests verify loop semantics, not cadence.
+        collection.Configure<ConsistencyPollOptions>(o => o.PollInterval = TimeSpan.Zero);
+
         ServiceProvider provider = collection.BuildServiceProvider();
         FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
         flag.Endpoint = new Uri("http://127.0.0.1:65001/");

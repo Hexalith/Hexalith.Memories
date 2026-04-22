@@ -14,6 +14,7 @@ using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 /// <summary>
 /// Story 8.2 — builds <c>memories consistency repair</c>. Repair is a mutating
@@ -132,6 +133,9 @@ Examples:
             }
         }
 
+        ConsistencyPollOptions pollOptions = services.GetService<IOptions<ConsistencyPollOptions>>()?.Value
+            ?? new ConsistencyPollOptions();
+
         return await executor.ExecuteAsync(CommandName, async (config, innerCt) =>
         {
             MemoriesClient client = services.GetRequiredService<MemoriesClient>();
@@ -156,6 +160,7 @@ Examples:
                     instanceId,
                     fetch: (tid, id, c) => client.GetConsistencyRepairStatusAsync(tid, id, c),
                     isTerminal: state => ConsistencyVerifyCommand.IsTerminalStatus(state.Status),
+                    pollOptions,
                     innerCt).ConfigureAwait(false);
 
             if (finalStatus is null)
@@ -175,7 +180,7 @@ Examples:
                     console,
                     CommandName,
                     code: "CONSISTENCY_WORKFLOW_TIMEOUT",
-                    message: $"Repair workflow '{instanceId}' did not complete within {ConsistencyVerifyCommand.DefaultPollTimeout}.",
+                    message: $"Repair workflow '{instanceId}' did not complete within {pollOptions.PollTimeout}.",
                     suggestion: $"Poll '{statusUrl}' directly or rerun without --wait to receive the scheduling receipt immediately.");
                 return CliExitCodes.Plumbing;
             }

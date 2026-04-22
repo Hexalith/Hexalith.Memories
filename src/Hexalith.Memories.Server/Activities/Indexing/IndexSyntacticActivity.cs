@@ -41,6 +41,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         string sourceType = ToCamelCase(input.SourceType);
         string metadataText = FlattenMetadata(input.Metadata);
         string metadataJson = JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options);
+        string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
         string ingestedAt = input.IngestedAt.ToString("o");
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);
@@ -58,30 +59,36 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             _logger.LogWarning("RediSearch index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
         }
 
-        await db.HashSetAsync(
-            hashKey,
-            [
-                new HashEntry("id", input.MemoryUnitId),
-                // Story 5.4 AC2: tenantId persisted on the MU hash to enable tertiary
-                // mismatch detection in CaseService (primary defense is the key prefix).
-                new HashEntry("tenantId", input.TenantId),
-                new HashEntry("content", input.Content),
-                new HashEntry("sourceUri", input.SourceUri),
-                new HashEntry("sourceUriText", input.SourceUri),
-                new HashEntry("sourceType", sourceType),
-                new HashEntry("sourceTypeText", sourceType),
-                new HashEntry("metadataText", metadataText),
-                new HashEntry("metadataJson", metadataJson),
-                new HashEntry("contentHash", input.ContentHash),
-                new HashEntry("caseId", input.CaseId),
-                new HashEntry("embeddingProvider", input.EmbeddingProvider),
-                // Story 5.5 FR70: persist the embedding model so future audits can attribute
-                // vectors to the (provider, model) pair that generated them.
-                new HashEntry("embeddingModel", input.EmbeddingModel),
-                new HashEntry("ingestedBy", input.IngestedBy),
-                new HashEntry("ingestedAt", ingestedAt),
-                new HashEntry("lastUpdated", ingestedAt),
-            ]).ConfigureAwait(false);
+        List<HashEntry> hashEntries =
+        [
+            new HashEntry("id", input.MemoryUnitId),
+            // Story 5.4 AC2: tenantId persisted on the MU hash to enable tertiary
+            // mismatch detection in CaseService (primary defense is the key prefix).
+            new HashEntry("tenantId", input.TenantId),
+            new HashEntry("content", input.Content),
+            new HashEntry("sourceUri", input.SourceUri),
+            new HashEntry("sourceUriText", input.SourceUri),
+            new HashEntry("sourceType", sourceType),
+            new HashEntry("sourceTypeText", sourceType),
+            new HashEntry("metadataText", metadataText),
+            new HashEntry("metadataJson", metadataJson),
+            new HashEntry("contentHash", input.ContentHash),
+            new HashEntry("caseId", input.CaseId),
+            new HashEntry("embeddingProvider", input.EmbeddingProvider),
+            // Story 5.5 FR70: persist the embedding model so future audits can attribute
+            // vectors to the (provider, model) pair that generated them.
+            new HashEntry("embeddingModel", input.EmbeddingModel),
+            new HashEntry("ingestedBy", input.IngestedBy),
+            new HashEntry("ingestedAt", ingestedAt),
+            new HashEntry("lastUpdated", ingestedAt),
+        ];
+
+        if (!string.IsNullOrWhiteSpace(cloudEventSubject))
+        {
+            hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
+        }
+
+        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
 
         // Story 5.5 AC1 / Amendment A + L + T: stamp last-activity AFTER the hash write succeeds
         // (ordering L: never advertise activity that never happened). Fire-and-forget because a
@@ -137,6 +144,11 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
 
         return string.Join(' ', parts);
     }
+
+    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, MetadataField> metadata, string key)
+        => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)
+            ? field.Value
+            : null;
 
     private static string ToCamelCase<TEnum>(TEnum value)
         where TEnum : struct, Enum

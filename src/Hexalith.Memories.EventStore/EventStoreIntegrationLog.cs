@@ -1,0 +1,74 @@
+// <copyright file="EventStoreIntegrationLog.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.EventStore;
+
+using Microsoft.Extensions.Logging;
+
+/// <summary>Source-generated <see cref="LoggerMessage"/> emitters for Story 9.1. EventId bank <c>9100-9199</c>
+/// is pinned for this story. Ranges:
+/// <list type="bullet">
+///   <item><description>9100-9109 — Information / startup</description></item>
+///   <item><description>9110-9119 — Warning (drops, unknown-source, tenant-deleting, case cap)</description></item>
+///   <item><description>9120-9129 — Error (workflow scheduling failures, envelope parse)</description></item>
+///   <item><description>9130+ — Information (happy-path ingestion)</description></item>
+/// </list>
+/// </summary>
+internal static partial class EventStoreIntegrationLog
+{
+    [LoggerMessage(
+        EventId = 9102,
+        Level = LogLevel.Information,
+        Message = "EventStore ingestion: tenant {TenantId} is provisioning, event {CloudEventId} will be retried.")]
+    public static partial void TenantProvisioning(ILogger logger, string tenantId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9110,
+        Level = LogLevel.Warning,
+        Message = "EventStore ingestion: no tenant mapping for source {Source} (cloudEventId={CloudEventId}).")]
+    public static partial void UnknownSource(ILogger logger, string source, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9111,
+        Level = LogLevel.Warning,
+        Message = "EventStore ingestion: tenant {TenantId} is deleting, event {CloudEventId} dropped.")]
+    public static partial void TenantDeleting(ILogger logger, string tenantId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9112,
+        Level = LogLevel.Warning,
+        Message = "EventStore ingestion: tenant {TenantId} not found, event {CloudEventId} dropped.")]
+    public static partial void TenantNotFound(ILogger logger, string tenantId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9113,
+        Level = LogLevel.Warning,
+        Message = "EventStore ingestion: auto-create disabled for tenant {TenantId}, event {CloudEventId} dropped.")]
+    public static partial void AutoCreateDisabled(ILogger logger, string tenantId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9114,
+        Level = LogLevel.Warning,
+        Message = "EventStore ingestion: case cap exceeded for tenant {TenantId}, event {CloudEventId} dropped.")]
+    public static partial void CaseCapExceeded(ILogger logger, string tenantId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9120,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: workflow scheduling failed for event {CloudEventId} ({ExceptionType}).")]
+    public static partial void WorkflowScheduleFailed(ILogger logger, string cloudEventId, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9121,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: invalid CloudEvents envelope — {Reason} (cloudEventId={CloudEventId}).")]
+    public static partial void InvalidEnvelope(ILogger logger, string reason, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9122,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: preflight release failed for event {CloudEventId} ({ExceptionType}).")]
+    public static partial void PreflightReleaseFailed(ILogger logger, string cloudEventId, string exceptionType);
+}

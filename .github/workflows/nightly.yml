@@ -9,8 +9,37 @@ permissions:
   contents: read
 
 jobs:
-  integration-tests:
-    name: Tier 3 integration lane
+  integration-fast:
+    name: Tier 3 integration (fast lane)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx
+
+      - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow)
+        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-integration-fast-artifacts
+          path: |
+            **/TestResults/**
+            artifacts/**
+          if-no-files-found: ignore
+
+  integration-slow:
+    name: Tier 3 integration (slow lane)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -25,14 +54,14 @@ jobs:
       - name: Restore solution
         run: dotnet restore Hexalith.Memories.slnx
 
-      - name: Run Tier 3 integration tests
-        run: bash ./tools/test.sh --filter "Category=Integration"
+      - name: Run Tier 3 integration tests (slow lane only)
+        run: bash ./tools/test.sh --filter "Category=IntegrationSlow"
 
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-integration-artifacts
+          name: nightly-integration-slow-artifacts
           path: |
             **/TestResults/**
             artifacts/**

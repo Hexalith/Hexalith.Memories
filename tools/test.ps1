@@ -2,6 +2,8 @@
 # Examples:
 #   ./tools/test.ps1
 #   ./tools/test.ps1 -Filter 'Category!=Integration'
+#   ./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow'   # PR-fast integration lane
+#   ./tools/test.ps1 -Filter 'Category=IntegrationSlow'                          # Nightly-only slow lane
 #   ./tools/test.ps1 -Coverage
 
 [CmdletBinding()]
@@ -16,7 +18,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
 
 try {
-    $projectPaths = switch ($Filter) {
+    $projectPaths = switch -Wildcard ($Filter) {
         'Category!=Integration' {
             @(
                 'tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj',
@@ -26,7 +28,11 @@ try {
             )
             break
         }
-        'Category=Integration' {
+        '*Category=Integration*' {
+            @('tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj')
+            break
+        }
+        '*Category=IntegrationSlow*' {
             @('tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj')
             break
         }

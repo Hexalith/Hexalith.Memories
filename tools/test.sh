@@ -3,6 +3,8 @@
 # Examples:
 #   ./tools/test.sh
 #   ./tools/test.sh --filter "Category!=Integration"
+#   ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow"   # PR-fast integration lane
+#   ./tools/test.sh --filter "Category=IntegrationSlow"                          # Nightly-only slow lane
 #   ./tools/test.sh --coverage
 set -euo pipefail
 
@@ -44,7 +46,7 @@ case "$FILTER" in
       "tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj"
     )
     ;;
-  "Category=Integration")
+  *Category=Integration*|*Category=IntegrationSlow*)
     PROJECTS=("tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj")
     ;;
 esac

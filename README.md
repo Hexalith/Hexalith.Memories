@@ -95,6 +95,10 @@ Use `--format json` for scripts and LLM agents — the envelope is versioned and
 - [CLI output formats](docs/dev/cli-output-formats.md) — envelope schema, per-command examples, versioning policy.
 - [Quickstart wizard](docs/dev/quickstart.md) — per-step walkthrough, failure decision tree, OS-specific notes, dry-run mode, JSON envelope reference.
 
+## Integration Guides
+
+- [EventStore pub/sub subscription](docs/dev/eventstore-integration.md) — zero-code DAPR pub/sub subscription for event-sourced ingestion (Story 9.1).
+
 ## Operations
 
 - [Rate limiting — per-tenant ceilings, 429 handling, extraction gate](docs/operations/rate-limiting.md)

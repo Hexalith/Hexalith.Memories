@@ -16,7 +16,7 @@ using StackExchange.Redis;
 /// Both provisioning activities and ingestion activities reference this class to prevent schema drift.</summary>
 internal static class IndexSchemaDefinitions
 {
-    private static readonly string[] SemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId"];
+    private static readonly string[] SemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId", "cloudeventSubject"];
     private static readonly string[] SyntacticFieldIdentifiers =
     [
         "content",
@@ -27,6 +27,7 @@ internal static class IndexSchemaDefinitions
         "sourceType",
         "contentHash",
         "caseId",
+        "cloudeventSubject",
         "embeddingProvider",
     ];
 
@@ -86,6 +87,7 @@ internal static class IndexSchemaDefinitions
             .AddTagField("sourceType")
             .AddTagField("contentHash")
             .AddTagField("caseId")
+            .AddTagField("cloudeventSubject")
             .AddTagField("embeddingProvider");
 
     /// <summary>Creates the FTCreateParams for a Redis Vector semantic index.</summary>
@@ -111,7 +113,8 @@ internal static class IndexSchemaDefinitions
                     ["DISTANCE_METRIC"] = "COSINE",
                 })
             .AddTagField("memoryUnitId")
-            .AddTagField("caseId");
+            .AddTagField("caseId")
+            .AddTagField("cloudeventSubject");
 
     /// <summary>Gets the expected attribute identifiers for a syntactic index.</summary>
     /// <returns>The expected attribute names.</returns>

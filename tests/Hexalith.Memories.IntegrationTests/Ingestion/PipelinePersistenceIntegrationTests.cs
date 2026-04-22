@@ -27,6 +27,7 @@ using MemoriesCase = Hexalith.Memories.Contracts.V1.Case;
 /// <summary>Integration coverage for Story 6.4 restart durability and recovery behavior.</summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
+[Trait("Category", "IntegrationSlow")]
 public sealed class PipelinePersistenceIntegrationTests
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);

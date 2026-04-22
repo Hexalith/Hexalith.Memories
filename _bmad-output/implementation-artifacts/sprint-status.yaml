@@ -1,4 +1,6 @@
 # generated: 2026-03-26
+# last_updated: 2026-04-22 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription remains in review; follow-up validation restored the Aspire roundtrip acceptance test (1/1 green) while subscription discovery + latency/replay nightly follow-ups remain deferred per deferred-work.md.
+# previous last_updated entries:
 # last_updated: 2026-04-21 # Story 7.5 Search & Access Telemetry transitioned review → done after review close-out aligned the Tier-3 gate with Story 8.4's HTTP-hop proof and the 2026-04-21 server-runtime telemetry follow-ups validated green.
 # project: Hexalith.Memories
 # project_key: NOKEY
@@ -35,7 +37,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-21 # Story 7.5 Search & Access Telemetry transitioned review → done after review close-out aligned the Tier-3 gate with Story 8.4's HTTP-hop proof and the 2026-04-21 server-runtime telemetry follow-ups validated green.
+last_updated: 2026-04-22 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription remains review; Aspire roundtrip acceptance coverage is now restored and green (1/1), while subscription discovery + latency/replay nightly follow-ups stay deferred.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -130,7 +132,7 @@ development_status:
 
   # Epic 9: EventStore Integration & Zero-Code Memory
   epic-9: in-progress
-  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: ready-for-dev
+  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: review
   9-2-dual-embedding-and-causal-chain-indexing: ready-for-dev
   9-3-handler-registration-and-mismatch-detection: backlog
   epic-9-retrospective: optional
