@@ -7,8 +7,6 @@ namespace Hexalith.Memories.EventStore;
 
 using System.Text.Json;
 
-using Dapr;
-
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.AspNetCore.Http;
@@ -16,8 +14,9 @@ using Microsoft.AspNetCore.Mvc;
 
 /// <summary>Subscription endpoint that receives raw CloudEvents envelopes from DAPR pub/sub.
 ///
-/// <para>The <c>[Topic]</c> attribute subscribes the route to <c>$(MEMORIES_EVENTSTORE_TOPIC)</c> on the
-/// <c>pubsub</c> component. DAPR's <c>/dapr/subscribe</c> discovery probe picks this up at startup.</para>
+/// <para>The environment-backed topic metadata attribute subscribes the route to the configured
+/// <c>MEMORIES_EVENTSTORE_TOPIC</c> value on the <c>pubsub</c> component. DAPR's canonical
+/// <c>/dapr/subscribe</c> discovery probe picks this up at startup via <c>MapSubscribeHandler()</c>.</para>
 ///
 /// <para>The controller delegates all logic to <see cref="IEventIngestionService"/>, which returns the
 /// typed <see cref="EventIngestionProcessResult"/> this controller translates to HTTP responses:</para>
@@ -38,7 +37,7 @@ public sealed class EventIngestionController : ControllerBase
     /// <c>metadata.name</c> of <c>deploy/dapr/components/pubsub.yaml</c> and the AppHost wiring.</summary>
     public const string PubSubName = "pubsub";
 
-    /// <summary>The environment-variable name DAPR substitutes into the <c>[Topic]</c> attribute at startup.
+    /// <summary>The environment-variable name the subscription metadata attribute resolves at startup.
     /// Operators must set <c>MEMORIES_EVENTSTORE_TOPIC</c> to the topic name configured in
     /// <see cref="TenantEventRoutingOptions.Topic"/>.</summary>
     public const string TopicEnvVar = "MEMORIES_EVENTSTORE_TOPIC";
@@ -55,7 +54,7 @@ public sealed class EventIngestionController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An HTTP response that drives DAPR's retry / drop behavior.</returns>
     [HttpPost("ingest")]
-    [Topic(PubSubName, "$(MEMORIES_EVENTSTORE_TOPIC)")]
+    [EnvironmentTopic(PubSubName, TopicEnvVar)]
     [ProducesResponseType(typeof(EventIngestionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]

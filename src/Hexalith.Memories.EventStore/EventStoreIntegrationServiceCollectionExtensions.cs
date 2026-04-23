@@ -8,6 +8,7 @@ namespace Hexalith.Memories.EventStore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 /// <summary>Registers the EventStore pub/sub integration services in an ASP.NET Core application.
 ///
@@ -41,7 +42,23 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         string? resolvedTopic = ResolveConfiguredTopic(configuration);
 
         services.AddOptions<TenantEventRoutingOptions>()
-            .Bind(configuration.GetSection("EventStoreIntegration:Routing"));
+            .Bind(configuration.GetSection("EventStoreIntegration:Routing"))
+            .ValidateOnStart();
+
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<TenantEventRoutingOptions>, TenantEventRoutingOptionsValidator>());
+
+        services.PostConfigure<TenantEventRoutingOptions>(options =>
+        {
+            options.PubSubName = string.IsNullOrWhiteSpace(options.PubSubName)
+                ? EventIngestionController.PubSubName
+                : options.PubSubName.Trim();
+
+            if (!string.IsNullOrWhiteSpace(options.Topic))
+            {
+                options.Topic = options.Topic.Trim();
+            }
+        });
 
         if (!string.IsNullOrWhiteSpace(resolvedTopic))
         {

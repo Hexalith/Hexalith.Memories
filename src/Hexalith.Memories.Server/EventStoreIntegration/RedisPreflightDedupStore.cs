@@ -42,9 +42,21 @@ internal sealed partial class RedisPreflightDedupStore : IPreflightDedupStore
         {
             IDatabase db = _redis.GetDatabase();
             bool acquired = await db
-                .StringSetAsync(dedupKey, "reserved", ttl, when: When.NotExists)
+                .StringSetAsync(dedupKey, PreflightDedupReservation.ReservedValue, ttl, when: When.NotExists)
                 .ConfigureAwait(false);
-            return acquired ? PreflightReservationResult.Reserved : PreflightReservationResult.Duplicate;
+            if (acquired)
+            {
+                return PreflightReservationResult.Reserved;
+            }
+
+            RedisValue existing = await db.StringGetAsync(dedupKey).ConfigureAwait(false);
+            if (PreflightDedupReservation.IsTransientReservation(existing.ToString()))
+            {
+                LogTransientReservationFallback(_logger, dedupKey);
+                return PreflightReservationResult.FailOpen;
+            }
+
+            return PreflightReservationResult.Duplicate;
         }
         catch (RedisException ex)
         {
@@ -88,4 +100,10 @@ internal sealed partial class RedisPreflightDedupStore : IPreflightDedupStore
         Level = LogLevel.Warning,
         Message = "EventStore preflight dedup release failed for key {DedupKey} ({ExceptionType}); reservation will expire naturally.")]
     private static partial void LogReleaseFailed(ILogger logger, string dedupKey, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9125,
+        Level = LogLevel.Warning,
+        Message = "EventStore preflight dedup encountered a transient reservation for key {DedupKey}; falling back to workflow-level dedup.")]
+    private static partial void LogTransientReservationFallback(ILogger logger, string dedupKey);
 }

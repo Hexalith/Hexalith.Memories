@@ -63,7 +63,7 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
         {
-            await EnsureVectorDimensionsMatchAsync(db, indexName, input.EmbeddingDimensions).ConfigureAwait(false);
+            EnsureSemanticIndexReady(db, indexName, input.TenantId, input.EmbeddingDimensions);
             _logger.LogWarning("Redis Vector index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
         }
 
@@ -89,21 +89,49 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         return new IndexResult("semantic", input.MemoryUnitId, input.TenantId);
     }
 
-    private static async Task EnsureVectorDimensionsMatchAsync(IDatabase db, string indexName, int expectedDimensions)
+    private void EnsureSemanticIndexReady(IDatabase db, string indexName, string tenantId, int expectedDimensions)
     {
-        RedisResult info = await db.ExecuteAsync("FT.INFO", indexName).ConfigureAwait(false);
-        int? actualDimensions = TryFindVectorDimensions(info, "embedding");
+        RedisResult info = db.Execute("FT.INFO", indexName);
+        List<string> problems = [];
 
-        if (actualDimensions is null)
+        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
+        string expectedPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
+        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(
-                $"Existing Redis Vector index '{indexName}' does not expose dimensions for the embedding field.");
+            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
         }
 
-        if (actualDimensions.Value != expectedDimensions)
+        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSemanticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
+        if (!actualFields.SetEquals(expectedFields)
+            && IndexSchemaDefinitions.TryUpgradeMissingTagField(db, indexName, actualFields, expectedFields, "cloudeventSubject"))
+        {
+            actualFields.Add("cloudeventSubject");
+            _logger.LogInformation(
+                "Added missing cloudeventSubject field to Redis Vector index {IndexName} for tenant {TenantId}",
+                indexName,
+                tenantId);
+        }
+
+        if (!actualFields.SetEquals(expectedFields))
+        {
+            problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
+        }
+
+        int? actualDimensions = TryFindVectorDimensions(info, "embedding");
+        if (actualDimensions is null)
+        {
+            problems.Add("embedding vector dimensions are missing from FT.INFO");
+        }
+        else if (actualDimensions.Value != expectedDimensions)
+        {
+            problems.Add($"expected {expectedDimensions} dimensions but found {actualDimensions.Value}");
+        }
+
+        if (problems.Count > 0)
         {
             throw new InvalidOperationException(
-                $"Existing Redis Vector index '{indexName}' uses {actualDimensions.Value} dimensions but the current embedding requires {expectedDimensions}.");
+                $"Existing Redis Vector index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
         }
     }
 

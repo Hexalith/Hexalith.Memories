@@ -22,6 +22,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 {
     private const int _compensationRetryAttempts = 3;
     private const int _mainRetryAttempts = 5;
+    private const string DedupWorkflowInstancePrefix = "dedup:";
 
     /// <inheritdoc/>
     public override async Task<IngestionResult> RunAsync(
@@ -29,9 +30,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         IngestionInput input)
     {
         var logger = context.CreateReplaySafeLogger<IngestionWorkflow>();
-        string memoryUnitId = string.IsNullOrWhiteSpace(context.InstanceId)
-            ? context.NewGuid().ToString()
-            : context.InstanceId;
+        string memoryUnitId = ResolveMemoryUnitId(context, input);
         DateTimeOffset ingestedAt = new(context.CurrentUtcDateTime, TimeSpan.Zero);
         string currentStage = "queued";
         MemoryUnitStatus currentStatus = MemoryUnitStatus.Queued;
@@ -368,6 +367,21 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             firstRetryInterval: TimeSpan.FromSeconds(1),
             backoffCoefficient: 2.0,
             maxRetryInterval: TimeSpan.FromSeconds(30)));
+
+    private static string ResolveMemoryUnitId(WorkflowContext context, IngestionInput input)
+    {
+        if (!string.IsNullOrWhiteSpace(context.InstanceId)
+            && !RequiresIndependentMemoryUnitId(context.InstanceId, input.SourceType))
+        {
+            return context.InstanceId;
+        }
+
+        return context.NewGuid().ToString();
+    }
+
+    private static bool RequiresIndependentMemoryUnitId(string workflowInstanceId, SourceType sourceType)
+        => sourceType == SourceType.Event
+            && workflowInstanceId.StartsWith(DedupWorkflowInstancePrefix, StringComparison.Ordinal);
 
     private static HashSet<string> GetCompletedBackends(
         Task<IndexResult> syntacticTask,

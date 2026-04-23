@@ -124,6 +124,17 @@ public sealed class MiddlewareOrderTests : System.IDisposable
         GetRoute(subscription).ShouldBeOneOf("events/ingest", "/events/ingest");
     }
 
+    [Fact]
+    public async Task MalformedStructuredCloudEvent_Returns400InsteadOfMiddleware500()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        StringContent content = new("{", Encoding.UTF8, "application/cloudevents+json");
+        HttpResponseMessage response = await client.PostAsync("/events/ingest", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
     private static string GetRoute(JsonElement subscription)
     {
         if (TryGetPropertyCaseInsensitive(subscription, "route", out JsonElement routeProperty)

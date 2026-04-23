@@ -117,13 +117,35 @@ public class IngestionInputValidatorTests
     }
 
     [Fact]
-    public void Validate_Event_WithBytes_ThrowsDefensively()
+    public void Validate_Event_WithBytes_DoesNotThrow()
     {
         IngestionInput input = IngestionInputFactory.Create(
             sourceType: SourceType.Event,
             contentBytes: [1]);
 
+        Should.NotThrow(() => IngestionInputValidator.Validate(input));
+    }
+
+    [Fact]
+    public void Validate_Annotation_WithBytes_DoesNotThrow()
+    {
+        IngestionInput input = IngestionInputFactory.Create(
+            sourceType: SourceType.Annotation,
+            contentBytes: [1, 2, 3],
+            sourceUri: "annotation://target/mu-1");
+
+        Should.NotThrow(() => IngestionInputValidator.Validate(input));
+    }
+
+    [Fact]
+    public void Validate_Event_WithNullBytes_Throws()
+    {
+        IngestionInput input = IngestionInputFactory.Create(
+            sourceType: SourceType.Event,
+            contentBytes: null,
+            sourceUri: "evt-1");
+
         Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input))
-            .Message.ShouldContain("must be null or empty for SourceType=Event");
+            .Message.ShouldContain("ContentBytes is required for SourceType=Event");
     }
 }

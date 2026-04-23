@@ -41,10 +41,12 @@ builder.Services.AddServerEventStoreIntegration(builder.Configuration);
 
 var app = builder.Build();
 
-// Canonical middleware + controller mapping order (ADR 9.1 Middleware order).
+// Middleware + controller mapping order (ADR 9.1 Middleware order).
 app.UseCloudEvents();
 app.MapControllers();
 app.MapSubscribeHandler();
+// EventStore resolves the controller topic from MEMORIES_EVENTSTORE_TOPIC before Dapr reads endpoint
+// metadata, so the canonical /dapr/subscribe probe exposes the concrete topic value.
 ```
 
 ### 1.3 Wire the pub/sub broker
@@ -245,7 +247,7 @@ resiliency policy's `max-duration` at `23h` so the default 24h TTL covers it.
 
 1. **Check subscription discovery.** `curl $DAPR_HTTP_ENDPOINT/dapr/subscribe` should include an
    entry with `pubsubname=pubsub` + your configured topic + `route=/events/ingest`. If empty, the
-   controller's `[Topic]` attribute did not resolve. Usually means `MEMORIES_EVENTSTORE_TOPIC` is
+   controller's environment-backed subscription metadata did not resolve. Usually means `MEMORIES_EVENTSTORE_TOPIC` is
    not set or does not match `EventStoreIntegration:Routing:Topic`.
 2. **Check source mapping.** If you see EventId 9110 (`UnknownSource`) for your event, the `source`
    field does not match any `SourceToTenantMap` prefix. Matching is case-insensitive longest-prefix.

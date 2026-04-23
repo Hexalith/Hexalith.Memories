@@ -81,9 +81,24 @@ internal sealed class EventIngestionService : IEventIngestionService
             return invalid;
         }
 
-        TenantEventRouteResolution resolution = await _router
-            .ResolveAsync(envelope, cancellationToken)
-            .ConfigureAwait(false);
+        TenantEventRouteResolution resolution;
+        try
+        {
+            resolution = await _router
+                .ResolveAsync(envelope, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            EventStoreIntegrationLog.RouteResolutionFailed(_logger, envelope.Id, ex.GetType().Name);
+            EventIngestionProcessResult failed = new(
+                EventIngestionOutcome.ScheduleFailed,
+                EventIngestionResponse.Drop("routing-failed", ex.Message));
+            _telemetry.RecordIngestion(
+                tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
+                failed.Outcome, ElapsedMs(startTicks));
+            return failed;
+        }
 
         if (resolution.TenantId is not null)
         {

@@ -237,8 +237,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 // component definition and docs/dev/eventstore-integration.md for the operator guide.
 builder.Services.AddServerEventStoreIntegration(builder.Configuration);
 
-string eventStoreTopic = ResolveEventStoreTopic(builder.Configuration);
-
 WebApplication app = builder.Build();
 
 RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<IngestionSettings>>().Value);
@@ -246,22 +244,14 @@ RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<Ingestion
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
 
-// Story 9.1: canonical DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for
-// plain-JSON requests (guards the /api/ingest POST from accidental envelope unwrapping); MapControllers()
-// registers EventIngestionController; MapSubscribeHandler() exposes /dapr/subscribe so the sidecar can
-// discover the [Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")] binding at startup.
+// Story 9.1: DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for plain-JSON
+// requests (guards the /api/ingest POST from accidental envelope unwrapping). EventStore now supplies
+// environment-backed topic metadata on the controller action, so the canonical MapSubscribeHandler()
+// route emits the resolved topic without a handwritten /dapr/subscribe endpoint.
 app.UseMiddleware<Hexalith.Memories.EventStore.CloudEventEnvelopeCaptureMiddleware>();
 app.UseCloudEvents();
 app.MapControllers();
-app.MapGet("/dapr/subscribe", () => Results.Json(new[]
-{
-    new
-    {
-        pubsubname = Hexalith.Memories.EventStore.EventIngestionController.PubSubName,
-        topic = eventStoreTopic,
-        route = "/events/ingest",
-    },
-}));
+app.MapSubscribeHandler();
 
 TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
 MemoriesMeter.EnsureObservableGaugesCreated(
@@ -2983,18 +2973,6 @@ app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (
 });
 
 app.Run();
-
-static string ResolveEventStoreTopic(IConfiguration configuration)
-{
-    string? configuredTopic = configuration["EventStoreIntegration:Routing:Topic"];
-    if (!string.IsNullOrWhiteSpace(configuredTopic))
-    {
-        return configuredTopic.Trim();
-    }
-
-    string? environmentTopic = Environment.GetEnvironmentVariable(Hexalith.Memories.EventStore.EventIngestionController.TopicEnvVar);
-    return string.IsNullOrWhiteSpace(environmentTopic) ? "memories-events" : environmentTopic.Trim();
-}
 
 static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
 {

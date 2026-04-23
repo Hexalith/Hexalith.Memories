@@ -32,20 +32,21 @@ IResourceBuilder<ContainerResource> redis = builder
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
+string redisHostMetadata = $"{redisEndpoint.Property(EndpointProperty.HostAndPort)}";
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
     .AddDaprComponent("statestore", "state.redis")
-    .WithMetadata("redisHost", "127.0.0.1:6379")
+    .WithMetadata("redisHost", redisHostMetadata)
     .WithMetadata("redisPassword", string.Empty)
     .WithMetadata("actorStateStore", "true");
 
-// Story 9.1: DAPR pub/sub component shared with the Redis dependency. Must stay aligned with
-// deploy/dapr/components/pubsub.yaml (same component name, same broker). Local dev uses localhost:6379
-// because Aspire pins the Redis endpoint on the host; production deployments should bind-mount
+// Story 9.1: DAPR pub/sub component shared with the Redis dependency. Keep the Dapr component metadata
+// pinned to the same Aspire-managed Redis endpoint the application itself references so local/dev and test
+// topologies cannot drift from the runtime broker wiring. Production deployments still bind-mount
 // deploy/dapr/components/pubsub.yaml and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
 IResourceBuilder<IDaprComponentResource> pubSub = builder
     .AddDaprComponent("pubsub", "pubsub.redis")
-    .WithMetadata("redisHost", "127.0.0.1:6379")
+    .WithMetadata("redisHost", redisHostMetadata)
     .WithMetadata("redisPassword", string.Empty);
 
 IResourceBuilder<IDaprComponentResource> secretStore = builder

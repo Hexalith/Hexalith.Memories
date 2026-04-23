@@ -71,4 +71,10 @@ internal static partial class EventStoreIntegrationLog
         Level = LogLevel.Error,
         Message = "EventStore ingestion: preflight release failed for event {CloudEventId} ({ExceptionType}).")]
     public static partial void PreflightReleaseFailed(ILogger logger, string cloudEventId, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9126,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: route resolution failed for event {CloudEventId} ({ExceptionType}).")]
+    public static partial void RouteResolutionFailed(ILogger logger, string cloudEventId, string exceptionType);
 }

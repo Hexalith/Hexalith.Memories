@@ -56,6 +56,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
         {
+            EnsureSyntacticIndexReady(db, indexName, input.TenantId);
             _logger.LogWarning("RediSearch index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
         }
 
@@ -157,5 +158,41 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         return string.IsNullOrEmpty(name)
             ? string.Empty
             : char.ToLowerInvariant(name[0]) + name[1..];
+    }
+
+    private void EnsureSyntacticIndexReady(IDatabase db, string indexName, string tenantId)
+    {
+        RedisResult info = db.Execute("FT.INFO", indexName);
+        List<string> problems = [];
+
+        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
+        string expectedPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
+        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
+        {
+            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
+        }
+
+        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
+        if (!actualFields.SetEquals(expectedFields)
+            && IndexSchemaDefinitions.TryUpgradeMissingTagField(db, indexName, actualFields, expectedFields, "cloudeventSubject"))
+        {
+            actualFields.Add("cloudeventSubject");
+            _logger.LogInformation(
+                "Added missing cloudeventSubject field to RediSearch index {IndexName} for tenant {TenantId}",
+                indexName,
+                tenantId);
+        }
+
+        if (!actualFields.SetEquals(expectedFields))
+        {
+            problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
+        }
+
+        if (problems.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
+        }
     }
 }

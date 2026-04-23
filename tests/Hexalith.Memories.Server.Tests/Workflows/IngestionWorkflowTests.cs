@@ -86,6 +86,50 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_EventStoreDedupInstanceId_ShouldGenerateIndependentMemoryUnitId()
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Event, sourceUri: "event-1");
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns("dedup:tenant-1:case-1:abc123");
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.MemoryUnitId.ShouldBe(TestGuid.ToString());
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(index => index.MemoryUnitId == TestGuid.ToString()),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == TestGuid.ToString()),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_EventReingestionWithStableInstanceId_ShouldReuseMemoryUnitId()
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Event, sourceUri: "event-1");
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns("01KPWY6F9QVEA2H6TT8Z1VJX6P");
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.MemoryUnitId.ShouldBe("01KPWY6F9QVEA2H6TT8Z1VJX6P");
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(index => index.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_FanOut_ShouldCallAllThreeIndexingActivities()
     {
         IngestionInput input = IngestionInputFactory.Create();

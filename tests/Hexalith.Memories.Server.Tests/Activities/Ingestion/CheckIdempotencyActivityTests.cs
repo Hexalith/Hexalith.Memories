@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Activities.Ingestion;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Activities.Ingestion;
 
 using NSubstitute;
@@ -50,6 +51,23 @@ public class CheckIdempotencyActivityTests
 
         result.IsDuplicate.ShouldBeTrue();
         result.ExistingMemoryUnitId.ShouldBe("mu-existing-id");
+    }
+
+    [Fact]
+    public async Task RunAsync_TransientPreflightReservation_IsNotTreatedAsDuplicate()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)PreflightDedupReservation.ReservedValue);
+        CheckIdempotencyActivity activity = new(redis);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IdempotencyResult result = await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1"));
+
+        result.IsDuplicate.ShouldBeFalse();
+        result.ExistingMemoryUnitId.ShouldBeNull();
     }
 
     [Fact]

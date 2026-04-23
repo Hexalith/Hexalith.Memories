@@ -31,26 +31,6 @@ internal static class IngestionInputValidator
 
     private static void ValidateContentBytesForSourceType(byte[]? contentBytes, SourceType sourceType, string sourceUri)
     {
-        if (sourceType == SourceType.File)
-        {
-            if (contentBytes is null)
-            {
-                throw new ArgumentException("ContentBytes is required for SourceType=File.");
-            }
-
-            if (contentBytes.Length == 0)
-            {
-                throw new ArgumentException("ContentBytes must not be empty for SourceType=File.");
-            }
-
-            if (contentBytes.Length > MaxContentBytes)
-            {
-                throw new ArgumentException($"ContentBytes must not exceed {MaxContentBytes} bytes (1 MB).");
-            }
-
-            return;
-        }
-
         if (sourceType == SourceType.Url)
         {
             if (contentBytes is { Length: > 0 })
@@ -67,11 +47,21 @@ internal static class IngestionInputValidator
             return;
         }
 
-        // Other source types (Event, Command, Projection, Discussion, Annotation) do not flow
-        // through Kreuzberg extraction; bytes MUST be null or empty.
-        if (contentBytes is { Length: > 0 })
+        // Inline ingestion types (File, Event, Command, Projection, Discussion, Annotation)
+        // carry payload bytes directly through extraction/indexing.
+        if (contentBytes is null)
         {
-            throw new ArgumentException($"ContentBytes must be null or empty for SourceType={sourceType}.");
+            throw new ArgumentException($"ContentBytes is required for SourceType={sourceType}.");
+        }
+
+        if (contentBytes.Length == 0)
+        {
+            throw new ArgumentException($"ContentBytes must not be empty for SourceType={sourceType}.");
+        }
+
+        if (contentBytes.Length > MaxContentBytes)
+        {
+            throw new ArgumentException($"ContentBytes must not exceed {MaxContentBytes} bytes (1 MB).");
         }
     }
 

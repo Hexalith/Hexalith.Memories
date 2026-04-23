@@ -19,4 +19,5 @@ using System.Text.Json.Serialization;
 [JsonSerializable(typeof(TenantEventRouteResolutionStatus))]
 [JsonSerializable(typeof(EventIngestionOutcome))]
 [JsonSerializable(typeof(EventIngestionProcessResult))]
+[JsonSerializable(typeof(NormalizedCloudEventEnvelope))]
 public sealed partial class EventStoreJsonContext : JsonSerializerContext;

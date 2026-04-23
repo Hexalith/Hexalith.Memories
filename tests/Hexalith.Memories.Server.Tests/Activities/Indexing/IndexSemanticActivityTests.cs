@@ -21,7 +21,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_ShouldStoreVectorWithCorrectKey()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -30,10 +29,8 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act
         IndexResult result = await activity.RunAsync(context, input);
 
-        // Assert
         result.Backend.ShouldBe("semantic");
         result.MemoryUnitId.ShouldBe(input.MemoryUnitId);
         result.TenantId.ShouldBe(input.TenantId);
@@ -47,30 +44,18 @@ public class IndexSemanticActivityTests
     [Fact]
     public void VectorByteConversion_KnownGoldValues_ShouldBeExact()
     {
-        // Gold values: 1.0f, 0.0f, -1.0f
         float[] vector = [1.0f, 0.0f, -1.0f];
         byte[] vectorBytes = MemoryMarshal.AsBytes(vector.AsSpan()).ToArray();
 
-        // 3 floats * 4 bytes = 12 bytes
         vectorBytes.Length.ShouldBe(12);
-
-        // 1.0f in little-endian IEEE 754: 0x00 0x00 0x80 0x3F
-        byte[] expected1 = BitConverter.GetBytes(1.0f);
-        vectorBytes[0..4].ShouldBe(expected1);
-
-        // 0.0f: 0x00 0x00 0x00 0x00
-        byte[] expected0 = BitConverter.GetBytes(0.0f);
-        vectorBytes[4..8].ShouldBe(expected0);
-
-        // -1.0f: 0x00 0x00 0x80 0xBF
-        byte[] expectedNeg1 = BitConverter.GetBytes(-1.0f);
-        vectorBytes[8..12].ShouldBe(expectedNeg1);
+        vectorBytes[0..4].ShouldBe(BitConverter.GetBytes(1.0f));
+        vectorBytes[4..8].ShouldBe(BitConverter.GetBytes(0.0f));
+        vectorBytes[8..12].ShouldBe(BitConverter.GetBytes(-1.0f));
     }
 
     [Fact]
     public async Task RunAsync_ShouldUseTenantNamespacedKey()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -79,10 +64,8 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act
         await activity.RunAsync(context, input);
 
-        // Assert
         await db.Received(1).HashSetAsync(
             Arg.Is<RedisKey>(k => k.ToString().StartsWith("test-tenant:vec:")),
             Arg.Any<HashEntry[]>(),
@@ -92,7 +75,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_WhenRedisConnectionFails_ShouldPropagateException()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         db.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
@@ -104,7 +86,6 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act & Assert
         await Should.ThrowAsync<RedisConnectionException>(
             () => activity.RunAsync(context, input));
     }
@@ -112,7 +93,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_InvalidTenantId_ShouldThrow()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -121,7 +101,6 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act & Assert
         await Should.ThrowAsync<ArgumentException>(
             () => activity.RunAsync(context, input));
     }
@@ -129,7 +108,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_IndexAlreadyExistsWithDifferentDimensions_ShouldThrow()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db, existingIndexDimensions: 4);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -138,7 +116,6 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act & Assert
         await Should.ThrowAsync<InvalidOperationException>(
             () => activity.RunAsync(context, input));
     }
@@ -146,7 +123,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_NullEmbeddingVector_ShouldThrow()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -155,7 +131,6 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act & Assert
         await Should.ThrowAsync<ArgumentNullException>(
             () => activity.RunAsync(context, input));
     }
@@ -163,7 +138,6 @@ public class IndexSemanticActivityTests
     [Fact]
     public async Task RunAsync_EmptyEmbeddingVector_ShouldThrow()
     {
-        // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -172,34 +146,81 @@ public class IndexSemanticActivityTests
 
         IndexSemanticActivity activity = new(redis, logger);
 
-        // Act & Assert
         await Should.ThrowAsync<ArgumentException>(
             () => activity.RunAsync(context, input));
     }
 
+    [Fact]
+    public async Task RunAsync_IndexMissingCloudEventSubjectField_ShouldAlterSchemaBeforeHashWrite()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        ConfigureExistingIndex(db, existingIndexDimensions: 3, includeSubjectField: false);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        IndexInput input = CreateTestInput() with
+        {
+            Metadata = new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-42", MetadataOrigin.Ai, 1.0f),
+            },
+        };
+
+        IndexSemanticActivity activity = new(redis, Substitute.For<ILogger<IndexSemanticActivity>>());
+
+        _ = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        db.Received().Execute(
+            "FT.ALTER",
+            Arg.Is<object[]>(args => args.Length == 5
+                && args[0].ToString() == "test-tenant:memories:vec"
+                && args[1].ToString() == "SCHEMA"
+                && args[2].ToString() == "ADD"
+                && args[3].ToString() == "cloudeventSubject"
+                && args[4].ToString() == "TAG"));
+    }
+
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db, int existingIndexDimensions = 3)
     {
-        // SearchCommands.Create() calls db.Execute("FT.CREATE", ...) internally.
-        // Make it throw "Index already exists" so the activity's try/catch handles it
-        // and proceeds to HashSetAsync (the part we actually want to test).
-        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
-        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
-        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns(CreateExistingIndexInfoResult(existingIndexDimensions));
-        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(CreateExistingIndexInfoResult(existingIndexDimensions));
+        ConfigureExistingIndex(db, existingIndexDimensions, includeSubjectField: true);
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
 
-    private static RedisResult CreateExistingIndexInfoResult(int dimensions) => RedisResult.Create(
-    [
-        RedisResult.Create(new RedisValue("attributes")),
-        RedisResult.Create(
+    private static void ConfigureExistingIndex(IDatabase db, int existingIndexDimensions, bool includeSubjectField)
+    {
+        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(call =>
+            {
+                string command = call.ArgAt<string>(0);
+                return command switch
+                {
+                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.INFO" => CreateExistingIndexInfoResult(existingIndexDimensions, includeSubjectField),
+                    "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
+                    _ => RedisResult.Create(new RedisValue("OK")),
+                };
+            });
+        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(call =>
+            {
+                string command = call.ArgAt<string>(0);
+                return command switch
+                {
+                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.INFO" => CreateExistingIndexInfoResult(existingIndexDimensions, includeSubjectField),
+                    "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
+                    _ => RedisResult.Create(new RedisValue("OK")),
+                };
+            });
+    }
+
+    private static RedisResult CreateExistingIndexInfoResult(int dimensions, bool includeSubjectField)
+    {
+        List<RedisResult> attributes =
         [
             RedisResult.Create(
             [
@@ -212,7 +233,36 @@ public class IndexSemanticActivityTests
                 RedisResult.Create(new RedisValue("dim")),
                 RedisResult.Create(new RedisValue(dimensions.ToString())),
             ]),
-        ]),
+            CreateTagAttribute("memoryUnitId"),
+            CreateTagAttribute("caseId"),
+        ];
+
+        if (includeSubjectField)
+        {
+            attributes.Add(CreateTagAttribute("cloudeventSubject"));
+        }
+
+        return RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vec:"))]),
+            ]),
+            RedisResult.Create(new RedisValue("attributes")),
+            RedisResult.Create([.. attributes]),
+        ]);
+    }
+
+    private static RedisResult CreateTagAttribute(string identifier) => RedisResult.Create(
+    [
+        RedisResult.Create(new RedisValue("identifier")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("attribute")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("type")),
+        RedisResult.Create(new RedisValue("TAG")),
     ]);
 
     private static IndexInput CreateTestInput() => new()

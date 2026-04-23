@@ -133,19 +133,72 @@ public class IndexSyntacticActivityTests
             Arg.Any<CommandFlags>());
     }
 
+    [Fact]
+    public async Task RunAsync_IndexMissingCloudEventSubjectField_ShouldAlterSchemaBeforeHashWrite()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        ConfigureExistingIndex(db, includeSubjectField: false);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        IndexInput input = CreateTestInput() with
+        {
+            Metadata = new Dictionary<string, MetadataField>
+            {
+                ["cloudevent.subject"] = new("claim-42", MetadataOrigin.Ai, 1.0f),
+            },
+        };
+
+        IndexSyntacticActivity activity = new(redis, Substitute.For<ILogger<IndexSyntacticActivity>>());
+
+        _ = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        db.Received().Execute(
+            "FT.ALTER",
+            Arg.Is<object[]>(args => args.Length == 5
+                && args[0].ToString() == "test-tenant:memories:idx"
+                && args[1].ToString() == "SCHEMA"
+                && args[2].ToString() == "ADD"
+                && args[3].ToString() == "cloudeventSubject"
+                && args[4].ToString() == "TAG"));
+    }
+
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)
     {
-        // SearchCommands.Create() calls db.Execute("FT.CREATE", ...) internally.
-        // Make it throw "Index already exists" so the activity's try/catch handles it
-        // and proceeds to HashSetAsync (the part we actually want to test).
-        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
-        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
+        ConfigureExistingIndex(db, includeSubjectField: true);
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
+    }
+
+    private static void ConfigureExistingIndex(IDatabase db, bool includeSubjectField)
+    {
+        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(call =>
+            {
+                string command = call.ArgAt<string>(0);
+                return command switch
+                {
+                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.INFO" => CreateExistingIndexInfoResult(includeSubjectField),
+                    "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
+                    _ => RedisResult.Create(new RedisValue("OK")),
+                };
+            });
+        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(call =>
+            {
+                string command = call.ArgAt<string>(0);
+                return command switch
+                {
+                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.INFO" => CreateExistingIndexInfoResult(includeSubjectField),
+                    "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
+                    _ => RedisResult.Create(new RedisValue("OK")),
+                };
+            });
     }
 
     private static bool HasEntry(IEnumerable<HashEntry> entries, string name, string value)
@@ -181,4 +234,47 @@ public class IndexSyntacticActivityTests
             ["priority"] = new("urgent", MetadataOrigin.Human, 1.0f),
         },
     };
+
+    private static RedisResult CreateExistingIndexInfoResult(bool includeSubjectField)
+    {
+        List<RedisResult> attributes =
+        [
+            CreateAttribute("content", "TEXT"),
+            CreateAttribute("sourceUriText", "TEXT"),
+            CreateAttribute("sourceTypeText", "TEXT"),
+            CreateAttribute("metadataText", "TEXT"),
+            CreateAttribute("sourceUri", "TAG"),
+            CreateAttribute("sourceType", "TAG"),
+            CreateAttribute("contentHash", "TAG"),
+            CreateAttribute("caseId", "TAG"),
+            CreateAttribute("embeddingProvider", "TAG"),
+        ];
+
+        if (includeSubjectField)
+        {
+            attributes.Add(CreateAttribute("cloudeventSubject", "TAG"));
+        }
+
+        return RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:mu:"))]),
+            ]),
+            RedisResult.Create(new RedisValue("attributes")),
+            RedisResult.Create([.. attributes]),
+        ]);
+    }
+
+    private static RedisResult CreateAttribute(string identifier, string type) => RedisResult.Create(
+    [
+        RedisResult.Create(new RedisValue("identifier")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("attribute")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("type")),
+        RedisResult.Create(new RedisValue(type)),
+    ]);
 }

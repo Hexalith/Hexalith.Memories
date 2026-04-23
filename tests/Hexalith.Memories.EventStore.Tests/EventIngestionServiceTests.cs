@@ -44,7 +44,8 @@ public sealed class EventIngestionServiceTests
         IEventIngestionTelemetry Telemetry,
         TenantEventRoutingOptions Options) Build(
             TenantEventRouteResolution? resolution = null,
-            bool preflightEnabled = true)
+            bool preflightEnabled = true,
+            IPreflightDedupStore? dedupOverride = null)
     {
         TenantEventRoutingOptions opts = new()
         {
@@ -63,9 +64,12 @@ public sealed class EventIngestionServiceTests
         scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => callInfo.ArgAt<string>(0));
 
-        IPreflightDedupStore dedup = Substitute.For<IPreflightDedupStore>();
-        dedup.TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
-            .Returns(PreflightReservationResult.Reserved);
+        IPreflightDedupStore dedup = dedupOverride ?? Substitute.For<IPreflightDedupStore>();
+        if (dedupOverride is null)
+        {
+            dedup.TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+                .Returns(PreflightReservationResult.Reserved);
+        }
 
         IEventIngestionTelemetry telemetry = Substitute.For<IEventIngestionTelemetry>();
 
@@ -178,6 +182,31 @@ public sealed class EventIngestionServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_ReleaseFailure_DoesNotBlockRetryWhenStoreFallsBackToFailOpen()
+    {
+        ReleaseFailureDedupStore dedup = new();
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, _, _, _) =
+            Build(dedupOverride: dedup);
+
+        int scheduleAttempts = 0;
+        scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                scheduleAttempts++;
+                return scheduleAttempts == 1
+                    ? throw new InvalidOperationException("dapr sidecar down")
+                    : callInfo.ArgAt<string>(0);
+            });
+
+        EventIngestionProcessResult first = await service.ProcessAsync(Envelope(), CancellationToken.None);
+        EventIngestionProcessResult second = await service.ProcessAsync(Envelope(), CancellationToken.None);
+
+        first.Outcome.ShouldBe(EventIngestionOutcome.ScheduleFailed);
+        second.Outcome.ShouldBe(EventIngestionOutcome.Accepted);
+        second.Response.InstanceId.ShouldBe(EventStoreDedupKey.Build("tenant-1", "case-1", "evt-1"));
+    }
+
+    [Fact]
     public async Task ProcessAsync_UnknownSource_ReturnsDropNoInstanceId()
     {
         (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, _, _, _) =
@@ -201,6 +230,20 @@ public sealed class EventIngestionServiceTests
 
         result.Outcome.ShouldBe(EventIngestionOutcome.TenantProvisioning);
         result.Response.InstanceId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ProcessAsync_RouteResolutionThrows_ReturnsRetryableScheduleFailedOutcome()
+    {
+        (EventIngestionService service, ITenantEventRouter router, IEventIngestionWorkflowScheduler scheduler, _, _, _) = Build();
+        router.ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<CancellationToken>())
+            .Returns<Task<TenantEventRouteResolution>>(_ => throw new InvalidOperationException("case lease timeout"));
+
+        EventIngestionProcessResult result = await service.ProcessAsync(Envelope(), CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.ScheduleFailed);
+        result.Response.Status.ShouldBe("routing-failed");
+        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -256,5 +299,21 @@ public sealed class EventIngestionServiceTests
 
         string expectedKey = EventStoreDedupKey.Build("tenant-1", "case-1", "evt-1");
         result.Response.InstanceId.ShouldBe(expectedKey);
+    }
+
+    private sealed class ReleaseFailureDedupStore : IPreflightDedupStore
+    {
+        private int _reserveAttempts;
+
+        public Task<PreflightReservationResult> TryReserveAsync(
+            string dedupKey,
+            TimeSpan ttl,
+            CancellationToken cancellationToken)
+            => Task.FromResult(++_reserveAttempts == 1
+                ? PreflightReservationResult.Reserved
+                : PreflightReservationResult.FailOpen);
+
+        public Task ReleaseAsync(string dedupKey, CancellationToken cancellationToken)
+            => throw new TimeoutException("redis unavailable");
     }
 }

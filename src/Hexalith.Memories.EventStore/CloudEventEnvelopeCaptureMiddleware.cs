@@ -7,6 +7,8 @@ namespace Hexalith.Memories.EventStore;
 
 using System.Text.Json;
 
+using Hexalith.Memories.Contracts.V1;
+
 using Microsoft.AspNetCore.Http;
 
 /// <summary>Captures the original structured CloudEvents JSON body before Dapr's CloudEvents middleware
@@ -29,17 +31,43 @@ public sealed class CloudEventEnvelopeCaptureMiddleware
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        if (ShouldCapture(context.Request))
+        bool shouldCapture = ShouldCapture(context.Request);
+        if (shouldCapture)
         {
             context.Request.EnableBuffering();
 
-            using JsonDocument document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
-                .ConfigureAwait(false);
-            context.Items[CapturedEnvelopeItemKey] = document.RootElement.Clone();
-            context.Request.Body.Position = 0;
+            try
+            {
+                using JsonDocument document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted)
+                    .ConfigureAwait(false);
+                context.Items[CapturedEnvelopeItemKey] = document.RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                // Let the controller parse the buffered body and return the canonical 400 INVALID_CLOUDEVENT
+                // response instead of failing the middleware pipeline with a 500.
+            }
+            finally
+            {
+                context.Request.Body.Position = 0;
+            }
         }
 
-        await _next(context).ConfigureAwait(false);
+        try
+        {
+            await _next(context).ConfigureAwait(false);
+        }
+        catch (JsonException ex) when (shouldCapture && !context.Response.HasStarted)
+        {
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await context.Response.WriteAsJsonAsync(
+                new ErrorResponse(
+                    Code: "INVALID_CLOUDEVENT",
+                    Message: ex.Message,
+                    Suggestion: "Ensure the request body is valid JSON and contains a CloudEvents envelope."),
+                cancellationToken: context.RequestAborted).ConfigureAwait(false);
+        }
     }
 
     private static bool ShouldCapture(HttpRequest request)
