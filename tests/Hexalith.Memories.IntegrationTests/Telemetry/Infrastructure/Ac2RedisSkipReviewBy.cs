@@ -19,8 +19,9 @@ using System;
 /// merge an extension that is already-expired (Task 7.4 regression guard).
 /// </para>
 /// <para>
-/// Tracking reference (replace with a real GitHub issue URL when the follow-up is filed): see Story 8.4
-/// Change Log review-fix note. As of the current review pass, no GitHub issue exists yet.
+/// Tracking reference: filed as GitHub issue #9 on 2026-04-22 and mirrored by follow-up Story 8.5
+/// (Redis OTEL Instrumentation &amp; AC #2 Hardening). When either closes, delete this helper + the
+/// matching tests and flip Story 8.4 AC #2 into a hard assertion.
 /// </para>
 /// </summary>
 internal static class Ac2RedisSkipReviewBy
@@ -33,8 +34,8 @@ internal static class Ac2RedisSkipReviewBy
     public static readonly DateOnly ReviewByDate = new(2026, 10, 1);
 
     /// <summary>Tracking reference for the Redis OTEL instrumentation work that flips this follow-up
-    /// into a hard assertion. Updated when a real GitHub issue is filed.</summary>
-    public const string TrackingReference = "UNFILED (no GitHub issue exists as of 2026-04-21)";
+    /// into a hard assertion.</summary>
+    public const string TrackingReference = "https://github.com/Hexalith/Hexalith.Memories/issues/9";
 
     /// <summary>Throws an <see cref="InvalidOperationException"/> with a triage diagnostic when
     /// the current UTC date is on or after <see cref="ReviewByDate"/>. Caller is the AC #2 test;
