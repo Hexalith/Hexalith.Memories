@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json;
 
 using Hexalith.Memories.ServiceDefaults.Health;
+using Hexalith.Memories.ServiceDefaults.Telemetry;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Builder;
@@ -15,13 +17,36 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using OpenTelemetry;
+using OpenTelemetry.Instrumentation.StackExchangeRedis;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+
+using StackExchange.Redis;
 
 namespace Hexalith.Memories.ServiceDefaults;
 
 public static class Extensions
 {
+    /// <summary>
+    /// Story 8.5 — keyed <see cref="IConnectionMultiplexer"/> service keys that the Redis OTEL
+    /// instrumentation subscribes to. Mirrors the registrations at
+    /// <c>src/Hexalith.Memories.Server/Program.cs</c>. Kept internal so shared
+    /// <see cref="AddServiceDefaults{TBuilder}(TBuilder)"/> remains the canonical public
+    /// composition entry while Tier-2 registration tests still share the same source-of-truth key
+    /// names via InternalsVisibleTo.
+    /// </summary>
+    internal const string RedisConnectionKey = "redis";
+
+    /// <summary>Story 8.5 — FalkorDB keyed <see cref="IConnectionMultiplexer"/> service key.</summary>
+    internal const string FalkorDbConnectionKey = "falkordb";
+
+    /// <summary>
+    /// Story 8.5 — flush interval applied to BOTH Redis OTEL instrumentation registrations.
+    /// See ADR-8.5-001 (e): 100 ms in all environments, no env-gated override. Upstream stores
+    /// the interval on a shared singleton; both keyed registrations must resolve to the same
+    /// value to avoid silent drain-thread divergence if a future refactor splits the delegate.
+    /// </summary>
+    internal static readonly TimeSpan RedisInstrumentationFlushInterval = TimeSpan.FromMilliseconds(100);
 
     public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
         where TBuilder : IHostApplicationBuilder
@@ -56,17 +81,144 @@ public static class Extensions
                 .AddHttpClientInstrumentation()
                 .AddRuntimeInstrumentation()
                 .AddMeter(MemoriesMeter.Name))
-            .WithTracing(tracing => tracing
-                .AddSource(builder.Environment.ApplicationName)
-                .AddSource(MemoriesActivitySource.SourceName)
-                .AddAspNetCoreInstrumentation(tracing =>
-                    tracing.Filter = ShouldTraceHttpRequest)
-                .AddHttpClientInstrumentation());
+            .WithTracing(tracing =>
+            {
+                _ = tracing
+                    .AddSource(builder.Environment.ApplicationName)
+                    .AddSource(MemoriesActivitySource.SourceName)
+                    .AddAspNetCoreInstrumentation(aspnet =>
+                        aspnet.Filter = ShouldTraceHttpRequest)
+                    .AddHttpClientInstrumentation();
+
+                // Story 8.5 — Redis OTEL instrumentation. The 1.15.1-beta.1 upstream package does
+                // not expose a `AddRedisInstrumentation(serviceKey)` keyed-DI overload (that was
+                // the spec's original assumption, since rejected). Instead:
+                //   1. AddRedisInstrumentation(configure) registers the source + FlushInterval.
+                //   2. ConfigureRedisInstrumentation(...) is called post-TracerProvider-build with
+                //      the StackExchangeRedisInstrumentation singleton; we resolve both keyed
+                //      IConnectionMultiplexer instances from DI and call AddConnection per key.
+                //
+                // The DI-guard pattern from ADR-8.5-001 (f) is preserved: an AddInstrumentation
+                // callback per key throws InvalidOperationException at TracerProvider.Build() if
+                // the expected keyed multiplexer is absent, guarding against the silent-drop path
+                // that would otherwise occur if the post-build ConfigureRedisInstrumentation
+                // simply observed a null key.
+                AddRedisKeyedConnectionGuard(tracing, RedisConnectionKey);
+                AddRedisKeyedConnectionGuard(tracing, FalkorDbConnectionKey);
+                _ = tracing.AddRedisInstrumentation(ConfigureRedisInstrumentation);
+
+                // Story 8.5 ADR-8.5-001 (h) Path A — rewrite db.system tags on FalkorDB spans so
+                // APM backends don't misclassify graph queries as generic Redis commands. Resolve
+                // the acceptable FalkorDB hostnames from the keyed multiplexer so a future host /
+                // alias change does not silently disable the rewrite. Placed AFTER the Redis
+                // instrumentation registrations but BEFORE AddOpenTelemetryExporters so
+                // processor-vs-exporter order is deterministic (the rewrite lands before any
+                // exporter sees the activity).
+                _ = tracing.AddProcessor(sp => new FalkorDbSemanticAttributeProcessor(
+                    ResolveFalkorDbHostnames(sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey))));
+            });
+
+        // Story 8.5 — add both keyed connections to the shared Redis instrumentation singleton
+        // once the TracerProvider has been built. ConfigureRedisInstrumentation is invoked during
+        // service resolution of the TracerProvider, which is AFTER the container has been built,
+        // so both keyed IConnectionMultiplexer instances are available.
+        _ = builder.Services
+            .AddOpenTelemetry()
+            .WithTracing(tracing => tracing.ConfigureRedisInstrumentation((sp, instrumentation) =>
+            {
+                IConnectionMultiplexer redis = sp.GetRequiredKeyedService<IConnectionMultiplexer>(RedisConnectionKey);
+                IConnectionMultiplexer falkordb = sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey);
+                instrumentation.AddConnection(RedisConnectionKey, redis);
+                instrumentation.AddConnection(FalkorDbConnectionKey, falkordb);
+            }));
 
         _ = builder.AddOpenTelemetryExporters();
 
         return builder;
     }
+
+    /// <summary>
+    /// Story 8.5 ADR-8.5-001 (e) — the single <c>FlushInterval</c> delegate passed to BOTH keyed
+    /// Redis OTEL registrations. Exposed internal so Tier-2 tests can invoke it against a fresh
+    /// <see cref="StackExchangeRedisInstrumentationOptions"/> instance per key and assert the
+    /// invariant that both multiplexers resolve to the same flush cadence (guards against a
+    /// future refactor that wires distinct per-key delegates).
+    /// </summary>
+    internal static void ConfigureRedisInstrumentation(StackExchangeRedisInstrumentationOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.FlushInterval = RedisInstrumentationFlushInterval;
+    }
+
+    /// <summary>
+    /// Story 8.5 ADR-8.5-001 (f) — DI-keyed-service guard that fires at TracerProvider build time.
+    /// Upstream <c>ConfigureRedisInstrumentation</c> accepts connections post-build, but by then
+    /// a missing keyed <see cref="IConnectionMultiplexer"/> would either silently drop spans
+    /// (if guarded with <c>GetKeyedService</c>) or throw inside a processor callback (if guarded
+    /// with <c>GetRequiredKeyedService</c>). This helper moves the check EARLIER, to the
+    /// <c>TracerProvider.Build()</c> point, so a misconfigured deployment fails fast at startup
+    /// with a descriptive message instead of at the first Redis call.
+    /// </summary>
+    /// <remarks>
+    /// The <c>AddInstrumentation</c> callback returns a private no-op guard handle as the
+    /// "instrumentation" payload. That keeps the diagnostic surface meaningful without exposing or
+    /// risking disposal of the live multiplexer that the real Redis instrumentation later uses.
+    /// </remarks>
+    internal static void AddRedisKeyedConnectionGuard(
+        TracerProviderBuilder tracing,
+        string serviceKey)
+    {
+        ArgumentNullException.ThrowIfNull(tracing);
+        ArgumentException.ThrowIfNullOrEmpty(serviceKey);
+
+        _ = tracing.AddInstrumentation(sp =>
+        {
+            IConnectionMultiplexer? mux = sp.GetKeyedService<IConnectionMultiplexer>(serviceKey);
+            if (mux is null)
+            {
+                throw new InvalidOperationException(
+                    $"Keyed IConnectionMultiplexer '{serviceKey}' not registered — "
+                    + "Story 8.5 Redis OTEL needs both 'redis' and 'falkordb' keys.");
+            }
+
+            return new RedisKeyedConnectionGuardHandle(serviceKey);
+        });
+    }
+
+    private static IReadOnlyCollection<string> ResolveFalkorDbHostnames(IConnectionMultiplexer multiplexer)
+    {
+        ArgumentNullException.ThrowIfNull(multiplexer);
+
+        HashSet<string> hostnames = [FalkorDbSemanticAttributeProcessor.DefaultFalkorDbHostname];
+        foreach (EndPoint endpoint in multiplexer.GetEndPoints(configuredOnly: true))
+        {
+            if (TryGetEndpointHost(endpoint) is string host)
+            {
+                _ = hostnames.Add(host);
+            }
+        }
+
+        if (hostnames.Count == 1)
+        {
+            foreach (EndPoint endpoint in multiplexer.GetEndPoints())
+            {
+                if (TryGetEndpointHost(endpoint) is string host)
+                {
+                    _ = hostnames.Add(host);
+                }
+            }
+        }
+
+        return [.. hostnames];
+    }
+
+    private static string? TryGetEndpointHost(EndPoint endpoint)
+        => endpoint switch
+        {
+            DnsEndPoint dns => dns.Host,
+            IPEndPoint ip => ip.Address.ToString(),
+            _ => null,
+        };
 
     /// <summary>
     /// Returns <c>false</c> when the request path targets one of the health probe endpoints
@@ -110,7 +262,9 @@ public static class Extensions
                 .WithTracing(tracing => tracing.AddProcessor(sp =>
                 {
                     ICollection<Activity>? collectorActivities = sp.GetService<IActivityCollector>()?.Activities;
-                    return new IntegrationActivityProcessor(collectorActivities);
+                    ILogger<IntegrationActivityProcessor> logger =
+                        sp.GetRequiredService<ILogger<IntegrationActivityProcessor>>();
+                    return new IntegrationActivityProcessor(collectorActivities, logger);
                 }));
         }
         else if (!string.IsNullOrEmpty(inMemoryFlag))
@@ -130,19 +284,50 @@ public static class Extensions
     /// collection; regardless of collector presence it emits test-only server activity breadcrumbs to
     /// stderr for the server-side spans the telemetry integration tests need to observe.
     /// </summary>
-    private sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
+    /// <remarks>
+    /// Story 8.5 widened the breadcrumb filter to include the StackExchange.Redis OTEL source, but
+    /// only when the Redis span's parent chain reaches a <see cref="MemoriesActivitySource"/> or
+    /// AspNetCore ancestor. Orphan Redis activity (connection-pool housekeeping, idle PING traffic)
+    /// is silently dropped from stderr output; a DEBUG log entry explains why on drop so operators
+    /// can triage "why didn't my Redis span show up?" without code spelunking.
+    /// </remarks>
+    internal sealed class IntegrationActivityProcessor : BaseProcessor<Activity>
     {
-        private const string AspNetCoreSourceName = "Microsoft.AspNetCore";
-        private readonly ICollection<Activity>? _target;
+        internal const string AspNetCoreSourceName = "Microsoft.AspNetCore";
 
-        public IntegrationActivityProcessor(ICollection<Activity>? target) => _target = target;
+        /// <summary>
+        /// Story 8.5 — StackExchange.Redis OTEL ActivitySource name. Matches the upstream
+        /// <c>StackExchangeRedisConnectionInstrumentation.ActivitySourceName</c> constant
+        /// (assembly-derived).
+        /// </summary>
+        internal const string RedisSourceName = "OpenTelemetry.Instrumentation.StackExchangeRedis";
+
+        /// <summary>Story 8.5 — max parent-chain traversal depth. Mirrors Story 8.4's
+        /// <c>AssertParentChainReachesCliRoot</c> max-depth convention.</summary>
+        internal const int MaxParentChainDepth = 16;
+
+        private readonly ICollection<Activity>? _target;
+        private readonly ILogger<IntegrationActivityProcessor>? _logger;
+
+        public IntegrationActivityProcessor(ICollection<Activity>? target)
+            : this(target, logger: null)
+        {
+        }
+
+        public IntegrationActivityProcessor(
+            ICollection<Activity>? target,
+            ILogger<IntegrationActivityProcessor>? logger)
+        {
+            _target = target;
+            _logger = logger;
+        }
 
         public override void OnEnd(Activity data)
         {
             ArgumentNullException.ThrowIfNull(data);
             _target?.Add(data);
 
-            if (!ShouldEmitActivityBreadcrumb(data))
+            if (!ShouldEmitActivityBreadcrumb(data, _logger))
             {
                 return;
             }
@@ -172,16 +357,118 @@ public static class Extensions
                 kind = data.Kind.ToString(),
             });
 
-        private static bool ShouldEmitActivityBreadcrumb(Activity data)
-            => string.Equals(data.Source.Name, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
-                || (data.Kind == ActivityKind.Server
-                    && string.Equals(data.Source.Name, AspNetCoreSourceName, StringComparison.Ordinal));
+        /// <summary>
+        /// Story 8.4 + 8.5 — decides whether an activity should emit a stderr breadcrumb.
+        /// <para>
+        /// Story 8.4 emits for the Memories ActivitySource OR AspNetCore Server spans. Story 8.5
+        /// extends this to the Redis OTEL source, but ONLY when the parent chain reaches an
+        /// ancestor in the Memories or AspNetCore source set. Housekeeping Redis activity
+        /// (connection-pool maintenance, idle PINGs) lacks such an ancestor and is silently
+        /// dropped from stderr output; the optional <paramref name="logger"/> receives a DEBUG
+        /// entry explaining the drop reason.
+        /// </para>
+        /// </summary>
+        internal static bool ShouldEmitActivityBreadcrumb(
+            Activity data,
+            ILogger<IntegrationActivityProcessor>? logger = null)
+        {
+            if (string.Equals(data.Source.Name, MemoriesActivitySource.SourceName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (data.Kind == ActivityKind.Server
+                && string.Equals(data.Source.Name, AspNetCoreSourceName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.Equals(data.Source.Name, RedisSourceName, StringComparison.Ordinal))
+            {
+                return ParentChainReachesMemoriesOrAspNetCore(data, logger);
+            }
+
+            return false;
+        }
+
+        private static bool ParentChainReachesMemoriesOrAspNetCore(
+            Activity activity,
+            ILogger<IntegrationActivityProcessor>? logger)
+        {
+            Activity? parent = activity.Parent;
+            if (parent is null)
+            {
+                LogBreadcrumbDrop(logger, activity, reason: "orphan_no_parent", walkedDepth: 0);
+                return false;
+            }
+
+            HashSet<ActivitySpanId> visited = [];
+            int depth = 0;
+            while (parent is not null)
+            {
+                if (!visited.Add(parent.SpanId))
+                {
+                    // Cycle detection — treat as "not reachable" and drop.
+                    LogBreadcrumbDrop(logger, activity, reason: "parent_chain_not_reachable", walkedDepth: depth);
+                    return false;
+                }
+
+                if (++depth > MaxParentChainDepth)
+                {
+                    LogBreadcrumbDrop(logger, activity, reason: "depth_exceeded_16", walkedDepth: depth);
+                    return false;
+                }
+
+                string parentSourceName = parent.Source.Name;
+                if (string.Equals(parentSourceName, MemoriesActivitySource.SourceName, StringComparison.Ordinal)
+                    || string.Equals(parentSourceName, AspNetCoreSourceName, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                parent = parent.Parent;
+            }
+
+            LogBreadcrumbDrop(logger, activity, reason: "parent_chain_not_reachable", walkedDepth: depth);
+            return false;
+        }
+
+        private static void LogBreadcrumbDrop(
+            ILogger<IntegrationActivityProcessor>? logger,
+            Activity activity,
+            string reason,
+            int walkedDepth)
+        {
+            if (logger is null || !logger.IsEnabled(LogLevel.Debug))
+            {
+                return;
+            }
+
+            logger.LogDebug(
+                "redis breadcrumb dropped: {Reason} operation={OperationName} source={SourceName} depth={WalkedDepth}",
+                reason,
+                activity.OperationName,
+                activity.Source.Name,
+                walkedDepth);
+        }
 
         private static string? NormalizeSpanId(ActivitySpanId spanId)
         {
             string value = spanId.ToString();
             return value == InMemoryTelemetryEnvironment.EmptySpanIdHex ? null : value;
         }
+    }
+
+    private sealed class RedisKeyedConnectionGuardHandle(string serviceKey) : IDisposable
+    {
+        public string ServiceKey { get; } = serviceKey;
+
+        public void Dispose()
+        {
+        }
+
+        public override string ToString()
+            => $"RedisKeyedConnectionGuard({ServiceKey})";
     }
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)

@@ -117,4 +117,12 @@
 ## Deferred from: code review of 8-4-end-to-end-telemetry-integration-tests (2026-04-22)
 
 - **Activity / HttpResponseMessage using-scope pattern inconsistency in retry test** — `SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus` uses mixed `using` statement vs `using` statement scopes for `Activity retryRoot` vs `Activity secondAttempt`; the pattern is correct, just inconsistent. Pre-existing style nit, not caused by 8.4 scope boundary.
-  <!-- End of deferred items -->
+
+## Deferred from: 8-5-redis-otel-instrumentation (2026-04-23)
+
+- **`OpenTelemetry.Instrumentation.StackExchangeRedis` prerelease pin — upgrade-on-GA trigger.** Package pinned at `1.15.1-beta.1` in `Directory.Packages.props` per ADR-8.5-001 (b). Revisit this pin within **14 days of `1.15.0`** (non-prerelease) shipping on nuget.org, **OR by 2026-09-30**, whichever comes first. Owner: Memories release-manager rotation. Review-by: **2026-09-30**. On review, either (a) bump to the GA version and remove the `-beta.N` tag from `Directory.Packages.props` + update `packageSourceMapping` comment, or (b) file a new deferred-work entry with a fresh review-by if GA is still not shipped. Tracking: ADR-8.5-001 (g). [Directory.Packages.props, NuGet.config, docs/dev/telemetry.md ADR-8.5-001]
+
+## Deferred from: code review of 8-5-redis-otel-instrumentation (2026-04-23)
+
+- **Malformed or truncated Redis breadcrumbs are still silently dropped by `ServerActivityStreamReader`.** `TryParse(...)` catches `JsonException` and returns `null`, so the Story 8.5 hard Redis-span assertion can report a missing span when the real failure is capture corruption / truncation. Deferred as pre-existing review debt in the existing stderr-breadcrumb reader path. [tests/Hexalith.Memories.IntegrationTests/Telemetry/Infrastructure/ServerActivityStreamReader.cs]
+    <!-- End of deferred items -->

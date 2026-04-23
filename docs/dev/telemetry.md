@@ -352,6 +352,16 @@ methods. For per-PR runs, exclude the Tier-3 lane: `--filter "Category!=Integrat
   `__hexalith_activity__{...}` stderr breadcrumbs emitted for relevant server spans when
   `HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1`. Proves the deployed server process created the
   AspNetCore inbound span and the `memories.search` activity for the same trace the CLI started.
+- **Redis client span (via the same `ServerActivityStreamReader`)** — the Story 8.5 Redis OTEL
+  instrumentation emits spans on the `OpenTelemetry.Instrumentation.StackExchangeRedis` source
+  for every RediSearch / Redis Vector / FalkorDB-protocol command. The breadcrumb filter at
+  `IntegrationActivityProcessor.ShouldEmitActivityBreadcrumb` accepts these spans only when the
+  parent chain reaches a Memories or AspNetCore ancestor (housekeeping PINGs are silently
+  dropped; a DEBUG log entry records the drop reason for triage). Proves per-backend span
+  attribution end-to-end: operators can bucket search latency into BM25 (RediSearch) vs vector
+  (Redis Vector) vs graph (FalkorDB) lanes in Grafana / Datadog / the Aspire dashboard instead
+  of guessing from ad-hoc post-hoc logging. Story 8.4 AC #2 is a hard assertion via this signal
+  from Story 8.5 forward.
 - **Server stdout audit log line (`AuditEventStreamReader`)** — parses Aspire-captured Server
   stdout JSON and extracts the `AccessTelemetryEvent` ToString payload (AddJsonConsole does not
   natively destructure record-typed `{@AuditEvent}` placeholders to JSON, so the reader extracts
@@ -390,6 +400,81 @@ methods. For per-PR runs, exclude the Tier-3 lane: `--filter "Category!=Integrat
   resolving an optional `IActivityCollector` from DI and emits server-side activity breadcrumbs for
   the telemetry integration tests. Production deployments leave this unset; AC #5 regression guard
   test pins that "unset" means zero extra in-memory/test-only telemetry processors.
+
+---
+
+## Verify Redis spans locally (Story 8.5)
+
+Without spinning up the full Tier-3 suite, a developer can sanity-check Redis OTEL instrumentation
+against a running Aspire stack in five steps:
+
+1. **Boot the Aspire stack** — `dotnet run --project src/Hexalith.Memories.AppHost`. The AppHost
+   prints the Aspire dashboard URL on startup (typically `http://localhost:18888`).
+2. **Trigger a Redis-path request** — in a separate terminal:
+
+    ```bash
+    dotnet run --project src/Hexalith.Memories.Cli -- search query \
+        --tenant acme \
+        --query canary \
+        --axis syntactic
+    ```
+
+    (Or hit the REST endpoint directly: `curl http://localhost:5000/api/search?tenant=acme&query=canary&axis=syntactic`.)
+
+3. **Open the Aspire dashboard Traces view** at the URL printed on boot, pick the most recent
+   trace, and expand the child spans. You should see at least one span per backend Redis call.
+4. **Expected span shape** (text-diffable YAML):
+
+    ```yaml
+    Source.Name: OpenTelemetry.Instrumentation.StackExchangeRedis
+    OperationName: OpenTelemetry.Instrumentation.StackExchangeRedis.Execute
+    tags:
+        db.system: redis # FalkorDB spans rewrite to "falkordb" via FalkorDbSemanticAttributeProcessor
+        db.system.name: redis # (same rewrite applies)
+        db.redis.database_index: 0
+    TraceId: <same as parent HTTP-in span>
+    parent.chain: memories.cli.invoke → System.Net.Http → Microsoft.AspNetCore → memories.search → (this Redis span)
+    ```
+
+5. **Troubleshooting — "No Redis spans appear"**:
+    - Check `AddServiceDefaults(...)` is invoked by the host (`Program.cs`).
+    - Check BOTH keyed `IConnectionMultiplexer` registrations exist at startup (`redis` +
+      `falkordb` in `src/Hexalith.Memories.Server/Program.cs`).
+    - Check the DI-guard didn't throw at startup — scan the server stdout for
+      `"Keyed IConnectionMultiplexer"` (the eager-fail message from
+      `Extensions.AddRedisKeyedConnectionGuard`).
+    - If the server boots clean but spans are still missing, check the breadcrumb filter's DEBUG
+      log output (`IntegrationActivityProcessor` emits a `redis breadcrumb dropped: {reason} ...`
+      line when a Redis activity's parent chain doesn't reach a Memories or AspNetCore ancestor).
+
+---
+
+## Instrumentation Inventory (Story 8.5 Task 4.3)
+
+Canonical code ↔ doc parity table for every OpenTelemetry `ActivitySource` the Memories Server
+subscribes to. A Tier-2 test (`InstrumentationInventoryTests`) parses this table on every build
+and asserts each `ActivitySource.Name` resolves `ActivitySamplingResult.AllData` on the built
+`TracerProvider` — the next instrumentation gap fails a unit test instead of a Tier-3 assertion
+six months after ship.
+
+| ActivitySource.Name                                       | Registration site (`file:line`)                                                             | Coverage                                                             | Tier-2 registration test                                                                        |
+| :-------------------------------------------------------- | :------------------------------------------------------------------------------------------ | :------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------- |
+| `Microsoft.AspNetCore`                                    | `ServiceDefaults/Extensions.cs` `AddAspNetCoreInstrumentation`                              | Inbound HTTP request spans on the Memories Server                    | `OpenTelemetryRegistrationTests.ShouldTraceHttpRequest_IncludesApplicationEndpoints`            |
+| `System.Net.Http`                                         | `ServiceDefaults/Extensions.cs` `AddHttpClientInstrumentation`                              | Outbound HttpClient spans (CLI → Server + any Server-side outbound)  | `TracePropagationNoDockerTests` (Tier-2 WAF)                                                    |
+| `Hexalith.Memories` (`MemoriesActivitySource.SourceName`) | `ServiceDefaults/Extensions.cs` `AddSource(MemoriesActivitySource.SourceName)`              | Application-level spans (`memories.search`, `memories.ingest`, etc.) | `OpenTelemetryRegistrationTests.ConfigureOpenTelemetry_RegistersMemoriesActivitySource_Runtime` |
+| `OpenTelemetry.Instrumentation.StackExchangeRedis`        | `ServiceDefaults/Extensions.cs` `AddRedisInstrumentation` + `ConfigureRedisInstrumentation` | RediSearch + Redis Vector + FalkorDB-protocol command spans          | `RedisInstrumentationRegistrationTests.TracerRegistration_IncludesRedisInstrumentationSource`   |
+| `<Environment.ApplicationName>` (default source)          | `ServiceDefaults/Extensions.cs` `AddSource(builder.Environment.ApplicationName)`            | Default application-named spans for opt-in emitters                  | `OpenTelemetryRegistrationTests.AddServiceDefaults_ProducesBuildableContainer`                  |
+
+Adding a new instrumentation:
+
+1. Register the `ActivitySource` (or call the instrumentation package's `AddXxxInstrumentation()`
+   extension) inside `ConfigureOpenTelemetry`'s `WithTracing` lambda.
+2. Add a row to the table above.
+3. Add a Tier-2 registration test whose name matches the row's last column.
+4. Run `InstrumentationInventoryTests` — the parity check must stay green.
+
+The parity test tolerates minor whitespace changes as long as column names stay stable; see the
+test source for the exact regex used to parse the table.
 
 ---
 
@@ -467,6 +552,173 @@ not apply.
 **Future re-evaluation:** if Aspire / .NET ships an in-process project-resource execution mode (or
 Microsoft.Extensions.Logging adds native record-destructuring to AddJsonConsole), revisit this ADR
 and consider re-splitting the capture path per the original Rev 0.5 framing.
+
+---
+
+## ADR-8.5-001 — Redis OTEL instrumentation package + registration shape
+
+**Status:** Accepted (2026-04-23, Story 8.5). **Decision:** register
+`OpenTelemetry.Instrumentation.StackExchangeRedis 1.15.1-beta.1` on the Memories Server's tracer
+pipeline via the shared `AddServiceDefaults()` / `ConfigureOpenTelemetry()` path using one
+`AddRedisInstrumentation(ConfigureRedisInstrumentation)` call plus a post-build
+`ConfigureRedisInstrumentation((sp, instrumentation) => ...)` callback that attaches both keyed
+`IConnectionMultiplexer` instances (`"redis"` + `"falkordb"`). Each key is fronted by a
+DI-keyed-service guard that throws `InvalidOperationException` at `TracerProvider.Build()` when
+the expected keyed multiplexer is absent. Ships Story 8.4 AC #2 as a hard end-to-end assertion.
+
+### (a) Package choice
+
+**Picked:** `OpenTelemetry.Instrumentation.StackExchangeRedis` (official OpenTelemetry contrib
+package; targets `net8.0` + `net10.0`; requires `StackExchange.Redis >= 2.6.122`, satisfied by
+Hexalith's pinned `2.12.4`).
+
+**Rejected:** `StackExchange.Redis.Extensions.OpenTelemetry`. Rationale: tracks the
+`StackExchange.Redis.Extensions` higher-level wrapper library — which Hexalith does **not** use —
+so adopting it would drag an unused dependency surface into the Server composition for no
+instrumentation benefit.
+
+### (b) Prerelease tag + supply-chain mitigation
+
+Version `1.15.1-beta.1` is the latest release as of 2026-04-21. We explicitly accept the `-beta.N`
+tag because the upstream GA window for the 1.15 series has not opened yet, and deferring Story 8.5
+until GA would let Story 8.4's AC #2 soft-skip rot indefinitely.
+
+Supply-chain mitigations:
+
+1. **Exact version pin** in `Directory.Packages.props` (no floating `*`, no `[1.15, 2.0)` range).
+2. **`NuGet.config` with `packageSourceMapping`** at the repo root. Pins all `OpenTelemetry.*`
+   packages to the official `nuget.org` source. During the prerelease window, a typosquat-adjacent
+   attacker uploading a malicious `OpenTelemetry.Instrumentation.StackExchangeRedis.Extensions`
+   (note the trailing `.Extensions`) to a secondary feed would otherwise resolve before the
+   legitimate package if the feed were ever added. Source-mapping forecloses that route.
+3. **`NuGet.config` also sets `signatureValidationMode=require` and trusts the `nuget.org`
+   repository signer** via the current official repository-certificate fingerprints published in
+   the NuGet docs. That closes the unsigned / unknown-signer gap the prerelease window would
+   otherwise leave open. When nuget.org rotates repository certificates, refresh the
+   `trustedSigners` block from the official docs (or sync it with
+   `nuget trusted-signers sync -Name nuget.org`) before the next restore.
+
+### (c) ActivitySource + OperationName pins
+
+- **`ActivitySource.Name`** (verified against upstream
+  `StackExchangeRedisConnectionInstrumentation.cs` — `Assembly.GetName().Name`):
+  `"OpenTelemetry.Instrumentation.StackExchangeRedis"`.
+- **Span `OperationName`**: `"OpenTelemetry.Instrumentation.StackExchangeRedis.Execute"`.
+
+Tier-2 tests MUST pin the source name as a constant; Tier-3 tests MUST assert
+`activity.Source.Name == "OpenTelemetry.Instrumentation.StackExchangeRedis"` verbatim. Upstream
+renames ship as major-version bumps, so pinning as a string is safe between minor releases.
+
+### (d) Keyed-services registration pattern
+
+Hexalith registers two keyed `IConnectionMultiplexer` entries (`"redis"` → RediSearch + Redis
+Vector; `"falkordb"` → the Redis-protocol-speaking graph DB). The instrumentation attaches
+per-multiplexer, so **both** must be registered.
+
+The original story spec assumed a
+`AddRedisInstrumentation(object serviceKey, Action<StackExchangeRedisInstrumentationOptions>)`
+keyed-DI overload — that overload does **not** exist in `1.15.1-beta.1`. Pinned registration
+shape:
+
+1. `tracing.AddRedisInstrumentation(ConfigureRedisInstrumentation)` — registers the
+   `"OpenTelemetry.Instrumentation.StackExchangeRedis"` ActivitySource and the shared
+   `StackExchangeRedisInstrumentation` singleton with the `FlushInterval = 100ms` options from
+   (e).
+2. `tracing.ConfigureRedisInstrumentation((sp, instrumentation) => { ... })` — called during
+   `TracerProvider` service resolution. Resolves BOTH keyed `IConnectionMultiplexer` instances
+   via `sp.GetRequiredKeyedService<IConnectionMultiplexer>(key)` and calls
+   `instrumentation.AddConnection(key, mux)` for each.
+
+An explicit top-level `AddSource("OpenTelemetry.Instrumentation.StackExchangeRedis")` is NOT
+needed — `AddRedisInstrumentation` does it internally.
+
+### (e) Flush-semantics policy — 100 ms in ALL environments
+
+`FlushInterval = TimeSpan.FromMilliseconds(100)` in both production and test. The originally
+drafted env-gated test-only override (keyed on `InMemoryTelemetryEnvironment.EnvVar`) was dropped
+as unnecessary config surface. Production trivially absorbs a 10Hz drain-thread wake per
+multiplexer; coupling the Redis flush gate to a test-only env var would leak into any future
+non-Tier-3 in-memory path and create a second way for the two values to diverge.
+
+The shared `ConfigureRedisInstrumentation(StackExchangeRedisInstrumentationOptions options)`
+callback sets `FlushInterval = TimeSpan.FromMilliseconds(100)` and is passed to
+`AddRedisInstrumentation(ConfigureRedisInstrumentation)`. Task 2.4(e) pins
+the invariant that both keyed connections are attached under that same `FlushInterval = 100ms`
+policy — this guards against a future refactor that wires divergent callbacks or a different
+post-build attachment path even though upstream stores `FlushInterval` on a shared singleton.
+
+### (f) Missing-key eager-fail discipline — DI-guard path
+
+The shipped `ConfigureRedisInstrumentation((sp, instrumentation) => ...)` callback runs during
+`TracerProvider` service resolution, after DI is built. A misconfiguration that drops the
+`falkordb` registration would therefore otherwise surface late (or regress to a silent skip if a
+future refactor weakened the keyed lookup).
+
+**Pinned remediation:** `ConfigureOpenTelemetry` calls `AddRedisKeyedConnectionGuard(tracing,
+key)` once per keyed connection BEFORE the `AddRedisInstrumentation(ConfigureRedisInstrumentation)`
+call. The guard adds a DI-resolution callback via `tracing.AddInstrumentation(sp => ...)` that
+asserts `sp.GetKeyedService<IConnectionMultiplexer>(serviceKey) is not null` and throws
+`InvalidOperationException($"Keyed IConnectionMultiplexer '{serviceKey}' not registered — Story
+8.5 Redis OTEL needs both 'redis' and 'falkordb' keys")` on miss. The callback returns the
+private no-op guard handle as the "instrumentation" payload — meaningful in diagnostic surfaces,
+but detached from the live multiplexer so the guard cannot expose or dispose the real connection.
+
+The subsequent `ConfigureRedisInstrumentation((sp, instrumentation) => { ... })` callback
+resolves the two keyed multiplexers via `GetRequiredKeyedService` and calls
+`instrumentation.AddConnection(key, mux)`. Because the guard fires first (at the same
+`TracerProvider.Build()` point), a missing key surfaces the descriptive message from
+`AddRedisKeyedConnectionGuard` rather than the less-informative `InvalidOperationException`
+that `GetRequiredKeyedService` would throw.
+
+The "rely on upstream-native throw" path is **REJECTED** because upstream is silent-null today;
+test class `OpenTelemetryRegistrationTests.TracerRegistration_MissingKeyedMultiplexer_FailsEagerly`
+pins the DI-guard behavior, and a companion integration test exercises the canonical public entry
+(`AddServiceDefaults` → `Build()`) so a future refactor that splits the guard into a separate
+extension cannot leave it unreachable.
+
+### (g) Upgrade-on-GA trigger (dated, not loose)
+
+Revisit this prerelease pin within **14 days of `OpenTelemetry.Instrumentation.StackExchangeRedis
+1.15.0`** (non-prerelease) shipping on nuget.org, **OR** by **2026-09-30**, whichever comes first.
+Tracking lives in `_bmad-output/implementation-artifacts/deferred-work.md` (not a loose
+`// TODO:` code comment — the loose-comment form was explicitly rejected). Owner:
+Memories release-manager rotation; review-by date: `2026-09-30`.
+
+### (h) FalkorDB `db.system` semantic-conventions debt — Path A (ship now)
+
+The instrumentation tags BOTH `redis` and `falkordb` connections with `db.system=redis` and
+`db.system.name=redis`. Upstream cannot distinguish FalkorDB from Redis at the protocol level
+(FalkorDB speaks the Redis wire protocol). Without remediation, APM backends (Honeycomb,
+Datadog, Grafana Tempo) would misclassify FalkorDB graph queries as generic Redis commands.
+
+**Pinned path — Path A (ship now):** add `FalkorDbSemanticAttributeProcessor : BaseProcessor<Activity>`
+in `src/Hexalith.Memories.ServiceDefaults/Telemetry/`. On `OnEnd`, inspect
+`activity.GetTagItem("server.address")` (with `net.peer.name` fallback). If the value matches the
+configured FalkorDB host set (default `"falkordb"` plus any aliases / endpoint hosts resolved from
+the keyed FalkorDB multiplexer), rewrite `db.system` and `db.system.name` to `"falkordb"`.
+
+The processor is registered **inside** the `WithTracing` lambda via
+`tracing.AddProcessor(sp => new FalkorDbSemanticAttributeProcessor(ResolveFalkorDbHostnames(...)))`,
+placed AFTER both `AddRedisKeyedConnectionGuard` calls but BEFORE
+`builder.AddOpenTelemetryExporters()`. Co-locating
+the processor registration inside the same lambda guarantees deterministic processor-vs-exporter
+order — a third-party processor registered via the parallel
+`builder.Services.ConfigureOpenTelemetryTracerProvider(...)` extension could otherwise finalize
+the activity before the FalkorDB rewrite fires.
+
+**Path B (documented debt) — REJECTED** because APM misclassification is operator-visible and
+cheap to fix now; ~80 lines + 5 unit tests (rewrite-hit / alias-hit / rewrite-miss /
+non-Redis-source skip / processor-order) is a
+better trade than deferring to 2026-09-30 per the Path B alternative framing in Task 2.7.
+
+### (i) Conservative attribution shape — ≥1 Redis span
+
+End-to-end tests assert **at least one** Redis-source activity per captured trace, not per-keyed
+connection. This is the cheaper assertion and avoids Tier-3 flake when a test scenario happens to
+route entirely through RediSearch without touching FalkorDB (or vice versa). Per-connection
+attribution (≥1 span per keyed connection) becomes a follow-up if operator feedback demands it;
+`server.address` + `db.system` (post-Path-A) are already the canonical discriminators when the
+operator wants to split the backends in Grafana / Datadog.
 
 ---
 

@@ -41,10 +41,11 @@ using Xunit.Abstractions;
 /// evidence.
 /// </para>
 /// <para>
-/// AC #2 (optional Redis OTEL instrumentation) is informational-only in cross-process mode (the
-/// in-test-process tracer cannot reflect on the Server's TracerProvider). The accompanying
-/// <c>Ac2SkipReviewByTests</c> unit class enforces the self-expiring review-by date so the
-/// informational status cannot silently persist forever (Task 7).
+/// Story 8.5: AC #2 was flipped from a self-expiring soft-skip to a hard assertion on the
+/// Redis-span capture path. The CliSearch end-to-end test now asserts at least one captured
+/// Redis-source activity shares the CLI-root TraceId and has a parent chain reaching the CLI root
+/// span. The retired <c>Ac2RedisSkipReviewBy</c>/<c>Ac2SkipReviewByTests</c> helpers are deleted;
+/// their tracking link (GitHub issue #9) is closed by this story.
 /// </para>
 /// <para>
 /// Lane: <c>[Trait("Category", "Integration")]</c>. Excluded from per-PR runs via
@@ -56,6 +57,14 @@ using Xunit.Abstractions;
 public sealed class AspireEndToEndTraceTests
 {
     private const string SearchOperationType = "search";
+
+    /// <summary>
+    /// Story 8.5 — upstream StackExchange.Redis OTEL ActivitySource name
+    /// (<c>StackExchangeRedisConnectionInstrumentation.ActivitySourceName</c>, assembly-derived).
+    /// Pinned as a constant so a future upstream rename surfaces here as a compile break rather
+    /// than a silently dropped assertion.
+    /// </summary>
+    private const string RedisOtelSourceName = "OpenTelemetry.Instrumentation.StackExchangeRedis";
 
     private readonly AspireIngestionPipelineFixture _fixture;
     private readonly ITestOutputHelper _output;
@@ -173,6 +182,19 @@ public sealed class AspireEndToEndTraceTests
             AssertParentChainReachesCliRoot(relevantNodes.Single(node => node.SourceName == "System.Net.Http"), cliRootNode, nodesBySpanId);
             AssertParentChainReachesCliRoot(relevantNodes.Single(node => IsAspNetCoreServerSpan(node)), cliRootNode, nodesBySpanId);
             AssertParentChainReachesCliRoot(relevantNodes.Single(node => node.OperationName == MemoriesActivitySource.SearchRequest), cliRootNode, nodesBySpanId);
+
+            // Story 8.5 AC #2 hard assertion (flipped from Story 8.4's soft-skip): at least one
+            // Redis-source activity is captured in the end-to-end trace, shares the CLI-root
+            // TraceId, and has a parent chain reaching the CLI root. The Redis DrainThread runs
+            // on its own 100ms cadence (ADR-8.5-001 (e)) which ForceFlushAsync does NOT
+            // accelerate, so use the TelemetryAsserts.WaitForActivityAsync bounded-polling helper
+            // for the presence check.
+            await AssertRedisSpanInTraceAsync(
+                logStartIndex,
+                expectedTraceId,
+                cliRootNode,
+                nodesBySpanId,
+                capturedSpans);
         }
         catch
         {
@@ -379,6 +401,92 @@ public sealed class AspireEndToEndTraceTests
 
             current = parent;
         }
+    }
+
+    /// <summary>
+    /// Story 8.5 AC #2 hard assertion. Polls the server breadcrumb stream for at least one
+    /// activity from the StackExchange.Redis OTEL source whose TraceId matches the CLI root
+    /// TraceId, then asserts the Redis span's parent chain reaches the CLI root.
+    /// </summary>
+    private async Task AssertRedisSpanInTraceAsync(
+        int logStartIndex,
+        string expectedTraceId,
+        TraceNode cliRootNode,
+        IReadOnlyDictionary<string, TraceNode> baseNodesBySpanId,
+        IReadOnlyList<Activity> capturedCliSpans)
+    {
+        TimeSpan redisTimeout = AuditEventStreamReader.ResolveTimeout();
+        using CancellationTokenSource redisCts = new(redisTimeout);
+
+        // Redis instrumentation runs its own DrainThread at 100ms cadence. Use the bounded
+        // poll helper instead of the ForceFlush + settle-delay smell documented in Task 3.1.1.
+        IReadOnlyList<CapturedServerActivity> redisCandidates = await ServerActivityStreamReader.ReadAsync(
+            _fixture,
+            logStartIndex,
+            minimumEvents: 1,
+            redisTimeout,
+            redisCts.Token,
+            matchPredicate: activity =>
+                string.Equals(activity.SourceName, RedisOtelSourceName, StringComparison.Ordinal)
+                && string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal));
+
+        IReadOnlyList<CapturedServerActivity> matchingRedisActivities =
+            [.. redisCandidates.Where(activity =>
+                string.Equals(activity.SourceName, RedisOtelSourceName, StringComparison.Ordinal)
+                && string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal))];
+
+        // Count-first guard (Story 8.4 Risk R1 convention): assert Count >= 1 before predicate
+        // checks. Empty collections vacuously satisfy All(...).
+        matchingRedisActivities.Count.ShouldBeGreaterThanOrEqualTo(
+            1,
+            $"Expected at least one Redis-source activity ({RedisOtelSourceName}) for trace {expectedTraceId}. " +
+            "Story 8.5 AC #2 requires the Redis instrumentation to emit spans inside the distributed trace. " +
+            "If zero were captured, check: (a) both keyed IConnectionMultiplexer registrations are wired; " +
+            "(b) the IntegrationActivityProcessor breadcrumb filter accepts the Redis source under a " +
+            "Memories/AspNetCore parent; (c) the search request actually touched a Redis-backed search path.");
+
+        // AC #2 parent-chain reachability: pick the first Redis span with a non-null parent chain
+        // that's consistent with the CLI root. Extend the node map with all relevant nodes
+        // (CLI subset + server breadcrumbs, including the Redis candidates we just captured) so
+        // the traversal can hop via server breadcrumbs.
+        Dictionary<string, TraceNode> extendedNodes = new(baseNodesBySpanId, StringComparer.Ordinal);
+        foreach (CapturedServerActivity redis in matchingRedisActivities)
+        {
+            TraceNode node = ToTraceNode(redis);
+            extendedNodes[node.SpanId] = node;
+        }
+
+        // Add every server breadcrumb we've seen for this trace so the parent-chain walk can
+        // traverse through server-side activities beyond just AspNetCore + memories.search.
+        TimeSpan traceExpansionTimeout = AuditEventStreamReader.ResolveTimeout();
+        using CancellationTokenSource traceExpansionCts = new(traceExpansionTimeout);
+        IReadOnlyList<CapturedServerActivity> allTraceActivities = await ServerActivityStreamReader.ReadAsync(
+            _fixture,
+            logStartIndex,
+            minimumEvents: 1,
+            traceExpansionTimeout,
+            traceExpansionCts.Token,
+            matchPredicate: activity =>
+                string.Equals(activity.TraceId, expectedTraceId, StringComparison.Ordinal));
+
+        foreach (CapturedServerActivity a in allTraceActivities
+            .Where(a => string.Equals(a.TraceId, expectedTraceId, StringComparison.Ordinal)))
+        {
+            TraceNode node = ToTraceNode(a);
+            extendedNodes[node.SpanId] = node;
+        }
+
+        // Finally, include all CLI-captured spans that share the trace so the walk does not
+        // stall when a Redis span's ancestor path threads through an unexpected intermediary.
+        foreach (Activity a in capturedCliSpans
+            .Where(a => string.Equals(a.TraceId.ToString(), expectedTraceId, StringComparison.Ordinal)))
+        {
+            TraceNode node = ToTraceNode(a);
+            extendedNodes[node.SpanId] = node;
+        }
+
+        TraceNode redisNode = ToTraceNode(matchingRedisActivities[0]);
+        AssertParentChainReachesCliRoot(redisNode, cliRootNode, extendedNodes);
     }
 
     private void DumpDiagnostics(CliTracingHarness harness, int logStartIndex, string spanId, string cliStdout, string cliStderr)

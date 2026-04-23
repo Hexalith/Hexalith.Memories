@@ -19,11 +19,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using NSubstitute;
+
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
 using Shouldly;
+
+using StackExchange.Redis;
 
 /// <summary>
 /// Story 7.5 Task 8.4 — runtime-verification tests for <see cref="Extensions.AddServiceDefaults"/>
@@ -240,6 +244,16 @@ public sealed class OpenTelemetryRegistrationTests
             EnvironmentName = "Development",
         });
 
+        // Story 8.5: AddServiceDefaults now requires BOTH keyed IConnectionMultiplexer
+        // registrations ('redis' + 'falkordb') for the Redis OTEL DI-guard. Unit tests stub both
+        // with NSubstitute so the guard passes; Tier-3 tests use real ConnectionMultiplexer
+        // instances wired up by the Aspire fixture.
+        builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+            Extensions.RedisConnectionKey,
+            (_, _) => Substitute.For<IConnectionMultiplexer>());
+        builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+            Extensions.FalkorDbConnectionKey,
+            (_, _) => Substitute.For<IConnectionMultiplexer>());
         builder.AddServiceDefaults();
         return builder;
     }

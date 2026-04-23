@@ -15,14 +15,20 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
-    <PackageVersion Include="OpenTelemetry" Version="1.13.1" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.13.1" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.13.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.13.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.13.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.13.0" />
+    <!-- Story 8.5: OpenTelemetry stack pinned to 1.15.x. The Redis instrumentation
+         (1.15.1-beta.1) transitively requires OpenTelemetry.Api.ProviderBuilderExtensions
+         [1.15.3, 2.0.0), so the core + instrumentation + exporter versions move in lock-step. -->
+    <PackageVersion Include="OpenTelemetry" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.0" />
+    <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
+         explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
+    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.15.1-beta.1" />
     <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests -->
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.13.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.15.1" />
 
     <!-- DAPR Aspire Hosting -->
     <PackageVersion Include="CommunityToolkit.Aspire.Hosting.Dapr" Version="9.7.0" />
