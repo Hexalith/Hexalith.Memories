@@ -1,4 +1,6 @@
 # generated: 2026-03-26
+# last_updated: 2026-04-23 # Story 8.4 End-to-End Telemetry Integration Tests moved review → done after review close-out aligned the Rev 1.0 notes with the intentional Hexalith.EventStore submodule bump (24971df1c62a1a53c5b217a99cb3cc473e3038ba), corrected the status summary to [x] / [Defer] / [N/A], and preserved the 2026-04-23 regression proof (Tier-2 telemetry 128/128, Ac2 unit-tier 4/4).
+# last_updated: 2026-04-23 # Story 8.4 End-to-End Telemetry Integration Tests moved in-progress → review. All 93 Tasks/Subtasks + Review Findings closed ([x] / [Defer] / [N/A], zero unchecked); AC #2 / Task 2.3 and the 3 edge-case Review Findings remain explicit [Defer] with re-open triggers. Final validation: Tier-2 telemetry 128/128 green, Ac2 unit-tier 4/4 green, zero regressions vs. Rev 0.8 baseline. Docker-gated Tier-3 gate runs via nightly bridge per ADR-8.4-001. AC #2 hard-assertion flip continues in Story 8.5 (ready-for-dev, Rev 0.2).
 # last_updated: 2026-04-23 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription moved review → done after review close-out restored canonical MapSubscribeHandler() discovery via environment-backed controller topic metadata, added retry-path regression coverage, and revalidated focused EventStore (71/71) + Server EventStoreIntegration (12/12).
 # last_updated: 2026-04-23 # Story 9.3 Handler Registration & Mismatch Detection promoted backlog → ready-for-dev. Closes FR62 (the last open FR in Epic 9). Read-only HandlerRegistryService + HandlerMismatchDetector over a new Redis-backed IObservedEventTypeStore (24h rolling, fire-and-forget write to protect the ingestion hot-path). Extends IEventIngestionTelemetry.RecordIngestion with cloudEventType positional param. Replaces the 7.2-era NotImplementedCommand `handlers` stub with real `handlers list` + `handlers mismatches` CLI commands. Marked experimental via new HXL002 surface gate. 10 risks mapped to guard tests; 4 pre-impl spikes queued.
 # last_updated: 2026-04-22 # Story 8.4 deferrals converted into tracked follow-ups: GitHub issue #9 filed for AC #2 Redis OTEL instrumentation, Ac2RedisSkipReviewBy.TrackingReference now points at #9, and follow-up Story 8.5 (Redis OTEL Instrumentation & AC #2 Hardening) created as backlog under Epic 8. Story 8.4 Tasks 2.3 + 7.3 remain open in 8.4 but are now fully traceable to 8.5 + #9 rather than "UNFILED".
@@ -43,7 +45,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-23 # Story 9.1 Event Auto-Discovery & DAPR Pub/Sub Subscription moved review → done after review close-out restored canonical MapSubscribeHandler() discovery via environment-backed controller topic metadata, added retry-path regression coverage, and revalidated focused EventStore (71/71) + Server EventStoreIntegration (12/12).
+last_updated: 2026-04-23 # Story 8.4 End-to-End Telemetry Integration Tests moved review → done after review close-out aligned the Rev 1.0 notes with the intentional Hexalith.EventStore submodule bump (24971df1c62a1a53c5b217a99cb3cc473e3038ba), corrected the status summary to [x] / [Defer] / [N/A], and kept the final regression validation unchanged (Tier-2 telemetry 128/128, Ac2 unit-tier 4/4, zero regressions vs. Rev 0.8 baseline).
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -131,7 +133,7 @@ development_status:
   8-1-health-checks-and-readiness: done
   8-2-consistency-verification-and-repair: done
   8-3-data-export: done
-  8-4-end-to-end-telemetry-integration-tests: in-progress # Code-review cleanup 2026-04-22 fixed EnvVarScope OS/async-flow guards and moved fixture env vars onto scoped guards. Focused server regressions (22/22) and a ready-endpoint Aspire smoke test (1/1) passed. AC #2 + DoD item 10 deferrals now tracked via GitHub issue #9 + follow-up Story 8.5 (Redis OTEL Instrumentation).
+  8-4-end-to-end-telemetry-integration-tests: done # Review close-out 2026-04-23: resolved the last 2 review patch findings by aligning Rev 1.0 notes with the intentional Hexalith.EventStore gitlink 24971df1c62a1a53c5b217a99cb3cc473e3038ba and correcting the status summary to [x] / [Defer] / [N/A]. Final regression validation unchanged: Server.Tests Tier-2 telemetry 128/128 green, IntegrationTests Ac2 unit-tier 4/4 green. AC #2 / Task 2.3 remains deferred to Story 8.5 + GitHub issue #9.
   8-5-redis-otel-instrumentation: ready-for-dev # Story 8.4 AC #2 follow-up. Registers StackExchange.Redis OTEL instrumentation on the Memories Server tracer pipeline, flips 8.4 AC #2 soft-skip into a hard assertion, retires Ac2RedisSkipReviewBy. Tracks GitHub issue #9. Promoted to ready-for-dev on 2026-04-23 (Rev 0.2): package pinned to OpenTelemetry.Instrumentation.StackExchangeRedis 1.15.1-beta.1 via keyed-DI AddRedisInstrumentation(serviceKey) overload; Task 1 spike collapsed to a deterministic pin.
   epic-8-retrospective: optional
 

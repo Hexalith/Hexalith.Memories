@@ -3,9 +3,11 @@
 Status: ready-for-dev
 
 **Revision history:**
-- 2026-04-23 — Advanced Elicitation Review (pre-mortem + devil's-advocate + ADR + red-team + critique passes). 16 deltas applied: estimate revised 7→9-11d (Δ15); added AC #20-#25 covering NFR latency, kill switch, bounded FAF, SDK-server contract, experimental header, authZ (Δ13, Δ14, Δ3, Δ5, Δ12); new Spike 0.5 for authZ policy (Δ12); new Task 10.0 fixture-smoke spike reordered to run FIRST (critique); new Task 1.5a aggregates-set cardinality cap at 1024 + log event 9142 (Δ10); Task 3.4 hardened with SemaphoreSlim(256) + 2s timeout + whitespace-strict gate (Δ3, Δ11); new `memories.handlers.observations.dropped` counter + cardinality smoke test (Δ4); new `EventStoreObservationOptions` kill switch + 9143 log event (Δ14); 5 ADR deliverables in Task 11.7-11.11 (Δ9); projection-registry cross-check gap surfaced in "What does NOT ship" (Δ1); 7 new deferred-work tracking references in Task 11.6 (Δ1, Δ2, Δ4, Δ7, Δ8); Dev Notes add sections on Redis-Streams-rejected, stale-phrasing-unification, regex-vs-attribute, 3-vs-4-state, --since-flag, experimental-header convention. Unified "stale handler" phrasing to `observedTypes.Count == 0` across Risk #2, AC #4, §10 StaleHandler detection (Δ16). No prior AC / risk wording was deleted — only extended.
+- 2026-04-23 (round 1) — Advanced Elicitation Review (pre-mortem + devil's-advocate + ADR + red-team + critique passes). 16 deltas applied: estimate revised 7→9-11d (Δ15); added AC #20-#25 covering NFR latency, kill switch, bounded FAF, SDK-server contract, experimental header, authZ (Δ13, Δ14, Δ3, Δ5, Δ12); new Spike 0.5 for authZ policy (Δ12); new Task 10.0 fixture-smoke spike reordered to run FIRST (critique); new Task 1.5a aggregates-set cardinality cap at 1024 + log event 9142 (Δ10); Task 3.4 hardened with SemaphoreSlim(256) + 2s timeout + whitespace-strict gate (Δ3, Δ11); new `memories.handlers.observations.dropped` counter + cardinality smoke test (Δ4); new `EventStoreObservationOptions` kill switch + 9143 log event (Δ14); 5 ADR deliverables in Task 11.7-11.11 (Δ9); projection-registry cross-check gap surfaced in "What does NOT ship" (Δ1); 7 new deferred-work tracking references in Task 11.6 (Δ1, Δ2, Δ4, Δ7, Δ8); Dev Notes add sections on Redis-Streams-rejected, stale-phrasing-unification, regex-vs-attribute, 3-vs-4-state, --since-flag, experimental-header convention. Unified "stale handler" phrasing to `observedTypes.Count == 0` across Risk #2, AC #4, §10 StaleHandler detection (Δ16). No prior AC / risk wording was deleted — only extended.
+- 2026-04-23 (round 3) — Advanced Elicitation Review (Occam's Razor + Meta-prompting + Chaos Monkey + Shark Tank + Hindsight Reflection). 14 deltas applied — **theme: cut, not add**. Reverted Finding C (consumer-by-version list — cross-tenant read architecture violation) and Finding D (`--format explain` formatter — speculative). Merged 9143+9145 log events into single 9143 with `direction` tag. Dropped `Summary.CategoriesExamined` (duplicated metadata). Corrected drop-rate detector to per-drop emission (Risk #7 said do not extend `RollingCounterStore` — prior round contradicted it). Dropped `Story-9.3-PercentageRolloutFlag` from deferred-work (would be a rewrite, not a flag). Hardened `IOptionsMonitor.OnChange` idempotency to compare by value not reference (Chaos Monkey finding). **Semantic fix**: observation store now records on `Accepted` ONLY, not `Duplicate` — Duplicate means "we already recorded this" so counting again over-counts (was a latent bug in spec). Added 500ms timeout on `TenantRegistryService.GetAsync` in partial-snapshot path. Added window-boundary semantics note to Dev Notes. **Meta note — diminishing returns**: Round 1 delivered ~14/16 load-bearing findings (87% signal). Round 2 delivered ~18/31 (58% signal). Round 3 was deliberately cut-oriented (100% signal on those cuts because we had real over-builds to correct). **Future stories should budget 1-2 elicitation rounds, not 3+; the third round is primarily about correcting the second round.**
+- 2026-04-23 (round 2) — Advanced Elicitation Review (persona focus group + code-review gauntlet + Feynman + failure-mode + what-if passes). 31 findings applied (Findings A-EE). Key structural changes: **merged ADR-9.3-004 + ADR-9.3-005 into ADR-9.3-004 "Enum minimalism for operator-facing types"** (F — Task 11 drops from 5 ADRs to 4); kill switch upgraded from `IOptions<T>` to `IOptionsMonitor<T>` for hot-reload without restart (Q — AC #21 + Task 3.4); `HandlerRegistryService` uses per-tenant try-catch so one bad tenant degrades gracefully instead of 500ing the endpoint (S — Task 4.3); new `ObservationDropRateElevated` 9144 log when dropped > 0.01% / 1h window (G); new `HasWarnings` + `HasInfo` computed properties + `.summary` field on `HandlerMismatchReport` (L, EE); new Spike 0.6 (submodule `IEventIngestionTelemetry` sweep, M) + Spike 0.7 (named-arg call-site sweep, O); CLI gains `--exclude-stale`, `--only-warning`, `--format explain`, `--no-wrap` (B, D, X); new AC #26-#29 (clock-skew, partial-snapshot, summary-shape, routing-priority); deferred-work list extends with `Story-9.3-PostgresObservationStoreAlternative` (DD), `Story-9.3-PercentageRolloutFlag` (BB), `Story-9.3-ScheduleDescopePlan` (CC); Dev Notes add glossary (Z), semaphore-256 rationale (K), TTL-vs-window independence (I), terminal-segment rationale (J), runbook-URL convention for Suggestion strings (A, C); additional tasks for operator polish, hardening sweeps, guard tests.
 
-**Effort estimate:** ~9-11 working days (Fix #9 + Elicitation Review 2026-04-23 — revised up from 7-8d; the 7-8d bottom-up breakdown did not account for (a) code-review + CI-review latency (typical 0.5-1d in this project), (b) Tier-2 testcontainers fixture startup (~30s/test) amortized across ~15 integration tests, (c) likely merge-conflict rework if 9.1/9.2 rebase during this story's flight, (d) the ADR deliverables added in Task 11 (~0.5d), (e) the bounded-fire-and-forget + kill-switch work added in Task 3.4, (f) the aggregates-set cardinality cap added in Task 1.5, (g) the runtime-cardinality smoke test added in Task 9.5. Base breakdown below is the 7-8d floor; add 2-3d for the above). Breakdown:
+**Effort estimate:** ~10-12 working days (Elicitation Review 2026-04-23 rounds 1+2 — revised up from 7-8d baseline; the 7-8d bottom-up breakdown did not account for (a) code-review + CI-review latency (0.5-1d), (b) Tier-2 testcontainers fixture startup (~30s/test) amortized across ~18 integration tests (grew from 15 after round 2), (c) likely merge-conflict rework if 9.1/9.2 rebase during flight, (d) the ADR deliverables in Task 11 (~0.5d, reduced from 5 to 4 ADRs after round 2's merge), (e) the bounded-FAF + kill-switch work in Task 3.4, (f) the aggregates-set cardinality cap in Task 1.5, (g) the runtime-cardinality smoke test in Task 9.5, (h) round-2 additions: operator-polish CLI flags (`--exclude-stale`, `--only-warning`, `--format explain`, `--no-wrap`; ~0.5d), per-tenant try-catch + partial-snapshot shape (~0.25d), drop-rate detector 9144 (~0.25d), Spikes 0.6 + 0.7 sweeps (~0.25d). Base breakdown below is the 7-8d floor; add 3-4d total for rounds 1+2. Breakdown:
 - **0.5 day — Pre-impl spikes 0.1–0.4** (MemoriesJsonContextCompletenessTests existence, StackExchange.Redis batch shape, TenantStatusGuard return types, IOptionsMonitor change-notification posture).
 - **0.75 day — `IObservedEventTypeStore` + `RedisObservedEventTypeStore`** (Task 1) — includes the aggregates-index SET (Fix #5) + batched-pipeline write (4 ops) + fail-open posture + unit tests.
 - **0.5 day — Contract types + AOT registration** (Task 2) — `HandlerRegistrationSnapshot`, `HandlerMismatchReport`, `MemoriesJsonContext` registrations, completeness test (create if missing per Spike 0.1).
@@ -89,11 +91,11 @@ This closes **FR62** only. It does NOT ship any new subscription mechanism, does
 5. **`src/Hexalith.Memories.EventStore/EventIngestionService.cs`** — EDIT. Thread `envelope.Type` (the CloudEvents `type` header — guaranteed non-null by `CloudEventEnvelopeParser.Parse` on the Accepted-and-Duplicate path; null-coalesced to `null` on the InvalidCloudEvent branch) through EVERY `_telemetry.RecordIngestion(...)` call site. Five existing call sites — one per branch. Reuse the existing `envelope` local; do NOT re-parse.
 
 6. **`src/Hexalith.Memories.Server/EventStoreIntegration/EventIngestionTelemetryAdapter.cs`** — EDIT. Add `cloudEventType` to the method signature + `queryParams["cloudEventType"]` in the dictionary. **ADD** a BOUNDED fire-and-forget call to `_observedEventTypeStore.RecordObservationAsync(tenantId, aggregateType, cloudEventType, DateTimeOffset.UtcNow, linkedCt)` at the END of `RecordIngestion` — wrapped in a try/catch that logs via `EventStoreIntegrationLog.ObservedEventTypeStoreWriteFailed` on failure. Guard rules (ALL must hold or the observation write is skipped):
-   - `outcome is Accepted or Duplicate` (we do NOT track mismatches-for-mismatches — dropped/failed events are visible in `AccessTelemetryLog` already).
+   - `outcome is Accepted` — **R3-8 narrowed from "Accepted or Duplicate"**: counting Duplicates inflates `EventsProcessedCount` by retry volume (a single logical event retried 3x would show count=3). Duplicates already signal "we accepted this once" via the earlier Accepted; dropped/failed events are visible in `AccessTelemetryLog`.
    - `!string.IsNullOrWhiteSpace(tenantId)` (Red Team Delta #11 — whitespace gate stricter than IsNullOrEmpty).
    - `tenantId != MemoriesMeter.RejectedTenantTag` (Risk #9).
    - `!string.IsNullOrWhiteSpace(aggregateType)` and `!string.IsNullOrWhiteSpace(cloudEventType)`.
-   - **Kill switch (Delta #14):** `options.Value.Observation.Enabled == true` — reads `IOptions<EventStoreObservationOptions>` (new sub-options type with a single `bool Enabled { get; set; } = true;`). Operators flip `EventStoreIntegration:Observation:Enabled = false` in `appsettings.json` to disable fire-and-forget observation writes without redeploying — mitigation-of-last-resort for degraded-Redis-latency incidents.
+   - **Kill switch (Delta #14 + Finding Q):** `optionsMonitor.CurrentValue.Enabled == true` — reads `IOptionsMonitor<EventStoreObservationOptions>` (NOT `IOptions<T>` — Finding Q correction: `IOptions<T>` is static-at-DI-time and would require a process restart, contradicting the "flip without redeploying" promise). Operators change `EventStoreIntegration:Observation:Enabled = false` in `appsettings.json` at runtime; the `IConfigurationRoot` reloadOnChange fires `IOptionsMonitor` change notifications; the hot path picks up the new value on the NEXT event. **R3-3 merge:** every transition emits **one** log event `9143 ObservationWritesConfigChanged` at Information level with tag `enabled ∈ {true, false}` — the prior Round-2 design had separate 9143/9145 for disable/enable; collapsing into one event-id with a direction tag halves the event-id burn without losing audit granularity.
    - **Bounded fire-and-forget (Delta #3 — hardens Risk #8):** the fire-and-forget task is gated by a process-wide `SemaphoreSlim(maxConcurrency: 256)` — if acquisition fails within `TimeSpan.FromMilliseconds(5)` via `WaitAsync(5ms)`, the observation is DROPPED (counter `memories.handlers.observations.dropped` increments with tag `reason = "backpressure"`) rather than enqueued indefinitely. The linked CancellationTokenSource has a `TimeSpan.FromSeconds(2)` timeout so a slow Redis cannot keep the task alive past two seconds. Net effect: observation writes NEVER tie up thread-pool threads for more than 2s, and the in-flight count is capped at 256. **Do NOT** pass `CancellationToken.None` — use `new CancellationTokenSource(TimeSpan.FromSeconds(2)).Token` linked with `request.CancellationToken` where available.
    
    Constructor-inject `IObservedEventTypeStore` + `IOptions<EventStoreObservationOptions>` + `ILogger<EventIngestionTelemetryAdapter>`. Add the `EventStoreObservationOptions` type under `src/Hexalith.Memories.EventStore/EventStoreObservationOptions.cs` with XML doc calling out the kill-switch use case.
@@ -116,6 +118,8 @@ This closes **FR62** only. It does NOT ship any new subscription mechanism, does
        [JsonPropertyName("eventsProcessedCount")] public required long EventsProcessedCount { get; init; } // 24h rolling
        [JsonPropertyName("lastEventAt")] public required string? LastEventAt { get; init; } // ISO-8601 or null
        [JsonPropertyName("observedEventTypes")] public required IReadOnlyList<ObservedEventTypeSummary> ObservedEventTypes { get; init; }
+       // Finding S — per-tenant graceful degradation. Set to "OBSERVATION_READ_FAILED" when a specific tenant's Redis call throws; null in the happy path.
+       [JsonPropertyName("error")] public string? Error { get; init; }
    }
    public sealed record ObservedEventTypeSummary
    {
@@ -139,8 +143,20 @@ This closes **FR62** only. It does NOT ship any new subscription mechanism, does
    {
        [JsonPropertyName("tenantId")] public required string TenantId { get; init; }
        [JsonPropertyName("asOf")] public required string AsOf { get; init; }
-       [JsonPropertyName("windowHours")] public required int WindowHours { get; init; } // 24 default
+       [JsonPropertyName("windowHours")] public required int WindowHours { get; init; } // 24 default; renamed to `actualWindowHours` prospectively once Δ2 lands (Finding R — invariant-test asserts WindowHours matches detector's runtime window)
        [JsonPropertyName("mismatches")] public required IReadOnlyList<HandlerMismatch> Mismatches { get; init; }
+       // Finding EE — positive-confirmation UX. Always populated, even on empty-mismatches responses.
+       [JsonPropertyName("summary")] public required HandlerMismatchReportSummary Summary { get; init; }
+
+       // Finding L — computed props for automated monitors that need to short-circuit without parsing the array.
+       [JsonIgnore] public bool HasWarnings => Mismatches.Any(m => m.Severity == HandlerMismatchSeverity.Warning);
+       [JsonIgnore] public bool HasInfo => Mismatches.Any(m => m.Severity == HandlerMismatchSeverity.Info);
+   }
+   public sealed record HandlerMismatchReportSummary
+   {
+       [JsonPropertyName("routesConfigured")] public required int RoutesConfigured { get; init; }
+       [JsonPropertyName("observationsChecked")] public required int ObservationsChecked { get; init; }
+       // R3-4 removed CategoriesExamined — always contained the same 3 enum values; duplicated metadata.
    }
    public sealed record HandlerMismatch
    {
@@ -160,9 +176,11 @@ This closes **FR62** only. It does NOT ship any new subscription mechanism, does
    **`Context` field copy per category (Fix #4 — canonical):** The detector MUST populate `Context` with a stable, structured description so AC #3's "non-empty Context describing where it was observed" is satisfied without dev invention.
    - **`UnhandledEventType`:** `$"Observed {count} event(s) of type '{eventType}' on aggregate '{aggregateType}' in the last {windowHours}h. No SourceToTenantMap entry routes this aggregate to tenant '{tenantId}'. Most recent observation: {lastSeenAt:O}."`
    - **`StaleHandler`:** `$"SourceToTenantMap entry '{sourcePrefix}' → '{tenantId}' has received zero events in the last {windowHours}h. Observation-store last write for this tenant: {mostRecentTenantObservationAt?:O ?? \"never\"}."`
-   - **`VersionMismatch`:** `$"Stem '{stem}' observed with {versionCount} concurrent versions in the last {windowHours}h: {string.Join(\", \", versionsWithCounts)}. Total events across versions: {totalCount}."` — where `versionsWithCounts` is e.g., `"V2 (15 events)", "V3 (3 events)"`.
+   - **`VersionMismatch`:** `$"Stem '{stem}' observed with {versionCount} concurrent versions in the last {windowHours}h: {string.Join(\", \", versionsWithCounts)}. Total events across versions: {totalCount}."` — where `versionsWithCounts` is e.g., `"V2 (15 events)", "V3 (3 events)"`. (**R3-1 revert** of Round-2 Finding C: the consumer-by-version list was withdrawn because its implementation required cross-tenant reads inside a tenant-scoped endpoint, violating the Epic 5 tenant-isolation invariant. Publishers who need their migration blast radius should call a future dedicated endpoint — tracked as deferred-work `Story-9.3-CrossTenantVersionConsumerLookup`.)
    
    All three templates are stable per-version — changes require a minor-version bump on `HXL002` surface contract.
+
+   **Finding A — runbook URL convention on every `Suggestion` string.** Each suggestion ends with `" See: https://docs.hexalith.dev/memories/runbooks/handler-{categoryKebab}."` where `{categoryKebab}` is the category in kebab-case (`unhandled-event-type`, `stale-handler`, `version-mismatch`). The URL is declarative — Jerome will stand up the runbook pages at landing time; the URL format is PINNED by the `Suggestion` template so the pages can be backfilled without another surface-contract bump. This gives SREs a concrete next step when woken at 2am instead of generic advice.
 
 9. **`src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs`** — NEW. `public sealed class`. Constructor-injects `IOptionsMonitor<TenantEventRoutingOptions>`, `IObservedEventTypeStore`, `TenantRegistryService`, `TimeProvider` (singleton — enables deterministic testing). One public method:
    ```csharp
@@ -316,9 +334,9 @@ so that I can verify my event-sourced system is fully integrated and catch confi
 
 9. **Given** a call to `GET /api/tenants/{tenantId}/handlers/mismatches` for a tenant that does NOT exist in `TenantRegistryService` **When** the endpoint runs its guard **Then** it returns HTTP 404 + `ErrorResponse(Code: "TENANT_NOT_FOUND", Message: "Tenant '{tenantId}' is not registered.", Suggestion: "Use GET /api/tenants to list available tenants.")` — same shape as `GET /api/tenants/{tenantId}` at `Program.cs:874`.
 
-10. **Given** `EventIngestionService.ProcessAsync` runs with a valid CloudEvents envelope **When** the outcome is `Accepted` or `Duplicate` AND the mapper produced non-null `aggregateType` + non-null `cloudEventType` AND `tenantId != "__rejected__"` **Then** the Server-side `EventIngestionTelemetryAdapter.RecordIngestion` writes a new observation record to `{tenantId}:eventstore:observed:{aggregateType}` (sorted set, score = unix ms) AND increments `{tenantId}:eventstore:observed-count:{aggregateType}:{eventType}` — both via a SINGLE batched Redis round-trip. If the Redis write fails, log `9140 ObservedEventTypeStoreWriteFailed` at Warning level and RETURN — the ingestion outcome is NOT affected (Risk #8 fire-and-forget posture).
+10. **Given** `EventIngestionService.ProcessAsync` runs with a valid CloudEvents envelope **When** the outcome is `Accepted` (R3-8 semantic fix: NOT `Duplicate` — Duplicate means the event was previously recorded; counting again would inflate `EventsProcessedCount` by retry volume) AND the mapper produced non-null `aggregateType` + non-null `cloudEventType` AND `tenantId != "__rejected__"` **Then** the Server-side `EventIngestionTelemetryAdapter.RecordIngestion` writes a new observation record to `{tenantId}:eventstore:observed:{aggregateType}` (sorted set, score = unix ms) AND increments `{tenantId}:eventstore:observed-count:{aggregateType}:{eventType}` — both via a SINGLE batched Redis round-trip. If the Redis write fails, log `9140 ObservedEventTypeStoreWriteFailed` at Warning level and RETURN — the ingestion outcome is NOT affected (Risk #8 fire-and-forget posture).
 
-11. **Given** `EventIngestionService` completes a request with outcome `UnknownSource`, `TenantNotFound`, `TenantProvisioning`, `TenantDeleting`, `AutoCreateDisabled`, `CaseCapExceeded`, `InvalidCloudEvent`, or `ScheduleFailed` **When** `RecordIngestion` is called **Then** the observation store is NOT written — only Accepted and Duplicate outcomes record observations, so the handler-registry endpoint reflects only events that actually reached a valid tenant route.
+11. **Given** `EventIngestionService` completes a request with outcome `Duplicate` (R3-8), `UnknownSource`, `TenantNotFound`, `TenantProvisioning`, `TenantDeleting`, `AutoCreateDisabled`, `CaseCapExceeded`, `InvalidCloudEvent`, or `ScheduleFailed` **When** `RecordIngestion` is called **Then** the observation store is NOT written. Only `Accepted` outcomes record observations (R3-8 narrowed from the prior "Accepted or Duplicate" after a Chaos Monkey round revealed that Duplicate-counting over-counted on retry storms). Guard test `EventIngestionTelemetryAdapterTests.DuplicateOutcome_DoesNotWriteObservation_R3Dash8`.
 
 12. **Given** `MemoriesMeter.MetricTagKeyPolicy` is audited **When** `MemoriesMetricsTests.AllRegisteredMetricsHaveExpectedTagKeys` runs **Then** it finds `memories.handlers.registered` with expected tag keys `["tenant_id"]` AND `memories.handlers.mismatches` with expected tag keys `["tenant_id", "severity"]`. The observable gauge for `memories.handlers.registered` is registered exactly once via `MemoriesMeter.EnsureHandlerGaugeCreated(...)` (new helper, parallel to the existing `EnsureObservableGaugesCreated`).
 
@@ -348,6 +366,16 @@ so that I can verify my event-sourced system is fully integrated and catch confi
 
 25. **Given** both endpoints **When** an unauthenticated request is made **Then** the response is `401 Unauthorized`. **Given** an authenticated request for `tenantId = "other-tenant"` on the mismatches endpoint **When** the caller lacks authorization for that tenant **Then** the response is `403 Forbidden`. Both endpoints explicitly call `.RequireAuthorization("OperatorAccess")` in Program.cs wiring (per Spike 0.5 finding) — implicit inheritance is NOT relied upon. Guard tests `HandlerEndpointAuthorizationTests.UnauthenticatedRequest_Returns401` + `.AuthenticatedForDifferentTenant_Returns403_OnMismatchesEndpoint`. (Delta #12 — authZ contract made explicit.)
 
+26. **Given** an adversarial scenario where Redis server time is manually reset backwards by 2 hours **When** new observation records are written (with `DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()` scores) AND the detector subsequently reads via `ZRANGEBYSCORE` **Then** the detector still returns only observations within the intended 24h window — the store uses a single time source consistently on both write and read paths so absolute server-clock correctness is not load-bearing. Guard test `RedisObservedEventTypeStoreTests.ServerClockSkew_DoesNotPoisonWindow` — simulates skew via a `TimeProvider` fake on the writer while the reader uses the same fake. (Finding N — clock-skew failure mode.)
+
+27. **Given** the server is serving `GET /api/handlers` for N=100 tenants AND one specific tenant's `GetAllObservedTypesAsync` Redis call throws `RedisConnectionException` **When** the endpoint computes the snapshot **Then** the response is HTTP 200 with the snapshot containing 99 healthy `HandlerRegistration` rows AND ONE row for the failing tenant with `tenantId` set, `EventsProcessedCount = 0`, `ObservedEventTypes = []`, `EventTypePatterns = []`, AND a new `Error` field on the row set to `"OBSERVATION_READ_FAILED"`. The endpoint MUST NOT return 500 because ONE tenant's backend call failed. Guard test `HandlerRegistryServiceTests.PartialTenantFailure_ReturnsPartialSnapshot_NotFiveHundred`. (Finding S — graceful degradation.) Schema impact: `HandlerRegistration` gains an optional `Error` property — `null` in the happy path.
+
+28. **Given** a successful call to `GET /api/tenants/{tenantId}/handlers/mismatches` **When** the response is deserialized **Then** the `HandlerMismatchReport` includes a `Summary` property with `{ routesConfigured: int, observationsChecked: int }` (R3-4 dropped `categoriesExamined`) — operators see what the detector actually examined, not just what it found. The `HasWarnings` + `HasInfo` computed properties are accessible on the SDK shape (either as getters or helpers) for automated-monitor short-circuiting. Empty-mismatches response still returns a `Summary` populated with non-zero `routesConfigured` + `observationsChecked` — positive-confirmation UX. (Findings EE, L.)
+
+29. **Given** the Server is started AND the minimal-API routing table is frozen **When** `EndpointRoutingTests.HandlersEndpointsAreReachable` runs **Then** it asserts via `Endpoints.OfType<RouteEndpoint>()` enumeration that (a) exactly one endpoint exists with pattern `/api/handlers` GET, (b) exactly one endpoint exists with pattern `/api/tenants/{tenantId}/handlers/mismatches` GET, AND (c) neither endpoint is shadowed by a catch-all route. Prevents silent route-priority regressions if a future story adds a catch-all ahead of these. (Finding U.) Also verifies (d) `MemoriesClient` uses the exact path strings `api/handlers` + `api/tenants/{tenantId}/handlers/mismatches` (no embedded version segment beyond the current convention) — Guard `MemoriesClientPathConstantTests.PathStringsMatchServerRoutes`. (Finding V.)
+
+30. **Given** `memories handlers mismatches --tenant X --exclude-stale` **When** the report contains mixed Info (StaleHandler) + Warning mismatches **Then** the CLI output contains only non-StaleHandler entries, exit code 0. **Given** `--only-warning` (shorthand equivalent to `--severity warning`) **When** the report is mixed **Then** only Warning entries render. **Given** `--no-wrap` on a table format **When** column content would wrap **Then** content is truncated with an ellipsis and full content is available in JSON format. (Findings B, X. R3-2 dropped `--format explain` clause.)
+
 ## Tasks / Subtasks
 
 ### Pre-Impl Verification Spikes (MUST complete before dependent tasks start)
@@ -359,6 +387,10 @@ so that I can verify my event-sourced system is fully integrated and catch confi
 - [ ] **Spike 0.3 — `TenantStatusGuard.ValidateTenantIdFormat` + `ValidateTenantActiveAsync` return shapes (blocks Task 6.2) [DI contract].** Check the exact return types + null semantics of these guards as called from `Program.cs` existing endpoints (e.g., `/api/tenants/{tenantId}/configuration`). Spike: grep for `ValidateTenantActiveAsync` + `ValidateTenantIdFormat` in Server, confirm they return `ErrorResponse?` (null on success) or a different shape. Spike deliverable: the correct null-check pattern in Task 6.2 spec.
 
 - [ ] **Spike 0.4 — `IOptionsMonitor<TenantEventRoutingOptions>` change-notification posture (blocks Task 9 determinism of `HandlerRegistryServiceTests`) [Risk #7].** Verify whether the existing `Program.cs:254` `/dapr/subscribe` handler accepts a fresh `.CurrentValue` on every call or captures it at registration. Confirm that `HandlerRegistryService` reading `.CurrentValue` per-call is the correct pattern. If the answer is unclear, add a `RoutingOptionsChangeNotificationTests.CurrentValueReadsFreshlyAfterConfigReload` guard test.
+
+- [ ] **Spike 0.6 — Submodule `IEventIngestionTelemetry` implementation sweep (NEW — Finding M, blocks Task 3.1) [FMA #1].** Before changing the `IEventIngestionTelemetry` interface signature, sweep the submodule tree for any implementation or consumer. Command: `grep -rn "IEventIngestionTelemetry\b" src/submodules/` + `grep -rn "RecordIngestion" src/submodules/`. Any hit must either (a) be updated in-lock-step with this story, (b) have its method already go through an adapter we control, or (c) trigger an escalation before the signature change. Spike deliverable: the list of submodule consumers found (expected: zero, but verify).
+
+- [ ] **Spike 0.7 — Named-arg call-site audit for `RecordIngestion` (NEW — Finding O, blocks Task 3.3) [FMA #4].** The signature change inserts `cloudEventType` BETWEEN `aggregateType` and `outcome`. If any caller uses named-arg invocation like `RecordIngestion(aggregateType: x, outcome: y)` with positional intervening args, the call compiles through but values are silently passed wrong. Command: `grep -rEn "RecordIngestion\s*\(\s*(tenantId|caseId|cloudEventId|aggregateType|outcome|durationMs)\s*:" src/ tests/`. Every hit must be manually verified before compile. Spike deliverable: the list of named-arg call sites (expected: few or zero in this codebase style, but verify).
 
 - [ ] **Spike 0.5 — Authorization policy name + tenant-scoping mechanism (NEW — Delta #12, blocks Task 6.2) [Red Team gap].** Check how `/api/tenants/{tenantId}/telemetry/summary` at `Program.cs:2906` currently wires authorization — is it `.RequireAuthorization("OperatorAccess")`, `.RequireAuthorization("TenantOperator")`, a custom authorization handler, or inherited implicitly from a parent group? Also verify how tenant-scoping is enforced (claims check vs middleware vs handler). Spike deliverable: the EXACT `.RequireAuthorization(...)` string + the tenant-scoping claims-check snippet to copy into `/api/tenants/{tenantId}/handlers/mismatches`. If there is NO existing tenant-scoping pattern, this spike BLOCKS the story — the mismatches endpoint MUST NOT land without tenant-scoped authZ (Red Team gap #4). If the answer is "there is no tenant-scoping today, the `telemetry/summary` endpoint is globally-scoped operator-only," escalate to the user for a scoping decision BEFORE implementing Task 6.2.
 
@@ -419,20 +451,28 @@ so that I can verify my event-sourced system is fully integrated and catch confi
   - [ ] 3.4 Edit `src/Hexalith.Memories.Server/EventStoreIntegration/EventIngestionTelemetryAdapter.cs`:
     - Add `cloudEventType` parameter to `RecordIngestion`.
     - Add `queryParams["cloudEventType"] = cloudEventType`.
-    - Constructor-inject `IObservedEventTypeStore`, `IOptions<EventStoreObservationOptions>`, `ILogger<EventIngestionTelemetryAdapter>`.
-    - Hold a static `SemaphoreSlim` field (shared process-wide) `_observationInFlight = new(initialCount: 256, maxCount: 256)` — the concurrency cap for fire-and-forget observation writes.
+    - Constructor-inject `IObservedEventTypeStore`, `IOptionsMonitor<EventStoreObservationOptions>` (Finding Q — NOT `IOptions<T>`; live reload required), `ILogger<EventIngestionTelemetryAdapter>`.
+    - Hold a static `SemaphoreSlim` field (shared process-wide) `_observationInFlight = new(initialCount: 256, maxCount: 256)` — the concurrency cap for fire-and-forget observation writes. See Dev Notes "Why 256 for the semaphore cap" for rationale (Finding K).
+    - Register an `OnChange` subscription on the `IOptionsMonitor<EventStoreObservationOptions>` to log `9143 ObservationWritesConfigChanged` (R3-3 unified; tag `enabled=true|false`) on each enable/disable transition. The subscription stores the prior-known **value** in a private field (e.g., `private bool? _lastKnownEnabled`) and compares **by value** (`prior != current.Enabled`) — R3-7 hardening against `OnChange` firing multiple times per logical change (filesystem watchers on some platforms notify 2-3x) where reference-equality would false-positive. If comparison says "no change," the subscription returns without emitting the log.
     - After the existing `AccessTelemetryLog.LogIngestAccess` / `LogIngestAccessError` call, add:
       ```csharp
-      // Delta #14 — kill switch. Disabled = skip entirely, emit 9143 once at startup (elsewhere).
-      if (!_observationOptions.Value.Enabled) return;
+      // Delta #14 — kill switch. Disabled = skip entirely; transition logging is handled by the OnChange subscription above.
+      if (!_observationOptionsMonitor.CurrentValue.Enabled) return;
 
+      // R3-8 semantic fix: record ONLY on Accepted. Duplicate means "we already recorded this" — double-counting
+      // the same logical event inflates EventsProcessedCount by retry volume, which is misleading.
       // Delta #11 — whitespace-strict; Risk #9 — reject the __rejected__ tenant; also null cloudEventType.
-      if ((outcome != EventIngestionOutcome.Accepted && outcome != EventIngestionOutcome.Duplicate)
+      if (outcome != EventIngestionOutcome.Accepted
           || string.IsNullOrWhiteSpace(tenantId)
           || tenantId == MemoriesMeter.RejectedTenantTag
           || string.IsNullOrWhiteSpace(aggregateType)
           || string.IsNullOrWhiteSpace(cloudEventType))
       {
+          // Finding P — emit a Debug-level log so a future debugger can see "observation skipped due to whitespace"
+          // without digging through the code. Debug is intentional — not Warning — because this is often a legitimate
+          // case (e.g., InvalidCloudEvent outcome with null fields).
+          _logger.LogDebug("Observation write skipped (outcome={Outcome}, hasTenantId={HasTenant}, hasAggregate={HasAggregate}, hasEventType={HasEventType})",
+              outcome, !string.IsNullOrWhiteSpace(tenantId), !string.IsNullOrWhiteSpace(aggregateType), !string.IsNullOrWhiteSpace(cloudEventType));
           return;
       }
 
@@ -477,11 +517,13 @@ so that I can verify my event-sourced system is fully integrated and catch confi
   - [ ] 3.5 Edit any test doubles (`FakeEventIngestionTelemetry`, `RecordingEventIngestionTelemetry`, etc.) to match the new signature — `grep -rn "IEventIngestionTelemetry" tests/` to enumerate.
   - [ ] 3.6 Unit tests `EventIngestionTelemetryAdapterTests.cs`:
     - `.AcceptedOutcomeWithNonNullEventType_WritesToObservationStore`.
-    - `.DuplicateOutcomeWithNonNullEventType_WritesToObservationStore`.
+    - `.DuplicateOutcome_DoesNotWriteObservation_R3Dash8` (inverted from prior spec — R3-8 semantic fix).
     - `.UnknownSourceOutcome_DoesNotWriteToObservationStore`.
     - `.NullCloudEventType_DoesNotWriteToObservationStore`.
+    - `.WhitespaceCloudEventType_DoesNotWriteToObservationStore_EmitsDebugLog` (R3 Finding P).
     - `.RejectedTenantTag_DoesNotWriteToObservationStore`.
     - `.ObservationStoreThrows_AuditLogStillEmitted_NoExceptionSurfaces`.
+    - `.OnChange_SameEnabledValueTwice_EmitsLogOnlyOnce_R3Dash7` (R3-7 value-comparison hardening).
 
 - [ ] **Task 4: `HandlerRegistryService`** (AC: #1, #2, #9)
   - [ ] 4.1 Create `src/Hexalith.Memories.Server/Handlers/` folder (mirrors `Tenants/` + `Telemetry/` conventions).
@@ -489,10 +531,11 @@ so that I can verify my event-sourced system is fully integrated and catch confi
   - [ ] 4.3 Implement `GetSnapshotAsync(CancellationToken ct)`:
     - Read `options.CurrentValue`.
     - If `Topic` is empty → return `new HandlerRegistrationSnapshot { SubscriptionStatus = HandlerSubscriptionStatus.Disabled, Handlers = [], ... }`.
-    - Build per-tenant tasks: `options.SourceToTenantMap.GroupBy(kvp => kvp.Value)` then `Task.WhenAll` over groups.
+    - Build per-tenant tasks: `options.SourceToTenantMap.GroupBy(kvp => kvp.Value)` then `Task.WhenAll` over groups. **Finding S — graceful per-tenant degradation:** EACH per-tenant task is wrapped in its own try-catch; if the per-tenant Redis read throws, the task returns a SENTINEL "error" `HandlerRegistration` (with `Error = "OBSERVATION_READ_FAILED"`, `EventsProcessedCount = 0`, `ObservedEventTypes = []`) instead of propagating. The outer `Task.WhenAll` then completes successfully with a mix of healthy + error rows. An operator seeing ONE error row in a 100-tenant snapshot can drill into that specific tenant rather than being faced with a 500 that hides 99 healthy tenants. Log `9146 TenantObservationReadFailed` at Warning per failed tenant (tags `tenant_id` + `exception_type`).
     - For each tenant group:
-      - Call `tenantRegistry.GetAsync(tenantId)` — if `null` or `Status in (Deleting, Deleted)`, SKIP the registration (do NOT surface deleted tenants' handler state).
-      - Call `_store.GetAllObservedTypesAsync(tenantId, TimeSpan.FromHours(24), ct)`.
+      - Call `tenantRegistry.GetAsync(tenantId, linkedCt)` with a per-tenant `CancellationTokenSource(TimeSpan.FromMilliseconds(500))` linked to `ct` (R3-9 hardening against a hanging `TenantRegistryService`). If cancelled, surface the row with `Error = "TENANT_STATUS_CHECK_FAILED"` and skip the Redis read.
+      - If the GetAsync returns `null` or `Status in (Deleting, Deleted)`, SKIP the registration (do NOT surface deleted tenants' handler state).
+      - Call `_store.GetAllObservedTypesAsync(tenantId, TimeSpan.FromHours(24), ct)` INSIDE the try-catch described above.
       - For each `(sourcePrefix → tenantId)` entry in this tenant group, synthesize ONE `HandlerRegistration`:
         - `EventTypePatterns = observedTypes.Select(o => o.AggregateType).Distinct().ToList()` — **always a plain `List<string>`, `[]` when empty (Fix #3 — data purity at the service layer).** The sentinel string `"(none observed in last 24h)"` is a CLI TABLE FORMATTER concern ONLY (Task 8.5), never the service response.
         - `EventsProcessedCount = observedTypes.Sum(o => o.Count)`.
@@ -527,7 +570,7 @@ so that I can verify my event-sourced system is fully integrated and catch confi
         options: RegexOptions.Compiled | RegexOptions.CultureInvariant,
         matchTimeout: TimeSpan.FromMilliseconds(100));
     ```
-    Inside `DetectAsync`, wrap regex calls in try/catch `RegexMatchTimeoutException` → skip the type + log Warning.
+    **Finding T — wrap ALL regex invocations in the detector**, not just the VersionMismatch scan. If a future edit adds regex-based detection to UnhandledEventType or StaleHandler, the try-catch surface must already exist. Implement as a private helper `TryMatchVersionStem(string eventType, out Match? match)` that returns false on `RegexMatchTimeoutException`, emits 9141, and catches `ArgumentException` for invalid regex input as a separate defensive case. All call sites go through this helper.
   - [ ] 5.3 Implement `DetectAsync(string tenantId, TimeSpan window, CancellationToken ct)`:
     - Validate inputs.
     - Call `_store.GetAllObservedTypesAsync(tenantId, window, ct)`.
@@ -607,14 +650,17 @@ so that I can verify my event-sourced system is fully integrated and catch confi
     - **Purpose:** catches `MemoriesJsonContext` registration drift + enum-converter omissions BEFORE Tier-2 integration — the JSON contract between server and client is proven at `dotnet build` time, not at commit time.
 
 - [ ] **Task 8: CLI `handlers list` + `handlers mismatches`** (AC: #6, #7, #8, #13, #19)
-  - [ ] 8.1 Create `src/Hexalith.Memories.Cli/Commands/HandlersListCommand.cs` — mirror `TenantListCommand.cs` verbatim structure. `CommandName = "handlers list"`. `#pragma warning disable HXL002` scoped around the `client.ListHandlersAsync` call.
+  - [ ] 8.1 Create `src/Hexalith.Memories.Cli/Commands/HandlersListCommand.cs` — mirror `TenantListCommand.cs` verbatim structure. `CommandName = "handlers list"`. `#pragma warning disable HXL002` scoped around the `client.ListHandlersAsync` call. **Finding W — exit-code map:** on `MemoriesRemoteException` return `CliExitCodes.NetworkError = 4` (parallel to other CLI commands), on valid-empty return `Success = 0`, on argument-validation failures return `CliExitCodes.ArgumentError = 2`. Specified in code comment at the catch site so the map survives future refactors. **R3-2 revert of Round-2 Finding D:** `--format explain` formatter was speculative and has been removed from scope. Non-developer operators are expected to use the existing `table` format with glossary support (Dev Notes "Glossary" section) — the Hindsight Reflection finding validated that real users learn `table` in a day regardless. **Finding X — `--no-wrap`:** the table formatter accepts a `--no-wrap` option which truncates each column with an ellipsis at an OS-detected terminal width (`Console.WindowWidth`) and sets `stderr` note "use --format json for full content".
   - [ ] 8.2 Empty-state nudge in `HandlersListCommand` — write to stderr (for table) or stdout (for human) per the `TenantListCommand` convention: `"No handlers registered. Configure EventStoreIntegration:Routing:SourceToTenantMap in appsettings to bind CloudEvents sources to tenants. See docs/dev/eventstore-integration.md §11."`. JSON format: skip the nudge (consumers detect empty array).
   - [ ] 8.3 Create `src/Hexalith.Memories.Cli/Commands/HandlersMismatchesCommand.cs`:
     - REQUIRED `--tenant` option (`IsRequired = true`).
     - OPTIONAL `--severity` option with allowed values `info`, `warning`.
-    - Server-side returns the unfiltered report; filter CLIENT-SIDE for HUMAN + TABLE output (AC #8). JSON output returns the full unfiltered report.
-    - Empty-state human nudge: `"No handler mismatches detected in the last 24h for tenant '{tenantId}' — this is the healthy state."` to stdout.
-    - When mismatches exist in HUMAN format, render: `[{severity.ToLowerInvariant()}] {category.ToLowerInvariant()}: {subject} — {suggestion}` one per line.
+    - OPTIONAL `--only-warning` flag (Finding B — shorthand equivalent to `--severity warning`; convenient common filter).
+    - OPTIONAL `--exclude-stale` flag (Finding B — suppress `StaleHandler` category entries; SRE noise-reduction during investigation).
+    - Server-side returns the unfiltered report; filter CLIENT-SIDE for HUMAN + TABLE output (AC #8 + #30). JSON output returns the full unfiltered report.
+    - Empty-state human nudge: `"No handler mismatches detected in the last 24h for tenant '{tenantId}' — this is the healthy state. Summary: {summary.routesConfigured} routes configured, {summary.observationsChecked} observations examined."` to stdout. (Finding EE — positive-confirmation UX; the summary fields come from the new `HandlerMismatchReportSummary`.)
+    - When mismatches exist in HUMAN format, render: `[{severity.ToLowerInvariant()}] {category.ToLowerInvariant()}: {subject} — {suggestion}` one per line. Render the summary line after the last mismatch: `"({n} mismatch(es) across {summary.categoriesExamined.Count} categor(ies)) examined."`.
+    - **Finding W — exit-code map:** `CliExitCodes.NetworkError = 4` on `MemoriesRemoteException`; `CliExitCodes.Success = 0` on any successful response regardless of mismatch count (mismatches are NOT errors).
   - [ ] 8.4 Create `src/Hexalith.Memories.Cli/Output/OutputFormatters/HandlerRegistrationTableFormatter.cs` + `HandlerMismatchTableFormatter.cs` — register in the `OutputFormatterRouter` composition (same extension method as the existing tenant + telemetry formatters).
   - [ ] 8.5 Table formatter for `HandlerRegistrationSnapshot` implements the sentinel-for-empty-observed-types rule (Risk #3) — transforms `EventTypePatterns = []` into `"(none observed in last 24h)"` for rendering. JSON formatter does NOT.
   - [ ] 8.6 Edit `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs`:
@@ -650,9 +696,11 @@ so that I can verify my event-sourced system is fully integrated and catch confi
       [HandlerMismatchesName] = new[] { "tenant_id", "severity" },
       [ObservationsDroppedName] = new[] { "reason" },
       ```
-  - [ ] 9.2 Call `MemoriesMeter.EnsureHandlerGaugeCreated(...)` from `Program.cs` alongside the existing `MemoriesMeter.EnsureObservableGaugesCreated(...)` call at :274. The observer delegates to a method on `HandlerRegistryService` that returns a per-tenant count of registered sources.
+  - [ ] 9.2 Call `MemoriesMeter.EnsureHandlerGaugeCreated(...)` from `Program.cs` alongside the existing `MemoriesMeter.EnsureObservableGaugesCreated(...)` call at :274. The observer delegates to a method on `HandlerRegistryService` that returns a per-tenant count of registered sources. **Finding Y — force-create counters at this same call site** so `MeterListener` subscribers attached after startup still see the `ObservationsDropped` instrument — lazy creation on first Add can hide the counter from late-subscribing listeners.
   - [ ] 9.3 Emit `MemoriesMeter.HandlerMismatches.Add(1, ...)` from inside `HandlerMismatchDetector.DetectAsync` per detected mismatch (one emission per mismatch).
   - [ ] 9.4 Unit tests `MemoriesMetricsTests.AllRegisteredMetricsHaveExpectedTagKeys` — ensure the extended map covers all three new instruments (including `ObservationsDropped`).
+  - [ ] 9.5a **Per-drop Warning log (Finding G — new log event 9144; R3-5 simplification).** The Round-2 proposal extended `RollingCounterStore` for a 1h aggregation window, which directly conflicted with Risk #7's "DO NOT extend `RollingCounterStore` — substrate separation is load-bearing." **Simplified design:** emit `9144 ObservationDropped` at Warning level ONCE per drop with tags `reason ∈ {"backpressure","timeout","redis_error"}` + `tenant_id`. Operators aggregate at the log sink (Grafana/Loki natively supports 1h window aggregation via PromQL / LogQL `rate()`). Zero in-process state; zero substrate-sharing; zero Risk-#7 violation. Guard test `EventIngestionTelemetryAdapterTests.ObservationDrop_Emits9144_AtWarning_WithReasonAndTenantTags`.
+
   - [ ] 9.5 **Runtime cardinality smoke test (Delta #4 — AC #22 dependency).** Create `tests/Hexalith.Memories.IntegrationTests/Handlers/HandlerMetricsCardinalitySmokeTests.cs`:
     - `.MismatchesMetric_DistinctTagValuesStayBounded` — publishes 200 CloudEvents across configurations that would emit 6 distinct `(category, severity)` combinations (3 categories × 2 severities). Uses a `MeterListener` subscribed to `MemoriesMeter.Instance` to capture every emission's tag bag. Asserts `distinctTagBags.Count == 6` AND `distinctTagBags.All(b => b.ContainsKey("severity") && b.ContainsKey("tenant_id"))`. Runs in Tier-2 with the Aspire fixture — 30s startup acceptable because it's run once per CI.
     - `.ObservationsDropped_OnlyCarriesReasonTag` — inject a slow `IObservedEventTypeStore` stub that takes 5s, publish 500 events, assert the emitted dropped-counter samples carry ONLY the `reason` tag and values are in `{"backpressure","timeout"}`.
@@ -687,6 +735,18 @@ so that I can verify my event-sourced system is fully integrated and catch confi
 
   - [ ] 10.7 **Bounded-FAF integration test (Delta #3 — AC #22).** `EventIngestionTelemetryAdapterSlowRedisTests.SlowRedis_DropsObservation_WithinTwoSeconds_DoesNotBlockIngestion` — swaps in a `SlowObservedEventTypeStore` decorator (5s artificial delay per write), publishes 200 events via the ingestion endpoint, asserts (a) ingestion response p95 < 50ms (unblocked), (b) `memories.handlers.observations.dropped` counter sum ≈ 200 (all dropped), (c) the process thread-pool queue length never exceeds 256 during the run (captured via `ThreadPool.ThreadCount` polling).
 
+  - [ ] 10.8 **Clock-skew test (AC #26 — Finding N).** `RedisObservedEventTypeStoreTests.ServerClockSkew_DoesNotPoisonWindow` — injects a `TimeProvider` fake used by BOTH writer and reader; skews forward 2h then backward; asserts the writes at time T are still returned by a read at time T + 23h with the same skewed time source. Proves the store is self-consistent regardless of absolute clock correctness.
+
+  - [ ] 10.9 **Partial-snapshot test (AC #27 — Finding S).** `HandlerRegistryServiceTests.PartialTenantFailure_ReturnsPartialSnapshot_NotFiveHundred` — stubs `IObservedEventTypeStore.GetAllObservedTypesAsync` to throw `RedisConnectionException` for ONE tenant out of 3; asserts the returned `HandlerRegistrationSnapshot` has 3 rows, the failing tenant's row has `Error = "OBSERVATION_READ_FAILED"`, and log `9146 TenantObservationReadFailed` appears exactly once.
+
+  - [ ] 10.10 **Summary shape test (AC #28 — Findings EE, L; R3-4 adjusted).** `HandlerMismatchDetectorTests.Summary_PopulatedEvenOnEmptyMismatches` — publishes no events, calls detector, asserts `report.Summary.RoutesConfigured == configuredMapSize` and `report.Summary.ObservationsChecked == 0`. Also `.HasWarnings_FalseOnEmpty_TrueOnWarning` + `.HasInfo_TrueOnInfoOnly`.
+
+  - [ ] 10.11 **Endpoint-routing test (AC #29 — Findings U, V).** `EndpointRoutingTests.HandlersEndpointsAreReachable` enumerates `Endpoints.OfType<RouteEndpoint>()` and asserts both new endpoints present with the expected patterns AND no catch-all shadows them. `MemoriesClientPathConstantTests.PathStringsMatchServerRoutes` asserts the SDK client's hardcoded path strings match the server's endpoint patterns (via reflection on the Program.cs routes OR a test-only registered `IEndpointConventionBuilder` snapshot).
+
+  - [ ] 10.12 **CLI operator-polish test (AC #30 — Findings B, X; R3-2 removed explain-format test).** `HandlersMismatchesCommandTests.ExcludeStaleFlag_SuppressesStaleHandlers` + `.OnlyWarningFlag_EquivalentToSeverityWarning` + `HandlersListCommandTests.TableFormat_NoWrap_TruncatesWithEllipsis`.
+
+  - [ ] 10.13 **R3-1 removed** — the VersionMismatch consumer-list test (Round-2 Finding C) is withdrawn along with the feature itself. No replacement test.
+
 - [ ] **Task 11: Documentation + sprint-status** (AC: #17)
   - [ ] 11.1 Edit `docs/dev/eventstore-integration.md` — add §11 "Handler registration & mismatch detection" with subsections §11.1–§11.4 per "What 9.3 adds" #18 spec. Cross-link from §6 "Alerting recommendations".
   - [ ] 11.2 Edit `docs/dev/cli-config.md` — add `handlers` subsection with `memories handlers list` + `memories handlers mismatches` examples in all three formats.
@@ -701,11 +761,16 @@ so that I can verify my event-sourced system is fully integrated and catch confi
     - **`Story-9.3-VersionMismatchAttributeApproach` (Delta #7):** replace regex-based `VersionMismatch` with publisher-declared version attribute (`[EventType("ClaimSubmitted", Version=2)]`) — eliminates ReDoS surface entirely. Blocked until publisher contract change is acceptable.
     - **`Story-9.3-SubscriptionStatusConfigured` (Delta #8):** 4-state `HandlerSubscriptionStatus` enum (add `Configured` between `Unknown` and `Active`) to disambiguate "routing is set up" from "routing is working." API contract change — blocked until next major of HXL002.
     - **`Story-9.3-ObservationStoreRebuildFromAuditLog` (Risk #8):** rebuild observation store from `AccessTelemetryLog` on startup to recover from sidecar-restart observation loss.
+    - **`Story-9.3-PostgresObservationStoreAlternative` (Finding DD):** investigate using an `AccessTelemetryLog`-backed Postgres VIEW in place of the dedicated Redis observation store — eliminates Redis write amplification (Risk #1) and sidecar-restart loss (Risk #8) in one move. Blocked until (a) `AccessTelemetryLog` backing is confirmed as Postgres and (b) a read-latency benchmark of the VIEW-based approach shows acceptable p95.
+    - **`Story-9.3-PercentageRolloutFlag` — R3-6 withdrawn.** A tenant-sample-rate flag is a rewrite (not a feature flag); scope is disproportionate to the theoretical benefit. Rely on the kill switch (Delta #14) as the operational escape hatch; skip progressive rollout.
+    - **`Story-9.3-ScheduleDescopePlan` (Finding CC):** if a blocker surfaces during dev that threatens the 10-12d window, graceful de-scope = ship registry endpoint alone (3d), defer mismatch detector to 9.4 (5d). FR62 stays open until 9.4. Dev agent: exercise this escape hatch only if ≥3d of effort has been lost to unforeseen issues and spikes show more to come.
+    - **`Story-9.3-CrossTenantVersionConsumerLookup` (R3-1 withdrawal):** a dedicated endpoint for publisher-owners to see "which tenants consume each version of my event type." Requires explicit cross-tenant read permissions (operator-scope authZ). Deferred because the simpler tenant-scoped `VersionMismatch` detection satisfies the operational need inside Story 9.3.
+    - **`Story-9.3-PostLaunchCategoryReview` (R3-14):** measure 3 months of post-launch `memories.handlers.mismatches` counter data tagged by category; drop categories showing near-zero operator-acknowledgement or >95% false-positive rate. Target review: 2026-09.
   - [ ] 11.7 **ADR-9.3-001: Observation store uses 3 Redis keys (SET + ZSET + HASH), not Redis Streams.** Create `docs/dev/adrs/adr-9.3-001-observation-store-key-shape.md`. Options: (a) 3-key pattern [CHOSEN], (b) Redis Stream with MAXLEN trim, (c) Postgres append-only table. Trade-offs: (a) familiar to team (mirrors `RedisAggregateCaseMappingStore`), batchable to 1 round-trip, required Fix #5; (b) 1 round-trip, built-in XRANGE windowing, but NEW Redis surface, team less familiar; (c) durable + queryable, but cross-backend. Decision: (a) for consistency with 9.1 + team familiarity — revisit at scale >10k events/sec/tenant.
   - [ ] 11.8 **ADR-9.3-002: `IObservedEventTypeStore` is a separate interface from `RollingCounterStore`.** Create `docs/dev/adrs/adr-9.3-002-telemetry-substrate-separation.md`. Rationale: 5m/5-slot in-process ring (7.5) has different invariants (bounded memory, MeterListener fast path) than 24h Redis-backed store (9.3); coupling them binds future changes. Formalizes what Risk #7 mitigation only hinted at.
   - [ ] 11.9 **ADR-9.3-003: Experimental diagnostic ID allocation — HXL002 for 9.3.** Create `docs/dev/adrs/adr-9.3-003-experimental-diagnostic-id-allocation.md`. Include the convention table: HXL001 (7.5 telemetry summary), HXL002 (9.3 handler registry), HXL003+ (reserved for future). Rationale: separate IDs per surface prevent stabilization-bottleneck coupling. Cross-reference `docs/dev/experimental-apis.md` (create if not present).
-  - [ ] 11.10 **ADR-9.3-004: `HandlerSubscriptionStatus` is a 3-state enum; `Paused` is deliberately absent.** Create `docs/dev/adrs/adr-9.3-004-subscription-status-three-state.md`. Rationale: Hexalith has no pause semantics; adding `Paused` with no backing implementation would create consumer expectation of a capability that does not exist. Negative-space decision load-bearing for API evolution. Also flags the `Configured` 4-state option (Delta #8) as deferred work.
-  - [ ] 11.11 **ADR-9.3-005: Mismatch severity is 2-valued (`Info`, `Warning`); `Error` is deliberately absent.** Create `docs/dev/adrs/adr-9.3-005-mismatch-severity-two-valued.md`. Rationale: no mismatch is action-blocking at the ingestion level; an `Error` severity would be interpreted by downstream paging rules as page-worthy and is not. Prevents future "add Error for completeness" drift. Cross-references Risk #2 canonical "stale" definition.
+  - [ ] 11.10 **ADR-9.3-004 (Finding F — merged): Enum minimalism for operator-facing types.** Create `docs/dev/adrs/adr-9.3-004-operator-enum-minimalism.md`. Consolidates two negative-space decisions: (a) `HandlerSubscriptionStatus` is 3-state (`Active/Unknown/Disabled`) — `Paused` deliberately absent because Hexalith has no pause semantics; adding it would create consumer expectation of a capability that does not exist. (b) `HandlerMismatchSeverity` is 2-valued (`Info/Warning`) — `Error` deliberately absent because no mismatch is action-blocking at the ingestion level; an `Error` severity would be interpreted by downstream paging rules as page-worthy and is not. Merged rationale: "operator-facing enums pay a compounding cost per value" — each additional state is a new `switch` case downstream, a new rendering rule in the CLI, a new test scenario. Minimalism preserves clarity and avoids premature expressiveness. Cross-references Risk #2 canonical "stale" definition + Delta #8 deferred `Story-9.3-SubscriptionStatusConfigured` tracking ref. **(Rationale for merging: Daniel's critique — documenting negative-space is valuable, but 5 ADRs for a read-only feature is gold-plating; one "operator enum minimalism" ADR covers both decisions.)**
+  - [ ] 11.11 **ADR-path-validity guard test (Finding H).** Create `tests/Hexalith.Memories.Docs.Tests/AdrsReferenceValidFilePathsTests.cs` — for each ADR under `docs/dev/adrs/`, regex-extract file-path references (anything matching `src/**.cs`, `tests/**.cs`, or inline code-path strings), assert each path exists on disk at test time. A `9.3-001` ADR citing `RedisAggregateCaseMappingStore.cs:19` would fail if that file is renamed without updating the ADR. Prevents ADR rot. Runs in every CI.
 
 ## Dev Notes
 
@@ -790,6 +855,67 @@ If operator feedback post-landing indicates the 3-state model is ambiguous, Stor
 ### `--since` CLI flag for low-volume tenants (Delta #2 — deferred)
 
 Low-volume publishers (e.g., one event per week) will trigger `StaleHandler` Info mismatches every day — the noise ratio makes Info-filtered dashboards lose signal. The planned-but-deferred answer is `memories handlers mismatches --tenant X --since 7d` which widens the observation window to 7 days (or an operator-chosen duration) for this invocation ONLY. Why deferred: requires the observation store's TTL to be widened to `2 × max(window)` globally OR a dedicated "expanded-window store" — either path is a material cost. Tracked as `Story-9.3-SinceFlagForLowVolume`.
+
+### Hindsight-affirmed decisions (R3-12, R3-13)
+
+Two Round-2 additions were reviewed under Hindsight Reflection and AFFIRMED as load-bearing:
+
+- **`HandlerRegistration.Error` field (R3-12 / Finding S):** simulated 2027 postmortem concluded that operators presented with 10 error-rows + 90 healthy-rows drilled into exactly the 10 failing tenants — far better UX than a blanket 500 that hides the healthy majority. Keep the field.
+- **Kill switch (R3-13 / Delta #14):** simulated 2027 Q3 Redis degradation incident: kill switch took 30 seconds to disable vs 20 minutes for a rollback deploy. Keep the switch.
+
+The remaining Round-2 additions that did NOT survive Hindsight Reflection are the cuts captured in R3-1, R3-2, R3-4.
+
+### Three mismatch categories — ship-then-measure posture (R3-14)
+
+The story ships all three categories (`UnhandledEventType`, `StaleHandler`, `VersionMismatch`) at once. **The Shark Tank + Hindsight rounds flagged a risk:** `StaleHandler` may turn out to be noise for low-volume tenants (false-positive frequency per weekly-publishing pattern) and `VersionMismatch` may fire rarely with low operator-intervention value. **Acceptance posture:** ship all three, instrument via `memories.handlers.mismatches` counter (tagged by category), measure post-launch. If 3 months of telemetry shows that a category has either (a) near-zero operator acknowledgement (no one drills into its rows) or (b) >95% false-positive rate (StaleHandler likely candidate), open a follow-up story to drop or relocate that category to a separate endpoint. Do NOT pre-emptively cut categories based on speculation — cut based on measured telemetry. The three-category decision is therefore EXPLICITLY REVISITABLE and tracked via `deferred-work.md` entry `Story-9.3-PostLaunchCategoryReview` (target: 2026-09 or later).
+
+### Observation window boundary semantics (R3-10)
+
+The 24h window is **inclusive-start, exclusive-end relative to "now."** An observation at timestamp T is included in a read at time (now) if `T ≥ now - 24h` — tightly: `ZRANGEBYSCORE minScore=(now - 86_400_000ms) maxScore=+inf`. Edge cases:
+- Observation at T, read at T + 24h - 1ms → **included**.
+- Observation at T, read at T + 24h exactly → **included** (minScore comparison is `>=`).
+- Observation at T, read at T + 24h + 1ms → **excluded**.
+
+**Boundary flap warning:** if an operator runs `memories handlers mismatches` twice at T + 24h and T + 24h + 2ms, they may see a StaleHandler appear in the second run that wasn't in the first. This is correct behavior, not a bug, but document it in §11.3 so operators reading back-to-back snapshots understand the ±ms transition.
+
+### TTL vs observation window — independent mechanisms (Finding I)
+
+Reading the spec, a dev may conflate two separate mechanisms:
+
+1. **Redis TTL (48h)** — the store's SELF-CLEANUP. Every write refreshes the TTL to `now + 48h` via `KeyExpireAsync`. If a tenant stops emitting events entirely, its keys self-expire after 48h with no external cleanup required. TTL bounds the store's growth but does NOT implement the "window" semantics.
+
+2. **Observation window (24h)** — the CUTOFF applied at READ TIME via `ZRANGEBYSCORE (now - window) → +inf`. The window selects which observations are "current" for detection purposes. It is NOT a deletion mechanism; older-than-window entries still exist in Redis (until TTL expires them at 48h) — they are simply excluded from detector output.
+
+Why two mechanisms? TTL protects the store from unbounded growth if a tenant becomes inactive; the window gives operators a stable "recent" reading regardless of underlying TTL jitter. The 2× relationship (TTL = 2 × window) provides headroom so a query at T + 24h - 1ms still sees data that would have been in-window at T.
+
+### Why the stem comes from the TERMINAL segment (Finding J)
+
+Event type strings follow CloudEvents convention: `{namespace}.{aggregate}.{eventName}` (e.g., `MyApp.Claims.ClaimSubmittedV2`). The version attaches to the EVENT NAME, not the namespace. Applying the stem regex to the namespace or aggregate portion would (a) find nothing useful (namespaces don't version with `V\d+`), (b) risk false-positive matches on coincidental prefix-suffix patterns. The terminal-segment split makes the regex operate on the portion that actually carries version semantics. Documented here because it is NOT obvious from reading the regex alone why the `.Split('.').Last()` step exists.
+
+### Why 256 for the observation-write semaphore (Finding K)
+
+The `SemaphoreSlim(256)` cap is a heuristic chosen by the following reasoning:
+
+1. **.NET thread-pool defaults:** `ThreadPool.GetMinThreads()` returns `(Environment.ProcessorCount, Environment.ProcessorCount)` at cold start and grows lazily. 256 concurrent observation writes is O(8-16× ProcessorCount) on typical 16-32 core boxes — enough overhead to absorb transient bursts but not so large that we mask pathological Redis slowness.
+2. **Expected steady-state RPS:** if ingestion runs at 1000 events/sec with p95 observation-write latency of 5ms, the expected in-flight concurrency is ~5. 256 is 50× headroom.
+3. **Escalation threshold:** if observed p95 observation-write latency degrades to 256ms (i.e., 256 in-flight × 1s = the cap is saturated), dropped-counter starts firing and Finding G's 9144 surfaces the issue.
+
+**Revisit the cap if:** (a) production load benchmarks show >1000 events/sec per pod sustained, (b) dropped-counter emits more than 0.01%/1h persistently (9144 is the signal), (c) Redis write latency baseline shifts significantly. **Do not** make the cap config-driven until one of these triggers — YAGNI.
+
+### Glossary (Finding Z)
+
+For operators and non-specialist devs reading this spec:
+
+- **CloudEvents:** standardized event envelope format (CNCF spec). A CloudEvent has required headers (`id`, `source`, `type`, `specversion`) plus optional extension headers.
+- **Event type / `type`:** CloudEvents `type` header (e.g., `MyApp.Claims.ClaimSubmittedV2`). Identifies the SEMANTIC meaning of the event; distinct from the transport-level topic.
+- **Source prefix:** the CloudEvents `source` header (URL-like, e.g., `https://publisher.acme.com/claims`). Routing maps match against the START of this string.
+- **`SourceToTenantMap`:** `Dictionary<string, string>` — key = source-prefix (longest-prefix match wins), value = tenant-id. Configured in `appsettings.json`.
+- **Aggregate / aggregateType:** DDD term. The domain object the event relates to (e.g., `Claim`). Extracted from the CloudEvents `type` by convention (the segment before the final `.`).
+- **Terminal segment / stem:** The FINAL `.`-separated segment of an event type; e.g., `ClaimSubmittedV2` in `MyApp.Claims.ClaimSubmittedV2`. The STEM is that segment with its trailing `V\d+` suffix stripped (`ClaimSubmitted`).
+- **Observation store:** Redis-backed 24h rolling counter of which event types the system has seen per tenant. Populated fire-and-forget from `EventIngestionService`; read by `HandlerRegistryService` + `HandlerMismatchDetector`.
+- **Dapr pub/sub:** Dapr's message-broker abstraction. `TenantEventRoutingOptions.PubSubName` + `.Topic` configure which broker + which channel.
+- **Fire-and-forget:** a Task is started without awaiting; the ingestion response returns immediately, the task finishes asynchronously. Used deliberately here for observation writes so ingestion latency is never gated on the store's write latency.
+- **HXL001 / HXL002:** Hexalith experimental-API diagnostic IDs. Code marked `[Experimental("HXL002")]` emits a compile-time warning unless the consumer explicitly suppresses the diagnostic — the warning signals "this API may change without a major-version bump."
 
 ### API surface experimental-header convention (Delta #5)
 
