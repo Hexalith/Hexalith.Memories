@@ -105,7 +105,17 @@ public sealed class FalkorDbSemanticAttributeProcessor : BaseProcessor<Activity>
             return;
         }
 
-        if (!_falkorDbHostnames.Contains(serverAddress.Trim()))
+        // Review P17: some instrumentation flavours emit `server.address` with a port suffix
+        // (e.g. "falkordb:6379"). Strip it before the allow-list comparison so the hostname-only
+        // configured set still matches port-carrying addresses.
+        string candidate = serverAddress.Trim();
+        int portColon = candidate.LastIndexOf(':');
+        if (portColon > 0 && portColon < candidate.Length - 1 && IsAllDigits(candidate.AsSpan(portColon + 1)))
+        {
+            candidate = candidate[..portColon];
+        }
+
+        if (!_falkorDbHostnames.Contains(candidate))
         {
             return;
         }
@@ -118,4 +128,22 @@ public sealed class FalkorDbSemanticAttributeProcessor : BaseProcessor<Activity>
 
     private static string? GetStringTag(Activity activity, string tagName)
         => activity.GetTagItem(tagName) as string;
+
+    private static bool IsAllDigits(ReadOnlySpan<char> span)
+    {
+        if (span.IsEmpty)
+        {
+            return false;
+        }
+
+        foreach (char c in span)
+        {
+            if (!char.IsAsciiDigit(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

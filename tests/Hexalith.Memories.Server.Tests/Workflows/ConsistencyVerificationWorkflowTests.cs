@@ -289,6 +289,7 @@ public class ConsistencyVerificationWorkflowTests
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true)
             {
+                ConsistencyNoteKind = ConsistencyNoteKind.None,
                 NaturalLanguageSemanticExists = false,
                 NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
                 ConsistencyNote = "Missing backends: semantic-nl",
@@ -305,6 +306,7 @@ public class ConsistencyVerificationWorkflowTests
         result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
         result.Discrepancies[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
         result.Discrepancies[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        result.Discrepancies[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
         string? consistencyNote = result.Discrepancies[0].ConsistencyNote;
         consistencyNote.ShouldNotBeNull();
         consistencyNote.ShouldContain("semantic-nl");

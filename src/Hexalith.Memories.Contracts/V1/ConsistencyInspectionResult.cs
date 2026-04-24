@@ -41,4 +41,8 @@ public sealed record ConsistencyInspectionResult(
         = NaturalLanguageEmbeddingStatus.NotApplicable;
 
     public string? ConsistencyNote { get; init; }
+
+    /// <summary>Story 9.2 Review D7 — typed identifier for the <see cref="ConsistencyNote"/>.
+    /// Consumers pattern-match on this enum rather than parsing the free-form note string.</summary>
+    public ConsistencyNoteKind ConsistencyNoteKind { get; init; }
 }

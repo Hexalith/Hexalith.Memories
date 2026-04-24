@@ -119,6 +119,65 @@ public sealed class EmbeddingInputContentKindTests
     }
 
     [Fact]
+    public async Task PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully()
+    {
+        // Story 9.2 Review D4 / Risk #17 (unit variant) — simulates a paused 9.1 workflow whose
+        // durable history carries the V1 positional EmbeddingInput shape ({TenantId, ContentText}).
+        // Deterministic replay requires the 9.2 code to:
+        //   (1) deserialize the historical JSON without exception,
+        //   (2) default ContentKind to Payload,
+        //   (3) drive GenerateEmbeddingActivity.RunAsync to completion — same outcome as a fresh call,
+        //   (4) emit telemetry with content_kind=payload (not a surprise value).
+        // A deterministic-replay violation would surface as a deserialization exception or a
+        // divergent activity result. The unit variant validates all four invariants without
+        // requiring a real durable-task state snapshot.
+        string historicalJson = "{\"TenantId\":\"t-historical\",\"ContentText\":\"pre-9.2 event payload\"}";
+
+        EmbeddingInput replayed = JsonSerializer.Deserialize<EmbeddingInput>(historicalJson)!;
+        replayed.TenantId.ShouldBe("t-historical");
+        replayed.ContentKind.ShouldBe(EmbeddingContentKind.Payload);
+
+        List<string> capturedKinds = [];
+        using MeterListener listener = new()
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Name == MemoriesMeter.Name
+                    && instrument.Name == MemoriesMeter.EmbeddingApiCallsName)
+                {
+                    l.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (KeyValuePair<string, object?> tag in tags)
+            {
+                if (tag.Key == "content_kind" && tag.Value is string s)
+                {
+                    capturedKinds.Add(s);
+                }
+            }
+        });
+        listener.Start();
+
+        float[] vector = new float[768];
+        EmbeddingClient client = CreateMockEmbeddingClient(vector);
+        IActorProxyFactory factory = CreateMockActorProxyFactory(allowed: true);
+        GenerateEmbeddingActivity activity = CreateActivity(client, factory);
+
+        EmbeddingResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            replayed);
+
+        result.Vector.ShouldBe(vector);
+        capturedKinds.ShouldContain(
+            "payload",
+            customMessage: "Replay of a 9.1-shape EmbeddingInput MUST route through the payload tag — "
+                + "divergence here would indicate a workflow-replay determinism hazard.");
+    }
+
+    [Fact]
     public async Task PayloadKind_EmitsPayloadContentKindTag()
     {
         List<string> capturedKinds = [];

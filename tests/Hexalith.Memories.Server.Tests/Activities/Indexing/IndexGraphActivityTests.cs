@@ -250,6 +250,55 @@ public class IndexGraphActivityTests
     }
 
     [Fact]
+    public async Task MultipleEventsSameCorrelationId_EachCreatesEdgeToRoot_NoFanOut()
+    {
+        // Story 9.2 Task 6 / Risk #3 — the fan-out-prevention guarantee. Three sibling events that
+        // share the same CorrelationId each create exactly ONE edge (root -> self); the activity
+        // never creates edges between the siblings. This is tested at the activity contract level
+        // by asserting the mock IGraphQueryBuilder receives exactly one BuildMergeEdge call per
+        // event, each with the same root as the source node.
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IndexGraphActivity activity = new(falkorDb, builder, Substitute.For<ILogger<IndexGraphActivity>>());
+
+        string[] siblingIds = ["event-sibling-1", "event-sibling-2", "event-sibling-3"];
+        foreach (string id in siblingIds)
+        {
+            IndexInput input = CreateTestInput() with
+            {
+                MemoryUnitId = id,
+                CorrelationId = "event-root",
+            };
+            await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+        }
+
+        // Exactly three root->sibling edges, one per ingest.
+        foreach (string id in siblingIds)
+        {
+            builder.Received(1).BuildMergeEdge(
+                "event-root", id, EdgeType.CorrelatedWith,
+                EdgeTypeDefaults.CorrelatedWith, EdgeOrigin.Explicit);
+        }
+
+        // The activity MUST NOT create sibling->sibling edges. Assert that no edge whose source is
+        // another sibling (not the root) was ever built.
+        foreach (string source in siblingIds)
+        {
+            foreach (string target in siblingIds)
+            {
+                if (source == target)
+                {
+                    continue;
+                }
+
+                builder.DidNotReceive().BuildMergeEdge(
+                    source, target, EdgeType.CorrelatedWith,
+                    Arg.Any<float>(), Arg.Any<EdgeOrigin>());
+            }
+        }
+    }
+
+    [Fact]
     public async Task NullCorrelationId_SkipsCorrelatedWithBranch()
     {
         IGraphQueryBuilder builder = CreateMockBuilder();

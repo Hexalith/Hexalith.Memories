@@ -39,6 +39,12 @@ public static class MemoriesActivitySource
     /// <summary>CLI root activity name for opt-in telemetry.</summary>
     public const string CliInvoke = "memories.cli.invoke";
 
+    /// <summary>Story 9.2 / Risk #2 — span wrapping a single LLM call for natural-language description
+    /// generation. Emitted from <c>GenerateNaturalLanguageDescriptionActivity</c>. Carries
+    /// <see cref="TagTenantId"/>, <see cref="TagMemoryUnitId"/>, and outcome attributes so operators
+    /// can attribute LLM latency and failure rates per tenant in distributed traces.</summary>
+    public const string NaturalLanguageDescriptionGeneration = "memories.natural_language.description";
+
     /// <summary>Tag key for tenant id.</summary>
     public const string TagTenantId = "memories.tenant_id";
 

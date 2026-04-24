@@ -125,6 +125,9 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         string? consistencyNote = NaturalLanguageConsistencyState.BuildConsistencyNote(
             naturalLanguageEmbeddingStatus,
             naturalLanguageSemanticPresent);
+        ConsistencyNoteKind consistencyNoteKind = NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
+            naturalLanguageEmbeddingStatus,
+            naturalLanguageSemanticPresent);
 
         ConsistencyRepairRecommendation recommendation =
             RepairPlanCalculator.Calculate(syntacticPresent, semanticPresent, graphExists);
@@ -154,6 +157,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
             NaturalLanguageSemanticDetail = naturalLanguageSemanticDetail,
             NaturalLanguageEmbeddingStatus = naturalLanguageEmbeddingStatus,
             ConsistencyNote = consistencyNote,
+            ConsistencyNoteKind = consistencyNoteKind,
         };
     }
 

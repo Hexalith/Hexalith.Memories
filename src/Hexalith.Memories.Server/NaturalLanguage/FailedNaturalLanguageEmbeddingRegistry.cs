@@ -165,8 +165,22 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
             return (long)result;
         }
-        catch (RedisServerException ex)
+        catch (RedisException ex)
         {
+            LogMemoryUsageUnavailable(_logger, ex, tenantId);
+            return 0;
+        }
+        catch (TimeoutException ex)
+        {
+            LogMemoryUsageUnavailable(_logger, ex, tenantId);
+            return 0;
+        }
+        catch (InvalidCastException ex)
+        {
+            // Review P13: a future Redis Stack release could change the MEMORY USAGE return shape
+            // from an integer to a different RedisResult type. Cast throws InvalidCastException —
+            // without this guard the telemetry pipeline propagates the exception and stops emitting
+            // the gauge for ALL tenants until the next 30s tick.
             LogMemoryUsageUnavailable(_logger, ex, tenantId);
             return 0;
         }
@@ -203,7 +217,19 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     {
         try
         {
-            return JsonSerializer.Deserialize<FailedNaturalLanguageEmbeddingRecord>(payload, MemoriesJsonContext.Options);
+            FailedNaturalLanguageEmbeddingRecord? record = JsonSerializer.Deserialize<FailedNaturalLanguageEmbeddingRecord>(payload, MemoriesJsonContext.Options);
+
+            // Review P12: a corrupted or partially-persisted record (null/empty TenantId or
+            // MemoryUnitId) must not flow into the retry pipeline — downstream activities would
+            // fail with NullReferenceException or enqueue work against a non-existent tenant.
+            if (record is null
+                || string.IsNullOrWhiteSpace(record.TenantId)
+                || string.IsNullOrWhiteSpace(record.MemoryUnitId))
+            {
+                return null;
+            }
+
+            return record;
         }
         catch (JsonException)
         {

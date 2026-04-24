@@ -58,4 +58,19 @@ internal static class NaturalLanguageConsistencyState
                 => "Missing backends: semantic-nl",
             _ => null,
         };
+
+    /// <summary>Story 9.2 Review D7 — typed canonical identifier for the informational note emitted by
+    /// <see cref="BuildConsistencyNote"/>. Paired so the free-form string keeps its on-the-wire shape
+    /// for existing consumers while typed filtering now works without string parsing.</summary>
+    public static ConsistencyNoteKind BuildConsistencyNoteKind(
+        NaturalLanguageEmbeddingStatus status,
+        bool naturalLanguageSemanticPresent)
+        => status switch
+        {
+            NaturalLanguageEmbeddingStatus.Queued when !naturalLanguageSemanticPresent
+                => ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+            NaturalLanguageEmbeddingStatus.Indexed when !naturalLanguageSemanticPresent
+                => ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
+            _ => ConsistencyNoteKind.None,
+        };
 }

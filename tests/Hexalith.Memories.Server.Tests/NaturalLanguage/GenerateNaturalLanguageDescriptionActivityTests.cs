@@ -58,6 +58,50 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     }
 
     [Fact]
+    public async Task SuccessPath_EmitsNaturalLanguageDescriptionGenerationSpan()
+    {
+        // Story 9.2 Review D5 — the distributed-trace span named "memories.natural_language.description"
+        // MUST be emitted on every LLM call so operators can attribute latency and failure rates per
+        // tenant in traces (Risk #2 diagnostics). The span carries tenant_id, memory_unit_id, and an
+        // outcome tag.
+        DaprConversationClient client = CreateClientReturning("A user signed in.", model: "gpt-4o-mini");
+        GenerateNaturalLanguageDescriptionActivity activity = CreateActivity(client);
+
+        List<System.Diagnostics.Activity> observed = [];
+        using System.Diagnostics.ActivityListener listener = new()
+        {
+            ShouldListenTo = source =>
+                source.Name == Hexalith.Memories.Telemetry.MemoriesActivitySource.SourceName,
+            Sample = (ref System.Diagnostics.ActivityCreationOptions<System.Diagnostics.ActivityContext> _)
+                => System.Diagnostics.ActivitySamplingResult.AllData,
+            ActivityStopped = a =>
+            {
+                if (a.OperationName == Hexalith.Memories.Telemetry.MemoriesActivitySource.NaturalLanguageDescriptionGeneration)
+                {
+                    observed.Add(a);
+                }
+            },
+        };
+        System.Diagnostics.ActivitySource.AddActivityListener(listener);
+
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new NaturalLanguageDescriptionInput(TenantId, MemoryUnitId, RawJsonPayload, EventType, "Counter"));
+
+        System.Diagnostics.Activity span = observed.ShouldHaveSingleItem();
+        span.Tags.ShouldContain(t =>
+            t.Key == Hexalith.Memories.Telemetry.MemoriesActivitySource.TagTenantId
+            && t.Value == TenantId);
+        span.Tags.ShouldContain(t =>
+            t.Key == Hexalith.Memories.Telemetry.MemoriesActivitySource.TagMemoryUnitId
+            && t.Value == MemoryUnitId);
+        span.Tags.ShouldContain(t =>
+            t.Key == Hexalith.Memories.Telemetry.MemoriesActivitySource.TagOutcome
+            && t.Value == "ok");
+        span.Status.ShouldBe(System.Diagnostics.ActivityStatusCode.Ok);
+    }
+
+    [Fact]
     public async Task UnknownModel_FallsBackToUnknownString()
     {
         DaprConversationClient client = CreateClientReturning(

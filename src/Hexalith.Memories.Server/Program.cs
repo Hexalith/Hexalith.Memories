@@ -151,6 +151,14 @@ builder.Services.AddSingleton<NaturalLanguageSemanticSearchService>(sp =>
 // that a SIGKILL mid-provisioning could have left behind when compensation cannot run.
 builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.OrphanSemanticIndexReconciler>();
 
+// Story 9.2 Task 7.6 / Review D3: one-shot isStub backfill migration — sets m.isStub=false on pre-9.2
+// MemoryUnit nodes with content so GraphTraversalService's content-absent fallback becomes redundant.
+// The migration class itself is not a hosted service; the wrapper enumerates tenants at startup and
+// calls RunAsync per graph. Each graph is gated by (:SchemaMigration {id: "9.2-isStub-backfill"}) so
+// repeated startups are idempotent no-ops.
+builder.Services.AddSingleton<Hexalith.Memories.Server.Migrations.IsStubBackfillMigration>();
+builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.IsStubBackfillMigrationHostedService>();
+
 // Story 9.2 Task 5.9: startup gate that delays workflow-host startup until in-flight IngestionWorkflow
 // instances drain (Risk #13 replay determinism fail-safe). Uses IHostedLifecycleService (Spike 0.4)
 // so ordering is DI-registration-independent.
@@ -324,7 +332,8 @@ TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<
 MemoriesMeter.EnsureObservableGaugesCreated(
     telemetrySnapshotCache.GetIndexSizeMeasurements,
     telemetrySnapshotCache.GetQueueDepthMeasurements,
-    telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueDepthMeasurements);
+    telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueDepthMeasurements,
+    telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueBytesMeasurements);
 
 app.MapPost("/api/ingest", async (
     DaprWorkflowClient workflowClient,

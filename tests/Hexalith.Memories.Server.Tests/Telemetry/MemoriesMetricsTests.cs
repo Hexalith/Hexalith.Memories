@@ -27,6 +27,8 @@ public sealed class MemoriesMetricsTests
         MemoriesMeter.PipelineQueueDepthName.ShouldBe("memories.pipeline.queue_depth");
         MemoriesMeter.NaturalLanguageDescriptionDurationName.ShouldBe("memories_natural_language_description_duration_ms");
         MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName.ShouldBe("memories_natural_language_embedding_queue_depth");
+        MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName.ShouldBe("memories_natural_language_embedding_queue_bytes");
+        MemoriesMeter.ConversationCacheHitName.ShouldBe("memories_conversation_cache_hit_total");
     }
 
     [Fact]
@@ -48,6 +50,8 @@ public sealed class MemoriesMetricsTests
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.PipelineQueueDepthName].ShouldBe(new[] { "tenant_id" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageDescriptionDurationName].ShouldBe(new[] { "tenant_id" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName].ShouldBe(new[] { "tenant_id" });
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName].ShouldBe(new[] { "tenant_id" });
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.ConversationCacheHitName].ShouldBe(new[] { "tenant_id", "cache_status" });
     }
 
     [Fact]

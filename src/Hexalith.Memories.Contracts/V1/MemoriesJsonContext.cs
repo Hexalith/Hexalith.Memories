@@ -149,6 +149,8 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(FailedNaturalLanguageEmbeddingRecord))]
 [JsonSerializable(typeof(NaturalLanguageEmbeddingRetryInput))]
 [JsonSerializable(typeof(NaturalLanguageEmbeddingRetryResult))]
+// Story 9.2 Review D7: typed identifier for informational consistency notes.
+[JsonSerializable(typeof(ConsistencyNoteKind))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

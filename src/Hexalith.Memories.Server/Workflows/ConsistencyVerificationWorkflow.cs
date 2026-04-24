@@ -118,6 +118,12 @@ public sealed partial class ConsistencyVerificationWorkflow
                     : recommendation.ToString();
                 LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
 
+                ConsistencyNoteKind consistencyNoteKind = probe.ConsistencyNoteKind != ConsistencyNoteKind.None
+                    ? probe.ConsistencyNoteKind
+                    : NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
+                        probe.NaturalLanguageEmbeddingStatus,
+                        probe.NaturalLanguageSemanticExists);
+
                 if (discrepancies.Count < MaxDiscrepancyEntries)
                 {
                     discrepancies.Add(new ConsistencyDiscrepancy(
@@ -130,6 +136,7 @@ public sealed partial class ConsistencyVerificationWorkflow
                         NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
                         NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
                         ConsistencyNote = probe.ConsistencyNote,
+                        ConsistencyNoteKind = consistencyNoteKind,
                     });
                 }
             }

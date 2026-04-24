@@ -87,12 +87,12 @@ reuses the existing Redis dependency.
 
 ### 1.5 Environment defaults table
 
-| Option | Development | Production | Rationale |
-| --- | --- | --- | --- |
-| `AutoCreateCases` | `true` | `false` | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
-| `MaxAutoCreatedCasesPerTenant` | `100` | `100` | Hard cap is a safety backstop regardless of environment. |
-| `PreflightDedupEnabled` | `true` | `true` | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B. |
-| `PreflightDedupTtl` | `24h` | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling. |
+| Option                         | Development | Production                                              | Rationale                                                                                                                                                                    |
+| ------------------------------ | ----------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AutoCreateCases`              | `true`      | `false`                                                 | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
+| `MaxAutoCreatedCasesPerTenant` | `100`       | `100`                                                   | Hard cap is a safety backstop regardless of environment.                                                                                                                     |
+| `PreflightDedupEnabled`        | `true`      | `true`                                                  | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B.                                                                        |
+| `PreflightDedupTtl`            | `24h`       | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling.                                                                                                                                                         |
 
 ---
 
@@ -465,15 +465,16 @@ replay is deterministic — an in-flight 9.1-shape `IngestionWorkflow` history w
 ## Local dev — `conversation.echo`
 
 `deploy/dapr/components/conversation-llm.yaml` defaults to `type: conversation.echo` for local dev
-+ Aspire runs. The echo component returns the input unchanged — meaning the "NL description" is the
-raw JSON payload bytes. **Dev embeddings for the NL vector will be identical to the raw embedding.**
-This is intentional — the pipeline shape is exercised end-to-end without a real LLM cost.
 
-- Event `9162 ConversationApiIsEchoComponent` fires at Warning whenever the resolved component name
+- Aspire runs. The echo component returns the input unchanged — meaning the "NL description" is the
+  raw JSON payload bytes. **Dev embeddings for the NL vector will be identical to the raw embedding.**
+  This is intentional — the pipeline shape is exercised end-to-end without a real LLM cost.
+
+* Event `9162 ConversationApiIsEchoComponent` fires at Warning whenever the resolved component name
   is `conversation.echo`. Local dev logs this every time.
-- Production loads `appsettings.Production.json` which overrides `DaprComponentName` to a real
+* Production loads `appsettings.Production.json` which overrides `DaprComponentName` to a real
   provider component. `NaturalLanguageDescriptionOptionsValidator` emits Critical event `9161
-  EchoComponentNotAllowedInProduction` if Production somehow resolves to the echo component.
+EchoComponentNotAllowedInProduction` if Production somehow resolves to the echo component.
 
 ## Known limitations
 
@@ -494,6 +495,50 @@ This is intentional — the pipeline shape is exercised end-to-end without a rea
   `HEXALITH_ACCEPT_CROSS_TENANT_CACHE_SHARING=1`) or the startup validator fails fast with event
   `9164`. The blast-radius of a leak is a privacy incident — operators OPT IN, never opt out.
 
+## LLM hallucination posture
+
+NL descriptions are produced by a large-language model responding to a single-sentence summarization
+prompt. Even with low temperature (`0.1`) and an explicit "focus on domain meaning" instruction, the
+model may:
+
+- Invert semantic polarity (summarize a `PolicyRenewed` event as "policy canceled");
+- Invent fields not present in the payload (attribute amounts or counterparties the event does not
+  carry);
+- Mis-classify the business action (summarize an administrative no-op as a substantive change).
+
+Because the NL description is persisted into the tenant NL semantic hash, a hallucinated summary
+can surface in any future consumer that queries that hash directly. Story 9.2 ships
+`NaturalLanguageSemanticSearchService` as a library-only surface; the default `HybridSearchService`
+axis is unchanged until a later opt-in rollout. The project's defensive posture:
+
+1. **Provenance tagging.** Every persisted description in the NL semantic hash carries
+   `descriptionOrigin = "ai"`. When `NaturalLanguage:PersistInMetadata = true`, the duplicate
+   metadata field is also tagged with `MetadataOrigin.Ai`. UI surfaces MUST render AI-inferred
+   descriptions distinctly from operator-authored text.
+2. **Confidence signal.** Current 9.2 behavior is intentionally unmeasured: Dapr.AI 1.17.6 does
+   not expose logprobs on the shipped SDK surface, so `descriptionConfidence` is currently `null`
+   and `descriptionConfidenceSource = "constant"`. UIs render an "AI-inferred (unmeasured)"
+   affordance rather than a misleading pseudo-percentage. If a future SDK/provider exposes
+   logprobs, the field can become measured without changing the provenance model.
+3. **User correction path.** Story 3.6 annotations-and-corrections accept operator-authored
+   descriptions that supersede the AI-generated one for display purposes. The original NL embedding
+   remains indexed (so a user-visible correction doesn't silently change search behavior), but the
+   UI shows the corrected text.
+4. **Operator response to systematic drift.** If operators observe that NL descriptions for a given
+   `event.type` are systematically wrong (e.g., an event schema the LLM doesn't understand), the
+   correct remediation is to:
+    - File the prompt change as a story (the system prompt is a code artifact, versioned alongside
+      `GenerateNaturalLanguageDescriptionActivity`).
+    - Consider swapping the DAPR Conversation component to a provider better aligned with the domain
+      (YAML change, no code redeploy — see "LLM provider swap procedure" above).
+    - Re-ingest the affected events via `ReIngestionCoordinator` once the prompt / provider change
+      lands.
+5. **What 9.2 does NOT ship.** Automated quality monitoring of NL descriptions (e.g., comparing the
+   NL embedding distance to the raw embedding as a drift signal) is Phase 2. There is also no
+   reliable numeric drift detector on the current SDK surface because `descriptionConfidence`
+   remains intentionally unmeasured today. Operators rely on sampling, correction reports, and
+   targeted NL-hash inspection instead of a built-in confidence threshold.
+
 ## PII scrubbing posture
 
 `deploy/dapr/components/conversation-llm.yaml` ships with `piiScrubbing: false` (MVP decision). The
@@ -508,4 +553,3 @@ Compliance stakeholders MUST sign off on a governance artifact documenting:
 - Visible control: test
   `GenerateNaturalLanguageDescriptionActivityTests.PayloadWithCustomerPii_SummaryMayContainPii_DocumentedBehavior`
   serves as the code-level acknowledgment; a test is not consent — the signed artifact is.
-

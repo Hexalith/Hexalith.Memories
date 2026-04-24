@@ -2,6 +2,9 @@ namespace Hexalith.Memories.Server.Tests.Graph;
 
 #pragma warning disable CS0618 // these tests intentionally exercise the 1-arg BuildMergeStubNode obsolete overload to pin its forward-to-2-arg behavior.
 
+using System.IO;
+using System.Text.RegularExpressions;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
 
@@ -234,6 +237,46 @@ public class GraphQueryBuilderTests
         (string _, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode("mu-stub-002", stubCreatedAt);
 
         parameters["stubCreatedAt"].ShouldBe("2026-04-23T10:00:00.0000000+00:00");
+    }
+
+    [Fact]
+    public void BuildMergeStubNode_AllCallers_PassStubCreatedAt()
+    {
+        string repoRoot = FindRepoRoot();
+        string serverSourceRoot = Path.Combine(repoRoot, "src", "Hexalith.Memories.Server");
+        List<string> sourceFiles = Directory
+            .EnumerateFiles(serverSourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path =>
+                !path.EndsWith("GraphQueryBuilder.cs", StringComparison.Ordinal)
+                && !path.EndsWith("IGraphQueryBuilder.cs", StringComparison.Ordinal))
+            .ToList();
+
+        List<string> oneArgumentCallSites = [];
+        int totalInvocationCount = 0;
+
+        foreach (string path in sourceFiles)
+        {
+            string source = File.ReadAllText(path);
+            totalInvocationCount += Regex.Matches(source, @"\.BuildMergeStubNode\s*\(").Count;
+
+            MatchCollection invalidCalls = Regex.Matches(
+                source,
+                @"\.BuildMergeStubNode\s*\(\s*[^,\)\r\n]+\s*\)");
+
+            if (invalidCalls.Count == 0)
+            {
+                continue;
+            }
+
+            string relativePath = Path.GetRelativePath(serverSourceRoot, path);
+            oneArgumentCallSites.AddRange(invalidCalls.Select(match => $"{relativePath}: {match.Value}"));
+        }
+
+        totalInvocationCount.ShouldBe(
+            3,
+            "Story 9.2 currently has exactly three production BuildMergeStubNode call sites (CaseService plus two IndexGraphActivity branches). Update this assertion if a new legitimate caller is introduced.");
+        oneArgumentCallSites.ShouldBeEmpty(
+            "Production callers must use the 2-arg overload and pass a replay-safe stubCreatedAt timestamp.");
     }
 
     [Fact]
@@ -1069,5 +1112,21 @@ public class GraphQueryBuilderTests
     public void BuildBatchDeleteNodes_NegativeBatchSize_ShouldThrow()
     {
         Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildBatchDeleteNodes(-1));
+    }
+
+    private static string FindRepoRoot()
+    {
+        DirectoryInfo? current = new(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "Hexalith.Memories.slnx")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate the repository root for GraphQueryBuilderTests.");
     }
 }

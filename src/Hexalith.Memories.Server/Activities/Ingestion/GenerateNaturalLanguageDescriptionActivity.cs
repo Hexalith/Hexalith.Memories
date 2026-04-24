@@ -23,6 +23,7 @@ using Grpc.Core;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Telemetry;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -110,6 +111,14 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(options.LlmRequestTimeoutSeconds));
 
+        using Activity? activity = MemoriesActivitySource.Instance.StartActivity(
+            MemoriesActivitySource.NaturalLanguageDescriptionGeneration,
+            ActivityKind.Client);
+        activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
+        activity?.SetTag(MemoriesActivitySource.TagMemoryUnitId, input.MemoryUnitId);
+        activity?.SetTag("memories.natural_language.component", componentName);
+        activity?.SetTag("memories.natural_language.event_type", input.EventType);
+
         Stopwatch stopwatch = Stopwatch.StartNew();
         ConversationResponse response;
         try
@@ -128,6 +137,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 input.TenantId,
                 input.MemoryUnitId,
                 $"timeout after {options.LlmRequestTimeoutSeconds}s");
+            activity?.SetTag(MemoriesActivitySource.TagOutcome, "error");
+            activity?.SetTag(MemoriesActivitySource.TagErrorCode, "timeout");
+            activity?.SetStatus(ActivityStatusCode.Error, "llm-timeout");
             throw new NaturalLanguageDescriptionUnavailableException(
                 $"LLM call timed out after {options.LlmRequestTimeoutSeconds}s.",
                 componentName,
@@ -141,6 +153,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 input.TenantId,
                 input.MemoryUnitId,
                 $"gRPC {ex.StatusCode}");
+            activity?.SetTag(MemoriesActivitySource.TagOutcome, "error");
+            activity?.SetTag(MemoriesActivitySource.TagErrorCode, $"grpc-{ex.StatusCode}");
+            activity?.SetStatus(ActivityStatusCode.Error, "llm-grpc-failure");
             throw new NaturalLanguageDescriptionUnavailableException(
                 $"DAPR Conversation gRPC call failed: {ex.StatusCode} {ex.Status.Detail}",
                 componentName,
@@ -154,6 +169,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 input.TenantId,
                 input.MemoryUnitId,
                 "dapr-exception");
+            activity?.SetTag(MemoriesActivitySource.TagOutcome, "error");
+            activity?.SetTag(MemoriesActivitySource.TagErrorCode, "dapr-exception");
+            activity?.SetStatus(ActivityStatusCode.Error, "llm-dapr-failure");
             throw new NaturalLanguageDescriptionUnavailableException(
                 "DAPR Conversation call failed.",
                 componentName,
@@ -167,6 +185,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 input.TenantId,
                 input.MemoryUnitId,
                 "http-exception");
+            activity?.SetTag(MemoriesActivitySource.TagOutcome, "error");
+            activity?.SetTag(MemoriesActivitySource.TagErrorCode, "http-exception");
+            activity?.SetStatus(ActivityStatusCode.Error, "llm-http-failure");
             throw new NaturalLanguageDescriptionUnavailableException(
                 "DAPR Conversation transport error.",
                 componentName,
@@ -191,6 +212,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 input.TenantId,
                 input.MemoryUnitId,
                 "cleaner-rejected-empty-or-malformed-response");
+            activity?.SetTag(MemoriesActivitySource.TagOutcome, "error");
+            activity?.SetTag(MemoriesActivitySource.TagErrorCode, "cleaner-rejected");
+            activity?.SetStatus(ActivityStatusCode.Error, "cleaner-rejected");
             throw new NaturalLanguageDescriptionUnavailableException(
                 "NL response cleaner rejected the LLM response as empty or malformed.",
                 componentName,
@@ -199,6 +223,12 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
 
         string llmProvider = componentName;
         string llmModel = ExtractModel(response) ?? "unknown";
+
+        // Dapr.AI 1.17.6 does NOT expose logprobs on ConversationResultChoice (only FinishReason, Index,
+        // Message). Review Finding D1 was resolved as "formally defer" — see deferred-work.md entry
+        // "Story 9.2 D1 — logprobs-based confidence extraction" gated on a future Dapr.AI SDK surface
+        // exposing logprobs on the response shape. Until then, ConfidenceSource is always Constant +
+        // EstimatedConfidence is null, so UIs render "AI-inferred (unmeasured)" and never a pseudo-number.
         ConfidenceSource confidenceSource = ConfidenceSource.Constant;
         float? estimatedConfidence = null;
 
@@ -210,6 +240,12 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
             llmModel,
             stopwatch.ElapsedMilliseconds,
             confidenceSource.ToString().ToLowerInvariant());
+
+        activity?.SetTag("memories.natural_language.llm_model", llmModel);
+        activity?.SetTag("memories.natural_language.duration_ms", stopwatch.ElapsedMilliseconds);
+        activity?.SetTag("memories.natural_language.confidence_source", confidenceSource.ToString().ToLowerInvariant());
+        activity?.SetTag(MemoriesActivitySource.TagOutcome, "ok");
+        activity?.SetStatus(ActivityStatusCode.Ok);
 
         return new NaturalLanguageDescriptionResult(
             cleanedDescription,
@@ -232,14 +268,25 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
 
     private static string TruncatePayload(string? rawPayload, int maxChars)
     {
-        if (string.IsNullOrEmpty(rawPayload))
+        if (string.IsNullOrEmpty(rawPayload) || maxChars <= 0)
         {
             return string.Empty;
         }
 
-        return rawPayload.Length <= maxChars
-            ? rawPayload
-            : rawPayload[..maxChars];
+        if (rawPayload.Length <= maxChars)
+        {
+            return rawPayload;
+        }
+
+        // Avoid splitting a surrogate pair at the truncation boundary — cutting between the high
+        // and low halves produces malformed UTF-16 that Dapr gRPC / the LLM provider may reject.
+        int cut = maxChars;
+        if (char.IsHighSurrogate(rawPayload[cut - 1]) && cut < rawPayload.Length && char.IsLowSurrogate(rawPayload[cut]))
+        {
+            cut--;
+        }
+
+        return rawPayload[..cut];
     }
 
     private static void TryApplyMaxTokenHint(ConversationOptions conversationOptions, int maxTokens)
@@ -290,6 +337,17 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 return;
             }
         }
+
+        // Review P20: no candidate shape matched — the MaxTokens ceiling is NOT applied for this SDK
+        // version. Left silent, an upstream Dapr.AI rename blows past the 80-token cost envelope with
+        // zero signal. Emit a span event so the drift surfaces in tracing without needing ILogger on
+        // a static path.
+        Activity.Current?.AddEvent(new ActivityEvent(
+            "memories.natural_language.max_tokens_hint_skipped",
+            tags: new ActivityTagsCollection
+            {
+                { "parameters_type", parametersProperty.PropertyType.FullName ?? "unknown" },
+            }));
     }
 
     private static bool TryPopulateParameterBag(object? parameterBag, string maxTokenText, int maxTokens)
@@ -335,9 +393,16 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
             ? "(unspecified)"
             : aggregateType;
 
+        // Review D8: the `{EventType}` placeholder is replaced into the system prompt verbatim. If the
+        // caller-supplied eventType contains additional instruction text or template markers, an
+        // attacker-controlled CloudEvent.Type value would alter the LLM instructions. CloudEvents
+        // spec constrains `type` to non-empty strings but does not forbid arbitrary text, so we
+        // defensively restrict to a safe event-name character set and sanitize otherwise.
+        string safeEventType = SanitizeEventTypeForPrompt(eventType);
+
         string systemPromptResolved = SystemPrompt.Replace(
             "{EventType}",
-            eventType,
+            safeEventType,
             StringComparison.Ordinal);
 
         SystemMessage systemMessage = new()
@@ -350,13 +415,40 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
             Content =
             [
                 new MessageContent(
-                    $"Event type: {eventType}\n"
+                    $"Event type: {safeEventType}\n"
                     + $"Aggregate: {aggregateLabel}\n"
                     + $"Payload:\n{truncatedPayload}"),
             ],
         };
 
         return [systemMessage, userMessage];
+    }
+
+    private static string SanitizeEventTypeForPrompt(string eventType)
+    {
+        // Conservative allow-list: CloudEvents `type` values in this project are domain-typed names
+        // like `com.itaneo.memories.MemoryUnitIngestedV1`. Allow letters, digits, dot, dash,
+        // underscore, and colon (colon is used by reverse-DNS-style type identifiers). Other chars
+        // are replaced with `_` so the LLM cannot read attacker-controlled template/instruction
+        // text through the `{EventType}` expansion or the user-message echo.
+        Span<char> buffer = stackalloc char[Math.Min(eventType.Length, 256)];
+        int written = 0;
+        foreach (char c in eventType)
+        {
+            if (written >= buffer.Length)
+            {
+                break;
+            }
+
+            bool safe = char.IsAsciiLetterOrDigit(c)
+                || c == '.'
+                || c == '-'
+                || c == '_'
+                || c == ':';
+            buffer[written++] = safe ? c : '_';
+        }
+
+        return written == 0 ? "unknown" : new string(buffer[..written]);
     }
 
     private static string ExtractFirstChoiceText(ConversationResponse response)

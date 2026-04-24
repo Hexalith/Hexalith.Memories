@@ -50,6 +50,12 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
             throw new ArgumentException("EmbeddingVector must not be empty.", nameof(input));
         }
 
+        // Review P5: the NL description is the business-meaning signal — indexing an empty or null
+        // value writes a degenerate hash whose `naturalLanguageDescription` field is absent/empty,
+        // and a subsequent KNN search may return false-positive matches for zero-vector-adjacent
+        // neighbours. Fail fast so the retry workflow / compensation path can react.
+        ArgumentException.ThrowIfNullOrWhiteSpace(input.NaturalLanguageDescription);
+
         byte[] vectorBytes = MemoryMarshal.AsBytes(input.EmbeddingVector.AsSpan()).ToArray();
         if (vectorBytes.Length != input.EmbeddingDimensions * sizeof(float))
         {

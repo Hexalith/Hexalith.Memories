@@ -26,6 +26,7 @@ public sealed class TelemetrySnapshotCache
         [],
         [],
         [],
+        [],
         new Dictionary<string, TenantSnapshot>(StringComparer.Ordinal));
     private static readonly TimeSpan SnapshotTtl = TimeSpan.FromSeconds(30);
 
@@ -75,6 +76,13 @@ public sealed class TelemetrySnapshotCache
         return snapshot.NaturalLanguageEmbeddingQueueDepths;
     }
 
+    /// <summary>Returns the cached NL retry queue byte-size measurements and schedules a background refresh when stale.</summary>
+    public IEnumerable<Measurement<long>> GetNaturalLanguageEmbeddingQueueBytesMeasurements()
+    {
+        Snapshot snapshot = GetSnapshot();
+        return snapshot.NaturalLanguageEmbeddingQueueBytes;
+    }
+
     /// <summary>Returns the cached tenant snapshot that also backs the observable gauges.</summary>
     public TenantSnapshot GetTenantSnapshot(string tenantId)
     {
@@ -115,6 +123,7 @@ public sealed class TelemetrySnapshotCache
             var indexSizeMeasurements = new List<Measurement<long>>(tenants.Count * 3);
             var queueDepthMeasurements = new List<Measurement<int>>(tenants.Count);
             var naturalLanguageQueueDepthMeasurements = new List<Measurement<long>>(tenants.Count);
+            var naturalLanguageQueueBytesMeasurements = new List<Measurement<long>>(tenants.Count);
             Dictionary<string, TenantSnapshot> tenantSnapshots = new(StringComparer.Ordinal);
 
             foreach (TenantInfo tenant in tenants)
@@ -129,6 +138,7 @@ public sealed class TelemetrySnapshotCache
                 long naturalLanguageQueueDepth = await _naturalLanguageEmbeddingRegistry
                     .GetBacklogCountAsync(tenant.Id, CancellationToken.None)
                     .ConfigureAwait(false);
+                long naturalLanguageQueueBytes = await GetNaturalLanguageQueueBytesSafeAsync(tenant.Id).ConfigureAwait(false);
 
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "syntactic", sizes.RediSearchKeyCount);
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "semantic", sizes.RedisVectorKeyCount);
@@ -140,6 +150,10 @@ public sealed class TelemetrySnapshotCache
 
                 naturalLanguageQueueDepthMeasurements.Add(new Measurement<long>(
                     naturalLanguageQueueDepth,
+                    new KeyValuePair<string, object?>("tenant_id", tenant.Id)));
+
+                naturalLanguageQueueBytesMeasurements.Add(new Measurement<long>(
+                    naturalLanguageQueueBytes,
                     new KeyValuePair<string, object?>("tenant_id", tenant.Id)));
 
                 tenantSnapshots[tenant.Id] = new TenantSnapshot(sizes, health, queueDepth, naturalLanguageQueueDepth);
@@ -157,9 +171,14 @@ public sealed class TelemetrySnapshotCache
                 long naturalLanguageQueueDepth = await _naturalLanguageEmbeddingRegistry
                     .GetBacklogCountAsync(tenantId, CancellationToken.None)
                     .ConfigureAwait(false);
+                long naturalLanguageQueueBytes = await GetNaturalLanguageQueueBytesSafeAsync(tenantId).ConfigureAwait(false);
 
                 naturalLanguageQueueDepthMeasurements.Add(new Measurement<long>(
                     naturalLanguageQueueDepth,
+                    new KeyValuePair<string, object?>("tenant_id", tenantId)));
+
+                naturalLanguageQueueBytesMeasurements.Add(new Measurement<long>(
+                    naturalLanguageQueueBytes,
                     new KeyValuePair<string, object?>("tenant_id", tenantId)));
             }
 
@@ -170,6 +189,7 @@ public sealed class TelemetrySnapshotCache
                     indexSizeMeasurements,
                     queueDepthMeasurements,
                     naturalLanguageQueueDepthMeasurements,
+                    naturalLanguageQueueBytesMeasurements,
                     tenantSnapshots));
         }
         catch (Exception ex)
@@ -199,11 +219,34 @@ public sealed class TelemetrySnapshotCache
             new KeyValuePair<string, object?>("axis", axis)));
     }
 
+    private async Task<long> GetNaturalLanguageQueueBytesSafeAsync(string tenantId)
+    {
+        try
+        {
+            return await _naturalLanguageEmbeddingRegistry
+                .GetBacklogBytesAsync(tenantId, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            _logger.LogDebug(
+                ex,
+                "Telemetry snapshot NL queue-bytes probe failed for tenant {TenantId}; defaulting to 0 for this refresh.",
+                tenantId);
+            return 0;
+        }
+    }
+
     private sealed record Snapshot(
         DateTimeOffset RefreshedAt,
         IReadOnlyList<Measurement<long>> IndexSizes,
         IReadOnlyList<Measurement<int>> QueueDepths,
         IReadOnlyList<Measurement<long>> NaturalLanguageEmbeddingQueueDepths,
+        IReadOnlyList<Measurement<long>> NaturalLanguageEmbeddingQueueBytes,
         IReadOnlyDictionary<string, TenantSnapshot> Tenants);
 
     public sealed record TenantSnapshot(

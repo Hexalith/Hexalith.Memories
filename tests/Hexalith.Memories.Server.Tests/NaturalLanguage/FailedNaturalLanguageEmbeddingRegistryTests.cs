@@ -10,7 +10,13 @@ using System.Text.Json;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.NaturalLanguage;
 
+using Microsoft.Extensions.Logging;
+
+using NSubstitute;
+
 using Shouldly;
+
+using StackExchange.Redis;
 
 public class FailedNaturalLanguageEmbeddingRegistryTests
 {
@@ -82,5 +88,44 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         string serialized = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record);
         // 4KB payload + envelope ≤ ~4.5KB — the Task 8.1 fallback shape cap.
         serialized.Length.ShouldBeLessThan(5 * 1024);
+    }
+
+    [Fact]
+    public async Task GetBacklogBytesAsync_RedisException_ReturnsZero()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ExecuteAsync("MEMORY", Arg.Any<object[]>())
+            .Returns(Task.FromException<RedisResult>(
+                new RedisConnectionException(ConnectionFailureType.SocketFailure, "redis unavailable")));
+
+        FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
+
+        long bytes = await registry.GetBacklogBytesAsync("tenant-a", CancellationToken.None);
+
+        bytes.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetBacklogBytesAsync_TimeoutException_ReturnsZero()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ExecuteAsync("MEMORY", Arg.Any<object[]>())
+            .Returns(Task.FromException<RedisResult>(new TimeoutException("timed out")));
+
+        FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
+
+        long bytes = await registry.GetBacklogBytesAsync("tenant-a", CancellationToken.None);
+
+        bytes.ShouldBe(0);
+    }
+
+    private static FailedNaturalLanguageEmbeddingRegistry CreateRegistry(IDatabase db)
+    {
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object?>()).Returns(db);
+
+        return new FailedNaturalLanguageEmbeddingRegistry(
+            redis,
+            Substitute.For<ILogger<FailedNaturalLanguageEmbeddingRegistry>>());
     }
 }

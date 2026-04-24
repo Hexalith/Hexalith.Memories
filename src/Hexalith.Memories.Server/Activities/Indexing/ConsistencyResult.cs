@@ -22,4 +22,7 @@ public sealed record ConsistencyResult(
         = NaturalLanguageEmbeddingStatus.NotApplicable;
 
     public string? ConsistencyNote { get; init; }
+
+    /// <summary>Story 9.2 Review D7 — typed identifier for <see cref="ConsistencyNote"/>.</summary>
+    public ConsistencyNoteKind ConsistencyNoteKind { get; init; }
 }

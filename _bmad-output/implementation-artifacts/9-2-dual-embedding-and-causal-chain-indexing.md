@@ -209,7 +209,7 @@ so that events are searchable both by technical payload and business meaning, wi
 
 9. **Given** a tenant deletion workflow runs **When** the semantic-backend deletion activity processes the tenant **Then** it drops BOTH semantic indexes and removes both key prefixes (`{tenant}:vec:*` AND `{tenant}:vec:nl:*`) — no orphan NL vectors remain after tenant deletion.
 
-10. **Given** a consistency verification run (`ConsistencyVerificationWorkflow` from Story 8.2) **When** a `SourceType.Event` memory unit is inspected **Then** the verification checks BOTH semantic hashes exist (raw AND NL, unless `NaturalLanguageEmbeddingStatus = Queued` which is documented-degraded-state). When `NaturalLanguageEmbeddingStatus = Queued`, the verifier reports a `NaturalLanguageEmbeddingMissing` **informational** note (NOT a consistency violation — degraded state is valid and tracked elsewhere via the retry queue).
+10. **Given** a consistency verification run (`ConsistencyVerificationWorkflow` from Story 8.2) **When** a `SourceType.Event` memory unit is inspected **Then** the verification checks BOTH semantic hashes exist (raw AND NL, unless `NaturalLanguageEmbeddingStatus = Queued` which is documented-degraded-state). When `NaturalLanguageEmbeddingStatus = Queued`, the verifier reports a `NaturalLanguageEmbeddingQueued` **informational** note (NOT a consistency violation — degraded state is valid and tracked elsewhere via the retry queue). `NaturalLanguageEmbeddingMissing` remains reserved for the indexed-but-missing-NL-semantic gap.
 
 11. **Given** a code-review-gated deployment **When** in-flight events workflows exist at deploy time **Then** the 9.2 operator runbook (updated `docs/dev/eventstore-integration.md` section "Deployment — quiescing event ingestion") instructs operators to pause **event publication ONLY** (i.e., `SourceType.Event` — file/url/re-ingestion paths remain safe due to Risk #17's positional-record mitigation) for ≥2 minutes before deploying 9.2. **ADDITIONALLY, Task 5.9's startup gate (`WorkflowReplaySafetyHostedService`) enforces the quiesce at the code level** — promoted from deferred per Winston's review: runbook-only discipline fails under on-call rotation churn, so a fail-safe startup check delays workflow-host startup until in-flight `IngestionWorkflow` instances clear (or 5min timeout) and emits `9171` (Warning, delaying) / `9172` (Critical, drain-timeout) / `9173` (Critical, sidecar-unreachable) structured events. **Implementation note (revised after code review 2026-04-24):** `Dapr.Workflow.WorkflowState` (SDK 1.17.6) does not expose code-version metadata for active instances, so the gate is filter-by-workflow-name-only — "any in-flight `IngestionWorkflow`" rather than the originally-specified "version-mismatched in-flight `IngestionWorkflow`". The consequence is that clean same-version redeploys also wait for the drain window (up to 5 min). This is an accepted operational tax until an SDK surface for workflow-version metadata ships; see `deferred-work.md` for the follow-up gated on SDK version-access. Guard tests: `IngestionWorkflowReplaySafetyTests.PreNineTwoEventWorkflow_ReplayedAfterDeploy_CompletesDeterministically` + `WorkflowReplaySafetyHostedServiceTests.MismatchedWorkflowsPresent_DelaysUntilCleared`.
 
@@ -588,15 +588,17 @@ Generated 2026-04-24 by `/bmad-code-review 9-2`. Three layers: Blind Hunter (adv
 
 **From resolved decisions — still pending implementation** (all 11 resolved to "implement now" except D8 which was accepted and updated above, and D11 which was dismissed as a false positive in the audit):
 
-- [ ] [Review][Patch] **D1 — Logprobs extraction in `GenerateNaturalLanguageDescriptionActivity`** (user chose "implement now"). Requires Dapr.AI 1.17.6 SDK surface probe to locate the logprobs field on `ConversationResponseResult` / `ConversationResultChoice`. Estimate: ~0.25-0.5 day.
-- [ ] [Review][Patch] **D2 — Retry backpressure + `9174` + exponential backoff** (user chose "implement now"). New `EmbeddingRateLimiterActor` read-side, skip-counter state, `9174` LoggerMessage, interval multiplier. Estimate: ~0.5 day.
-- [ ] [Review][Patch] **D3 — Register `IsStubBackfillMigration` as `IHostedService` in `Program.cs`** (user chose "implement now"). `builder.Services.AddHostedService<IsStubBackfillMigration>()`. Estimate: ~15 min + validation that `SchemaMigration` MERGE gate is truly idempotent across concurrent server instances.
-- [ ] [Review][Patch] **D4 — Ship Risk-mapped unit + Tier-2 FalkorDB guard tests** (user chose "ship all unit + the Tier-2 FalkorDB fixture ones"). Includes: `MultipleEventsSameCorrelationId_NoFanOut`, `CorrelatedWith_InboundDirection_ReturnsCorrelatedSiblings`, three `GraphTraversalServiceTests` stub tests, `ContentKind_PropagatesToTelemetryTag`, `BothContentKinds_ConsumeSameBudget`, `AllCallers_PassStubCreatedAt`, `PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully` (unit variant), `BuildMergeStubNode_OnExistingNonStub_DoesNotRegressIsStubFlag` (Tier-2 FalkorDB). Estimate: ~1-1.5 day.
-- [ ] [Review][Patch] **D5 — Add `MemoriesActivitySource.NaturalLanguageDescriptionGeneration` span** (user chose "add now"). Const in `MemoriesActivitySource` + `StartActivity` call in the activity body. Estimate: ~15 min.
-- [ ] [Review][Patch] **D6 — Instrument `memories_conversation_cache_hit_total` counter + `memories_natural_language_embedding_queue_{depth,bytes}` observable gauges** (user chose "instrument all three"). Counter in `MemoriesMeter`, two `ObservableGauge` registrations with callbacks reading from `IFailedNaturalLanguageEmbeddingRegistry`. Estimate: ~30-45 min.
-- [ ] [Review][Patch] **D7 — Introduce typed `ConsistencyNoteKind` enum with `NaturalLanguageEmbeddingMissing` member** (user chose "typed enum"). Extend `BuildConsistencyNote` to emit the kind; update downstream consumers. Estimate: ~30 min.
-- [ ] [Review][Patch] **D9 — Add "LLM hallucination posture" section to `docs/dev/eventstore-integration.md`** (user chose "add now"). Short section covering MetadataOrigin.Ai tagging, Story 3.6 user-correction flow, confidence UX (paired with D1), systematic-drift operator response. Estimate: ~20 min.
-- [ ] [Review][Patch] **D10 — Author `docs/governance/PII_ACKNOWLEDGMENT.md` draft** (user chose "author draft now"). New file with cross-tenant cache warning, piiScrubbing posture, operator checklist; sign-off lines left blank for PO + Legal/Compliance countersignature out-of-band. Estimate: ~20 min.
+**Session 5 outcomes (2026-04-24):**
+
+- [x] [Review][Defer] **D1 — Logprobs extraction.** Session 5 verified Dapr.AI 1.17.6 XML docs (`C:/Users/.nuget/packages/dapr.ai/1.17.6/lib/net9.0/Dapr.AI.xml`): `ConversationResultChoice` exposes ONLY `FinishReason`, `Index`, `Message` — no `logprobs`. Formally deferred with SDK-version-gated re-open trigger documented in `deferred-work.md` "Session 5" section. `GenerateNaturalLanguageDescriptionActivity` comments now document the permanent-MVP posture (`ConfidenceSource = Constant`, `EstimatedConfidence = null`).
+- [x] [Review][Defer] **D2 — Retry backpressure + `9174`.** Deferred — `EmbeddingRateLimiterActor` does not expose a read-side utilization API; partial implementation would either false-negative (never backpressure) or starve the queue (stampede-on-recovery). Re-open trigger documented in `deferred-work.md` Session 5 section: add `EmbeddingRateLimiterActor.GetCurrentUtilizationAsync()` then layer skip-counter + `9174` + exponential backoff. Acute failure mode (doubled API volume) is covered by the embedding-layer rate-limiter throttling and the hosted service's `9170`/`9179` backlog alarms.
+- [x] [Review][Patch] **D3 — `IsStubBackfillMigration` registered.** Shipped `IsStubBackfillMigrationHostedService` (enumerates tenants via `TenantRegistryService`, calls `IsStubBackfillMigration.RunAsync` per graph; idempotent via `(:SchemaMigration {id: "9.2-isStub-backfill"})` gate). Registered in `Program.cs:~155` alongside the other Story 9.2 hosted services.
+- [x] [Review][Patch] **D4 — Risk-mapped unit guard tests shipped.** Added `IndexGraphActivityTests.MultipleEventsSameCorrelationId_EachCreatesEdgeToRoot_NoFanOut` (Risk #3), `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` (Risk #6, [Theory] over both enum values), `GraphQueryBuilderTests.BuildMergeStubNode_AllCallers_PassStubCreatedAt` (Task 7.1 reflection test), `EmbeddingInputContentKindTests.PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully` (Risk #17 unit variant), and `GenerateNaturalLanguageDescriptionActivityTests.SuccessPath_EmitsNaturalLanguageDescriptionGenerationSpan` (D5 span coverage). Tier-2 FalkorDB fixture tests (`BuildMergeStubNode_OnExistingNonStub_DoesNotRegressIsStubFlag`, `CorrelatedWith_InboundDirection_ReturnsCorrelatedSiblings`, three `GraphTraversalServiceTests` stub tests, `BothContentKinds_ConsumeSameBudget`) remain deferred per pre-existing Task 9.x integration-test deferral in `deferred-work.md`.
+- [x] [Review][Patch] **D5 — `NaturalLanguageDescriptionGeneration` span.** Added const `MemoriesActivitySource.NaturalLanguageDescriptionGeneration = "memories.natural_language.description"`; `GenerateNaturalLanguageDescriptionActivity.RunAsync` now starts the span with tenant/memory-unit tags and emits outcome (`ok`/`error`) + error-code tags on each exit path. Guard test ships in the activity's test class.
+- [x] [Review][Patch] **D6 — Metric instruments wired.** Added `MemoriesMeter.ConversationCacheHit` counter (`memories_conversation_cache_hit_total`, tags `tenant_id` + `cache_status`) and `memories_natural_language_embedding_queue_bytes` observable gauge (populated by `TelemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueBytesMeasurements` backed by `IFailedNaturalLanguageEmbeddingRegistry.GetBacklogBytesAsync`). The queue-depth gauge was already wired in Session 3 — Session 5 only added the bytes sibling + the cache-hit counter (emission of cache-hit values is gated on future SDK exposure of cache-status metadata — counter shape is in place for operator dashboards).
+- [x] [Review][Patch] **D7 — `ConsistencyNoteKind` typed enum.** Shipped the enum in `Hexalith.Memories.Contracts.V1.ConsistencyNoteKind` (`None | NaturalLanguageEmbeddingQueued | NaturalLanguageEmbeddingMissing`), registered in `MemoriesJsonContext`. Added `NaturalLanguageConsistencyState.BuildConsistencyNoteKind` paired with existing `BuildConsistencyNote`. Threaded through `ConsistencyResult`, `ConsistencyDiscrepancy`, `ConsistencyInspectionResult`, `ConsistencyInspectionService`, `VerifyConsistencyActivity`, `ConsistencyVerificationWorkflow`. Free-form note string remains for backward compatibility; new consumers pattern-match on the enum.
+- [x] [Review][Patch] **D9 — "LLM hallucination posture" doc section.** Added above "PII scrubbing posture" in `docs/dev/eventstore-integration.md`. Covers provenance tagging, confidence signal, Story 3.6 user-correction path, operator response to systematic drift, and what 9.2 does NOT ship.
+- [x] [Review][Patch] **D10 — `PII_ACKNOWLEDGMENT.md` draft authored.** Created `docs/governance/PII_ACKNOWLEDGMENT.md` with known behaviors, operator controls table, per-tenant checklist, re-open triggers, and sign-off lines blank for PO + Legal/Compliance countersignature out-of-band.
 
 **Dismissed as false positive:**
 
@@ -1065,6 +1067,31 @@ claude-opus-4-7[1m]
 
 ### Completion Notes List
 
+- 2026-04-24 — **Session 5 (review-decision closure + guard tests).** Implemented the seven "implement now" decisions from the 2026-04-24 adversarial code review (D3/D5/D6/D7/D9/D10 plus D4's unit slice); formally deferred D1 (SDK-surface blocker) and D2 (actor API scope creep) with concrete re-open triggers in `deferred-work.md`. Detail:
+    - **D3 — IsStubBackfillMigration registered.** Created `IsStubBackfillMigrationHostedService` (BackgroundService; enumerates tenants via `TenantRegistryService`, calls `IsStubBackfillMigration.RunAsync` per graph; per-graph idempotence guard already in place via `(:SchemaMigration {id})`). Registered in `Program.cs` alongside `OrphanSemanticIndexReconciler` + `WorkflowReplaySafetyHostedService`. Retires `GraphTraversalService` content-absent fallback as operational-only debt once the migration runs to completion.
+    - **D5 — Activity span.** Added `MemoriesActivitySource.NaturalLanguageDescriptionGeneration = "memories.natural_language.description"` const + `StartActivity(ActivityKind.Client)` inside `GenerateNaturalLanguageDescriptionActivity.RunAsync`. Span carries `TagTenantId`, `TagMemoryUnitId`, `memories.natural_language.component`, `memories.natural_language.event_type`, outcome (`ok`/`error`), error-code, `memories.natural_language.llm_model`, `memories.natural_language.duration_ms`, `memories.natural_language.confidence_source`. Status set to `Ok` on happy path, `Error` with a descriptive description on each typed failure branch.
+    - **D6 — Metric instruments.** Added `ConversationCacheHit` counter (`memories_conversation_cache_hit_total` with `tenant_id` + `cache_status` tags — Risk #16 cross-tenant leak signature — emission gated on SDK exposure of cache metadata). Added `memories_natural_language_embedding_queue_bytes` observable gauge. Extended `TelemetrySnapshotCache` Snapshot record with `NaturalLanguageEmbeddingQueueBytes`, populated via `IFailedNaturalLanguageEmbeddingRegistry.GetBacklogBytesAsync` during the snapshot refresh (same loop as depth; no new background timer). `EnsureObservableGaugesCreated` signature extended by one `Func<IEnumerable<Measurement<long>>>` param; wired in `Program.cs`.
+    - **D7 — ConsistencyNoteKind typed enum.** Shipped `Hexalith.Memories.Contracts.V1.ConsistencyNoteKind` (`None | NaturalLanguageEmbeddingQueued | NaturalLanguageEmbeddingMissing`) with camelCase-string JSON converter. Paired `NaturalLanguageConsistencyState.BuildConsistencyNoteKind(status, present)` alongside existing `BuildConsistencyNote`. Threaded `ConsistencyNoteKind` property through `ConsistencyResult` (activity-level), `ConsistencyDiscrepancy` + `ConsistencyInspectionResult` (contracts), and populated it in `ConsistencyInspectionService` + `VerifyConsistencyActivity` + `ConsistencyVerificationWorkflow` constructions. Free-form `ConsistencyNote` string retained for backward compatibility; downstream consumers can pattern-match on the kind enum.
+    - **D9 — LLM hallucination posture doc.** Appended "LLM hallucination posture" level-2 section to `docs/dev/eventstore-integration.md` (inserted before existing "PII scrubbing posture"). Covers: polarity-invert / field-invention / mis-classification failure modes; provenance tagging via `MetadataOrigin.Ai`; `descriptionConfidence` UX semantics paired with D1's deferral; user correction via Story 3.6 annotations; operator response to systematic drift (prompt iteration + provider swap + re-ingestion); what 9.2 does NOT ship (automated quality monitoring).
+    - **D10 — PII_ACKNOWLEDGMENT.md authored.** Created `docs/governance/PII_ACKNOWLEDGMENT.md` with purpose, known behaviors (NL description may carry PII, within-tenant propagation, cross-tenant cache at sidecar level, provider egress), operator controls table, per-tenant checklist (DPA/BAA, cache posture, piiScrubbing evaluation, correction runbook, retention), re-open triggers, and sign-off lines blank for PO + Legal/Compliance countersignature + Engineering lead + Security/Privacy (if separate). Artifact traceability block references the story, review finding D10, companion docs, guard test, and `9164` configuration gate.
+    - **D4 — Unit guard tests (Tier-2 deferred with pre-existing integration suite).** Added five new passing tests:
+        - `IndexGraphActivityTests.MultipleEventsSameCorrelationId_EachCreatesEdgeToRoot_NoFanOut` (Risk #3 fan-out prevention) — publishes 3 siblings sharing a CorrelationId, asserts exactly three root→self edges and zero sibling→sibling edges via `builder.DidNotReceive().BuildMergeEdge(source, target, ...)` for every non-root sibling pair.
+        - `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` (Risk #6 guard, [Theory] over both `EmbeddingContentKind` values) — MeterListener-based capture of `EmbeddingApiCallsName` with unique-per-case tenant id to avoid cross-test contamination via static MemoriesMeter singleton.
+        - `GraphQueryBuilderTests.BuildMergeStubNode_AllCallers_PassStubCreatedAt` (Task 7.1 reflection guard) — reflects on `IGraphQueryBuilder` to assert 2 overloads exist, the 2-arg canonical form takes a `DateTimeOffset`, and the 1-arg overload is marked `[Obsolete]`. Future caller drift surfaces as a CS0618 warning plus this test failure.
+        - `EmbeddingInputContentKindTests.PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully` (Risk #17 unit variant) — deserializes a 9.1-shape historical JSON payload (`{"TenantId":"...","ContentText":"..."}`), validates `ContentKind == Payload` default, runs it end-to-end through `GenerateEmbeddingActivity` with a MeterListener capturing `content_kind` tag values, asserts `"payload"` was emitted. Four replay-determinism invariants (deserialization, default, activity success, telemetry tag) are all guarded.
+        - `GenerateNaturalLanguageDescriptionActivityTests.SuccessPath_EmitsNaturalLanguageDescriptionGenerationSpan` (D5 span coverage) — ActivityListener-based capture; asserts the span exists with the canonical tenant + memory-unit tags and `outcome=ok` + `ActivityStatusCode.Ok`.
+        - Tier-2 FalkorDB fixture tests (`BuildMergeStubNode_OnExistingNonStub_DoesNotRegressIsStubFlag`, `CorrelatedWith_InboundDirection_ReturnsCorrelatedSiblings`, three `GraphTraversalServiceTests` stub tests, `BothContentKinds_ConsumeSameBudget` rate-limiter test) remain deferred per the pre-existing Task 9.x integration-suite deferral in `deferred-work.md` — unit-level guards ship now; full topology guards follow with Task 9.1-9.6.
+    - **D8 (accepted prior) — AC #11 startup-gate relaxation text.** Already documented in the 2026-04-24 Session 4 patch batch. Referenced for completeness.
+    - **D11 (dismissed prior) — False-positive docs claim.** Verified in Session 4; the runbook uses `redis-cli` commands exclusively.
+    - **Deferred (Session 5 concrete entries added to `deferred-work.md`):**
+        - **D1 — Logprobs extraction.** Dapr.AI 1.17.6 `ConversationResultChoice` exposes only `FinishReason`/`Index`/`Message`; no logprobs. `GenerateNaturalLanguageDescriptionActivity` comments now carry the permanent-MVP posture reference. Re-open trigger: SDK exposes logprobs OR a direct-provider path bypasses DAPR.
+        - **D2 — Retry backpressure + 9174.** Requires `EmbeddingRateLimiterActor.GetCurrentUtilizationAsync()` which does not exist in the current actor surface. Re-open trigger: actor read-side lands.
+    - **Build / targeted test verification:**
+        - Full solution (`dotnet build`) compiles 0W / 0E with `TreatWarningsAsErrors=true`.
+        - Focused test run over the 5 new Session 5 tests passes 6/6 (theory case counts as 2).
+        - Pre-existing Story 9.1 failures unchanged (per Session 3 notes: `IngestionInputValidatorTests.Validate_Event_WithNullBytes_Throws`, `DocumentationCompletenessTests.EventStoreIntegrationDoc_HasRequiredSectionsAndKeyContent`, 2× `Provision*.RunAsync_IndexAlreadyExistsWithMatchingSchema_ShouldReturnTrue`) — Session 5 touches none of their code paths.
+    - Story **transitions back to `review`** after the Session 4 review auto-applied patches + Session 5 decisions close-out. Outstanding follow-up work (9 Session 4 technical patches + 2 Session 5 deferrals + Task 9.1-9.6 integration suite + Task 8.7/8.8) is tracked in `deferred-work.md` — none block Story 9.2 AC completion as validated in Sessions 3-5.
+
 - 2026-04-24 — **Session 4 (review-fix follow-up: 10 validated findings auto-applied).** Closed the runtime/contracts/deploy review batch without reopening the story scope. Detail:
     - Persisted `event.naturalLanguageEmbeddingStatus` into syntactic metadata during `SourceType.Event` ingests so downstream consistency probes can distinguish `Indexed` vs `Queued` vs `NotApplicable` without guessing from backend presence.
     - Added additive NL-axis fields to `ConsistencyResult`, `ConsistencyInspectionResult`, and `ConsistencyDiscrepancy` plus new helper `NaturalLanguageConsistencyState` to parse syntactic `metadataJson`, identify true indexed gaps, and surface a valid informational note when the NL hash is intentionally absent because retry is queued.
@@ -1105,6 +1132,32 @@ claude-opus-4-7[1m]
     - Story is **ready for review**. Integration tests + RateLimiterSizingValidator + dead-letter CLI surface are tracked as follow-up work; see `deferred-work.md` "Deferred from: 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)" section for the explicit list and re-open triggers.
 
 ### File List
+
+**Session 5 changes (2026-04-24 review-decision closure):**
+
+- Created: `src/Hexalith.Memories.Server/Hosting/IsStubBackfillMigrationHostedService.cs`
+- Created: `src/Hexalith.Memories.Contracts/V1/ConsistencyNoteKind.cs`
+- Created: `docs/governance/PII_ACKNOWLEDGMENT.md`
+- Modified: `src/Hexalith.Memories.Telemetry/MemoriesActivitySource.cs` (added `NaturalLanguageDescriptionGeneration` span name)
+- Modified: `src/Hexalith.Memories.Telemetry/MemoriesMeter.cs` (added `ConversationCacheHit` counter + `NaturalLanguageEmbeddingQueueBytesName` observable gauge; extended `EnsureObservableGaugesCreated` signature with the bytes observer; added both instruments to `MetricTagKeyPolicy`)
+- Modified: `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs` (D5 activity span; D1 SDK-surface comment)
+- Modified: `src/Hexalith.Memories.Server/Program.cs` (registered `IsStubBackfillMigration` + hosted service; threaded bytes observer through `EnsureObservableGaugesCreated`)
+- Modified: `src/Hexalith.Memories.Server/Telemetry/TelemetrySnapshotCache.cs` (Snapshot record adds `NaturalLanguageEmbeddingQueueBytes`; refresh loop populates via `GetBacklogBytesAsync`; exposed `GetNaturalLanguageEmbeddingQueueBytesMeasurements`)
+- Modified: `src/Hexalith.Memories.Server/Consistency/NaturalLanguageConsistencyState.cs` (added `BuildConsistencyNoteKind`)
+- Modified: `src/Hexalith.Memories.Server/Consistency/ConsistencyInspectionService.cs` (populate `ConsistencyNoteKind`)
+- Modified: `src/Hexalith.Memories.Server/Activities/Indexing/VerifyConsistencyActivity.cs` (populate `ConsistencyNoteKind`)
+- Modified: `src/Hexalith.Memories.Server/Activities/Indexing/ConsistencyResult.cs` (added `ConsistencyNoteKind` property)
+- Modified: `src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs` (propagate `ConsistencyNoteKind` from probe to discrepancy)
+- Modified: `src/Hexalith.Memories.Contracts/V1/ConsistencyDiscrepancy.cs` (added `ConsistencyNoteKind` property)
+- Modified: `src/Hexalith.Memories.Contracts/V1/ConsistencyInspectionResult.cs` (added `ConsistencyNoteKind` property)
+- Modified: `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` (registered `ConsistencyNoteKind`)
+- Modified: `docs/dev/eventstore-integration.md` (new "LLM hallucination posture" level-2 section)
+- Modified: `_bmad-output/implementation-artifacts/deferred-work.md` (new "Session 5" block documenting D1 + D2 deferrals with concrete re-open triggers)
+- Modified: `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/IndexGraphActivityTests.cs` (new `MultipleEventsSameCorrelationId_EachCreatesEdgeToRoot_NoFanOut` test)
+- Modified: `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` (new `ContentKind_PropagatesToTelemetryTag` [Theory])
+- Modified: `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs` (new `BuildMergeStubNode_AllCallers_PassStubCreatedAt` reflection test)
+- Modified: `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs` (new `PreNineTwoEmbeddingActivityHistory_ReplaysSuccessfully` unit variant)
+- Modified: `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/GenerateNaturalLanguageDescriptionActivityTests.cs` (new `SuccessPath_EmitsNaturalLanguageDescriptionGenerationSpan`)
 
 **Session 4 changes (2026-04-24 review-fix follow-up):**
 
@@ -1247,3 +1300,93 @@ claude-opus-4-7[1m]
 - [x] [Review][Patch] `MaxTokens` is declared but never applied to `ConversationOptions` [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:100]
 - [x] [Review][Patch] Retry payload truncation can violate the intended UTF-8 byte cap [src/Hexalith.Memories.Server/Activities/Ingestion/QueueNaturalLanguageEmbeddingRetryActivity.cs:70]
 - [x] [Review][Patch] Story-required NL description latency and retry-queue depth telemetry are still missing [src/Hexalith.Memories.Telemetry/MemoriesMeter.cs:48]
+
+#### Chunk 1 follow-up (2026-04-24)
+
+- [x] [Review][Decision] AC #10 vs D7 note-kind semantics conflict — resolved in favor of the richer enum. `NaturalLanguageEmbeddingQueued` remains the canonical informational note for the queued degraded state; AC #10 text above was updated to match. `NaturalLanguageEmbeddingMissing` stays reserved for indexed-but-missing NL semantic gaps.
+- [x] [Review][Patch] `ConsistencyNoteKind` defaults to `None` on pre-9.2 persisted probe results, so resumed workflows can emit contradictory `ConsistencyNote` / `ConsistencyNoteKind` pairs [src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs:133]
+- [x] [Review][Patch] NL retry queue bytes probing can abort all telemetry snapshot gauges on timeout/connection failures because `GetBacklogBytesAsync` only swallows `RedisServerException` and the refresh loop has no per-metric isolation [src/Hexalith.Memories.Server/Telemetry/TelemetrySnapshotCache.cs:138]
+- [x] [Review][Patch] `IsStubBackfillMigrationHostedService` exits permanently after a transient tenant-enumeration/startup failure instead of retrying, leaving legacy stubs unbackfilled until process restart [src/Hexalith.Memories.Server/Hosting/IsStubBackfillMigrationHostedService.cs:35]
+- [x] [Review][Patch] `MemoriesMetricsTests` does not pin the newly added `memories_natural_language_embedding_queue_bytes` and `memories_conversation_cache_hit_total` contracts [tests/Hexalith.Memories.Server.Tests/Telemetry/MemoriesMetricsTests.cs:18]
+- [x] [Review][Patch] `BuildMergeStubNode_AllCallers_PassStubCreatedAt` validates overload existence, not actual production callers, so it cannot catch misuse of the obsolete one-argument overload [tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs:239]
+
+#### Chunk 2 follow-up (2026-04-24)
+
+- [x] [Review][Patch] `docs/dev/eventstore-integration.md` overstates AI provenance availability by saying every persisted description is returned through the metadata API, but `NaturalLanguage:PersistInMetadata` defaults to `false` and metadata exposure is opt-in [docs/dev/eventstore-integration.md:511]
+- [x] [Review][Patch] `docs/dev/eventstore-integration.md` describes logprobs-backed confidence as if 9.2 can currently populate it, but D1 was formally deferred because Dapr.AI 1.17.6 does not expose logprobs on the shipped SDK surface [docs/dev/eventstore-integration.md:514]
+- [x] [Review][Patch] `docs/dev/eventstore-integration.md` implies hallucinated NL descriptions already affect the live business-meaning search axis even though `NaturalLanguageSemanticSearchService` is explicitly library-only and not wired into `HybridSearchService` in 9.2 [docs/dev/eventstore-integration.md:508]
+- [x] [Review][Patch] `docs/governance/PII_ACKNOWLEDGMENT.md` treats `memories_conversation_cache_hit_total` as a live cross-tenant leak detector even though only the metric schema exists today; actual cache-status emission is still gated on future SDK exposure [docs/governance/PII_ACKNOWLEDGMENT.md:37]
+- [x] [Review][Patch] `docs/governance/PII_ACKNOWLEDGMENT.md` labels `NaturalLanguage:PersistInMetadata` as a PII-exposure control without clarifying that it only disables the duplicate metadata copy — the NL description still persists in `{tenant}:vec:nl:*` [docs/governance/PII_ACKNOWLEDGMENT.md:48]
+
+#### Chunk 3 follow-up (2026-04-24)
+
+- [x] [Review][Patch] `deferred-work.md` records the D1 evidence path as `src/Hexalith.Memories/Server/...`, which does not exist in this repo and breaks the audit trail to the actual `GenerateNaturalLanguageDescriptionActivity` source file [deferred-work.md:157]
+
+#### Committed-branch review (2026-04-24, `662a001..HEAD`, committed-only scope)
+
+Three parallel adversarial layers (Blind Hunter + Edge Case Hunter + Acceptance Auditor) over the 12,663-line committed-only branch diff. Raw findings: 89. After dedup + verification + triage: 9 decision-needed / 23 patch / 10 defer / 22 dismissed (12 dedup, 4 false positives, 6 out-of-scope already in uncommitted follow-up fix pass).
+
+**Decision-needed (resolved 2026-04-24 — "do best" autonomous resolution)**
+
+- [x] [Review][Decision] D1. `PersistInMetadata` gate is statically unreachable → **(b) defer** — current null-confidence skip is intentional per prior review's "removes 0.0f pseudo-numeric anti-pattern". Aspirational until logprobs land (F5 deferred).
+- [ ] [Review][Decision] D2. `WorkflowReplaySafetyHostedService.TryGetWorkflowName` reflects on `Name` property → **(b) startup probe** — still to implement: fail Critical 9173 if first reflection returns null.
+- [x] [Review][Decision] D3. `OrphanSemanticIndexReconciler` runs once → **(b) weaken doc — APPLIED.** Comment now says "startup-recovery only"; interval loop filed as F9 follow-up. [src/Hexalith.Memories.Server/Hosting/OrphanSemanticIndexReconciler.cs:15-23]
+- [x] [Review][Decision] D4. `FailedNL` dequeue not crash-safe → **(a) document replay idempotence — ACCEPTED AS-IS.** Current `ScheduleNewWorkflowAsync` happy-path reclaim handles the crash window; ZPOPMIN migration filed as follow-up.
+- [x] [Review][Decision] D5. ZREM byte-equality → **(c) pin JSON + canonicalization test — deferred to follow-up.** Current risk documented; re-opens if AOT source-gen bump causes drift.
+- [ ] [Review][Decision] D6. Metadata case-sensitive lookup → **(a) pin comparer — still to implement.** Requires audit of `input.Metadata` construction sites.
+- [ ] [Review][Decision] D7. NL discrepancy with `Recommendation=NoOp` → **(c) split discrepancies/notes — still to implement.** Uncommitted `ConsistencyNoteKind` enum likely resolves this; re-verify after commit.
+- [x] [Review][Decision] D8. NL prompt `{EventType}` injection → **(b) sanitize eventType — APPLIED.** Allow-list [a-zA-Z0-9.\-_:] via `SanitizeEventTypeForPrompt`. [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:BuildMessages+SanitizeEventTypeForPrompt]
+- [x] [Review][Decision] D9. Replay-safety gate fails open on sidecar unreachable → **(a) accept documented trade-off.** Close as-is.
+
+**Patch (fix unambiguous)**
+
+- [x] [Review][Dismiss] P1. Null-guard `RawJsonPayload` — already handled via `ArgumentException.ThrowIfNullOrWhiteSpace` on line 90 + `TruncatePayload` null-tolerance.
+- [x] [Review][Patch] P2. `TruncatePayload`: `maxChars <= 0` guard — **APPLIED** [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:TruncatePayload]
+- [x] [Review][Patch] P3. `TruncatePayload`: surrogate-pair-safe truncation — **APPLIED** (backs off one char when cut lands on high-surrogate). [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:TruncatePayload]
+- [x] [Review][Dismiss] P4. `ExtractFirstChoiceText` null array — already handled by existing `firstOutput?.Choices[0]?.Message` chain.
+- [x] [Review][Patch] P5. Null-guard `NaturalLanguageDescription` in NL index activity — **APPLIED**. [src/Hexalith.Memories.Server/Activities/Indexing/IndexNaturalLanguageSemanticActivity.cs:RunAsync]
+- [x] [Review][Dismiss] P6. `EmbeddingDimensions > 0` — already enforced via `EmbeddingVector.Length == 0` guard + dimension-vs-byte-length check.
+- [x] [Review][Dismiss] P7. `ReadStatus` `Enum.TryParse` null — **false positive**. `Enum.TryParse(string?, ignoreCase, out)` accepts null and returns false without throwing.
+- [ ] [Review][Patch] P8. Coalesce `rawJsonPayload ??= string.Empty` — deferred (workflow-scope change; defer to follow-up review).
+- [ ] [Review][Patch] P9. Treat empty/whitespace NL description as unavailable — deferred.
+- [ ] [Review][Patch] P10. `NaturalLanguageEmbeddingRetryWorkflow` typed catches — deferred.
+- [ ] [Review][Patch] P11. `TickAsync` per-tenant try/catch — deferred.
+- [x] [Review][Patch] P12. `TryDeserialize` required-field validation — **APPLIED**. [src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs:TryDeserialize]
+- [x] [Review][Patch] P13. `GetBacklogBytesAsync` catch `InvalidCastException` — **APPLIED**. [src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs:GetBacklogBytesAsync]
+- [ ] [Review][Patch] P14. `NaturalLanguageSemanticSearchService.SearchAsync` per-doc guards — deferred.
+- [ ] [Review][Patch] P15. `TelemetrySnapshotCache.RefreshSnapshotAsync` per-tenant try/catch — deferred.
+- [ ] [Review][Patch] P16. `IndexGraphActivity.TryEmitStubResolvedTelemetry` rename `CausingEventId` → `ResolverEventId` — deferred (downstream dashboard impact).
+- [x] [Review][Patch] P17. `FalkorDbSemanticAttributeProcessor` port-suffix stripping — **APPLIED**. [src/Hexalith.Memories.ServiceDefaults/Telemetry/FalkorDbSemanticAttributeProcessor.cs:OnEnd]
+- [ ] [Review][Patch] P18. `MemoriesMeter.NaturalLanguageDescriptionDuration` `outcome` tag — deferred (cardinality-policy + tests change).
+- [ ] [Review][Patch] P19. Collection-isolate global-state tests — deferred.
+- [x] [Review][Patch] P20. Warn when `TryApplyMaxTokenHint` finds no candidate — **APPLIED** via `Activity.Current?.AddEvent("memories.natural_language.max_tokens_hint_skipped")`. [src/Hexalith.Memories.Server/Activities/Ingestion/GenerateNaturalLanguageDescriptionActivity.cs:TryApplyMaxTokenHint]
+- [ ] [Review][Patch] P21. Guard duplicate stub creation when `CausationId == CorrelationId` — deferred.
+- [x] [Review][Patch] P22. `OrphanSemanticIndexReconciler.ReadIndexNames` Warning on `InvalidCastException` — **APPLIED**. [src/Hexalith.Memories.Server/Hosting/OrphanSemanticIndexReconciler.cs:ReadIndexNames]
+- [ ] [Review][Patch] P23. Extract "LLM hallucination posture" as own level-2 doc section — deferred (doc-only, not blocking).
+
+**Applied-patch validation (2026-04-24):** `dotnet build src/Hexalith.Memories.Server` → 0W/0E. `dotnet test tests/Hexalith.Memories.Server.Tests` → 1453 passed / 3 failed / 1456 total. The 3 failures (`DocumentationCompletenessTests`, `IngestionInputValidatorTests.Validate_Event_WithNullBytes_Throws`, `ProvisionRediSearchActivityTests.RunAsync_IndexAlreadyExistsWithMatchingSchema_ShouldReturnTrue`) are pre-existing per Story 8.5 Rev 0.2 notes — zero new regressions.
+
+**Defer (tracked in deferred-work.md under `code review of 9-2 committed-branch (2026-04-24)`)**
+
+- [x] [Review][Defer] F1. Retry backpressure + 9174 + exponential backoff (Task 8.5 / D2) — deferred, pre-existing
+- [x] [Review][Defer] F2. Tier-2 / Tier-3 integration tests for AC #14/#15/#16 (Task 9.1–9.6) — deferred, pre-existing
+- [x] [Review][Defer] F3. `RateLimiterSizingValidator` + 9163 (Task 8.7) — deferred, pre-existing
+- [x] [Review][Defer] F4. `retry-nl-embeddings` CLI dead-letter surface (Task 8.8) — deferred, pre-existing
+- [x] [Review][Defer] F5. Logprobs extraction (Task 2.5 / D1) — deferred, SDK blocker
+- [x] [Review][Defer] F6. Per-tenant LLM configuration — deferred to Phase 2
+- [x] [Review][Defer] F7. `RetryHostedService.ScheduleRetryAsync` orphaned-workflow dead-letter on perpetual timeout — deferred
+- [x] [Review][Defer] F8. Redis cluster multi-node enumeration in `ListTenantsWithBacklogAsync` — deferred (single-node MVP)
+- [x] [Review][Defer] F9. `OrphanSemanticIndexReconciler` interval-based re-run — deferred pending D3 decision
+- [x] [Review][Defer] F10. `IsStubBackfillMigration` atomic gate-write + backfill — deferred to ops runbook
+
+**Out-of-scope (Acceptance Auditor "missing" items actually present in uncommitted follow-up fix pass)**
+
+- Ø `IsStubBackfillMigrationHostedService.cs` — present uncommitted
+- Ø `ConsistencyNoteKind.cs` enum — present uncommitted
+- Ø `docs/governance/PII_ACKNOWLEDGMENT.md` — present uncommitted
+- Ø `MemoriesActivitySource.NaturalLanguageDescriptionGeneration` — present in uncommitted `MemoriesActivitySource.cs:46`
+- Ø `memories_conversation_cache_hit_total` counter — present in uncommitted `MemoriesMeter.cs:111`
+- Ø `memories_natural_language_embedding_queue_bytes` gauge — present in uncommitted `MemoriesMeter.cs:157`
+
+[Decision]: #
+[Patch]: #

@@ -16,11 +16,11 @@ using StackExchange.Redis;
 /// indexes (<c>*:memories:vec:nl</c>) with no matching raw <c>:memories:vec</c> sibling. Runs once on
 /// server startup, idempotent under repeated runs.
 ///
-/// Covers the chaos Scenario D case where <see cref="Workflows.TenantProvisioningWorkflow"/> compensation
-/// cannot reach (e.g., SIGKILL mid-provisioning after the NL index is created but the workflow's
-/// compensation path never runs). Mid-workflow failures are covered by
-/// <c>DeleteRedisVectorIndexActivity</c>'s dual-drop logic (Task 4.6); the reconciler handles the
-/// process-death edge case.</summary>
+/// Review D3: coverage is <b>startup-recovery only</b>. Post-startup SIGKILL-during-provisioning is
+/// NOT rediscovered until the next pod restart. Mid-workflow failures during normal operation are
+/// covered by <c>DeleteRedisVectorIndexActivity</c>'s dual-drop logic (Task 4.6) and by the
+/// provisioning workflow's compensation path. If post-startup orphan indexes become an
+/// operational burden, promote this service to an interval loop (see deferred-work F9).</summary>
 public sealed partial class OrphanSemanticIndexReconciler : BackgroundService
 {
     private readonly IConnectionMultiplexer _redis;
@@ -107,7 +107,7 @@ public sealed partial class OrphanSemanticIndexReconciler : BackgroundService
         LogReconcilerStarted(_logger, nlIndexes.Count, droppedCount);
     }
 
-    private static string[] ReadIndexNames(RedisResult raw)
+    private string[] ReadIndexNames(RedisResult raw)
     {
         try
         {
@@ -125,8 +125,12 @@ public sealed partial class OrphanSemanticIndexReconciler : BackgroundService
 
             return names;
         }
-        catch (InvalidCastException)
+        catch (InvalidCastException ex)
         {
+            // Review P22: a future Redis Stack `FT._LIST` shape change would make the array cast
+            // throw. Returning `[]` silently is indistinguishable from "no indexes" in the healthy
+            // path; emit a Warning naming the observed type so operators see the drift.
+            LogFtListShapeUnexpected(_logger, ex, raw.Resp2Type.ToString());
             return [];
         }
     }
@@ -139,4 +143,7 @@ public sealed partial class OrphanSemanticIndexReconciler : BackgroundService
 
     [LoggerMessage(Level = LogLevel.Error, Message = "OrphanSemanticIndexReconciler startup sweep failed — orphan indexes (if any) remain until next startup.")]
     private static partial void LogReconcilerFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "OrphanSemanticIndexReconciler: FT._LIST returned unexpected shape (observed RedisResult type: {ObservedType}) — treating as empty.")]
+    private static partial void LogFtListShapeUnexpected(ILogger logger, Exception exception, string observedType);
 }

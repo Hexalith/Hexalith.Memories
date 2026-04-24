@@ -72,6 +72,9 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
         string? consistencyNote = NaturalLanguageConsistencyState.BuildConsistencyNote(
             naturalLanguageEmbeddingStatus,
             naturalLanguageSemanticExists);
+        ConsistencyNoteKind consistencyNoteKind = NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
+            naturalLanguageEmbeddingStatus,
+            naturalLanguageSemanticExists);
 
         // Check graph (FalkorDB node)
         bool graphExists = await CheckGraphNodeExistsAsync(input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
@@ -91,6 +94,7 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
             NaturalLanguageSemanticExists = naturalLanguageSemanticExists,
             NaturalLanguageEmbeddingStatus = naturalLanguageEmbeddingStatus,
             ConsistencyNote = consistencyNote,
+            ConsistencyNoteKind = consistencyNoteKind,
         };
     }
 

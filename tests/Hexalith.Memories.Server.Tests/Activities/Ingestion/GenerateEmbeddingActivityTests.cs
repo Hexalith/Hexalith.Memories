@@ -269,6 +269,75 @@ public class GenerateEmbeddingActivityTests
             "TenantConfigurationActor");
     }
 
+    [Theory]
+    [InlineData(EmbeddingContentKind.Payload, "payload")]
+    [InlineData(EmbeddingContentKind.NaturalLanguageDescription, "naturalLanguageDescription")]
+    public async Task ContentKind_PropagatesToTelemetryTag(EmbeddingContentKind kind, string expectedTagValue)
+    {
+        // Story 9.2 Risk #6 guard — the EmbeddingApiCalls counter must carry a `content_kind` tag
+        // whose value reflects the input kind. Operators use the resulting 2:1 tag split (payload :
+        // naturalLanguageDescription) to size per-tenant rate-limit ceilings for dual embedding.
+        float[] vector = new float[768];
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(vector);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
+        rateLimiter.TryConsumeAsync().Returns(true);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        // Use a tenant_id unique to this theory case so parallel-running telemetry tests cannot
+        // contaminate the observed list via the static MemoriesMeter.Instance singleton.
+        string uniqueTenant = $"ckprop-{kind}-{Guid.NewGuid():N}";
+
+        List<(string tenantId, string contentKind, long delta)> observed = [];
+        using System.Diagnostics.Metrics.MeterListener listener = new();
+        listener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == Hexalith.Memories.Telemetry.MemoriesMeter.Name
+                && instrument.Name == Hexalith.Memories.Telemetry.MemoriesMeter.EmbeddingApiCallsName)
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, measurement, tags, state) =>
+        {
+            string tenant = string.Empty;
+            string ckind = string.Empty;
+            foreach (KeyValuePair<string, object?> tag in tags)
+            {
+                if (tag.Key == "tenant_id")
+                {
+                    tenant = tag.Value?.ToString() ?? string.Empty;
+                }
+                else if (tag.Key == "content_kind")
+                {
+                    ckind = tag.Value?.ToString() ?? string.Empty;
+                }
+            }
+
+            if (tenant == uniqueTenant)
+            {
+                observed.Add((tenant, ckind, measurement));
+            }
+        });
+        listener.Start();
+
+        EmbeddingInput input = new(uniqueTenant, TestText, kind);
+        await activity.RunAsync(context, input);
+
+        listener.Dispose();
+
+        (string tenantId, string contentKind, long delta) single = observed.ShouldHaveSingleItem();
+        single.tenantId.ShouldBe(uniqueTenant);
+        single.contentKind.ShouldBe(expectedTagValue);
+        single.delta.ShouldBe(1);
+    }
+
     private static GenerateEmbeddingActivity CreateActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,

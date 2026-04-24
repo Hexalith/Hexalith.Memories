@@ -21,6 +21,7 @@ public static class MemoriesMeter
     private static ObservableGauge<long>? _indexSizeGauge;
     private static ObservableGauge<int>? _pipelineQueueDepthGauge;
     private static ObservableGauge<long>? _naturalLanguageEmbeddingQueueDepthGauge;
+    private static ObservableGauge<long>? _naturalLanguageEmbeddingQueueBytesGauge;
 
     /// <summary>The meter name registered with OpenTelemetry.</summary>
     public const string Name = "Hexalith.Memories";
@@ -48,6 +49,18 @@ public static class MemoriesMeter
 
     /// <summary>Story 9.2 — instrument name: per-tenant NL retry queue depth gauge.</summary>
     public const string NaturalLanguageEmbeddingQueueDepthName = "memories_natural_language_embedding_queue_depth";
+
+    /// <summary>Story 9.2 (Spike 0.1 payload-by-value fallback) — instrument name: per-tenant NL retry
+    /// queue byte-size gauge. Present only when the retry record carries the truncated raw JSON payload
+    /// (bounded by <c>NaturalLanguageDescriptionOptions.QueuedPayloadMaxBytes</c>). Operators size
+    /// Redis memory by combining depth × average-payload.</summary>
+    public const string NaturalLanguageEmbeddingQueueBytesName = "memories_natural_language_embedding_queue_bytes";
+
+    /// <summary>Story 9.2 / Risk #16 — instrument name: DAPR Conversation response-cache hit/miss
+    /// counter. Non-zero values observed across multiple tenants are the canonical cross-tenant
+    /// cache-leak signature (the cache is shared at the sidecar level regardless of tenant id).
+    /// Tags: <c>tenant_id</c>, <c>cache_status</c> (hit | miss).</summary>
+    public const string ConversationCacheHitName = "memories_conversation_cache_hit_total";
 
     /// <summary>Story 9.2 / Risk #6 — instrument name: per-call embedding API counter partitioned by
     /// tenant + content kind. Operators observe the raw-payload / NL-description 2:1 split under
@@ -91,21 +104,34 @@ public static class MemoriesMeter
             unit: "{calls}",
             description: "Total embedding API calls per tenant and content kind (dual-embedding observability).");
 
+    /// <summary>Story 9.2 / Risk #16 — counter: DAPR Conversation response-cache hit/miss observations.
+    /// Emitted by <c>GenerateNaturalLanguageDescriptionActivity</c> when the DAPR Conversation sidecar
+    /// surfaces a cache-status signal. Non-zero hits ACROSS multiple tenants are the canonical
+    /// cross-tenant cache-leak signature. Tags: <c>tenant_id</c>, <c>cache_status</c>.</summary>
+    public static Counter<long> ConversationCacheHit { get; } =
+        Instance.CreateCounter<long>(
+            ConversationCacheHitName,
+            unit: "{calls}",
+            description: "DAPR Conversation response-cache hit/miss counter (Risk #16 cross-tenant leak detector).");
+
     /// <summary>Gets a value indicating whether the observable gauges have been registered.</summary>
     public static bool ObservableGaugesConfigured =>
         _indexSizeGauge is not null
         && _pipelineQueueDepthGauge is not null
-        && _naturalLanguageEmbeddingQueueDepthGauge is not null;
+        && _naturalLanguageEmbeddingQueueDepthGauge is not null
+        && _naturalLanguageEmbeddingQueueBytesGauge is not null;
 
     /// <summary>Registers the observable gauges exactly once against the shared meter.</summary>
     public static void EnsureObservableGaugesCreated(
         Func<IEnumerable<Measurement<long>>> indexSizeObserver,
         Func<IEnumerable<Measurement<int>>> pipelineQueueDepthObserver,
-        Func<IEnumerable<Measurement<long>>> naturalLanguageEmbeddingQueueDepthObserver)
+        Func<IEnumerable<Measurement<long>>> naturalLanguageEmbeddingQueueDepthObserver,
+        Func<IEnumerable<Measurement<long>>> naturalLanguageEmbeddingQueueBytesObserver)
     {
         ArgumentNullException.ThrowIfNull(indexSizeObserver);
         ArgumentNullException.ThrowIfNull(pipelineQueueDepthObserver);
         ArgumentNullException.ThrowIfNull(naturalLanguageEmbeddingQueueDepthObserver);
+        ArgumentNullException.ThrowIfNull(naturalLanguageEmbeddingQueueBytesObserver);
 
         lock (ObservableInstrumentGate)
         {
@@ -126,6 +152,12 @@ public static class MemoriesMeter
                 () => naturalLanguageEmbeddingQueueDepthObserver(),
                 unit: "{items}",
                 description: "Per-tenant natural-language embedding retry queue depth.");
+
+            _naturalLanguageEmbeddingQueueBytesGauge ??= Instance.CreateObservableGauge(
+                NaturalLanguageEmbeddingQueueBytesName,
+                () => naturalLanguageEmbeddingQueueBytesObserver(),
+                unit: "By",
+                description: "Per-tenant natural-language embedding retry queue size in bytes (Spike 0.1 fallback bounded-payload observability).");
         }
     }
 
@@ -145,6 +177,8 @@ public static class MemoriesMeter
             [PipelineQueueDepthName] = new[] { "tenant_id" },
             [NaturalLanguageDescriptionDurationName] = new[] { "tenant_id" },
             [NaturalLanguageEmbeddingQueueDepthName] = new[] { "tenant_id" },
+            [NaturalLanguageEmbeddingQueueBytesName] = new[] { "tenant_id" },
             [EmbeddingApiCallsName] = new[] { "tenant_id", "content_kind" },
+            [ConversationCacheHitName] = new[] { "tenant_id", "cache_status" },
         };
 }
