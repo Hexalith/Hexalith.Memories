@@ -87,12 +87,12 @@ reuses the existing Redis dependency.
 
 ### 1.5 Environment defaults table
 
-| Option                         | Development | Production                                              | Rationale                                                                                                                                                                    |
-| ------------------------------ | ----------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AutoCreateCases`              | `true`      | `false`                                                 | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
-| `MaxAutoCreatedCasesPerTenant` | `100`       | `100`                                                   | Hard cap is a safety backstop regardless of environment.                                                                                                                     |
-| `PreflightDedupEnabled`        | `true`      | `true`                                                  | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B.                                                                        |
-| `PreflightDedupTtl`            | `24h`       | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling.                                                                                                                                                         |
+| Option | Development | Production | Rationale |
+| --- | --- | --- | --- |
+| `AutoCreateCases` | `true` | `false` | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
+| `MaxAutoCreatedCasesPerTenant` | `100` | `100` | Hard cap is a safety backstop regardless of environment. |
+| `PreflightDedupEnabled` | `true` | `true` | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B. |
+| `PreflightDedupTtl` | `24h` | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling. |
 
 ---
 
@@ -299,3 +299,213 @@ curl "$MEMORIES_URL/api/search?tenantId=acme-claims&query=claim-42&axis=syntacti
 
 Story 9.1 scope: the memory unit is searchable. Causal-edge indexing and a second NL-description
 embedding come in Story 9.2.
+
+With Story 9.2 shipped, the same event now produces **two** Redis Vector hashes:
+
+1. `acme-claims:vec:<memoryUnitId>` — raw JSON payload embedding (unchanged from 9.1).
+2. `acme-claims:vec:nl:<memoryUnitId>` — LLM-authored natural-language description embedding, plus a
+   `naturalLanguageDescription` field for operator inspection. See "Dual embedding pipeline" below.
+
+FalkorDB gains `caused_by` and `correlated_with` edges when CloudEvent extensions supply
+`causationid` / `correlationid`, respectively. See "Correlation root semantics" below.
+
+## Dual embedding pipeline
+
+Story 9.2 adds a second embedding axis scoped to `SourceType.Event` memory units: the
+`IngestionWorkflow`, after generating the raw-payload embedding, calls
+`GenerateNaturalLanguageDescriptionActivity` (DAPR Conversation API), re-runs
+`GenerateEmbeddingActivity` with `ContentKind = NaturalLanguageDescription`, and writes the result to
+the new per-tenant vector index `{tenant}:memories:vec:nl`.
+
+**Why NL:** the raw JSON embedding captures schema structure (field names, data types). A technical
+event like `CounterIncrementedV1 {"counterId": "cart", "delta": 1}` embeds similarly across all counter
+events regardless of semantic meaning. The NL description rewrites the event as a sentence
+(`"A shopping cart counter was incremented by one unit."`) — the embedding now captures the business
+action rather than the schema shape. Hybrid search on the NL axis surfaces semantically-close events
+across schema variants.
+
+**Prompt template (verbatim — do not edit without updating the cleaner):**
+
+- System: `You are an event summarizer. Given a JSON event payload of type {EventType}, write a single natural-language sentence (≤40 words) describing what business action occurred. Do NOT repeat field names. Focus on domain meaning. Return ONLY the sentence, no preamble or JSON.`
+- User: `Event type: {EventType}\nAggregate: {AggregateType ?? "(unspecified)"}\nPayload:\n{truncatedJson}`
+- `Temperature = 0.1`, `MaxTokens = 80`, no tools, no streaming (DAPR alpha limit).
+
+**Performance envelope:** NFR6's <5s indexing freshness is relaxed to **<7s for `SourceType.Event`**
+because the LLM call adds 1-3s (p95) to the critical path. Non-event sources still honor <5s.
+
+**Doubled embedding API volume:** each event now calls the embedding provider **twice** — once for
+the raw payload, once for the NL description. Both calls go through the SAME
+`EmbeddingRateLimiterActor` per tenant (so total throughput is preserved correctly), but operators
+must size the `RateLimitPerMinute` ceiling with the 2x factor in mind. Telemetry exposes
+`memories.embedding.api_calls{content_kind="payload|naturalLanguageDescription",tenant=...}` so the
+2:1 split is observable.
+
+## LLM provider swap procedure
+
+1. Prepare `deploy/dapr/components/conversation-llm.yaml` with the target provider (e.g.,
+   `type: conversation.anthropic`) — keep the component name `"llm"` so existing workloads route
+   through it without code changes.
+2. Store the provider API key in the DAPR secret store component (`secretstore`).
+3. Validate in staging: `dapr components -k` lists the new component; publish a test event; verify
+   `9150 NaturalLanguageDescriptionGenerated` log contains the new `llmProvider` attribute.
+4. Deploy: the component is swapped atomically — DAPR reloads components on file change. No server
+   restart required.
+5. Monitor: `memories.natural_language.description.duration_ms` histogram stabilizes within ~5 min.
+
+## Natural language embedding retry queue
+
+When the DAPR Conversation API is unavailable, `IngestionWorkflow` catches the typed
+`NaturalLanguageDescriptionUnavailableException`, sets `IngestionResult.NaturalLanguageEmbeddingStatus
+= Queued`, and enqueues a retry record via `QueueNaturalLanguageEmbeddingRetryActivity`. The memory
+unit remains searchable on the raw-semantic + syntactic + graph axes; only the business-meaning axis
+is delayed. `NaturalLanguageEmbeddingRetryHostedService` drains the queue on a configurable interval
+(default 60s, `NaturalLanguage:RetryIntervalSeconds`).
+
+**Operator commands:**
+
+```bash
+# Backlog count (live queue)
+redis-cli ZCARD nl-embedding-retry:{tenant}
+
+# Oldest 10 entries with queue timestamps
+redis-cli ZRANGE nl-embedding-retry:{tenant} 0 9 WITHSCORES
+
+# Dead-letter count (records that exhausted MaxRetryAttempts)
+redis-cli ZCARD nl-embedding-retry-dead:{tenant}
+
+# Peek a dead-letter entry (operator can manually re-enqueue by copying to live queue)
+redis-cli ZRANGE nl-embedding-retry-dead:{tenant} 0 0 WITHSCORES
+
+# Re-enqueue a dead-lettered entry — Redis ZADD to the live queue with a fresh score
+redis-cli ZADD nl-embedding-retry:{tenant} "$(date +%s%N | cut -c1-17)" '<record-json>'
+```
+
+**Recommended Prometheus alerts:**
+
+- `rate(memories_natural_language_embedding_queue_depth[5m]) > 10` sustained 15m — backlog growing.
+- `memories_natural_language_embedding_queue_depth > 1000` — dead-letter candidate escalation.
+
+**Event IDs:** `9152` queued · `9153` retry succeeded · `9170` backlog warning · `9179` backlog error
+· `9180` dead-letter.
+
+## Gap markers and retroactive resolution
+
+When `CausationId` points to a memory unit that has not yet been ingested (out-of-order delivery),
+`IndexGraphActivity` creates a **stub node** via `BuildMergeStubNode(causationId, stubCreatedAt)`.
+The stub carries `isStub = true` + `stubCreatedAt` but no content. `GraphTraversalService` detects
+stubs via the explicit `isStub` flag (preferred) or the legacy content-absent heuristic (fallback for
+pre-9.2 data — retires after `IsStubBackfillMigration` runs, see deferred-work.md).
+
+When the missing cause event later arrives, `BuildMergeMemoryUnitNode`'s MERGE promotes the stub:
+`isStub = false`, all content fields populated, `stubCreatedAt` preserved as historical evidence.
+The activity reads `previousIsStub` from the MERGE result — when `true`, event `9154 StubNodeResolved`
+is emitted (carries `stubCreatedAt` + `resolvedAt` so operators can compute retroactive resolution
+latency = `resolvedAt - stubCreatedAt`).
+
+**Orphan stub detection** (stubs that were never resolved — publisher disappeared, source event lost):
+
+```cypher
+MATCH (m:MemoryUnit)
+WHERE m.isStub = true
+  AND m.stubCreatedAt < (datetime() - duration('PT24H'))
+RETURN m.id AS memoryUnitId, m.stubCreatedAt AS createdAt
+ORDER BY m.stubCreatedAt ASC
+LIMIT 100
+```
+
+Run this hourly per tenant; operators decide whether to (a) re-publish the missing source event,
+(b) drop the stub via a maintenance command, or (c) leave it as a documented dataset gap.
+
+## Correlation root semantics
+
+CloudEvent `correlationid` (extension attribute or envelope field) groups events that participate
+in the same business workflow. Story 9.2 fixes a subtle implementation detail:
+
+- **Edge direction:** `(root)-[:CORRELATED_WITH]->(current)` — the edge points **from** the root
+  event **to** the current event. Walking `direction=outbound, edgeType=CorrelatedWith` from the
+  root returns all correlated events; walking `direction=inbound` from any correlated event returns
+  only the root.
+- **Self-edge guard:** when `CorrelationId == MemoryUnitId` (the event IS the correlation root — a
+  common publisher convention where the first event carries `correlationid = cloudevent.id`), NO
+  edge is created. Event `9155 CorrelationIdSelfEdgeSkipped` is emitted at Debug level.
+- **No fan-out:** if 10 events share a `correlationid`, the graph has **10 edges** (one per event to
+  the root), NOT 90 edges (fan-out between every pair). Operator expectation mismatches this
+  direction sometimes — the intent is "the group of correlated events" treated as a hub-and-spoke
+  around the root.
+
+**Worked example.** Publisher sends a root event `R` with `correlationid = R_id`, then correlated
+events `A`, `B`, `C` each with `correlationid = R_id`. Resulting graph:
+
+```
+(R) ──[CORRELATED_WITH]──► (A)
+(R) ──[CORRELATED_WITH]──► (B)
+(R) ──[CORRELATED_WITH]──► (C)
+```
+
+R itself has no `CORRELATED_WITH` self-edge — the self-edge guard suppressed it.
+
+## Deployment — quiescing event ingestion
+
+Story 9.2 adds new activities to `IngestionWorkflow` (`GenerateNaturalLanguageDescriptionActivity`,
+`IndexNaturalLanguageSemanticActivity`, `QueueNaturalLanguageEmbeddingRetryActivity`). DAPR Workflow
+replay is deterministic — an in-flight 9.1-shape `IngestionWorkflow` history will fail replay under
+9.2 code if its next activity call doesn't match the new code path.
+
+**Mitigation (dual-layer):**
+
+1. **Runbook (operator-side discipline):** before deploying 9.2, pause `SourceType.Event` ingestion
+   for **≥2 minutes**. File / URL ingestion is unaffected — the SourceType-gated block never enters
+   the new code path for those sources.
+2. **Code-level gate (fail-safe):** `WorkflowReplaySafetyHostedService` (`IHostedLifecycleService`
+   implementation — runs before any other hosted service) queries DAPR Workflow for active
+   workflow instances and delays startup by 5s polls until count reaches 0, with a 5-min total
+   timeout. Events `9171` (per-poll Warning), `9172` (single-shot Critical on timeout),
+   `9173` (sidecar unreachable — fail open per Improvement Z).
+
+## Local dev — `conversation.echo`
+
+`deploy/dapr/components/conversation-llm.yaml` defaults to `type: conversation.echo` for local dev
++ Aspire runs. The echo component returns the input unchanged — meaning the "NL description" is the
+raw JSON payload bytes. **Dev embeddings for the NL vector will be identical to the raw embedding.**
+This is intentional — the pipeline shape is exercised end-to-end without a real LLM cost.
+
+- Event `9162 ConversationApiIsEchoComponent` fires at Warning whenever the resolved component name
+  is `conversation.echo`. Local dev logs this every time.
+- Production loads `appsettings.Production.json` which overrides `DaprComponentName` to a real
+  provider component. `NaturalLanguageDescriptionOptionsValidator` emits Critical event `9161
+  EchoComponentNotAllowedInProduction` if Production somehow resolves to the echo component.
+
+## Known limitations
+
+- **No per-tenant LLM provider.** MVP ships one system-wide `llm` DAPR component. Per-tenant routing
+  is Phase 2.
+- **No streaming LLM responses.** DAPR Conversation API alpha does not expose streaming.
+- **No retroactive backfill for pre-9.2 events.** Events ingested before 9.2 shipped have only the
+  raw embedding. Operators who want backfill can mark the source events for re-ingestion via the
+  existing `ReIngestionCoordinator` — the re-run generates the NL embedding naturally.
+- **LLM hallucination is possible.** Low-temperature prompts reduce drift, but the NL description
+  is best-effort summarization — not domain truth. Descriptions are tagged `origin=ai` with a
+  confidence signal (logprobs-derived when the provider exposes them; `null` otherwise) so UIs can
+  render "AI-inferred (estimate unavailable)" distinctly. Users can correct descriptions via Story
+  3.6 annotations-and-corrections.
+- **Response cache is cross-tenant at the sidecar level.** `deploy/dapr/components/conversation-llm.yaml`
+  ships with `responseCacheTTL: 0s` (caching disabled) by default. Enabling caching requires explicit
+  operator acknowledgment (`NaturalLanguage:AcceptCrossTenantCacheSharing = true` or env var
+  `HEXALITH_ACCEPT_CROSS_TENANT_CACHE_SHARING=1`) or the startup validator fails fast with event
+  `9164`. The blast-radius of a leak is a privacy incident — operators OPT IN, never opt out.
+
+## PII scrubbing posture
+
+`deploy/dapr/components/conversation-llm.yaml` ships with `piiScrubbing: false` (MVP decision). The
+NL description MAY contain PII that appeared in the raw event payload; the description is indexed
+into the per-tenant NL vector store (no cross-tenant leakage, but within-tenant PII propagation is
+possible). Before deploying 9.2 to any tenant with PII-subject workloads, Product Owner + Legal /
+Compliance stakeholders MUST sign off on a governance artifact documenting:
+
+- Known behavior: NL descriptions may echo payload PII.
+- Per-tenant opt-in: operators can flip `piiScrubbing: true` via component metadata as a future
+  action (no code change required).
+- Visible control: test
+  `GenerateNaturalLanguageDescriptionActivityTests.PayloadWithCustomerPii_SummaryMayContainPii_DocumentedBehavior`
+  serves as the code-level acknowledgment; a test is not consent — the signed artifact is.
+

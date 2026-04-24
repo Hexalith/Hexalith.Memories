@@ -21,4 +21,12 @@ public sealed record ConsistencyDiscrepancy(
     bool SyntacticPresent,
     bool SemanticPresent,
     bool GraphPresent,
-    ConsistencyRepairRecommendation Recommendation);
+    ConsistencyRepairRecommendation Recommendation)
+{
+    public bool NaturalLanguageSemanticPresent { get; init; }
+
+    public NaturalLanguageEmbeddingStatus NaturalLanguageEmbeddingStatus { get; init; }
+        = NaturalLanguageEmbeddingStatus.NotApplicable;
+
+    public string? ConsistencyNote { get; init; }
+}

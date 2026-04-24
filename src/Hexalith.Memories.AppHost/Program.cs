@@ -54,6 +54,18 @@ IResourceBuilder<IDaprComponentResource> secretStore = builder
     .WithMetadata("secretsFile", secretsFile)
     .WithMetadata("nestedSeparator", ":");
 
+// Story 9.2: DAPR Conversation component — drives GenerateNaturalLanguageDescriptionActivity in the
+// dual-embedding ingestion path. Dev default is conversation.echo so Aspire/test runs exercise the full
+// pipeline deterministically without a real LLM provider; echo returns the input unchanged. Production
+// deployments bind-mount deploy/dapr/components/conversation-llm.yaml with a real provider
+// (conversation.openai / conversation.anthropic / conversation.googleai) wired to the secretstore.
+// The component name "llm" is referenced by NaturalLanguageDescriptionOptions.DaprComponentName and
+// asserted NOT to equal "conversation.echo" by the options validator when running in Production.
+IResourceBuilder<IDaprComponentResource> conversationLlm = builder
+    .AddDaprComponent("llm", "conversation.echo")
+    .WithMetadata("responseCacheTTL", "0s")
+    .WithMetadata("piiScrubbing", "false");
+
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
     .AddContainer("falkordb", "falkordb/falkordb")
@@ -78,7 +90,8 @@ IResourceBuilder<ProjectResource> server = builder
             })
             .WithReference(stateStore)
             .WithReference(pubSub)
-            .WithReference(secretStore);
+            .WithReference(secretStore)
+            .WithReference(conversationLlm);
     })
     .WithEnvironment(
         "ConnectionStrings__redis",

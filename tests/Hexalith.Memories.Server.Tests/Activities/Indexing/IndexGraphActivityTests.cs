@@ -67,7 +67,7 @@ public class IndexGraphActivityTests
         await activity.RunAsync(context, input);
 
         // Assert
-        builder.Received(1).BuildMergeStubNode("mu-cause-001");
+        builder.Received(1).BuildMergeStubNode("mu-cause-001", Arg.Any<DateTimeOffset>());
         builder.Received(1).BuildMergeEdge(
             "mu-cause-001", input.MemoryUnitId, EdgeType.CausedBy,
             EdgeTypeDefaults.CausedBy, EdgeOrigin.Explicit);
@@ -89,7 +89,7 @@ public class IndexGraphActivityTests
         await activity.RunAsync(context, input);
 
         // Assert
-        builder.Received(1).BuildMergeStubNode("mu-corr-001");
+        builder.Received(1).BuildMergeStubNode("mu-corr-001", Arg.Any<DateTimeOffset>());
         builder.Received(1).BuildMergeEdge(
             "mu-corr-001", input.MemoryUnitId, EdgeType.CorrelatedWith,
             EdgeTypeDefaults.CorrelatedWith, EdgeOrigin.Explicit);
@@ -146,7 +146,8 @@ public class IndexGraphActivityTests
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EdgeType>(),
             Arg.Any<float>(), Arg.Any<EdgeOrigin>());
 
-        builder.Received(2).BuildMergeStubNode(Arg.Any<string>());
+        // Story 9.2 Task 7.1: stubs are created via the 2-arg overload that carries stubCreatedAt.
+        builder.Received(2).BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>());
     }
 
     [Fact]
@@ -199,6 +200,69 @@ public class IndexGraphActivityTests
     }
 
     [Fact]
+    public async Task CorrelationId_CreatesRootToCurrentEdge()
+    {
+        // Story 9.2 Task 6 — Risk #3 guard. When CorrelationId != MemoryUnitId, the edge is created
+        // FROM the root TO the current event (ADR 9.2-C direction).
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IndexInput input = CreateTestInput() with
+        {
+            MemoryUnitId = "event-child",
+            CorrelationId = "event-root",
+        };
+
+        IndexGraphActivity activity = new(falkorDb, builder, Substitute.For<ILogger<IndexGraphActivity>>());
+        await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        builder.Received(1).BuildMergeStubNode("event-root", Arg.Any<DateTimeOffset>());
+        builder.Received(1).BuildMergeEdge(
+            "event-root", "event-child", EdgeType.CorrelatedWith,
+            EdgeTypeDefaults.CorrelatedWith, EdgeOrigin.Explicit);
+    }
+
+    [Fact]
+    public async Task CorrelationIdEqualsMemoryUnitId_NoSelfEdge_LogsDebug()
+    {
+        // Story 9.2 Task 6 — Risk #15 guard. When CorrelationId == MemoryUnitId, NO edge is created
+        // and 9155 is emitted at Debug.
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IndexInput input = CreateTestInput() with
+        {
+            MemoryUnitId = "correlation-root-1",
+            CorrelationId = "correlation-root-1",
+        };
+
+        ILogger<IndexGraphActivity> logger = Substitute.For<ILogger<IndexGraphActivity>>();
+        IndexGraphActivity activity = new(falkorDb, builder, logger);
+
+        await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        builder.DidNotReceive().BuildMergeEdge(
+            "correlation-root-1", "correlation-root-1", EdgeType.CorrelatedWith,
+            Arg.Any<float>(), Arg.Any<EdgeOrigin>());
+
+        builder.DidNotReceive().BuildMergeStubNode("correlation-root-1");
+        builder.DidNotReceive().BuildMergeStubNode("correlation-root-1", Arg.Any<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task NullCorrelationId_SkipsCorrelatedWithBranch()
+    {
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IndexInput input = CreateTestInput() with { CorrelationId = null };
+
+        IndexGraphActivity activity = new(falkorDb, builder, Substitute.For<ILogger<IndexGraphActivity>>());
+        await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        builder.DidNotReceive().BuildMergeEdge(
+            Arg.Any<string>(), Arg.Any<string>(), EdgeType.CorrelatedWith,
+            Arg.Any<float>(), Arg.Any<EdgeOrigin>());
+    }
+
+    [Fact]
     public async Task RunAsync_FalkorDbConnectionFailure_ShouldPropagateException()
     {
         // Arrange
@@ -239,6 +303,9 @@ public class IndexGraphActivityTests
 
         builder.BuildMergeStubNode(Arg.Any<string>())
             .Returns(("MERGE (m:MemoryUnit {id: $id})", new Dictionary<string, object> { ["id"] = "mock" }));
+        builder.BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>())
+            .Returns(("MERGE (m:MemoryUnit {id: $id}) ON CREATE SET m.isStub = true, m.stubCreatedAt = $stubCreatedAt",
+                new Dictionary<string, object> { ["id"] = "mock", ["stubCreatedAt"] = "2026-04-23T10:00:00Z" }));
 
         return builder;
     }

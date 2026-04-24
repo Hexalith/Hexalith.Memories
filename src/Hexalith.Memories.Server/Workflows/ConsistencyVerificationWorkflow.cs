@@ -103,13 +103,20 @@ public sealed partial class ConsistencyVerificationWorkflow
                     probe.SemanticExists,
                     probe.GraphExists);
 
-                if (recommendation == ConsistencyRepairRecommendation.NoOp)
+                bool naturalLanguageGap = NaturalLanguageConsistencyState.HasIndexedNaturalLanguageGap(
+                    probe.NaturalLanguageEmbeddingStatus,
+                    probe.NaturalLanguageSemanticExists);
+
+                if (recommendation == ConsistencyRepairRecommendation.NoOp && !naturalLanguageGap)
                 {
                     consistentCount++;
                     continue;
                 }
 
-                LogDiscrepancyDetected(logger, input.TenantId, unitId, recommendation.ToString());
+                string discrepancyLabel = naturalLanguageGap
+                    ? "MissingNaturalLanguageSemantic"
+                    : recommendation.ToString();
+                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
 
                 if (discrepancies.Count < MaxDiscrepancyEntries)
                 {
@@ -118,7 +125,12 @@ public sealed partial class ConsistencyVerificationWorkflow
                         probe.SyntacticExists,
                         probe.SemanticExists,
                         probe.GraphExists,
-                        recommendation));
+                        recommendation)
+                    {
+                        NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
+                        NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
+                        ConsistencyNote = probe.ConsistencyNote,
+                    });
                 }
             }
 

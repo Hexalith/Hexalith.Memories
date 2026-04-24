@@ -138,6 +138,17 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(ExportedEdge))]
 [JsonSerializable(typeof(ExportedTenantConfig))]
 [JsonSerializable(typeof(ExportedMemoryUnit))]
+// Story 9.2: dual embedding + NL description contracts.
+[JsonSerializable(typeof(ConfidenceSource))]
+[JsonSerializable(typeof(EmbeddingContentKind))]
+[JsonSerializable(typeof(NaturalLanguageDescriptionInput))]
+[JsonSerializable(typeof(NaturalLanguageDescriptionResult))]
+[JsonSerializable(typeof(NaturalLanguageIndexInput))]
+[JsonSerializable(typeof(NaturalLanguageEmbeddingStatus))]
+[JsonSerializable(typeof(QueueNaturalLanguageEmbeddingRetryInput))]
+[JsonSerializable(typeof(FailedNaturalLanguageEmbeddingRecord))]
+[JsonSerializable(typeof(NaturalLanguageEmbeddingRetryInput))]
+[JsonSerializable(typeof(NaturalLanguageEmbeddingRetryResult))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

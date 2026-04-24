@@ -49,6 +49,20 @@ public sealed partial class DeleteRedisVectorActivity : WorkflowActivity<TenantD
             LogIndexNotFound(_logger, indexName, input.TenantId);
         }
 
+        // Story 9.2 Task 4.6: drop the sibling natural-language semantic index and all associated
+        // {tenant}:vec:nl:* hashes so tenant deletion leaves no orphan NL vectors behind.
+        string nlIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
+
+        try
+        {
+            await db.ExecuteAsync("FT.DROPINDEX", nlIndexName, "DD").ConfigureAwait(false);
+            LogIndexDropped(_logger, nlIndexName, input.TenantId);
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+        {
+            LogIndexNotFound(_logger, nlIndexName, input.TenantId);
+        }
+
         return true;
     }
 

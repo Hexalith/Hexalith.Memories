@@ -5,9 +5,13 @@
 
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using System.Text.Json;
+
 using Dapr.Workflow;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
 
 using Microsoft.Extensions.Logging;
@@ -100,6 +104,7 @@ public class VerifyConsistencyActivityTests
 
         await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
         await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:nl:mu-001", Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -133,16 +138,70 @@ public class VerifyConsistencyActivityTests
                 new ConsistencyInput("mu-001", "tenant-1")));
     }
 
+    [Fact]
+    public async Task RunAsync_QueuedNaturalLanguageMissing_SurfacesInformationalNote()
+    {
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: true,
+            naturalLanguageSemanticExists: false,
+            naturalLanguageEmbeddingStatus: NaturalLanguageEmbeddingStatus.Queued);
+
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
+
+        result.NaturalLanguageSemanticExists.ShouldBeFalse();
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Queued);
+        result.ConsistencyNote.ShouldNotBeNull();
+        result.ConsistencyNote.ShouldContain("queued retry");
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexedNaturalLanguageMissing_SurfacesGapNote()
+    {
+        (VerifyConsistencyActivity activity, _, _) = CreateActivity(
+            syntacticExists: true,
+            semanticExists: true,
+            graphExists: true,
+            naturalLanguageSemanticExists: false,
+            naturalLanguageEmbeddingStatus: NaturalLanguageEmbeddingStatus.Indexed);
+
+        ConsistencyResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new ConsistencyInput("mu-001", "tenant-1"));
+
+        result.NaturalLanguageSemanticExists.ShouldBeFalse();
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        result.ConsistencyNote.ShouldNotBeNull();
+        result.ConsistencyNote.ShouldContain("semantic-nl");
+    }
+
     private static (VerifyConsistencyActivity Activity, IDatabase RedisDb, IGraphQueryBuilder Builder) CreateActivity(
         bool syntacticExists,
         bool semanticExists,
-        bool graphExists)
+        bool graphExists,
+        bool naturalLanguageSemanticExists = false,
+        NaturalLanguageEmbeddingStatus? naturalLanguageEmbeddingStatus = null)
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), Arg.Any<CommandFlags>())
             .Returns(syntacticExists);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:nl:")), Arg.Any<CommandFlags>())
+            .Returns(naturalLanguageSemanticExists);
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:") && !k.ToString()!.Contains(":vec:nl:")), Arg.Any<CommandFlags>())
             .Returns(semanticExists);
+
+        Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)
+        {
+            [NaturalLanguageConsistencyState.EmbeddingStatusMetadataKey] = new(
+                (naturalLanguageEmbeddingStatus ?? NaturalLanguageEmbeddingStatus.NotApplicable).ToString(),
+                MetadataOrigin.Ai,
+                1.0f),
+        };
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), "metadataJson", Arg.Any<CommandFlags>())
+            .Returns(JsonSerializer.Serialize(metadata, MemoriesJsonContext.Options));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);

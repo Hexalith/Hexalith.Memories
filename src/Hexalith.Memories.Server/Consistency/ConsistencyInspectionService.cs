@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Consistency;
 
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Contracts.V1;
@@ -83,19 +84,23 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         string syntacticKey = $"{tenantId}:mu:{normalizedMemoryUnitId}";
         string vectorKey = $"{tenantId}:vec:{normalizedMemoryUnitId}";
+        string naturalLanguageVectorKey = $"{tenantId}:vec:nl:{normalizedMemoryUnitId}";
 
         Task<HashEntry[]> syntacticTask = redisDb.HashGetAllAsync(syntacticKey);
         Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(vectorKey);
+        Task<HashEntry[]> naturalLanguageSemanticTask = redisDb.HashGetAllAsync(naturalLanguageVectorKey);
         Task<(bool Exists, ConsistencyGraphDetail? Detail)> graphTask = ProbeGraphAsync(tenantId, normalizedMemoryUnitId, ct);
 
         HashEntry[] syntacticEntries = await syntacticTask.WaitAsync(ct).ConfigureAwait(false);
         HashEntry[] semanticEntries = await semanticTask.WaitAsync(ct).ConfigureAwait(false);
+        HashEntry[] naturalLanguageSemanticEntries = await naturalLanguageSemanticTask.WaitAsync(ct).ConfigureAwait(false);
         (bool graphExists, ConsistencyGraphDetail? graphDetail) = await graphTask.ConfigureAwait(false);
 
         bool syntacticPresent = syntacticEntries.Length > 0;
         bool semanticPresent = semanticEntries.Length > 0;
+        bool naturalLanguageSemanticPresent = naturalLanguageSemanticEntries.Length > 0;
 
-        if (!syntacticPresent && !semanticPresent && !graphExists)
+        if (!syntacticPresent && !semanticPresent && !graphExists && !naturalLanguageSemanticPresent)
         {
             throw new KeyNotFoundException(
                 $"Memory unit '{normalizedMemoryUnitId}' not found in any backend for tenant '{tenantId}'.");
@@ -108,6 +113,18 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         ConsistencySemanticDetail? semanticDetail = semanticPresent
             ? ExtractSemanticDetail(semanticEntries, vectorKey)
             : null;
+
+        ConsistencySemanticDetail? naturalLanguageSemanticDetail = naturalLanguageSemanticPresent
+            ? ExtractSemanticDetail(naturalLanguageSemanticEntries, naturalLanguageVectorKey)
+            : null;
+
+        NaturalLanguageEmbeddingStatus naturalLanguageEmbeddingStatus = syntacticPresent
+            ? ReadNaturalLanguageEmbeddingStatus(syntacticEntries)
+            : NaturalLanguageEmbeddingStatus.NotApplicable;
+
+        string? consistencyNote = NaturalLanguageConsistencyState.BuildConsistencyNote(
+            naturalLanguageEmbeddingStatus,
+            naturalLanguageSemanticPresent);
 
         ConsistencyRepairRecommendation recommendation =
             RepairPlanCalculator.Calculate(syntacticPresent, semanticPresent, graphExists);
@@ -131,7 +148,13 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
             semanticDetail,
             graphExists ? graphDetail : null,
             recommendation,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow)
+        {
+            NaturalLanguageSemanticPresent = naturalLanguageSemanticPresent,
+            NaturalLanguageSemanticDetail = naturalLanguageSemanticDetail,
+            NaturalLanguageEmbeddingStatus = naturalLanguageEmbeddingStatus,
+            ConsistencyNote = consistencyNote,
+        };
     }
 
     /// <summary>
@@ -288,6 +311,14 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         }
 
         return new ConsistencySemanticDetail(dims, vectorHashKey);
+    }
+
+    private static NaturalLanguageEmbeddingStatus ReadNaturalLanguageEmbeddingStatus(HashEntry[] syntacticEntries)
+    {
+        Dictionary<string, string> map = HashEntriesToMap(syntacticEntries);
+        return map.TryGetValue("metadataJson", out string? metadataJson)
+            ? NaturalLanguageConsistencyState.ReadStatus(metadataJson)
+            : NaturalLanguageEmbeddingStatus.NotApplicable;
     }
 
     private static Dictionary<string, string> HashEntriesToMap(HashEntry[] entries)

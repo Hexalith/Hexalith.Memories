@@ -1,0 +1,58 @@
+# Story 9.2 — DAPR Conversation component for natural-language description generation.
+#
+# This component is consumed by GenerateNaturalLanguageDescriptionActivity (src/Hexalith.Memories.Server/
+# Activities/Ingestion/) to produce a natural-language summary of event payloads for the dual-embedding
+# pipeline (FR60). Keep this file aligned with the AppHost wiring in src/Hexalith.Memories.AppHost/Program.cs
+# and with the `NaturalLanguage:DaprComponentName` appsettings key (default "llm").
+#
+# Dev default: conversation.echo
+#   The echo component returns the input unchanged. It exists so local / test Aspire runs exercise the full
+#   ingestion pipeline without depending on a real LLM provider or API key. When this component is resolved,
+#   the server emits log event 9162 (ConversationApiIsEchoComponent) at Warning level on first use and the
+#   options validator (NaturalLanguageDescriptionOptionsValidator) HARD-FAILS startup if the environment is
+#   Production (log event 9161 Critical). See Story 9.2 Risk #10 and Dev Notes "Local dev — conversation.echo".
+#
+# Production swap procedure (see docs/dev/eventstore-integration.md "LLM provider swap procedure"):
+#   1. Prepare a new YAML with the same metadata.name = "llm" but a real provider type, e.g.
+#        spec:
+#          type: conversation.openai       # or conversation.anthropic / conversation.googleai
+#          version: v1
+#          metadata:
+#            - name: key
+#              secretKeyRef: { name: OPENAI_API_KEY, key: OPENAI_API_KEY }
+#            - name: model
+#              value: "gpt-4o-mini"
+#            - name: cacheTTL
+#              value: "0s"                   # see "Response cache policy" below
+#            - name: scrubPII
+#              value: "false"                # see "PII scrubbing posture" below
+#   2. Reference the DAPR secretstore component to resolve the key.
+#   3. DAPR hot-reloads components on file change — no Memories Server restart required.
+#
+# Response cache policy (Risk #16 — cross-tenant leakage):
+#   responseCacheTTL MUST remain 0s (caching DISABLED) as the MVP default. The DAPR Conversation sidecar's
+#   response cache is shared ACROSS tenants — two tenants ingesting payloads that hash identically would
+#   share the cached LLM summary, a privacy-incident blast radius. Operators who explicitly accept cross-
+#   tenant cache sharing must (a) set this value to a non-zero TTL AND (b) set
+#   `NaturalLanguage:AcceptCrossTenantCacheSharing: true` OR environment variable
+#   `HEXALITH_ACCEPT_CROSS_TENANT_CACHE_SHARING=1`. Without BOTH, the options validator fails startup with
+#   log event 9164 Critical (EchoComponent validator, Task 1.7, second gate).
+#
+# PII scrubbing posture:
+#   piiScrubbing is false by default. Event payloads from a tenant's own event stream are within that
+#   tenant's trust boundary; NL descriptions propagate any PII present in the payload into the same
+#   per-tenant vector store. No cross-tenant leakage, but within-tenant PII propagation IS possible.
+#   Operators with PII-subject workloads must (a) sign off on docs/governance/PII_ACKNOWLEDGMENT.md and
+#   (b) optionally enable `scrubPII: "true"` on the production component. See Task 10.1.10.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: llm
+spec:
+  type: conversation.echo
+  version: v1
+  metadata:
+    - name: responseCacheTTL
+      value: "0s"
+    - name: piiScrubbing
+      value: "false"

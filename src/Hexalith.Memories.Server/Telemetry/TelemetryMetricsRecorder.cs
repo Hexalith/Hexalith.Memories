@@ -47,4 +47,13 @@ internal static class TelemetryMetricsRecorder
         };
         MemoriesMeter.IngestionFailures.Add(1, tags);
     }
+
+    public static void RecordNaturalLanguageDescriptionDuration(string tenantIdTag, double elapsedMs)
+    {
+        var tags = new TagList
+        {
+            { "tenant_id", tenantIdTag },
+        };
+        MemoriesMeter.NaturalLanguageDescriptionDuration.Record(elapsedMs, tags);
+    }
 }

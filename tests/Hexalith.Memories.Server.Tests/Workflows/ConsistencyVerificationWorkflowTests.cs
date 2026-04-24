@@ -252,6 +252,64 @@ public class ConsistencyVerificationWorkflowTests
         firstKeys.ShouldBe(secondKeys);
     }
 
+    [Fact]
+    public async Task RunAsync_QueuedNaturalLanguageMissing_RemainsConsistent()
+    {
+        WorkflowContext context = CreateContext();
+        SetEnumeration(context, ["queued-nl"]);
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Any<ConsistencyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true)
+            {
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Queued,
+                ConsistencyNote = "Natural-language semantic hash pending queued retry.",
+            });
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.ConsistentCount.ShouldBe(1);
+        result.InconsistentCount.ShouldBe(0);
+        result.Discrepancies.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_IndexedNaturalLanguageMissing_BecomesDiscrepancyWithNote()
+    {
+        WorkflowContext context = CreateContext();
+        SetEnumeration(context, ["indexed-nl-gap"]);
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Any<ConsistencyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true)
+            {
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                ConsistencyNote = "Missing backends: semantic-nl",
+            });
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.ConsistentCount.ShouldBe(0);
+        result.InconsistentCount.ShouldBe(1);
+        result.Discrepancies.Count.ShouldBe(1);
+        result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.Discrepancies[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
+        result.Discrepancies[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        string? consistencyNote = result.Discrepancies[0].ConsistencyNote;
+        consistencyNote.ShouldNotBeNull();
+        consistencyNote.ShouldContain("semantic-nl");
+    }
+
     private static WorkflowContext CreateContext()
     {
         WorkflowContext context = Substitute.For<WorkflowContext>();

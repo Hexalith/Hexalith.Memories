@@ -73,6 +73,25 @@ public class CleanupActivityTests
     }
 
     [Fact]
+    public async Task CleanupSemantic_DeletesBothHashes_Idempotent()
+    {
+        // Story 9.2 Task 4.7: compensation must delete BOTH the raw and NL semantic hashes. DEL is a
+        // no-op on missing keys so the NL hash absence (SourceType != Event) does not fail compensation.
+        IDatabase db = Substitute.For<IDatabase>();
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(true);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        CleanupSemanticActivity activity = new(redis, Substitute.For<ILogger<CleanupSemanticActivity>>());
+
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new CleanupInput("mu-001", "tenant-1"));
+
+        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:nl:mu-001", Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task CleanupSemantic_KeyDoesNotExist_ShouldNotThrow()
     {
         IDatabase db = Substitute.For<IDatabase>();

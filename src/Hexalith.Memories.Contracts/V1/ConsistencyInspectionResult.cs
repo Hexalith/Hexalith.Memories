@@ -31,4 +31,14 @@ public sealed record ConsistencyInspectionResult(
     ConsistencySemanticDetail? SemanticDetail,
     ConsistencyGraphDetail? GraphDetail,
     ConsistencyRepairRecommendation Recommendation,
-    DateTimeOffset CheckedAt);
+    DateTimeOffset CheckedAt)
+{
+    public bool NaturalLanguageSemanticPresent { get; init; }
+
+    public ConsistencySemanticDetail? NaturalLanguageSemanticDetail { get; init; }
+
+    public NaturalLanguageEmbeddingStatus NaturalLanguageEmbeddingStatus { get; init; }
+        = NaturalLanguageEmbeddingStatus.NotApplicable;
+
+    public string? ConsistencyNote { get; init; }
+}

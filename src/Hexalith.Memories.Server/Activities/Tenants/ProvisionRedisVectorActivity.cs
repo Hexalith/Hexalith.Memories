@@ -59,6 +59,27 @@ public sealed partial class ProvisionRedisVectorActivity : WorkflowActivity<Tena
         }
 
         LogIndexCreated(_logger, indexName, input.TenantId, input.VectorDimensions);
+
+        // Story 9.2 Task 4.5: create the sibling natural-language semantic index. Same HNSW/FLOAT32/COSINE
+        // schema shape at the same dimensions (Risk #5 — schema drift prevented by shared core helper).
+        // Idempotent on "Index already exists" matching the raw-index pattern above.
+        string nlIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
+
+        try
+        {
+            ft.Create(
+                nlIndexName,
+                IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(input.TenantId),
+                IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(input.VectorDimensions));
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
+        {
+            EnsureNaturalLanguageSemanticSchemaMatches(db, nlIndexName, input.TenantId, input.VectorDimensions);
+            LogIndexAlreadyExists(_logger, nlIndexName, input.TenantId);
+        }
+
+        LogIndexCreated(_logger, nlIndexName, input.TenantId, input.VectorDimensions);
+
         LogActivityAudit(
             _logger,
             input.TenantId,
@@ -72,30 +93,27 @@ public sealed partial class ProvisionRedisVectorActivity : WorkflowActivity<Tena
     private static void EnsureSemanticSchemaMatches(IDatabase db, string indexName, string tenantId, int expectedDimensions)
     {
         RedisResult info = db.Execute("FT.INFO", indexName);
-        List<string> problems = [];
+        IReadOnlyList<string> problems = IndexSchemaDefinitions.DescribeVectorSchemaProblems(
+            info,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId),
+            IndexSchemaDefinitions.GetSemanticFieldIdentifiers(),
+            expectedDimensions);
 
-        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
-        string expectedPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
-        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
+        if (problems.Count > 0)
         {
-            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
+            throw new InvalidOperationException(
+                $"Existing Redis Vector index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
         }
+    }
 
-        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
-        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSemanticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
-        if (!actualFields.SetEquals(expectedFields))
-        {
-            problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
-        }
-
-        if (!IndexSchemaDefinitions.TryGetVectorDimensions(info, "embedding", out int actualDimensions))
-        {
-            problems.Add("embedding vector dimensions are missing from FT.INFO");
-        }
-        else if (actualDimensions != expectedDimensions)
-        {
-            problems.Add($"expected {expectedDimensions} dimensions but found {actualDimensions}");
-        }
+    private static void EnsureNaturalLanguageSemanticSchemaMatches(IDatabase db, string indexName, string tenantId, int expectedDimensions)
+    {
+        RedisResult info = db.Execute("FT.INFO", indexName);
+        IReadOnlyList<string> problems = IndexSchemaDefinitions.DescribeVectorSchemaProblems(
+            info,
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticFieldIdentifiers(),
+            expectedDimensions);
 
         if (problems.Count > 0)
         {

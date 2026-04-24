@@ -16,4 +16,11 @@ public sealed record IngestionResult(
     MemoryUnitStatus Status,
     DateTimeOffset IngestedAt,
     bool WasDuplicate,
-    string? ConsistencyNote);
+    string? ConsistencyNote)
+{
+    /// <summary>Story 9.2 Task 5.1 — the NL embedding side-path outcome. Defaults to
+    /// <see cref="NaturalLanguageEmbeddingStatus.NotApplicable"/> for backward compatibility with
+    /// pre-9.2 serialized results (workflow replay safety).</summary>
+    public NaturalLanguageEmbeddingStatus NaturalLanguageEmbeddingStatus { get; init; }
+        = NaturalLanguageEmbeddingStatus.NotApplicable;
+}

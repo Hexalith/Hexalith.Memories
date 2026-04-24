@@ -852,6 +852,38 @@ public class IngestionWorkflowTests
                 return Task.FromResult(new IndexResult("graph", muId, input.TenantId));
             });
 
+        // Story 9.2 Task 5: when SourceType = Event the workflow also calls the NL activities.
+        // Stubbing unconditionally is safe — the workflow only invokes them for Event inputs so
+        // File/Url tests never exercise these branches.
+        context.CallActivityAsync<Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionResult>(
+                nameof(GenerateNaturalLanguageDescriptionActivity),
+                Arg.Any<Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(GenerateNaturalLanguageDescriptionActivity));
+                return Task.FromResult(new Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionResult(
+                    "A business action happened.",
+                    EstimatedConfidence: null,
+                    Hexalith.Memories.Contracts.V1.ConfidenceSource.Constant,
+                    LlmProvider: "llm",
+                    LlmModel: "gpt-4o-mini"));
+            });
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexNaturalLanguageSemanticActivity),
+                Arg.Any<Hexalith.Memories.Contracts.V1.NaturalLanguageIndexInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(IndexNaturalLanguageSemanticActivity));
+                return Task.FromResult(new IndexResult("semantic-nl", muId, input.TenantId));
+            });
+        context.CallActivityAsync<bool>(
+                nameof(QueueNaturalLanguageEmbeddingRetryActivity),
+                Arg.Any<Hexalith.Memories.Contracts.V1.QueueNaturalLanguageEmbeddingRetryInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(true));
+
         // Verify consistency
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>())

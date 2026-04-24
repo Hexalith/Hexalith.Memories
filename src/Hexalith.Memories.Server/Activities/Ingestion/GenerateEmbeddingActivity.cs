@@ -14,6 +14,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
 
@@ -99,6 +100,16 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
                 await Task.Delay(jitterMs, CancellationToken.None).ConfigureAwait(false);
             }
         }
+
+        // Story 9.2 Task 3.3 / Risk #6: partition embedding API volume by content kind so operators can
+        // see the raw-payload / NL-description 2:1 split under dual-embedding.
+        string contentKindTag = input.ContentKind == EmbeddingContentKind.NaturalLanguageDescription
+            ? "naturalLanguageDescription"
+            : "payload";
+        MemoriesMeter.EmbeddingApiCalls.Add(
+            1,
+            new KeyValuePair<string, object?>("tenant_id", input.TenantId),
+            new KeyValuePair<string, object?>("content_kind", contentKindTag));
 
         try
         {

@@ -78,7 +78,26 @@ public sealed partial class GraphTraversalService
                     continue;
                 }
 
+                // Story 9.2 Task 7.4 — explicit isStub flag is the preferred gap-marker signal
+                // (Risk #4). Content-absent heuristic stays as a fallback for pre-9.2 nodes that
+                // never had the flag written (retires after the Task 7.6 backfill migration).
+                bool isStubExplicit = TryGetRecordValue(record, "isStub", out object? isStubRaw)
+                    && isStubRaw is bool stubFlag
+                    && stubFlag;
                 string? contentRaw = TryGetOptionalString(record, "content");
+
+                if (isStubExplicit)
+                {
+                    long gapHop = TryGetRecordValue(record, "hopDistance", out long parsedGapHop)
+                        ? parsedGapHop
+                        : 0;
+                    List<TraversalEdgeInfo> gapEdges = TryGetRecordValue(record, "edges", out object? gapEdgesRaw)
+                        ? ParseEdgeCollection(gapEdgesRaw)
+                        : [];
+                    gapMarkers.Add(new TraversalGapMarker(nodeId, checked((int)gapHop), gapEdges));
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(contentRaw))
                 {
                     FallbackTraversalNodeData? fallback = await LoadFallbackTraversalNodeDataAsync(graphId, nodeId, cancellationToken)
@@ -95,8 +114,8 @@ public sealed partial class GraphTraversalService
                         }
                     }
 
-                    // Stub node — gap marker (FR49). Stub nodes created by BuildMergeStubNode
-                    // have ONLY the id property; content is absent/null in FalkorDB.
+                    // Fallback path for pre-9.2 stub nodes with neither the isStub flag nor the
+                    // content property — FR49 gap-marker legacy heuristic.
                     long gapHop = TryGetRecordValue(record, "hopDistance", out long parsedGapHop)
                         ? parsedGapHop
                         : 0;

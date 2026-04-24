@@ -11,6 +11,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 
 using Microsoft.Extensions.Logging;
 
@@ -88,12 +89,17 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 await UpdateCounter("queued", "none");
                 context.SetCustomStatus("duplicate");
 
+                // Story 9.2 Task 5.6: dedup returns NotApplicable — the existing memory unit was
+                // already indexed by an earlier ingest and its NL status is owned by that prior run.
                 return new IngestionResult(
                     idempotency.ExistingMemoryUnitId!,
                     currentStatus,
                     ingestedAt,
                     WasDuplicate: true,
-                    ConsistencyNote: null);
+                    ConsistencyNote: null)
+                {
+                    NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable,
+                };
             }
 
             currentStage = "validation";
@@ -157,10 +163,100 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 embedding.Provider,
                 embedding.Dimensions);
 
+            // Story 9.2 Task 5.3: SourceType.Event-gated dual-embedding block. Generates the NL
+            // description via the DAPR Conversation API (alpha), embeds it through the SAME
+            // GenerateEmbeddingActivity (ContentKind = NaturalLanguageDescription), and primes a
+            // NaturalLanguageIndexInput for the fourth fan-out task. On LLM unavailability, the block
+            // catches NaturalLanguageDescriptionUnavailableException ONLY (wider catches would mask
+            // real bugs per Anti-Patterns) and queues the memory unit for background retry. Memory
+            // units remain searchable via the three non-NL axes.
+            NaturalLanguageEmbeddingStatus nlStatus = NaturalLanguageEmbeddingStatus.NotApplicable;
+            EmbeddingResult? nlEmbedding = null;
+            NaturalLanguageDescriptionResult? nlResult = null;
+            if (input.SourceType == SourceType.Event)
+            {
+                string rawJsonPayload = input.ContentBytes is { Length: > 0 }
+                    ? System.Text.Encoding.UTF8.GetString(input.ContentBytes)
+                    : extraction.ExtractedContent;
+                string eventType = input.Metadata.TryGetValue("cloudevent.type", out MetadataField? et)
+                    ? et.Value
+                    : "(unknown)";
+                string? aggregateType = input.Metadata.TryGetValue("event.aggregateType", out MetadataField? at)
+                    ? at.Value
+                    : null;
+
+                try
+                {
+                    nlResult = await context.CallActivityAsync<NaturalLanguageDescriptionResult>(
+                        nameof(GenerateNaturalLanguageDescriptionActivity),
+                        new NaturalLanguageDescriptionInput(
+                            input.TenantId,
+                            memoryUnitId,
+                            rawJsonPayload,
+                            eventType,
+                            aggregateType),
+                        For(nameof(GenerateNaturalLanguageDescriptionActivity)));
+
+                    nlEmbedding = await context.CallActivityAsync<EmbeddingResult>(
+                        nameof(GenerateEmbeddingActivity),
+                        new EmbeddingInput(
+                            input.TenantId,
+                            nlResult.Description,
+                            EmbeddingContentKind.NaturalLanguageDescription),
+                        For(nameof(GenerateEmbeddingActivity)));
+
+                    nlStatus = NaturalLanguageEmbeddingStatus.Indexed;
+                }
+                catch (NaturalLanguageDescriptionUnavailableException)
+                {
+                    logger.LogInformation(
+                        "NL description unavailable for {MemoryUnitId}; queueing for retry (event 9152).",
+                        memoryUnitId);
+
+                    await context.CallActivityAsync<bool>(
+                        nameof(QueueNaturalLanguageEmbeddingRetryActivity),
+                        new QueueNaturalLanguageEmbeddingRetryInput(
+                            input.TenantId,
+                            memoryUnitId,
+                            rawJsonPayload,
+                            eventType,
+                            aggregateType,
+                            input.CaseId,
+                            embedding.Provider,
+                            GetEmbeddingModelIdentifier(embedding),
+                            embedding.Dimensions),
+                        compensationRetry);
+
+                    nlStatus = NaturalLanguageEmbeddingStatus.Queued;
+                }
+            }
+
             currentStage = "indexing";
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexing);
             await UpdateCounter("embedding", "indexing");
             context.SetCustomStatus("indexing");
+
+            Dictionary<string, MetadataField> metadataForIndex = BuildIndexMetadata(input, urlFetch, effectiveUrl, fetchedContentLength);
+
+            if (input.SourceType == SourceType.Event)
+            {
+                metadataForIndex["event.naturalLanguageEmbeddingStatus"] = new MetadataField(
+                    nlStatus.ToString(),
+                    MetadataOrigin.Ai,
+                    1.0f);
+            }
+
+            // Story 9.2 Task 5.7: optionally persist the NL description to metadata so it's visible
+            // via FT.SEARCH on the syntactic index and via GET memory-unit. Default is false (ADR 9.2-F
+            // — storage economy); operators opt in via appsettings NaturalLanguage:PersistInMetadata.
+            if (nlResult is not null
+                && NaturalLanguageDescriptionOptionsSnapshot.Value.PersistInMetadata)
+            {
+                metadataForIndex["event.naturalLanguageDescription"] = new MetadataField(
+                    nlResult.Description,
+                    MetadataOrigin.Ai,
+                    nlResult.EstimatedConfidence ?? 0.0f);
+            }
 
             IndexInput indexInput = new()
             {
@@ -182,7 +278,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 // stores only the model identifier rather than the full compound value.
                 EmbeddingModel = GetEmbeddingModelIdentifier(embedding),
                 EmbeddingDimensions = embedding.Dimensions,
-                Metadata = BuildIndexMetadata(input, urlFetch, effectiveUrl, fetchedContentLength),
+                Metadata = metadataForIndex,
                 CausationId = input.CausationId,
                 CorrelationId = input.CorrelationId,
             };
@@ -200,13 +296,46 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 indexInput,
                 For(nameof(IndexGraphActivity)));
 
+            // Story 9.2 Task 5.5: fourth fan-out task when the NL embedding succeeded. Cleanup
+            // compensation (Task 4.7) handles both the raw and NL hashes via the single
+            // CleanupSemanticActivity — no additional compensation activity is needed.
+            Task<IndexResult>? nlSemanticTask = null;
+            if (nlEmbedding is not null && nlResult is not null)
+            {
+                NaturalLanguageIndexInput nlIndexInput = new()
+                {
+                    MemoryUnitId = memoryUnitId,
+                    TenantId = input.TenantId,
+                    CaseId = input.CaseId,
+                    EmbeddingVector = nlEmbedding.Vector,
+                    EmbeddingProvider = nlEmbedding.Provider,
+                    EmbeddingModel = GetEmbeddingModelIdentifier(nlEmbedding),
+                    EmbeddingDimensions = nlEmbedding.Dimensions,
+                    NaturalLanguageDescription = nlResult.Description,
+                    DescriptionConfidence = nlResult.EstimatedConfidence,
+                    ConfidenceSource = nlResult.ConfidenceSource,
+                };
+
+                nlSemanticTask = context.CallActivityAsync<IndexResult>(
+                    nameof(IndexNaturalLanguageSemanticActivity),
+                    nlIndexInput,
+                    For(nameof(IndexNaturalLanguageSemanticActivity)));
+            }
+
             try
             {
-                await Task.WhenAll(syntacticTask, semanticTask, graphTask);
+                if (nlSemanticTask is not null)
+                {
+                    await Task.WhenAll(syntacticTask, semanticTask, graphTask, nlSemanticTask);
+                }
+                else
+                {
+                    await Task.WhenAll(syntacticTask, semanticTask, graphTask);
+                }
             }
             catch (Exception ex)
             {
-                HashSet<string> completedBackends = GetCompletedBackends(syntacticTask, semanticTask, graphTask);
+                HashSet<string> completedBackends = GetCompletedBackends(syntacticTask, semanticTask, graphTask, nlSemanticTask);
                 await CompensateAsync(context, completedBackends, cleanupInput, compensationRetry, logger, ex);
 
                 try
@@ -292,9 +421,17 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             }
             catch (Exception ex)
             {
+                // Story 9.2 Task 5.5: include "semantic-nl" so CleanupSemanticActivity is dispatched
+                // even when only the NL hash was written. CleanupSemanticActivity then removes both.
+                HashSet<string> postIndexBackends = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
+                if (nlSemanticTask is { IsCompletedSuccessfully: true })
+                {
+                    postIndexBackends.Add("semantic-nl");
+                }
+
                 await CompensateAsync(
                     context,
-                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" },
+                    postIndexBackends,
                     cleanupInput,
                     compensationRetry,
                     logger,
@@ -338,12 +475,17 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             await UpdateCounter("indexing", "none");
             context.SetCustomStatus("indexed");
 
+            // Story 9.2 Task 5.6: surface the NL-embedding outcome — Indexed on the healthy path,
+            // Queued on the degraded path (LLM unavailable), NotApplicable for SourceType != Event.
             return new IngestionResult(
                 memoryUnitId,
                 currentStatus,
                 ingestedAt,
                 WasDuplicate: false,
-                ConsistencyNote: consistencyNote);
+                ConsistencyNote: consistencyNote)
+            {
+                NaturalLanguageEmbeddingStatus = nlStatus,
+            };
         }
         catch (Exception ex) when (ex is not OperationCanceledException && !HasFailureDetails(ex))
         {
@@ -386,7 +528,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     private static HashSet<string> GetCompletedBackends(
         Task<IndexResult> syntacticTask,
         Task<IndexResult> semanticTask,
-        Task<IndexResult> graphTask)
+        Task<IndexResult> graphTask,
+        Task<IndexResult>? nlSemanticTask = null)
     {
         HashSet<string> completedBackends = new(StringComparer.OrdinalIgnoreCase);
 
@@ -403,6 +546,15 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         if (graphTask.IsCompletedSuccessfully)
         {
             completedBackends.Add(graphTask.Result.Backend);
+        }
+
+        // Story 9.2 Task 5.5: cleanup for the NL hash is coupled into CleanupSemanticActivity
+        // (Task 4.7), so "semantic" already dispatches both hashes. The "semantic-nl" marker here is
+        // purely informational — it tells compensation that the NL hash was written even if the raw
+        // hash somehow was not (e.g., NL task succeeded while syntactic failed).
+        if (nlSemanticTask is not null && nlSemanticTask.IsCompletedSuccessfully)
+        {
+            completedBackends.Add(nlSemanticTask.Result.Backend);
         }
 
         return completedBackends;
@@ -427,7 +579,10 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     compensationRetry));
         }
 
-        if (completedBackends.Contains("semantic"))
+        // Story 9.2 Task 4.7 + 5.5: CleanupSemanticActivity now deletes BOTH the raw and NL hashes.
+        // Dispatch it if either backend completed — we never want a half-cleaned compensation state
+        // where the raw hash was removed but the NL hash survived (or vice-versa).
+        if (completedBackends.Contains("semantic") || completedBackends.Contains("semantic-nl"))
         {
             compensationTasks.Add(
                 context.CallActivityAsync<bool>(

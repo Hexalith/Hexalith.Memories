@@ -20,6 +20,7 @@ public static class MemoriesMeter
     private static readonly object ObservableInstrumentGate = new();
     private static ObservableGauge<long>? _indexSizeGauge;
     private static ObservableGauge<int>? _pipelineQueueDepthGauge;
+    private static ObservableGauge<long>? _naturalLanguageEmbeddingQueueDepthGauge;
 
     /// <summary>The meter name registered with OpenTelemetry.</summary>
     public const string Name = "Hexalith.Memories";
@@ -41,6 +42,17 @@ public static class MemoriesMeter
 
     /// <summary>Instrument name: per-tenant ingestion queue depth gauge.</summary>
     public const string PipelineQueueDepthName = "memories.pipeline.queue_depth";
+
+    /// <summary>Story 9.2 — instrument name: per-call NL description latency histogram.</summary>
+    public const string NaturalLanguageDescriptionDurationName = "memories_natural_language_description_duration_ms";
+
+    /// <summary>Story 9.2 — instrument name: per-tenant NL retry queue depth gauge.</summary>
+    public const string NaturalLanguageEmbeddingQueueDepthName = "memories_natural_language_embedding_queue_depth";
+
+    /// <summary>Story 9.2 / Risk #6 — instrument name: per-call embedding API counter partitioned by
+    /// tenant + content kind. Operators observe the raw-payload / NL-description 2:1 split under
+    /// dual-embedding and size the per-tenant rate-limit ceiling accordingly.</summary>
+    public const string EmbeddingApiCallsName = "memories.embedding.api_calls";
 
     /// <summary>Synthetic tenant id used when a request is rejected before tenant resolution.</summary>
     public const string RejectedTenantTag = "__rejected__";
@@ -64,16 +76,36 @@ public static class MemoriesMeter
     public static Histogram<double> SearchDuration { get; } =
         Instance.CreateHistogram<double>(SearchDurationName, unit: "ms", description: "Search request latency per tenant and resolved axis.");
 
+    /// <summary>Story 9.2 — histogram: NL description latency in milliseconds. Tag: <c>tenant_id</c>.</summary>
+    public static Histogram<double> NaturalLanguageDescriptionDuration { get; } =
+        Instance.CreateHistogram<double>(
+            NaturalLanguageDescriptionDurationName,
+            unit: "ms",
+            description: "Natural-language description latency per tenant.");
+
+    /// <summary>Story 9.2 / Risk #6 — counter: total embedding API calls. Tags:
+    /// <c>tenant_id</c>, <c>content_kind</c> (payload | naturalLanguageDescription).</summary>
+    public static Counter<long> EmbeddingApiCalls { get; } =
+        Instance.CreateCounter<long>(
+            EmbeddingApiCallsName,
+            unit: "{calls}",
+            description: "Total embedding API calls per tenant and content kind (dual-embedding observability).");
+
     /// <summary>Gets a value indicating whether the observable gauges have been registered.</summary>
-    public static bool ObservableGaugesConfigured => _indexSizeGauge is not null && _pipelineQueueDepthGauge is not null;
+    public static bool ObservableGaugesConfigured =>
+        _indexSizeGauge is not null
+        && _pipelineQueueDepthGauge is not null
+        && _naturalLanguageEmbeddingQueueDepthGauge is not null;
 
     /// <summary>Registers the observable gauges exactly once against the shared meter.</summary>
     public static void EnsureObservableGaugesCreated(
         Func<IEnumerable<Measurement<long>>> indexSizeObserver,
-        Func<IEnumerable<Measurement<int>>> pipelineQueueDepthObserver)
+        Func<IEnumerable<Measurement<int>>> pipelineQueueDepthObserver,
+        Func<IEnumerable<Measurement<long>>> naturalLanguageEmbeddingQueueDepthObserver)
     {
         ArgumentNullException.ThrowIfNull(indexSizeObserver);
         ArgumentNullException.ThrowIfNull(pipelineQueueDepthObserver);
+        ArgumentNullException.ThrowIfNull(naturalLanguageEmbeddingQueueDepthObserver);
 
         lock (ObservableInstrumentGate)
         {
@@ -88,6 +120,12 @@ public static class MemoriesMeter
                 () => pipelineQueueDepthObserver(),
                 unit: "{items}",
                 description: "Per-tenant ingestion queue depth.");
+
+            _naturalLanguageEmbeddingQueueDepthGauge ??= Instance.CreateObservableGauge(
+                NaturalLanguageEmbeddingQueueDepthName,
+                () => naturalLanguageEmbeddingQueueDepthObserver(),
+                unit: "{items}",
+                description: "Per-tenant natural-language embedding retry queue depth.");
         }
     }
 
@@ -105,5 +143,8 @@ public static class MemoriesMeter
             [SearchDurationName] = new[] { "tenant_id", "axis" },
             [IndexSizeName] = new[] { "tenant_id", "axis" },
             [PipelineQueueDepthName] = new[] { "tenant_id" },
+            [NaturalLanguageDescriptionDurationName] = new[] { "tenant_id" },
+            [NaturalLanguageEmbeddingQueueDepthName] = new[] { "tenant_id" },
+            [EmbeddingApiCallsName] = new[] { "tenant_id", "content_kind" },
         };
 }

@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
 
 using Microsoft.Extensions.Logging;
@@ -56,18 +58,40 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
         string semanticKey = $"{input.TenantId}:vec:{input.MemoryUnitId}";
         bool semanticExists = await redisDb.KeyExistsAsync(semanticKey).ConfigureAwait(false);
 
+        // Check natural-language semantic sibling (Redis Vector hash key)
+        string naturalLanguageSemanticKey = $"{input.TenantId}:vec:nl:{input.MemoryUnitId}";
+        bool naturalLanguageSemanticExists = await redisDb.KeyExistsAsync(naturalLanguageSemanticKey).ConfigureAwait(false);
+
+        NaturalLanguageEmbeddingStatus naturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable;
+        if (syntacticExists)
+        {
+            RedisValue metadataJson = await redisDb.HashGetAsync(syntacticKey, "metadataJson").ConfigureAwait(false);
+            naturalLanguageEmbeddingStatus = NaturalLanguageConsistencyState.ReadStatus(metadataJson.ToString());
+        }
+
+        string? consistencyNote = NaturalLanguageConsistencyState.BuildConsistencyNote(
+            naturalLanguageEmbeddingStatus,
+            naturalLanguageSemanticExists);
+
         // Check graph (FalkorDB node)
         bool graphExists = await CheckGraphNodeExistsAsync(input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Consistency check for {MemoryUnitId} in tenant {TenantId}: syntactic={Syntactic}, semantic={Semantic}, graph={Graph}",
+            "Consistency check for {MemoryUnitId} in tenant {TenantId}: syntactic={Syntactic}, semantic={Semantic}, semanticNl={SemanticNl}, graph={Graph}, nlStatus={NaturalLanguageStatus}",
             input.MemoryUnitId,
             input.TenantId,
             syntacticExists,
             semanticExists,
-            graphExists);
+            naturalLanguageSemanticExists,
+            graphExists,
+            naturalLanguageEmbeddingStatus);
 
-        return new ConsistencyResult(syntacticExists, semanticExists, graphExists);
+        return new ConsistencyResult(syntacticExists, semanticExists, graphExists)
+        {
+            NaturalLanguageSemanticExists = naturalLanguageSemanticExists,
+            NaturalLanguageEmbeddingStatus = naturalLanguageEmbeddingStatus,
+            ConsistencyNote = consistencyNote,
+        };
     }
 
     private async Task<bool> CheckGraphNodeExistsAsync(string tenantId, string memoryUnitId)

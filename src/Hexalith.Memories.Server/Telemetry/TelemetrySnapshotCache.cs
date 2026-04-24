@@ -10,6 +10,7 @@ using System.Diagnostics.Metrics;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -24,12 +25,14 @@ public sealed class TelemetrySnapshotCache
         DateTimeOffset.MinValue,
         [],
         [],
+        [],
         new Dictionary<string, TenantSnapshot>(StringComparer.Ordinal));
     private static readonly TimeSpan SnapshotTtl = TimeSpan.FromSeconds(30);
 
     private readonly TenantRegistryService _registry;
     private readonly TenantMetricsService _metrics;
     private readonly PerTenantConcurrencyGate _gate;
+    private readonly IFailedNaturalLanguageEmbeddingRegistry _naturalLanguageEmbeddingRegistry;
     private readonly ILogger<TelemetrySnapshotCache> _logger;
     private readonly TimeProvider _time;
 
@@ -40,11 +43,13 @@ public sealed class TelemetrySnapshotCache
         TenantRegistryService registry,
         TenantMetricsService metrics,
         PerTenantConcurrencyGate gate,
+        IFailedNaturalLanguageEmbeddingRegistry naturalLanguageEmbeddingRegistry,
         ILogger<TelemetrySnapshotCache> logger)
     {
         _registry = registry;
         _metrics = metrics;
         _gate = gate;
+        _naturalLanguageEmbeddingRegistry = naturalLanguageEmbeddingRegistry;
         _logger = logger;
         _time = TimeProvider.System;
     }
@@ -61,6 +66,13 @@ public sealed class TelemetrySnapshotCache
     {
         Snapshot snapshot = GetSnapshot();
         return snapshot.QueueDepths;
+    }
+
+    /// <summary>Returns the cached NL retry queue depth measurements and schedules a background refresh when stale.</summary>
+    public IEnumerable<Measurement<long>> GetNaturalLanguageEmbeddingQueueDepthMeasurements()
+    {
+        Snapshot snapshot = GetSnapshot();
+        return snapshot.NaturalLanguageEmbeddingQueueDepths;
     }
 
     /// <summary>Returns the cached tenant snapshot that also backs the observable gauges.</summary>
@@ -102,6 +114,7 @@ public sealed class TelemetrySnapshotCache
             IReadOnlyList<TenantInfo> tenants = await _registry.ListTenantsAsync(CancellationToken.None).ConfigureAwait(false);
             var indexSizeMeasurements = new List<Measurement<long>>(tenants.Count * 3);
             var queueDepthMeasurements = new List<Measurement<int>>(tenants.Count);
+            var naturalLanguageQueueDepthMeasurements = new List<Measurement<long>>(tenants.Count);
             Dictionary<string, TenantSnapshot> tenantSnapshots = new(StringComparer.Ordinal);
 
             foreach (TenantInfo tenant in tenants)
@@ -113,6 +126,9 @@ public sealed class TelemetrySnapshotCache
 
                 (TenantIndexSizes sizes, TenantIndexStatus health) = await _metrics.GetIndexSizesAsync(tenant.Id, CancellationToken.None).ConfigureAwait(false);
                 int queueDepth = _gate.GetCurrentDepth(tenant.Id);
+                long naturalLanguageQueueDepth = await _naturalLanguageEmbeddingRegistry
+                    .GetBacklogCountAsync(tenant.Id, CancellationToken.None)
+                    .ConfigureAwait(false);
 
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "syntactic", sizes.RediSearchKeyCount);
                 AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "semantic", sizes.RedisVectorKeyCount);
@@ -122,12 +138,39 @@ public sealed class TelemetrySnapshotCache
                     queueDepth,
                     new KeyValuePair<string, object?>("tenant_id", tenant.Id)));
 
-                tenantSnapshots[tenant.Id] = new TenantSnapshot(sizes, health, queueDepth);
+                naturalLanguageQueueDepthMeasurements.Add(new Measurement<long>(
+                    naturalLanguageQueueDepth,
+                    new KeyValuePair<string, object?>("tenant_id", tenant.Id)));
+
+                tenantSnapshots[tenant.Id] = new TenantSnapshot(sizes, health, queueDepth, naturalLanguageQueueDepth);
+            }
+
+            await foreach (string tenantId in _naturalLanguageEmbeddingRegistry
+                .ListTenantsWithBacklogAsync(CancellationToken.None)
+                .ConfigureAwait(false))
+            {
+                if (string.IsNullOrWhiteSpace(tenantId) || tenantSnapshots.ContainsKey(tenantId))
+                {
+                    continue;
+                }
+
+                long naturalLanguageQueueDepth = await _naturalLanguageEmbeddingRegistry
+                    .GetBacklogCountAsync(tenantId, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                naturalLanguageQueueDepthMeasurements.Add(new Measurement<long>(
+                    naturalLanguageQueueDepth,
+                    new KeyValuePair<string, object?>("tenant_id", tenantId)));
             }
 
             Volatile.Write(
                 ref _snapshot,
-                new Snapshot(_time.GetUtcNow(), indexSizeMeasurements, queueDepthMeasurements, tenantSnapshots));
+                new Snapshot(
+                    _time.GetUtcNow(),
+                    indexSizeMeasurements,
+                    queueDepthMeasurements,
+                    naturalLanguageQueueDepthMeasurements,
+                    tenantSnapshots));
         }
         catch (Exception ex)
         {
@@ -160,16 +203,19 @@ public sealed class TelemetrySnapshotCache
         DateTimeOffset RefreshedAt,
         IReadOnlyList<Measurement<long>> IndexSizes,
         IReadOnlyList<Measurement<int>> QueueDepths,
+        IReadOnlyList<Measurement<long>> NaturalLanguageEmbeddingQueueDepths,
         IReadOnlyDictionary<string, TenantSnapshot> Tenants);
 
     public sealed record TenantSnapshot(
         TenantIndexSizes IndexSizes,
         TenantIndexStatus IndexStatus,
-        int QueueDepth)
+        int QueueDepth,
+        long NaturalLanguageEmbeddingQueueDepth)
     {
         public static TenantSnapshot Empty { get; } = new(
             new TenantIndexSizes(null, null, null),
             new TenantIndexStatus(IndexHealth.Unknown, IndexHealth.Unknown, IndexHealth.Unknown),
-            QueueDepth: 0);
+            QueueDepth: 0,
+            NaturalLanguageEmbeddingQueueDepth: 0);
     }
 }

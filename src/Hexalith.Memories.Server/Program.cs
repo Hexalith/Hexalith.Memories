@@ -1,8 +1,10 @@
 using Dapr.Actors;
 using Dapr.Actors.Client;
+using Dapr.AI.Conversation.Extensions;
 using Dapr.Client;
 using Dapr.Workflow;
 
+using System.IO;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
@@ -16,6 +18,7 @@ using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
@@ -35,6 +38,35 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddDaprClient();
+
+// Story 9.2 Task 1: DAPR Conversation API registration — backs GenerateNaturalLanguageDescriptionActivity.
+// The component name (default "llm") is resolved at activity-call time from NaturalLanguageDescriptionOptions.
+// AddDaprConversationClient registers the DaprConversationClient; the activity injects it directly.
+builder.Services.AddDaprConversationClient();
+builder.Services.Configure<NaturalLanguageDescriptionOptions>(
+    builder.Configuration.GetSection("NaturalLanguage"));
+
+// Options validator (Task 1.7): Production guard against conversation.echo (9161) + cross-tenant cache
+// acknowledgment gate (9164). The YAML reader discovers responseCacheTTL from deploy/dapr/components/*.yaml.
+builder.Services.AddSingleton<IComponentYamlReader>(_ =>
+{
+    // Component YAML is packaged alongside the deploy/ folder; fall back to a sibling folder at the
+    // content root so Aspire/local runs resolve the same way as container deployments.
+    string candidate = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "deploy", "dapr", "components");
+    string resolved = Path.GetFullPath(candidate);
+    return new FileSystemComponentYamlReader(resolved);
+});
+builder.Services.AddSingleton<IValidateOptions<NaturalLanguageDescriptionOptions>,
+    NaturalLanguageDescriptionOptionsValidator>();
+
+// Story 9.2 Task 8.2: Redis-backed NL retry registry (sorted set nl-embedding-retry:{tenant}). The
+// registry + retry hosted service provide the degraded-LLM fallback path without blocking ingestion.
+builder.Services.AddSingleton<FailedNaturalLanguageEmbeddingRegistry>();
+builder.Services.AddSingleton<IFailedNaturalLanguageEmbeddingRegistry>(sp =>
+    sp.GetRequiredService<FailedNaturalLanguageEmbeddingRegistry>());
+
+// Story 9.2 Task 8.5: background retry service that drains the NL retry queue.
+builder.Services.AddHostedService<NaturalLanguageEmbeddingRetryHostedService>();
 
 TimeSpan healthCheckTimeout = TimeSpan.FromSeconds(3);
 _ = builder.Services.AddHealthChecks()
@@ -108,6 +140,21 @@ builder.Services.AddSingleton<SemanticSearchService>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<EmbeddingClient>(),
         sp.GetRequiredService<ILogger<SemanticSearchService>>()));
+// Story 9.2 Task 4.9: library-only NL semantic search service. NOT wired into HybridSearchService
+// (AC #7 staged rollout) — consumers opt in by requesting this type directly.
+builder.Services.AddSingleton<NaturalLanguageSemanticSearchService>(sp =>
+    new NaturalLanguageSemanticSearchService(
+        sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<ILogger<NaturalLanguageSemanticSearchService>>()));
+
+// Story 9.2 Task 4.10 (chaos Scenario D): one-shot startup reconciler sweeps orphan NL semantic indexes
+// that a SIGKILL mid-provisioning could have left behind when compensation cannot run.
+builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.OrphanSemanticIndexReconciler>();
+
+// Story 9.2 Task 5.9: startup gate that delays workflow-host startup until in-flight IngestionWorkflow
+// instances drain (Risk #13 replay determinism fail-safe). Uses IHostedLifecycleService (Spike 0.4)
+// so ordering is DI-registration-independent.
+builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.WorkflowReplaySafetyHostedService>();
 builder.Services.AddSingleton<GraphScopedSearch>(sp =>
     new GraphScopedSearch(
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),
@@ -161,6 +208,21 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<IndexSyntacticActivity>();
     options.RegisterActivity<IndexSemanticActivity>();
     options.RegisterActivity<IndexGraphActivity>();
+
+    // Story 9.2 Task 2.6: NL description activity (dual-embedding pipeline, SourceType.Event).
+    options.RegisterActivity<GenerateNaturalLanguageDescriptionActivity>();
+
+    // Story 9.2 Task 4.4: NL semantic index activity (writes to {tenant}:memories:vec:nl).
+    options.RegisterActivity<IndexNaturalLanguageSemanticActivity>();
+
+    // Story 9.2 Task 5.4: enqueue activity for the degraded path (LLM unavailable → queue for retry).
+    options.RegisterActivity<QueueNaturalLanguageEmbeddingRetryActivity>();
+
+    // Story 9.2 Task 8.4a: retry guard activity that prevents recreating orphan NL hashes after delete/rollback.
+    options.RegisterActivity<CheckMemoryUnitExistsActivity>();
+
+    // Story 9.2 Task 8.4: retry workflow that re-runs NL description + embedding + index.
+    options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
 
     options.RegisterWorkflow<IngestionWorkflow>();
     options.RegisterActivity<ValidateContentActivity>();
@@ -241,6 +303,11 @@ WebApplication app = builder.Build();
 
 RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<IngestionSettings>>().Value);
 
+// Story 9.2 Task 5.7: publish the NL options snapshot so IngestionWorkflow can read
+// PersistInMetadata without constructor injection (DAPR activates workflows via new()).
+NaturalLanguageDescriptionOptionsSnapshot.Initialize(
+    app.Services.GetRequiredService<IOptions<NaturalLanguageDescriptionOptions>>());
+
 app.MapDefaultEndpoints();
 app.MapActorsHandlers();
 
@@ -256,7 +323,8 @@ app.MapSubscribeHandler();
 TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
 MemoriesMeter.EnsureObservableGaugesCreated(
     telemetrySnapshotCache.GetIndexSizeMeasurements,
-    telemetrySnapshotCache.GetQueueDepthMeasurements);
+    telemetrySnapshotCache.GetQueueDepthMeasurements,
+    telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueDepthMeasurements);
 
 app.MapPost("/api/ingest", async (
     DaprWorkflowClient workflowClient,

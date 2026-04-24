@@ -17,6 +17,7 @@ using StackExchange.Redis;
 internal static class IndexSchemaDefinitions
 {
     private static readonly string[] SemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId", "cloudeventSubject"];
+    private static readonly string[] NaturalLanguageSemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId", "naturalLanguageDescription"];
     private static readonly string[] SyntacticFieldIdentifiers =
     [
         "content",
@@ -43,6 +44,12 @@ internal static class IndexSchemaDefinitions
     /// <summary>Gets the key prefix suffix for semantic hash entries.</summary>
     public const string SemanticKeyPrefixSuffix = ":vec:";
 
+    /// <summary>Story 9.2: index name suffix for the natural-language (LLM-authored) semantic index.</summary>
+    public const string NaturalLanguageSemanticIndexSuffix = ":memories:vec:nl";
+
+    /// <summary>Story 9.2: key prefix suffix for natural-language semantic hash entries.</summary>
+    public const string NaturalLanguageSemanticKeyPrefixSuffix = ":vec:nl:";
+
     /// <summary>Gets the RediSearch syntactic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
@@ -66,6 +73,18 @@ internal static class IndexSchemaDefinitions
     /// <returns>The key prefix.</returns>
     public static string GetSemanticKeyPrefix(string tenantId)
         => tenantId + SemanticKeyPrefixSuffix;
+
+    /// <summary>Story 9.2: Gets the Redis Vector natural-language semantic index name for a tenant.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The full index name.</returns>
+    public static string GetNaturalLanguageSemanticIndexName(string tenantId)
+        => tenantId + NaturalLanguageSemanticIndexSuffix;
+
+    /// <summary>Story 9.2: Gets the key prefix for natural-language semantic hash entries.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The key prefix.</returns>
+    public static string GetNaturalLanguageSemanticKeyPrefix(string tenantId)
+        => tenantId + NaturalLanguageSemanticKeyPrefixSuffix;
 
     /// <summary>Creates the FTCreateParams for a RediSearch syntactic index.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -102,7 +121,28 @@ internal static class IndexSchemaDefinitions
     /// <param name="dimensions">The number of embedding dimensions.</param>
     /// <returns>The schema with vector and tag fields.</returns>
     public static Schema CreateSemanticSchema(int dimensions)
-        => new Schema()
+        => CreateSemanticSchemaCore(dimensions, includeNaturalLanguageText: false, includeCloudEventSubject: true);
+
+    /// <summary>Story 9.2: Creates the FTCreateParams for a natural-language Redis Vector semantic index.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The FTCreateParams configured for the NL semantic index.</returns>
+    public static FTCreateParams CreateNaturalLanguageSemanticParams(string tenantId)
+        => new FTCreateParams()
+            .On(IndexDataType.HASH)
+            .Prefix(GetNaturalLanguageSemanticKeyPrefix(tenantId));
+
+    /// <summary>Story 9.2: Creates the schema for the natural-language Redis Vector semantic index.
+    /// Mirrors <see cref="CreateSemanticSchema"/> (same HNSW/FLOAT32/COSINE shape at the same dimensions)
+    /// plus a TEXT field for the LLM-authored description (business-meaning search surface). Delegates
+    /// to the shared core helper so schema drift across both indexes is prevented (Risk #5).</summary>
+    /// <param name="dimensions">The number of embedding dimensions.</param>
+    /// <returns>The schema with vector, tag, and natural-language text fields.</returns>
+    public static Schema CreateNaturalLanguageSemanticSchema(int dimensions)
+        => CreateSemanticSchemaCore(dimensions, includeNaturalLanguageText: true, includeCloudEventSubject: false);
+
+    private static Schema CreateSemanticSchemaCore(int dimensions, bool includeNaturalLanguageText, bool includeCloudEventSubject)
+    {
+        Schema schema = new Schema()
             .AddVectorField(
                 "embedding",
                 Schema.VectorField.VectorAlgo.HNSW,
@@ -113,8 +153,20 @@ internal static class IndexSchemaDefinitions
                     ["DISTANCE_METRIC"] = "COSINE",
                 })
             .AddTagField("memoryUnitId")
-            .AddTagField("caseId")
-            .AddTagField("cloudeventSubject");
+            .AddTagField("caseId");
+
+        if (includeCloudEventSubject)
+        {
+            schema.AddTagField("cloudeventSubject");
+        }
+
+        if (includeNaturalLanguageText)
+        {
+            schema.AddTextField("naturalLanguageDescription", 1.0);
+        }
+
+        return schema;
+    }
 
     /// <summary>Gets the expected attribute identifiers for a syntactic index.</summary>
     /// <returns>The expected attribute names.</returns>
@@ -125,6 +177,52 @@ internal static class IndexSchemaDefinitions
     /// <returns>The expected attribute names.</returns>
     public static IReadOnlyList<string> GetSemanticFieldIdentifiers()
         => SemanticFieldIdentifiers;
+
+    /// <summary>Story 9.2: Gets the expected attribute identifiers for the natural-language semantic index.</summary>
+    /// <returns>The expected attribute names.</returns>
+    public static IReadOnlyList<string> GetNaturalLanguageSemanticFieldIdentifiers()
+        => NaturalLanguageSemanticFieldIdentifiers;
+
+    /// <summary>Describes schema mismatches for a Redis Vector index from a raw <c>FT.INFO</c> response.</summary>
+    /// <param name="info">The raw <c>FT.INFO</c> payload.</param>
+    /// <param name="expectedPrefix">The expected single key prefix.</param>
+    /// <param name="expectedFields">The exact expected indexed fields.</param>
+    /// <param name="expectedDimensions">The expected vector dimensions for the <c>embedding</c> field.</param>
+    /// <returns>The list of problems; empty when the index matches expectations.</returns>
+    public static IReadOnlyList<string> DescribeVectorSchemaProblems(
+        RedisResult info,
+        string expectedPrefix,
+        IReadOnlyCollection<string> expectedFields,
+        int expectedDimensions)
+    {
+        ArgumentNullException.ThrowIfNull(expectedFields);
+
+        List<string> problems = [];
+
+        IReadOnlyList<string> prefixes = GetIndexPrefixes(info);
+        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
+        {
+            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
+        }
+
+        HashSet<string> actualFields = new(GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expected = new(expectedFields, StringComparer.OrdinalIgnoreCase);
+        if (!actualFields.SetEquals(expected))
+        {
+            problems.Add($"expected fields [{string.Join(", ", expected.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
+        }
+
+        if (!TryGetVectorDimensions(info, "embedding", out int actualDimensions))
+        {
+            problems.Add("embedding vector dimensions are missing from FT.INFO");
+        }
+        else if (actualDimensions != expectedDimensions)
+        {
+            problems.Add($"expected {expectedDimensions} dimensions but found {actualDimensions}");
+        }
+
+        return problems;
+    }
 
     /// <summary>Gets the indexed attribute identifiers from a raw <c>FT.INFO</c> response.</summary>
     /// <param name="raw">The raw response.</param>

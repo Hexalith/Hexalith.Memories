@@ -19,7 +19,9 @@ public class GraphQueryBuilderTests
             768, "user@example.com", DateTimeOffset.UtcNow, "{}");
 
         query.ShouldContain("MERGE");
-        query.ShouldNotContain("CREATE");
+        // Assert no Cypher CREATE statement — Story 9.2 adds a 'stubCreatedAt' property whose name
+        // contains the 'Create' substring, so we match the keyword only at a word boundary.
+        System.Text.RegularExpressions.Regex.IsMatch(query, @"\bCREATE\b").ShouldBeFalse();
         query.ShouldContain("SET");
     }
 
@@ -207,15 +209,42 @@ public class GraphQueryBuilderTests
     }
 
     [Fact]
-    public void BuildMergeStubNode_ShouldUseMergeWithOnlyId()
+    public void BuildMergeStubNode_ShouldUseMergeWithIsStubAndStubCreatedAt()
     {
+        // Story 9.2 Task 7.1: stub node MERGE must set isStub=true and stubCreatedAt via ON CREATE
+        // SET so existing real nodes are not regressed (Risk #12 — coalesce unreliability).
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode("mu-stub-001");
 
         query.ShouldContain("MERGE");
         query.ShouldContain("MemoryUnit");
         query.ShouldContain("$id");
-        query.ShouldNotContain("SET");
+        query.ShouldContain("ON CREATE SET");
+        query.ShouldContain("isStub = true");
+        query.ShouldContain("stubCreatedAt = $stubCreatedAt");
         parameters["id"].ShouldBe("mu-stub-001");
+        parameters.ContainsKey("stubCreatedAt").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void BuildMergeStubNode_ExplicitTimestamp_PersistsTimestampParameter()
+    {
+        DateTimeOffset stubCreatedAt = new(2026, 4, 23, 10, 0, 0, TimeSpan.Zero);
+        (string _, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode("mu-stub-002", stubCreatedAt);
+
+        parameters["stubCreatedAt"].ShouldBe("2026-04-23T10:00:00.0000000+00:00");
+    }
+
+    [Fact]
+    public void BuildMergeMemoryUnitNode_ReturnsPreviousIsStubAndStubCreatedAt()
+    {
+        (string query, _) = _builder.BuildMergeMemoryUnitNode(
+            "mu-001", "case", "content", "hash", "uri", SourceType.File,
+            "provider", "model", 3, "u@example.com", DateTimeOffset.UtcNow, "{}");
+
+        query.ShouldContain("coalesce(m.isStub, false) AS previousIsStub");
+        query.ShouldContain("m.stubCreatedAt AS stubCreatedAt");
+        query.ShouldContain("m.isStub = false");
+        query.ShouldContain("RETURN previousIsStub, stubCreatedAt");
     }
 
     [Fact]

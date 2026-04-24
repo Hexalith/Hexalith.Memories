@@ -50,6 +50,21 @@ public sealed partial class DeleteRedisVectorIndexActivity : WorkflowActivity<Te
             LogIndexNotFound(_logger, indexName, input.TenantId);
         }
 
+        // Story 9.2 Task 4.6 + 4.10: drop the sibling natural-language semantic index on compensation
+        // rollback. Idempotent when the NL index was never created (mid-provisioning failure before
+        // Task 4.5 ran) — the "Unknown index" branch handles that case.
+        string nlIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
+
+        try
+        {
+            db.FT().DropIndex(nlIndexName);
+            LogIndexDropped(_logger, nlIndexName, input.TenantId);
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+        {
+            LogIndexNotFound(_logger, nlIndexName, input.TenantId);
+        }
+
         return Task.FromResult(true);
     }
 

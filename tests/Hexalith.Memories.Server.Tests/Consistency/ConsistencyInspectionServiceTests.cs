@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Consistency;
 
+using System.Text.Json;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
@@ -187,6 +189,44 @@ public class ConsistencyInspectionServiceTests
     }
 
     [Fact]
+    public async Task InspectAsync_QueuedNaturalLanguageMissing_ReturnsInformationalNoteWithoutViolation()
+    {
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: true,
+            graphPresent: true,
+            naturalLanguageSemanticPresent: false,
+            naturalLanguageEmbeddingStatus: NaturalLanguageEmbeddingStatus.Queued);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.NaturalLanguageSemanticPresent.ShouldBeFalse();
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Queued);
+        result.ConsistencyNote.ShouldNotBeNull();
+        result.ConsistencyNote.ShouldContain("queued retry");
+    }
+
+    [Fact]
+    public async Task InspectAsync_IndexedNaturalLanguageMissing_SurfacesGapNote()
+    {
+        ConsistencyInspectionService service = CreateService(
+            syntacticPresent: true,
+            semanticPresent: true,
+            graphPresent: true,
+            naturalLanguageSemanticPresent: false,
+            naturalLanguageEmbeddingStatus: NaturalLanguageEmbeddingStatus.Indexed);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, ValidUlid, CancellationToken.None);
+
+        result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.NaturalLanguageSemanticPresent.ShouldBeFalse();
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        result.ConsistencyNote.ShouldNotBeNull();
+        result.ConsistencyNote.ShouldContain("semantic-nl");
+    }
+
+    [Fact]
     public async Task InspectAsync_CancelledBeforeProbe_ThrowsOperationCanceledException()
     {
         ConsistencyInspectionService service = CreateService(
@@ -205,15 +245,20 @@ public class ConsistencyInspectionServiceTests
         bool syntacticPresent = false,
         bool semanticPresent = false,
         bool graphPresent = false,
+        bool naturalLanguageSemanticPresent = false,
+        NaturalLanguageEmbeddingStatus? naturalLanguageEmbeddingStatus = null,
         IGraphQueryBuilder? builder = null)
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
 
         HashEntry[] syntacticEntries = syntacticPresent
-            ? CreateSyntacticEntries()
+            ? CreateSyntacticEntries(naturalLanguageEmbeddingStatus)
             : [];
         HashEntry[] semanticEntries = semanticPresent
             ? CreateSemanticEntries()
+            : [];
+        HashEntry[] naturalLanguageSemanticEntries = naturalLanguageSemanticPresent
+            ? CreateNaturalLanguageSemanticEntries()
             : [];
 
         redisDb.HashGetAllAsync(
@@ -221,7 +266,11 @@ public class ConsistencyInspectionServiceTests
                 Arg.Any<CommandFlags>())
             .Returns(syntacticEntries);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")),
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:nl:")),
+                Arg.Any<CommandFlags>())
+            .Returns(naturalLanguageSemanticEntries);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:") && !k.ToString()!.Contains(":vec:nl:")),
                 Arg.Any<CommandFlags>())
             .Returns(semanticEntries);
 
@@ -268,21 +317,46 @@ public class ConsistencyInspectionServiceTests
         return mux;
     }
 
-    private static HashEntry[] CreateSyntacticEntries() =>
-    [
-        new("contentHash", "abc123"),
-        new("ingestedAt", "2026-04-20T10:00:00+00:00"),
-        new("sourceUri", "file:///sample.md"),
-        new("sourceType", "file"),
-        new("caseId", "case-1"),
-        new("embeddingProvider", "gemini"),
-        new("embeddingModel", "gemini-embedding-001"),
-    ];
+    private static HashEntry[] CreateSyntacticEntries(NaturalLanguageEmbeddingStatus? naturalLanguageEmbeddingStatus = null)
+    {
+        List<HashEntry> entries =
+        [
+            new("contentHash", "abc123"),
+            new("ingestedAt", "2026-04-20T10:00:00+00:00"),
+            new("sourceUri", "file:///sample.md"),
+            new("sourceType", "file"),
+            new("caseId", "case-1"),
+            new("embeddingProvider", "gemini"),
+            new("embeddingModel", "gemini-embedding-001"),
+        ];
+
+        if (naturalLanguageEmbeddingStatus.HasValue)
+        {
+            Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)
+            {
+                [NaturalLanguageConsistencyState.EmbeddingStatusMetadataKey] = new(
+                    naturalLanguageEmbeddingStatus.Value.ToString(),
+                    MetadataOrigin.Ai,
+                    1.0f),
+            };
+            entries.Add(new HashEntry("metadataJson", JsonSerializer.Serialize(metadata, MemoriesJsonContext.Options)));
+        }
+
+        return [.. entries];
+    }
 
     private static HashEntry[] CreateSemanticEntries() =>
     [
         new("embedding", new byte[1536 * sizeof(float)]),
         new("memoryUnitId", ValidUlid),
         new("caseId", "case-1"),
+    ];
+
+    private static HashEntry[] CreateNaturalLanguageSemanticEntries() =>
+    [
+        new("embedding", new byte[1536 * sizeof(float)]),
+        new("memoryUnitId", ValidUlid),
+        new("caseId", "case-1"),
+        new("naturalLanguageDescription", "A business action happened."),
     ];
 }

@@ -44,6 +44,14 @@ public interface IGraphQueryBuilder
     /// <summary>Creates a stub node for a referenced memory unit that may not be ingested yet.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(string memoryUnitId);
 
+    /// <summary>Story 9.2 Task 7.1 — creates a stub node with an explicit <c>stubCreatedAt</c> timestamp
+    /// used for orphan-detection queries (<c>MATCH (m:MemoryUnit) WHERE m.isStub = true AND
+    /// m.stubCreatedAt &lt; threshold</c>). <c>ON CREATE SET</c> ensures the flag is applied only on
+    /// first creation; existing real nodes are never regressed to <c>isStub = true</c>.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(
+        string memoryUnitId,
+        DateTimeOffset stubCreatedAt);
+
     /// <summary>Checks whether a memory unit node exists in the graph.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCheckMemoryUnitExists(string memoryUnitId);
 

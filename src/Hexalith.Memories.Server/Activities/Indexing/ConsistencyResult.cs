@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Result of consistency verification across all three backends.</summary>
 /// <param name="SyntacticExists">Whether the memory unit exists in RediSearch.</param>
 /// <param name="SemanticExists">Whether the memory unit exists in Redis Vector.</param>
@@ -12,4 +14,12 @@ namespace Hexalith.Memories.Server.Activities.Indexing;
 public sealed record ConsistencyResult(
     bool SyntacticExists,
     bool SemanticExists,
-    bool GraphExists);
+    bool GraphExists)
+{
+    public bool NaturalLanguageSemanticExists { get; init; }
+
+    public NaturalLanguageEmbeddingStatus NaturalLanguageEmbeddingStatus { get; init; }
+        = NaturalLanguageEmbeddingStatus.NotApplicable;
+
+    public string? ConsistencyNote { get; init; }
+}
