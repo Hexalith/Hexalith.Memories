@@ -1,5 +1,7 @@
 namespace Hexalith.Memories.IntegrationTests.Graph;
 
+#pragma warning disable CS0618 // these tests intentionally exercise the 1-arg BuildMergeStubNode obsolete overload to pin its forward-to-2-arg behavior.
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Graph;

@@ -41,7 +41,11 @@ public interface IGraphQueryBuilder
         float confidence,
         EdgeOrigin origin);
 
-    /// <summary>Creates a stub node for a referenced memory unit that may not be ingested yet.</summary>
+    /// <summary>Creates a stub node for a referenced memory unit that may not be ingested yet. The 1-arg
+    /// overload samples wall-clock <c>DateTimeOffset.UtcNow</c> internally and is therefore NOT safe to
+    /// call from workflow bodies (replay non-determinism). Use the 2-arg overload and pass
+    /// <c>WorkflowContext.CurrentUtcDateTime</c> from workflows.</summary>
+    [Obsolete("Use the 2-arg overload and pass WorkflowContext.CurrentUtcDateTime. The 1-arg form samples wall-clock time internally and is non-deterministic under workflow replay.")]
     (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(string memoryUnitId);
 
     /// <summary>Story 9.2 Task 7.1 — creates a stub node with an explicit <c>stubCreatedAt</c> timestamp

@@ -59,7 +59,7 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
             input.EmbeddingProvider,
             input.EmbeddingModel,
             input.EmbeddingDimensions,
-            QueuedAtTicks: DateTime.UtcNow.Ticks,
+            QueuedAtTicks: input.QueuedAtTicks == 0L ? DateTime.UtcNow.Ticks : input.QueuedAtTicks,
             Attempts: 0);
 
         await _registry.EnqueueAsync(record, CancellationToken.None).ConfigureAwait(false);

@@ -276,7 +276,7 @@ public sealed class GapDetectionIntegrationTests
 
     private async Task CreateStubNodeAsync(FalkorDB falkor, string tenantId, string memoryUnitId)
     {
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(memoryUnitId);
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(memoryUnitId, DateTimeOffset.UtcNow);
         await falkor.QueryAsync(tenantId, query, parameters);
     }
 

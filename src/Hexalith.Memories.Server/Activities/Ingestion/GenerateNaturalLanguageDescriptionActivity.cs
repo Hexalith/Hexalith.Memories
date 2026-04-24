@@ -118,8 +118,11 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 .ConverseAsync([conversationInput], conversationOptions, cts.Token)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException ex) when (cts.Token.IsCancellationRequested)
         {
+            // Only our per-call timeout tripped. Host shutdown / workflow termination would cancel an
+            // ambient token that is not `cts.Token`, and in that case we rethrow so the memory unit is
+            // not spuriously queued for retry during a clean shutdown.
             NaturalLanguageIntegrationLog.NaturalLanguageDescriptionSkippedLlmUnavailable(
                 _logger,
                 input.TenantId,

@@ -237,8 +237,8 @@ public class IngestionWorkflowDualEmbeddingTests
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new NaturalLanguageDescriptionResult(
                 "A business action happened.",
-                EstimatedConfidence: null,
-                ConfidenceSource.Constant,
+                EstimatedConfidence: 0.85f,
+                ConfidenceSource.Logprobs,
                 LlmProvider: "llm",
                 LlmModel: "gpt-4o-mini")));
 

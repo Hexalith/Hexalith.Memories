@@ -60,7 +60,7 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
             {
                 // Improvement Z: sidecar unreachable — fail open. A stuck pod is worse than a missing
                 // gate. The runbook quiesce still applies as operator-side discipline.
-                LogSidecarUnreachable(_logger);
+                LogSidecarUnreachable(_logger, null);
                 return;
             }
 
@@ -151,7 +151,7 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
         }
         catch (Exception ex)
         {
-            LogGateQueryFailed(_logger, ex);
+            LogSidecarUnreachable(_logger, ex);
             return null;
         }
     }
@@ -171,18 +171,15 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
             .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public)
             ?.GetValue(state) as string;
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]
+    [LoggerMessage(EventId = 9171, Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]
     private static partial void LogDraining(ILogger logger, int inFlightCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Replay-safety gate: no in-flight IngestionWorkflow instances — proceeding.")]
     private static partial void LogDrained(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Replay-safety gate: timed out with {RemainingCount} instance(s) still active — proceeding anyway (event 9172).")]
+    [LoggerMessage(EventId = 9172, Level = LogLevel.Critical, Message = "Replay-safety gate: timed out with {RemainingCount} instance(s) still active — proceeding anyway (event 9172).")]
     private static partial void LogDrainTimeout(ILogger logger, int remainingCount);
 
-    [LoggerMessage(Level = LogLevel.Critical, Message = "Replay-safety gate: DAPR sidecar unreachable — failing open (event 9173).")]
-    private static partial void LogSidecarUnreachable(ILogger logger);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Replay-safety gate: workflow enumeration query failed — failing open.")]
-    private static partial void LogGateQueryFailed(ILogger logger, Exception exception);
+    [LoggerMessage(EventId = 9173, Level = LogLevel.Critical, Message = "Replay-safety gate: DAPR sidecar unreachable or enumeration query failed — failing open (event 9173).")]
+    private static partial void LogSidecarUnreachable(ILogger logger, Exception? exception);
 }

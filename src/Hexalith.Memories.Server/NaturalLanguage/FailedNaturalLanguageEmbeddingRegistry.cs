@@ -117,13 +117,27 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         if (next.Attempts >= maxAttempts)
         {
             _ = tx.SortedSetAddAsync(DeadKey(record.TenantId), nextJson, next.QueuedAtTicks);
-            await tx.ExecuteAsync().ConfigureAwait(false);
+            bool deadCommitted = await tx.ExecuteAsync().ConfigureAwait(false);
+            if (!deadCommitted)
+            {
+                LogTransactionAborted(_logger, record.TenantId, record.MemoryUnitId, "dead-letter");
+                throw new InvalidOperationException(
+                    $"Redis transaction aborted while moving {record.MemoryUnitId} to dead-letter for tenant {record.TenantId}.");
+            }
+
             LogDeadLettered(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
             return true;
         }
 
         _ = tx.SortedSetAddAsync(LiveKey(record.TenantId), nextJson, next.QueuedAtTicks);
-        await tx.ExecuteAsync().ConfigureAwait(false);
+        bool liveCommitted = await tx.ExecuteAsync().ConfigureAwait(false);
+        if (!liveCommitted)
+        {
+            LogTransactionAborted(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
+            throw new InvalidOperationException(
+                $"Redis transaction aborted while incrementing attempts for {record.MemoryUnitId} on tenant {record.TenantId}.");
+        }
+
         LogAttemptIncremented(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
         return false;
     }
@@ -225,4 +239,7 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "NL retry queue: MEMORY USAGE unavailable for tenant {TenantId} — returning 0.")]
     private static partial void LogMemoryUsageUnavailable(ILogger logger, Exception exception, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "NL retry queue: transaction aborted for {MemoryUnitId} on tenant {TenantId} during {Operation} — record may be left in an inconsistent state, caller must retry.")]
+    private static partial void LogTransactionAborted(ILogger logger, string tenantId, string memoryUnitId, string operation);
 }

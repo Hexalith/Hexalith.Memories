@@ -161,9 +161,11 @@ internal sealed class CaseService
             metadata["_system.annotation_type"] = new MetadataField(input.AnnotationType, MetadataOrigin.Human, 1.0f);
         }
 
-        // Create stub node + ANNOTATES edge in FalkorDB before scheduling workflow
+        // Create stub node + ANNOTATES edge in FalkorDB before scheduling workflow. CaseService is
+        // invoked from the HTTP request path (not a workflow body), so sampling wall-clock UtcNow is
+        // safe — but we pass it explicitly to avoid the 1-arg (Obsolete) overload.
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-        (string stubQuery, IDictionary<string, object> stubParams) = _graphQueryBuilder.BuildMergeStubNode(annotationMuId);
+        (string stubQuery, IDictionary<string, object> stubParams) = _graphQueryBuilder.BuildMergeStubNode(annotationMuId, DateTimeOffset.UtcNow);
         await falkor.QueryAsync(input.TenantId, stubQuery, stubParams).ConfigureAwait(false);
 
         (string edgeQuery, IDictionary<string, object> edgeParams) = _graphQueryBuilder.BuildMergeEdge(

@@ -78,8 +78,11 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
             EdgeOrigin.Explicit);
         await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
-        // 4. Optional CausedBy edge
-        if (!string.IsNullOrWhiteSpace(input.CausationId))
+        // 4. Optional CausedBy edge. Symmetric to the CorrelationId guard below: a self-edge is
+        //    skipped when CausationId == MemoryUnitId (malformed publisher where `causationid ==
+        //    cloudevent.id` — produces a spurious cycle). Emits 9156 at Debug (high-frequency path).
+        if (!string.IsNullOrWhiteSpace(input.CausationId)
+            && !string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
         {
             (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CausationId, nowUtc);
             await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
@@ -91,6 +94,10 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
                 EdgeTypeDefaults.CausedBy,
                 EdgeOrigin.Explicit);
             await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        }
+        else if (string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
+        {
+            LogCausationIdSelfEdgeSkipped(_logger, input.MemoryUnitId);
         }
 
         // 5. Optional CorrelatedWith edge (Story 9.2 Task 6 — Risk #3 + Risk #15). The existing edge
@@ -129,6 +136,9 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
 
     [LoggerMessage(EventId = 9155, Level = LogLevel.Debug, Message = "CorrelationId self-edge skipped for memory unit {MemoryUnitId} (CorrelationId == MemoryUnitId).")]
     private static partial void LogCorrelationIdSelfEdgeSkipped(ILogger logger, string memoryUnitId);
+
+    [LoggerMessage(EventId = 9156, Level = LogLevel.Debug, Message = "CausationId self-edge skipped for memory unit {MemoryUnitId} (CausationId == MemoryUnitId).")]
+    private static partial void LogCausationIdSelfEdgeSkipped(ILogger logger, string memoryUnitId);
 
     [LoggerMessage(EventId = 9154, Level = LogLevel.Information, Message = "Stub node resolved: tenant={TenantId}, memoryUnitId={MemoryUnitId}, causingEventId={CausingEventId}, stubCreatedAt={StubCreatedAt}, resolvedAt={ResolvedAt}.")]
     private static partial void LogStubResolved(

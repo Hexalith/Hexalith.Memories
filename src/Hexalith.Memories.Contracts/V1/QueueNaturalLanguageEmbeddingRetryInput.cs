@@ -20,6 +20,10 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <param name="EmbeddingProvider">The embedding provider identifier (carried forward from ingestion).</param>
 /// <param name="EmbeddingModel">The embedding model identifier.</param>
 /// <param name="EmbeddingDimensions">The embedding dimensions.</param>
+/// <param name="QueuedAtTicks">Workflow-deterministic timestamp (<c>WorkflowContext.CurrentUtcDateTime.Ticks</c>)
+/// used as the Sorted-Set score for FIFO ordering of the retry queue. Positional with default <c>0</c> so
+/// historical activity-input JSON (pre-fix) deserializes to the legacy shape; the activity falls back to
+/// <c>DateTime.UtcNow.Ticks</c> when the value is <c>0</c>.</param>
 public sealed record QueueNaturalLanguageEmbeddingRetryInput(
     string TenantId,
     string MemoryUnitId,
@@ -29,4 +33,5 @@ public sealed record QueueNaturalLanguageEmbeddingRetryInput(
     string CaseId,
     string EmbeddingProvider,
     string EmbeddingModel,
-    int EmbeddingDimensions);
+    int EmbeddingDimensions,
+    long QueuedAtTicks = 0L);

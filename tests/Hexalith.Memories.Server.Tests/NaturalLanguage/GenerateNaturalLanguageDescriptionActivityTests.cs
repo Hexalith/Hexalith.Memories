@@ -129,13 +129,23 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
             null,
             new HttpClient(),
             null);
+
+        // Simulate a real LLM hang: await the caller-supplied token so the activity's own timeout
+        // cts triggers the OperationCanceledException. This exercises the production catch filter
+        // `when (cts.Token.IsCancellationRequested)` — any other source of cancellation rethrows.
         client.ConverseAsync(
             Arg.Any<IReadOnlyList<ConversationInput>>(),
             Arg.Any<ConversationOptions>(),
             Arg.Any<CancellationToken>())
-            .Throws(new TaskCanceledException("deliberate timeout"));
+            .Returns(async call =>
+            {
+                CancellationToken ct = call.Arg<CancellationToken>();
+                await Task.Delay(Timeout.Infinite, ct);
+                return null!; // unreachable — Task.Delay throws on cancellation.
+            });
 
-        GenerateNaturalLanguageDescriptionActivity activity = CreateActivity(client);
+        // Force a very short per-call timeout so the cts fires promptly under test.
+        GenerateNaturalLanguageDescriptionActivity activity = CreateActivity(client, llmRequestTimeoutSeconds: 1);
 
         NaturalLanguageDescriptionUnavailableException ex =
             await Should.ThrowAsync<NaturalLanguageDescriptionUnavailableException>(
@@ -258,13 +268,14 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     }
 
     private static GenerateNaturalLanguageDescriptionActivity CreateActivity(
-        DaprConversationClient client)
+        DaprConversationClient client,
+        int llmRequestTimeoutSeconds = 15)
     {
         NaturalLanguageDescriptionOptions opts = new()
         {
             DaprComponentName = "llm",
             MaxPayloadChars = 8000,
-            LlmRequestTimeoutSeconds = 15,
+            LlmRequestTimeoutSeconds = llmRequestTimeoutSeconds,
         };
         IOptions<NaturalLanguageDescriptionOptions> options = Options.Create(opts);
         return new GenerateNaturalLanguageDescriptionActivity(

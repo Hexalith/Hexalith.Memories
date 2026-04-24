@@ -1,5 +1,7 @@
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+#pragma warning disable CS0618 // `DidNotReceive().BuildMergeStubNode(string)` intentionally asserts the obsolete 1-arg overload was not invoked.
+
 using System.Text.Json;
 
 using Dapr.Workflow;

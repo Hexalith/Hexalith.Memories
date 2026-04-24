@@ -254,9 +254,6 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
     [LoggerMessage(EventId = 9179, Level = LogLevel.Error, Message = "NL retry queue backlog for tenant {TenantId} is {Backlog} (event 9179, Error threshold).")]
     private static partial void LogBacklogError(ILogger logger, string tenantId, long backlog);
 
-    [LoggerMessage(EventId = 9153, Level = LogLevel.Information, Message = "NL retry succeeded for {MemoryUnitId} (tenant {TenantId}, attempts={Attempts}) (event 9153).")]
-    private static partial void LogRetrySucceeded(ILogger logger, string tenantId, string memoryUnitId, int attempts);
-
     [LoggerMessage(EventId = 9180, Level = LogLevel.Error, Message = "NL retry reached dead-letter for {MemoryUnitId} (tenant {TenantId}, attempts={Attempts}) (event 9180).")]
     private static partial void LogPermanentlyFailed(ILogger logger, string tenantId, string memoryUnitId, int attempts);
 

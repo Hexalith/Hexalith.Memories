@@ -45,10 +45,12 @@ public sealed partial class OrphanSemanticIndexReconciler : BackgroundService
         {
             // Service shutdown — reconciler exits cleanly.
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is RedisException or IOException or TimeoutException)
         {
             // Reconciler is best-effort: do NOT crash the host if Redis is momentarily unreachable.
-            // Orphan indexes are a hygiene concern, not a correctness one.
+            // Orphan indexes are a hygiene concern, not a correctness one. We intentionally do NOT
+            // swallow programming errors (NullReferenceException / ArgumentException / etc.) — those
+            // should surface via host-level fault handling.
             LogReconcilerFailed(_logger, ex);
         }
     }

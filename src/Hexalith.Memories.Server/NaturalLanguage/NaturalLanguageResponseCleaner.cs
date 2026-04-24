@@ -44,8 +44,22 @@ internal static partial class NaturalLanguageResponseCleaner
 
         string candidate = rawResponse.Trim();
 
-        candidate = StripMarkdownCodeFences(candidate);
-        candidate = StripCommonPreambles(candidate);
+        // Loop strip fence→preamble→fence until a pass produces no change. Providers that emit
+        // "Summary: ```text\n...\n```" escape a single-pass cleaner: the fence isn't at start when
+        // the fence-strip runs, and the preamble-strip doesn't re-scan for fences. The loop
+        // converges in ≤3 passes for any realistic wrapping shape and terminates on idempotence.
+        const int MaxPasses = 4;
+        for (int pass = 0; pass < MaxPasses; pass++)
+        {
+            string before = candidate;
+            candidate = StripCommonPreambles(candidate);
+            candidate = StripMarkdownCodeFences(candidate);
+            if (string.Equals(candidate, before, StringComparison.Ordinal))
+            {
+                break;
+            }
+        }
+
         candidate = CollapseWhitespace(candidate).Trim();
 
         if (string.IsNullOrWhiteSpace(candidate) || candidate.Length < MinimumAcceptableLength)

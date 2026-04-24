@@ -224,7 +224,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             input.CaseId,
                             embedding.Provider,
                             GetEmbeddingModelIdentifier(embedding),
-                            embedding.Dimensions),
+                            embedding.Dimensions,
+                            context.CurrentUtcDateTime.Ticks),
                         compensationRetry);
 
                     nlStatus = NaturalLanguageEmbeddingStatus.Queued;
@@ -249,13 +250,20 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             // Story 9.2 Task 5.7: optionally persist the NL description to metadata so it's visible
             // via FT.SEARCH on the syntactic index and via GET memory-unit. Default is false (ADR 9.2-F
             // — storage economy); operators opt in via appsettings NaturalLanguage:PersistInMetadata.
+            //
+            // When the LLM did not provide a logprobs-derived confidence (EstimatedConfidence is null),
+            // we SKIP the metadata entry rather than coercing to `0.0f`. Coercion re-introduces the
+            // pseudo-numeric antipattern the design explicitly rejected: the UI would render "0%
+            // confidence" — worse than absent. ConfidenceSource.Constant implies "unmeasured"; the
+            // UI affordance is "no confidence signal," which the absence models correctly.
             if (nlResult is not null
+                && nlResult.EstimatedConfidence is float measuredConfidence
                 && NaturalLanguageDescriptionOptionsSnapshot.Value.PersistInMetadata)
             {
                 metadataForIndex["event.naturalLanguageDescription"] = new MetadataField(
                     nlResult.Description,
                     MetadataOrigin.Ai,
-                    nlResult.EstimatedConfidence ?? 0.0f);
+                    measuredConfidence);
             }
 
             IndexInput indexInput = new()
