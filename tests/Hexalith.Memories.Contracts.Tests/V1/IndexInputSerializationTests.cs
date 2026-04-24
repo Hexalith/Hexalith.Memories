@@ -67,8 +67,10 @@ public class IndexInputSerializationTests
         IndexInput? deserialized = JsonSerializer.Deserialize<IndexInput>(json, MemoriesJsonContext.Options);
 
         deserialized.ShouldNotBeNull();
+        deserialized.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
         deserialized.Metadata.ShouldContainKey("author");
         deserialized.Metadata["author"].Value.ShouldBe("John");
+        deserialized.Metadata.ContainsKey("AUTHOR").ShouldBeFalse();
     }
 
     [Fact]

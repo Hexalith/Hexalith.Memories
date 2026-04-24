@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 /// <summary>
 /// Story 8.2 — orchestrates tenant-wide consistency verification. Enumerates the union of
 /// memory unit IDs across the three backends, then fans out per-unit probes in bounded
-/// batches and aggregates discrepancies.
+/// batches and aggregates actionable discrepancies plus informational notes.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,14 +28,15 @@ using Microsoft.Extensions.Logging;
 /// <c>batchSize</c> <c>VerifyConsistencyActivity</c> calls; batches run sequentially.
 /// </para>
 /// <para>
-/// Risk #7 mitigation: <c>Discrepancies</c> is truncated to 10,000 entries;
-/// <c>TotalDiscrepancyCount</c> remains un-truncated and <c>TruncatedAt</c> is set.
+/// Risk #7 mitigation: the combined <c>Discrepancies</c> + <c>Notes</c> payload is truncated to
+/// 10,000 entries; the total discrepancy/note counters remain un-truncated and
+/// <c>TruncatedAt</c> is set.
 /// </para>
 /// </remarks>
 public sealed partial class ConsistencyVerificationWorkflow
     : Workflow<ConsistencyVerificationInput, ConsistencyVerificationResult>
 {
-    /// <summary>Maximum number of discrepancies that fit in the DAPR workflow state store per invocation.</summary>
+    /// <summary>Maximum number of discrepancy/note entries that fit in the DAPR workflow state store per invocation.</summary>
     public const int MaxDiscrepancyEntries = 10_000;
 
     /// <summary>Minimum valid batch size.</summary>
@@ -71,7 +72,10 @@ public sealed partial class ConsistencyVerificationWorkflow
             retryOptions);
 
         List<ConsistencyDiscrepancy> discrepancies = [];
+        List<ConsistencyDiscrepancy> notes = [];
         int consistentCount = 0;
+        int totalDiscrepancyCount = 0;
+        int totalNoteCount = 0;
         IReadOnlyList<string> allIds = enumeration.MemoryUnitIds;
         int totalBatches = allIds.Count == 0 ? 0 : (int)Math.Ceiling(allIds.Count / (double)batchSize);
 
@@ -103,41 +107,64 @@ public sealed partial class ConsistencyVerificationWorkflow
                     probe.SemanticExists,
                     probe.GraphExists);
 
-                bool naturalLanguageGap = NaturalLanguageConsistencyState.HasIndexedNaturalLanguageGap(
-                    probe.NaturalLanguageEmbeddingStatus,
-                    probe.NaturalLanguageSemanticExists);
-
-                if (recommendation == ConsistencyRepairRecommendation.NoOp && !naturalLanguageGap)
-                {
-                    consistentCount++;
-                    continue;
-                }
-
-                string discrepancyLabel = naturalLanguageGap
-                    ? "MissingNaturalLanguageSemantic"
-                    : recommendation.ToString();
-                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
-
                 ConsistencyNoteKind consistencyNoteKind = probe.ConsistencyNoteKind != ConsistencyNoteKind.None
                     ? probe.ConsistencyNoteKind
                     : NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
                         probe.NaturalLanguageEmbeddingStatus,
                         probe.NaturalLanguageSemanticExists);
+                bool hasConsistencyNote = consistencyNoteKind != ConsistencyNoteKind.None
+                    || !string.IsNullOrWhiteSpace(probe.ConsistencyNote);
 
-                if (discrepancies.Count < MaxDiscrepancyEntries)
+                if (recommendation == ConsistencyRepairRecommendation.NoOp)
                 {
-                    discrepancies.Add(new ConsistencyDiscrepancy(
-                        unitId,
-                        probe.SyntacticExists,
-                        probe.SemanticExists,
-                        probe.GraphExists,
-                        recommendation)
+                    consistentCount++;
+
+                    if (!hasConsistencyNote)
                     {
-                        NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
-                        NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
-                        ConsistencyNote = probe.ConsistencyNote,
-                        ConsistencyNoteKind = consistencyNoteKind,
-                    });
+                        continue;
+                    }
+                }
+                else
+                {
+                    totalDiscrepancyCount++;
+                }
+
+                totalNoteCount += recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote ? 1 : 0;
+
+                string discrepancyLabel = recommendation != ConsistencyRepairRecommendation.NoOp
+                    ? recommendation.ToString()
+                    : consistencyNoteKind != ConsistencyNoteKind.None
+                        ? consistencyNoteKind.ToString()
+                        : "InformationalNote";
+                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
+
+                ConsistencyDiscrepancy entry = new ConsistencyDiscrepancy(
+                    unitId,
+                    probe.SyntacticExists,
+                    probe.SemanticExists,
+                    probe.GraphExists,
+                    recommendation)
+                {
+                    NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
+                    NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
+                    ConsistencyNote = probe.ConsistencyNote,
+                    ConsistencyNoteKind = consistencyNoteKind,
+                };
+
+                bool isNoteOnlyObservation = recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote;
+                if (isNoteOnlyObservation)
+                {
+                    if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
+                    {
+                        notes.Add(entry);
+                    }
+
+                    continue;
+                }
+
+                if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
+                {
+                    discrepancies.Add(entry);
                 }
             }
 
@@ -146,18 +173,18 @@ public sealed partial class ConsistencyVerificationWorkflow
         }
 
         int totalUnits = allIds.Count;
-        int inconsistentCount = totalUnits - consistentCount;
+        int inconsistentCount = totalDiscrepancyCount;
 
         DateTimeOffset? truncatedAt = null;
-        if (inconsistentCount > MaxDiscrepancyEntries)
+        if ((totalDiscrepancyCount + totalNoteCount) > MaxDiscrepancyEntries)
         {
             truncatedAt = context.CurrentUtcDateTime;
-            LogTruncation(logger, input.TenantId, inconsistentCount, MaxDiscrepancyEntries);
+            LogTruncation(logger, input.TenantId, totalDiscrepancyCount + totalNoteCount, MaxDiscrepancyEntries);
         }
 
         DateTimeOffset completedAt = context.CurrentUtcDateTime;
         context.SetCustomStatus(new ConsistencyWorkflowProgress("completed", totalBatches, totalBatches));
-        LogVerificationCompleted(logger, input.TenantId, totalUnits, consistentCount, inconsistentCount);
+        LogVerificationCompleted(logger, input.TenantId, totalUnits, consistentCount, inconsistentCount, totalNoteCount);
 
         return new ConsistencyVerificationResult(
             TenantId: input.TenantId,
@@ -165,12 +192,17 @@ public sealed partial class ConsistencyVerificationWorkflow
             ConsistentCount: consistentCount,
             InconsistentCount: inconsistentCount,
             Discrepancies: discrepancies,
-            TotalDiscrepancyCount: inconsistentCount,
+            TotalDiscrepancyCount: totalDiscrepancyCount,
             TruncatedAt: truncatedAt,
             EnumerationTruncated: enumeration.Truncated,
             StartedAt: startedAt,
             CompletedAt: completedAt,
-            Duration: completedAt - startedAt);
+            Duration: completedAt - startedAt)
+        {
+            NoteCount = totalNoteCount,
+            TotalNoteCount = totalNoteCount,
+            Notes = notes,
+        };
     }
 
     private static int ClampBatchSize(int requested)
@@ -203,14 +235,14 @@ public sealed partial class ConsistencyVerificationWorkflow
     [LoggerMessage(
         EventId = 8204,
         Level = LogLevel.Warning,
-        Message = "DiscrepancyListTruncated tenant '{TenantId}' total {TotalDiscrepancies}, truncated to {Cap}")]
+        Message = "VerificationResultTruncated tenant '{TenantId}' total entries {TotalEntries}, truncated to {Cap}")]
     private static partial void LogTruncation(
-        ILogger logger, string tenantId, int totalDiscrepancies, int cap);
+        ILogger logger, string tenantId, int totalEntries, int cap);
 
     [LoggerMessage(
         EventId = 8205,
         Level = LogLevel.Information,
-        Message = "VerificationCompleted tenant '{TenantId}' total {TotalUnits} consistent {ConsistentCount} inconsistent {InconsistentCount}")]
+        Message = "VerificationCompleted tenant '{TenantId}' total {TotalUnits} consistent {ConsistentCount} inconsistent {InconsistentCount} notes {NoteCount}")]
     private static partial void LogVerificationCompleted(
-        ILogger logger, string tenantId, int totalUnits, int consistentCount, int inconsistentCount);
+        ILogger logger, string tenantId, int totalUnits, int consistentCount, int inconsistentCount, int noteCount);
 }

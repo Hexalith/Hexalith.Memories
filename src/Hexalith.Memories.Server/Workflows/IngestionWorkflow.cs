@@ -765,7 +765,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         string effectiveUrl,
         long contentLength)
     {
-        Dictionary<string, MetadataField> metadata = new(input.Metadata);
+        // Decision D6: `new Dictionary<TKey, TValue>(IDictionary<...>)` does NOT carry the source's
+        // comparer; explicitly pass StringComparer.Ordinal to preserve the pinned lookup semantics.
+        Dictionary<string, MetadataField> metadata = new(input.Metadata, StringComparer.Ordinal);
 
         if (input.SourceType != SourceType.Url || urlFetch is null)
         {

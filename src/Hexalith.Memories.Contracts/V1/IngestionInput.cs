@@ -23,10 +23,17 @@ public sealed record IngestionInput
 
     public required string IngestedBy { get; init; }
 
+    // Pinned to StringComparer.Ordinal (decision D6 — committed-branch review 2026-04-24) so the
+    // CloudEvent metadata keys the workflow reads back (e.g., "cloudevent.type",
+    // "event.aggregateType") match exactly what the producers wrote. Default
+    // EqualityComparer<string>.Default is also ordinal today, but pinning makes the contract
+    // explicit and guards against future ambiguity.
     public Dictionary<string, MetadataField> Metadata
     {
-        get => field ??= [];
-        init => field = value ?? [];
+        get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
+        init => field = value is null
+            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            : new Dictionary<string, MetadataField>(value, StringComparer.Ordinal);
     }
 
     public string? CausationId { get; init; }

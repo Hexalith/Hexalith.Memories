@@ -1005,6 +1005,40 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public void BuildIndexMetadata_ShouldPreserveOrdinalComparerAcrossWorkflowCopy()
+    {
+        IngestionInput input = IngestionInputFactory.Create(
+            sourceUri: "https://example.test/articles/42",
+            contentType: "text/html",
+            sourceType: SourceType.Url,
+            metadata: new Dictionary<string, MetadataField>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["cloudevent.type"] = new("payment.accepted.v1", MetadataOrigin.Ai, 1.0f),
+            });
+        UrlFetchResult fetch = new(
+            ContentBytes: [1, 2, 3],
+            ContentType: "text/html",
+            ContentLength: 3,
+            FinalUrl: "https://example.test/articles/42?redirected=true",
+            HttpStatusCode: 200);
+
+        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
+            "BuildIndexMetadata",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        method.ShouldNotBeNull();
+        Dictionary<string, MetadataField> metadata = (Dictionary<string, MetadataField>)method!.Invoke(
+            null,
+            [input, fetch, fetch.FinalUrl, fetch.ContentLength])!;
+
+        metadata.Comparer.ShouldBe(StringComparer.Ordinal);
+        metadata.ShouldContainKey("cloudevent.type");
+        metadata.ShouldContainKey("http.finalUrl");
+        metadata.ContainsKey("CLOUDEVENT.TYPE").ShouldBeFalse();
+        metadata.ContainsKey("HTTP.FINALURL").ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task RunAsync_DimensionMismatchFailure_ShouldStillUseMainRetryPolicy()
     {
         // Story 6.3: RetryPolicyBuilder is a process-global snapshot; prior tests may have initialized

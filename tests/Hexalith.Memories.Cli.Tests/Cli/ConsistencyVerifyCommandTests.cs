@@ -88,6 +88,63 @@ public sealed class ConsistencyVerifyCommandTests
     }
 
     [Fact]
+    public async Task Run_WithWait_NoteOnlyResult_PrintsNotesSection()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            VerifyInstanceId = "verify-consistency-acme-notes",
+            VerifyStatusSequence =
+            [
+                CreateVerificationStatus(
+                    "verify-consistency-acme-notes",
+                    "Completed",
+                    new ConsistencyVerificationResult(
+                        "acme",
+                        TotalUnits: 1,
+                        ConsistentCount: 1,
+                        InconsistentCount: 0,
+                        Discrepancies: [],
+                        TotalDiscrepancyCount: 0,
+                        TruncatedAt: null,
+                        EnumerationTruncated: false,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(1))
+                    {
+                        NoteCount = 1,
+                        TotalNoteCount = 1,
+                        Notes =
+                        [
+                            new ConsistencyDiscrepancy(
+                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                                SyntacticPresent: true,
+                                SemanticPresent: true,
+                                GraphPresent: true,
+                                ConsistencyRepairRecommendation.NoOp)
+                            {
+                                NaturalLanguageSemanticPresent = false,
+                                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
+                                ConsistencyNote = "Missing backends: semantic-nl",
+                            },
+                        ],
+                    }),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        string output = stdout.ToString();
+        output.ShouldContain("note-only units");
+        output.ShouldContain("Notes:");
+        output.ShouldContain("NaturalLanguageEmbeddingMissing");
+        stderr.ToString().ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Run_MissingTenant_ReturnsPlumbingExitCode()
     {
         ConsistencyStubClient stub = new();
@@ -158,6 +215,103 @@ public sealed class ConsistencyVerifyCommandTests
         doc.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyVerifyCommand.CommandName);
         doc.RootElement.GetProperty("data").GetProperty("totalUnits").GetInt32().ShouldBe(1);
         doc.RootElement.GetProperty("data").GetProperty("inconsistentCount").GetInt32().ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Run_JsonFormatWithWait_NoteOnlyResult_EmitsNoteFields()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            VerifyInstanceId = "verify-consistency-acme-json-notes",
+            VerifyStatusSequence =
+            [
+                CreateVerificationStatus(
+                    "verify-consistency-acme-json-notes",
+                    "Completed",
+                    new ConsistencyVerificationResult(
+                        "acme",
+                        TotalUnits: 1,
+                        ConsistentCount: 1,
+                        InconsistentCount: 0,
+                        Discrepancies: [],
+                        TotalDiscrepancyCount: 0,
+                        TruncatedAt: null,
+                        EnumerationTruncated: false,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(1))
+                    {
+                        NoteCount = 1,
+                        TotalNoteCount = 1,
+                        Notes =
+                        [
+                            new ConsistencyDiscrepancy(
+                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                                SyntacticPresent: true,
+                                SemanticPresent: true,
+                                GraphPresent: true,
+                                ConsistencyRepairRecommendation.NoOp)
+                            {
+                                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
+                                ConsistencyNote = "Natural-language semantic hash pending queued retry.",
+                            },
+                        ],
+                    }),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Json, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        doc.RootElement.GetProperty("data").GetProperty("noteCount").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("data").GetProperty("totalNoteCount").GetInt32().ShouldBe(1);
+        doc.RootElement.GetProperty("data").GetProperty("notes")[0].GetProperty("consistencyNoteKind").GetString().ShouldBe("naturalLanguageEmbeddingQueued");
+    }
+
+    [Fact]
+    public async Task Run_TableFormatWithWait_NoteOnlyResult_IncludesNotesColumn()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            VerifyInstanceId = "verify-consistency-acme-table-notes",
+            VerifyStatusSequence =
+            [
+                CreateVerificationStatus(
+                    "verify-consistency-acme-table-notes",
+                    "Completed",
+                    new ConsistencyVerificationResult(
+                        "acme",
+                        TotalUnits: 1,
+                        ConsistentCount: 1,
+                        InconsistentCount: 0,
+                        Discrepancies: [],
+                        TotalDiscrepancyCount: 0,
+                        TruncatedAt: null,
+                        EnumerationTruncated: false,
+                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(1))
+                    {
+                        NoteCount = 1,
+                        TotalNoteCount = 1,
+                    }),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            BuildServices(OutputFormat.Table, stub);
+
+        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        string output = stdout.ToString();
+        output.ShouldContain("NOTES");
+        output.ShouldContain("DISCREPANCIES");
+        stderr.ToString().ShouldBeEmpty();
     }
 
     private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)

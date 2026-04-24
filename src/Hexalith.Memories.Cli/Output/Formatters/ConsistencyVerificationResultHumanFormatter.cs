@@ -26,7 +26,9 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
         writer.WriteLine($"  total units:         {value.TotalUnits.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  consistent units:    {value.ConsistentCount.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  inconsistent units:  {value.InconsistentCount.ToString(CultureInfo.InvariantCulture)}");
+        writer.WriteLine($"  note-only units:     {value.NoteCount.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  discrepancy records: {value.Discrepancies.Count.ToString(CultureInfo.InvariantCulture)}");
+        writer.WriteLine($"  note records:        {value.Notes.Count.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  enumeration cut off: {value.EnumerationTruncated}");
         writer.WriteLine($"  started:             {value.StartedAt:O}");
         writer.WriteLine($"  completed:           {value.CompletedAt:O}");
@@ -35,13 +37,48 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
         if (value.Discrepancies.Count == 0)
         {
             writer.WriteLine("  discrepancies:       none");
+        }
+        else
+        {
+            writer.WriteLine("Discrepancies:");
+            foreach (ConsistencyDiscrepancy discrepancy in value.Discrepancies)
+            {
+                writer.WriteLine($"  - {discrepancy.MemoryUnitId}: {BuildEntrySummary(discrepancy, includeRecommendation: true)}");
+            }
+        }
+
+        if (value.Notes.Count == 0)
+        {
+            writer.WriteLine("  notes:               none");
             return;
         }
 
-        writer.WriteLine("Discrepancies:");
-        foreach (ConsistencyDiscrepancy discrepancy in value.Discrepancies)
+        writer.WriteLine("Notes:");
+        foreach (ConsistencyDiscrepancy note in value.Notes)
         {
-            writer.WriteLine($"  - {discrepancy.MemoryUnitId}: {discrepancy.Recommendation}");
+            writer.WriteLine($"  - {note.MemoryUnitId}: {BuildEntrySummary(note, includeRecommendation: false)}");
         }
+    }
+
+    private static string BuildEntrySummary(ConsistencyDiscrepancy entry, bool includeRecommendation)
+    {
+        List<string> parts = [];
+
+        if (includeRecommendation)
+        {
+            parts.Add(entry.Recommendation.ToString());
+        }
+
+        if (entry.ConsistencyNoteKind != ConsistencyNoteKind.None)
+        {
+            parts.Add(entry.ConsistencyNoteKind.ToString());
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.ConsistencyNote))
+        {
+            parts.Add(entry.ConsistencyNote!);
+        }
+
+        return parts.Count == 0 ? "Note" : string.Join(" — ", parts);
     }
 }

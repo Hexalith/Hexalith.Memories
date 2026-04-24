@@ -30,10 +30,14 @@ public sealed record IndexInput
 
     public required int EmbeddingDimensions { get; init; }
 
+    // Pinned to StringComparer.Ordinal (decision D6 — committed-branch review 2026-04-24) to
+    // match IngestionInput.Metadata and guarantee consistent lookups across the ingestion pipeline.
     public Dictionary<string, MetadataField> Metadata
     {
-        get => field ??= [];
-        init => field = value ?? [];
+        get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
+        init => field = value is null
+            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            : new Dictionary<string, MetadataField>(value, StringComparer.Ordinal);
     }
 
     public string? CausationId { get; init; }

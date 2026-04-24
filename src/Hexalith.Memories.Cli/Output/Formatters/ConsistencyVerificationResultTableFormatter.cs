@@ -23,13 +23,14 @@ public sealed class ConsistencyVerificationResultTableFormatter : IOutputFormatt
 
         TableWriter.Write(
             writer,
-            ["tenant", "totalUnits", "consistent", "inconsistent", "discrepancies"],
+            ["tenant", "totalUnits", "consistent", "inconsistent", "notes", "discrepancies"],
             [[
                 value.TenantId,
                 value.TotalUnits.ToString(CultureInfo.InvariantCulture),
                 value.ConsistentCount.ToString(CultureInfo.InvariantCulture),
                 value.InconsistentCount.ToString(CultureInfo.InvariantCulture),
-                value.Discrepancies.Count.ToString(CultureInfo.InvariantCulture),
+                value.NoteCount.ToString(CultureInfo.InvariantCulture),
+                value.TotalDiscrepancyCount.ToString(CultureInfo.InvariantCulture),
             ]]);
     }
 }

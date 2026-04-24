@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Hosting;
 
+using System.Reflection;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Hosting;
@@ -13,6 +15,37 @@ using Shouldly;
 
 public class WorkflowReplaySafetyHostedServiceTests
 {
+    [Fact]
+    public void WorkflowStateMetadataField_StillExists_OnCurrentSdkSurface()
+    {
+        // Decision D2 (committed-branch review 2026-04-24): TryGetWorkflowName drills into
+        // WorkflowState's private _metadata field to read WorkflowMetadata.Name. This test fails
+        // fast if a future Dapr.Workflow SDK renames or removes the field — surfacing the drift
+        // at the unit-test level BEFORE the production startup probe logs Critical 9173 and fails
+        // open.
+        FieldInfo? metadata = typeof(WorkflowState)
+            .GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic);
+
+        metadata.ShouldNotBeNull(
+            "Dapr.Workflow SDK change detected: WorkflowState._metadata private field no longer exists. "
+            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated to the new surface "
+            + "or the gate will silently fail open via Critical event 9173 in production.");
+
+        metadata.FieldType.FullName.ShouldBe(
+            "Dapr.Workflow.Client.WorkflowMetadata",
+            "The private field that TryGetWorkflowName drills through has changed type. "
+            + "Update WorkflowReplaySafetyHostedService.MetadataField + TryGetWorkflowName.");
+
+        // WorkflowMetadata.Name is expected to be a public instance property; if this assertion
+        // breaks, the drill-through path must follow the new accessor shape.
+        PropertyInfo? name = metadata.FieldType
+            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
+        name.ShouldNotBeNull(
+            "Dapr.Workflow.Client.WorkflowMetadata.Name is no longer a public instance property. "
+            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated.");
+        name.PropertyType.ShouldBe(typeof(string));
+    }
+
     [Fact]
     public void IsActive_TerminalStates_ReturnFalse()
     {
@@ -47,6 +80,30 @@ public class WorkflowReplaySafetyHostedServiceTests
             workflowName: "IngestionWorkflow",
             exists: false,
             status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ShouldFailOpenForUnreadableWorkflowName_ActiveStatesRequireReadableName()
+    {
+        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
+            workflowName: null,
+            exists: true,
+            status: WorkflowRuntimeStatus.Running).ShouldBeTrue();
+
+        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
+            workflowName: "  ",
+            exists: true,
+            status: WorkflowRuntimeStatus.Pending).ShouldBeTrue();
+
+        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
+            workflowName: "IngestionWorkflow",
+            exists: true,
+            status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
+
+        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
+            workflowName: null,
+            exists: true,
+            status: WorkflowRuntimeStatus.Completed).ShouldBeFalse();
     }
 
     [Fact]

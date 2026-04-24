@@ -64,14 +64,16 @@ public class ConsistencyVerificationWorkflowTests
         result.TotalUnits.ShouldBe(10);
         result.ConsistentCount.ShouldBe(10);
         result.InconsistentCount.ShouldBe(0);
+        result.NoteCount.ShouldBe(0);
         result.Discrepancies.Count.ShouldBe(0);
+        result.Notes.ShouldBeEmpty();
     }
 
     [Fact]
     public async Task RunAsync_AggregateCounts_InvariantHolds()
     {
         WorkflowContext context = CreateContext();
-        List<string> ids = ["c0", "c1", "c2", "i0", "i1"];
+        List<string> ids = ["c0", "c1", "c2", "n0", "i0", "i1"];
         SetEnumeration(context, ids);
 
         context.CallActivityAsync<ConsistencyResult>(
@@ -79,6 +81,17 @@ public class ConsistencyVerificationWorkflowTests
                 Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('c')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true));
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true)
+            {
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                ConsistencyNote = "Missing backends: semantic-nl",
+            });
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
@@ -92,7 +105,9 @@ public class ConsistencyVerificationWorkflowTests
             new ConsistencyVerificationInput(TestTenantId));
 
         (result.ConsistentCount + result.InconsistentCount).ShouldBe(result.TotalUnits);
-        result.Discrepancies.Count.ShouldBe(result.InconsistentCount);
+        result.NoteCount.ShouldBe(1);
+        result.TotalNoteCount.ShouldBe(1);
+        result.Discrepancies.Count.ShouldBe(result.TotalDiscrepancyCount);
     }
 
     [Fact]
@@ -206,6 +221,52 @@ public class ConsistencyVerificationWorkflowTests
         result.TotalDiscrepancyCount.ShouldBe(10_001);
         result.TruncatedAt.ShouldNotBeNull();
         result.InconsistentCount.ShouldBe(10_001);
+        result.NoteCount.ShouldBe(0);
+        result.TotalNoteCount.ShouldBe(0);
+        result.Notes.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAsync_NotesAndDiscrepancies_ShareSingleEntryCap()
+    {
+        WorkflowContext context = CreateContext();
+        List<string> ids = Enumerable.Range(0, 9_999).Select(i => $"d{i:D6}")
+            .Concat(["n000000", "n000001"])
+            .ToList();
+        SetEnumeration(context, ids);
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('d')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, false, true));
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true)
+            {
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                ConsistencyNote = "Missing backends: semantic-nl",
+            });
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
+
+        result.TotalUnits.ShouldBe(10_001);
+        result.ConsistentCount.ShouldBe(2);
+        result.InconsistentCount.ShouldBe(9_999);
+        result.NoteCount.ShouldBe(2);
+        result.TotalNoteCount.ShouldBe(2);
+        result.TotalDiscrepancyCount.ShouldBe(9_999);
+        result.Discrepancies.Count.ShouldBe(9_999);
+        result.Notes.Count.ShouldBe(1);
+        (result.Discrepancies.Count + result.Notes.Count).ShouldBe(ConsistencyVerificationWorkflow.MaxDiscrepancyEntries);
+        result.TruncatedAt.ShouldNotBeNull();
     }
 
     [Fact]
@@ -253,7 +314,7 @@ public class ConsistencyVerificationWorkflowTests
     }
 
     [Fact]
-    public async Task RunAsync_QueuedNaturalLanguageMissing_RemainsConsistent()
+    public async Task RunAsync_QueuedNaturalLanguageMissing_RemainsConsistentAndRoutesToNotes()
     {
         WorkflowContext context = CreateContext();
         SetEnumeration(context, ["queued-nl"]);
@@ -275,12 +336,26 @@ public class ConsistencyVerificationWorkflowTests
 
         result.ConsistentCount.ShouldBe(1);
         result.InconsistentCount.ShouldBe(0);
+        result.NoteCount.ShouldBe(1);
+        result.TotalNoteCount.ShouldBe(1);
         result.Discrepancies.ShouldBeEmpty();
+        result.Notes.Count.ShouldBe(1);
+        result.Notes[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.Notes[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingQueued);
+        string? queuedNote = result.Notes[0].ConsistencyNote;
+        queuedNote.ShouldNotBeNull();
+        queuedNote.ShouldContain("queued retry");
     }
 
     [Fact]
-    public async Task RunAsync_IndexedNaturalLanguageMissing_BecomesDiscrepancyWithNote()
+    public async Task RunAsync_IndexedNaturalLanguageMissing_RoutesToNotesNotDiscrepancies()
     {
+        // Story 9.2 review D7 (committed-branch review 2026-04-24): when the three-axis repair
+        // recommendation is NoOp but the NL semantic sibling is missing (real NL gap), the entry
+        // MUST route to `Notes`, not `Discrepancies`. Consumers filtering
+        // `Discrepancies.Where(d => d.Recommendation != NoOp)` previously missed NL-only gaps —
+        // the split restores the expected "action-required" semantics for Discrepancies while
+        // preserving the NL observation in Notes.
         WorkflowContext context = CreateContext();
         SetEnumeration(context, ["indexed-nl-gap"]);
         context.CallActivityAsync<ConsistencyResult>(
@@ -300,16 +375,56 @@ public class ConsistencyVerificationWorkflowTests
             context,
             new ConsistencyVerificationInput(TestTenantId));
 
-        result.ConsistentCount.ShouldBe(0);
-        result.InconsistentCount.ShouldBe(1);
-        result.Discrepancies.Count.ShouldBe(1);
-        result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
-        result.Discrepancies[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
-        result.Discrepancies[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
-        result.Discrepancies[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
-        string? consistencyNote = result.Discrepancies[0].ConsistencyNote;
+        result.ConsistentCount.ShouldBe(1);
+        result.InconsistentCount.ShouldBe(0);
+        result.NoteCount.ShouldBe(1);
+        result.TotalNoteCount.ShouldBe(1);
+        result.TotalDiscrepancyCount.ShouldBe(0);
+        result.Discrepancies.Count.ShouldBe(0, "NoOp + NL gap is informational — must not appear in Discrepancies.");
+        result.Notes.Count.ShouldBe(1);
+        result.Notes[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+        result.Notes[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
+        result.Notes[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        result.Notes[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
+        string? consistencyNote = result.Notes[0].ConsistencyNote;
         consistencyNote.ShouldNotBeNull();
         consistencyNote.ShouldContain("semantic-nl");
+    }
+
+    [Fact]
+    public async Task RunAsync_MultiAxisGapWithNlNote_RoutesToDiscrepanciesNotNotes()
+    {
+        // Complement to IndexedNaturalLanguageMissing test: when a real multi-axis repair IS
+        // required, the NL note rides along as supplementary context on the Discrepancy entry
+        // rather than splitting into a second Notes entry.
+        WorkflowContext context = CreateContext();
+        SetEnumeration(context, ["semantic-missing"]);
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Any<ConsistencyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, false, true)
+            {
+                ConsistencyNoteKind = ConsistencyNoteKind.None,
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                ConsistencyNote = "Missing backends: semantic-nl",
+            });
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId));
+
+        result.InconsistentCount.ShouldBe(1);
+        result.NoteCount.ShouldBe(0);
+        result.Discrepancies.Count.ShouldBe(1);
+        result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+        result.Discrepancies[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
+        string? discrepancyNote = result.Discrepancies[0].ConsistencyNote;
+        discrepancyNote.ShouldNotBeNull();
+        discrepancyNote.ShouldContain("semantic-nl");
+        result.Notes.Count.ShouldBe(0);
     }
 
     private static WorkflowContext CreateContext()
