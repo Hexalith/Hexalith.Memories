@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.EventStoreIntegration;
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +14,7 @@ using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Telemetry;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -176,6 +178,54 @@ public sealed class EventIngestionTelemetryAdapterTests
     }
 
     [Fact]
+    public void KillSwitchInitiallyDisabled_ShouldEmitStartupConfigChangedLog_AC21A()
+    {
+        // AC #21 (a) — when EventStoreIntegration:Observation:Enabled = false at boot, the adapter
+        // emits log event 9143 once at Information level so the disabled state is auditable even when
+        // no later transition occurs.
+        IObservedEventTypeStore store = Substitute.For<IObservedEventTypeStore>();
+        EventStoreObservationOptions options = new() { Enabled = false };
+        IOptionsMonitor<EventStoreObservationOptions> monitor =
+            Substitute.For<IOptionsMonitor<EventStoreObservationOptions>>();
+        monitor.CurrentValue.Returns(options);
+
+        List<(LogLevel Level, int EventId, string Message)> captures = [];
+        ILogger<EventIngestionTelemetryAdapter> capturingLogger = new CapturingTestLogger(captures);
+
+        _ = new EventIngestionTelemetryAdapter(
+            NullLogger<AccessTelemetryCategory>.Instance,
+            capturingLogger,
+            store,
+            monitor);
+
+        captures.ShouldContain(c => c.EventId == 9143 && c.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public void KillSwitchInitiallyEnabled_ShouldNotEmitStartupConfigChangedLog()
+    {
+        // Mirror of AC #21 (a) — when boot-time state is enabled (the steady-state default), the
+        // startup emission MUST NOT fire (otherwise every healthy boot would log a transition that
+        // didn't happen).
+        IObservedEventTypeStore store = Substitute.For<IObservedEventTypeStore>();
+        EventStoreObservationOptions options = new() { Enabled = true };
+        IOptionsMonitor<EventStoreObservationOptions> monitor =
+            Substitute.For<IOptionsMonitor<EventStoreObservationOptions>>();
+        monitor.CurrentValue.Returns(options);
+
+        List<(LogLevel Level, int EventId, string Message)> captures = [];
+        ILogger<EventIngestionTelemetryAdapter> capturingLogger = new CapturingTestLogger(captures);
+
+        _ = new EventIngestionTelemetryAdapter(
+            NullLogger<AccessTelemetryCategory>.Instance,
+            capturingLogger,
+            store,
+            monitor);
+
+        captures.ShouldNotContain(c => c.EventId == 9143);
+    }
+
+    [Fact]
     public void ObservationStoreThrows_ShouldNotSurfaceException()
     {
         IObservedEventTypeStore store = Substitute.For<IObservedEventTypeStore>();
@@ -230,6 +280,24 @@ public sealed class EventIngestionTelemetryAdapterTests
                     return;
                 }
             }
+        }
+    }
+
+    private sealed class CapturingTestLogger(
+        List<(LogLevel Level, int EventId, string Message)> captures) : ILogger<EventIngestionTelemetryAdapter>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            captures.Add((logLevel, eventId.Id, formatter(state, exception)));
         }
     }
 }

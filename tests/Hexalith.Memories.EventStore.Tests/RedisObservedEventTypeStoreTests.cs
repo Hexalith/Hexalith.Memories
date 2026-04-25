@@ -6,11 +6,13 @@
 namespace Hexalith.Memories.EventStore.Tests;
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Hexalith.Memories.EventStore;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -64,8 +66,10 @@ public sealed class RedisObservedEventTypeStoreTests
     public async Task RecordObservationAsync_OnRedisException_ShouldFailOpen_WithoutSurfacingException()
     {
         IDatabase db = Substitute.For<IDatabase>();
-        db.SetLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "test"));
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisResult>(
+                new RedisConnectionException(ConnectionFailureType.UnableToConnect, "test")));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
@@ -86,8 +90,9 @@ public sealed class RedisObservedEventTypeStoreTests
     public async Task RecordObservationAsync_OnTimeoutException_ShouldFailOpen()
     {
         IDatabase db = Substitute.For<IDatabase>();
-        db.SetLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .Throws(new TimeoutException("redis timeout"));
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisResult>(new TimeoutException("redis timeout")));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
@@ -115,6 +120,90 @@ public sealed class RedisObservedEventTypeStoreTests
     {
         // TTL is 2x the 24h window — headroom for queries at the tail of the window.
         RedisObservedEventTypeStore.KeyTtl.ShouldBe(TimeSpan.FromHours(48));
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_HappyPath_ShouldUseSingleAtomicScript()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(CreateObservationWriteResult(0L, aggregateAlreadyRegistered: false, saddSkipped: false)));
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        RedisObservedEventTypeStore store = new(redis, NullLogger<RedisObservedEventTypeStore>.Instance);
+
+        await store.RecordObservationAsync(
+            tenantId: "acme",
+            aggregateType: "Claims",
+            eventType: "ClaimSubmittedV2",
+            observedAt: DateTimeOffset.UtcNow,
+            cancellationToken: CancellationToken.None);
+
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        string script = (string)call.GetArguments()[0]!;
+        script.ShouldContain("SCARD");
+        script.ShouldContain("SISMEMBER");
+        script.ShouldContain("SADD");
+        script.ShouldContain("ZADD");
+        script.ShouldContain("HINCRBY");
+
+        _ = db.DidNotReceive().SetLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        _ = db.DidNotReceive().SetContainsAsync(
+            Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>());
+        _ = db.DidNotReceive().CreateBatch(Arg.Any<object?>());
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenHardCapRejectsNewAggregate_ShouldEmitWarning9142()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(CreateObservationWriteResult(1024L, aggregateAlreadyRegistered: false, saddSkipped: true)));
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        List<(LogLevel Level, int EventId, string Message)> captures = [];
+        ILogger<RedisObservedEventTypeStore> logger = new CapturingTestLogger(captures);
+        RedisObservedEventTypeStore store = new(redis, logger);
+
+        await store.RecordObservationAsync(
+            tenantId: "acme",
+            aggregateType: "Claims",
+            eventType: "ClaimSubmittedV2",
+            observedAt: DateTimeOffset.UtcNow,
+            cancellationToken: CancellationToken.None);
+
+        captures.ShouldContain(c => c.EventId == 9142 && c.Level == LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenAtCapButAggregateAlreadyKnown_ShouldNotEmitWarning9142()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(CreateObservationWriteResult(1024L, aggregateAlreadyRegistered: true, saddSkipped: false)));
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        List<(LogLevel Level, int EventId, string Message)> captures = [];
+        ILogger<RedisObservedEventTypeStore> logger = new CapturingTestLogger(captures);
+        RedisObservedEventTypeStore store = new(redis, logger);
+
+        await store.RecordObservationAsync(
+            tenantId: "acme",
+            aggregateType: "Claims",
+            eventType: "ClaimSubmittedV2",
+            observedAt: DateTimeOffset.UtcNow,
+            cancellationToken: CancellationToken.None);
+
+        captures.ShouldNotContain(c => c.EventId == 9142);
     }
 
     [Fact]
@@ -166,5 +255,34 @@ public sealed class RedisObservedEventTypeStoreTests
                 cancellationToken: CancellationToken.None);
 
         result.ShouldBeEmpty();
+    }
+
+    private static RedisResult CreateObservationWriteResult(
+        long preSaddCardinality,
+        bool aggregateAlreadyRegistered,
+        bool saddSkipped)
+        => RedisResult.Create(
+            [
+                RedisResult.Create((RedisValue)preSaddCardinality),
+                RedisResult.Create((RedisValue)(aggregateAlreadyRegistered ? 1L : 0L)),
+                RedisResult.Create((RedisValue)(saddSkipped ? 1L : 0L)),
+            ]);
+
+    private sealed class CapturingTestLogger(
+        List<(LogLevel Level, int EventId, string Message)> captures) : ILogger<RedisObservedEventTypeStore>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            captures.Add((logLevel, eventId.Id, formatter(state, exception)));
+        }
     }
 }

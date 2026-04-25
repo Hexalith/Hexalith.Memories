@@ -77,7 +77,19 @@ internal sealed class EventIngestionTelemetryAdapter : IEventIngestionTelemetry,
         _adapterLogger = adapterLogger;
         _observedEventTypeStore = observedEventTypeStore;
         _observationOptions = observationOptions;
-        _lastKnownEnabled = observationOptions.CurrentValue.Enabled;
+
+        bool startupEnabled = observationOptions.CurrentValue.Enabled;
+        _lastKnownEnabled = startupEnabled;
+
+        // AC #21 (a) — emit 9143 once at startup when the kill switch is initially disabled, so the
+        // disabled state is auditable even when no later transition occurs. The adapter is registered
+        // as a singleton (TryAddSingleton in ServerEventStoreIntegrationExtensions) so the constructor
+        // runs exactly once per process — no extra latch is required.
+        if (!startupEnabled)
+        {
+            Hexalith.Memories.EventStore.EventStoreIntegrationLog
+                .ObservationWritesConfigChanged(_adapterLogger, enabled: false);
+        }
 
         // R3-7 — compare by VALUE not reference so we don't emit 9143 on spurious filesystem-watcher
         // double-fires that reuse the same reference.

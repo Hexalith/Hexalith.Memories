@@ -7,7 +7,6 @@ namespace Hexalith.Memories.EventStore;
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -21,6 +20,32 @@ using StackExchange.Redis;
 /// behind not using Redis Streams).</summary>
 internal sealed class RedisObservedEventTypeStore : IObservedEventTypeStore
 {
+    /// <summary>Atomic observation write script. Restores the Story 9.3 hard-cap contract for the
+    /// aggregates index while keeping the whole write path to a single Redis round-trip.
+    /// KEYS[1]=aggregates set, KEYS[2]=sorted set, KEYS[3]=counter hash;
+    /// ARGV[1]=aggregateType, ARGV[2]=observedAtUnixMs, ARGV[3]=eventType,
+    /// ARGV[4]=cardinalityCap, ARGV[5]=ttlSeconds.
+    /// Returns [preSaddCardinality, aggregateAlreadyRegistered(0/1), saddSkipped(0/1)].</summary>
+    internal const string RecordObservationScript = """
+        local preCardinality = redis.call('SCARD', KEYS[1])
+        local alreadyRegistered = redis.call('SISMEMBER', KEYS[1], ARGV[1])
+        local saddSkipped = 0
+
+        if preCardinality < tonumber(ARGV[4]) or alreadyRegistered == 1 then
+            redis.call('SADD', KEYS[1], ARGV[1])
+            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]))
+        else
+            saddSkipped = 1
+        end
+
+        redis.call('ZADD', KEYS[2], ARGV[2], ARGV[3])
+        redis.call('HINCRBY', KEYS[3], ARGV[3], 1)
+        redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+        redis.call('EXPIRE', KEYS[3], tonumber(ARGV[5]))
+
+        return { preCardinality, alreadyRegistered, saddSkipped }
+        """;
+
     /// <summary>TTL applied on every write — 2x the widest supported observation window (48h = 2×24h).</summary>
     internal static readonly TimeSpan KeyTtl = TimeSpan.FromHours(48);
 
@@ -72,34 +97,25 @@ internal sealed class RedisObservedEventTypeStore : IObservedEventTypeStore
             RedisKey sortedSetKey = GetSortedSetKey(tenantId, aggregateType);
             RedisKey counterHashKey = GetCounterHashKey(tenantId, aggregateType);
 
-            // Delta #10 — bounded aggregates-index set. Check cardinality before SADD; if cap is reached,
-            // skip the SADD for this observation (ZADD + HINCRBY continue) and emit 9142 warning.
-            long currentCardinality = await db.SetLengthAsync(aggregatesIndexKey).ConfigureAwait(false);
-            bool willSkipSadd = currentCardinality >= AggregatesIndexCardinalityCap
-                && !await db.SetContainsAsync(aggregatesIndexKey, aggregateType).ConfigureAwait(false);
+            RedisResult raw = await db.ScriptEvaluateAsync(
+                RecordObservationScript,
+                [aggregatesIndexKey, sortedSetKey, counterHashKey],
+                [
+                    (RedisValue)aggregateType,
+                    (RedisValue)observedAt.ToUnixTimeMilliseconds(),
+                    (RedisValue)eventType,
+                    (RedisValue)AggregatesIndexCardinalityCap,
+                    (RedisValue)(long)KeyTtl.TotalSeconds,
+                ]).ConfigureAwait(false);
 
-            if (willSkipSadd)
+            (long preSaddCardinality, bool aggregateAlreadyRegistered, bool saddSkipped) =
+                ParseRecordObservationResult(raw);
+
+            if (saddSkipped && !aggregateAlreadyRegistered && preSaddCardinality >= AggregatesIndexCardinalityCap)
             {
-                EventStoreIntegrationLog.ObservationAggregatesSetCardinalityWarning(_logger, tenantId, currentCardinality);
+                EventStoreIntegrationLog.ObservationAggregatesSetCardinalityWarning(
+                    _logger, tenantId, preSaddCardinality);
             }
-
-            IBatch batch = db.CreateBatch();
-            List<Task> batchTasks = new(6);
-
-            if (!willSkipSadd)
-            {
-                batchTasks.Add(batch.SetAddAsync(aggregatesIndexKey, aggregateType));
-                batchTasks.Add(batch.KeyExpireAsync(aggregatesIndexKey, KeyTtl));
-            }
-
-            batchTasks.Add(batch.SortedSetAddAsync(
-                sortedSetKey, eventType, observedAt.ToUnixTimeMilliseconds(), When.Always));
-            batchTasks.Add(batch.HashIncrementAsync(counterHashKey, eventType, 1));
-            batchTasks.Add(batch.KeyExpireAsync(sortedSetKey, KeyTtl));
-            batchTasks.Add(batch.KeyExpireAsync(counterHashKey, KeyTtl));
-
-            batch.Execute();
-            await Task.WhenAll(batchTasks).ConfigureAwait(false);
 
             EventStoreIntegrationLog.ObservedEventTypeRecorded(_logger, tenantId, aggregateType, eventType);
         }
@@ -199,4 +215,17 @@ internal sealed class RedisObservedEventTypeStore : IObservedEventTypeStore
 
     private static string GetCounterHashKey(string tenantId, string aggregateType) =>
         $"{tenantId}:eventstore:observed-count:{aggregateType}";
+
+    private static (long PreSaddCardinality, bool AggregateAlreadyRegistered, bool SaddSkipped)
+        ParseRecordObservationResult(RedisResult raw)
+    {
+        RedisResult[]? items = (RedisResult[]?)raw;
+        if (items is null || items.Length != 3)
+        {
+            throw new InvalidOperationException(
+                "Observation write script returned an unexpected result shape.");
+        }
+
+        return ((long)items[0], (long)items[1] == 1L, (long)items[2] == 1L);
+    }
 }

@@ -42,6 +42,7 @@ internal static class ServerEventStoreIntegrationExtensions
         services.TryAddSingleton<IEventIngestionTelemetry, EventIngestionTelemetryAdapter>();
 
         services.AddHostedService<EventStoreRoutingConfigValidator>();
+        services.AddHostedService<EventStoreObservationStartupActivator>();
 
         return services;
     }
