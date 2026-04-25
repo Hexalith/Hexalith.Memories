@@ -2252,68 +2252,6 @@ app.MapGet("/api/search", async (
         searchScope.ResultCount = resultCount;
     }
 
-    static OmittedReason CombineOmittedReasons(OmittedReason truncationReason, bool degraded)
-        => (truncationReason, degraded) switch
-        {
-            (OmittedReason.TokenBudget, true) => OmittedReason.Combined,
-            (OmittedReason.None, true) => OmittedReason.BackendDegraded,
-            _ => truncationReason,
-        };
-
-    static SearchResult ApplySearchResponseMetadata(
-        SearchResult result,
-        string axisName,
-        int? budget,
-        bool degraded = false,
-        IReadOnlyList<string>? unavailableAxes = null)
-    {
-        var truncation = TokenBudgetTruncator.TruncateByRank(
-            result.Results,
-            budget,
-            static scored => TokenBudgetTruncator.EstimateTokensForSnippet(scored.ContentSnippet));
-        IReadOnlyList<string>? unavailable = unavailableAxes is { Count: > 0 } ? unavailableAxes : null;
-
-        return result with
-        {
-            Results = truncation.Kept,
-            OmittedCount = truncation.Omitted,
-            EstimatedTokensTotal = truncation.EstimatedTokensTotal,
-            OmittedReason = CombineOmittedReasons(truncation.OmittedReason, degraded),
-            Degraded = degraded,
-            UnavailableAxes = unavailable,
-            AxesUsed = [axisName],
-        };
-    }
-
-    static HybridSearchResult ApplyHybridResponseMetadata(
-        HybridSearchResult result,
-        int? budget,
-        IReadOnlySet<string> enabledAxes,
-        TenantEmbeddingConfig? embeddingConfig,
-        string? graphStart)
-    {
-        var truncation = TokenBudgetTruncator.TruncateByRank(
-            result.Results,
-            budget,
-            static scored => TokenBudgetTruncator.EstimateTokensForSnippet(scored.ContentSnippet));
-        HashSet<string> unavailableAxes = new(result.UnavailableAxes, StringComparer.OrdinalIgnoreCase);
-        IReadOnlyList<string> axesUsed = enabledAxes
-            .Where(axis => !unavailableAxes.Contains(axis))
-            .Where(axis => !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) || embeddingConfig is not null)
-            .Where(axis => !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(graphStart))
-            .OrderBy(static axis => axis, StringComparer.Ordinal)
-            .ToArray();
-
-        return result with
-        {
-            Results = truncation.Kept,
-            OmittedCount = truncation.Omitted,
-            EstimatedTokensTotal = truncation.EstimatedTokensTotal,
-            OmittedReason = CombineOmittedReasons(truncation.OmittedReason, result.Degraded),
-            AxesUsed = axesUsed,
-        };
-    }
-
     IResult SearchError(string errorCode, IResult result)
     {
         searchScope.MarkValidationError(errorCode);
@@ -2464,7 +2402,7 @@ app.MapGet("/api/search", async (
                 result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("graph") };
             }
 
-            result = ApplySearchResponseMetadata(result, "graph", tokenBudget);
+            result = SearchResponseMetadataApplier.ApplySearch(result, "graph", tokenBudget);
             CompleteSearchSuccess("graph", result.Results.Count);
             RecordSearchActivity();
             return Results.Ok(result);
@@ -2587,7 +2525,7 @@ app.MapGet("/api/search", async (
 
             hybridResult = await EnrichHybridResultWithCaseAttributionAsync(hybridResult, caseService, tenantId, cancellationToken);
             hybridResult = await EnrichHybridResultWithAnnotationCountsAsync(hybridResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
-            hybridResult = ApplyHybridResponseMetadata(
+            hybridResult = SearchResponseMetadataApplier.ApplyHybrid(
                 hybridResult,
                 tokenBudget,
                 enabledAxes,
@@ -2748,7 +2686,7 @@ app.MapGet("/api/search", async (
                     result = result with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
                 }
 
-                result = ApplySearchResponseMetadata(result, "semantic", tokenBudget);
+                result = SearchResponseMetadataApplier.ApplySearch(result, "semantic", tokenBudget);
                 CompleteSearchSuccess("graph-scoped-semantic", result.Results.Count);
                 RecordSearchActivity();
                 return Results.Ok(result);
@@ -2818,7 +2756,7 @@ app.MapGet("/api/search", async (
                 syntacticResult = syntacticResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
             }
 
-            syntacticResult = ApplySearchResponseMetadata(syntacticResult, "syntactic", tokenBudget);
+            syntacticResult = SearchResponseMetadataApplier.ApplySearch(syntacticResult, "syntactic", tokenBudget);
             CompleteSearchSuccess("graph-scoped-syntactic", syntacticResult.Results.Count);
             RecordSearchActivity();
             return Results.Ok(syntacticResult);
@@ -2896,7 +2834,7 @@ app.MapGet("/api/search", async (
                 searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("semantic") };
             }
 
-            searchResult = ApplySearchResponseMetadata(searchResult, "semantic", tokenBudget);
+            searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "semantic", tokenBudget);
             CompleteSearchSuccess("semantic", searchResult.Results.Count);
             RecordSearchActivity();
             return Results.Ok(searchResult);
@@ -2933,7 +2871,7 @@ app.MapGet("/api/search", async (
             syntacticDefault = syntacticDefault with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("syntactic") };
         }
 
-        syntacticDefault = ApplySearchResponseMetadata(syntacticDefault, "syntactic", tokenBudget);
+        syntacticDefault = SearchResponseMetadataApplier.ApplySearch(syntacticDefault, "syntactic", tokenBudget);
         CompleteSearchSuccess("syntactic", syntacticDefault.Results.Count);
         RecordSearchActivity();
         return Results.Ok(syntacticDefault);
@@ -3031,24 +2969,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
     {
         TraversalResult result = await traversalService.TraverseAsync(
             tenantId, startNodeId, clampedDepth, caseId, parsedEdgeTypes, cancellationToken);
-        var truncation = TokenBudgetTruncator.TruncateTraversal(
-            result.Nodes,
-            tokenBudget,
-            static node => TokenBudgetTruncator.EstimateTokensForSnippet(node.ContentSnippet));
-        HashSet<string> retainedNodeIds = truncation.Kept
-            .Select(static node => node.MemoryUnitId)
-            .ToHashSet(StringComparer.Ordinal);
-        result = result with
-        {
-            Nodes = truncation.Kept,
-            GapMarkers = result.GapMarkers
-                .Where(marker => marker.Edges.Any(edge => retainedNodeIds.Contains(edge.ConnectedNodeId)))
-                .ToArray(),
-            OmittedCount = truncation.Omitted,
-            EstimatedTokensTotal = truncation.EstimatedTokensTotal,
-            OmittedReason = truncation.OmittedReason,
-            PrimaryPathIntact = truncation.PrimaryPathIntact,
-        };
+        result = TraverseResponseMetadataApplier.ApplyTraversal(result, tokenBudget);
         scope.ResultCount = result.Nodes.Count;
         return Results.Ok(result);
     }

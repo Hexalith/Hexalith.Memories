@@ -46,7 +46,10 @@ public sealed class McpServerIntegrationTests
     [Fact]
     public async Task ListTools_EndToEnd_ReturnsFourToolsWithTypedSchemas()
     {
-        await using McpClient client = await CreateMcpClientAsync();
+        // Story 10.2 — `/mcp` requires bearer auth even for ListTools (the tenant-claim filter only
+        // activates on tool invocations that bind tenantId; ListTools is a metadata operation that
+        // any authenticated principal may call).
+        await using McpClient client = await CreateMcpClientAsync("tenant-listtools-probe");
 
         IList<McpClientTool> tools = await client.ListToolsAsync();
 
@@ -73,7 +76,7 @@ public sealed class McpServerIntegrationTests
         // error", not "results are non-empty".
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
-        await using McpClient client = await CreateMcpClientAsync();
+        await using McpClient client = await CreateMcpClientAsync(tenantId);
 
         var arguments = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -90,12 +93,20 @@ public sealed class McpServerIntegrationTests
         result.Content.ShouldNotBeEmpty();
     }
 
-    private async Task<McpClient> CreateMcpClientAsync()
+    private async Task<McpClient> CreateMcpClientAsync(string? tenantIdForBearer)
     {
+        Dictionary<string, string> headers = new(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(tenantIdForBearer))
+        {
+            string token = AspireIngestionPipelineFixture.MintDevBearer(tenantIdForBearer);
+            headers["Authorization"] = $"Bearer {token}";
+        }
+
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = new Uri(_fixture.McpEndpoint, "/mcp"),
             TransportMode = HttpTransportMode.StreamableHttp,
+            AdditionalHeaders = headers,
         });
 
         McpClient client = await McpClient.CreateAsync(transport);

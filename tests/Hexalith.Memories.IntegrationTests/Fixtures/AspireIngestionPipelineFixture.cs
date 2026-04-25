@@ -25,6 +25,8 @@ using Hexalith.Memories.TestHelpers.Process;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 
 using StackExchange.Redis;
 
@@ -60,6 +62,56 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Gets the endpoint URI for the MCP server resource (Story 10.1).</summary>
     public Uri McpEndpoint { get; private set; } = null!;
+
+    /// <summary>Symmetric signing key matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
+    public const string McpDevSigningKey = "hexalith-memories-dev-signing-key-32b";
+
+    /// <summary>Issuer matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
+    public const string McpDevIssuer = "hexalith-memories-dev";
+
+    /// <summary>Audience matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
+    public const string McpDevAudience = "hexalith-memories-mcp";
+
+    /// <summary>
+    /// Mints a Story 10.2 development bearer token signed with the symmetric key shared with the MCP
+    /// resource's <c>appsettings.Development.json</c>. The resulting token carries a
+    /// <c>tenant_id</c> claim that the server-side claims transformation maps to
+    /// <c>memories:tenant</c> for tenant-claim authorization.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier to embed as the <c>tenant_id</c> claim.</param>
+    /// <param name="lifetime">Optional token lifetime; defaults to 5 minutes.</param>
+    /// <param name="expiresAt">Optional explicit expiry overriding <paramref name="lifetime"/> (for clock-skew or expired-token tests).</param>
+    /// <returns>The compact-serialized JWT string ready to be set as <c>Authorization: Bearer &lt;value&gt;</c>.</returns>
+    public static string MintDevBearer(
+        string tenantId,
+        TimeSpan? lifetime = null,
+        DateTime? expiresAt = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        DateTime now = DateTime.UtcNow;
+        DateTime expires = expiresAt ?? now.Add(lifetime ?? TimeSpan.FromMinutes(5));
+        DateTime notBefore = expires <= now ? expires.AddMinutes(-5) : now;
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(McpDevSigningKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = McpDevIssuer,
+            Audience = McpDevAudience,
+            IssuedAt = notBefore,
+            NotBefore = notBefore,
+            Expires = expires,
+            Claims = new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["sub"] = $"integration-test-{tenantId}",
+                ["tenant_id"] = tenantId,
+            },
+            SigningCredentials = credentials,
+        };
+
+        return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
 
     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
     public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");

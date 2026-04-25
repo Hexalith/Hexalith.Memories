@@ -75,12 +75,27 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.QueryParams!.Count.ShouldBeGreaterThan(0);
 
         // AC #4 anti-pattern guard: queryParams never contains the authorization header or raw token.
+        // `tokenBudget` is allowed because it is a response-size hint, not credential material.
         foreach (KeyValuePair<string, object?> kv in auditEvent.QueryParams!)
         {
-            kv.Key.ShouldNotContain("authorization", customMessage: "queryParams must not expose the auth header key.");
-            kv.Key.ShouldNotContain("token", customMessage: "queryParams must not expose a token key.");
+            IsCredentialQueryKey(kv.Key)
+                .ShouldBeFalse(customMessage: $"queryParams must not expose credential-shaped key '{kv.Key}'.");
         }
     }
+
+    [Theory]
+    [InlineData("tokenBudget", false)]
+    [InlineData("continuationToken", false)]
+    [InlineData("authorization", true)]
+    [InlineData("token", true)]
+    [InlineData("access_token", true)]
+    [InlineData("refresh_token", true)]
+    [InlineData("authToken", true)]
+    [InlineData("bearerToken", true)]
+    [InlineData("api_key", true)]
+    [InlineData("clientSecret", true)]
+    public void CredentialQueryKeyGuard_AllowsBudgetHintsButRejectsCredentialNames(string key, bool expected)
+        => IsCredentialQueryKey(key).ShouldBe(expected);
 
     [Fact]
     public async Task IngestEndpoint_InvalidInputPath_EmitsExactlyOneAuditEventWithSchema()
@@ -253,6 +268,54 @@ public sealed class AuditLogStreamTests : IDisposable
             string.Equals(c.AuditEvent.TraceId, traceId, StringComparison.Ordinal))];
         withEvent.Count.ShouldBe(1, customMessage: $"Expected exactly one audit event with traceId {traceId}; got {withEvent.Count}.");
         return withEvent[0].AuditEvent!;
+    }
+
+    private static bool IsCredentialQueryKey(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeQueryKey(key);
+        if (normalized is "token budget" or "continuation token")
+        {
+            return false;
+        }
+
+        if (normalized is "authorization" or "bearer" or "token" or "access token" or "id token" or "refresh token" or "api key" or "client secret" or "secret")
+        {
+            return true;
+        }
+
+        return normalized.EndsWith(" token", StringComparison.Ordinal) ||
+            normalized.EndsWith(" secret", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeQueryKey(string key)
+    {
+        List<char> chars = [];
+        char previous = '\0';
+        foreach (char current in key)
+        {
+            if (char.IsUpper(current) && chars.Count > 0 && previous != ' ')
+            {
+                chars.Add(' ');
+            }
+            else if (current is '_' or '-' or '.')
+            {
+                chars.Add(' ');
+                previous = ' ';
+                continue;
+            }
+
+            chars.Add(char.ToLowerInvariant(current));
+            previous = chars[^1];
+        }
+
+        return string.Join(
+            ' ',
+            new string(chars.ToArray()).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
     private static ActivityListener CreateKeepAliveListener()
