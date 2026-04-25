@@ -131,6 +131,46 @@ if (daprApiToken is not null)
 
 _ = server;
 
+// Story 10.1 — MCP Server.
+//
+// Runs as a sibling DAPR service (app-id `memories-mcp`) with its own sidecar pinned to ports
+// 3600/50101 so it does not collide with the Memories Server sidecar at 3500/50001. The MCP
+// resource intentionally does NOT receive stateStore / pubSub / secretStore / conversationLlm
+// references — NFR11 + architecture.md §Cross-Cutting Concerns #4 (DAPR Secrets scoping) keep
+// embedding-provider API keys exclusively on the Memories Server. MCP reaches the server via
+// DAPR service invocation through its own sidecar.
+//
+// `WaitFor(server)` blocks the MCP startup probe until the Memories Server health check passes,
+// avoiding a flapping `/ready` row in the Aspire Dashboard during cold starts.
+IResourceBuilder<ProjectResource> mcp = builder
+    .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp")
+    .WithDaprSidecar(sidecar =>
+    {
+        sidecar = sidecar
+            .WithOptions(new DaprSidecarOptions
+            {
+                AppId = "memories-mcp",
+                DaprHttpPort = 3600,
+                DaprGrpcPort = 50101,
+                Config = daprConfigPath,
+            });
+    })
+    .WaitFor(server);
+
+if (appApiToken is not null)
+{
+    mcp = mcp.WithEnvironment("APP_API_TOKEN", appApiToken);
+}
+
+if (daprApiToken is not null)
+{
+    mcp = mcp.WithEnvironment("DAPR_API_TOKEN", daprApiToken);
+}
+
+mcp = PropagateJwtBearerAuthenticationEnvironment(mcp);
+
+_ = mcp;
+
 builder.Build().Run();
 
 static string EnsureTestDataRoot()
@@ -255,6 +295,30 @@ static (string? DaprApiToken, string? AppApiToken) ResolveDaprApiTokens()
     }
 
     return (daprToken, appToken);
+}
+
+static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnvironment(IResourceBuilder<ProjectResource> resource)
+{
+    string[] keys =
+    [
+        "Authentication__JwtBearer__Authority",
+        "Authentication__JwtBearer__Audience",
+        "Authentication__JwtBearer__Issuer",
+        "Authentication__JwtBearer__SigningKey",
+        "Authentication__JwtBearer__RequireHttpsMetadata",
+        "Authentication__JwtBearer__TenantClaimName",
+    ];
+
+    foreach (string key in keys)
+    {
+        string? value = Environment.GetEnvironmentVariable(key);
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            resource = resource.WithEnvironment(key, value);
+        }
+    }
+
+    return resource;
 }
 
 static string ResolveRepositoryRoot()

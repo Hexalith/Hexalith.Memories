@@ -52,7 +52,7 @@ public sealed class MemoriesClientSearchTests
         (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
 
         _ = await client.HybridSearchAsync(
-            new HybridSearchRequest(TenantId: "t1", Query: "needle", CaseId: "case-1", MaxResults: 25, Explain: true),
+            new HybridSearchRequest(TenantId: "t1", Query: "needle", CaseId: "case-1", MaxResults: 25, Explain: true, TokenBudget: 1_500),
             CancellationToken.None);
 
         string? uri = handler.Requests[0].RequestUri?.ToString();
@@ -60,6 +60,7 @@ public sealed class MemoriesClientSearchTests
         uri.ShouldContain("caseId=case-1");
         uri.ShouldContain("maxResults=25");
         uri.ShouldContain("explain=true");
+        uri.ShouldContain("tokenBudget=1500");
     }
 
     [Fact]
@@ -77,6 +78,22 @@ public sealed class MemoriesClientSearchTests
         uri.ShouldNotBeNull();
         uri.ShouldContain("axis=graph");
         uri.ShouldNotContain("query=");
+    }
+
+    [Fact]
+    public async Task SearchAsync_IncludesTokenBudgetWhenProvided()
+    {
+        SearchResult body = new() { Results = [], TotalCount = 0, HasIndexedMemoryUnits = true, Query = "needle" };
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.SearchAsync(
+            new SearchRequest(TenantId: "t1", Axis: "syntactic", Query: "needle", TokenBudget: 750),
+            CancellationToken.None);
+
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("tokenBudget=750");
     }
 
     [Fact]

@@ -130,4 +130,55 @@ public class SearchResultSerializationTests
 
         json.ShouldNotContain("caseGroups");
     }
+
+    [Fact]
+    public void BudgetMetadata_WhenDefault_ShouldBeOmittedFromJson()
+    {
+        var original = new SearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = false,
+            Query = "test",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("omittedCount");
+        json.ShouldNotContain("estimatedTokensTotal");
+        json.ShouldNotContain("omittedReason");
+        json.ShouldNotContain("degraded");
+        json.ShouldNotContain("unavailableAxes");
+        json.ShouldNotContain("axesUsed");
+    }
+
+    [Fact]
+    public void BudgetAndDegradationMetadata_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new SearchResult
+        {
+            Results = [],
+            TotalCount = 7,
+            HasIndexedMemoryUnits = true,
+            Query = "test",
+            OmittedCount = 3,
+            EstimatedTokensTotal = 1_024,
+            OmittedReason = OmittedReason.Combined,
+            Degraded = true,
+            UnavailableAxes = ["graph"],
+            AxesUsed = ["syntactic"],
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        SearchResult? deserialized = JsonSerializer.Deserialize<SearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.OmittedCount.ShouldBe(3);
+        deserialized.EstimatedTokensTotal.ShouldBe(1_024);
+        deserialized.OmittedReason.ShouldBe(OmittedReason.Combined);
+        deserialized.Degraded.ShouldBeTrue();
+        deserialized.UnavailableAxes.ShouldBe(["graph"]);
+        deserialized.AxesUsed.ShouldBe(["syntactic"]);
+        json.ShouldContain("\"omittedReason\":\"combined\"");
+    }
 }

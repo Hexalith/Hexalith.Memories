@@ -254,4 +254,50 @@ public class HybridSearchResultSerializationTests
         deserialized.AllEnabledAxesUnavailable.ShouldBeNull();
         json.ShouldNotContain("allEnabledAxesUnavailable");
     }
+
+    [Fact]
+    public void BudgetMetadata_WhenDefault_ShouldPreservePreExistingWireShape()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "test",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("omittedCount");
+        json.ShouldNotContain("estimatedTokensTotal");
+        json.ShouldNotContain("omittedReason");
+        json.ShouldNotContain("axesUsed");
+    }
+
+    [Fact]
+    public void BudgetMetadata_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 5,
+            Degraded = true,
+            UnavailableAxes = ["graph"],
+            Query = "test",
+            OmittedCount = 2,
+            EstimatedTokensTotal = 512,
+            OmittedReason = OmittedReason.TokenBudget,
+            AxesUsed = ["syntactic", "semantic"],
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        HybridSearchResult? deserialized = JsonSerializer.Deserialize<HybridSearchResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.OmittedCount.ShouldBe(2);
+        deserialized.EstimatedTokensTotal.ShouldBe(512);
+        deserialized.OmittedReason.ShouldBe(OmittedReason.TokenBudget);
+        deserialized.AxesUsed.ShouldBe(["syntactic", "semantic"]);
+    }
 }

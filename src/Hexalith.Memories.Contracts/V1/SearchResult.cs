@@ -29,4 +29,38 @@ public sealed record SearchResult
     /// <summary>Gets the per-case result distribution summary, or null when no case attribution is available.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<CaseGroupSummary>? CaseGroups { get; init; }
+
+    /// <summary>Gets the count of results omitted due to response truncation.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int OmittedCount { get; init; }
+
+    /// <summary>Gets the estimated token count before truncation.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long EstimatedTokensTotal { get; init; }
+
+    /// <summary>Gets the reason results were omitted from the response.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public OmittedReason OmittedReason { get; init; }
+
+    /// <summary>Gets a value indicating whether any expected backend component was unavailable.</summary>
+    /// <remarks>
+    /// Single-axis results use a simple boolean because only one search axis contributes to the result.
+    /// Hybrid results additionally expose <see cref="HybridSearchResult.AllEnabledAxesUnavailable"/>
+    /// to distinguish partial degradation from total multi-axis failure.
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Degraded { get; init; }
+
+    /// <summary>Gets the axis or component names that were unavailable at runtime.</summary>
+    /// <remarks>
+    /// Empty or omitted means the single-axis endpoint executed against its expected dependencies.
+    /// Hybrid callers should also inspect <see cref="HybridSearchResult.AllEnabledAxesUnavailable"/>
+    /// when they need the tri-state all-axes failure signal.
+    /// </remarks>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? UnavailableAxes { get; init; }
+
+    /// <summary>Gets the axes that contributed to the response.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? AxesUsed { get; init; }
 }

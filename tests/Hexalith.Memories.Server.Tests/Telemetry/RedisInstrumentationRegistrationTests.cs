@@ -140,6 +140,17 @@ public sealed class RedisInstrumentationRegistrationTests
     }
 
     [Fact]
+    public void TracerRegistration_RedisInstrumentationDisabled_AllowsServicesWithoutRedisConnections()
+    {
+        HostApplicationBuilder builder = CreateBuilder();
+        builder.AddServiceDefaults(configureRedisInstrumentation: false);
+
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+
+        provider.GetRequiredService<TracerProvider>().ShouldNotBeNull();
+    }
+
+    [Fact]
     public void ConfigureRedisInstrumentation_AppliesIdenticalFlushIntervalPerKey()
     {
         // Task 2.4(e): we don't accidentally diverge FlushInterval delegates per key (internal

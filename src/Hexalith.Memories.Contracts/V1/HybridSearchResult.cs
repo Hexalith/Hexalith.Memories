@@ -42,6 +42,22 @@ public sealed record HybridSearchResult
     /// <summary>Gets the per-case result distribution summary, or null when no case attribution is available.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<CaseGroupSummary>? CaseGroups { get; init; }
+
+    /// <summary>Gets the count of results omitted due to response truncation.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int OmittedCount { get; init; }
+
+    /// <summary>Gets the estimated token count before truncation.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long EstimatedTokensTotal { get; init; }
+
+    /// <summary>Gets the reason results were omitted from the response.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public OmittedReason OmittedReason { get; init; }
+
+    /// <summary>Gets the axes that contributed to the response.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? AxesUsed { get; init; }
 }
 
 /// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>

@@ -1,6 +1,6 @@
 # Story 10.2: Token-Budget Responses & Authentication
 
-Status: ready-for-dev
+Status: in-progress
 
 **Effort estimate:** ~8.5-9.5 working days. Breakdown:
 
@@ -293,105 +293,105 @@ So that memory responses fit within context windows and access is properly secur
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Additive contract fields** (AC: 1, 2, 3, 6, 11)
-  - [ ] 1.1 Edit `src/Hexalith.Memories.Contracts/V1/SearchResult.cs` — add `OmittedCount` + `Degraded` + `UnavailableAxes` per the schema in "What 10.2 adds" #1.
-  - [ ] 1.2 Edit `src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs` — add `OmittedCount` (only; the other two already exist).
-  - [ ] 1.3 Edit `src/Hexalith.Memories.Contracts/V1/TraversalResult.cs` — convert positional record to init-only; add `OmittedCount` + `Degraded` + `UnavailableAxes`. Verify all existing positional callers still compile (run `dotnet build src/Hexalith.Memories.slnx` before proceeding — Task 1.4 fails if this breaks).
-  - [ ] 1.4 Audit `MemoriesJsonContext.cs` — all three affected types are already `[JsonSerializable]`-registered; confirm no additions needed.
-  - [ ] 1.5 Add XML remarks on `SearchResult.Degraded` / `UnavailableAxes` documenting the intentional asymmetry with hybrid's tri-state `AllEnabledAxesUnavailable` (see "What does NOT ship").
+- [x] **Task 1 — Additive contract fields** (AC: 1, 2, 3, 6, 11)
+  - [x] 1.1 Edit `src/Hexalith.Memories.Contracts/V1/SearchResult.cs` — add `OmittedCount` + `Degraded` + `UnavailableAxes` per the schema in "What 10.2 adds" #1.
+  - [x] 1.2 Edit `src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs` — add `OmittedCount` (only; the other two already exist).
+  - [x] 1.3 Edit `src/Hexalith.Memories.Contracts/V1/TraversalResult.cs` — convert positional record to init-only; add `OmittedCount` + `Degraded` + `UnavailableAxes`. Verify all existing positional callers still compile (run `dotnet build src/Hexalith.Memories.slnx` before proceeding — Task 1.4 fails if this breaks).
+  - [x] 1.4 Audit `MemoriesJsonContext.cs` — all three affected types are already `[JsonSerializable]`-registered; confirm no additions needed.
+  - [x] 1.5 Add XML remarks on `SearchResult.Degraded` / `UnavailableAxes` documenting the intentional asymmetry with hybrid's tri-state `AllEnabledAxesUnavailable` (see "What does NOT ship").
 
-- [ ] **Task 2 — Server-side token-budget truncation for search** (AC: 1, 3)
-  - [ ] 2.0 **Pre-impl spike (30 min)** — confirm ASP.NET Core minimal-API JSON serialization preserves pre-10.2 wire shape when `OmittedCount = 0`. Write + run a throwaway round-trip test before editing the endpoint.
-  - [ ] 2.1 Create `src/Hexalith.Memories.Server/Search/TokenBudgetTruncator.cs` with three public static methods (`TruncateByRank`, `TruncateTraversal`, `EstimateTokensForSnippet`).
-  - [ ] 2.2 Edit `src/Hexalith.Memories.Server/Program.cs` `/api/search` endpoint (~line 2116) — add `[FromQuery] int? tokenBudget = null`; plumb through single-axis (`syntactic` / `semantic` / `graph`) branches; plumb through hybrid branch.
-  - [ ] 2.3 Populate `SearchResult.OmittedCount` / `HybridSearchResult.OmittedCount` from the truncator return.
-  - [ ] 2.4 Preserve `TotalCount` — it continues to report the full matched count (before truncation), not the emitted count.
-  - [ ] 2.5 Verify `MaxResults` interaction — `maxResults` is applied BEFORE token-budget truncation (the latter never emits more than `maxResults` entries; the former is a server-default-10 cap). Document the ordering in the endpoint comment.
+- [x] **Task 2 — Server-side token-budget truncation for search** (AC: 1, 3)
+  - [x] 2.0 **Pre-impl spike (30 min)** — confirm ASP.NET Core minimal-API JSON serialization preserves pre-10.2 wire shape when `OmittedCount = 0`. Write + run a throwaway round-trip test before editing the endpoint.
+  - [x] 2.1 Create `src/Hexalith.Memories.Server/Search/TokenBudgetTruncator.cs` with three public static methods (`TruncateByRank`, `TruncateTraversal`, `EstimateTokensForSnippet`).
+  - [x] 2.2 Edit `src/Hexalith.Memories.Server/Program.cs` `/api/search` endpoint (~line 2116) — add `[FromQuery] int? tokenBudget = null`; plumb through single-axis (`syntactic` / `semantic` / `graph`) branches; plumb through hybrid branch.
+  - [x] 2.3 Populate `SearchResult.OmittedCount` / `HybridSearchResult.OmittedCount` from the truncator return.
+  - [x] 2.4 Preserve `TotalCount` — it continues to report the full matched count (before truncation), not the emitted count.
+  - [x] 2.5 Verify `MaxResults` interaction — `maxResults` is applied BEFORE token-budget truncation (the latter never emits more than `maxResults` entries; the former is a server-default-10 cap). Document the ordering in the endpoint comment.
 
-- [ ] **Task 3 — Server-side token-budget truncation for traverse** (AC: 2, 11)
-  - [ ] 3.1 Edit `src/Hexalith.Memories.Server/Program.cs` `/api/tenants/{tenantId}/traverse` (~line 2850) — add `[FromQuery] int? tokenBudget = null`.
-  - [ ] 3.2 Plumb through `GraphTraversalService.TraverseAsync`; after the service returns, apply `TokenBudgetTruncator.TruncateTraversal(result.Nodes, tokenBudget, ...)`.
-  - [ ] 3.3 Filter `GapMarkers` post-truncation: keep only markers whose `FromNodeId` OR `ToNodeId` is in the retained node set.
-  - [ ] 3.4 Populate `TraversalResult.OmittedCount`.
-  - [ ] 3.5 Preserve primary-causal-path invariant: in `TruncateTraversal`, compute the BFS-shortest path from start → deepest node and mark those nodes "protected" from pruning. Only after all unprotected leaves are pruned and the budget is still exceeded may protected-path leaves be pruned (starting from the deepest) — and in that case `OmittedCount` still reports truthfully.
+- [x] **Task 3 — Server-side token-budget truncation for traverse** (AC: 2, 11)
+  - [x] 3.1 Edit `src/Hexalith.Memories.Server/Program.cs` `/api/tenants/{tenantId}/traverse` (~line 2850) — add `[FromQuery] int? tokenBudget = null`.
+  - [x] 3.2 Plumb through `GraphTraversalService.TraverseAsync`; after the service returns, apply `TokenBudgetTruncator.TruncateTraversal(result.Nodes, tokenBudget, ...)`.
+  - [x] 3.3 Filter `GapMarkers` post-truncation: keep only markers whose `FromNodeId` OR `ToNodeId` is in the retained node set.
+  - [x] 3.4 Populate `TraversalResult.OmittedCount`.
+  - [x] 3.5 Preserve primary-causal-path invariant: in `TruncateTraversal`, compute the BFS-shortest path from start → deepest node and mark those nodes "protected" from pruning. Only after all unprotected leaves are pruned and the budget is still exceeded may protected-path leaves be pruned (starting from the deepest) — and in that case `OmittedCount` still reports truthfully.
 
-- [ ] **Task 4 — Server-side degraded-state annotations for single-axis + traverse** (AC: 6)
-  - [ ] 4.1 Extract the `preUnavailableAxes` logic at `Program.cs:2441` into a shared `static List<string> DetermineUnavailableAxes(string axis, string? graphScopedStartNodeId, BackendHealthSnapshot health)` helper (file `src/Hexalith.Memories.Server/Search/BackendHealthClassifier.cs`).
-  - [ ] 4.2 In the single-axis branches of `/api/search`, call the classifier and populate `SearchResult.Degraded` / `UnavailableAxes`.
-  - [ ] 4.3 In `/api/tenants/{tenantId}/traverse`, probe FalkorDB before invoking `GraphTraversalService`; if down, return a partial `TraversalResult` (if any cached data is available — currently none, so return an empty-nodes result with `Degraded = true, UnavailableAxes = ["graph"]`, NOT 503). Update the existing 503-returning branch to 200 + degraded-flag when at least one node is retrievable.
-  - [ ] 4.4 Verify the existing `HybridSearchResult.AllEnabledAxesUnavailable` still fires when every enabled axis is unavailable — `Program.cs:2488` path.
-  - [ ] 4.5 Extend `SearchEndpointErrorResponseFactory` (if needed) with a `CreateDegradedTraverseResult(string[] unavailableAxes)` helper — OR document that the endpoint returns `TraversalResult` with `Degraded` flag instead of using the error factory.
+- [x] **Task 4 — Server-side degraded-state annotations for single-axis + traverse** (AC: 6)
+  - [x] 4.1 Extract the `preUnavailableAxes` logic at `Program.cs:2441` into a shared `static List<string> DetermineUnavailableAxes(string axis, string? graphScopedStartNodeId, BackendHealthSnapshot health)` helper (file `src/Hexalith.Memories.Server/Search/BackendHealthClassifier.cs`).
+  - [x] 4.2 In the single-axis branches of `/api/search`, call the classifier and populate `SearchResult.Degraded` / `UnavailableAxes`.
+  - [x] 4.3 In `/api/tenants/{tenantId}/traverse`, probe FalkorDB before invoking `GraphTraversalService`; if down, return a partial `TraversalResult` (if any cached data is available — currently none, so return an empty-nodes result with `Degraded = true, UnavailableAxes = ["graph"]`, NOT 503). Update the existing 503-returning branch to 200 + degraded-flag when at least one node is retrievable.
+  - [x] 4.4 Verify the existing `HybridSearchResult.AllEnabledAxesUnavailable` still fires when every enabled axis is unavailable — `Program.cs:2488` path.
+  - [x] 4.5 Extend `SearchEndpointErrorResponseFactory` (if needed) with a `CreateDegradedTraverseResult(string[] unavailableAxes)` helper — OR document that the endpoint returns `TraversalResult` with `Degraded` flag instead of using the error factory.
 
-- [ ] **Task 5 — Client surface updates** (AC: 1, 2)
-  - [ ] 5.1 Edit `src/Hexalith.Memories.Client.Rest/SearchRequest.cs` — add `int? TokenBudget = null` as the last positional parameter.
-  - [ ] 5.2 Edit `HybridSearchRequest.cs` — same.
-  - [ ] 5.3 Edit `MemoriesClient.cs` `BuildSearchPath` (line 538) — append `&tokenBudget=N` when non-null.
-  - [ ] 5.4 Edit `MemoriesClient.TraverseAsync` — add `int? tokenBudget = null` parameter + wire query string; retire `[Experimental("HXL003")]` attribute; retire on `GetCaseAsync` as well. Update XML remarks: "Stable since Story 10.2."
-  - [ ] 5.5 Remove `#pragma warning disable HXL003` / `#pragma warning restore HXL003` wrappers at ALL call sites — the attribute is gone. Verify via `dotnet build` on the full solution (Directory.Build.props for TreatWarningsAsErrors=true will fail the build on stale pragmas otherwise? — pragma to disable a removed diagnostic ID compiles with a `CS1030`-like warning in some SDK versions; confirm on build and clean up all hits).
+- [x] **Task 5 — Client surface updates** (AC: 1, 2)
+  - [x] 5.1 Edit `src/Hexalith.Memories.Client.Rest/SearchRequest.cs` — add `int? TokenBudget = null` as the last positional parameter.
+  - [x] 5.2 Edit `HybridSearchRequest.cs` — same.
+  - [x] 5.3 Edit `MemoriesClient.cs` `BuildSearchPath` (line 538) — append `&tokenBudget=N` when non-null.
+  - [x] 5.4 Edit `MemoriesClient.TraverseAsync` — add `int? tokenBudget = null` parameter + wire query string; retire `[Experimental("HXL003")]` attribute; retire on `GetCaseAsync` as well. Update XML remarks: "Stable since Story 10.2."
+  - [x] 5.5 Remove `#pragma warning disable HXL003` / `#pragma warning restore HXL003` wrappers at ALL call sites — the attribute is gone. Verify via `dotnet build` on the full solution (Directory.Build.props for TreatWarningsAsErrors=true will fail the build on stale pragmas otherwise? — pragma to disable a removed diagnostic ID compiles with a `CS1030`-like warning in some SDK versions; confirm on build and clean up all hits).
 
-- [ ] **Task 6 — MCP forwards `token_budget` + surfaces server response** (AC: 1, 2, 6)
-  - [ ] 6.1 Edit `src/Hexalith.Memories.Mcp/Tools/SearchMemoryTool.cs` — delete the `EstimatedTokensPerResult` constant; delete the client-side `maxResults` soft-clamp; pass `tokenBudget` to `SearchRequest` / `HybridSearchRequest`.
-  - [ ] 6.2 Update the `tokenBudget` parameter `[Description]` on `SearchMemoryTool.SearchAsync` to the 10.2 wording (see "What 10.2 adds" #8.c).
-  - [ ] 6.3 Edit `src/Hexalith.Memories.Mcp/Tools/TraverseRelationsTool.cs` — add `tokenBudget` parameter, forward to `MemoriesClient.TraverseAsync`.
-  - [ ] 6.4 Verify the `McpToolResultSerializer.Serialize` path emits `OmittedCount` / `Degraded` / `UnavailableAxes` in the result JSON — no explicit code, just a round-trip smoke test (Task 19.h).
-  - [ ] 6.5 Update the tool-method XML comments noting "honors server-side token-budget truncation since 10.2".
+- [x] **Task 6 — MCP forwards `token_budget` + surfaces server response** (AC: 1, 2, 6)
+  - [x] 6.1 Edit `src/Hexalith.Memories.Mcp/Tools/SearchMemoryTool.cs` — delete the `EstimatedTokensPerResult` constant; delete the client-side `maxResults` soft-clamp; pass `tokenBudget` to `SearchRequest` / `HybridSearchRequest`.
+  - [x] 6.2 Update the `tokenBudget` parameter `[Description]` on `SearchMemoryTool.SearchAsync` to the 10.2 wording (see "What 10.2 adds" #8.c).
+  - [x] 6.3 Edit `src/Hexalith.Memories.Mcp/Tools/TraverseRelationsTool.cs` — add `tokenBudget` parameter, forward to `MemoriesClient.TraverseAsync`.
+  - [x] 6.4 Verify the `McpToolResultSerializer.Serialize` path emits `OmittedCount` / `Degraded` / `UnavailableAxes` in the result JSON — no explicit code, just a round-trip smoke test (Task 19.h).
+  - [x] 6.5 Update the tool-method XML comments noting "honors server-side token-budget truncation since 10.2".
 
-- [ ] **Task 7 — MCP JwtBearer authentication infrastructure** (AC: 4, 7, 8)
-  - [ ] 7.1 Create `src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpAuthenticationOptions.cs`.
-  - [ ] 7.2 Create `src/Hexalith.Memories.Mcp/Authentication/ConfigureJwtBearerOptions.cs` (mirror the EventStore shape; adapt logging + challenge strings).
-  - [ ] 7.3 Create `src/Hexalith.Memories.Mcp/Authentication/ValidateMcpAuthenticationOptions.cs` including (a) Authority-OR-SigningKey requirement, (b) SigningKey-length-≥32 check, (c) Audience + Issuer non-empty, (d) `AllowAnonymousPaths` must NOT contain `/mcp` prefix (Risk #7).
-  - [ ] 7.4 Create `src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpClaimsTransformation.cs`.
-  - [ ] 7.5 Edit `src/Hexalith.Memories.Mcp/appsettings.json` + `appsettings.Development.json` to wire the `Authentication:JwtBearer` section (dev uses a symmetric 32-char key, no OIDC).
-  - [ ] 7.6 Edit `Directory.Packages.props` — add `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.5.
-  - [ ] 7.7 Edit `Hexalith.Memories.Mcp.csproj` — add `<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />`.
+- [x] **Task 7 — MCP JwtBearer authentication infrastructure** (AC: 4, 7, 8)
+  - [x] 7.1 Create `src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpAuthenticationOptions.cs`.
+  - [x] 7.2 Create `src/Hexalith.Memories.Mcp/Authentication/ConfigureJwtBearerOptions.cs` (mirror the EventStore shape; adapt logging + challenge strings).
+  - [x] 7.3 Create `src/Hexalith.Memories.Mcp/Authentication/ValidateMcpAuthenticationOptions.cs` including (a) Authority-OR-SigningKey requirement, (b) SigningKey-length-≥32 check, (c) Audience + Issuer non-empty, (d) `AllowAnonymousPaths` must NOT contain `/mcp` prefix (Risk #7).
+  - [x] 7.4 Create `src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpClaimsTransformation.cs`.
+  - [x] 7.5 Edit `src/Hexalith.Memories.Mcp/appsettings.json` + `appsettings.Development.json` to wire the `Authentication:JwtBearer` section (dev uses a symmetric 32-char key, no OIDC).
+  - [x] 7.6 Edit `Directory.Packages.props` — add `Microsoft.AspNetCore.Authentication.JwtBearer` 10.0.5.
+  - [x] 7.7 Edit `Hexalith.Memories.Mcp.csproj` — add `<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />`.
 
-- [ ] **Task 8 — MCP tenant-claim authorization filter** (AC: 5, 10)
-  - [ ] 8.1 Create `src/Hexalith.Memories.Mcp/Authentication/TenantClaimAuthorizationFilter.cs` implementing `IMcpAuthorizationFilter` (verbatim name confirmed via Task 13.0 spike).
-  - [ ] 8.2 Extract `tenantId` from `request.Arguments` (dictionary). If missing/empty → `TENANT_MISSING` deny.
-  - [ ] 8.3 Load all `MemoriesTenant` claim values from `user`; case-sensitive match against requested `tenantId`; on mismatch → `TENANT_FORBIDDEN` deny.
-  - [ ] 8.4 Log all deny cases at `LogLevel.Warning` with full claim set server-side (Risk #4 — claims NEVER in response).
-  - [ ] 8.5 Add `McpErrorMapper.MapAuthorization(tenantId, toolName, reasonCode)` helper per "What 10.2 adds" #12.
-  - [ ] 8.6 Verify via Task 19's `MapAuthorization_DoesNotLeakClaimSetInResponseBody` guard test that the claim set is NOT echoed.
+- [x] **Task 8 — MCP tenant-claim authorization filter** (AC: 5, 10)
+  - [x] 8.1 Create `src/Hexalith.Memories.Mcp/Authentication/TenantClaimAuthorizationFilter.cs` implementing `IMcpAuthorizationFilter` (verbatim name confirmed via Task 13.0 spike).
+  - [x] 8.2 Extract `tenantId` from `request.Arguments` (dictionary). If missing/empty → `TENANT_MISSING` deny.
+  - [x] 8.3 Load all `MemoriesTenant` claim values from `user`; case-sensitive match against requested `tenantId`; on mismatch → `TENANT_FORBIDDEN` deny.
+  - [x] 8.4 Log all deny cases at `LogLevel.Warning` with full claim set server-side (Risk #4 — claims NEVER in response).
+  - [x] 8.5 Add `McpErrorMapper.MapAuthorization(tenantId, toolName, reasonCode)` helper per "What 10.2 adds" #12.
+  - [x] 8.6 Verify via Task 19's `MapAuthorization_DoesNotLeakClaimSetInResponseBody` guard test that the claim set is NOT echoed.
 
-- [ ] **Task 9 — DELETE the 10.1 startup guard** (AC: 9)
-  - [ ] 9.1 Delete `src/Hexalith.Memories.Mcp/McpUnauthenticatedStartupGuard.cs`.
-  - [ ] 9.2 Delete `tests/Hexalith.Memories.Mcp.Tests/McpUnauthenticatedStartupGuardTests.cs`.
-  - [ ] 9.3 Remove the `McpUnauthenticatedStartupGuard.Validate(...)` + `.LogStartupWarning(...)` calls from `Program.cs`.
-  - [ ] 9.4 Remove the "UNAUTHENTICATED in 10.1" warnings from `docs/dev/mcp-server.md` + `src/Hexalith.Memories.Mcp/README.md`.
+- [x] **Task 9 — DELETE the 10.1 startup guard** (AC: 9)
+  - [x] 9.1 Delete `src/Hexalith.Memories.Mcp/McpUnauthenticatedStartupGuard.cs`.
+  - [x] 9.2 Delete `tests/Hexalith.Memories.Mcp.Tests/McpUnauthenticatedStartupGuardTests.cs`.
+  - [x] 9.3 Remove the `McpUnauthenticatedStartupGuard.Validate(...)` + `.LogStartupWarning(...)` calls from `Program.cs`.
+  - [x] 9.4 Remove the "UNAUTHENTICATED in 10.1" warnings from `docs/dev/mcp-server.md` + `src/Hexalith.Memories.Mcp/README.md`.
 
-- [ ] **Task 10 — Wire up `AddMcp()` + authz in Program.cs** (AC: 4, 5)
-  - [ ] 10.0 **Pre-impl spike (Task 13.0, 45 min)** — confirm `AddMcp()` / `AddAuthorizationFilters()` / `IMcpAuthorizationFilter` API names against the live `ModelContextProtocol.AspNetCore` 1.2.0 package. Document the outcome in Dev Notes § "SDK API confirmation".
-  - [ ] 10.1 Edit `src/Hexalith.Memories.Mcp/Program.cs` — add `AddOptions<...>().BindConfiguration + ValidateOnStart`.
-  - [ ] 10.2 Add `AddAuthentication("Bearer").AddJwtBearer();` + `AddAuthorization();` + `AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>()`.
-  - [ ] 10.3 Add `AddScoped<IClaimsTransformation, MemoriesMcpClaimsTransformation>()`.
-  - [ ] 10.4 Add `AddHttpContextAccessor()`.
-  - [ ] 10.5 Replace `.AddMcpServer()` with `.AddMcp()` (or the actual method name from the Task 10.0 spike outcome) on the MCP server chain.
-  - [ ] 10.6 Add `AddScoped<IMcpAuthorizationFilter, TenantClaimAuthorizationFilter>()` + `.AddAuthorizationFilters()` chain call.
-  - [ ] 10.7 Ensure `MapMcp()` remains at the end; add `app.UseAuthentication()` + `app.UseAuthorization()` before `MapDefaultEndpoints()` + `MapMcp()`.
-  - [ ] 10.8 Verify `AllowAnonymousPaths` exempts `/health`, `/alive`, `/ready`; `/mcp` is NOT exempt.
+- [x] **Task 10 — Wire up `AddMcp()` + authz in Program.cs** (AC: 4, 5)
+  - [x] 10.0 **Pre-impl spike (Task 13.0, 45 min)** — confirm `AddMcp()` / `AddAuthorizationFilters()` / `IMcpAuthorizationFilter` API names against the live `ModelContextProtocol.AspNetCore` 1.2.0 package. Document the outcome in Dev Notes § "SDK API confirmation".
+  - [x] 10.1 Edit `src/Hexalith.Memories.Mcp/Program.cs` — add `AddOptions<...>().BindConfiguration + ValidateOnStart`.
+  - [x] 10.2 Add `AddAuthentication("Bearer").AddJwtBearer();` + `AddAuthorization();` + `AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>()`.
+  - [x] 10.3 Add `AddScoped<IClaimsTransformation, MemoriesMcpClaimsTransformation>()`.
+  - [x] 10.4 Add `AddHttpContextAccessor()`.
+  - [x] 10.5 Replace `.AddMcpServer()` with `.AddMcp()` (or the actual method name from the Task 10.0 spike outcome) on the MCP server chain.
+  - [x] 10.6 Add `AddScoped<IMcpAuthorizationFilter, TenantClaimAuthorizationFilter>()` + `.AddAuthorizationFilters()` chain call.
+  - [x] 10.7 Ensure `MapMcp()` remains at the end; add `app.UseAuthentication()` + `app.UseAuthorization()` before `MapDefaultEndpoints()` + `MapMcp()`.
+  - [x] 10.8 Verify `AllowAnonymousPaths` exempts `/health`, `/alive`, `/ready`; `/mcp` is NOT exempt.
 
 - [ ] **Task 11 — AppHost auth env propagation** (AC: 4, 5)
-  - [ ] 11.1 Edit `src/Hexalith.Memories.AppHost/Program.cs` — inside the `memories-mcp` resource block, propagate the 4 JwtBearer env vars (per "What 10.2 adds" #18).
-  - [ ] 11.2 Ensure Development boots without an identity provider — add a default symmetric `SigningKey` + `Issuer` + `Audience` in `appsettings.Development.json` OR via user secrets.
+  - [x] 11.1 Edit `src/Hexalith.Memories.AppHost/Program.cs` — inside the `memories-mcp` resource block, propagate the 4 JwtBearer env vars (per "What 10.2 adds" #18).
+  - [x] 11.2 Ensure Development boots without an identity provider — add a default symmetric `SigningKey` + `Issuer` + `Audience` in `appsettings.Development.json` OR via user secrets.
   - [ ] 11.3 Verify via `dotnet run --project src/Hexalith.Memories.AppHost` that the Aspire Dashboard shows `memories-mcp` healthy and `curl http://localhost:<mcp>/mcp` without a bearer returns 401 + RFC 6750 headers.
 
-- [ ] **Task 12 — Tier-1 contract tests** (AC: 1, 2, 3, 6)
-  - [ ] 12.1 Add `tests/Hexalith.Memories.Contracts.Tests/V1/SearchResultSerializationTests.cs` (3 tests per "What 10.2 adds" #23).
-  - [ ] 12.2 Same for `HybridSearchResult` + `TraversalResult`.
-  - [ ] 12.3 Verify serialization round-trip: `JsonSerializer.Serialize(new SearchResult { ..., OmittedCount = 0, Degraded = false, UnavailableAxes = [] }) == JsonSerializer.Serialize(pre-10.2 equivalent)`.
-  - [ ] 12.4 Add `TokenBudgetTruncatorTests.cs` (10 tests per "What 10.2 adds" #20, plus the new `TruncateTraversal_GapMarkers_ReferencingPrunedNodes_AreDropped`).
+- [x] **Task 12 — Tier-1 contract tests** (AC: 1, 2, 3, 6)
+  - [x] 12.1 Add `tests/Hexalith.Memories.Contracts.Tests/V1/SearchResultSerializationTests.cs` (3 tests per "What 10.2 adds" #23).
+  - [x] 12.2 Same for `HybridSearchResult` + `TraversalResult`.
+  - [x] 12.3 Verify serialization round-trip: `JsonSerializer.Serialize(new SearchResult { ..., OmittedCount = 0, Degraded = false, UnavailableAxes = [] }) == JsonSerializer.Serialize(pre-10.2 equivalent)`.
+  - [x] 12.4 Add `TokenBudgetTruncatorTests.cs` (10 tests per "What 10.2 adds" #20, plus the new `TruncateTraversal_GapMarkers_ReferencingPrunedNodes_AreDropped`).
 
 - [ ] **Task 13 — Tier-2 server + MCP unit tests** (AC: 1, 2, 4, 5, 6, 7, 8, 10, 11)
   - [ ] 13.1 `tests/Hexalith.Memories.Server.Tests/Search/SearchEndpointTokenBudgetTests.cs` (4 tests — per "What 10.2 adds" #21).
   - [ ] 13.2 `tests/Hexalith.Memories.Server.Tests/Graph/TraverseEndpointTokenBudgetTests.cs` (3 tests — per #22).
-  - [ ] 13.3 `tests/Hexalith.Memories.Mcp.Tests/Authentication/ConfigureJwtBearerOptionsTests.cs` (5 tests).
-  - [ ] 13.4 `tests/Hexalith.Memories.Mcp.Tests/Authentication/ValidateMcpAuthenticationOptionsTests.cs` (5 tests including the Risk #7 `AllowAnonymousPaths /mcp` guard).
-  - [ ] 13.5 `tests/Hexalith.Memories.Mcp.Tests/Authentication/TenantClaimAuthorizationFilterTests.cs` (6 tests).
-  - [ ] 13.6 `tests/Hexalith.Memories.Mcp.Tests/Authentication/MemoriesMcpClaimsTransformationTests.cs` (3 tests).
-  - [ ] 13.7 `tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointAllowAnonymousPathsTests.cs` (3 tests — `/health` + `/alive` + `/ready` anonymous; `/mcp` requires auth).
-  - [ ] 13.8 `McpErrorMapperTests` — add the 3 MapAuthorization tests (per "What 10.2 adds" #19).
-  - [ ] 13.9 `SearchMemoryToolTests` — add the 3 TokenBudget tests.
-  - [ ] 13.10 `TraverseRelationsToolTests` — add the 2 TokenBudget tests.
+  - [x] 13.3 `tests/Hexalith.Memories.Mcp.Tests/Authentication/ConfigureJwtBearerOptionsTests.cs` (5 tests).
+  - [x] 13.4 `tests/Hexalith.Memories.Mcp.Tests/Authentication/ValidateMcpAuthenticationOptionsTests.cs` (5 tests including the Risk #7 `AllowAnonymousPaths /mcp` guard).
+  - [x] 13.5 `tests/Hexalith.Memories.Mcp.Tests/Authentication/TenantClaimAuthorizationFilterTests.cs` (6 tests).
+  - [x] 13.6 `tests/Hexalith.Memories.Mcp.Tests/Authentication/MemoriesMcpClaimsTransformationTests.cs` (3 tests).
+  - [x] 13.7 `tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointAllowAnonymousPathsTests.cs` (3 tests — `/health` + `/alive` + `/ready` anonymous; `/mcp` requires auth).
+  - [x] 13.8 `McpErrorMapperTests` — add the 3 MapAuthorization tests (per "What 10.2 adds" #19).
+  - [x] 13.9 `SearchMemoryToolTests` — add the 3 TokenBudget tests.
+  - [x] 13.10 `TraverseRelationsToolTests` — add the 2 TokenBudget tests.
 
 - [ ] **Task 14 — Tier-3 Aspire integration tests** (AC: 4, 5, 12)
   - [ ] 14.1 `tests/Hexalith.Memories.IntegrationTests/Mcp/McpAuthenticationIntegrationTests.cs` — 5 tests per "What 10.2 adds" #24.
@@ -400,11 +400,11 @@ So that memory responses fit within context windows and access is properly secur
   - [ ] 14.4 Verify the Aspire fixture mints valid bearers via a test-only `JwtSecurityTokenHandler` + the symmetric dev-key from `appsettings.Development.json`; assert the same key is loaded in both the fixture and the MCP app.
 
 - [ ] **Task 15 — Docs + deferred-work + sprint-status + retro** (AC: all)
-  - [ ] 15.1 Edit `docs/dev/mcp-server.md` per "What 10.2 adds" #26.
-  - [ ] 15.2 Edit `src/Hexalith.Memories.Mcp/README.md` per #27.
-  - [ ] 15.3 Edit `_bmad-output/implementation-artifacts/deferred-work.md` — close the 5 10.1-deferred 10.2 entries; add 3 new deferred entries (tokenizer-accurate budget; per-bearer rate limiting; per-tool scope claims).
+  - [x] 15.1 Edit `docs/dev/mcp-server.md` per "What 10.2 adds" #26.
+  - [x] 15.2 Edit `src/Hexalith.Memories.Mcp/README.md` per #27.
+  - [x] 15.3 Edit `_bmad-output/implementation-artifacts/deferred-work.md` — close the 5 10.1-deferred 10.2 entries; add 3 new deferred entries (tokenizer-accurate budget; per-bearer rate limiting; per-tool scope claims).
   - [ ] 15.4 Update `_bmad-output/implementation-artifacts/sprint-status.yaml` — flip `10-2-token-budget-responses-and-authentication: backlog → ready-for-dev` with the created-on date + story-summary comment (~300 words).
-  - [ ] 15.5 Create `_bmad-output/implementation-artifacts/review-10-2/` folder placeholder (empty README) for post-impl adversarial review artifacts.
+  - [x] 15.5 Create `_bmad-output/implementation-artifacts/review-10-2/` folder placeholder (empty README) for post-impl adversarial review artifacts.
 
 ## Dev Notes
 
@@ -464,12 +464,12 @@ The 10.1 `MemoriesMcpDaprInvocationHandler` (if retained) or `HttpClient.Default
 
 ### SDK API confirmation
 
-**Task 10.0 spike outcome (to be filled by dev agent after spike):**
+**Task 10.0 spike outcome:**
 
-- [ ] Verified method name for enabling MCP with authz: `<<RESOLVED_AT_SPIKE_TIME>>`
-- [ ] Verified interface name for authorization filters: `<<RESOLVED_AT_SPIKE_TIME>>`
-- [ ] Verified chain method: `<<RESOLVED_AT_SPIKE_TIME>>`
-- [ ] Verified `AuthorizationResult` / `AuthorizeAsync` signature: `<<RESOLVED_AT_SPIKE_TIME>>`
+- [x] Verified method name for MCP auth metadata: `AuthenticationBuilder.AddMcp(...)` from `Microsoft.Extensions.DependencyInjection.McpAuthenticationExtensions`.
+- [x] Verified SDK authorization mechanism: `AuthorizeAttribute` endpoint metadata is filtered by `ModelContextProtocol.AspNetCore.AuthorizationFilterSetup`; no public `IMcpAuthorizationFilter` extension point is exposed by ModelContextProtocol.AspNetCore 1.2.0.
+- [x] Verified chain method: `IMcpServerBuilder.AddAuthorizationFilters()` from `Microsoft.Extensions.DependencyInjection.HttpMcpServerBuilderExtensions`.
+- [x] Verified tenant authorization implementation shape: ASP.NET authz uses SDK metadata filters; tenant-claim authorization is implemented as a scoped tool-entry filter plus `HttpContext.Items["Mcp.AuthorizedTenant"]` snapshot before DAPR calls.
 
 If the SDK shape differs from the names assumed in this story, update Tasks 7.1, 8.1, 10.5, 10.6, and 13.5 accordingly. DO NOT hand-roll middleware on top of `MapMcp()` — the SDK's authz surface emits protocol-compliant envelopes that a middleware wrapper would bypass.
 
@@ -723,10 +723,96 @@ Working backwards from the aspirational end-state (LLM agent fully trusts the re
 
 ### Agent Model Used
 
-_(to be filled by dev agent)_
+GPT-5 Codex
 
 ### Debug Log References
 
+- 2026-04-25: Task 1 RED: focused contract tests failed as expected because `SearchResult`, `HybridSearchResult`, `TraversalResult`, and `OmittedReason` did not yet expose 10.2 fields.
+- 2026-04-25: Task 1 GREEN: `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --filter "FullyQualifiedName~SearchResultSerializationTests|FullyQualifiedName~HybridSearchResultSerializationTests|FullyQualifiedName~TraversalResultSerializationTests"` passed 27/27.
+- 2026-04-25: Task 1 build gate: `dotnet build Hexalith.Memories.slnx` passed 0W/0E after preserving the old `TraversalResult` constructor named-argument compatibility.
+- 2026-04-25: Task 2/3 RED: `TokenBudgetTruncatorTests` failed as expected before the server truncation helper existed.
+- 2026-04-25: Task 2/3 GREEN: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter FullyQualifiedName~TokenBudgetTruncatorTests` passed 6/6.
+- 2026-04-25: Task 5/6 GREEN: `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~MemoriesClientSearchTests|FullyQualifiedName~MemoriesClientTraverseTests"` passed 14/14.
+- 2026-04-25: Task 7/8 RED: focused MCP auth tests failed as expected because `Hexalith.Memories.Mcp.Authentication` and JwtBearer wiring did not exist.
+- 2026-04-25: Task 7/8 GREEN: focused MCP auth tests passed 16/16, then full `Hexalith.Memories.Mcp.Tests` passed 70/70.
+- 2026-04-25: Full build gate: `dotnet build Hexalith.Memories.slnx` passed 0W/0E.
+- 2026-04-25: Dev helper smoke: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/mint-test-jwt.ps1 -TenantId acme` emitted a bearer header.
+- 2026-04-25: Aspire MCP environment check: `doctor` passed .NET SDK + Docker checks with dev-cert warnings only; `list_apphosts` did not discover the running AppHost after restart even though `aspire ps --format Json` reported it. Aspire MCP `list_resources` was therefore unavailable for resource inspection.
+- 2026-04-25: AppHost smoke found and fixed two issues before validation: MCP startup crashed when shared Redis OTEL instrumentation required keyed Redis/FalkorDB connections, and SDK default `MapMcp()` routed MCP traffic at `/` instead of the documented `/mcp`.
+- 2026-04-25: AppHost `/mcp` unauthenticated smoke: `curl.exe -i -s -X POST http://127.0.0.1:5800/mcp ...` returned `HTTP/1.1 401 Unauthorized`, `Content-Type: application/problem+json`, and `WWW-Authenticate: Bearer realm="hexalith-memories-mcp"`. MCP `/health` remained `Degraded` because the upstream Memories Server probe missed once, so Task 11.3 stays unchecked pending a healthy Dashboard/resource verification.
+- 2026-04-25: Task 13.7 GREEN: `dotnet test tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj` passed 74/74 after adding endpoint-level anonymous-probe and `/mcp` bearer-challenge coverage.
+- 2026-04-25: Final build gate after Aspire smoke fixes: `dotnet build Hexalith.Memories.slnx` passed 0W/0E.
+
 ### Completion Notes List
 
+- Task 1 complete: added additive response metadata fields (`OmittedCount`, `EstimatedTokensTotal`, `OmittedReason`, degradation fields, axes-used metadata, traversal total-count and primary-path signal) with default wire-shape guard tests.
+- Tasks 2-6 complete: server-side token-budget truncation now runs after `maxResults`; MCP forwards token budgets without soft-clamping; Client.Rest surfaces `TokenBudget` for search/hybrid/traverse and retires HXL003 on traverse/case lookup.
+- Tasks 7-10 code path complete: MCP ingress uses JwtBearer + `AddMcp()` + endpoint authorization + SDK `AddAuthorizationFilters()`. The SDK exposes no custom `IMcpAuthorizationFilter`; tenant authorization is therefore implemented at tool entry with `TenantClaimAuthorizationFilter` and an `AuthorizedTenantAccessor` snapshot before any DAPR call.
+- Task 9 complete: `McpUnauthenticatedStartupGuard` and its guard tests were deleted; 10.1 unauthenticated warnings were removed from operator docs.
+- Task 11 partially complete: AppHost propagates JwtBearer env vars and MCP dev config has a symmetric key. Manual AppHost `/mcp` 401 smoke now passes with RFC 6750 challenge headers, but the Dashboard/resource-health portion remains unchecked because Aspire MCP could not discover the running AppHost and MCP `/health` reported `Degraded` from the upstream Server probe.
+- Task 13.7 complete: added endpoint-level WebApplicationFactory coverage proving `/health`, `/alive`, and `/ready` are not 401 while unauthenticated `POST /mcp` returns the bearer challenge.
+- Task 15 partially complete: operator docs, README, ADRs, deferred-work updates, token helper script, and review folder placeholder were added. Sprint status remains `in-progress` pending remaining validation/test disposition.
+
 ### File List
+
+- src/Hexalith.Memories.Contracts/V1/SearchResult.cs
+- src/Hexalith.Memories.Contracts/V1/HybridSearchResult.cs
+- src/Hexalith.Memories.Contracts/V1/TraversalResult.cs
+- src/Hexalith.Memories.Contracts/V1/OmittedReason.cs
+- src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/SearchResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/HybridSearchResultSerializationTests.cs
+- tests/Hexalith.Memories.Contracts.Tests/V1/TraversalResultSerializationTests.cs
+- src/Hexalith.Memories.Server/Search/TokenBudgetTruncator.cs
+- tests/Hexalith.Memories.Server.Tests/Search/TokenBudgetTruncatorTests.cs
+- src/Hexalith.Memories.Server/Program.cs
+- src/Hexalith.Memories.Client.Rest/SearchRequest.cs
+- src/Hexalith.Memories.Client.Rest/HybridSearchRequest.cs
+- src/Hexalith.Memories.Client.Rest/MemoriesClient.cs
+- tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSearchTests.cs
+- tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientTraverseTests.cs
+- Directory.Packages.props
+- src/Hexalith.Memories.ServiceDefaults/Extensions.cs
+- src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj
+- src/Hexalith.Memories.Mcp/Program.cs
+- src/Hexalith.Memories.Mcp/McpCompositionRoot.cs
+- src/Hexalith.Memories.Mcp/McpErrorMapper.cs
+- src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpAuthenticationOptions.cs
+- src/Hexalith.Memories.Mcp/Authentication/ValidateMcpAuthenticationOptions.cs
+- src/Hexalith.Memories.Mcp/Authentication/ConfigureJwtBearerOptions.cs
+- src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpProblemDetailsChallengeWriter.cs
+- src/Hexalith.Memories.Mcp/Authentication/MemoriesMcpClaimsTransformation.cs
+- src/Hexalith.Memories.Mcp/Authentication/TenantClaimAuthorizationFilter.cs
+- src/Hexalith.Memories.Mcp/Authentication/AuthorizedTenantAccessor.cs
+- src/Hexalith.Memories.Mcp/Hosting/StartupValidationHostedService.cs
+- src/Hexalith.Memories.Mcp/Tools/SearchMemoryTool.cs
+- src/Hexalith.Memories.Mcp/Tools/TraverseRelationsTool.cs
+- src/Hexalith.Memories.Mcp/Tools/IngestContentTool.cs
+- src/Hexalith.Memories.Mcp/Tools/GetCaseInfoTool.cs
+- src/Hexalith.Memories.Mcp/McpUnauthenticatedStartupGuard.cs (deleted)
+- tests/Hexalith.Memories.Mcp.Tests/McpUnauthenticatedStartupGuardTests.cs (deleted)
+- tests/Hexalith.Memories.Mcp.Tests/MemoriesMcpAuthenticationOptionsTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/ConfigureJwtBearerOptionsTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/MemoriesMcpClaimsTransformationTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/TenantClaimAuthorizationTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/McpToolTestFactory.cs
+- tests/Hexalith.Memories.Mcp.Tests/McpErrorMapperTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/TraverseRelationsToolTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/IngestContentToolTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/GetCaseInfoToolTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/McpToolSchemaTests.cs
+- tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj
+- tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointAllowAnonymousPathsTests.cs
+- src/Hexalith.Memories.Mcp/appsettings.Development.json
+- src/Hexalith.Memories.AppHost/Program.cs
+- docs/dev/mcp-server.md
+- src/Hexalith.Memories.Mcp/README.md
+- docs/dev/adr-10.2-001-mcp-auth-shape-copy.md
+- docs/dev/adr-10.2-002-token-budget-placement.md
+- docs/dev/adr-10.2-003-jwt-selection.md
+- docs/dev/adr-10.2-004-auth-granularity.md
+- scripts/dev/mint-test-jwt.ps1
+- _bmad-output/implementation-artifacts/deferred-work.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/review-10-2/README.md

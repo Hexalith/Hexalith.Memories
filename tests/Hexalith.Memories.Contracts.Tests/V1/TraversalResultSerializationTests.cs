@@ -105,4 +105,47 @@ public class TraversalResultSerializationTests
 
         json.ShouldContain("\"gapMarkers\":[]");
     }
+
+    [Fact]
+    public void BudgetMetadata_WhenDefault_ShouldBeOmittedFromJson()
+    {
+        var original = new TraversalResult("mu-start", 2, [], 0);
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+
+        json.ShouldNotContain("omittedCount");
+        json.ShouldNotContain("estimatedTokensTotal");
+        json.ShouldNotContain("omittedReason");
+        json.ShouldNotContain("degraded");
+        json.ShouldNotContain("unavailableAxes");
+        json.ShouldNotContain("primaryPathIntact");
+    }
+
+    [Fact]
+    public void BudgetAndDegradationMetadata_WhenPopulated_ShouldRoundTrip()
+    {
+        var original = new TraversalResult("mu-start", 2, [], 10)
+        {
+            OmittedCount = 4,
+            EstimatedTokensTotal = 2_048,
+            OmittedReason = OmittedReason.Combined,
+            Degraded = true,
+            UnavailableAxes = ["graph"],
+            PrimaryPathIntact = false,
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TraversalResult? deserialized = JsonSerializer.Deserialize<TraversalResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.StartNodeId.ShouldBe("mu-start");
+        deserialized.TotalCount.ShouldBe(10);
+        deserialized.TotalNodeCount.ShouldBe(10);
+        deserialized.OmittedCount.ShouldBe(4);
+        deserialized.EstimatedTokensTotal.ShouldBe(2_048);
+        deserialized.OmittedReason.ShouldBe(OmittedReason.Combined);
+        deserialized.Degraded.ShouldBeTrue();
+        deserialized.UnavailableAxes.ShouldBe(["graph"]);
+        deserialized.PrimaryPathIntact.ShouldBeFalse();
+    }
 }

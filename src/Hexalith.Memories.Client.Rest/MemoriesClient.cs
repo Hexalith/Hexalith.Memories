@@ -118,7 +118,8 @@ public class MemoriesClient
             query: request.Query,
             caseId: request.CaseId,
             maxResults: request.MaxResults,
-            explain: request.Explain);
+            explain: request.Explain,
+            tokenBudget: request.TokenBudget);
 
         using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -167,7 +168,8 @@ public class MemoriesClient
             query: request.Query,
             caseId: request.CaseId,
             maxResults: request.MaxResults,
-            explain: request.Explain);
+            explain: request.Explain,
+            tokenBudget: request.TokenBudget);
 
         using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -541,7 +543,8 @@ public class MemoriesClient
         string? query,
         string? caseId,
         int maxResults,
-        bool explain)
+        bool explain,
+        int? tokenBudget)
     {
         var builder = new StringBuilder("api/search?tenantId=");
         builder.Append(Uri.EscapeDataString(tenantId));
@@ -566,6 +569,11 @@ public class MemoriesClient
         if (explain)
         {
             builder.Append("&explain=true");
+        }
+
+        if (tokenBudget is not null)
+        {
+            builder.Append("&tokenBudget=").Append(tokenBudget.Value.ToString(CultureInfo.InvariantCulture));
         }
 
         return builder.ToString();
@@ -709,6 +717,135 @@ public class MemoriesClient
                 ex);
         }
     }
+
+    /// <summary>
+    /// Story 10.1 — fetches a graph traversal from the starting memory unit via
+    /// <c>GET /api/tenants/{tenantId}/traverse</c>.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="startNodeId">The memory unit id to start traversal from.</param>
+    /// <param name="depth">Maximum traversal depth; the server clamps this to <c>[0, 10]</c>.</param>
+    /// <param name="caseId">Optional case identifier scoping the traversal.</param>
+    /// <param name="edgeTypes">Optional edge type filter; <see langword="null"/> uses the server defaults.</param>
+    /// <param name="tokenBudget">Optional maximum output tokens; null means no server-side budget truncation.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The traversal result with ordered nodes, edges, and gap markers.</returns>
+    /// <remarks>Stable since Story 10.2.</remarks>
+    public virtual async Task<TraversalResult> TraverseAsync(
+        string tenantId,
+        string startNodeId,
+        int depth = 2,
+        string? caseId = null,
+        IReadOnlyList<EdgeType>? edgeTypes = null,
+        CancellationToken ct = default,
+        int? tokenBudget = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
+
+        var builder = new StringBuilder("api/tenants/");
+        builder.Append(Uri.EscapeDataString(tenantId));
+        builder.Append("/traverse?startNodeId=");
+        builder.Append(Uri.EscapeDataString(startNodeId));
+        builder.Append("&depth=");
+        builder.Append(depth.ToString(CultureInfo.InvariantCulture));
+
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            builder.Append("&caseId=");
+            builder.Append(Uri.EscapeDataString(caseId));
+        }
+
+        if (edgeTypes is { Count: > 0 })
+        {
+            builder.Append("&edgeTypes=");
+            string joined = string.Join(
+                ',',
+                edgeTypes.Select(static et => CamelCase(et.ToString())));
+            builder.Append(Uri.EscapeDataString(joined));
+        }
+
+        if (tokenBudget is not null)
+        {
+            builder.Append("&tokenBudget=");
+            builder.Append(tokenBudget.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        using HttpResponseMessage response = await _httpClient
+            .GetAsync(builder.ToString(), ct)
+            .ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            TraversalResult? result = await response.Content
+                .ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return result ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty traversal body.");
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as TraversalResult.",
+                jsonException);
+        }
+    }
+
+    /// <summary>
+    /// Story 10.1 — fetches case summary for the MCP <c>get_case_info</c> tool via
+    /// <c>GET /api/tenants/{tenantId}/cases/{caseId}</c>.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The case summary.</returns>
+    /// <remarks>Stable since Story 10.2.</remarks>
+    public virtual async Task<Case> GetCaseAsync(string tenantId, string caseId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            Case? caseResult = await response.Content
+                .ReadFromJsonAsync<Case>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return caseResult ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty case body.");
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as Case.",
+                jsonException);
+        }
+    }
+
+    private static string CamelCase(string value)
+        => value.Length == 0
+            ? value
+            : string.Create(value.Length, value, static (span, source) =>
+            {
+                source.AsSpan().CopyTo(span);
+                span[0] = char.ToLowerInvariant(span[0]);
+            });
 
     /// <summary>
     /// Story 8.2 — schedules a consistency verification workflow for the tenant. Fire-and-forget;

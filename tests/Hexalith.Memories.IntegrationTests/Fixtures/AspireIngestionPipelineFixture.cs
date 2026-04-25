@@ -55,6 +55,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
     public HttpClient MemoriesClient { get; private set; } = null!;
 
+    /// <summary>Gets the HTTP client for the MCP server resource (Story 10.1).</summary>
+    public HttpClient McpClient { get; private set; } = null!;
+
+    /// <summary>Gets the endpoint URI for the MCP server resource (Story 10.1).</summary>
+    public Uri McpEndpoint { get; private set; } = null!;
+
     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
     public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");
 
@@ -321,6 +327,25 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         await WaitForEndpointAsync(
             MemoriesClient,
+            "/health",
+            [HttpStatusCode.OK],
+            TimeSpan.FromMinutes(3),
+            TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+
+        // Story 10.1 — wait for the MCP service and expose its endpoint + client. The MCP /ready
+        // probe waits on the upstream Memories Server (3-strike rolling window); since we already
+        // confirmed memories-server /health above, the MCP readiness check converges quickly.
+        _ = await _app.ResourceNotifications
+            .WaitForResourceHealthyAsync("memories-mcp", cancellationToken)
+            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
+            .ConfigureAwait(false);
+
+        McpClient = _app.CreateHttpClient("memories-mcp");
+        McpClient.Timeout = TimeSpan.FromSeconds(60);
+        McpEndpoint = _app.GetEndpoint("memories-mcp", "http");
+
+        await WaitForEndpointAsync(
+            McpClient,
             "/health",
             [HttpStatusCode.OK],
             TimeSpan.FromMinutes(3),

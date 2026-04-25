@@ -48,10 +48,12 @@ public static class Extensions
     /// </summary>
     internal static readonly TimeSpan RedisInstrumentationFlushInterval = TimeSpan.FromMilliseconds(100);
 
-    public static TBuilder AddServiceDefaults<TBuilder>(this TBuilder builder)
+    public static TBuilder AddServiceDefaults<TBuilder>(
+        this TBuilder builder,
+        bool configureRedisInstrumentation = true)
         where TBuilder : IHostApplicationBuilder
     {
-        _ = builder.ConfigureOpenTelemetry();
+        _ = builder.ConfigureOpenTelemetry(configureRedisInstrumentation);
         _ = builder.AddDefaultHealthChecks();
         _ = builder.Services.AddServiceDiscovery();
 
@@ -64,7 +66,9 @@ public static class Extensions
         return builder;
     }
 
-    public static TBuilder ConfigureOpenTelemetry<TBuilder>(this TBuilder builder)
+    public static TBuilder ConfigureOpenTelemetry<TBuilder>(
+        this TBuilder builder,
+        bool configureRedisInstrumentation = true)
         where TBuilder : IHostApplicationBuilder
     {
         _ = builder.Logging.AddOpenTelemetry(logging =>
@@ -90,51 +94,62 @@ public static class Extensions
                         aspnet.Filter = ShouldTraceHttpRequest)
                     .AddHttpClientInstrumentation();
 
-                // Story 8.5 — Redis OTEL instrumentation. The 1.15.1-beta.1 upstream package does
-                // not expose a `AddRedisInstrumentation(serviceKey)` keyed-DI overload (that was
-                // the spec's original assumption, since rejected). Instead:
-                //   1. AddRedisInstrumentation(configure) registers the source + FlushInterval.
-                //   2. ConfigureRedisInstrumentation(...) is called post-TracerProvider-build with
-                //      the StackExchangeRedisInstrumentation singleton; we resolve both keyed
-                //      IConnectionMultiplexer instances from DI and call AddConnection per key.
-                //
-                // The DI-guard pattern from ADR-8.5-001 (f) is preserved: an AddInstrumentation
-                // callback per key throws InvalidOperationException at TracerProvider.Build() if
-                // the expected keyed multiplexer is absent, guarding against the silent-drop path
-                // that would otherwise occur if the post-build ConfigureRedisInstrumentation
-                // simply observed a null key.
-                AddRedisKeyedConnectionGuard(tracing, RedisConnectionKey);
-                AddRedisKeyedConnectionGuard(tracing, FalkorDbConnectionKey);
-                _ = tracing.AddRedisInstrumentation(ConfigureRedisInstrumentation);
-
-                // Story 8.5 ADR-8.5-001 (h) Path A — rewrite db.system tags on FalkorDB spans so
-                // APM backends don't misclassify graph queries as generic Redis commands. Resolve
-                // the acceptable FalkorDB hostnames from the keyed multiplexer so a future host /
-                // alias change does not silently disable the rewrite. Placed AFTER the Redis
-                // instrumentation registrations but BEFORE AddOpenTelemetryExporters so
-                // processor-vs-exporter order is deterministic (the rewrite lands before any
-                // exporter sees the activity).
-                _ = tracing.AddProcessor(sp => new FalkorDbSemanticAttributeProcessor(
-                    ResolveFalkorDbHostnames(sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey))));
+                if (configureRedisInstrumentation)
+                {
+                    ConfigureRedisTracing(tracing);
+                }
             });
 
-        // Story 8.5 — add both keyed connections to the shared Redis instrumentation singleton
-        // once the TracerProvider has been built. ConfigureRedisInstrumentation is invoked during
-        // service resolution of the TracerProvider, which is AFTER the container has been built,
-        // so both keyed IConnectionMultiplexer instances are available.
-        _ = builder.Services
-            .AddOpenTelemetry()
-            .WithTracing(tracing => tracing.ConfigureRedisInstrumentation((sp, instrumentation) =>
-            {
-                IConnectionMultiplexer redis = sp.GetRequiredKeyedService<IConnectionMultiplexer>(RedisConnectionKey);
-                IConnectionMultiplexer falkordb = sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey);
-                instrumentation.AddConnection(RedisConnectionKey, redis);
-                instrumentation.AddConnection(FalkorDbConnectionKey, falkordb);
-            }));
+        if (configureRedisInstrumentation)
+        {
+            // Story 8.5 — add both keyed connections to the shared Redis instrumentation singleton
+            // once the TracerProvider has been built. ConfigureRedisInstrumentation is invoked during
+            // service resolution of the TracerProvider, which is AFTER the container has been built,
+            // so both keyed IConnectionMultiplexer instances are available.
+            _ = builder.Services
+                .AddOpenTelemetry()
+                .WithTracing(tracing => tracing.ConfigureRedisInstrumentation((sp, instrumentation) =>
+                {
+                    IConnectionMultiplexer redis = sp.GetRequiredKeyedService<IConnectionMultiplexer>(RedisConnectionKey);
+                    IConnectionMultiplexer falkordb = sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey);
+                    instrumentation.AddConnection(RedisConnectionKey, redis);
+                    instrumentation.AddConnection(FalkorDbConnectionKey, falkordb);
+                }));
+        }
 
         _ = builder.AddOpenTelemetryExporters();
 
         return builder;
+    }
+
+    private static void ConfigureRedisTracing(TracerProviderBuilder tracing)
+    {
+        // Story 8.5 — Redis OTEL instrumentation. The 1.15.1-beta.1 upstream package does
+        // not expose a `AddRedisInstrumentation(serviceKey)` keyed-DI overload (that was
+        // the spec's original assumption, since rejected). Instead:
+        //   1. AddRedisInstrumentation(configure) registers the source + FlushInterval.
+        //   2. ConfigureRedisInstrumentation(...) is called post-TracerProvider-build with
+        //      the StackExchangeRedisInstrumentation singleton; we resolve both keyed
+        //      IConnectionMultiplexer instances from DI and call AddConnection per key.
+        //
+        // The DI-guard pattern from ADR-8.5-001 (f) is preserved: an AddInstrumentation
+        // callback per key throws InvalidOperationException at TracerProvider.Build() if
+        // the expected keyed multiplexer is absent, guarding against the silent-drop path
+        // that would otherwise occur if the post-build ConfigureRedisInstrumentation
+        // simply observed a null key.
+        AddRedisKeyedConnectionGuard(tracing, RedisConnectionKey);
+        AddRedisKeyedConnectionGuard(tracing, FalkorDbConnectionKey);
+        _ = tracing.AddRedisInstrumentation(ConfigureRedisInstrumentation);
+
+        // Story 8.5 ADR-8.5-001 (h) Path A — rewrite db.system tags on FalkorDB spans so
+        // APM backends don't misclassify graph queries as generic Redis commands. Resolve
+        // the acceptable FalkorDB hostnames from the keyed multiplexer so a future host /
+        // alias change does not silently disable the rewrite. Placed AFTER the Redis
+        // instrumentation registrations but BEFORE AddOpenTelemetryExporters so
+        // processor-vs-exporter order is deterministic (the rewrite lands before any
+        // exporter sees the activity).
+        _ = tracing.AddProcessor(sp => new FalkorDbSemanticAttributeProcessor(
+            ResolveFalkorDbHostnames(sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey))));
     }
 
     /// <summary>

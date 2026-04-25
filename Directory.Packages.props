@@ -15,23 +15,37 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
     <!-- Story 8.5: OpenTelemetry stack pinned to 1.15.x. The Redis instrumentation
          (1.15.1-beta.1) transitively requires OpenTelemetry.Api.ProviderBuilderExtensions
-         [1.15.3, 2.0.0), so the core + instrumentation + exporter versions move in lock-step. -->
-    <PackageVersion Include="OpenTelemetry" Version="1.15.1" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.1" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.1" />
+         [1.15.3, 2.0.0), so the core + instrumentation + exporter versions move in lock-step.
+         Story 10.1: bumped 1.15.1 → 1.15.3 to clear the NU1902 advisories
+         (GHSA-mr8r-92fq-pj8p and GHSA-q834-8qmm-v933) on
+         OpenTelemetry.Exporter.OpenTelemetryProtocol. Patch-only upgrade — same 1.15 minor,
+         same lock-step set; 1.15.3 already matched the StackExchange.Redis transitive floor. -->
+    <PackageVersion Include="OpenTelemetry" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <!-- AspNetCore instrumentation latest is 1.15.2; the broader OTel stack moved to 1.15.3
+         but AspNetCore has not had a 1.15.3 release. NU1902 advisories targeted the exporter,
+         not this package, so 1.15.2 stays acceptable. -->
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.0" />
     <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
          explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
     <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.15.1-beta.1" />
-    <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests -->
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.15.1" />
+    <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests. Bumped to 1.15.3
+         alongside the rest of the OTel core/exporter stack (Story 10.1 NU1902 sweep). -->
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.15.3" />
 
     <!-- DAPR Aspire Hosting -->
     <PackageVersion Include="CommunityToolkit.Aspire.Hosting.Dapr" Version="9.7.0" />
+
+    <!-- Story 10.1: Model Context Protocol C# SDK 1.2.0 (Microsoft-collaboration release).
+         Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
+    <PackageVersion Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
 
     <!-- DAPR SDKs -->
     <PackageVersion Include="Dapr.AspNetCore" Version="1.17.6" />

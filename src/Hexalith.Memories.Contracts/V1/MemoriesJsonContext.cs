@@ -39,6 +39,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(FusedScoredResult))]
 [JsonSerializable(typeof(FusionWeights))]
 [JsonSerializable(typeof(HybridSearchResult))]
+[JsonSerializable(typeof(OmittedReason))]
 [JsonSerializable(typeof(ExtractionResult))]
 [JsonSerializable(typeof(FailureDetails))]
 [JsonSerializable(typeof(GraphEdge))]

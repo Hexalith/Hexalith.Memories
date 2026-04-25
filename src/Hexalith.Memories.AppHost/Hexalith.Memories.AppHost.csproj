@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.Mcp\Hexalith.Memories.Mcp.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
   </ItemGroup>
 
