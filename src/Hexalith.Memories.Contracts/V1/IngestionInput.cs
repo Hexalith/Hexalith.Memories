@@ -28,12 +28,18 @@ public sealed record IngestionInput
     // "event.aggregateType") match exactly what the producers wrote. Default
     // EqualityComparer<string>.Default is also ordinal today, but pinning makes the contract
     // explicit and guards against future ambiguity.
+    // S6-P12 (re-review 2026-04-25): fast-path skips reallocation when the assigned dictionary
+    // already uses StringComparer.Ordinal — preserves reference identity for `with`-expressions
+    // that round-trip the same Metadata instance.
     public Dictionary<string, MetadataField> Metadata
     {
         get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
-        init => field = value is null
-            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
-            : new Dictionary<string, MetadataField>(value, StringComparer.Ordinal);
+        init => field = value switch
+        {
+            null => new Dictionary<string, MetadataField>(StringComparer.Ordinal),
+            Dictionary<string, MetadataField> existing when ReferenceEquals(existing.Comparer, StringComparer.Ordinal) => existing,
+            _ => new Dictionary<string, MetadataField>(value, StringComparer.Ordinal),
+        };
     }
 
     public string? CausationId { get; init; }

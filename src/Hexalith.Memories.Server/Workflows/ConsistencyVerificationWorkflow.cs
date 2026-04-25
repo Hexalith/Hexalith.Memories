@@ -28,16 +28,20 @@ using Microsoft.Extensions.Logging;
 /// <c>batchSize</c> <c>VerifyConsistencyActivity</c> calls; batches run sequentially.
 /// </para>
 /// <para>
-/// Risk #7 mitigation: the combined <c>Discrepancies</c> + <c>Notes</c> payload is truncated to
-/// 10,000 entries; the total discrepancy/note counters remain un-truncated and
-/// <c>TruncatedAt</c> is set.
+/// Risk #7 mitigation: <c>Discrepancies</c> and <c>Notes</c> have INDEPENDENT 10,000-entry payload
+/// caps (decision S6-D1, re-review 2026-04-25 — informational notes never evict actionable
+/// discrepancies). The total discrepancy/note counters remain un-truncated and
+/// <c>TruncatedAt</c> is set when EITHER list was truncated.
 /// </para>
 /// </remarks>
 public sealed partial class ConsistencyVerificationWorkflow
     : Workflow<ConsistencyVerificationInput, ConsistencyVerificationResult>
 {
-    /// <summary>Maximum number of discrepancy/note entries that fit in the DAPR workflow state store per invocation.</summary>
+    /// <summary>Maximum number of discrepancy entries that fit in the DAPR workflow state store per invocation.</summary>
     public const int MaxDiscrepancyEntries = 10_000;
+
+    /// <summary>Maximum number of informational note entries (independent cap from discrepancies — decision S6-D1, 2026-04-25).</summary>
+    public const int MaxNoteEntries = 10_000;
 
     /// <summary>Minimum valid batch size.</summary>
     public const int MinBatchSize = 10;
@@ -114,6 +118,9 @@ public sealed partial class ConsistencyVerificationWorkflow
                         probe.NaturalLanguageSemanticExists);
                 bool hasConsistencyNote = consistencyNoteKind != ConsistencyNoteKind.None
                     || !string.IsNullOrWhiteSpace(probe.ConsistencyNote);
+                // S6-P11 (re-review 2026-04-25): hoist isNoteOnlyObservation once so early-continue,
+                // counter increment, and routing all share a single source of truth.
+                bool isNoteOnlyObservation = recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote;
 
                 if (recommendation == ConsistencyRepairRecommendation.NoOp)
                 {
@@ -123,13 +130,13 @@ public sealed partial class ConsistencyVerificationWorkflow
                     {
                         continue;
                     }
+
+                    totalNoteCount++;
                 }
                 else
                 {
                     totalDiscrepancyCount++;
                 }
-
-                totalNoteCount += recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote ? 1 : 0;
 
                 string discrepancyLabel = recommendation != ConsistencyRepairRecommendation.NoOp
                     ? recommendation.ToString()
@@ -151,18 +158,16 @@ public sealed partial class ConsistencyVerificationWorkflow
                     ConsistencyNoteKind = consistencyNoteKind,
                 };
 
-                bool isNoteOnlyObservation = recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote;
+                // Independent caps (decision S6-D1, re-review 2026-04-25): notes never evict
+                // actionable discrepancies because each list has its own budget.
                 if (isNoteOnlyObservation)
                 {
-                    if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
+                    if (notes.Count < MaxNoteEntries)
                     {
                         notes.Add(entry);
                     }
-
-                    continue;
                 }
-
-                if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
+                else if (discrepancies.Count < MaxDiscrepancyEntries)
                 {
                     discrepancies.Add(entry);
                 }
@@ -173,13 +178,29 @@ public sealed partial class ConsistencyVerificationWorkflow
         }
 
         int totalUnits = allIds.Count;
-        int inconsistentCount = totalDiscrepancyCount;
+        // S6-P2 (re-review 2026-04-25): restore the original invariant
+        // ConsistentCount + InconsistentCount = TotalUnits by computing inconsistentCount as the
+        // complement of consistentCount. This stays equal to totalDiscrepancyCount by construction
+        // (every non-NoOp recommendation increments both consistentCount's complement AND
+        // totalDiscrepancyCount), but the explicit form documents the invariant.
+        int inconsistentCount = totalUnits - consistentCount;
 
+        // Independent truncation tracking (decision S6-D1) — TruncatedAt is set when EITHER list
+        // reached its cap; operators detect which list was truncated by comparing
+        // totalDiscrepancyCount against discrepancies.Count and totalNoteCount against notes.Count.
+        bool discrepancyTruncated = totalDiscrepancyCount > discrepancies.Count;
+        bool noteTruncated = totalNoteCount > notes.Count;
         DateTimeOffset? truncatedAt = null;
-        if ((totalDiscrepancyCount + totalNoteCount) > MaxDiscrepancyEntries)
+        if (discrepancyTruncated)
         {
             truncatedAt = context.CurrentUtcDateTime;
-            LogTruncation(logger, input.TenantId, totalDiscrepancyCount + totalNoteCount, MaxDiscrepancyEntries);
+            LogDiscrepancyListTruncated(logger, input.TenantId, totalDiscrepancyCount, MaxDiscrepancyEntries);
+        }
+
+        if (noteTruncated)
+        {
+            truncatedAt ??= context.CurrentUtcDateTime;
+            LogNotesListTruncated(logger, input.TenantId, totalNoteCount, MaxNoteEntries);
         }
 
         DateTimeOffset completedAt = context.CurrentUtcDateTime;
@@ -199,7 +220,10 @@ public sealed partial class ConsistencyVerificationWorkflow
             CompletedAt: completedAt,
             Duration: completedAt - startedAt)
         {
-            NoteCount = totalNoteCount,
+            // S6-P1 (re-review 2026-04-25): NoteCount is the in-payload count (mirrors
+            // Discrepancies.Count for the discrepancy list); TotalNoteCount is the un-truncated
+            // tally. Comparing them detects truncation of the notes payload.
+            NoteCount = notes.Count,
             TotalNoteCount = totalNoteCount,
             Notes = notes,
         };
@@ -232,12 +256,22 @@ public sealed partial class ConsistencyVerificationWorkflow
     private static partial void LogDiscrepancyDetected(
         ILogger logger, string tenantId, string memoryUnitId, string recommendation);
 
+    // S6-P6 (re-review 2026-04-25): restore the original DiscrepancyListTruncated message prefix
+    // so operator dashboards keyed on the literal text continue to fire. With independent caps
+    // (S6-D1), notes truncation gets its own EventId 8210.
     [LoggerMessage(
         EventId = 8204,
         Level = LogLevel.Warning,
-        Message = "VerificationResultTruncated tenant '{TenantId}' total entries {TotalEntries}, truncated to {Cap}")]
-    private static partial void LogTruncation(
-        ILogger logger, string tenantId, int totalEntries, int cap);
+        Message = "DiscrepancyListTruncated tenant '{TenantId}' total {TotalDiscrepancies}, truncated to {Cap}")]
+    private static partial void LogDiscrepancyListTruncated(
+        ILogger logger, string tenantId, int totalDiscrepancies, int cap);
+
+    [LoggerMessage(
+        EventId = 8210,
+        Level = LogLevel.Warning,
+        Message = "NotesListTruncated tenant '{TenantId}' total {TotalNotes}, truncated to {Cap}")]
+    private static partial void LogNotesListTruncated(
+        ILogger logger, string tenantId, int totalNotes, int cap);
 
     [LoggerMessage(
         EventId = 8205,

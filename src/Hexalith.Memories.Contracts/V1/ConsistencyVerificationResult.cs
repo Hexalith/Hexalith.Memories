@@ -7,12 +7,14 @@ namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
 /// Aggregate result returned by <c>ConsistencyVerificationWorkflow</c>.
-/// The combined <see cref="Discrepancies"/> + <see cref="Notes"/> payload is truncated to the
-/// first 10,000 entries (Risk #7 mitigation: DAPR workflow state has a ~1 MB per-instance
-/// budget). <see cref="TotalDiscrepancyCount"/> and <see cref="TotalNoteCount"/> stay un-truncated,
-/// and <see cref="TruncatedAt"/> is non-null iff truncation occurred. Operators needing the full
-/// actionable list can either re-run repair (which processes all discrepancies regardless of
-/// result truncation) or consume structured log EventId 8201.
+/// The <see cref="Discrepancies"/> list and the <see cref="Notes"/> list each have their own
+/// 10,000-entry payload cap (decision S6-D1, re-review 2026-04-25 — informational notes never
+/// evict actionable discrepancies). <see cref="TotalDiscrepancyCount"/> stays un-truncated, and
+/// likewise <see cref="TotalNoteCount"/>; comparing each total against the corresponding list
+/// length tells the operator which list (if any) was truncated. <see cref="TruncatedAt"/> is
+/// non-null iff EITHER list was truncated. Operators needing the full actionable list can either
+/// re-run repair (which processes all discrepancies regardless of result truncation) or consume
+/// structured log EventId 8201.
 /// </summary>
 /// <param name="TenantId">The tenant audited.</param>
 /// <param name="TotalUnits">Total unique memory unit IDs discovered (union of three backends).</param>
@@ -46,16 +48,16 @@ public sealed record ConsistencyVerificationResult(
     TimeSpan Duration)
 {
     /// <summary>
-    /// Total number of note-only observations (<c>Recommendation = NoOp</c>) discovered for the
-    /// tenant. This is orthogonal to <see cref="ConsistentCount"/>: note-only units are still
-    /// counted as consistent across the three repair axes.
+    /// In-payload count of note-only observations — equals <c>Notes.Count</c> by construction
+    /// (mirrors the relationship between <see cref="Discrepancies"/> and
+    /// <see cref="TotalDiscrepancyCount"/>). When the notes list was truncated by the 10,000-entry
+    /// cap, <see cref="TotalNoteCount"/> stays un-truncated and exceeds <c>NoteCount</c>.
     /// </summary>
     public int NoteCount { get; init; }
 
     /// <summary>
-    /// Un-truncated total count of note-only observations. Kept separate from
-    /// <see cref="Notes"/> because the stored payload may be truncated by the shared 10,000-entry
-    /// cap.
+    /// Un-truncated total count of note-only observations. Compare against <see cref="NoteCount"/>
+    /// (or equivalently <c>Notes.Count</c>) to detect truncation of the notes payload.
     /// </summary>
     public int TotalNoteCount { get; init; }
 
@@ -69,7 +71,14 @@ public sealed record ConsistencyVerificationResult(
     /// filtering <c>Discrepancies.Where(d =&gt; d.Recommendation != NoOp)</c> no longer miss real NL
     /// gaps, because the NL gap is either (a) here in <see cref="Notes"/> when it is the ONLY
     /// issue, or (b) in <see cref="Discrepancies"/> riding alongside a real repair recommendation
-    /// when other axes are also affected. This list shares the same 10,000-entry payload cap as
-    /// <see cref="Discrepancies"/>; use <see cref="TotalNoteCount"/> to detect truncation.</summary>
-    public IReadOnlyList<ConsistencyDiscrepancy> Notes { get; init; } = [];
+    /// when other axes are also affected. This list has its own independent 10,000-entry payload
+    /// cap (decision S6-D1, re-review 2026-04-25); compare <see cref="NoteCount"/> against
+    /// <see cref="TotalNoteCount"/> to detect truncation. S6-P4 (re-review 2026-04-25): the
+    /// init accessor coalesces null assignments to the empty list so a malformed payload (e.g.,
+    /// <c>"notes": null</c>) cannot NRE downstream consumers.</summary>
+    public IReadOnlyList<ConsistencyDiscrepancy> Notes
+    {
+        get => field ?? [];
+        init => field = value ?? [];
+    }
 }

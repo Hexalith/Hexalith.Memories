@@ -1,0 +1,1219 @@
+diff --git a/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultHumanFormatter.cs b/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultHumanFormatter.cs
+index 82db6ab..c99dd20 100644
+--- a/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultHumanFormatter.cs
++++ b/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultHumanFormatter.cs
+@@ -26,7 +26,9 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
+         writer.WriteLine($"  total units:         {value.TotalUnits.ToString(CultureInfo.InvariantCulture)}");
+         writer.WriteLine($"  consistent units:    {value.ConsistentCount.ToString(CultureInfo.InvariantCulture)}");
+         writer.WriteLine($"  inconsistent units:  {value.InconsistentCount.ToString(CultureInfo.InvariantCulture)}");
++        writer.WriteLine($"  note-only units:     {value.NoteCount.ToString(CultureInfo.InvariantCulture)}");
+         writer.WriteLine($"  discrepancy records: {value.Discrepancies.Count.ToString(CultureInfo.InvariantCulture)}");
++        writer.WriteLine($"  note records:        {value.Notes.Count.ToString(CultureInfo.InvariantCulture)}");
+         writer.WriteLine($"  enumeration cut off: {value.EnumerationTruncated}");
+         writer.WriteLine($"  started:             {value.StartedAt:O}");
+         writer.WriteLine($"  completed:           {value.CompletedAt:O}");
+@@ -35,13 +37,48 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
+         if (value.Discrepancies.Count == 0)
+         {
+             writer.WriteLine("  discrepancies:       none");
++        }
++        else
++        {
++            writer.WriteLine("Discrepancies:");
++            foreach (ConsistencyDiscrepancy discrepancy in value.Discrepancies)
++            {
++                writer.WriteLine($"  - {discrepancy.MemoryUnitId}: {BuildEntrySummary(discrepancy, includeRecommendation: true)}");
++            }
++        }
++
++        if (value.Notes.Count == 0)
++        {
++            writer.WriteLine("  notes:               none");
+             return;
+         }
+ 
+-        writer.WriteLine("Discrepancies:");
+-        foreach (ConsistencyDiscrepancy discrepancy in value.Discrepancies)
++        writer.WriteLine("Notes:");
++        foreach (ConsistencyDiscrepancy note in value.Notes)
++        {
++            writer.WriteLine($"  - {note.MemoryUnitId}: {BuildEntrySummary(note, includeRecommendation: false)}");
++        }
++    }
++
++    private static string BuildEntrySummary(ConsistencyDiscrepancy entry, bool includeRecommendation)
++    {
++        List<string> parts = [];
++
++        if (includeRecommendation)
++        {
++            parts.Add(entry.Recommendation.ToString());
++        }
++
++        if (entry.ConsistencyNoteKind != ConsistencyNoteKind.None)
+         {
+-            writer.WriteLine($"  - {discrepancy.MemoryUnitId}: {discrepancy.Recommendation}");
++            parts.Add(entry.ConsistencyNoteKind.ToString());
+         }
++
++        if (!string.IsNullOrWhiteSpace(entry.ConsistencyNote))
++        {
++            parts.Add(entry.ConsistencyNote!);
++        }
++
++        return parts.Count == 0 ? "Note" : string.Join(" — ", parts);
+     }
+ }
+\ No newline at end of file
+diff --git a/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultTableFormatter.cs b/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultTableFormatter.cs
+index dff21dd..fa71d52 100644
+--- a/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultTableFormatter.cs
++++ b/src/Hexalith.Memories.Cli/Output/Formatters/ConsistencyVerificationResultTableFormatter.cs
+@@ -23,13 +23,14 @@ public sealed class ConsistencyVerificationResultTableFormatter : IOutputFormatt
+ 
+         TableWriter.Write(
+             writer,
+-            ["tenant", "totalUnits", "consistent", "inconsistent", "discrepancies"],
++            ["tenant", "totalUnits", "consistent", "inconsistent", "notes", "discrepancies"],
+             [[
+                 value.TenantId,
+                 value.TotalUnits.ToString(CultureInfo.InvariantCulture),
+                 value.ConsistentCount.ToString(CultureInfo.InvariantCulture),
+                 value.InconsistentCount.ToString(CultureInfo.InvariantCulture),
+-                value.Discrepancies.Count.ToString(CultureInfo.InvariantCulture),
++                value.NoteCount.ToString(CultureInfo.InvariantCulture),
++                value.TotalDiscrepancyCount.ToString(CultureInfo.InvariantCulture),
+             ]]);
+     }
+ }
+\ No newline at end of file
+diff --git a/src/Hexalith.Memories.Contracts/V1/ConsistencyVerificationResult.cs b/src/Hexalith.Memories.Contracts/V1/ConsistencyVerificationResult.cs
+index c698a25..2c29465 100644
+--- a/src/Hexalith.Memories.Contracts/V1/ConsistencyVerificationResult.cs
++++ b/src/Hexalith.Memories.Contracts/V1/ConsistencyVerificationResult.cs
+@@ -7,15 +7,20 @@ namespace Hexalith.Memories.Contracts.V1;
+ 
+ /// <summary>
+ /// Aggregate result returned by <c>ConsistencyVerificationWorkflow</c>.
+-/// <see cref="Discrepancies"/> is truncated to the first 10,000 entries (Risk #7 mitigation:
+-/// DAPR workflow state has a ~1 MB per-instance budget). <see cref="TotalDiscrepancyCount"/>
+-/// is the un-truncated count, and <see cref="TruncatedAt"/> is non-null iff truncation occurred.
+-/// Operators needing the full list can either re-run repair (which processes all discrepancies
+-/// regardless of result truncation) or consume structured log EventId 8201.
++/// The combined <see cref="Discrepancies"/> + <see cref="Notes"/> payload is truncated to the
++/// first 10,000 entries (Risk #7 mitigation: DAPR workflow state has a ~1 MB per-instance
++/// budget). <see cref="TotalDiscrepancyCount"/> and <see cref="TotalNoteCount"/> stay un-truncated,
++/// and <see cref="TruncatedAt"/> is non-null iff truncation occurred. Operators needing the full
++/// actionable list can either re-run repair (which processes all discrepancies regardless of
++/// result truncation) or consume structured log EventId 8201.
+ /// </summary>
+ /// <param name="TenantId">The tenant audited.</param>
+ /// <param name="TotalUnits">Total unique memory unit IDs discovered (union of three backends).</param>
+-/// <param name="ConsistentCount">Units present in all three backends (<c>NoOp</c>).</param>
++/// <param name="ConsistentCount">
++/// Units whose three-axis repair recommendation is <c>NoOp</c>. This includes note-only
++/// observations routed to <see cref="Notes"/>, because their primary syntactic/semantic/graph
++/// state is already converged.
++/// </param>
+ /// <param name="InconsistentCount">Units reported as discrepancies (any non-<c>NoOp</c> recommendation).</param>
+ /// <param name="Discrepancies">Discrepancy list, truncated to at most 10,000 entries.</param>
+ /// <param name="TotalDiscrepancyCount">Un-truncated discrepancy count.</param>
+@@ -38,4 +43,33 @@ public sealed record ConsistencyVerificationResult(
+     bool EnumerationTruncated,
+     DateTimeOffset StartedAt,
+     DateTimeOffset CompletedAt,
+-    TimeSpan Duration);
++    TimeSpan Duration)
++{
++    /// <summary>
++    /// Total number of note-only observations (<c>Recommendation = NoOp</c>) discovered for the
++    /// tenant. This is orthogonal to <see cref="ConsistentCount"/>: note-only units are still
++    /// counted as consistent across the three repair axes.
++    /// </summary>
++    public int NoteCount { get; init; }
++
++    /// <summary>
++    /// Un-truncated total count of note-only observations. Kept separate from
++    /// <see cref="Notes"/> because the stored payload may be truncated by the shared 10,000-entry
++    /// cap.
++    /// </summary>
++    public int TotalNoteCount { get; init; }
++
++    /// <summary>Story 9.2 review D7 (committed-branch review 2026-04-24) — structural split
++    /// between units requiring repair (<see cref="Discrepancies"/>) and informational observations
++    /// (this list). Previously, NL-only gaps (<c>Recommendation = NoOp</c> +
++    /// <c>ConsistencyNoteKind = NaturalLanguageEmbeddingMissing</c>) were mixed into the
++    /// <see cref="Discrepancies"/> list, forcing consumers to double-filter on both fields.
++    /// Now: units where the three-axis recommendation is <c>NoOp</c> but a
++    /// <see cref="ConsistencyNoteKind"/> note is present are routed here instead. Consumers
++    /// filtering <c>Discrepancies.Where(d =&gt; d.Recommendation != NoOp)</c> no longer miss real NL
++    /// gaps, because the NL gap is either (a) here in <see cref="Notes"/> when it is the ONLY
++    /// issue, or (b) in <see cref="Discrepancies"/> riding alongside a real repair recommendation
++    /// when other axes are also affected. This list shares the same 10,000-entry payload cap as
++    /// <see cref="Discrepancies"/>; use <see cref="TotalNoteCount"/> to detect truncation.</summary>
++    public IReadOnlyList<ConsistencyDiscrepancy> Notes { get; init; } = [];
++}
+diff --git a/src/Hexalith.Memories.Contracts/V1/IndexInput.cs b/src/Hexalith.Memories.Contracts/V1/IndexInput.cs
+index ece5e21..9b3fdda 100644
+--- a/src/Hexalith.Memories.Contracts/V1/IndexInput.cs
++++ b/src/Hexalith.Memories.Contracts/V1/IndexInput.cs
+@@ -30,10 +30,14 @@ public sealed record IndexInput
+ 
+     public required int EmbeddingDimensions { get; init; }
+ 
++    // Pinned to StringComparer.Ordinal (decision D6 — committed-branch review 2026-04-24) to
++    // match IngestionInput.Metadata and guarantee consistent lookups across the ingestion pipeline.
+     public Dictionary<string, MetadataField> Metadata
+     {
+-        get => field ??= [];
+-        init => field = value ?? [];
++        get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
++        init => field = value is null
++            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
++            : new Dictionary<string, MetadataField>(value, StringComparer.Ordinal);
+     }
+ 
+     public string? CausationId { get; init; }
+diff --git a/src/Hexalith.Memories.Contracts/V1/IngestionInput.cs b/src/Hexalith.Memories.Contracts/V1/IngestionInput.cs
+index 371d4f6..752c691 100644
+--- a/src/Hexalith.Memories.Contracts/V1/IngestionInput.cs
++++ b/src/Hexalith.Memories.Contracts/V1/IngestionInput.cs
+@@ -23,10 +23,17 @@ public sealed record IngestionInput
+ 
+     public required string IngestedBy { get; init; }
+ 
++    // Pinned to StringComparer.Ordinal (decision D6 — committed-branch review 2026-04-24) so the
++    // CloudEvent metadata keys the workflow reads back (e.g., "cloudevent.type",
++    // "event.aggregateType") match exactly what the producers wrote. Default
++    // EqualityComparer<string>.Default is also ordinal today, but pinning makes the contract
++    // explicit and guards against future ambiguity.
+     public Dictionary<string, MetadataField> Metadata
+     {
+-        get => field ??= [];
+-        init => field = value ?? [];
++        get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
++        init => field = value is null
++            ? new Dictionary<string, MetadataField>(StringComparer.Ordinal)
++            : new Dictionary<string, MetadataField>(value, StringComparer.Ordinal);
+     }
+ 
+     public string? CausationId { get; init; }
+diff --git a/src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs b/src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs
+index 4680181..09b0b42 100644
+--- a/src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs
++++ b/src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs
+@@ -20,9 +20,12 @@ using Microsoft.Extensions.Logging;
+ /// before any other hosted service (per Spike 0.4 — ordering is DI-registration-order-independent).
+ ///
+ /// Spike 0.2 chose the simple in-flight-<see cref="IngestionWorkflow"/> heuristic to avoid retroactive
+-/// version-tag backfill. The gate now reads workflow-family metadata reflectively when the SDK exposes
+-/// it, so startup only waits on <see cref="IngestionWorkflow"/> instances instead of unrelated
+-/// short-lived workflows.
++/// version-tag backfill. The gate reads the workflow family name reflectively through
++/// <see cref="WorkflowState"/>'s private <c>_metadata</c> field — see <see cref="TryGetWorkflowName"/>.
++/// Committed-branch review (2026-04-24) decision D2: every active workflow observed by the gate
++/// must produce a readable workflow name. If the private-field path has drifted in a newer
++/// Dapr.Workflow SDK, the gate emits Critical <c>9173</c> and fails open rather than silently
++/// counting zero (which previously made the gate a no-op).
+ /// Spike 0.4 chose <see cref="IHostedLifecycleService"/> over
+ /// <c>IStartupFilter</c> so the gate does NOT depend on DAPR's own hosted-service registration
+ /// order.</summary>
+@@ -32,6 +35,14 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+     internal static readonly TimeSpan TotalTimeout = TimeSpan.FromMinutes(5);
+     internal static readonly TimeSpan PerQueryTimeout = TimeSpan.FromSeconds(10);
+ 
++    // Cached private-field accessor for WorkflowState._metadata (Dapr.Workflow 1.17.6 layout — verified
++    // via reflection probe on 2026-04-25). Dapr.Workflow does not expose Name publicly on
++    // WorkflowState, so the gate must drill into the private metadata instance to filter by workflow
++    // family. If the SDK renames the field in a future release, the startup probe (D2) surfaces the
++    // drift as Critical 9173 rather than silently degrading to "count everything".
++    private static readonly FieldInfo? MetadataField = typeof(WorkflowState)
++        .GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic);
++
+     private readonly DaprWorkflowClient _workflowClient;
+     private readonly ILogger<WorkflowReplaySafetyHostedService> _logger;
+     private readonly TimeProvider _timeProvider;
+@@ -60,7 +71,8 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+             {
+                 // Improvement Z: sidecar unreachable — fail open. A stuck pod is worse than a missing
+                 // gate. The runbook quiesce still applies as operator-side discipline.
+-                LogSidecarUnreachable(_logger, null);
++                // (Note: TryCountInFlightAsync already logged the specific reason, including the D2
++                // reflection-probe-failure path via LogGateFailedOpen. No duplicate log here.)
+                 return;
+             }
+ 
+@@ -132,7 +144,25 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+                             .ConfigureAwait(false);
+                     }
+ 
+-                    if (state is not null && ShouldCountWorkflow(TryGetWorkflowName(state), state.Exists, state.RuntimeStatus))
++                    if (state is null || !state.Exists || !IsActive(state.RuntimeStatus))
++                    {
++                        continue;
++                    }
++
++                    string? workflowName = TryGetWorkflowName(state);
++
++                    // Decision D2 (committed-branch review 2026-04-24): every observed active
++                    // workflow instance must yield a readable name. If reflection fails for ANY
++                    // active instance, name-based filtering is no longer trustworthy — the gate
++                    // would silently undercount and mis-pass the runbook quiesce check. Emit
++                    // Critical 9173 and fail open.
++                    if (ShouldFailOpenForUnreadableWorkflowName(workflowName, state.Exists, state.RuntimeStatus))
++                    {
++                        LogGateFailedOpen(_logger, "workflow-name-reflection-null", null);
++                        return null;
++                    }
++
++                    if (ShouldCountWorkflow(workflowName, state.Exists, state.RuntimeStatus))
+                     {
+                         count++;
+                     }
+@@ -147,11 +177,12 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+         {
+             // Per-query timeout elapsed — sidecar unreachable.
++            LogGateFailedOpen(_logger, "sidecar-query-timeout", null);
+             return null;
+         }
+         catch (Exception ex)
+         {
+-            LogSidecarUnreachable(_logger, ex);
++            LogGateFailedOpen(_logger, "sidecar-query-exception", ex);
+             return null;
+         }
+     }
+@@ -166,10 +197,31 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+             && string.Equals(workflowName, nameof(IngestionWorkflow), StringComparison.Ordinal)
+             && IsActive(status);
+ 
+-    private static string? TryGetWorkflowName(WorkflowState state)
+-        => state.GetType()
+-            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public)
+-            ?.GetValue(state) as string;
++    internal static bool ShouldFailOpenForUnreadableWorkflowName(
++        string? workflowName,
++        bool exists,
++        WorkflowRuntimeStatus status)
++        => exists
++            && IsActive(status)
++            && string.IsNullOrWhiteSpace(workflowName);
++
++    // Walks WorkflowState → private `_metadata` field → public WorkflowMetadata.Name. The top-level
++    // `Name` property does not exist on WorkflowState (Dapr.Workflow 1.17.6 — verified via reflection
++    // probe), so the earlier public-property lookup always returned null and the gate silently
++    // counted zero workflows. This private-field walk is fragile but the D2 startup probe surfaces
++    // drift as Critical 9173.
++    internal static string? TryGetWorkflowName(WorkflowState state)
++    {
++        object? metadata = MetadataField?.GetValue(state);
++        if (metadata is null)
++        {
++            return null;
++        }
++
++        PropertyInfo? nameProperty = metadata.GetType()
++            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
++        return nameProperty?.GetValue(metadata) as string;
++    }
+ 
+     [LoggerMessage(EventId = 9171, Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]
+     private static partial void LogDraining(ILogger logger, int inFlightCount);
+@@ -180,6 +232,6 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
+     [LoggerMessage(EventId = 9172, Level = LogLevel.Critical, Message = "Replay-safety gate: timed out with {RemainingCount} instance(s) still active — proceeding anyway (event 9172).")]
+     private static partial void LogDrainTimeout(ILogger logger, int remainingCount);
+ 
+-    [LoggerMessage(EventId = 9173, Level = LogLevel.Critical, Message = "Replay-safety gate: DAPR sidecar unreachable or enumeration query failed — failing open (event 9173).")]
+-    private static partial void LogSidecarUnreachable(ILogger logger, Exception? exception);
++    [LoggerMessage(EventId = 9173, Level = LogLevel.Critical, Message = "Replay-safety gate failing open (event 9173): reason={Reason}. Operator action: verify DAPR sidecar health and that the Dapr.Workflow SDK still exposes WorkflowMetadata.Name via WorkflowState._metadata.")]
++    private static partial void LogGateFailedOpen(ILogger logger, string reason, Exception? exception);
+ }
+diff --git a/src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs b/src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs
+index 9f95afe..ab3a6b6 100644
+--- a/src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs
++++ b/src/Hexalith.Memories.Server/Workflows/ConsistencyVerificationWorkflow.cs
+@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
+ /// <summary>
+ /// Story 8.2 — orchestrates tenant-wide consistency verification. Enumerates the union of
+ /// memory unit IDs across the three backends, then fans out per-unit probes in bounded
+-/// batches and aggregates discrepancies.
++/// batches and aggregates actionable discrepancies plus informational notes.
+ /// </summary>
+ /// <remarks>
+ /// <para>
+@@ -28,14 +28,15 @@ using Microsoft.Extensions.Logging;
+ /// <c>batchSize</c> <c>VerifyConsistencyActivity</c> calls; batches run sequentially.
+ /// </para>
+ /// <para>
+-/// Risk #7 mitigation: <c>Discrepancies</c> is truncated to 10,000 entries;
+-/// <c>TotalDiscrepancyCount</c> remains un-truncated and <c>TruncatedAt</c> is set.
++/// Risk #7 mitigation: the combined <c>Discrepancies</c> + <c>Notes</c> payload is truncated to
++/// 10,000 entries; the total discrepancy/note counters remain un-truncated and
++/// <c>TruncatedAt</c> is set.
+ /// </para>
+ /// </remarks>
+ public sealed partial class ConsistencyVerificationWorkflow
+     : Workflow<ConsistencyVerificationInput, ConsistencyVerificationResult>
+ {
+-    /// <summary>Maximum number of discrepancies that fit in the DAPR workflow state store per invocation.</summary>
++    /// <summary>Maximum number of discrepancy/note entries that fit in the DAPR workflow state store per invocation.</summary>
+     public const int MaxDiscrepancyEntries = 10_000;
+ 
+     /// <summary>Minimum valid batch size.</summary>
+@@ -71,7 +72,10 @@ public sealed partial class ConsistencyVerificationWorkflow
+             retryOptions);
+ 
+         List<ConsistencyDiscrepancy> discrepancies = [];
++        List<ConsistencyDiscrepancy> notes = [];
+         int consistentCount = 0;
++        int totalDiscrepancyCount = 0;
++        int totalNoteCount = 0;
+         IReadOnlyList<string> allIds = enumeration.MemoryUnitIds;
+         int totalBatches = allIds.Count == 0 ? 0 : (int)Math.Ceiling(allIds.Count / (double)batchSize);
+ 
+@@ -103,41 +107,64 @@ public sealed partial class ConsistencyVerificationWorkflow
+                     probe.SemanticExists,
+                     probe.GraphExists);
+ 
+-                bool naturalLanguageGap = NaturalLanguageConsistencyState.HasIndexedNaturalLanguageGap(
+-                    probe.NaturalLanguageEmbeddingStatus,
+-                    probe.NaturalLanguageSemanticExists);
++                ConsistencyNoteKind consistencyNoteKind = probe.ConsistencyNoteKind != ConsistencyNoteKind.None
++                    ? probe.ConsistencyNoteKind
++                    : NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
++                        probe.NaturalLanguageEmbeddingStatus,
++                        probe.NaturalLanguageSemanticExists);
++                bool hasConsistencyNote = consistencyNoteKind != ConsistencyNoteKind.None
++                    || !string.IsNullOrWhiteSpace(probe.ConsistencyNote);
+ 
+-                if (recommendation == ConsistencyRepairRecommendation.NoOp && !naturalLanguageGap)
++                if (recommendation == ConsistencyRepairRecommendation.NoOp)
+                 {
+                     consistentCount++;
+-                    continue;
++
++                    if (!hasConsistencyNote)
++                    {
++                        continue;
++                    }
++                }
++                else
++                {
++                    totalDiscrepancyCount++;
+                 }
+ 
+-                string discrepancyLabel = naturalLanguageGap
+-                    ? "MissingNaturalLanguageSemantic"
+-                    : recommendation.ToString();
+-                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
++                totalNoteCount += recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote ? 1 : 0;
+ 
+-                ConsistencyNoteKind consistencyNoteKind = probe.ConsistencyNoteKind != ConsistencyNoteKind.None
+-                    ? probe.ConsistencyNoteKind
+-                    : NaturalLanguageConsistencyState.BuildConsistencyNoteKind(
+-                        probe.NaturalLanguageEmbeddingStatus,
+-                        probe.NaturalLanguageSemanticExists);
++                string discrepancyLabel = recommendation != ConsistencyRepairRecommendation.NoOp
++                    ? recommendation.ToString()
++                    : consistencyNoteKind != ConsistencyNoteKind.None
++                        ? consistencyNoteKind.ToString()
++                        : "InformationalNote";
++                LogDiscrepancyDetected(logger, input.TenantId, unitId, discrepancyLabel);
+ 
+-                if (discrepancies.Count < MaxDiscrepancyEntries)
++                ConsistencyDiscrepancy entry = new ConsistencyDiscrepancy(
++                    unitId,
++                    probe.SyntacticExists,
++                    probe.SemanticExists,
++                    probe.GraphExists,
++                    recommendation)
++                {
++                    NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
++                    NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
++                    ConsistencyNote = probe.ConsistencyNote,
++                    ConsistencyNoteKind = consistencyNoteKind,
++                };
++
++                bool isNoteOnlyObservation = recommendation == ConsistencyRepairRecommendation.NoOp && hasConsistencyNote;
++                if (isNoteOnlyObservation)
+                 {
+-                    discrepancies.Add(new ConsistencyDiscrepancy(
+-                        unitId,
+-                        probe.SyntacticExists,
+-                        probe.SemanticExists,
+-                        probe.GraphExists,
+-                        recommendation)
++                    if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
+                     {
+-                        NaturalLanguageSemanticPresent = probe.NaturalLanguageSemanticExists,
+-                        NaturalLanguageEmbeddingStatus = probe.NaturalLanguageEmbeddingStatus,
+-                        ConsistencyNote = probe.ConsistencyNote,
+-                        ConsistencyNoteKind = consistencyNoteKind,
+-                    });
++                        notes.Add(entry);
++                    }
++
++                    continue;
++                }
++
++                if ((discrepancies.Count + notes.Count) < MaxDiscrepancyEntries)
++                {
++                    discrepancies.Add(entry);
+                 }
+             }
+ 
+@@ -146,18 +173,18 @@ public sealed partial class ConsistencyVerificationWorkflow
+         }
+ 
+         int totalUnits = allIds.Count;
+-        int inconsistentCount = totalUnits - consistentCount;
++        int inconsistentCount = totalDiscrepancyCount;
+ 
+         DateTimeOffset? truncatedAt = null;
+-        if (inconsistentCount > MaxDiscrepancyEntries)
++        if ((totalDiscrepancyCount + totalNoteCount) > MaxDiscrepancyEntries)
+         {
+             truncatedAt = context.CurrentUtcDateTime;
+-            LogTruncation(logger, input.TenantId, inconsistentCount, MaxDiscrepancyEntries);
++            LogTruncation(logger, input.TenantId, totalDiscrepancyCount + totalNoteCount, MaxDiscrepancyEntries);
+         }
+ 
+         DateTimeOffset completedAt = context.CurrentUtcDateTime;
+         context.SetCustomStatus(new ConsistencyWorkflowProgress("completed", totalBatches, totalBatches));
+-        LogVerificationCompleted(logger, input.TenantId, totalUnits, consistentCount, inconsistentCount);
++        LogVerificationCompleted(logger, input.TenantId, totalUnits, consistentCount, inconsistentCount, totalNoteCount);
+ 
+         return new ConsistencyVerificationResult(
+             TenantId: input.TenantId,
+@@ -165,12 +192,17 @@ public sealed partial class ConsistencyVerificationWorkflow
+             ConsistentCount: consistentCount,
+             InconsistentCount: inconsistentCount,
+             Discrepancies: discrepancies,
+-            TotalDiscrepancyCount: inconsistentCount,
++            TotalDiscrepancyCount: totalDiscrepancyCount,
+             TruncatedAt: truncatedAt,
+             EnumerationTruncated: enumeration.Truncated,
+             StartedAt: startedAt,
+             CompletedAt: completedAt,
+-            Duration: completedAt - startedAt);
++            Duration: completedAt - startedAt)
++        {
++            NoteCount = totalNoteCount,
++            TotalNoteCount = totalNoteCount,
++            Notes = notes,
++        };
+     }
+ 
+     private static int ClampBatchSize(int requested)
+@@ -203,14 +235,14 @@ public sealed partial class ConsistencyVerificationWorkflow
+     [LoggerMessage(
+         EventId = 8204,
+         Level = LogLevel.Warning,
+-        Message = "DiscrepancyListTruncated tenant '{TenantId}' total {TotalDiscrepancies}, truncated to {Cap}")]
++        Message = "VerificationResultTruncated tenant '{TenantId}' total entries {TotalEntries}, truncated to {Cap}")]
+     private static partial void LogTruncation(
+-        ILogger logger, string tenantId, int totalDiscrepancies, int cap);
++        ILogger logger, string tenantId, int totalEntries, int cap);
+ 
+     [LoggerMessage(
+         EventId = 8205,
+         Level = LogLevel.Information,
+-        Message = "VerificationCompleted tenant '{TenantId}' total {TotalUnits} consistent {ConsistentCount} inconsistent {InconsistentCount}")]
++        Message = "VerificationCompleted tenant '{TenantId}' total {TotalUnits} consistent {ConsistentCount} inconsistent {InconsistentCount} notes {NoteCount}")]
+     private static partial void LogVerificationCompleted(
+-        ILogger logger, string tenantId, int totalUnits, int consistentCount, int inconsistentCount);
++        ILogger logger, string tenantId, int totalUnits, int consistentCount, int inconsistentCount, int noteCount);
+ }
+diff --git a/src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs b/src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs
+index 4accbf5..8db25e8 100644
+--- a/src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs
++++ b/src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs
+@@ -765,7 +765,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
+         string effectiveUrl,
+         long contentLength)
+     {
+-        Dictionary<string, MetadataField> metadata = new(input.Metadata);
++        // Decision D6: `new Dictionary<TKey, TValue>(IDictionary<...>)` does NOT carry the source's
++        // comparer; explicitly pass StringComparer.Ordinal to preserve the pinned lookup semantics.
++        Dictionary<string, MetadataField> metadata = new(input.Metadata, StringComparer.Ordinal);
+ 
+         if (input.SourceType != SourceType.Url || urlFetch is null)
+         {
+diff --git a/tests/Hexalith.Memories.Cli.Tests/Cli/ConsistencyVerifyCommandTests.cs b/tests/Hexalith.Memories.Cli.Tests/Cli/ConsistencyVerifyCommandTests.cs
+index 8428a5c..a4db359 100644
+--- a/tests/Hexalith.Memories.Cli.Tests/Cli/ConsistencyVerifyCommandTests.cs
++++ b/tests/Hexalith.Memories.Cli.Tests/Cli/ConsistencyVerifyCommandTests.cs
+@@ -87,6 +87,63 @@ public sealed class ConsistencyVerifyCommandTests
+         stderr.ToString().ShouldBeEmpty();
+     }
+ 
++    [Fact]
++    public async Task Run_WithWait_NoteOnlyResult_PrintsNotesSection()
++    {
++        ConsistencyStubClient stub = new()
++        {
++            VerifyInstanceId = "verify-consistency-acme-notes",
++            VerifyStatusSequence =
++            [
++                CreateVerificationStatus(
++                    "verify-consistency-acme-notes",
++                    "Completed",
++                    new ConsistencyVerificationResult(
++                        "acme",
++                        TotalUnits: 1,
++                        ConsistentCount: 1,
++                        InconsistentCount: 0,
++                        Discrepancies: [],
++                        TotalDiscrepancyCount: 0,
++                        TruncatedAt: null,
++                        EnumerationTruncated: false,
++                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
++                        CompletedAt: DateTimeOffset.UtcNow,
++                        Duration: TimeSpan.FromSeconds(1))
++                    {
++                        NoteCount = 1,
++                        TotalNoteCount = 1,
++                        Notes =
++                        [
++                            new ConsistencyDiscrepancy(
++                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
++                                SyntacticPresent: true,
++                                SemanticPresent: true,
++                                GraphPresent: true,
++                                ConsistencyRepairRecommendation.NoOp)
++                            {
++                                NaturalLanguageSemanticPresent = false,
++                                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
++                                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingMissing,
++                                ConsistencyNote = "Missing backends: semantic-nl",
++                            },
++                        ],
++                    }),
++            ],
++        };
++        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
++            BuildServices(OutputFormat.Human, stub);
++
++        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
++
++        exit.ShouldBe(CliExitCodes.Success);
++        string output = stdout.ToString();
++        output.ShouldContain("note-only units");
++        output.ShouldContain("Notes:");
++        output.ShouldContain("NaturalLanguageEmbeddingMissing");
++        stderr.ToString().ShouldBeEmpty();
++    }
++
+     [Fact]
+     public async Task Run_MissingTenant_ReturnsPlumbingExitCode()
+     {
+@@ -160,6 +217,103 @@ public sealed class ConsistencyVerifyCommandTests
+         doc.RootElement.GetProperty("data").GetProperty("inconsistentCount").GetInt32().ShouldBe(0);
+     }
+ 
++    [Fact]
++    public async Task Run_JsonFormatWithWait_NoteOnlyResult_EmitsNoteFields()
++    {
++        ConsistencyStubClient stub = new()
++        {
++            VerifyInstanceId = "verify-consistency-acme-json-notes",
++            VerifyStatusSequence =
++            [
++                CreateVerificationStatus(
++                    "verify-consistency-acme-json-notes",
++                    "Completed",
++                    new ConsistencyVerificationResult(
++                        "acme",
++                        TotalUnits: 1,
++                        ConsistentCount: 1,
++                        InconsistentCount: 0,
++                        Discrepancies: [],
++                        TotalDiscrepancyCount: 0,
++                        TruncatedAt: null,
++                        EnumerationTruncated: false,
++                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
++                        CompletedAt: DateTimeOffset.UtcNow,
++                        Duration: TimeSpan.FromSeconds(1))
++                    {
++                        NoteCount = 1,
++                        TotalNoteCount = 1,
++                        Notes =
++                        [
++                            new ConsistencyDiscrepancy(
++                                "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
++                                SyntacticPresent: true,
++                                SemanticPresent: true,
++                                GraphPresent: true,
++                                ConsistencyRepairRecommendation.NoOp)
++                            {
++                                ConsistencyNoteKind = ConsistencyNoteKind.NaturalLanguageEmbeddingQueued,
++                                ConsistencyNote = "Natural-language semantic hash pending queued retry.",
++                            },
++                        ],
++                    }),
++            ],
++        };
++        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
++            BuildServices(OutputFormat.Json, stub);
++
++        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
++
++        exit.ShouldBe(CliExitCodes.Success);
++        stderr.ToString().ShouldBeEmpty();
++
++        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
++        doc.RootElement.GetProperty("data").GetProperty("noteCount").GetInt32().ShouldBe(1);
++        doc.RootElement.GetProperty("data").GetProperty("totalNoteCount").GetInt32().ShouldBe(1);
++        doc.RootElement.GetProperty("data").GetProperty("notes")[0].GetProperty("consistencyNoteKind").GetString().ShouldBe("naturalLanguageEmbeddingQueued");
++    }
++
++    [Fact]
++    public async Task Run_TableFormatWithWait_NoteOnlyResult_IncludesNotesColumn()
++    {
++        ConsistencyStubClient stub = new()
++        {
++            VerifyInstanceId = "verify-consistency-acme-table-notes",
++            VerifyStatusSequence =
++            [
++                CreateVerificationStatus(
++                    "verify-consistency-acme-table-notes",
++                    "Completed",
++                    new ConsistencyVerificationResult(
++                        "acme",
++                        TotalUnits: 1,
++                        ConsistentCount: 1,
++                        InconsistentCount: 0,
++                        Discrepancies: [],
++                        TotalDiscrepancyCount: 0,
++                        TruncatedAt: null,
++                        EnumerationTruncated: false,
++                        StartedAt: DateTimeOffset.UtcNow.AddMinutes(-1),
++                        CompletedAt: DateTimeOffset.UtcNow,
++                        Duration: TimeSpan.FromSeconds(1))
++                    {
++                        NoteCount = 1,
++                        TotalNoteCount = 1,
++                    }),
++            ],
++        };
++        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
++            BuildServices(OutputFormat.Table, stub);
++
++        int exit = await InvokeAsync(services, ["verify", "--tenant", "acme", "--wait"]);
++
++        exit.ShouldBe(CliExitCodes.Success);
++        string output = stdout.ToString();
++        output.ShouldContain("NOTES");
++        output.ShouldContain("DISCREPANCIES");
++        stderr.ToString().ShouldBeEmpty();
++    }
++
+     private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)
+     {
+         var root = new System.CommandLine.Command("consistency");
+diff --git a/tests/Hexalith.Memories.Contracts.Tests/V1/IndexInputSerializationTests.cs b/tests/Hexalith.Memories.Contracts.Tests/V1/IndexInputSerializationTests.cs
+index 5f0ad95..4b28514 100644
+--- a/tests/Hexalith.Memories.Contracts.Tests/V1/IndexInputSerializationTests.cs
++++ b/tests/Hexalith.Memories.Contracts.Tests/V1/IndexInputSerializationTests.cs
+@@ -67,8 +67,10 @@ public class IndexInputSerializationTests
+         IndexInput? deserialized = JsonSerializer.Deserialize<IndexInput>(json, MemoriesJsonContext.Options);
+ 
+         deserialized.ShouldNotBeNull();
++        deserialized.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
+         deserialized.Metadata.ShouldContainKey("author");
+         deserialized.Metadata["author"].Value.ShouldBe("John");
++        deserialized.Metadata.ContainsKey("AUTHOR").ShouldBeFalse();
+     }
+ 
+     [Fact]
+diff --git a/tests/Hexalith.Memories.Contracts.Tests/V1/IngestionInputSerializationTests.cs b/tests/Hexalith.Memories.Contracts.Tests/V1/IngestionInputSerializationTests.cs
+index 37fae2a..e088f47 100644
+--- a/tests/Hexalith.Memories.Contracts.Tests/V1/IngestionInputSerializationTests.cs
++++ b/tests/Hexalith.Memories.Contracts.Tests/V1/IngestionInputSerializationTests.cs
+@@ -68,8 +68,10 @@ public class IngestionInputSerializationTests
+         IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(json, MemoriesJsonContext.Options);
+ 
+         deserialized.ShouldNotBeNull();
++        deserialized.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
+         deserialized.Metadata.ShouldContainKey("author");
+         deserialized.Metadata["author"].Value.ShouldBe("John");
++        deserialized.Metadata.ContainsKey("AUTHOR").ShouldBeFalse();
+     }
+ 
+     [Fact]
+diff --git a/tests/Hexalith.Memories.Server.Tests/Hosting/WorkflowReplaySafetyHostedServiceTests.cs b/tests/Hexalith.Memories.Server.Tests/Hosting/WorkflowReplaySafetyHostedServiceTests.cs
+index c91424c..48376a2 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Hosting/WorkflowReplaySafetyHostedServiceTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Hosting/WorkflowReplaySafetyHostedServiceTests.cs
+@@ -5,6 +5,8 @@
+ 
+ namespace Hexalith.Memories.Server.Tests.Hosting;
+ 
++using System.Reflection;
++
+ using Dapr.Workflow;
+ 
+ using Hexalith.Memories.Server.Hosting;
+@@ -13,6 +15,37 @@ using Shouldly;
+ 
+ public class WorkflowReplaySafetyHostedServiceTests
+ {
++    [Fact]
++    public void WorkflowStateMetadataField_StillExists_OnCurrentSdkSurface()
++    {
++        // Decision D2 (committed-branch review 2026-04-24): TryGetWorkflowName drills into
++        // WorkflowState's private _metadata field to read WorkflowMetadata.Name. This test fails
++        // fast if a future Dapr.Workflow SDK renames or removes the field — surfacing the drift
++        // at the unit-test level BEFORE the production startup probe logs Critical 9173 and fails
++        // open.
++        FieldInfo? metadata = typeof(WorkflowState)
++            .GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic);
++
++        metadata.ShouldNotBeNull(
++            "Dapr.Workflow SDK change detected: WorkflowState._metadata private field no longer exists. "
++            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated to the new surface "
++            + "or the gate will silently fail open via Critical event 9173 in production.");
++
++        metadata.FieldType.FullName.ShouldBe(
++            "Dapr.Workflow.Client.WorkflowMetadata",
++            "The private field that TryGetWorkflowName drills through has changed type. "
++            + "Update WorkflowReplaySafetyHostedService.MetadataField + TryGetWorkflowName.");
++
++        // WorkflowMetadata.Name is expected to be a public instance property; if this assertion
++        // breaks, the drill-through path must follow the new accessor shape.
++        PropertyInfo? name = metadata.FieldType
++            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
++        name.ShouldNotBeNull(
++            "Dapr.Workflow.Client.WorkflowMetadata.Name is no longer a public instance property. "
++            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated.");
++        name.PropertyType.ShouldBe(typeof(string));
++    }
++
+     [Fact]
+     public void IsActive_TerminalStates_ReturnFalse()
+     {
+@@ -49,6 +82,30 @@ public class WorkflowReplaySafetyHostedServiceTests
+             status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
+     }
+ 
++    [Fact]
++    public void ShouldFailOpenForUnreadableWorkflowName_ActiveStatesRequireReadableName()
++    {
++        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
++            workflowName: null,
++            exists: true,
++            status: WorkflowRuntimeStatus.Running).ShouldBeTrue();
++
++        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
++            workflowName: "  ",
++            exists: true,
++            status: WorkflowRuntimeStatus.Pending).ShouldBeTrue();
++
++        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
++            workflowName: "IngestionWorkflow",
++            exists: true,
++            status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
++
++        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
++            workflowName: null,
++            exists: true,
++            status: WorkflowRuntimeStatus.Completed).ShouldBeFalse();
++    }
++
+     [Fact]
+     public void Timeouts_MatchDocumentedEnvelope()
+     {
+diff --git a/tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionInputMetadataComparerTests.cs b/tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionInputMetadataComparerTests.cs
+new file mode 100644
+index 0000000..5cee86f
+--- /dev/null
++++ b/tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionInputMetadataComparerTests.cs
+@@ -0,0 +1,137 @@
++// <copyright file="IngestionInputMetadataComparerTests.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Server.Tests.Ingestion;
++
++using Hexalith.Memories.Contracts.V1;
++
++using Shouldly;
++
++/// <summary>Story 9.2 — decision D6 (committed-branch review 2026-04-24). Pin
++/// <see cref="StringComparer.Ordinal"/> on the metadata dictionaries so CloudEvent keys
++/// (<c>cloudevent.type</c>, <c>event.aggregateType</c>, etc.) that the workflow reads back
++/// match exactly what the <c>CloudEventToIngestionInputMapper</c> wrote — independent of which
++/// code path constructed the dictionary (auto-backed default, init-assigned, or deserialized
++/// replay payload).</summary>
++public class IngestionInputMetadataComparerTests
++{
++    [Fact]
++    public void IngestionInput_DefaultMetadata_UsesOrdinalComparer()
++    {
++        IngestionInput input = new()
++        {
++            TenantId = "t",
++            CaseId = "c",
++            SourceUri = "src",
++            ContentType = "application/json",
++            SourceType = SourceType.Event,
++            IngestedBy = "test",
++        };
++
++        input.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++    }
++
++    [Fact]
++    public void IngestionInput_NullMetadataInit_ProducesOrdinalDictionary()
++    {
++        IngestionInput input = new()
++        {
++            TenantId = "t",
++            CaseId = "c",
++            SourceUri = "src",
++            ContentType = "application/json",
++            SourceType = SourceType.Event,
++            IngestedBy = "test",
++            Metadata = null!,
++        };
++
++        input.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++        input.Metadata.ShouldBeEmpty();
++    }
++
++    [Fact]
++    public void IngestionInput_CaseInsensitiveSourceMetadata_IsNormalizedToOrdinal()
++    {
++        // If the caller passes a case-insensitive dictionary, IngestionInput MUST NOT silently
++        // accept a loose comparer — that would allow two distinct CloudEvent keys ("Cloudevent.Type"
++        // vs "cloudevent.type") to collide inside the workflow. Pinning forces a rebuild with
++        // StringComparer.Ordinal so downstream consumers have deterministic semantics.
++        Dictionary<string, MetadataField> caseInsensitive = new(StringComparer.OrdinalIgnoreCase)
++        {
++            ["cloudevent.type"] = new("payment.accepted.v1", MetadataOrigin.Ai, 1.0f),
++        };
++
++        IngestionInput input = new()
++        {
++            TenantId = "t",
++            CaseId = "c",
++            SourceUri = "src",
++            ContentType = "application/json",
++            SourceType = SourceType.Event,
++            IngestedBy = "test",
++            Metadata = caseInsensitive,
++        };
++
++        input.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++        input.Metadata.ShouldContainKey("cloudevent.type");
++        input.Metadata.ContainsKey("CLOUDEVENT.TYPE").ShouldBeFalse(
++            "Ordinal lookups must be case-sensitive. Case-insensitive lookup would regress to the"
++            + " loose comparer D6 explicitly rejects.");
++    }
++
++    [Fact]
++    public void IndexInput_DefaultMetadata_UsesOrdinalComparer()
++    {
++        IndexInput input = new()
++        {
++            MemoryUnitId = "mu",
++            TenantId = "t",
++            CaseId = "c",
++            Content = "content",
++            ContentHash = "hash",
++            SourceUri = "src",
++            SourceType = SourceType.Event,
++            IngestedBy = "test",
++            IngestedAt = DateTimeOffset.UtcNow,
++            EmbeddingVector = [0f],
++            EmbeddingProvider = "p",
++            EmbeddingModel = "m",
++            EmbeddingDimensions = 1,
++        };
++
++        input.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++    }
++
++    [Fact]
++    public void IndexInput_CaseInsensitiveSourceMetadata_IsNormalizedToOrdinal()
++    {
++        Dictionary<string, MetadataField> caseInsensitive = new(StringComparer.OrdinalIgnoreCase)
++        {
++            ["cloudevent.type"] = new("payment.accepted.v1", MetadataOrigin.Ai, 1.0f),
++        };
++
++        IndexInput input = new()
++        {
++            MemoryUnitId = "mu",
++            TenantId = "t",
++            CaseId = "c",
++            Content = "content",
++            ContentHash = "hash",
++            SourceUri = "src",
++            SourceType = SourceType.Event,
++            IngestedBy = "test",
++            IngestedAt = DateTimeOffset.UtcNow,
++            EmbeddingVector = [0f],
++            EmbeddingProvider = "p",
++            EmbeddingModel = "m",
++            EmbeddingDimensions = 1,
++            Metadata = caseInsensitive,
++        };
++
++        input.Metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++        input.Metadata.ShouldContainKey("cloudevent.type");
++        input.Metadata.ContainsKey("CLOUDEVENT.TYPE").ShouldBeFalse();
++    }
++}
+diff --git a/tests/Hexalith.Memories.Server.Tests/Workflows/ConsistencyVerificationWorkflowTests.cs b/tests/Hexalith.Memories.Server.Tests/Workflows/ConsistencyVerificationWorkflowTests.cs
+index 2995be8..10060c7 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Workflows/ConsistencyVerificationWorkflowTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Workflows/ConsistencyVerificationWorkflowTests.cs
+@@ -64,14 +64,16 @@ public class ConsistencyVerificationWorkflowTests
+         result.TotalUnits.ShouldBe(10);
+         result.ConsistentCount.ShouldBe(10);
+         result.InconsistentCount.ShouldBe(0);
++        result.NoteCount.ShouldBe(0);
+         result.Discrepancies.Count.ShouldBe(0);
++        result.Notes.ShouldBeEmpty();
+     }
+ 
+     [Fact]
+     public async Task RunAsync_AggregateCounts_InvariantHolds()
+     {
+         WorkflowContext context = CreateContext();
+-        List<string> ids = ["c0", "c1", "c2", "i0", "i1"];
++        List<string> ids = ["c0", "c1", "c2", "n0", "i0", "i1"];
+         SetEnumeration(context, ids);
+ 
+         context.CallActivityAsync<ConsistencyResult>(
+@@ -80,6 +82,17 @@ public class ConsistencyVerificationWorkflowTests
+                 Arg.Any<WorkflowTaskOptions>())
+             .Returns(new ConsistencyResult(true, true, true));
+ 
++        context.CallActivityAsync<ConsistencyResult>(
++                nameof(VerifyConsistencyActivity),
++                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
++                Arg.Any<WorkflowTaskOptions>())
++            .Returns(new ConsistencyResult(true, true, true)
++            {
++                NaturalLanguageSemanticExists = false,
++                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
++                ConsistencyNote = "Missing backends: semantic-nl",
++            });
++
+         context.CallActivityAsync<ConsistencyResult>(
+                 nameof(VerifyConsistencyActivity),
+                 Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('i')),
+@@ -92,7 +105,9 @@ public class ConsistencyVerificationWorkflowTests
+             new ConsistencyVerificationInput(TestTenantId));
+ 
+         (result.ConsistentCount + result.InconsistentCount).ShouldBe(result.TotalUnits);
+-        result.Discrepancies.Count.ShouldBe(result.InconsistentCount);
++        result.NoteCount.ShouldBe(1);
++        result.TotalNoteCount.ShouldBe(1);
++        result.Discrepancies.Count.ShouldBe(result.TotalDiscrepancyCount);
+     }
+ 
+     [Fact]
+@@ -206,6 +221,52 @@ public class ConsistencyVerificationWorkflowTests
+         result.TotalDiscrepancyCount.ShouldBe(10_001);
+         result.TruncatedAt.ShouldNotBeNull();
+         result.InconsistentCount.ShouldBe(10_001);
++        result.NoteCount.ShouldBe(0);
++        result.TotalNoteCount.ShouldBe(0);
++        result.Notes.ShouldBeEmpty();
++    }
++
++    [Fact]
++    public async Task RunAsync_NotesAndDiscrepancies_ShareSingleEntryCap()
++    {
++        WorkflowContext context = CreateContext();
++        List<string> ids = Enumerable.Range(0, 9_999).Select(i => $"d{i:D6}")
++            .Concat(["n000000", "n000001"])
++            .ToList();
++        SetEnumeration(context, ids);
++
++        context.CallActivityAsync<ConsistencyResult>(
++                nameof(VerifyConsistencyActivity),
++                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('d')),
++                Arg.Any<WorkflowTaskOptions>())
++            .Returns(new ConsistencyResult(true, false, true));
++
++        context.CallActivityAsync<ConsistencyResult>(
++                nameof(VerifyConsistencyActivity),
++                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
++                Arg.Any<WorkflowTaskOptions>())
++            .Returns(new ConsistencyResult(true, true, true)
++            {
++                NaturalLanguageSemanticExists = false,
++                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
++                ConsistencyNote = "Missing backends: semantic-nl",
++            });
++
++        ConsistencyVerificationWorkflow workflow = new();
++        ConsistencyVerificationResult result = await workflow.RunAsync(
++            context,
++            new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
++
++        result.TotalUnits.ShouldBe(10_001);
++        result.ConsistentCount.ShouldBe(2);
++        result.InconsistentCount.ShouldBe(9_999);
++        result.NoteCount.ShouldBe(2);
++        result.TotalNoteCount.ShouldBe(2);
++        result.TotalDiscrepancyCount.ShouldBe(9_999);
++        result.Discrepancies.Count.ShouldBe(9_999);
++        result.Notes.Count.ShouldBe(1);
++        (result.Discrepancies.Count + result.Notes.Count).ShouldBe(ConsistencyVerificationWorkflow.MaxDiscrepancyEntries);
++        result.TruncatedAt.ShouldNotBeNull();
+     }
+ 
+     [Fact]
+@@ -253,7 +314,7 @@ public class ConsistencyVerificationWorkflowTests
+     }
+ 
+     [Fact]
+-    public async Task RunAsync_QueuedNaturalLanguageMissing_RemainsConsistent()
++    public async Task RunAsync_QueuedNaturalLanguageMissing_RemainsConsistentAndRoutesToNotes()
+     {
+         WorkflowContext context = CreateContext();
+         SetEnumeration(context, ["queued-nl"]);
+@@ -275,12 +336,26 @@ public class ConsistencyVerificationWorkflowTests
+ 
+         result.ConsistentCount.ShouldBe(1);
+         result.InconsistentCount.ShouldBe(0);
++        result.NoteCount.ShouldBe(1);
++        result.TotalNoteCount.ShouldBe(1);
+         result.Discrepancies.ShouldBeEmpty();
++        result.Notes.Count.ShouldBe(1);
++        result.Notes[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
++        result.Notes[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingQueued);
++        string? queuedNote = result.Notes[0].ConsistencyNote;
++        queuedNote.ShouldNotBeNull();
++        queuedNote.ShouldContain("queued retry");
+     }
+ 
+     [Fact]
+-    public async Task RunAsync_IndexedNaturalLanguageMissing_BecomesDiscrepancyWithNote()
++    public async Task RunAsync_IndexedNaturalLanguageMissing_RoutesToNotesNotDiscrepancies()
+     {
++        // Story 9.2 review D7 (committed-branch review 2026-04-24): when the three-axis repair
++        // recommendation is NoOp but the NL semantic sibling is missing (real NL gap), the entry
++        // MUST route to `Notes`, not `Discrepancies`. Consumers filtering
++        // `Discrepancies.Where(d => d.Recommendation != NoOp)` previously missed NL-only gaps —
++        // the split restores the expected "action-required" semantics for Discrepancies while
++        // preserving the NL observation in Notes.
+         WorkflowContext context = CreateContext();
+         SetEnumeration(context, ["indexed-nl-gap"]);
+         context.CallActivityAsync<ConsistencyResult>(
+@@ -300,16 +375,56 @@ public class ConsistencyVerificationWorkflowTests
+             context,
+             new ConsistencyVerificationInput(TestTenantId));
+ 
+-        result.ConsistentCount.ShouldBe(0);
++        result.ConsistentCount.ShouldBe(1);
++        result.InconsistentCount.ShouldBe(0);
++        result.NoteCount.ShouldBe(1);
++        result.TotalNoteCount.ShouldBe(1);
++        result.TotalDiscrepancyCount.ShouldBe(0);
++        result.Discrepancies.Count.ShouldBe(0, "NoOp + NL gap is informational — must not appear in Discrepancies.");
++        result.Notes.Count.ShouldBe(1);
++        result.Notes[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
++        result.Notes[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
++        result.Notes[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
++        result.Notes[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
++        string? consistencyNote = result.Notes[0].ConsistencyNote;
++        consistencyNote.ShouldNotBeNull();
++        consistencyNote.ShouldContain("semantic-nl");
++    }
++
++    [Fact]
++    public async Task RunAsync_MultiAxisGapWithNlNote_RoutesToDiscrepanciesNotNotes()
++    {
++        // Complement to IndexedNaturalLanguageMissing test: when a real multi-axis repair IS
++        // required, the NL note rides along as supplementary context on the Discrepancy entry
++        // rather than splitting into a second Notes entry.
++        WorkflowContext context = CreateContext();
++        SetEnumeration(context, ["semantic-missing"]);
++        context.CallActivityAsync<ConsistencyResult>(
++                nameof(VerifyConsistencyActivity),
++                Arg.Any<ConsistencyInput>(),
++                Arg.Any<WorkflowTaskOptions>())
++            .Returns(new ConsistencyResult(true, false, true)
++            {
++                ConsistencyNoteKind = ConsistencyNoteKind.None,
++                NaturalLanguageSemanticExists = false,
++                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
++                ConsistencyNote = "Missing backends: semantic-nl",
++            });
++
++        ConsistencyVerificationWorkflow workflow = new();
++        ConsistencyVerificationResult result = await workflow.RunAsync(
++            context,
++            new ConsistencyVerificationInput(TestTenantId));
++
+         result.InconsistentCount.ShouldBe(1);
++        result.NoteCount.ShouldBe(0);
+         result.Discrepancies.Count.ShouldBe(1);
+-        result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.NoOp);
+-        result.Discrepancies[0].NaturalLanguageSemanticPresent.ShouldBeFalse();
+-        result.Discrepancies[0].NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
++        result.Discrepancies[0].Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexSemantic);
+         result.Discrepancies[0].ConsistencyNoteKind.ShouldBe(ConsistencyNoteKind.NaturalLanguageEmbeddingMissing);
+-        string? consistencyNote = result.Discrepancies[0].ConsistencyNote;
+-        consistencyNote.ShouldNotBeNull();
+-        consistencyNote.ShouldContain("semantic-nl");
++        string? discrepancyNote = result.Discrepancies[0].ConsistencyNote;
++        discrepancyNote.ShouldNotBeNull();
++        discrepancyNote.ShouldContain("semantic-nl");
++        result.Notes.Count.ShouldBe(0);
+     }
+ 
+     private static WorkflowContext CreateContext()
+diff --git a/tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs b/tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs
+index b0f1f69..4639993 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs
+@@ -1004,6 +1004,40 @@ public class IngestionWorkflowTests
+         policy.MaxRetryInterval.ShouldBe(TimeSpan.FromSeconds(30));
+     }
+ 
++    [Fact]
++    public void BuildIndexMetadata_ShouldPreserveOrdinalComparerAcrossWorkflowCopy()
++    {
++        IngestionInput input = IngestionInputFactory.Create(
++            sourceUri: "https://example.test/articles/42",
++            contentType: "text/html",
++            sourceType: SourceType.Url,
++            metadata: new Dictionary<string, MetadataField>(StringComparer.OrdinalIgnoreCase)
++            {
++                ["cloudevent.type"] = new("payment.accepted.v1", MetadataOrigin.Ai, 1.0f),
++            });
++        UrlFetchResult fetch = new(
++            ContentBytes: [1, 2, 3],
++            ContentType: "text/html",
++            ContentLength: 3,
++            FinalUrl: "https://example.test/articles/42?redirected=true",
++            HttpStatusCode: 200);
++
++        System.Reflection.MethodInfo? method = typeof(IngestionWorkflow).GetMethod(
++            "BuildIndexMetadata",
++            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
++
++        method.ShouldNotBeNull();
++        Dictionary<string, MetadataField> metadata = (Dictionary<string, MetadataField>)method!.Invoke(
++            null,
++            [input, fetch, fetch.FinalUrl, fetch.ContentLength])!;
++
++        metadata.Comparer.ShouldBe(StringComparer.Ordinal);
++        metadata.ShouldContainKey("cloudevent.type");
++        metadata.ShouldContainKey("http.finalUrl");
++        metadata.ContainsKey("CLOUDEVENT.TYPE").ShouldBeFalse();
++        metadata.ContainsKey("HTTP.FINALURL").ShouldBeFalse();
++    }
++
+     [Fact]
+     public async Task RunAsync_DimensionMismatchFailure_ShouldStillUseMainRetryPolicy()
+     {

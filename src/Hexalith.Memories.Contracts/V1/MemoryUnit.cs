@@ -25,10 +25,19 @@ public sealed record MemoryUnit
 
     public required MemoryUnitStatus Status { get; init; }
 
+    // Pinned to StringComparer.Ordinal (decision S6-D3 — re-review 2026-04-25) to match
+    // IngestionInput.Metadata + IndexInput.Metadata. MemoryUnit is also a contract-boundary record
+    // carrying CloudEvent metadata back to consumers; without pinning, a round-trip through a
+    // case-insensitive dictionary would silently change lookup semantics.
     public Dictionary<string, MetadataField> Metadata
     {
-        get => field ??= [];
-        init => field = value ?? [];
+        get => field ??= new Dictionary<string, MetadataField>(StringComparer.Ordinal);
+        init => field = value switch
+        {
+            null => new Dictionary<string, MetadataField>(StringComparer.Ordinal),
+            Dictionary<string, MetadataField> existing when ReferenceEquals(existing.Comparer, StringComparer.Ordinal) => existing,
+            _ => new Dictionary<string, MetadataField>(value, StringComparer.Ordinal),
+        };
     }
 
     public string? EmbeddingProvider { get; init; }

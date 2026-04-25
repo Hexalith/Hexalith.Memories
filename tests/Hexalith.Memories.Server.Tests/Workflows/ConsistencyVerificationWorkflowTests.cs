@@ -227,8 +227,11 @@ public class ConsistencyVerificationWorkflowTests
     }
 
     [Fact]
-    public async Task RunAsync_NotesAndDiscrepancies_ShareSingleEntryCap()
+    public async Task RunAsync_NotesAndDiscrepancies_HaveIndependentCaps()
     {
+        // S6-D1 (re-review 2026-04-25): Discrepancies and Notes have INDEPENDENT 10,000-entry caps.
+        // 9,999 discrepancies + 2 notes ⇒ both lists fit within their own budgets, so neither is
+        // truncated. Verifies that the previous shared-cap eviction behavior is gone.
         WorkflowContext context = CreateContext();
         List<string> ids = Enumerable.Range(0, 9_999).Select(i => $"d{i:D6}")
             .Concat(["n000000", "n000001"])
@@ -264,8 +267,50 @@ public class ConsistencyVerificationWorkflowTests
         result.TotalNoteCount.ShouldBe(2);
         result.TotalDiscrepancyCount.ShouldBe(9_999);
         result.Discrepancies.Count.ShouldBe(9_999);
+        result.Notes.Count.ShouldBe(2);
+        result.TruncatedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RunAsync_DiscrepancyCapExceeded_TruncatesDiscrepanciesNotNotes()
+    {
+        // S6-P1 + S6-D1: when discrepancies exceed their independent cap, NoteCount = notes.Count
+        // (in-payload), TotalNoteCount = un-truncated total. Both assert under truncation. 1 note +
+        // 10_001 discrepancies ⇒ discrepancies truncated to 10_000, notes untouched.
+        WorkflowContext context = CreateContext();
+        List<string> ids = Enumerable.Range(0, 10_001).Select(i => $"d{i:D6}")
+            .Concat(["n000000"])
+            .ToList();
+        SetEnumeration(context, ids);
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('d')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, false, true));
+
+        context.CallActivityAsync<ConsistencyResult>(
+                nameof(VerifyConsistencyActivity),
+                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ConsistencyResult(true, true, true)
+            {
+                NaturalLanguageSemanticExists = false,
+                NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+                ConsistencyNote = "Missing backends: semantic-nl",
+            });
+
+        ConsistencyVerificationWorkflow workflow = new();
+        ConsistencyVerificationResult result = await workflow.RunAsync(
+            context,
+            new ConsistencyVerificationInput(TestTenantId, BatchSize: 5000));
+
+        result.TotalUnits.ShouldBe(10_002);
+        result.Discrepancies.Count.ShouldBe(ConsistencyVerificationWorkflow.MaxDiscrepancyEntries);
+        result.TotalDiscrepancyCount.ShouldBe(10_001);
         result.Notes.Count.ShouldBe(1);
-        (result.Discrepancies.Count + result.Notes.Count).ShouldBe(ConsistencyVerificationWorkflow.MaxDiscrepancyEntries);
+        result.NoteCount.ShouldBe(1);
+        result.TotalNoteCount.ShouldBe(1);
         result.TruncatedAt.ShouldNotBeNull();
     }
 

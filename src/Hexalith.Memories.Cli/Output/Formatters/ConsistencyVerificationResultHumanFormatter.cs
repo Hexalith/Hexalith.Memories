@@ -24,9 +24,9 @@ public sealed class ConsistencyVerificationResultHumanFormatter : IOutputFormatt
         writer.WriteLine("Consistency verification completed.");
         writer.WriteLine($"  tenant:              {value.TenantId}");
         writer.WriteLine($"  total units:         {value.TotalUnits.ToString(CultureInfo.InvariantCulture)}");
-        writer.WriteLine($"  consistent units:    {value.ConsistentCount.ToString(CultureInfo.InvariantCulture)}");
+        writer.WriteLine($"  consistent (incl. notes): {value.ConsistentCount.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  inconsistent units:  {value.InconsistentCount.ToString(CultureInfo.InvariantCulture)}");
-        writer.WriteLine($"  note-only units:     {value.NoteCount.ToString(CultureInfo.InvariantCulture)}");
+        writer.WriteLine($"  note-only units:     {value.TotalNoteCount.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  discrepancy records: {value.Discrepancies.Count.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  note records:        {value.Notes.Count.ToString(CultureInfo.InvariantCulture)}");
         writer.WriteLine($"  enumeration cut off: {value.EnumerationTruncated}");

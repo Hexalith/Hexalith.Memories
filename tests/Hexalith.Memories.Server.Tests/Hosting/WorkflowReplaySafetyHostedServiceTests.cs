@@ -31,10 +31,10 @@ public class WorkflowReplaySafetyHostedServiceTests
             + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated to the new surface "
             + "or the gate will silently fail open via Critical event 9173 in production.");
 
-        metadata.FieldType.FullName.ShouldBe(
-            "Dapr.Workflow.Client.WorkflowMetadata",
-            "The private field that TryGetWorkflowName drills through has changed type. "
-            + "Update WorkflowReplaySafetyHostedService.MetadataField + TryGetWorkflowName.");
+        // S6-P16 (re-review 2026-04-25): dropped the FullName assertion. Production code only
+        // depends on the field's existence + the metadata type's public Name property — a
+        // namespace relocation of WorkflowMetadata is operationally a no-op and should not break
+        // the SDK-drift sentinel.
 
         // WorkflowMetadata.Name is expected to be a public instance property; if this assertion
         // breaks, the drill-through path must follow the new accessor shape.
@@ -83,28 +83,28 @@ public class WorkflowReplaySafetyHostedServiceTests
     }
 
     [Fact]
-    public void ShouldFailOpenForUnreadableWorkflowName_ActiveStatesRequireReadableName()
+    public void ShouldBlockForUnreadableWorkflowName_ActiveStatesReturnTrue()
     {
-        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
-            workflowName: null,
+        WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
             exists: true,
             status: WorkflowRuntimeStatus.Running).ShouldBeTrue();
 
-        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
-            workflowName: "  ",
+        WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
             exists: true,
             status: WorkflowRuntimeStatus.Pending).ShouldBeTrue();
 
-        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
-            workflowName: "IngestionWorkflow",
-            exists: true,
-            status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
-
-        WorkflowReplaySafetyHostedService.ShouldFailOpenForUnreadableWorkflowName(
-            workflowName: null,
+        WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
             exists: true,
             status: WorkflowRuntimeStatus.Completed).ShouldBeFalse();
+
+        WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
+            exists: false,
+            status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
     }
+
+    // S6-D2 follow-up (code review 2026-04-25): the old fail-open helper was replaced by
+    // conservative blocking semantics for unreadable active workflows. Full TryCountInFlightAsync
+    // end-to-end coverage remains gated on S6-P9.
 
     [Fact]
     public void Timeouts_MatchDocumentedEnvelope()

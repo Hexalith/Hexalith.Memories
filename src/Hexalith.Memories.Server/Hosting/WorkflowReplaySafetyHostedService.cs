@@ -43,6 +43,11 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
     private static readonly FieldInfo? MetadataField = typeof(WorkflowState)
         .GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    // S6-P10 (re-review 2026-04-25): cache the metadata-Type → Name PropertyInfo so TryGetWorkflowName
+    // does not re-resolve the property on every call. The metadata Type is stable across all
+    // WorkflowState instances within a process, so a single Lazy<PropertyInfo?> covers all calls.
+    private static readonly Lazy<PropertyInfo?> NamePropertyAccessor = new(ResolveNameProperty);
+
     private readonly DaprWorkflowClient _workflowClient;
     private readonly ILogger<WorkflowReplaySafetyHostedService> _logger;
     private readonly TimeProvider _timeProvider;
@@ -62,6 +67,15 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
     /// <inheritdoc/>
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
+        // S6-P3 (re-review 2026-04-25): eager startup probe — emit Critical 9173 immediately if
+        // the cached private-field accessor is null. Without this, a fresh deploy with no in-flight
+        // workflows AND a drifted SDK would silently pass the gate; the next deploy with active
+        // workflows would then fail open. The probe makes SDK drift loud at deploy time.
+        if (MetadataField is null)
+        {
+            LogGateFailedOpen(_logger, "metadata-field-missing", null);
+        }
+
         DateTimeOffset deadline = _timeProvider.GetUtcNow() + TotalTimeout;
 
         while (!cancellationToken.IsCancellationRequested)
@@ -120,6 +134,10 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
     {
         try
         {
+            // S6-D2 follow-up (code review 2026-04-25): conservative name resolution. An active
+            // workflow with an unreadable family name is treated as potentially unsafe and delays
+            // startup until it clears or the existing 5-minute timeout fires. That avoids a false
+            // "drained" result when the unreadable instance is actually an IngestionWorkflow.
             int count = 0;
             string? continuation = null;
             do
@@ -151,15 +169,15 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
 
                     string? workflowName = TryGetWorkflowName(state);
 
-                    // Decision D2 (committed-branch review 2026-04-24): every observed active
-                    // workflow instance must yield a readable name. If reflection fails for ANY
-                    // active instance, name-based filtering is no longer trustworthy — the gate
-                    // would silently undercount and mis-pass the runbook quiesce check. Emit
-                    // Critical 9173 and fail open.
-                    if (ShouldFailOpenForUnreadableWorkflowName(workflowName, state.Exists, state.RuntimeStatus))
+                    if (string.IsNullOrWhiteSpace(workflowName))
                     {
-                        LogGateFailedOpen(_logger, "workflow-name-reflection-null", null);
-                        return null;
+                        LogWorkflowNameUnreadable(_logger, instanceId);
+                        if (ShouldBlockForUnreadableWorkflowName(state.Exists, state.RuntimeStatus))
+                        {
+                            count++;
+                        }
+
+                        continue;
                     }
 
                     if (ShouldCountWorkflow(workflowName, state.Exists, state.RuntimeStatus))
@@ -197,19 +215,15 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
             && string.Equals(workflowName, nameof(IngestionWorkflow), StringComparison.Ordinal)
             && IsActive(status);
 
-    internal static bool ShouldFailOpenForUnreadableWorkflowName(
-        string? workflowName,
-        bool exists,
-        WorkflowRuntimeStatus status)
-        => exists
-            && IsActive(status)
-            && string.IsNullOrWhiteSpace(workflowName);
+    internal static bool ShouldBlockForUnreadableWorkflowName(bool exists, WorkflowRuntimeStatus status)
+        => exists && IsActive(status);
 
     // Walks WorkflowState → private `_metadata` field → public WorkflowMetadata.Name. The top-level
     // `Name` property does not exist on WorkflowState (Dapr.Workflow 1.17.6 — verified via reflection
     // probe), so the earlier public-property lookup always returned null and the gate silently
     // counted zero workflows. This private-field walk is fragile but the D2 startup probe surfaces
     // drift as Critical 9173.
+    // S6-P10 (re-review 2026-04-25): Name PropertyInfo is cached lazily via NamePropertyAccessor.
     internal static string? TryGetWorkflowName(WorkflowState state)
     {
         object? metadata = MetadataField?.GetValue(state);
@@ -218,9 +232,15 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
             return null;
         }
 
-        PropertyInfo? nameProperty = metadata.GetType()
-            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
-        return nameProperty?.GetValue(metadata) as string;
+        return NamePropertyAccessor.Value?.GetValue(metadata) as string;
+    }
+
+    private static PropertyInfo? ResolveNameProperty()
+    {
+        // The metadata Type is determined by the SDK once the field is non-null on a real state
+        // instance. We probe via the FieldInfo's FieldType, which the SDK publishes statically.
+        Type? metadataType = MetadataField?.FieldType;
+        return metadataType?.GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
     }
 
     [LoggerMessage(EventId = 9171, Level = LogLevel.Warning, Message = "Replay-safety gate: {InFlightCount} in-flight IngestionWorkflow instance(s) detected — delaying startup (event 9171).")]
@@ -234,4 +254,10 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
 
     [LoggerMessage(EventId = 9173, Level = LogLevel.Critical, Message = "Replay-safety gate failing open (event 9173): reason={Reason}. Operator action: verify DAPR sidecar health and that the Dapr.Workflow SDK still exposes WorkflowMetadata.Name via WorkflowState._metadata.")]
     private static partial void LogGateFailedOpen(ILogger logger, string reason, Exception? exception);
+
+    // S6-D2 follow-up (code review 2026-04-25): per-instance Warning when reflection cannot read
+    // the workflow name. The instance is counted as in-flight so the gate cannot false-drain while
+    // a potentially version-sensitive IngestionWorkflow is active.
+    [LoggerMessage(EventId = 9175, Level = LogLevel.Warning, Message = "Replay-safety gate: workflow instance '{InstanceId}' has unreadable name; treating it as in-flight until it clears or the gate times out.")]
+    private static partial void LogWorkflowNameUnreadable(ILogger logger, string instanceId);
 }
