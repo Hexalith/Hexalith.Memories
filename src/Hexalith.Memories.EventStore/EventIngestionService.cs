@@ -62,12 +62,14 @@ internal sealed class EventIngestionService : IEventIngestionService
         string tenantIdForTelemetry = "__rejected__";
         string? caseIdForTelemetry = null;
         string? aggregateTypeForTelemetry = null;
+        string? cloudEventTypeForTelemetry = null;
 
         CloudEventEnvelope envelope;
         try
         {
             envelope = CloudEventEnvelopeParser.Parse(envelopeJson);
             cloudEventId = envelope.Id;
+            cloudEventTypeForTelemetry = envelope.Type;
         }
         catch (InvalidOperationException ex)
         {
@@ -77,7 +79,7 @@ internal sealed class EventIngestionService : IEventIngestionService
                 EventIngestionResponse.Invalid(ex.Message));
             _telemetry.RecordIngestion(
                 tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                invalid.Outcome, ElapsedMs(startTicks));
+                cloudEventTypeForTelemetry, invalid.Outcome, ElapsedMs(startTicks));
             return invalid;
         }
 
@@ -96,7 +98,7 @@ internal sealed class EventIngestionService : IEventIngestionService
                 EventIngestionResponse.Drop("routing-failed", ex.Message));
             _telemetry.RecordIngestion(
                 tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                failed.Outcome, ElapsedMs(startTicks));
+                cloudEventTypeForTelemetry, failed.Outcome, ElapsedMs(startTicks));
             return failed;
         }
 
@@ -110,7 +112,7 @@ internal sealed class EventIngestionService : IEventIngestionService
         {
             _telemetry.RecordIngestion(
                 tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                drop.Outcome, ElapsedMs(startTicks));
+                cloudEventTypeForTelemetry, drop.Outcome, ElapsedMs(startTicks));
             return drop;
         }
 
@@ -137,7 +139,7 @@ internal sealed class EventIngestionService : IEventIngestionService
                         EventIngestionResponse.Duplicate());
                     _telemetry.RecordIngestion(
                         tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                        duplicate.Outcome, ElapsedMs(startTicks));
+                        cloudEventTypeForTelemetry, duplicate.Outcome, ElapsedMs(startTicks));
                     return duplicate;
                 case PreflightReservationResult.Reserved:
                     reservationHeld = true;
@@ -163,7 +165,7 @@ internal sealed class EventIngestionService : IEventIngestionService
                 EventIngestionResponse.Accepted(scheduled));
             _telemetry.RecordIngestion(
                 tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                accepted.Outcome, ElapsedMs(startTicks));
+                cloudEventTypeForTelemetry, accepted.Outcome, ElapsedMs(startTicks));
             return accepted;
         }
         catch (Exception ex)
@@ -187,7 +189,7 @@ internal sealed class EventIngestionService : IEventIngestionService
                 EventIngestionResponse.Drop("schedule-failed", ex.Message));
             _telemetry.RecordIngestion(
                 tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
-                failed.Outcome, ElapsedMs(startTicks));
+                cloudEventTypeForTelemetry, failed.Outcome, ElapsedMs(startTicks));
             return failed;
         }
     }

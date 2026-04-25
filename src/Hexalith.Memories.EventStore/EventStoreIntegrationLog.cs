@@ -7,13 +7,14 @@ namespace Hexalith.Memories.EventStore;
 
 using Microsoft.Extensions.Logging;
 
-/// <summary>Source-generated <see cref="LoggerMessage"/> emitters for Story 9.1. EventId bank <c>9100-9199</c>
-/// is pinned for this story. Ranges:
+/// <summary>Source-generated <see cref="LoggerMessage"/> emitters for Story 9.1 + 9.3. EventId bank <c>9100-9199</c>
+/// is pinned for this sub-system. Ranges:
 /// <list type="bullet">
-///   <item><description>9100-9109 — Information / startup</description></item>
-///   <item><description>9110-9119 — Warning (drops, unknown-source, tenant-deleting, case cap)</description></item>
-///   <item><description>9120-9129 — Error (workflow scheduling failures, envelope parse)</description></item>
-///   <item><description>9130+ — Information (happy-path ingestion)</description></item>
+///   <item><description>9100-9109 — Information / startup (Story 9.1)</description></item>
+///   <item><description>9110-9119 — Warning (drops, unknown-source, tenant-deleting, case cap) (Story 9.1)</description></item>
+///   <item><description>9120-9129 — Error (workflow scheduling failures, envelope parse) (Story 9.1)</description></item>
+///   <item><description>9130-9139 — Story 9.3 happy-path information (observations recorded, snapshots served)</description></item>
+///   <item><description>9140-9149 — Story 9.3 Warning / Debug (observation-store write failures, regex bypass, config change, drops)</description></item>
 /// </list>
 /// </summary>
 internal static partial class EventStoreIntegrationLog
@@ -77,4 +78,62 @@ internal static partial class EventStoreIntegrationLog
         Level = LogLevel.Error,
         Message = "EventStore ingestion: route resolution failed for event {CloudEventId} ({ExceptionType}).")]
     public static partial void RouteResolutionFailed(ILogger logger, string cloudEventId, string exceptionType);
+
+    // ------------------------------------------------------------------------------------------------
+    // Story 9.3 — Handler registry + mismatch detection (bank 9130-9149).
+    // ------------------------------------------------------------------------------------------------
+
+    [LoggerMessage(
+        EventId = 9130,
+        Level = LogLevel.Debug,
+        Message = "Observation recorded for tenant {TenantId}, aggregate {AggregateType}, eventType {EventType}.")]
+    public static partial void ObservedEventTypeRecorded(ILogger logger, string tenantId, string aggregateType, string eventType);
+
+    [LoggerMessage(
+        EventId = 9131,
+        Level = LogLevel.Information,
+        Message = "Handler registry snapshot served with {HandlersCount} handler row(s).")]
+    public static partial void HandlerRegistrySnapshotServed(ILogger logger, int handlersCount);
+
+    [LoggerMessage(
+        EventId = 9132,
+        Level = LogLevel.Information,
+        Message = "Handler mismatch detected for tenant {TenantId}: category={Category}, severity={Severity}, subject={Subject}.")]
+    public static partial void HandlerMismatchDetected(ILogger logger, string tenantId, string category, string severity, string subject);
+
+    [LoggerMessage(
+        EventId = 9140,
+        Level = LogLevel.Warning,
+        Message = "Observation-store write failed for tenant {TenantId} ({ExceptionType}) — fail-open, ingestion unaffected.")]
+    public static partial void ObservedEventTypeStoreWriteFailed(ILogger logger, string tenantId, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9141,
+        Level = LogLevel.Warning,
+        Message = "Regex bypassed for pathological event type (reason={Reason}, truncatedEventType={TruncatedEventType}).")]
+    public static partial void RegexSkippedForPathologicalEventType(ILogger logger, string reason, string truncatedEventType);
+
+    [LoggerMessage(
+        EventId = 9142,
+        Level = LogLevel.Warning,
+        Message = "Observation aggregates set at 1024 cap for tenant {TenantId} (cardinality={Cardinality}); SADD skipped for this aggregateType until TTL reset.")]
+    public static partial void ObservationAggregatesSetCardinalityWarning(ILogger logger, string tenantId, long cardinality);
+
+    [LoggerMessage(
+        EventId = 9143,
+        Level = LogLevel.Information,
+        Message = "Observation writes kill-switch transition: enabled={Enabled}.")]
+    public static partial void ObservationWritesConfigChanged(ILogger logger, bool enabled);
+
+    [LoggerMessage(
+        EventId = 9144,
+        Level = LogLevel.Warning,
+        Message = "Observation dropped for tenant {TenantId} (reason={Reason}).")]
+    public static partial void ObservationDropped(ILogger logger, string tenantId, string reason);
+
+    [LoggerMessage(
+        EventId = 9146,
+        Level = LogLevel.Warning,
+        Message = "Per-tenant observation read failed for tenant {TenantId} ({ExceptionType}) — partial snapshot returned.")]
+    public static partial void TenantObservationReadFailed(ILogger logger, string tenantId, string exceptionType);
 }

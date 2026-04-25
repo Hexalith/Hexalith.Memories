@@ -15,6 +15,7 @@ internal sealed class NoOpEventIngestionTelemetry : IEventIngestionTelemetry
         string? caseId,
         string? cloudEventId,
         string? aggregateType,
+        string? cloudEventType,
         EventIngestionOutcome outcome,
         long durationMs)
     {

@@ -15,6 +15,10 @@ public interface IEventIngestionTelemetry
     /// <param name="caseId">Case id, or <c>null</c> when no case was resolved.</param>
     /// <param name="cloudEventId">The CloudEvents <c>id</c> (or <c>null</c> when the envelope was malformed).</param>
     /// <param name="aggregateType">The derived aggregate type, or <c>null</c> when not resolved.</param>
+    /// <param name="cloudEventType">Story 9.3 — the CloudEvents <c>type</c> header (e.g.,
+    /// <c>MyApp.Claims.ClaimSubmittedV2</c>), or <c>null</c> on branches where no envelope was parsed.
+    /// Threaded from <c>EventIngestionService</c> so the Server-side adapter can fan out to the
+    /// observation store without parsing the envelope twice.</param>
     /// <param name="outcome">The <see cref="EventIngestionOutcome"/> produced.</param>
     /// <param name="durationMs">Elapsed time in milliseconds.</param>
     void RecordIngestion(
@@ -22,6 +26,7 @@ public interface IEventIngestionTelemetry
         string? caseId,
         string? cloudEventId,
         string? aggregateType,
+        string? cloudEventType,
         EventIngestionOutcome outcome,
         long durationMs);
 }

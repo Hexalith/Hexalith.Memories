@@ -167,3 +167,48 @@ extends the error surface with recovery suggestions.
 ## See also
 
 - [`cli-output-formats.md`](cli-output-formats.md) — `--format human|json|table` contract, envelope schema, and per-command examples (Story 7.2).
+
+## `handlers` subcommand group (Story 9.3)
+
+Experimental surface (`HXL002`). Inspect registered handlers and detect routing mismatches.
+
+### `memories handlers list`
+
+Enumerates every registered `(pubSubName, topic, tenantId, sourcePrefix)` tuple with per-handler
+24h event counts and the most recent observation timestamp.
+
+```bash
+memories handlers list                       # human
+memories --format json handlers list
+memories --format table handlers list
+```
+
+When no handlers are configured, human/table output includes a stderr nudge pointing to
+`docs/dev/eventstore-integration.md §11`; JSON output returns `{"handlers": []}`.
+
+### `memories handlers mismatches --tenant X`
+
+Reports the three mismatch categories (`unhandledEventType` / `staleHandler` / `versionMismatch`)
+for a specific tenant. Exit code is always `CliExitCodes.Success` (0) on a successful response —
+mismatches are reports, not errors.
+
+Options:
+
+- `--tenant <id>` — required; the tenant to analyse.
+- `--severity info|warning` — human/table only filter; JSON output is unfiltered.
+- `--only-warning` — shorthand for `--severity warning`.
+- `--exclude-stale` — suppress `StaleHandler` rows in human/table output.
+
+Examples:
+
+```bash
+memories handlers mismatches --tenant acme
+memories handlers mismatches --tenant acme --only-warning
+memories --format json handlers mismatches --tenant acme
+```
+
+Human-format output per mismatch:
+
+```
+[warning] versionMismatch: ClaimSubmitted — Multiple versions of 'ClaimSubmitted' observed ...
+```

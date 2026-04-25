@@ -90,7 +90,7 @@ public sealed class EventIngestionServiceTests
         result.Response.Status.ShouldBe(EventIngestionResponse.StatusAccepted);
         result.Response.InstanceId.ShouldNotBeNullOrEmpty();
         telemetry.Received(1).RecordIngestion(
-            "tenant-1", "case-1", "evt-1", "Claims",
+            "tenant-1", "case-1", "evt-1", "Claims", "MyApp.Claims.ClaimSubmittedV2",
             EventIngestionOutcome.Accepted, Arg.Any<long>());
     }
 

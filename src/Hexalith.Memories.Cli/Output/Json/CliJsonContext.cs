@@ -21,6 +21,8 @@ using Hexalith.Memories.Contracts.V1;
 [JsonSerializable(typeof(CliOutputEnvelope<IReadOnlyList<TenantSummary>>))]
 [JsonSerializable(typeof(CliOutputEnvelope<ConfigShowData>))]
 [JsonSerializable(typeof(CliOutputEnvelope<TelemetrySummary>))]
+[JsonSerializable(typeof(CliOutputEnvelope<HandlerRegistrationSnapshot>))]
+[JsonSerializable(typeof(CliOutputEnvelope<HandlerMismatchReport>))]
 [JsonSerializable(typeof(CliOutputEnvelope<HybridSearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]

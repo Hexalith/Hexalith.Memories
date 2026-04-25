@@ -553,3 +553,150 @@ Compliance stakeholders MUST sign off on a governance artifact documenting:
 - Visible control: test
   `GenerateNaturalLanguageDescriptionActivityTests.PayloadWithCustomerPii_SummaryMayContainPii_DocumentedBehavior`
   serves as the code-level acknowledgment; a test is not consent — the signed artifact is.
+
+## §11 Handler registration & mismatch detection (Story 9.3)
+
+Story 9.3 ships a **read-only** registry + mismatch detector surfacing FR62. The feature adds zero
+hot-path behaviour; it reports what the server already sees. Experimental surface (`HXL002`).
+
+### §11.1 Listing registered handlers
+
+```bash
+$ curl http://localhost:5000/api/handlers
+{
+  "pubSubName": "pubsub",
+  "topic": "events",
+  "asOf": "2026-04-24T12:00:00+00:00",
+  "subscriptionStatus": "active",
+  "handlers": [
+    {
+      "tenantId": "acme",
+      "sourcePrefix": "acme.events/claims",
+      "eventTypePatterns": ["Claims"],
+      "eventsProcessedCount": 5,
+      "lastEventAt": "2026-04-24T11:59:00+00:00",
+      "observedEventTypes": [
+        {"aggregateType":"Claims","eventType":"ClaimSubmittedV2","count":3,"lastSeenAt":"2026-04-24T11:59:00+00:00"},
+        {"aggregateType":"Claims","eventType":"ClaimApprovedV2","count":2,"lastSeenAt":"2026-04-24T11:58:00+00:00"}
+      ],
+      "error": null
+    }
+  ]
+}
+```
+
+CLI:
+
+```bash
+memories handlers list                       # human (default)
+memories --format json handlers list
+memories --format table handlers list
+```
+
+**When to check:** after a config-deploy that touched `EventStoreIntegration:Routing:SourceToTenantMap`, or when
+investigating "why didn't event X flow?" — the per-handler `eventsProcessedCount` + `lastEventAt` columns
+confirm traffic is landing.
+
+### §11.2 Mismatch categories
+
+`GET /api/tenants/{tenantId}/handlers/mismatches` returns three categories with severity +
+actionable suggestion. Each `Suggestion` ends with a runbook URL of the form
+`https://docs.hexalith.dev/memories/runbooks/handler-{category-kebab-case}`.
+
+1. **`UnhandledEventType` (Warning)** — an event was observed on a topic but no `SourceToTenantMap`
+   entry routes its aggregateType to any tenant. Example: publisher emits
+   `MyApp.Policies.PolicyCreatedV1` but only `SourceToTenantMap` entries for `acme.claims` exist —
+   the detector reports the unhandled aggregate "Policies" at Warning.
+
+2. **`StaleHandler` (Info)** — a `SourceToTenantMap` entry is configured for a tenant but the
+   observation store returns an empty list for the 24h window (canonical definition:
+   `observedTypes.Count == 0`). Info severity, **not** Warning — low-volume publishers can
+   legitimately go quiet for a day or more. The Suggestion explicitly acknowledges this (see
+   ADR-9.3-004 enum minimalism below for why `Error` severity is absent).
+
+3. **`VersionMismatch` (Warning)** — two or more versions of the same event-name stem are observed
+   concurrently. Example: `MyApp.Claims.ClaimSubmittedV2` AND `MyApp.Claims.ClaimSubmittedV3` both
+   seen — the stem `ClaimSubmitted` (from the terminal segment, NOT the full FQN) is reported at
+   Warning with version counts in the Context.
+
+Stem-extraction regex: `^(.+?)(V\d+)$` compiled with `MatchTimeout = 100ms` and `CultureInvariant`,
+operating on the TERMINAL `.`-separated segment of the event type. Inputs over 256 chars are
+skipped with log event 9141 (Risk #5 ReDoS defense).
+
+### §11.3 Observation window + staleness semantics
+
+The observation store is a Redis-backed 24h rolling window per
+`(tenantId, aggregateType, eventType)`. Keys are `{tenantId}:eventstore:observed-aggregates` (set),
+`{tenantId}:eventstore:observed:{aggregateType}` (sorted set scored by unix-ms), and
+`{tenantId}:eventstore:observed-count:{aggregateType}` (hash). TTL on every write is 48h (2× the
+24h window) — if a tenant stops emitting entirely, its keys self-expire with no external cleanup.
+
+Two **independent** mechanisms keep the store bounded:
+
+- **TTL (48h)** — self-cleanup of the Redis keys when no further writes refresh them.
+- **Window (24h)** — cutoff applied at read time via `ZRANGEBYSCORE (now - 24h) → +∞`. Older
+  observations still exist in Redis until TTL expires them; they're simply excluded from detector
+  output.
+
+**Why `StaleHandler` is Info, not Warning:** an event stream that sees one event per week is NOT
+stale, but a 24h window calls it stale every Monday. Info severity prevents paging rules firing on
+low-volume legitimate silence. Future work may add `--since 7d` to widen the window per-invocation
+(tracked as deferred-work `Story-9.3-SinceFlagForLowVolume`).
+
+**Boundary semantics (R3-10):** the 24h window is **inclusive-start, exclusive-end relative to
+"now."** An observation at T is included in a read at (now) when `T >= now - 24h`. Two successive
+snapshots at T+24h and T+24h+2ms can legitimately disagree about a single observation on the edge —
+this is correct, not a bug.
+
+### §11.4 Troubleshooting flows
+
+**Scenario A: publisher changed topic.** Operator suddenly sees `StaleHandler` rows accumulating.
+Check the publisher's topic configuration — if it changed from `events` to `events-v2` without a
+subscription update, the routing-map still points at the old topic and the 24h window will
+progressively surface the silence. Fix: update `EventStoreIntegration:Routing:Topic` via
+appsettings or env-var and restart the server.
+
+**Scenario B: new event version rolled out without subscription update.** Operator sees
+`VersionMismatch` rows with two versions and non-trivial counts on both. This is the expected
+signal of an in-progress migration. Action: either (a) ensure the consumer is schema-tolerant of
+both versions, OR (b) after the publisher has fully migrated and V2 traffic has dropped to zero,
+the mismatch self-resolves.
+
+### §11.5 Telemetry substrate separation (ADR-9.3-002)
+
+Story 9.3's `IObservedEventTypeStore` is a SEPARATE interface from Story 7.5's in-process
+`RollingCounterStore`. Future contributors MUST NOT extend the 5m/5-slot ring to cover handler
+observation — the two stores have different invariants (5m in-process, MeterListener fast path vs
+24h Redis-backed, rare operator-triggered reads) and coupling them binds future changes to both.
+
+### §11.6 Operator kill switch (ADR-9.3-001 behavioural clause)
+
+Set `EventStoreIntegration:Observation:Enabled = false` in `appsettings.json` to disable observation
+writes at runtime. The setting is read through `IOptionsMonitor<EventStoreObservationOptions>` —
+the hot path picks up the change on the next event. Log event 9143 is emitted once at startup and
+on every transition. Use this as an escape hatch if Redis observation writes begin degrading
+ingestion p99 during an incident; durable audit coverage remains via `AccessTelemetryLog`.
+
+### §11.7 Experimental surface (ADR-9.3-003)
+
+Both endpoints expose the `X-Memories-API-Experimental: HXL002` response header on every 2xx
+response (AC #24). SDK callers see the compile-time `[Experimental("HXL002")]` attribute from
+`Hexalith.Memories.Client.Rest`; raw-HTTP callers (`curl`, Postman, bespoke integrations) use the
+header as the runtime signal that this surface may change without a major-version bump. When 9.x+
+graduates `HXL002` to stable, the header is removed in the same release.
+
+### §11.8 Enum minimalism (ADR-9.3-004)
+
+`HandlerSubscriptionStatus` is 3-state (`Active/Unknown/Disabled`) — `Paused` is deliberately
+absent because Hexalith has no pause semantics. `HandlerMismatchSeverity` is 2-valued
+(`Info/Warning`) — `Error` is deliberately absent because no mismatch is action-blocking at the
+ingestion level, and `Error` severity would be interpreted by downstream paging rules as
+page-worthy (see Risk #2). Operator-facing enums pay a compounding cost per value; minimalism
+preserves clarity.
+
+### §11.9 Authentication/authorization (descoped per Spike 0.5)
+
+The handlers endpoints ship unauthenticated, matching the current posture of every other Memories
+Server endpoint (Story 7.5's `telemetry/summary` is the closest analogue and has no auth either). A
+cross-cutting auth story is tracked in `_bmad-output/implementation-artifacts/deferred-work.md` as
+`Story-9.3-MemoriesServerAuthN`.

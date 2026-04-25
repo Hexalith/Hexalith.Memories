@@ -29,6 +29,7 @@ using Hexalith.Memories.Telemetry;
 using Microsoft.Extensions.Logging;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
@@ -202,6 +203,12 @@ builder.Services.AddSingleton<RollingCounterStore>();
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<RollingCounterStore>());
 builder.Services.AddSingleton<TelemetrySummaryService>();
 builder.Services.AddSingleton<TelemetrySnapshotCache>();
+
+// Story 9.3 — handler registry + mismatch detector (scoped, mirror TelemetrySummaryService lifetime).
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Hexalith.Memories.Server.Handlers.ProcessLifetimeClock>();
+builder.Services.AddScoped<Hexalith.Memories.Server.Handlers.HandlerRegistryService>();
+builder.Services.AddScoped<Hexalith.Memories.Server.Handlers.HandlerMismatchDetector>();
 builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
     new TenantIsolationVerifier(
         sp.GetRequiredService<TenantRegistryService>(),
@@ -334,6 +341,22 @@ MemoriesMeter.EnsureObservableGaugesCreated(
     telemetrySnapshotCache.GetQueueDepthMeasurements,
     telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueDepthMeasurements,
     telemetrySnapshotCache.GetNaturalLanguageEmbeddingQueueBytesMeasurements);
+
+// Story 9.3 — handler registry per-tenant count gauge. Reads the singleton routing options directly
+// (no Redis round-trip) — the gauge reports HOW MANY sources are registered per tenant, which is a
+// pure function of TenantEventRoutingOptions.SourceToTenantMap.
+IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> handlerRoutingOptions =
+    app.Services.GetRequiredService<IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions>>();
+MemoriesMeter.EnsureHandlerGaugeCreated(() =>
+{
+    Hexalith.Memories.EventStore.TenantEventRoutingOptions options = handlerRoutingOptions.CurrentValue;
+    return options.SourceToTenantMap
+        .GroupBy(kvp => kvp.Value, StringComparer.Ordinal)
+        .Select(g => new System.Diagnostics.Metrics.Measurement<int>(
+            g.Count(),
+            new KeyValuePair<string, object?>("tenant_id", g.Key)))
+        .ToList();
+});
 
 app.MapPost("/api/ingest", async (
     DaprWorkflowClient workflowClient,
@@ -2983,6 +3006,43 @@ app.MapGet("/api/tenants/{tenantId}/telemetry/summary", async (
 
     TelemetrySummary summary = await summaryService.GetSummaryAsync(tenantId, cancellationToken);
     return Results.Ok(summary);
+});
+
+// Story 9.3 — handler registry + mismatch detector endpoints. Experimental HXL002 surface.
+// AuthZ descoped per Spike 0.5 (see deferred-work Story-9.3-MemoriesServerAuthN).
+app.MapGet("/api/handlers", async (
+    HttpContext http,
+    Hexalith.Memories.Server.Handlers.HandlerRegistryService registryService,
+    CancellationToken cancellationToken) =>
+{
+    http.Response.Headers.Append("X-Memories-API-Experimental", "HXL002");
+    HandlerRegistrationSnapshot snapshot = await registryService.GetSnapshotAsync(cancellationToken);
+    return Results.Ok(snapshot);
+});
+
+app.MapGet("/api/tenants/{tenantId}/handlers/mismatches", async (
+    HttpContext http,
+    string tenantId,
+    Hexalith.Memories.Server.Handlers.HandlerMismatchDetector detector,
+    TenantStatusGuard tenantGuard,
+    CancellationToken cancellationToken) =>
+{
+    ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
+    if (tenantValidationError is not null)
+    {
+        return Results.BadRequest(tenantValidationError);
+    }
+
+    ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
+    if (tenantStatusError is not null)
+    {
+        return TenantStatusGuard.ToHttpResult(tenantStatusError);
+    }
+
+    http.Response.Headers.Append("X-Memories-API-Experimental", "HXL002");
+    HandlerMismatchReport report = await detector.DetectAsync(
+        tenantId, Hexalith.Memories.Server.Handlers.HandlerRegistryService.ObservationWindow, cancellationToken);
+    return Results.Ok(report);
 });
 
 app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (

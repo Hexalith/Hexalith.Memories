@@ -623,6 +623,94 @@ public class MemoriesClient
     }
 
     /// <summary>
+    /// Story 9.3 — enumerate registered event handlers via <c>GET /api/handlers</c>. Experimental
+    /// HXL002 surface. Suppress with <c>#pragma warning disable HXL002</c> at opt-in call sites.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The current handler-registry snapshot.</returns>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL002")]
+    public virtual async Task<HandlerRegistrationSnapshot> ListHandlersAsync(CancellationToken ct)
+    {
+        using HttpResponseMessage response = await _httpClient.GetAsync("api/handlers", ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            HandlerRegistrationSnapshot? snapshot = await response.Content
+                .ReadFromJsonAsync<HandlerRegistrationSnapshot>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return snapshot ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty handler snapshot body.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+            or System.IO.IOException
+            or HttpRequestException
+            or NotSupportedException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as HandlerRegistrationSnapshot.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Story 9.3 — detect handler mismatches for a tenant via
+    /// <c>GET /api/tenants/{tenantId}/handlers/mismatches</c>. Experimental HXL002 surface.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The mismatch report.</returns>
+    [System.Diagnostics.CodeAnalysis.Experimental("HXL002")]
+    public virtual async Task<HandlerMismatchReport> GetHandlerMismatchesAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/handlers/mismatches";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            HandlerMismatchReport? report = await response.Content
+                .ReadFromJsonAsync<HandlerMismatchReport>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return report ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with an empty handler mismatch report body.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+            or System.IO.IOException
+            or HttpRequestException
+            or NotSupportedException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx response with a body that could not be parsed as HandlerMismatchReport.",
+                ex);
+        }
+    }
+
+    /// <summary>
     /// Story 8.2 — schedules a consistency verification workflow for the tenant. Fire-and-forget;
     /// poll status via <see cref="GetConsistencyVerificationStatusAsync"/>.
     /// </summary>

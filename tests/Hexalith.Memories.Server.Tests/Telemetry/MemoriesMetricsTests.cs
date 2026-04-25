@@ -52,6 +52,11 @@ public sealed class MemoriesMetricsTests
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName].ShouldBe(new[] { "tenant_id" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName].ShouldBe(new[] { "tenant_id" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.ConversationCacheHitName].ShouldBe(new[] { "tenant_id", "cache_status" });
+
+        // Story 9.3 — handler registry + mismatch instruments.
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.HandlersRegisteredName].ShouldBe(new[] { "tenant_id" });
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.HandlerMismatchesName].ShouldBe(new[] { "tenant_id", "severity" });
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.ObservationsDroppedName].ShouldBe(new[] { "reason" });
     }
 
     [Fact]

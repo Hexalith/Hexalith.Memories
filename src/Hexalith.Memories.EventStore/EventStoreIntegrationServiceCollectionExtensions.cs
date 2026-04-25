@@ -86,6 +86,11 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         services.TryAddSingleton<ITenantEventRouter, TenantEventRouter>();
         services.TryAddSingleton<IEventIngestionService, EventIngestionService>();
 
+        // Story 9.3 — observation store + kill-switch options.
+        services.TryAddSingleton<IObservedEventTypeStore, RedisObservedEventTypeStore>();
+        services.AddOptions<EventStoreObservationOptions>()
+            .Bind(configuration.GetSection("EventStoreIntegration:Observation"));
+
         configure?.Invoke(builder);
 
         return services;

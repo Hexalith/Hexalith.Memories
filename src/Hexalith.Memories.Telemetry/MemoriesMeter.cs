@@ -22,6 +22,7 @@ public static class MemoriesMeter
     private static ObservableGauge<int>? _pipelineQueueDepthGauge;
     private static ObservableGauge<long>? _naturalLanguageEmbeddingQueueDepthGauge;
     private static ObservableGauge<long>? _naturalLanguageEmbeddingQueueBytesGauge;
+    private static ObservableGauge<int>? _handlersRegisteredGauge;
 
     /// <summary>The meter name registered with OpenTelemetry.</summary>
     public const string Name = "Hexalith.Memories";
@@ -70,6 +71,18 @@ public static class MemoriesMeter
     /// <summary>Synthetic tenant id used when a request is rejected before tenant resolution.</summary>
     public const string RejectedTenantTag = "__rejected__";
 
+    /// <summary>Story 9.3 — instrument name: per-tenant count of registered event handlers.
+    /// Observable gauge; tags: <c>tenant_id</c>.</summary>
+    public const string HandlersRegisteredName = "memories.handlers.registered";
+
+    /// <summary>Story 9.3 — instrument name: per-tenant per-severity mismatch counter.
+    /// Tags: <c>tenant_id</c>, <c>severity</c>.</summary>
+    public const string HandlerMismatchesName = "memories.handlers.mismatches";
+
+    /// <summary>Story 9.3 — instrument name: observation-store dropped-writes counter.
+    /// Tags: <c>reason</c> (<c>backpressure</c> | <c>timeout</c> | <c>redis_error</c>).</summary>
+    public const string ObservationsDroppedName = "memories.handlers.observations.dropped";
+
     /// <summary>Gets the singleton <see cref="Meter"/> instance.</summary>
     public static Meter Instance { get; } = new(Name);
 
@@ -113,6 +126,22 @@ public static class MemoriesMeter
             ConversationCacheHitName,
             unit: "{calls}",
             description: "DAPR Conversation response-cache hit/miss counter (Risk #16 cross-tenant leak detector).");
+
+    /// <summary>Story 9.3 — counter: per-tenant per-severity detected handler mismatches.
+    /// Tags: <c>tenant_id</c>, <c>severity</c>.</summary>
+    public static Counter<long> HandlerMismatches { get; } =
+        Instance.CreateCounter<long>(
+            HandlerMismatchesName,
+            unit: "{mismatches}",
+            description: "Per-tenant per-severity detected handler mismatches.");
+
+    /// <summary>Story 9.3 — counter: observation-store fire-and-forget drops.
+    /// Tags: <c>reason</c>.</summary>
+    public static Counter<long> ObservationsDropped { get; } =
+        Instance.CreateCounter<long>(
+            ObservationsDroppedName,
+            unit: "{observations}",
+            description: "Dropped observation-store writes by drop reason (backpressure/timeout/redis_error).");
 
     /// <summary>Gets a value indicating whether the observable gauges have been registered.</summary>
     public static bool ObservableGaugesConfigured =>
@@ -161,6 +190,28 @@ public static class MemoriesMeter
         }
     }
 
+    /// <summary>Story 9.3 — registers the per-tenant registered-handlers observable gauge exactly once.
+    /// Parallel to <see cref="EnsureObservableGaugesCreated"/>; kept additive so Story 7.5 wiring stays
+    /// untouched.</summary>
+    /// <param name="handlersRegisteredObserver">Per-call observer returning (tenant_id, count) measurements.</param>
+    public static void EnsureHandlerGaugeCreated(
+        Func<IEnumerable<Measurement<int>>> handlersRegisteredObserver)
+    {
+        ArgumentNullException.ThrowIfNull(handlersRegisteredObserver);
+
+        lock (ObservableInstrumentGate)
+        {
+            _handlersRegisteredGauge ??= Instance.CreateObservableGauge(
+                HandlersRegisteredName,
+                () => handlersRegisteredObserver(),
+                unit: "{handlers}",
+                description: "Per-tenant count of registered event handlers (Story 9.3).");
+        }
+    }
+
+    /// <summary>Gets a value indicating whether the handler gauge has been registered.</summary>
+    public static bool HandlerGaugeConfigured => _handlersRegisteredGauge is not null;
+
     /// <summary>
     /// Pinned tag-key policy per metric instrument. Tests use this manifest to detect drift.
     /// Keys are pinned to bounded-cardinality dimensions (tenant + axis + source_type + error_code) —
@@ -180,5 +231,8 @@ public static class MemoriesMeter
             [NaturalLanguageEmbeddingQueueBytesName] = new[] { "tenant_id" },
             [EmbeddingApiCallsName] = new[] { "tenant_id", "content_kind" },
             [ConversationCacheHitName] = new[] { "tenant_id", "cache_status" },
+            [HandlersRegisteredName] = new[] { "tenant_id" },
+            [HandlerMismatchesName] = new[] { "tenant_id", "severity" },
+            [ObservationsDroppedName] = new[] { "reason" },
         };
 }

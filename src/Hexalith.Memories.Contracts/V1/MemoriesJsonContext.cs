@@ -151,6 +151,19 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(NaturalLanguageEmbeddingRetryResult))]
 // Story 9.2 Review D7: typed identifier for informational consistency notes.
 [JsonSerializable(typeof(ConsistencyNoteKind))]
+// Story 9.3: handler registry + mismatch report contracts.
+[JsonSerializable(typeof(HandlerRegistrationSnapshot))]
+[JsonSerializable(typeof(HandlerRegistration))]
+[JsonSerializable(typeof(ObservedEventTypeSummary))]
+[JsonSerializable(typeof(IReadOnlyList<HandlerRegistration>))]
+[JsonSerializable(typeof(IReadOnlyList<ObservedEventTypeSummary>))]
+[JsonSerializable(typeof(HandlerSubscriptionStatus))]
+[JsonSerializable(typeof(HandlerMismatchReport))]
+[JsonSerializable(typeof(HandlerMismatchReportSummary))]
+[JsonSerializable(typeof(HandlerMismatch))]
+[JsonSerializable(typeof(IReadOnlyList<HandlerMismatch>))]
+[JsonSerializable(typeof(HandlerMismatchCategory))]
+[JsonSerializable(typeof(HandlerMismatchSeverity))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

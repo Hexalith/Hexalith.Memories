@@ -108,6 +108,18 @@ public static class CliServices
             new StatusTelemetryJsonFormatter(),
             new StatusTelemetryTableFormatter());
 
+        RegisterFormatters<HandlerRegistrationSnapshot>(
+            services,
+            new HandlerRegistrationSnapshotHumanFormatter(),
+            new HandlerRegistrationSnapshotJsonFormatter(),
+            new HandlerRegistrationSnapshotTableFormatter());
+
+        RegisterFormatters<HandlerMismatchReport>(
+            services,
+            new HandlerMismatchReportHumanFormatter(),
+            new HandlerMismatchReportJsonFormatter(),
+            new HandlerMismatchReportTableFormatter());
+
         RegisterFormatters<HybridSearchResult>(
             services,
             new HybridSearchResultHumanFormatter(),

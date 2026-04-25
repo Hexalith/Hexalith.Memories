@@ -741,3 +741,34 @@ operator wants to split the backends in Grafana / Datadog.
   deliberately NOT in the `AccessTelemetryEvent` audited scope. A follow-up story will ship a
   dedicated `ExportTelemetryEvent` bank (EventId 8320-8329 reserved) so operators get a
   per-export audit trail.
+
+## Story 9.3 — handler registry + mismatch detector metrics
+
+Three new instruments:
+
+- `memories.handlers.registered` — observable gauge; tags: `tenant_id`. Per-tenant count of
+  registered `SourceToTenantMap` sources. Observer reads `IOptionsMonitor<TenantEventRoutingOptions>`
+  on every metric export (no Redis round-trip).
+- `memories.handlers.mismatches` — counter; tags: `tenant_id`, `severity`. Emitted by
+  `HandlerMismatchDetector.DetectAsync` per detected mismatch. Low-cardinality by design:
+  2 severities × 3 categories × tenant count.
+- `memories.handlers.observations.dropped` — counter; tags: `reason` ∈
+  `{backpressure, timeout, redis_error}`. Emitted by the bounded fire-and-forget observation write
+  path when in-flight cap / timeout / Redis error drops an observation. **No `tenant_id` tag** — it
+  would re-introduce the Risk #4 cardinality concern and the drop is a store-side condition, not
+  a tenant-scoped event.
+
+### Substrate separation (ADR-9.3-002)
+
+9.3's `IObservedEventTypeStore` is Redis-backed with a 24h rolling window. It is **deliberately
+separate** from Story 7.5's in-process `RollingCounterStore` (5-minute / 5-slot ring). The two
+stores have different invariants:
+
+| Store | Window | Backing | Access pattern | Failure posture |
+|---|---|---|---|---|
+| `RollingCounterStore` (7.5) | 5 min | In-process (per-pod) | MeterListener hot path on every metric emission | Must stay bounded to avoid memory growth |
+| `IObservedEventTypeStore` (9.3) | 24 h | Redis | Rare, operator-triggered reads; fire-and-forget writes from the ingestion hot path | Fail-open on write errors; authoritative reads |
+
+Future contributors MUST NOT extend the 5m ring to cover handler observation. Coupling them binds
+future changes to both substrates. If a unification is ever warranted, it should land via an
+explicit ADR that reconciles the invariants rather than an incremental extension.

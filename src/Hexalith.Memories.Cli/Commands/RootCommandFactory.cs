@@ -70,6 +70,14 @@ Examples:
     memories export tenant --tenant acme | jq .manifest
 """;
 
+    private const string HandlersCommandDescription = """
+Inspect registered event handlers and detect routing mismatches (Story 9.3).
+
+Examples:
+    memories handlers list
+    memories handlers mismatches --tenant acme
+""";
+
     /// <summary>Top-level command groups surfaced in root help (FR53).</summary>
     public static readonly IReadOnlyList<(string Name, string Description, string StoryId)> CommandGroups =
     [
@@ -77,7 +85,6 @@ Examples:
         ("traverse", "Walk the causal graph from a seed memory.", "7.2"),
         ("case", "Create, list, and manage cases.", "7.2"),
         ("explore", "Interactive exploration of memories and cases.", "7.2"),
-        ("handlers", "List registered event handlers.", "7.2"),
     ];
 
     /// <summary>Builds the root command tree.</summary>
@@ -137,6 +144,13 @@ Examples:
         exportCommand.Subcommands.Add(ExportTenantCommand.Build(services));
         exportCommand.SetAction(_ => exportCommand.Parse("--help").Invoke());
         root.Subcommands.Add(exportCommand);
+
+        // Story 9.3 — handlers command group (list / mismatches) — replaces the 7.2 NotImplementedCommand stub.
+        var handlersCommand = new Command("handlers", HandlersCommandDescription);
+        handlersCommand.Subcommands.Add(HandlersListCommand.Build(services));
+        handlersCommand.Subcommands.Add(HandlersMismatchesCommand.Build(services));
+        handlersCommand.SetAction(_ => handlersCommand.Parse("--help").Invoke());
+        root.Subcommands.Add(handlersCommand);
 
         // Story 7.5: add the global --telemetry flag to the root command.
         root.Options.Add(globalOptions.TelemetryOption);
