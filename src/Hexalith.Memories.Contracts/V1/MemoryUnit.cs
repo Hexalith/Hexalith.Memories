@@ -1,3 +1,8 @@
+// <copyright file="MemoryUnit.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>Represents a fully indexed memory unit in the knowledge graph.</summary>

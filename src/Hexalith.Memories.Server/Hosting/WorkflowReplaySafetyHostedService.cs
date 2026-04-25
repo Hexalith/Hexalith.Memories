@@ -67,13 +67,21 @@ public sealed partial class WorkflowReplaySafetyHostedService : IHostedLifecycle
     /// <inheritdoc/>
     public async Task StartingAsync(CancellationToken cancellationToken)
     {
-        // S6-P3 (re-review 2026-04-25): eager startup probe — emit Critical 9173 immediately if
-        // the cached private-field accessor is null. Without this, a fresh deploy with no in-flight
-        // workflows AND a drifted SDK would silently pass the gate; the next deploy with active
-        // workflows would then fail open. The probe makes SDK drift loud at deploy time.
+        // S6-P3 + follow-up review (2026-04-25): eager startup probe — emit Critical 9173
+        // immediately if the cached private-field accessor OR the cached workflow-name accessor is
+        // null. Without this, a fresh deploy with no in-flight workflows AND a drifted SDK would
+        // silently pass the gate; the next deploy with active workflows would then fail open. The
+        // probe makes SDK drift loud at deploy time.
         if (MetadataField is null)
         {
             LogGateFailedOpen(_logger, "metadata-field-missing", null);
+            return;
+        }
+
+        if (NamePropertyAccessor.Value is null)
+        {
+            LogGateFailedOpen(_logger, "workflow-name-property-missing", null);
+            return;
         }
 
         DateTimeOffset deadline = _timeProvider.GetUtcNow() + TotalTimeout;
