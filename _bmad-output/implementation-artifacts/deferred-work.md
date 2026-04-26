@@ -1,5 +1,9 @@
 # Deferred Work
 
+## Closed by: course correction (2026-04-26)
+
+- **W10 — closed.** AC #6 in Story 11.1 was marked `[x]` while branch protection remained pending maintainer action; `docs/dev/branch-protection.md` already documented the dependency but the task checkboxes alone were misleading. Course correction added an explicit `External Action Pending` status line at the top of `_bmad-output/implementation-artifacts/11-1-github-actions-build-and-test-pipeline.md` calling out the maintainer-only GitHub-settings step. AC #6 task checkboxes (3.4, 3.5, 4.4) remain `[x]` because they cover the documentation work, which is complete; the in-GitHub apply step lives outside the repository and is now visible at the top of the story file rather than buried in the AC text. P1 (`git add package-lock.json`) was resolved separately by commit `5eecf4c` which bundled `package-lock.json` with the rest of the 11.1 + 11.2 work.
+
 ## Closed by: Story 10.2 Token-Budget Responses & Authentication (2026-04-25)
 
 - **Story-10.2-TokenBudgetServerTruncation — closed.** MCP forwards `tokenBudget` to the server, server-side search/traverse truncation populates `omittedCount`, `estimatedTokensTotal`, and `omittedReason`, and the 10.1 client-side soft clamp was removed.
@@ -249,7 +253,6 @@
 - **W6. `submodules: recursive` cannot fetch private submodules without PAT.** `Hexalith.Commons` and `Hexalith.EventStore` are public today; revisit if either becomes private. (`.github/workflows/ci.yml:30,52,84`; `release.yml:24`)
 - **W7. `Substitute.For<WorkflowActivityContext>()` may fail if Dapr.Workflow seals the type in a future SDK.** Works against 1.17.6; failure mode is loud (NSubstitute throws at instantiation). (`tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330`)
 - **W9. CONTRIBUTING.md skip wording (`Requires Docker - see CONTRIBUTING.md`) is documented but not wired into any test SkipAttribute.** Spec text is aspirational, not enforced as a contract. Wire it via a custom SkipAttribute when Docker-required local skips are needed. (`CONTRIBUTING.md:76-81`)
-- **W10. AC #6 marked `[x]` though `docs/dev/branch-protection.md` says "remains pending maintainer action".** Bookkeeping only; the spec text already captures the dependency.
 - **W11. `branch-protection.md` is a manual checklist with no automation.** Commit a `.github/rulesets/main.json` and a daily audit workflow. Out of scope for 11.x. (`docs/dev/branch-protection.md`)
 - **W12. `tools/release-packages.json` has no `$schema` reference.** Silent typos break only at runtime. Add a `$schema` link or a JSON-schema validation step.
 - **W13. `Cli/README.md` pre-announces the global tool before first publish on nuget.org.** Either ship the tool first, or document `--prerelease` until 1.0.0 lands. (`src/Hexalith.Memories.Cli/README.md:7-9`)

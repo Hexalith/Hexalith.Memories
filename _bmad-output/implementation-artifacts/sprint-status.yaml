@@ -57,7 +57,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-26 # Stories 11.1 + 11.2 review-fix pass complete; both transitioned review → done. 3-layer adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on the bundled 11.1 + 11.2 diff returned 8 decision-needed + 18 patch + 25 defer + 17 dismissed. Resolved all 8 decisions (D1 baseline-filter cleanup, D2 accepted as deliberate, D3 accepted dev-note, D4 accepted current model + alerting deferred S11-FD, D5 anchored in 11.1 Completion Notes, D6 caller-cancel rethrow, D7 single solution build before pack, D8 aggregate executed counts). Applied 16 of 18 patches: aligned `release.yml` actions to `@v6`/`@v5` + `[skip ci]` head-commit guard + broader semantic-release/github permissions + `if: success() / if-no-files-found: warn` on package upload (P3/P6/P8/P15); trimmed CI `branches-ignore` (P7); `tools/test.sh` `read_inventory` exit propagation via command substitution (P2); `tools/test-release.ps1` shared-inventory + Benchmarks excluded + baseline filter reduced to 1 tracked test (P4/P5/D1); `tools/pack-release.ps1` single solution build then per-package `dotnet pack --no-build` (D7); `tools/validate-release-packages.ps1` case-sensitive PackageId + NuGet bracket-range strict equality (P10/P11); `AspireIngestionPipelineFixture.IsMemoriesServerCategory` anchored under `Aspire.Hosting.` prefix (P13); `Audit/ServerActivityStreamReader` caller-cancellation always rethrows (D6); `McpCompositionRootTests` in `[CollectionDefinition(DisableParallelization = true)]` collection (P12); `PublicContractSerializationCoverageTests` recursion guard throws clear NotSupportedException (P17); `verify-integration-fast-coverage.py` aggregates executed counts across TRX files (D8); `CONTRIBUTING.md` zero-test-guard caveat + Linux/macOS test.sh note (P14/P18 doc track); `CiTestInventoryTests` extended to assert test-release.ps1 stays in sync (P4 closure). P9 (compile-time symbol verification for surfaces file) and P16 (release.yml stale-tag preflight) deferred as **S11-FB** and **S11-FC** respectively; new tracked entries S11-FA (EmbeddingInputContentKindTests baseline) and S11-FD (partial-publish alerting). 25 review defer items + 4 new follow-ups appended to `deferred-work.md`. **User-action remaining (P1):** `git add package-lock.json` so `npm ci` succeeds on first release run; the file is in working tree but currently untracked.
+last_updated: 2026-04-26 # COURSE CORRECTION (Sprint Change Proposal 2026-04-26): bulk MVP-epic closeout — flipped epic-1 through epic-6 + epic-8/9/10/11 from `in-progress` → `done` per workflow notes (all sub-stories were `done`); epic-7 was already `done`. MVP roadmap now fully closed at the planning level (11/11 epics). `epic-11-retrospective` also `done` (first formal retro for the project). Post-MVP direction recorded in `_bmad-output/planning-artifacts/sprint-change-proposal-2026-04-26.md` + post-MVP marker added to `_bmad-output/planning-artifacts/epics.md`. Recommended next path = Hybrid (Operations Epic 12 first, then Phase 2 decision); awaiting Jerome's directional confirmation before scaffolding Epic 12. External maintainer actions A1 (branch protection) + A2 (`NUGET_API_KEY`) remain pending and gate first real release. Earlier today (preserved below): Stories 11.1 + 11.2 review-fix pass complete; both transitioned review → done. 3-layer adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on the bundled 11.1 + 11.2 diff returned 8 decision-needed + 18 patch + 25 defer + 17 dismissed. Resolved all 8 decisions (D1 baseline-filter cleanup, D2 accepted as deliberate, D3 accepted dev-note, D4 accepted current model + alerting deferred S11-FD, D5 anchored in 11.1 Completion Notes, D6 caller-cancel rethrow, D7 single solution build before pack, D8 aggregate executed counts). Applied 16 of 18 patches: aligned `release.yml` actions to `@v6`/`@v5` + `[skip ci]` head-commit guard + broader semantic-release/github permissions + `if: success() / if-no-files-found: warn` on package upload (P3/P6/P8/P15); trimmed CI `branches-ignore` (P7); `tools/test.sh` `read_inventory` exit propagation via command substitution (P2); `tools/test-release.ps1` shared-inventory + Benchmarks excluded + baseline filter reduced to 1 tracked test (P4/P5/D1); `tools/pack-release.ps1` single solution build then per-package `dotnet pack --no-build` (D7); `tools/validate-release-packages.ps1` case-sensitive PackageId + NuGet bracket-range strict equality (P10/P11); `AspireIngestionPipelineFixture.IsMemoriesServerCategory` anchored under `Aspire.Hosting.` prefix (P13); `Audit/ServerActivityStreamReader` caller-cancellation always rethrows (D6); `McpCompositionRootTests` in `[CollectionDefinition(DisableParallelization = true)]` collection (P12); `PublicContractSerializationCoverageTests` recursion guard throws clear NotSupportedException (P17); `verify-integration-fast-coverage.py` aggregates executed counts across TRX files (D8); `CONTRIBUTING.md` zero-test-guard caveat + Linux/macOS test.sh note (P14/P18 doc track); `CiTestInventoryTests` extended to assert test-release.ps1 stays in sync (P4 closure). P9 (compile-time symbol verification for surfaces file) and P16 (release.yml stale-tag preflight) deferred as **S11-FB** and **S11-FC** respectively; new tracked entries S11-FA (EmbeddingInputContentKindTests baseline) and S11-FD (partial-publish alerting). 25 review defer items + 4 new follow-ups appended to `deferred-work.md`. **User-action remaining (P1):** `git add package-lock.json` so `npm ci` succeeds on first release run; the file is in working tree but currently untracked.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   # --- Phase: MVP — Gate 1 (Three-Axis Validation) ---
 
   # Epic 1: Foundation, Ingestion & Graph Edge Indexing
-  epic-1: in-progress
+  epic-1: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26 (course correction): all 7 stories `done` since Phase 1 — manual epic-status flip required by sprint-status.yaml workflow notes lines 32-39.
   1-1-project-scaffolding-and-single-command-boot: done
   1-2-memory-unit-domain-model-and-contracts: done
   1-3-content-extraction-via-kreuzberg: done
@@ -78,7 +78,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Three-Axis Search, Fusion & Benchmark Validation
-  epic-2: in-progress
+  epic-2: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 7 stories `done` since Phase 1.
   2-1-syntactic-search-bm25-via-redisearch: done
   2-2-semantic-search-vector-via-redis-vector: done
   2-3-graph-scoped-search: done
@@ -91,7 +91,7 @@ development_status:
   # --- Phase: MVP — Core Domain (post Gate 1 validation) ---
 
   # Epic 3: Case Management & Memory Organization
-  epic-3: in-progress
+  epic-3: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 6 stories `done` since Phase 1.
   3-1-create-and-list-cases: done
   3-2-case-status-and-activity: done
   3-3-case-member-management: done
@@ -101,7 +101,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Causal Intelligence & Graph Traversal
-  epic-4: in-progress
+  epic-4: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 3 stories `done` since Phase 1.
   4-1-causal-chain-traversal: done
   4-2-edge-type-filtering-and-taxonomy: done
   4-3-gap-detection-and-confidence-promotion: done
@@ -110,7 +110,7 @@ development_status:
   # --- Phase: MVP — Gate 2 (Tenant Isolation) ---
 
   # Epic 5: Tenant Isolation & Multi-Tenancy
-  epic-5: in-progress
+  epic-5: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 6 stories `done` since Phase 1.
   5-1-tenant-provisioning-workflow: done
   5-2-tenant-deletion-workflow: done
   5-3-tenant-isolation-verification: done
@@ -122,7 +122,7 @@ development_status:
   # --- Phase: MVP — Gate 3 (Developer Experience) ---
 
   # Epic 6: Ingestion Pipeline Resilience & Operations
-  epic-6: in-progress
+  epic-6: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 4 stories `done` since Phase 1.
   6-1-url-and-directory-ingestion: done
   6-2-per-tenant-load-management-and-rate-limiting: done
   6-3-retry-failure-visibility-and-re-ingestion: done
@@ -141,7 +141,7 @@ development_status:
   # --- Phase: MVP — Operations ---
 
   # Epic 8: Observability & System Health
-  epic-8: in-progress
+  epic-8: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 5 stories `done` (last: Story 8.5 on 2026-04-23).
   8-1-health-checks-and-readiness: done
   8-2-consistency-verification-and-repair: done
   8-3-data-export: done
@@ -152,14 +152,14 @@ development_status:
   # --- Phase 1.5 (Fast-Follow) ---
 
   # Epic 9: EventStore Integration & Zero-Code Memory
-  epic-9: in-progress
+  epic-9: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 3 stories `done` (last: Story 9.3 close-out on 2026-04-25).
   9-1-event-auto-discovery-and-dapr-pub-sub-subscription: done # Review close-out 2026-04-23 restored canonical MapSubscribeHandler() discovery via EnvironmentTopicAttribute, added release-failure retry-path coverage, and revalidated focused EventStore (71/71) + Server EventStoreIntegration (12/12).
   9-2-dual-embedding-and-causal-chain-indexing: done # 2026-04-25 review close-out applied final focused re-review patches: WorkflowReplaySafetyHostedService startup probe now checks both _metadata and WorkflowMetadata.Name accessor before reporting drained, MemoryUnit.cs has the required copyright header, and focused validation is green (Contracts 39/39, Server 58/58, CLI 9/9). Remaining larger follow-ups stay tracked in deferred-work.md.
   9-3-handler-registration-and-mismatch-detection: done # 2026-04-25 review close-out resolved the final two review findings and transitioned review → done. (1) `RedisObservedEventTypeStore.RecordObservationAsync` now restores the original 1024 hard-cap contract via one atomic Lua script (`SCARD` + `SISMEMBER` + conditional `SADD`/aggregates-key `EXPIRE` + `ZADD` + `HINCRBY` + 2× `EXPIRE`) in a single round-trip: once the aggregates-index set is full, brand-new aggregate types are skipped until the key naturally expires, while existing aggregate types still refresh the aggregates-key TTL and per-aggregate observation data keeps flowing. 9142 warning semantics now match the story/log contract again. (2) Added one-shot `EventStoreObservationStartupActivator : IHostedService` so `IEventIngestionTelemetry` is eagerly resolved during real host startup; this makes the adapter's constructor-time `9143 ObservationWritesConfigChanged(enabled:false)` emission genuinely happen at startup when the kill switch is disabled instead of waiting for first ingestion traffic. Added focused tests for the atomic-script path, cap-warning branches, and the startup activator/registration path. Targeted regression slice 20/20 green (`RedisObservedEventTypeStoreTests`, `EventIngestionTelemetryAdapterTests`, `EventStoreObservationStartupActivatorTests`). Deferred review items remain unchanged: source-prefix observation granularity + true rolling 24h counts.
   epic-9-retrospective: optional
 
   # Epic 10: MCP Server & LLM Agent Interface
-  epic-10: in-progress
+  epic-10: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 2 stories `done` (Story 10.2 closed today).
   10-1-mcp-server-and-tool-registration: done # 2026-04-25 review close-out resolved all findings: search_memory schema now exposes syntactic/semantic/hybrid only (graph traversal remains on traverse_relations), tool methods return protocol-level CallToolResult for success/error, and MemoriesServerUpstreamHealthCheck resolves scoped MemoriesClient per probe. 63 new tests (61 unit/contract + 2 Tier-3 Docker-gated). Focused validation green: Mcp.Tests 55/55, MemoriesClientTraverseTests 6/6, IntegrationTests build 0W/0E. OTel stack bumped 1.15.1 → 1.15.3 (Exporter.OTLP NU1902 sweep). Registers 4 LLM tools per FR54 (search_memory / ingest_content / traverse_relations / get_case_info) with typed JSON-schema parameters + LLM descriptions per FR58. Runs as separate DAPR service under Aspire AppHost (app-id memories-mcp, DaprHttpPort=3600). Delegates to Memories Server via DAPR service invocation only — no direct Redis/FalkorDB/secret-store access (NFR11 + ADR D6 isolation). Reuses MemoriesClient; Task 2 adds [Experimental("HXL003")] TraverseAsync + GetCaseAsync methods to MemoriesClient. Out of scope (deferred to 10.2): token_budget forwarding to server, ingress auth (NFR11 JWT + AddMcp), degraded-state response annotations, MCP-specific trace-hop assertion in AspireEndToEndTraceTests.
   10-2-token-budget-responses-and-authentication: done # 2026-04-26 review close-out resolved 3 patch findings: hybrid AxesUsed now reflects score-field contribution, MintDevBearer supports explicit expired-token minting for follow-up auth tests, and the audit credential-key guard rejects token-like credential names without flagging tokenBudget/continuationToken. Focused validation green: Server focused review slice 24/24; IntegrationTests project build 0W/0E. AC #12 trace-hop stays deferred to `Story-10.x-McpTraceHopAspire`.
   epic-10-retrospective: optional
@@ -167,7 +167,19 @@ development_status:
   # --- Infrastructure (Cross-Cutting) ---
 
   # Epic 11: CI/CD & Automated Quality Pipeline
-  epic-11: in-progress
+  epic-11: done # 2026-04-26 closed alongside the bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: both stories 11.1 + 11.2 `done` today; retrospective also `done`. MVP roadmap now fully closed at the planning level.
   11-1-github-actions-build-and-test-pipeline: done
   11-2-semantic-release-and-nuget-publishing: done
-  epic-11-retrospective: optional
+  epic-11-retrospective: done # 2026-04-26 first formal retrospective for the project. Document at _bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md.
+
+  # --- Phase: Post-MVP — Operations & First Release ---
+
+  # Epic 12: First Release & Operations Foundation (per Sprint Change Proposal 2026-04-26 Option C — Hybrid)
+  epic-12: backlog # 2026-04-26 scaffolded per Sprint Change Proposal 2026-04-26 Option C — Hybrid: ship Operations Epic 12 first (first release + Epic 11 retro action items), then make Phase 2 decision after first release lands.
+  12-1-first-release-path-validation: backlog # Cuts first real release end-to-end; gated on external maintainer actions A1 (branch protection on `main`) + A2 (NUGET_API_KEY secret). Closes D2 (release runbook).
+  12-2-forbidden-default-tolerances-checklist: backlog # Operationalizes A3: adds tolerance-idiom review checklist to CONTRIBUTING.md Code Review section. Cross-references feedback_tolerance_idioms.md memory.
+  12-3-story-file-scope-enforcement: backlog # Operationalizes A4: pre-commit/CI check that fails when diff touches files outside the story's File Scope. Prevents D5-shape recurrence.
+  12-4-baseline-failures-sweep: backlog # Operationalizes A5: replays test-unit-contract + integration-fast against recent stories, fixes/accepts/filters every red baseline. CiTestInventoryTests asserts zero unaccounted-for baselines.
+  12-5-partial-publish-alerting: backlog # Operationalizes S11-FD: structured failure summary + alert (issue/Slack/annotation) when publish-nuget.ps1 hits a partial-publish state. Retains --skip-duplicate self-healing without silent failure.
+  12-6-embedding-input-content-kind-baseline-resolution: backlog # Resolves S11-FA: investigate, fix, formally accept, or skip with rationale; returns test-release.ps1 tracked-baseline list to zero entries.
+  epic-12-retrospective: optional Captures Epic 11's bundled 11.1+11.2 delivery, the 3-layer adversarial review outcome (8/8 decisions resolved, 16/18 patches applied, 4 deferred follow-ups S11-FA/B/C/D), 6 systemic patterns surfaced (file-scope leak D5; baseline failures accumulating under script-only execution; 4 tolerance-idiom silent-failures; convention drift between sibling files; status-checkbox/reality gap W10; untracked package-lock.json P1), 5 action items (A1 branch protection, A2 NUGET_API_KEY, A3 forbidden-default-tolerances checklist, A4 file-scope guardrail enforcement, A5 baseline-failures sweep across recent stories), and the post-MVP transition discussion replacing next-epic preparation since Epic 11 is the last planned epic in epics.md. Recommendation: cut first real release, then sweep deferred-work, then decide between Epic 12/Phase 2 or operations pivot.

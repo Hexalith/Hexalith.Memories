@@ -364,6 +364,12 @@ LLM agents can search, ingest, traverse, and query case info via MCP tools with 
 Every commit is automatically built, tested, and versioned via GitHub Actions. PRs get build + test checks. Releases publish NuGet packages with semantic versioning from conventional commits. Branch protection on main.
 **Driven by:** Architecture Decision D17
 
+### Phase: Post-MVP — Operations & First Release
+
+### Epic 12: First Release & Operations Foundation
+Cut the first real release of Hexalith.Memories to nuget.org, apply branch protection on `main`, operationalize the Epic 11 retrospective action items, and prove the release path end-to-end before any further feature investment. Closes the gap between "CI infrastructure built" and "release path proven against a real publish event."
+**Driven by:** Epic 11 retrospective + Sprint Change Proposal 2026-04-26 (Hybrid path = Operations Epic 12 first, then Phase 2 decision)
+
 ---
 
 ## Epic 1: Foundation, Ingestion & Graph Edge Indexing
@@ -1900,3 +1906,198 @@ So that releases are predictable, traceable, and publishing is zero-friction.
 **When** a new contributor reads it
 **Then** it covers: conventional commit format, PR process, how to run tests (unit without Docker, integration with Docker), branch naming conventions, code review expectations
 **And** it is clear enough for a first-time contributor to submit a valid PR
+
+---
+
+## Epic 12: First Release & Operations Foundation
+
+Cut the first real release of Hexalith.Memories to nuget.org, apply branch protection on `main`, operationalize the Epic 11 retrospective action items, and prove the release path end-to-end before any further feature investment. This epic closes the gap between "CI infrastructure built" and "release path proven against a real publish event," and operationalizes the six systemic patterns surfaced in the Epic 11 retrospective so they become enforced rather than aspirational.
+
+**Driven by:** Epic 11 retrospective (`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md`) + Sprint Change Proposal 2026-04-26 (`sprint-change-proposal-2026-04-26.md`) Option C — Hybrid: Operations Epic 12 first, then Phase 2 decision after first release lands.
+
+**Out of scope:** Phase 2 feature work (per-tenant LLM config, tokenizer-accurate budgets, projection registry, MCP trace-hop assertion, etc.). Phase 2 is a separate decision deferred until Epic 12 outcomes are known.
+
+### Story 12.1: First Release Path Validation
+
+As a maintainer,
+I want the first real release to nuget.org to run end-to-end with the Epic 11 infrastructure,
+So that the release path is proven against a real publish event before any further feature investment.
+
+**Acceptance Criteria:**
+
+**Given** Epic 11 retrospective action **A1** (branch protection on `main` per `docs/dev/branch-protection.md`) has been applied in the GitHub repository settings by a maintainer,
+**And** the first CI workflow run on `main` has exposed the `build`, `test-unit-contract`, and `integration-fast` check names,
+**When** the maintainer selects those three checks as required + requires at least one approval + blocks direct push,
+**Then** branch protection on `main` is enforcing the Epic 11 contract end-to-end.
+
+**Given** Epic 11 retrospective action **A2** (`NUGET_API_KEY` repository secret) has been added in the GitHub repository settings by a maintainer with a scoped nuget.org API key,
+**When** the secret is present and `release.yml` references it,
+**Then** the release workflow's `npx semantic-release` step has the credential it needs to publish.
+
+**Given** A1 and A2 are both applied,
+**When** a deliberate `feat:` or `fix:` commit lands on `main` (via PR + approval, not direct push),
+**Then** `release.yml` triggers,
+**And** semantic-release determines the next version from conventional commits,
+**And** `pack-release.ps1` produces 7 packages with consistent versions and metadata,
+**And** `validate-release-packages.ps1` passes,
+**And** `publish-nuget.ps1` pushes the packages to `https://api.nuget.org/v3/index.json`,
+**And** semantic-release creates the `v${version}` tag + GitHub Release with auto-generated release notes,
+**And** the `chore(release)` commit lands without re-triggering the release workflow.
+
+**Given** the publish step completes,
+**When** the maintainer inspects nuget.org,
+**Then** all 7 packages (`Hexalith.Memories.Contracts`, `…Client.Rest`, `…Redis`, `…Cli`, `…Mcp`, `…EventStore`, `…Telemetry`) are listed at the released version with correct descriptions, READMEs, license metadata, and cross-package dependency versions equal to the released version.
+
+**Given** the first release succeeds,
+**Then** a release runbook is captured at `docs/dev/release-runbook.md` (closes Epic 11 retrospective deliverable D2) documenting the end-to-end first-release sequence so the second release is repeatable by any maintainer.
+
+### Story 12.2: Forbidden Default Tolerances Checklist (A3)
+
+As a code reviewer,
+I want a written checklist of "tolerant defaults that hide failure" patterns to scan for,
+So that the four tolerance-idiom silent-failure patterns surfaced in Epic 11 (and equivalent shapes) are caught at review time rather than after a green-but-broken pipeline reaches production.
+
+**Acceptance Criteria:**
+
+**Given** `CONTRIBUTING.md` has a Code Review section,
+**When** a contributor reads it before reviewing infrastructure / scripts / workflow YAML changes,
+**Then** the section names — at minimum — these tolerance-idiom patterns to flag:
+
+- Process-substitution / pipeline exit-code swallowing (`mapfile -t X < <(cmd)` losing `cmd`'s `exit 1`)
+- `actions/upload-artifact` `if-no-files-found: ignore` masking failed pack/build steps
+- `dotnet nuget push --skip-duplicate` masking partial-publish without idempotency precondition
+- Per-row / per-iteration zero-count silently passing aggregate verifiers
+- Empty `catch { }` blocks in PowerShell / C# that swallow exceptions
+- `|| true` and equivalent shell idioms that discard non-zero exit codes
+- Default-empty-array fallbacks (`PROJECTS=("")`) that flip "no inventory" into "match everything"
+
+**Given** the checklist is published,
+**Then** it cross-references the Epic 11 retrospective Pattern 3 + the `feedback_tolerance_idioms.md` memory so future agents loading the memory know where the canonical guidance lives.
+
+**Given** the checklist exists,
+**When** a future PR introduces one of the listed patterns,
+**Then** a reviewer can point at the checklist as the basis for requesting a change instead of relitigating the rationale.
+
+### Story 12.3: Story-File-Scope Enforcement (A4)
+
+As a sprint discipline owner,
+I want diffs to be checked against the originating story's `File Scope` declaration,
+So that the D5-shape file-scope leak from Epic 11 (runtime `.cs` changes shipped under a CI/release story) cannot recur silently.
+
+**Acceptance Criteria:**
+
+**Given** every story file in `_bmad-output/implementation-artifacts/` has a `File Scope` section listing the file globs it is allowed to touch,
+**When** a developer prepares a commit that references a story (via branch name, conventional commit footer, or explicit annotation),
+**Then** an automated check (pre-commit hook OR CI check OR both) compares the staged diff against the story's `File Scope`,
+**And** fails loudly when files outside the declared scope are touched.
+
+**Given** legitimate cross-story stabilization sometimes requires touching files the story didn't anticipate,
+**When** a developer needs an explicit override,
+**Then** they can include a `Scope-Override:` line in the commit message naming the affected file(s) + a short rationale,
+**And** the check passes when the override covers the out-of-scope files,
+**And** the override is visible in `git log` for retrospective audit.
+
+**Given** the check is in place,
+**When** Epic 11's D5-shape scenario recurs (a CI/release story touching `src/**/*.cs`),
+**Then** the check fires at PR / commit time, not at adversarial review time.
+
+**Given** the check exists,
+**Then** `CONTRIBUTING.md` documents how to declare `File Scope` correctly and how to use `Scope-Override:` legitimately.
+
+### Story 12.4: Baseline Failures Sweep (A5)
+
+As a quality owner,
+I want every red test that the new `test-unit-contract` and `integration-fast` lanes will encounter against existing code to be either fixed or formally accepted with a re-open trigger,
+So that the "baseline failures hiding under script-only execution" pattern from Epic 11 stops accumulating silently.
+
+**Acceptance Criteria:**
+
+**Given** the new CI lanes are running against `main`,
+**When** the quality owner replays the lanes against recent stories' completion states (Epic 8.x, 9.x, 10.x history),
+**Then** every additional pre-existing red test (beyond S11-FA `EmbeddingInputContentKindTests` already tracked) is identified and documented.
+
+**Given** the sweep produces a list,
+**When** each baseline failure is triaged,
+**Then** each is either:
+
+- (a) **fixed** in this story, with the fix anchored to the story that introduced the regression in `git log`, OR
+- (b) **formally accepted** as an `S11-FX` style entry in `deferred-work.md` with: the test name, the story that introduced the regression, the rationale for accepting it, and an explicit re-open trigger, OR
+- (c) **filtered** in the appropriate test-runner script with an inline comment pointing at the deferred-work entry.
+
+**Given** the sweep completes,
+**Then** `tools/test-release.ps1` baseline-filter list is the canonical source of all currently-accepted baselines,
+**And** `CiTestInventoryTests` asserts that every entry in the filter has a corresponding deferred-work entry (or fails),
+**And** zero baseline failures are unaccounted-for.
+
+### Story 12.5: Partial-Publish Alerting (S11-FD)
+
+As an operations owner,
+I want the half-published-then-network-failure scenario in `tools/publish-nuget.ps1` to produce an audible signal,
+So that the `--skip-duplicate` self-healing model can be retained without it becoming an undetected silent-failure path.
+
+**Acceptance Criteria:**
+
+**Given** `tools/publish-nuget.ps1` is in the middle of pushing N packages,
+**When** any individual `dotnet nuget push` fails with a non-`--skip-duplicate`-eligible error (network failure, auth failure, validation failure),
+**Then** the script captures the failed package + error,
+**And** completes the remaining package pushes (if a partial-success state is recoverable),
+**And** emits a structured failure summary listing exactly which packages were pushed vs. failed.
+
+**Given** the script runs in CI under `release.yml`,
+**When** the failure summary indicates a partial publish,
+**Then** an alert is raised — choose one based on Hexalith.Memories operations posture:
+
+- (a) GitHub Issue auto-created in this repository with the failure summary, OR
+- (b) Slack / equivalent webhook notification, OR
+- (c) Failed workflow with explicit "PARTIAL PUBLISH — manual reconciliation required" annotation visible from the GitHub Actions UI.
+
+**Given** the alert fires,
+**Then** the alert text references `tools/publish-nuget.ps1` operator runbook section and lists the recovery procedure (re-run the workflow; `--skip-duplicate` self-heals to fully published).
+
+### Story 12.6: EmbeddingInputContentKind Baseline Resolution (S11-FA)
+
+As a quality owner,
+I want the single tracked baseline filter currently in `tools/test-release.ps1` (`EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`) to be resolved,
+So that the baseline filter list returns to zero and any future addition to it is a deliberate, traceable event rather than a quiet drift.
+
+**Acceptance Criteria:**
+
+**Given** `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` is currently filtered out of `tools/test-release.ps1`,
+**When** the test failure mode is investigated,
+**Then** the root cause is documented (metric-tag contract drift? race condition? environment dependency? actual regression?).
+
+**Given** the root cause is known,
+**When** the team triages it,
+**Then** one of the following happens:
+
+- (a) The test is **fixed** and the filter entry is removed, OR
+- (b) The test contract is **renegotiated** (the test was wrong; update the test or the contract; remove filter), OR
+- (c) The behavior is **formally accepted** as an architectural choice and the test is removed (with rationale in code + commit + ADR if architecturally significant), OR
+- (d) The test is **explicitly skipped** with a `[Trait("KnownFailure")]` + tracked deferred-work entry (interim only — not the desired end state).
+
+**Given** resolution is achieved,
+**Then** `tools/test-release.ps1`'s tracked-baseline list returns to zero entries,
+**And** `CiTestInventoryTests` (per Story 12.4 AC) asserts that zero is the expected size when no `S11-FX` deferred entries are open.
+
+### Optional follow-up stories (not included in initial scaffold; create only if their re-open trigger fires)
+
+- **Story 12.7 — S11-FB compile-time symbol verification for `tools/integration-fast-required-surfaces.txt`** — re-open trigger: a surface drift slips past the runtime verifier, OR `IntegrationTests` compile dependencies become trivial enough to make the typed approach cheap.
+- **Story 12.8 — S11-FC `release.yml` stale-tag preflight** — re-open trigger: a stale-tag collision actually bites on a real release attempt.
+
+---
+
+## Decision Point: Beyond Epic 12
+
+**Status as of 2026-04-26:** Epic 12 is the operations-and-first-release epic selected by Sprint Change Proposal 2026-04-26 (Option C — Hybrid). Whatever comes after Epic 12 is **deliberately undecided** and depends on what the first release actually reveals.
+
+The post-Epic-12 direction will be informed by:
+
+1. **First real release outcome** — did `release.yml` execute end-to-end? What broke? What did the deferred-work backlog look right about / wrong about?
+2. **Initial first-contributor friction** (if any) — does `CONTRIBUTING.md` survive contact with a real first-time contributor?
+3. **Re-open triggers in `_bmad-output/implementation-artifacts/deferred-work.md`** — production observation may convert "Phase 2 candidate" entries into concrete next-epic story candidates.
+
+### What NOT to do without an explicit Sprint Change Proposal
+
+- **Do not add Epic 13+ here speculatively.** Any next-epic decision (continue Operations? pivot to Phase 2 features? declare project complete?) requires an explicit directional decision recorded in a new Sprint Change Proposal.
+- **Do not assume the deferred-work backlog is the Phase 2 backlog.** It contains a mix of "fix when triggered," "Phase 2 candidate," and "operational follow-up" items. Phase 2 scoping (if pursued) requires explicit triage, not bulk import.
+- **Do not promote optional stories (12.7 / 12.8) into the active scope without their re-open trigger having actually fired.** Adding them speculatively contradicts Epic 11 retrospective Action A4 (story-file-scope discipline).
