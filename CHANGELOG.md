@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/Hexalith/Hexalith.Memories/compare/v1.0.0...v1.1.0) (2026-04-26)
+
+
+### Features
+
+* Add retrospective and sprint change proposal for Epic 11 completion ([2fab295](https://github.com/Hexalith/Hexalith.Memories/commit/2fab2959cdf157e14e582374326fc880203e9eb9))
+
 # 1.0.0 (2026-04-26)
 
 
