@@ -1,0 +1,2 @@
+# Docker-backed fast integration lane. Filter decides fast vs slow categories.
+tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj

@@ -285,7 +285,9 @@ public sealed partial class SemanticSearchService
             });
         }
 
-        return results;
+        return [.. results
+            .OrderByDescending(static r => r.Score)
+            .ThenBy(static r => r.MemoryUnitId, StringComparer.Ordinal)];
     }
 
     [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|,]")]

@@ -423,10 +423,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>
     /// Accepts the Aspire resource-log category for the Memories Server resource. The Aspire runtime prefixes
-    /// category names with the resource id ("memories-server") followed by either the end of the category or
-    /// a "-" / "." separator (for related sub-resources such as "memories-server-dapr-cli"). A substring
-    /// <c>Contains</c> match is too broad — any unrelated future test-runner category that happens to embed
-    /// "memories-server" would be elevated above the Warning floor and add noise to the captured stream.
+    /// category names with either the resource id ("memories-server") or the AppHost resource-log
+    /// category prefix ("Hexalith.Memories.AppHost.Resources.memories-server"), followed by either
+    /// the end of the category or a "-" / "." separator (for related sub-resources such as
+    /// "memories-server-dapr-cli"). A raw substring <c>Contains</c> match is too broad — any unrelated
+    /// future test-runner category that happens to embed "memories-server" would be elevated above the
+    /// Warning floor and add noise to the captured stream.
     /// </summary>
     /// <param name="category">The logger category name as provided by the logging pipeline.</param>
     /// <returns><c>true</c> when the category identifies the Memories Server resource or one of its sub-resources.</returns>
@@ -438,17 +440,42 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         const string resourceId = "memories-server";
-        if (!category.StartsWith(resourceId, StringComparison.OrdinalIgnoreCase))
+        const string aspireResourceMarker = ".Resources." + resourceId;
+        const string aspireCategoryPrefix = "Aspire.Hosting.";
+
+        // Anchor the resource match to two well-known shapes so an unrelated category like
+        // `Foo.Bar.Resources.memories-server-other.evil` cannot collide with the real resource:
+        //   1. Direct resource category: `memories-server[.|-]<sub>` (or exact match).
+        //   2. Aspire-shaped category: `Aspire.Hosting.<assembly>.Resources.memories-server[.|-]<sub>`.
+        int resourceIndex;
+        if (category.StartsWith(resourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            resourceIndex = 0;
+        }
+        else if (category.StartsWith(aspireCategoryPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            resourceIndex = category.IndexOf(aspireResourceMarker, StringComparison.OrdinalIgnoreCase);
+        }
+        else
         {
             return false;
         }
 
-        if (category.Length == resourceId.Length)
+        if (resourceIndex < 0)
+        {
+            return false;
+        }
+
+        int suffixStart = resourceIndex == 0
+            ? resourceId.Length
+            : resourceIndex + aspireResourceMarker.Length;
+
+        if (category.Length == suffixStart)
         {
             return true;
         }
 
-        char next = category[resourceId.Length];
+        char next = category[suffixStart];
         return next is '-' or '.';
     }
 

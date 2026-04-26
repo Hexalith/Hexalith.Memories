@@ -1,0 +1,37 @@
+{
+  "packages": [
+    {
+      "packageId": "Hexalith.Memories.Contracts",
+      "project": "src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.Client.Rest",
+      "project": "src/Hexalith.Memories.Client.Rest/Hexalith.Memories.Client.Rest.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.Redis",
+      "project": "src/Hexalith.Memories.Redis/Hexalith.Memories.Redis.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.Cli",
+      "project": "src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.Mcp",
+      "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.EventStore",
+      "project": "src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj"
+    },
+    {
+      "packageId": "Hexalith.Memories.Telemetry",
+      "project": "src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj"
+    }
+  ],
+  "nonPackableProjects": [
+    "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+    "src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj",
+    "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj"
+  ]
+}

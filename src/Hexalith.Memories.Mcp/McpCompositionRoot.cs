@@ -26,6 +26,9 @@ internal static class McpCompositionRoot
     /// <summary>The DAPR app-id of the upstream Memories Server resolved through service invocation.</summary>
     internal const string MemoriesServerAppId = "memories-server";
 
+    /// <summary>Environment variable overriding the upstream Memories Server DAPR app-id.</summary>
+    internal const string MemoriesServerAppIdEnvVar = "MEMORIES_MCP_UPSTREAM_APP_ID";
+
     /// <summary>Registers every service the MCP server needs: DAPR client, MemoriesClient, MCP tools, error mapper.</summary>
     /// <param name="services">The service collection.</param>
     public static void ConfigureServices(IServiceCollection services)
@@ -58,7 +61,7 @@ internal static class McpCompositionRoot
         services.AddTransient<MemoriesMcpDaprInvocationHandler>();
         services.AddScoped<MemoriesClient>(sp =>
         {
-            HttpClient invokeClient = Dapr.Client.DaprClient.CreateInvokeHttpClient(MemoriesServerAppId);
+            HttpClient invokeClient = Dapr.Client.DaprClient.CreateInvokeHttpClient(ResolveMemoriesServerAppId());
             MemoriesMcpDaprInvocationHandler.ApplyDaprApiToken(invokeClient);
             return new MemoriesClient(
                 invokeClient,
@@ -88,5 +91,15 @@ internal static class McpCompositionRoot
                 failureStatus: HealthStatus.Unhealthy,
                 tags: ["ready"],
                 timeout: TimeSpan.FromSeconds(6));
+    }
+
+    /// <summary>Resolves the upstream Memories Server DAPR app-id.</summary>
+    /// <returns>The configured app-id, or the production default.</returns>
+    internal static string ResolveMemoriesServerAppId()
+    {
+        string? configured = Environment.GetEnvironmentVariable(MemoriesServerAppIdEnvVar);
+        return string.IsNullOrWhiteSpace(configured)
+            ? MemoriesServerAppId
+            : configured.Trim();
     }
 }

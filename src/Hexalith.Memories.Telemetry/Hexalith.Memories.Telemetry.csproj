@@ -2,7 +2,19 @@
 
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <PackageId>Hexalith.Memories.Telemetry</PackageId>
     <Description>Shared ActivitySource and Meter definitions for Hexalith.Memories telemetry (Story 7.5).</Description>
+    <Authors>ITANEO</Authors>
+    <Company>ITANEO</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
+    <PackageTags>hexalith;memories;telemetry;opentelemetry;metrics;tracing</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>

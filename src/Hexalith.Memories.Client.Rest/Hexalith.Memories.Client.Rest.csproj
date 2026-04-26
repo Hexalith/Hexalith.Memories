@@ -4,6 +4,13 @@
     <IsPackable>true</IsPackable>
     <PackageId>Hexalith.Memories.Client.Rest</PackageId>
     <Description>Typed REST client for the Hexalith.Memories Server (Story 7.1).</Description>
+    <Authors>ITANEO</Authors>
+    <Company>ITANEO</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
+    <PackageTags>hexalith;memories;client;rest;http;search;ingestion</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +22,10 @@
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

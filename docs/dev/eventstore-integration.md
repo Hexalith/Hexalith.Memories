@@ -87,8 +87,8 @@ reuses the existing Redis dependency.
 
 ### 1.5 Environment defaults table
 
-| Option                         | Development | Production                                              | Rationale                                                                                                                                                                    |
-| ------------------------------ | ----------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Option | Development | Production | Rationale |
+| --- | --- | --- | --- |
 | `AutoCreateCases`              | `true`      | `false`                                                 | Development optimizes for zero-config DX (PRD §534). Production requires explicit tenant/case provisioning so a mis-routed publisher can't silently create cases. ADR 9.1-C. |
 | `MaxAutoCreatedCasesPerTenant` | `100`       | `100`                                                   | Hard cap is a safety backstop regardless of environment.                                                                                                                     |
 | `PreflightDedupEnabled`        | `true`      | `true`                                                  | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B.                                                                        |

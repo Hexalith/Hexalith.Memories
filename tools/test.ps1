@@ -9,7 +9,10 @@
 [CmdletBinding()]
 param(
     [switch]$Coverage,
-    [string]$Filter
+    [string]$Filter,
+    [string]$Configuration = 'Debug',
+    [switch]$NoBuild,
+    [string]$ResultsDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,22 +21,32 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repoRoot
 
 try {
+    function Read-ProjectInventory([string]$InventoryFile) {
+        $path = Join-Path $repoRoot $InventoryFile
+        if (-not (Test-Path -LiteralPath $path)) {
+            throw "Test project inventory '$InventoryFile' was not found."
+        }
+
+        @(Get-Content -LiteralPath $path |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_.Length -gt 0 -and -not $_.StartsWith('#') })
+    }
+
     $projectPaths = switch -Wildcard ($Filter) {
         'Category!=Integration' {
-            @(
-                'tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj',
-                'tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj',
-                'tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj',
-                'tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj'
-            )
-            break
-        }
-        '*Category=Integration*' {
-            @('tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj')
+            Read-ProjectInventory 'tools/test-projects.unit-contract.txt'
             break
         }
         '*Category=IntegrationSlow*' {
-            @('tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj')
+            Read-ProjectInventory 'tools/test-projects.integration-fast.txt'
+            break
+        }
+        '*Category=Integration*' {
+            Read-ProjectInventory 'tools/test-projects.integration-fast.txt'
+            break
+        }
+        'Category=Benchmark' {
+            Read-ProjectInventory 'tools/test-projects.benchmark.txt'
             break
         }
         default {
@@ -47,13 +60,45 @@ try {
 
     foreach ($projectPath in $projectPaths) {
         $arguments = @('test')
+        $effectiveFilter = if ($Filter -eq 'Category!=Integration') {
+            'Category!=Integration&Category!=Benchmark'
+        }
+        else {
+            $Filter
+        }
 
         if (-not [string]::IsNullOrWhiteSpace($projectPath)) {
             $arguments += $projectPath
         }
 
-        if (-not [string]::IsNullOrWhiteSpace($Filter)) {
-            $arguments += @('--filter', $Filter)
+        $arguments += @('--configuration', $Configuration)
+
+        if ($NoBuild) {
+            $arguments += '--no-build'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($effectiveFilter)) {
+            $arguments += @('--filter', $effectiveFilter)
+        }
+
+        $trxPath = $null
+        if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
+            $safeName = if ([string]::IsNullOrWhiteSpace($projectPath)) {
+                'solution'
+            }
+            else {
+                [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
+            }
+
+            $projectResultsDirectory = Join-Path $repoRoot (Join-Path $ResultsDirectory $safeName)
+            New-Item -ItemType Directory -Force -Path $projectResultsDirectory | Out-Null
+            $trxPath = Join-Path $projectResultsDirectory "$safeName.trx"
+            $arguments += @(
+                '--logger',
+                "trx;LogFileName=$safeName.trx",
+                '--results-directory',
+                $projectResultsDirectory
+            )
         }
 
         if ($Coverage) {
@@ -64,6 +109,20 @@ try {
         & dotnet @arguments
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet test failed ($LASTEXITCODE)"
+        }
+
+        if ($trxPath) {
+            if (-not (Test-Path -LiteralPath $trxPath)) {
+                throw "Expected TRX file '$trxPath' was not produced."
+            }
+
+            [xml]$trx = Get-Content -LiteralPath $trxPath
+            $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
+            if ($executed -le 0) {
+                throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
+            }
+
+            Write-Host "Executed $executed tests for $projectPath"
         }
     }
 }

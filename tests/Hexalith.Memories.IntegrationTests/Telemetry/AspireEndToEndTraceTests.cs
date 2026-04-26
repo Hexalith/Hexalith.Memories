@@ -20,9 +20,14 @@ using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
+using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Telemetry;
+using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -76,6 +81,7 @@ public sealed class AspireEndToEndTraceTests
     }
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task CliSearch_EndToEnd_SingleTraceIdAcrossAllHops()
     {
         // AC #1 (NFR28 HTTP-hop gate): invoke the real CLI `memories search query ...` path in-process via
@@ -86,7 +92,8 @@ public sealed class AspireEndToEndTraceTests
         // memories.search spans are emitted as test-only activity breadcrumbs to the server's stderr under
         // HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1 and parsed from the Aspire log stream.
         string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-telemetry-trace-{Guid.NewGuid():N}");
-        string query = $"trace-probe-{Guid.NewGuid():N}";
+        string query = $"trace-redis-probe-{Guid.NewGuid():N}";
+        await SeedSyntacticDocumentAsync(tenantId, query);
 
         await using CliTracingHarness harness = CliTracingHarness.Create();
         int logStartIndex = _fixture.LogEntryCount;
@@ -304,6 +311,24 @@ public sealed class AspireEndToEndTraceTests
         RootCommandFactory.ApplyGlobalOptions(provider, parse, options);
         int exitCode = await parse.InvokeAsync();
         return new CliInvocationResult(exitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    private async Task SeedSyntacticDocumentAsync(string tenantId, string queryToken)
+    {
+        IndexInput input = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: $"mu-trace-{Guid.NewGuid():N}",
+            caseId: $"case-trace-{Guid.NewGuid():N}",
+            content: $"Redis span trace probe document containing {queryToken}.",
+            sourceUri: $"file:///{Guid.NewGuid():N}.txt",
+            embeddingVector: IndexInputFactory.CreateRealisticVector(768),
+            embeddingDimensions: 768);
+
+        var activity = new IndexSyntacticActivity(
+            _fixture.RedisConnection,
+            NullLogger<IndexSyntacticActivity>.Instance);
+        Dapr.Workflow.WorkflowActivityContext context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        _ = await activity.RunAsync(context, input).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -64,11 +64,22 @@ public class SemanticSearchIntegrationTests
     {
         // Arrange — seed 3 docs; query with text matching one exactly
         string tenantId = $"tenant-{Guid.NewGuid():N}";
-        await SeedDocumentAsync(tenantId, "mu-alpha", "alpha document content");
-        await SeedDocumentAsync(tenantId, "mu-beta", "beta document content");
-        await SeedDocumentAsync(tenantId, "mu-gamma", "gamma document content");
+        OverrideEmbeddingClient embeddingClient = new();
+        float[] alphaVector = CreateVector(1.0f, 0.0f, 0.0f);
+        float[] betaVector = CreateVector(0.0f, 1.0f, 0.0f);
+        float[] gammaVector = CreateVector(0.0f, 0.0f, 1.0f);
+        embeddingClient.SetVector("alpha document content", alphaVector);
+        embeddingClient.SetVector("beta document content", betaVector);
+        embeddingClient.SetVector("gamma document content", gammaVector);
 
-        SemanticSearchService service = CreateService();
+        await SeedDocumentAsync(tenantId, "mu-alpha", "alpha document content", embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-beta", "beta document content", embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-gamma", "gamma document content", embeddingClient: embeddingClient);
+
+        SemanticSearchService service = new(
+            _redis.Connection,
+            embeddingClient,
+            NullLogger<SemanticSearchService>.Instance);
 
         // Act — query with "alpha document content" → identical vector → distance 0, similarity 1.0
         SearchResult result = await service.SearchAsync(

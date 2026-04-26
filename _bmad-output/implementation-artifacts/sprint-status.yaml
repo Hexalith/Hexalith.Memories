@@ -57,7 +57,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-26
-last_updated: 2026-04-26 # Story 10.2 Token-Budget Responses & Authentication review close-out resolved 3 patch findings and transitioned review → done. `SearchResponseMetadataApplier.ApplyHybrid` now computes `AxesUsed` from retained fused result score fields instead of requested axes, so healthy zero-hit axes are not reported as contributing. `AspireIngestionPipelineFixture.MintDevBearer` can now mint intentionally expired dev JWTs by setting `IssuedAt`/`NotBefore` before a past explicit expiry. `AuditLogStreamTests` now uses a boundary-aware credential-key guard that allows benign budget/pagination token terms while rejecting common credential-shaped query keys. Focused validation green: Server focused review slice 24/24; IntegrationTests project build 0W/0E. AC #12 trace-hop remains deferred to `Story-10.x-McpTraceHopAspire`.
+last_updated: 2026-04-26 # Stories 11.1 + 11.2 review-fix pass complete; both transitioned review → done. 3-layer adversarial review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on the bundled 11.1 + 11.2 diff returned 8 decision-needed + 18 patch + 25 defer + 17 dismissed. Resolved all 8 decisions (D1 baseline-filter cleanup, D2 accepted as deliberate, D3 accepted dev-note, D4 accepted current model + alerting deferred S11-FD, D5 anchored in 11.1 Completion Notes, D6 caller-cancel rethrow, D7 single solution build before pack, D8 aggregate executed counts). Applied 16 of 18 patches: aligned `release.yml` actions to `@v6`/`@v5` + `[skip ci]` head-commit guard + broader semantic-release/github permissions + `if: success() / if-no-files-found: warn` on package upload (P3/P6/P8/P15); trimmed CI `branches-ignore` (P7); `tools/test.sh` `read_inventory` exit propagation via command substitution (P2); `tools/test-release.ps1` shared-inventory + Benchmarks excluded + baseline filter reduced to 1 tracked test (P4/P5/D1); `tools/pack-release.ps1` single solution build then per-package `dotnet pack --no-build` (D7); `tools/validate-release-packages.ps1` case-sensitive PackageId + NuGet bracket-range strict equality (P10/P11); `AspireIngestionPipelineFixture.IsMemoriesServerCategory` anchored under `Aspire.Hosting.` prefix (P13); `Audit/ServerActivityStreamReader` caller-cancellation always rethrows (D6); `McpCompositionRootTests` in `[CollectionDefinition(DisableParallelization = true)]` collection (P12); `PublicContractSerializationCoverageTests` recursion guard throws clear NotSupportedException (P17); `verify-integration-fast-coverage.py` aggregates executed counts across TRX files (D8); `CONTRIBUTING.md` zero-test-guard caveat + Linux/macOS test.sh note (P14/P18 doc track); `CiTestInventoryTests` extended to assert test-release.ps1 stays in sync (P4 closure). P9 (compile-time symbol verification for surfaces file) and P16 (release.yml stale-tag preflight) deferred as **S11-FB** and **S11-FC** respectively; new tracked entries S11-FA (EmbeddingInputContentKindTests baseline) and S11-FD (partial-publish alerting). 25 review defer items + 4 new follow-ups appended to `deferred-work.md`. **User-action remaining (P1):** `git add package-lock.json` so `npm ci` succeeds on first release run; the file is in working tree but currently untracked.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -167,7 +167,7 @@ development_status:
   # --- Infrastructure (Cross-Cutting) ---
 
   # Epic 11: CI/CD & Automated Quality Pipeline
-  epic-11: backlog
-  11-1-github-actions-build-and-test-pipeline: backlog
-  11-2-semantic-release-and-nuget-publishing: backlog
+  epic-11: in-progress
+  11-1-github-actions-build-and-test-pipeline: done
+  11-2-semantic-release-and-nuget-publishing: done
   epic-11-retrospective: optional

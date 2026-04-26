@@ -1,0 +1,2 @@
+# Manual/scheduled benchmark lane. Excluded from default PR CI.
+tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj

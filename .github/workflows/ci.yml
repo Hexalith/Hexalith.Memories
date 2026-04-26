@@ -1,0 +1,112 @@
+name: CI
+
+"on":
+  pull_request:
+    branches:
+      - main
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx
+
+      - name: Build solution
+        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
+
+  test-unit-contract:
+    name: test-unit-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx
+
+      - name: Build solution
+        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
+
+      - name: Run Docker-free unit and contract tests
+        run: bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
+
+      - name: Upload unit and contract test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-unit-contract-results
+          path: TestResults/test-unit-contract/**
+          if-no-files-found: error
+          retention-days: 14
+
+  integration-fast:
+    name: integration-fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Verify Docker availability
+        run: |
+          docker version
+          docker info
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx
+
+      - name: Build solution
+        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
+
+      - name: Run fast Docker-backed integration tests
+        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow" --configuration Release --no-build --results-directory TestResults/integration-fast
+
+      - name: Verify fast integration coverage evidence
+        run: python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
+
+      - name: Upload fast integration test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: integration-fast-results
+          path: TestResults/integration-fast/**
+          if-no-files-found: error
+          retention-days: 14

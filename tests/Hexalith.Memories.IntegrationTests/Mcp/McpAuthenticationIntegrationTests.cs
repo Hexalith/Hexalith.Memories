@@ -80,11 +80,12 @@ public sealed class McpAuthenticationIntegrationTests
         {
             ["tenantId"] = tenantId,
             ["query"] = "matching-tenant",
-            ["axes"] = "Hybrid",
+            ["axes"] = "hybrid",
         };
 
         CallToolResult result = await client.CallToolAsync("search_memory", arguments);
 
+        _output.WriteLine($"search_memory IsError={result.IsError}; Content={FormatContent(result.Content)}");
         result.IsError.ShouldNotBe(true);
     }
 
@@ -101,7 +102,7 @@ public sealed class McpAuthenticationIntegrationTests
         {
             ["tenantId"] = targetTenantId,
             ["query"] = "cross-tenant-attempt",
-            ["axes"] = "Hybrid",
+            ["axes"] = "hybrid",
         };
 
         CallToolResult result = await client.CallToolAsync("search_memory", arguments);
@@ -134,4 +135,9 @@ public sealed class McpAuthenticationIntegrationTests
         _output.WriteLine($"Connected to MCP endpoint at {_fixture.McpEndpoint}");
         return client;
     }
+
+    private static string FormatContent(IList<ContentBlock> content)
+        => string.Join(
+            " | ",
+            content.OfType<TextContentBlock>().Select(c => c.Text));
 }

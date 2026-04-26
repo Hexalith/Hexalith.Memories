@@ -125,7 +125,9 @@ internal static class AuditEventStreamReader
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Caller-initiated cancellation distinguishable from deadline-elapsed: rethrow.
+                // Caller-initiated cancellation: always rethrow so the caller observes its own
+                // cancellation distinguishably from deadline elapse. Deadline-elapse exits via
+                // the while-loop predicate (`DateTimeOffset.UtcNow < deadline`), not via this catch.
                 throw;
             }
             catch (OperationCanceledException)

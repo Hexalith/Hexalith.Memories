@@ -1,0 +1,29 @@
+{
+  "branches": ["main"],
+  "tagFormat": "v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release",
+        "publishCmd": "pwsh -NoLogo -NoProfile -File ./tools/publish-nuget.ps1 -Version ${nextRelease.version} -PackageDirectory ./artifacts/packages/release"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "assets": ["artifacts/packages/release/*.nupkg"]
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["CHANGELOG.md"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]"
+      }
+    ]
+  ]
+}

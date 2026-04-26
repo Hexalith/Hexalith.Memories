@@ -82,13 +82,14 @@ public sealed class McpServerIntegrationTests
         {
             ["tenantId"] = tenantId,
             ["query"] = "needle",
-            ["axes"] = "Hybrid",
+            ["axes"] = "hybrid",
         };
 
         ModelContextProtocol.Protocol.CallToolResult result = await client
             .CallToolAsync("search_memory", arguments)
             ;
 
+        _output.WriteLine($"search_memory IsError={result.IsError}; Content={FormatContent(result.Content)}");
         result.IsError.ShouldNotBe(true);
         result.Content.ShouldNotBeEmpty();
     }
@@ -113,4 +114,9 @@ public sealed class McpServerIntegrationTests
         _output.WriteLine($"Connected to MCP endpoint at {_fixture.McpEndpoint}");
         return client;
     }
+
+    private static string FormatContent(IList<ModelContextProtocol.Protocol.ContentBlock> content)
+        => string.Join(
+            " | ",
+            content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(c => c.Text));
 }

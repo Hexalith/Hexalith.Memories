@@ -142,8 +142,10 @@ public class IngestionInputValidatorTests
     {
         IngestionInput input = IngestionInputFactory.Create(
             sourceType: SourceType.Event,
-            contentBytes: null,
-            sourceUri: "evt-1");
+            sourceUri: "evt-1") with
+        {
+            ContentBytes = null,
+        };
 
         Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input))
             .Message.ShouldContain("ContentBytes is required for SourceType=Event");

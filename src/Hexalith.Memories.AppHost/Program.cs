@@ -155,6 +155,7 @@ IResourceBuilder<ProjectResource> mcp = builder
                 Config = daprConfigPath,
             });
     })
+    .WithEnvironment("MEMORIES_MCP_UPSTREAM_APP_ID", daprAppId)
     .WaitFor(server);
 
 if (appApiToken is not null)
