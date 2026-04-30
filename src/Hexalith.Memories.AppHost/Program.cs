@@ -40,7 +40,8 @@ IResourceBuilder<IDaprComponentResource> stateStore = builder
     .AddDaprComponent(
         "statestore",
         "state.redis",
-        new DaprComponentOptions { LocalPath = daprComponentPaths.StateStore });
+        new DaprComponentOptions { LocalPath = daprComponentPaths.StateStore })
+    .WaitFor(redis);
 
 // Story 9.1: DAPR pub/sub component shared with the Redis dependency. AppHost emits concrete local
 // component YAML for the host-pinned Redis endpoint so local/dev and test topologies cannot drift from
@@ -50,7 +51,8 @@ IResourceBuilder<IDaprComponentResource> pubSub = builder
     .AddDaprComponent(
         "pubsub",
         "pubsub.redis",
-        new DaprComponentOptions { LocalPath = daprComponentPaths.PubSub });
+        new DaprComponentOptions { LocalPath = daprComponentPaths.PubSub })
+    .WaitFor(redis);
 
 IResourceBuilder<IDaprComponentResource> secretStore = builder
     .AddDaprComponent(
