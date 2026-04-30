@@ -9,7 +9,8 @@ permissions:
   contents: read
 
 env:
-  DAPR_VERSION: '1.17.5'
+  DAPR_CLI_VERSION: '1.17.1'
+  DAPR_RUNTIME_VERSION: '1.17.6'
 
 jobs:
   integration-fast:
@@ -28,11 +29,11 @@ jobs:
       - name: Install Dapr CLI
         uses: dapr/setup-dapr@v1
         with:
-          version: ${{ env.DAPR_VERSION }}
+          version: ${{ env.DAPR_CLI_VERSION }}
 
       - name: Initialize Dapr runtime
         run: |
-          dapr init --slim --runtime-version ${{ env.DAPR_VERSION }}
+          dapr init --slim --runtime-version ${{ env.DAPR_RUNTIME_VERSION }}
           dapr --version
 
       - name: Restore solution
@@ -67,11 +68,11 @@ jobs:
       - name: Install Dapr CLI
         uses: dapr/setup-dapr@v1
         with:
-          version: ${{ env.DAPR_VERSION }}
+          version: ${{ env.DAPR_CLI_VERSION }}
 
       - name: Initialize Dapr runtime
         run: |
-          dapr init --slim --runtime-version ${{ env.DAPR_VERSION }}
+          dapr init --slim --runtime-version ${{ env.DAPR_RUNTIME_VERSION }}
           dapr --version
 
       - name: Restore solution
