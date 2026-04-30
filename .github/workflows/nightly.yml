@@ -8,6 +8,9 @@ name: Nightly Integration Tests
 permissions:
   contents: read
 
+env:
+  DAPR_VERSION: '1.17.5'
+
 jobs:
   integration-fast:
     name: Tier 3 integration (fast lane)
@@ -21,6 +24,16 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Install Dapr CLI
+        uses: dapr/setup-dapr@v1
+        with:
+          version: ${{ env.DAPR_VERSION }}
+
+      - name: Initialize Dapr runtime
+        run: |
+          dapr init --slim --runtime-version ${{ env.DAPR_VERSION }}
+          dapr --version
 
       - name: Restore solution
         run: dotnet restore Hexalith.Memories.slnx
@@ -50,6 +63,16 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+
+      - name: Install Dapr CLI
+        uses: dapr/setup-dapr@v1
+        with:
+          version: ${{ env.DAPR_VERSION }}
+
+      - name: Initialize Dapr runtime
+        run: |
+          dapr init --slim --runtime-version ${{ env.DAPR_VERSION }}
+          dapr --version
 
       - name: Restore solution
         run: dotnet restore Hexalith.Memories.slnx

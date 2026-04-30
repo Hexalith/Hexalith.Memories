@@ -11,6 +11,9 @@ name: CI
 permissions:
   contents: read
 
+env:
+  DAPR_VERSION: '1.17.5'
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -84,6 +87,16 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+
+      - name: Install Dapr CLI
+        uses: dapr/setup-dapr@v1
+        with:
+          version: ${{ env.DAPR_VERSION }}
+
+      - name: Initialize Dapr runtime
+        run: |
+          dapr init --slim --runtime-version ${{ env.DAPR_VERSION }}
+          dapr --version
 
       - name: Verify Docker availability
         run: |
