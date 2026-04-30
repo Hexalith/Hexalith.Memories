@@ -153,9 +153,10 @@ Releases are automated from pushes to `main` by `.github/workflows/release.yml`.
 release path and operator checklist are maintained in `docs/dev/release-runbook.md`.
 
 The workflow restores, builds, runs Docker-free tests, validates the package inventory, and then runs
-semantic-release. semantic-release creates the `v${version}` tag, updates `CHANGELOG.md`, creates the
-GitHub Release, packs every approved package with the same version, and publishes packages to
-nuget.org.
+semantic-release. semantic-release creates the `v${version}` tag, creates the GitHub Release, packs
+every approved package with the same version, and publishes packages to nuget.org. Release jobs do
+not commit back to `main`; `main` remains protected and all repository changes still go through pull
+requests.
 
 Required repository secret:
 

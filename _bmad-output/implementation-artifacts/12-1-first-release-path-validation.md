@@ -132,7 +132,7 @@ Story 12.1 closes the gap between "release automation exists" and "release path 
 Current files and behaviors to preserve:
 
 - `.github/workflows/release.yml` restores, builds, runs `tools/test-release.ps1`, installs npm tooling, validates package inventory, runs `npx semantic-release`, and uploads release package artifacts.
-- `.releaserc.json` uses `@semantic-release/commit-analyzer`, release notes, changelog, exec, GitHub, and git plugins. The exec plugin runs `pack-release.ps1` during prepare and `publish-nuget.ps1` during publish.
+- `.releaserc.json` uses `@semantic-release/commit-analyzer`, release notes, exec, and GitHub plugins. The exec plugin runs `pack-release.ps1` during prepare and `publish-nuget.ps1` during publish. It does not use changelog/git commit plugins, so release jobs do not push commits back to protected `main`.
 - `tools/release-packages.json` is the approved package inventory and currently lists seven published packages plus three non-packable projects.
 - `tools/pack-release.ps1` validates inventory, deletes/recreates the output directory, builds the solution once with the release version, packs each approved package with `--no-build`, and validates generated packages.
 - `tools/validate-release-packages.ps1` enforces packable/non-packable inventory, required NuGet metadata, packed README presence, case-sensitive package IDs, generated package inventory, released version, and exact internal dependency version lower bounds.
@@ -266,11 +266,11 @@ GPT-5 Codex
 - Captured NuGet evidence: all seven approved packages report latest version `1.2.0` from the flat-container API.
 - Applied classic branch protection for `main` on 2026-04-30. Before evidence was `404 Branch not protected`; after evidence reports `protected: true`, strict required checks `build`, `test-unit-contract`, `integration-fast`, one required approval, `enforce_admins.enabled: true`, force pushes disabled, and deletions disabled.
 - Verified `.github/workflows/release.yml` runs on pushes to `main`, passes `GITHUB_TOKEN` and `NUGET_API_KEY` through environment variables only, and does not expose secret values.
-- Verified `.releaserc.json` still invokes `tools/pack-release.ps1` in `prepareCmd` and `tools/publish-nuget.ps1` in `publishCmd`; release commit skip behavior is documented in `docs/dev/release-runbook.md`.
+- Verified `.releaserc.json` still invokes `tools/pack-release.ps1` in `prepareCmd` and `tools/publish-nuget.ps1` in `publishCmd`.
 - Ran `./tools/validate-release-packages.ps1`: passed.
 - Downloaded GitHub Release `v1.2.0` `.nupkg` assets to a temp directory and ran `./tools/validate-release-packages.ps1 -PackageDirectory <temp> -Version 1.2.0`: passed.
 - Added observed release runbook at `docs/dev/release-runbook.md`, including prerequisites, first-release evidence, second-release checklist, branch-protection evidence, package evidence, secret-handling guardrails, and partial-publish recovery notes.
-- Noted operational risk: protected-branch direct-push blocking may affect the existing `@semantic-release/git` changelog commit on the next release. No release behavior was changed in this story.
+- Follow-up release hardening removed the `@semantic-release/git` changelog commit path after PR #12's post-merge release run confirmed protected `main` rejects direct release-commit pushes.
 
 ### File List
 
