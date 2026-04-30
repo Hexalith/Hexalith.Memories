@@ -5,7 +5,7 @@
 Clone with submodules or initialize them before restoring:
 
 ```powershell
-git submodule update --init --recursive
+git submodule update --init
 dotnet restore Hexalith.Memories.slnx
 ```
 
@@ -105,7 +105,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | `test-unit-contract` | Run Docker-free unit/contract tests from `tools/test-projects.unit-contract.txt`. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow` tests and verify required surface evidence. |
 
-All jobs checkout submodules recursively and use the SDK from `global.json`. Test lanes write TRX files
+All jobs checkout submodules and use the SDK from `global.json`. Test lanes write TRX files
 under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
 selected project executes zero tests **when `--results-directory` (or `-ResultsDirectory`) is passed**;
 local invocations without the flag skip TRX emission and therefore skip the zero-test guard. Pass the

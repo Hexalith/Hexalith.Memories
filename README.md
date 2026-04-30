@@ -19,10 +19,10 @@ If any of these fail, see [docs/dev/quickstart.md](docs/dev/quickstart.md) for O
 ```bash
 git clone <repo-url> Hexalith.Memories
 cd Hexalith.Memories
-git submodule update --init --recursive
+git submodule update --init
 ```
 
-The submodules are checked out under `src/submodules/Hexalith.Commons` and `src/submodules/Hexalith.EventStore`.
+The submodules are checked out at the repository root: `Hexalith.Commons`, `Hexalith.EventStore`, and `Hexalith.AI.Tools`.
 
 ### 3. Build the solution (~5 min first time, ~30s incremental)
 
