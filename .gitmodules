@@ -1,6 +1,9 @@
-[submodule "src/submodules/Hexalith.Commons"]
-	path = src/submodules/Hexalith.Commons
+[submodule "Hexalith.Commons"]
+	path = Hexalith.Commons
 	url = https://github.com/Hexalith/Hexalith.Commons.git
-[submodule "src/submodules/Hexalith.EventStore"]
-	path = src/submodules/Hexalith.EventStore
+[submodule "Hexalith.EventStore"]
+	path = Hexalith.EventStore
 	url = https://github.com/Hexalith/Hexalith.EventStore.git
+[submodule "Hexalith.AI.Tools"]
+	path = Hexalith.AI.Tools
+	url = https://github.com/Hexalith/Hexalith.AI.Tools.git

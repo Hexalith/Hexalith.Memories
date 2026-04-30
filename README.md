@@ -22,7 +22,7 @@ cd Hexalith.Memories
 git submodule update --init --recursive
 ```
 
-The submodules are checked out under `src/submodules/Hexalith.Commons` and `src/submodules/Hexalith.EventStore`.
+The submodules are checked out at the repository root: `Hexalith.Commons`, `Hexalith.EventStore`, and `Hexalith.AI.Tools`.
 
 ### 3. Build the solution (~5 min first time, ~30s incremental)
 
