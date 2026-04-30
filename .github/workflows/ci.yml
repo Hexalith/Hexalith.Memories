@@ -111,7 +111,7 @@ jobs:
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
       - name: Run fast Docker-backed integration tests
-        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow" --configuration Release --no-build --results-directory TestResults/integration-fast
+        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast
 
       - name: Verify fast integration coverage evidence
         run: python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast

@@ -2,7 +2,7 @@
 # Examples:
 #   ./tools/test.ps1
 #   ./tools/test.ps1 -Filter 'Category!=Integration'
-#   ./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow'   # PR-fast integration lane
+#   ./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow&Category!=Performance'   # PR-fast integration lane
 #   ./tools/test.ps1 -Filter 'Category=IntegrationSlow'                          # Nightly-only slow lane
 #   ./tools/test.ps1 -Coverage
 

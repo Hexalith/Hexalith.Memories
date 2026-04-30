@@ -28,21 +28,24 @@ dotnet test --filter "Category!=Integration"
 
 ### Integration coverage
 
-Integration tests split into two lanes by wall-clock cost:
+Integration tests split into two lanes by wall-clock cost. Performance-tagged integration smoke tests are opt-in so the PR lane stays deterministic under shared CI resources.
 
-- `Category=Integration&Category!=IntegrationSlow` — PR-fast lane (~5 min budget)
+- `Category=Integration&Category!=IntegrationSlow&Category!=Performance` — PR-fast lane (~5 min budget)
 - `Category=IntegrationSlow` — nightly-only tests that restart the full Aspire topology or exercise long retry loops (individual tests >20 s)
+- `Category=Performance` — opt-in latency and throughput smoke tests
 
 ```bash
 dotnet test --filter "Category=Integration"                               # all integration tests (~17 min)
-dotnet test --filter "Category=Integration&Category!=IntegrationSlow"    # PR-fast lane
+dotnet test --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"    # PR-fast lane
 dotnet test --filter "Category=IntegrationSlow"                           # slow lane only
+dotnet test --filter "Category=Performance"                               # performance smoke tests
 ```
 
 ```powershell
 ./tools/test.ps1 -Filter 'Category=Integration'
-./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow'
+./tools/test.ps1 -Filter 'Category=Integration&Category!=IntegrationSlow&Category!=Performance'
 ./tools/test.ps1 -Filter 'Category=IntegrationSlow'
+./tools/test.ps1 -Filter 'Category=Performance'
 ```
 
 ### Full suite

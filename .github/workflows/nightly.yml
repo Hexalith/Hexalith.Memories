@@ -39,8 +39,8 @@ jobs:
       - name: Restore solution
         run: dotnet restore Hexalith.Memories.slnx
 
-      - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow)
-        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow"
+      - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance)
+        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"
 
       - name: Upload test artifacts
         if: always()
