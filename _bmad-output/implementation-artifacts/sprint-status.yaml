@@ -1,4 +1,5 @@
 # generated: 2026-03-26
+# last_updated: 2026-04-30 # Epic 11 retrospective refreshed. Document saved at `_bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md`; `epic-11-retrospective` was already `done`, so status remains unchanged. Refresh updates the forward-looking section for scaffolded Epic 12 and preserves the original 2026-04-26 retrospective record.
 # last_updated: 2026-04-30 # Epic 10 retrospective completed. Document saved at `_bmad-output/implementation-artifacts/epic-10-retro-2026-04-30.md`; `epic-10-retrospective` moved optional -> done. Retro findings: MCP is now a bounded LLM-agent product surface with tool schemas, protocol-level errors, server-side token-budget signals, bearer ingress auth, tenant-claim checks, and DAPR service-invocation isolation complete; carry forward MCP trace-hop proof, Server-wide authN/authZ, tokenizer-accurate budget triggers, auth drift visibility, AOT compatibility, and release-readiness documentation into Epic 12.
 # last_updated: 2026-04-30 # Epic 9 retrospective completed. Document saved at `_bmad-output/implementation-artifacts/epic-9-retro-2026-04-30.md`; `epic-9-retrospective` moved optional -> done. Retro findings: zero-code EventStore integration is complete, but release hardening must keep Server authN/authZ, handler Tier-2 evidence, observation fidelity, NL retry/backpressure debt, consistency-note runbook alignment, and DAPR topology proof visible.
 # last_updated: 2026-04-30 # Epic 8 retrospective completed. Document saved at `_bmad-output/implementation-artifacts/epic-8-retro-2026-04-30.md`; `epic-8-retrospective` moved optional -> done. Retro findings: health, consistency, export, telemetry, and audit surfaces are public operational contracts; carry forward export hardening, consistency note/runbook alignment, Redis OTEL prerelease review, telemetry inventory parity, and deployed-topology trace proof for later DAPR service-invocation surfaces.
@@ -180,7 +181,7 @@ development_status:
   epic-11: done # 2026-04-26 closed alongside the bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: both stories 11.1 + 11.2 `done` today; retrospective also `done`. MVP roadmap now fully closed at the planning level.
   11-1-github-actions-build-and-test-pipeline: done
   11-2-semantic-release-and-nuget-publishing: done
-  epic-11-retrospective: done # 2026-04-26 first formal retrospective for the project. Document at _bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md.
+  epic-11-retrospective: done # 2026-04-26 first formal retrospective for the project. Original document: _bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md. Refreshed 2026-04-30 with current Epic 12 forward path: _bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md.
 
   # --- Phase: Post-MVP — Operations & First Release ---
 
