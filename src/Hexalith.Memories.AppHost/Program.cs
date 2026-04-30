@@ -1,11 +1,7 @@
 using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Net.Sockets;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
-const string RedisReadyHealthCheckName = "redis-ready";
 string secretsFile = EnsureSecretsFile();
 string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
@@ -28,9 +24,6 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 (string? daprApiToken, string? appApiToken) = ResolveDaprApiTokens();
 ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
 
-_ = builder.Services.AddHealthChecks()
-    .AddCheck(RedisReadyHealthCheckName, new TcpEndpointHealthCheck("127.0.0.1", 6379));
-
 // Story 6.4: make Redis durability explicit instead of relying on image defaults.
 // The redis/redis-stack image auto-loads /redis-stack.conf from its /entrypoint.sh, so a
 // repo-owned config bind-mount plus a named /data volume is enough to enable durable AOF+RDB.
@@ -40,8 +33,7 @@ IResourceBuilder<ContainerResource> redis = builder
     .AddContainer("redis", "redis/redis-stack")
     .WithBindMount(redisConfigPath, "/redis-stack.conf", isReadOnly: true)
     .WithVolume(redisVolumeName, "/data")
-    .WithEndpoint(port: 6379, targetPort: 6379, name: "redis")
-    .WithHealthCheck(RedisReadyHealthCheckName);
+    .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
@@ -253,6 +245,12 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
               value: "{redisHost}"
             - name: redisPassword
               value: ""
+            - name: redisMaxRetries
+              value: "60"
+            - name: redisMinRetryInterval
+              value: "500ms"
+            - name: redisMaxRetryInterval
+              value: "2s"
             - name: actorStateStore
               value: "true"
         """);
@@ -272,6 +270,12 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
               value: "{redisHost}"
             - name: redisPassword
               value: ""
+            - name: redisMaxRetries
+              value: "60"
+            - name: redisMinRetryInterval
+              value: "500ms"
+            - name: redisMaxRetryInterval
+              value: "2s"
         """);
 
     File.WriteAllText(
@@ -483,31 +487,3 @@ internal sealed record GeneratedDaprComponentPaths(
     string PubSub,
     string SecretStore,
     string ConversationLlm);
-
-internal sealed class TcpEndpointHealthCheck(string host, int port) : IHealthCheck
-{
-    private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(2);
-
-    public async Task<HealthCheckResult> CheckHealthAsync(
-        HealthCheckContext context,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using TcpClient client = new();
-            await client.ConnectAsync(host, port, cancellationToken)
-                .AsTask()
-                .WaitAsync(ConnectionTimeout, cancellationToken)
-                .ConfigureAwait(false);
-
-            return HealthCheckResult.Healthy($"{host}:{port} is accepting TCP connections.");
-        }
-        catch (Exception ex) when (ex is SocketException or TimeoutException or OperationCanceledException)
-        {
-            return new HealthCheckResult(
-                context.Registration.FailureStatus,
-                $"{host}:{port} is not accepting TCP connections.",
-                ex);
-        }
-    }
-}
