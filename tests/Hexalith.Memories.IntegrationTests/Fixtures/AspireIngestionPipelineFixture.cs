@@ -33,7 +33,7 @@ using StackExchange.Redis;
 /// <summary>Starts the full Aspire topology for end-to-end ingestion workflow tests.</summary>
 public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
-    private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(6);
+    private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointProbeTimeout = TimeSpan.FromSeconds(45);

@@ -27,9 +27,10 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
-    if (string.Equals(@event.Resource.Name, "memories-server-dapr-cli", StringComparison.Ordinal))
+    if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
+        "memories-mcp-dapr" or "memories-mcp-dapr-cli")
     {
-        await WaitForTcpEndpointAsync("127.0.0.1", 6379, TimeSpan.FromMinutes(2), cancellationToken)
+        await WaitForRedisPingAsync("127.0.0.1", 6379, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
     }
 });
@@ -478,7 +479,7 @@ static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnviron
     return resource;
 }
 
-static async Task WaitForTcpEndpointAsync(
+static async Task WaitForRedisPingAsync(
     string host,
     int port,
     TimeSpan timeout,
@@ -486,20 +487,39 @@ static async Task WaitForTcpEndpointAsync(
 {
     DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
     Exception? lastError = null;
+    byte[] ping = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
+    byte[] response = new byte[64];
 
     while (DateTimeOffset.UtcNow < deadline)
     {
         try
         {
+            using CancellationTokenSource attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptCts.CancelAfter(TimeSpan.FromSeconds(2));
+
             using TcpClient client = new();
-            await client.ConnectAsync(host, port, cancellationToken)
+            await client.ConnectAsync(host, port, attemptCts.Token)
                 .AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken)
                 .ConfigureAwait(false);
 
-            return;
+            await using NetworkStream stream = client.GetStream();
+            await stream.WriteAsync(ping, attemptCts.Token).ConfigureAwait(false);
+            int bytesRead = await stream.ReadAsync(response.AsMemory(0, response.Length), attemptCts.Token)
+                .ConfigureAwait(false);
+
+            if (bytesRead >= 5 &&
+                response[0] == (byte)'+' &&
+                response[1] == (byte)'P' &&
+                response[2] == (byte)'O' &&
+                response[3] == (byte)'N' &&
+                response[4] == (byte)'G')
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("Redis did not return PONG to the readiness probe.");
         }
-        catch (Exception ex) when (ex is SocketException or TimeoutException ||
+        catch (Exception ex) when (ex is SocketException or TimeoutException or System.IO.IOException or InvalidOperationException ||
                                    (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             lastError = ex;
@@ -507,7 +527,7 @@ static async Task WaitForTcpEndpointAsync(
         }
     }
 
-    throw new TimeoutException($"{host}:{port} did not accept TCP connections within {timeout}.", lastError);
+    throw new TimeoutException($"{host}:{port} did not respond to Redis PING within {timeout}.", lastError);
 }
 
 static string ResolveRepositoryRoot()
