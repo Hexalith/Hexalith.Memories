@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.EventStoreIntegration;
 
+using Dapr;
+
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Tenants;
 
@@ -25,6 +27,9 @@ using Microsoft.Extensions.Options;
 /// </summary>
 internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
 {
+    private static readonly TimeSpan DaprReadinessRetryDelay = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DaprReadinessTimeout = TimeSpan.FromMinutes(5);
+
     private readonly IOptionsMonitor<TenantEventRoutingOptions> _options;
     private readonly TenantRegistryService _registry;
     private readonly IHostEnvironment _hostEnvironment;
@@ -47,6 +52,32 @@ internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(DaprReadinessTimeout);
+
+        while (true)
+        {
+            try
+            {
+                await ValidateAsync(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (DaprException ex) when (!cancellationToken.IsCancellationRequested && DateTimeOffset.UtcNow < deadline)
+            {
+                LogDaprNotReady(_logger, ex, (int)DaprReadinessRetryDelay.TotalSeconds);
+                await Task.Delay(DaprReadinessRetryDelay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (DaprException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                LogDaprNotReadyTimeout(_logger, ex, (int)DaprReadinessTimeout.TotalSeconds);
+                throw;
+            }
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private async Task ValidateAsync(CancellationToken cancellationToken)
     {
         TenantEventRoutingOptions options = _options.CurrentValue;
         if (string.IsNullOrWhiteSpace(options.Topic))
@@ -89,8 +120,6 @@ internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
         LogValidated(_logger, options.SourceToTenantMap.Count);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
     [LoggerMessage(
         EventId = 9104,
         Level = LogLevel.Information,
@@ -120,4 +149,16 @@ internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
         Level = LogLevel.Warning,
         Message = "EventStore routing configuration has no source-to-tenant mappings; all events will be dropped as unknown-source.")]
     private static partial void LogEmptyMap(ILogger logger);
+
+    [LoggerMessage(
+        EventId = 9109,
+        Level = LogLevel.Warning,
+        Message = "EventStore routing validation is waiting for DAPR state store readiness; retrying in {RetryDelaySeconds}s.")]
+    private static partial void LogDaprNotReady(ILogger logger, Exception exception, int retryDelaySeconds);
+
+    [LoggerMessage(
+        EventId = 9110,
+        Level = LogLevel.Critical,
+        Message = "EventStore routing validation could not reach the DAPR state store within {TimeoutSeconds}s. Fail-fast.")]
+    private static partial void LogDaprNotReadyTimeout(ILogger logger, Exception exception, int timeoutSeconds);
 }
