@@ -11,9 +11,9 @@
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
     <Error
       Condition="!Exists('$(MSBuildThisFileDirectory)Hexalith.Commons/.git')"
-      Text="Git submodule 'Hexalith.Commons' is missing. Run: git submodule update --init --recursive" />
+      Text="Git submodule 'Hexalith.Commons' is missing. Run: git submodule update --init" />
     <Error
       Condition="!Exists('$(MSBuildThisFileDirectory)Hexalith.EventStore/.git')"
-      Text="Git submodule 'Hexalith.EventStore' is missing. Run: git submodule update --init --recursive" />
+      Text="Git submodule 'Hexalith.EventStore' is missing. Run: git submodule update --init" />
   </Target>
 </Project>
