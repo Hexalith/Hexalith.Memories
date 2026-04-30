@@ -85,18 +85,17 @@ IResourceBuilder<ProjectResource> server = builder
     .AddProject<Projects.Hexalith_Memories_Server>("memories-server")
     .WithDaprSidecar(sidecar =>
     {
-        sidecar = sidecar
-            .WithOptions(CreateDaprSidecarOptions(
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
                 appId: daprAppId,
                 httpPort: 3500,
                 grpcPort: 50001,
                 configPath: daprConfigPath,
                 placementHostAddress: daprPlacementHostAddress,
-                schedulerHostAddress: daprSchedulerHostAddress))
-            .WithReference(stateStore)
-            .WithReference(pubSub)
-            .WithReference(secretStore)
-            .WithReference(conversationLlm);
+                schedulerHostAddress: daprSchedulerHostAddress));
+        _ = sidecar.WithReference(stateStore);
+        _ = sidecar.WithReference(pubSub);
+        _ = sidecar.WithReference(secretStore);
+        _ = sidecar.WithReference(conversationLlm);
     })
     .WithEnvironment(
         "ConnectionStrings__redis",
@@ -106,6 +105,14 @@ IResourceBuilder<ProjectResource> server = builder
         ReferenceExpression.Create($"{falkordbEndpoint.Property(EndpointProperty.HostAndPort)}"))
     .WaitFor(redis)
     .WaitFor(falkordb);
+
+#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
+server = server
+    .WithReference(stateStore)
+    .WithReference(pubSub)
+    .WithReference(secretStore)
+    .WithReference(conversationLlm);
+#pragma warning restore CS0618
 
 // Story 6.1: dev-only default allow-list for POST /api/ingest/directory so developers can batch-ingest
 // the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
@@ -151,8 +158,7 @@ IResourceBuilder<ProjectResource> mcp = builder
     .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp")
     .WithDaprSidecar(sidecar =>
     {
-        sidecar = sidecar
-            .WithOptions(CreateDaprSidecarOptions(
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
                 appId: "memories-mcp",
                 httpPort: 3600,
                 grpcPort: 50101,
