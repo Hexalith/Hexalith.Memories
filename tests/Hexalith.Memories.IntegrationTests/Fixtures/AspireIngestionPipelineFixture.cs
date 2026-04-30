@@ -33,6 +33,12 @@ using StackExchange.Redis;
 /// <summary>Starts the full Aspire topology for end-to-end ingestion workflow tests.</summary>
 public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
+    private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(6);
+    private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan EndpointProbeTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan EndpointPollInterval = TimeSpan.FromSeconds(2);
+
     private DistributedApplication? _app;
     private IDistributedApplicationTestingBuilder? _builder;
     private string _daprAppId = string.Empty;
@@ -154,7 +160,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <returns>The elapsed warm-restart duration.</returns>
     public async Task<TimeSpan> RestartTopologyAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        using var cts = new CancellationTokenSource(TopologyStartupTimeout);
         Stopwatch stopwatch = Stopwatch.StartNew();
         await DisposeTopologyAsync(cts.Token).ConfigureAwait(false);
         await StartTopologyAsync(cts.Token).ConfigureAwait(false);
@@ -188,7 +194,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            using var cts = new CancellationTokenSource(TopologyStartupTimeout);
             await StartTopologyAsync(cts.Token).ConfigureAwait(false);
         }
         catch
@@ -371,7 +377,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         _ = await _app.ResourceNotifications
             .WaitForResourceHealthyAsync("memories-server", cancellationToken)
-            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
+            .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
         MemoriesClient = _app.CreateHttpClient("memories-server");
@@ -381,15 +387,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             MemoriesClient,
             "/health",
             [HttpStatusCode.OK],
-            TimeSpan.FromMinutes(3),
-            TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            cancellationToken).ConfigureAwait(false);
 
         // Story 10.1 — wait for the MCP service and expose its endpoint + client. The MCP /ready
         // probe waits on the upstream Memories Server (3-strike rolling window); since we already
         // confirmed memories-server /health above, the MCP readiness check converges quickly.
         _ = await _app.ResourceNotifications
             .WaitForResourceHealthyAsync("memories-mcp", cancellationToken)
-            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
+            .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
         McpClient = _app.CreateHttpClient("memories-mcp");
@@ -400,8 +407,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             McpClient,
             "/health",
             [HttpStatusCode.OK],
-            TimeSpan.FromMinutes(3),
-            TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            cancellationToken).ConfigureAwait(false);
 
         DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
 
@@ -716,7 +724,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string url,
         IReadOnlyCollection<HttpStatusCode> expectedStatusCodes,
         TimeSpan timeout,
-        TimeSpan pollInterval)
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
         Exception? lastException = null;
@@ -724,9 +733,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using HttpResponseMessage response = await client.GetAsync(url).ConfigureAwait(false);
+                using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeCts.CancelAfter(EndpointProbeTimeout);
+                using HttpResponseMessage response = await client.GetAsync(url, probeCts.Token).ConfigureAwait(false);
                 lastStatusCode = response.StatusCode;
 
                 if (expectedStatusCodes.Contains(response.StatusCode))
@@ -739,7 +751,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 lastException = ex;
             }
 
-            await Task.Delay(pollInterval).ConfigureAwait(false);
+            await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
         }
 
         throw new TimeoutException(
