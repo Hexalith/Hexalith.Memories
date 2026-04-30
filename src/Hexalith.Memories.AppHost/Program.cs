@@ -7,6 +7,8 @@ string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
+string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
+string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
 // Story 5.4 AC3 — DAPR API token authentication.
 //
@@ -81,13 +83,13 @@ IResourceBuilder<ProjectResource> server = builder
     .WithDaprSidecar(sidecar =>
     {
         sidecar = sidecar
-            .WithOptions(new DaprSidecarOptions
-            {
-                AppId = daprAppId,
-                DaprHttpPort = 3500,
-                DaprGrpcPort = 50001,
-                Config = daprConfigPath,
-            })
+            .WithOptions(CreateDaprSidecarOptions(
+                appId: daprAppId,
+                httpPort: 3500,
+                grpcPort: 50001,
+                configPath: daprConfigPath,
+                placementHostAddress: daprPlacementHostAddress,
+                schedulerHostAddress: daprSchedulerHostAddress))
             .WithReference(stateStore)
             .WithReference(pubSub)
             .WithReference(secretStore)
@@ -147,13 +149,13 @@ IResourceBuilder<ProjectResource> mcp = builder
     .WithDaprSidecar(sidecar =>
     {
         sidecar = sidecar
-            .WithOptions(new DaprSidecarOptions
-            {
-                AppId = "memories-mcp",
-                DaprHttpPort = 3600,
-                DaprGrpcPort = 50101,
-                Config = daprConfigPath,
-            });
+            .WithOptions(CreateDaprSidecarOptions(
+                appId: "memories-mcp",
+                httpPort: 3600,
+                grpcPort: 50101,
+                configPath: daprConfigPath,
+                placementHostAddress: daprPlacementHostAddress,
+                schedulerHostAddress: daprSchedulerHostAddress));
     })
     .WithEnvironment("MEMORIES_MCP_UPSTREAM_APP_ID", daprAppId)
     .WaitFor(server);
@@ -249,6 +251,36 @@ static string ResolveDaprAppId()
     return string.IsNullOrWhiteSpace(configured)
         ? "memories-server"
         : configured.Trim();
+}
+
+static DaprSidecarOptions CreateDaprSidecarOptions(
+    string appId,
+    int httpPort,
+    int grpcPort,
+    string configPath,
+    string? placementHostAddress,
+    string? schedulerHostAddress)
+{
+    var options = new DaprSidecarOptions
+    {
+        AppId = appId,
+        DaprHttpPort = httpPort,
+        DaprGrpcPort = grpcPort,
+        Config = configPath,
+        // GitHub Linux runners can resolve localhost to ::1 while the locally initialized DAPR
+        // placement/scheduler services listen on IPv4. Keep this opt-in so developer machines and
+        // non-default DAPR installs can use the toolkit defaults.
+        PlacementHostAddress = placementHostAddress,
+        SchedulerHostAddress = schedulerHostAddress,
+    };
+
+    return options;
+}
+
+static string? ResolveOptionalEnvironmentValue(string name)
+{
+    string? configured = Environment.GetEnvironmentVariable(name);
+    return string.IsNullOrWhiteSpace(configured) ? null : configured.Trim();
 }
 
 static string ResolveRedisVolumeName()

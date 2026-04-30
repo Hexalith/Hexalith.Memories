@@ -14,6 +14,8 @@ permissions:
 env:
   DAPR_CLI_VERSION: '1.17.1'
   DAPR_RUNTIME_VERSION: '1.17.6'
+  MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS: '127.0.0.1:50005'
+  MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS: '127.0.0.1:50006'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -97,6 +99,9 @@ jobs:
       - name: Initialize Dapr runtime
         run: |
           dapr init --slim --runtime-version ${{ env.DAPR_RUNTIME_VERSION }}
+          docker run -d --name dapr_placement -p 50005:50005 daprio/dapr:${{ env.DAPR_RUNTIME_VERSION }} ./placement
+          docker volume create dapr_scheduler
+          docker run -d --name dapr_scheduler -p 50006:50006 -p 2379:2379 -v dapr_scheduler:/var/lock daprio/dapr:${{ env.DAPR_RUNTIME_VERSION }} ./scheduler --etcd-data-dir=/var/lock/dapr/scheduler --override-broadcast-host-port=127.0.0.1:50006 --etcd-client-listen-address=0.0.0.0
           dapr --version
 
       - name: Verify Docker availability
