@@ -1,5 +1,7 @@
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Eventing;
 using CommunityToolkit.Aspire.Hosting.Dapr;
+using System.Net.Sockets;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 string secretsFile = EnsureSecretsFile();
@@ -23,6 +25,14 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 // TenantAuthorizationMiddleware for external callers.
 (string? daprApiToken, string? appApiToken) = ResolveDaprApiTokens();
 ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
+builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
+{
+    if (string.Equals(@event.Resource.Name, "memories-server-dapr-cli", StringComparison.Ordinal))
+    {
+        await WaitForTcpEndpointAsync("127.0.0.1", 6379, TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(false);
+    }
+});
 
 // Story 6.4: make Redis durability explicit instead of relying on image defaults.
 // The redis/redis-stack image auto-loads /redis-stack.conf from its /entrypoint.sh, so a
@@ -466,6 +476,38 @@ static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnviron
     }
 
     return resource;
+}
+
+static async Task WaitForTcpEndpointAsync(
+    string host,
+    int port,
+    TimeSpan timeout,
+    CancellationToken cancellationToken)
+{
+    DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+    Exception? lastError = null;
+
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            using TcpClient client = new();
+            await client.ConnectAsync(host, port, cancellationToken)
+                .AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(2), cancellationToken)
+                .ConfigureAwait(false);
+
+            return;
+        }
+        catch (Exception ex) when (ex is SocketException or TimeoutException ||
+                                   (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            lastError = ex;
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    throw new TimeoutException($"{host}:{port} did not accept TCP connections within {timeout}.", lastError);
 }
 
 static string ResolveRepositoryRoot()
