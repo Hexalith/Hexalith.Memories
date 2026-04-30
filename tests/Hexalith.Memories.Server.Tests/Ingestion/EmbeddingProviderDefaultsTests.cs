@@ -176,4 +176,133 @@ public class EmbeddingProviderDefaultsTests
 
         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
     }
+
+    [Fact]
+    public void Ollama_ShouldReturnCorrectDefaults()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
+
+        config.Provider.ShouldBe("ollama");
+        config.Model.ShouldBe("qwen3-embedding:4b");
+        config.Dimensions.ShouldBe(2560);
+        config.RateLimitPerMinute.ShouldBe(6000);
+        config.ApiSecretKeyName.ShouldBe("memories-embedding-client-secret");
+        config.ReindexRequired.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Validate_OllamaProvider_ShouldNotThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Validate_OllamaWithEmptyModel_ShouldThrow(string model)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Model = model };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_OllamaUnsupportedDimension_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = 768 };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_OllamaWithModelColon_ShouldNotThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
+
+        config.Model.ShouldBe("qwen3-embedding:4b");
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Theory]
+    [InlineData("model/with/slash")]
+    [InlineData("model with space")]
+    [InlineData("model;semi")]
+    public void Validate_OllamaModelWithUnsafeCharacters_ShouldThrow(string unsafeModel)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Model = unsafeModel };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_UnsupportedProvider_ErrorMessageListsSupportedProviders()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = "openai" };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain("google");
+        ex.Message.ShouldContain("ollama");
+    }
+
+    [Fact]
+    public void Validate_OllamaRateLimitAtMaximum_ShouldNotThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 60_000 };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_OllamaRateLimitExceedsMaximum_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 60_001 };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_GoogleAtRateLimitAboveOllamaCeiling_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 5000 };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_OllamaProviderWithGoogleModel_DimensionMismatch_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with
+        {
+            Model = "qwen3-embedding:4b",
+            Dimensions = 768,
+        };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void GetBreakingChangeFields_GoogleToOllama_ShouldReportProviderModelAndDimensions()
+    {
+        TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig proposed = EmbeddingProviderDefaults.Ollama();
+
+        string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(current, proposed);
+
+        affectedFields.ShouldBe(["provider", "model", "dimensions"]);
+    }
+
+    [Theory]
+    [InlineData(2559)]
+    [InlineData(2561)]
+    [InlineData(768)]
+    [InlineData(1024)]
+    [InlineData(1536)]
+    public void Validate_OllamaQwen3_AcceptsExactly2560(int dimensions)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = dimensions };
+
+        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+    }
 }
