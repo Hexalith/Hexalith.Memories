@@ -149,7 +149,8 @@ repository URL, tags, and `PackageReadmeFile`. Package dependency versions stay 
 
 ## Release Process
 
-Releases are automated from pushes to `main` by `.github/workflows/release.yml`.
+Releases are automated from pushes to `main` by `.github/workflows/release.yml`. The observed
+release path and operator checklist are maintained in `docs/dev/release-runbook.md`.
 
 The workflow restores, builds, runs Docker-free tests, validates the package inventory, and then runs
 semantic-release. semantic-release creates the `v${version}` tag, updates `CHANGELOG.md`, creates the
