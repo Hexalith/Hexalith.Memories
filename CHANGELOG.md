@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/Hexalith/Hexalith.Memories/compare/v1.1.0...v1.2.0) (2026-04-30)
+
+
+### Features
+
+* Complete retrospectives for Epics 8, 9, and 10; update sprint status ([e6d9e57](https://github.com/Hexalith/Hexalith.Memories/commit/e6d9e5764582709620a7449df5459d2680619451))
+
 # [1.1.0](https://github.com/Hexalith/Hexalith.Memories/compare/v1.0.0...v1.1.0) (2026-04-26)
 
 
