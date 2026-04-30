@@ -7,6 +7,7 @@ string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
+GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
 string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
 string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
@@ -34,27 +35,28 @@ IResourceBuilder<ContainerResource> redis = builder
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
-string redisHostMetadata = $"{redisEndpoint.Property(EndpointProperty.HostAndPort)}";
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
-    .AddDaprComponent("statestore", "state.redis")
-    .WithMetadata("redisHost", redisHostMetadata)
-    .WithMetadata("redisPassword", string.Empty)
-    .WithMetadata("actorStateStore", "true");
+    .AddDaprComponent(
+        "statestore",
+        "state.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.StateStore });
 
-// Story 9.1: DAPR pub/sub component shared with the Redis dependency. Keep the Dapr component metadata
-// pinned to the same Aspire-managed Redis endpoint the application itself references so local/dev and test
-// topologies cannot drift from the runtime broker wiring. Production deployments still bind-mount
-// deploy/dapr/components/pubsub.yaml and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
+// Story 9.1: DAPR pub/sub component shared with the Redis dependency. AppHost emits concrete local
+// component YAML for the host-pinned Redis endpoint so local/dev and test topologies cannot drift from
+// the runtime broker wiring. Production deployments still bind-mount deploy/dapr/components/pubsub.yaml
+// and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
 IResourceBuilder<IDaprComponentResource> pubSub = builder
-    .AddDaprComponent("pubsub", "pubsub.redis")
-    .WithMetadata("redisHost", redisHostMetadata)
-    .WithMetadata("redisPassword", string.Empty);
+    .AddDaprComponent(
+        "pubsub",
+        "pubsub.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.PubSub });
 
 IResourceBuilder<IDaprComponentResource> secretStore = builder
-    .AddDaprComponent("secretstore", "secretstores.local.file")
-    .WithMetadata("secretsFile", secretsFile)
-    .WithMetadata("nestedSeparator", ":");
+    .AddDaprComponent(
+        "secretstore",
+        "secretstores.local.file",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.SecretStore });
 
 // Story 9.2: DAPR Conversation component — drives GenerateNaturalLanguageDescriptionActivity in the
 // dual-embedding ingestion path. Dev default is conversation.echo so Aspire/test runs exercise the full
@@ -64,9 +66,10 @@ IResourceBuilder<IDaprComponentResource> secretStore = builder
 // The component name "llm" is referenced by NaturalLanguageDescriptionOptions.DaprComponentName and
 // asserted NOT to equal "conversation.echo" by the options validator when running in Production.
 IResourceBuilder<IDaprComponentResource> conversationLlm = builder
-    .AddDaprComponent("llm", "conversation.echo")
-    .WithMetadata("responseCacheTTL", "0s")
-    .WithMetadata("piiScrubbing", "false");
+    .AddDaprComponent(
+        "llm",
+        "conversation.echo",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.ConversationLlm });
 
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
@@ -203,6 +206,97 @@ static string EnsureSecretsFile()
     }
 
     return secretsFile;
+}
+
+static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
+{
+    string componentsDirectory = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", daprAppId);
+    Directory.CreateDirectory(componentsDirectory);
+
+    string stateStorePath = Path.Combine(componentsDirectory, "statestore.yaml");
+    string pubSubPath = Path.Combine(componentsDirectory, "pubsub.yaml");
+    string secretStorePath = Path.Combine(componentsDirectory, "secretstore.yaml");
+    string conversationLlmPath = Path.Combine(componentsDirectory, "llm.yaml");
+
+    // AppHost pins Redis to host port 6379 and the Dapr sidecars run as local host processes.
+    // Concrete LocalPath components avoid relying on toolkit-generated temp YAML that CI failed to load.
+    string redisHost = "127.0.0.1:6379";
+
+    File.WriteAllText(
+        stateStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: statestore
+        spec:
+          type: state.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+            - name: actorStateStore
+              value: "true"
+        """);
+
+    File.WriteAllText(
+        pubSubPath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: pubsub
+        spec:
+          type: pubsub.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+        """);
+
+    File.WriteAllText(
+        secretStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: secretstore
+        spec:
+          type: secretstores.local.file
+          version: v1
+          metadata:
+            - name: secretsFile
+              value: "{secretsFile.Replace("\\", "\\\\", StringComparison.Ordinal)}"
+            - name: nestedSeparator
+              value: ":"
+        """);
+
+    File.WriteAllText(
+        conversationLlmPath,
+        """
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: llm
+        spec:
+          type: conversation.echo
+          version: v1
+          metadata:
+            - name: responseCacheTTL
+              value: "0s"
+            - name: piiScrubbing
+              value: "false"
+        """);
+
+    return new GeneratedDaprComponentPaths(
+        stateStorePath,
+        pubSubPath,
+        secretStorePath,
+        conversationLlmPath);
 }
 
 static string ResolveDaprConfigPath()
@@ -367,3 +461,9 @@ static string ResolveRepositoryRoot()
         ? candidate
         : currentDirectory;
 }
+
+internal sealed record GeneratedDaprComponentPaths(
+    string StateStore,
+    string PubSub,
+    string SecretStore,
+    string ConversationLlm);
