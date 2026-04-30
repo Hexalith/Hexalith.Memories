@@ -1,5 +1,5 @@
-using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
+using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
 using System.Net.Sockets;
 
@@ -25,15 +25,6 @@ string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAP
 // TenantAuthorizationMiddleware for external callers.
 (string? daprApiToken, string? appApiToken) = ResolveDaprApiTokens();
 ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
-builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
-{
-    if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
-        "memories-mcp-dapr" or "memories-mcp-dapr-cli")
-    {
-        await WaitForRedisPingAsync("127.0.0.1", 6379, TimeSpan.FromMinutes(2), cancellationToken)
-            .ConfigureAwait(false);
-    }
-});
 
 // Story 6.4: make Redis durability explicit instead of relying on image defaults.
 // The redis/redis-stack image auto-loads /redis-stack.conf from its /entrypoint.sh, so a
@@ -46,6 +37,22 @@ IResourceBuilder<ContainerResource> redis = builder
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
+redis.OnResourceReady((resource, _, _) =>
+{
+    (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
+    WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
+    return Task.CompletedTask;
+});
+builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
+{
+    if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
+        "memories-mcp-dapr" or "memories-mcp-dapr-cli")
+    {
+        (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
+        await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(false);
+    }
+});
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
     .AddDaprComponent(
@@ -237,10 +244,53 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
     string secretStorePath = Path.Combine(componentsDirectory, "secretstore.yaml");
     string conversationLlmPath = Path.Combine(componentsDirectory, "llm.yaml");
 
-    // AppHost pins Redis to host port 6379 and the Dapr sidecars run as local host processes.
-    // Concrete LocalPath components avoid relying on toolkit-generated temp YAML that CI failed to load.
-    string redisHost = "127.0.0.1:6379";
+    // These files are rewritten with Aspire's allocated Redis endpoint before the Dapr sidecars start.
+    // The initial localhost value keeps the files valid for design-time inspection and local fallbacks.
+    WriteDaprRedisComponentFiles(stateStorePath, pubSubPath, "127.0.0.1:6379");
 
+    File.WriteAllText(
+        secretStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: secretstore
+        spec:
+          type: secretstores.local.file
+          version: v1
+          metadata:
+            - name: secretsFile
+              value: "{secretsFile.Replace("\\", "\\\\", StringComparison.Ordinal)}"
+            - name: nestedSeparator
+              value: ":"
+        """);
+
+    File.WriteAllText(
+        conversationLlmPath,
+        """
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: llm
+        spec:
+          type: conversation.echo
+          version: v1
+          metadata:
+            - name: responseCacheTTL
+              value: "0s"
+            - name: piiScrubbing
+              value: "false"
+        """);
+
+    return new GeneratedDaprComponentPaths(
+        stateStorePath,
+        pubSubPath,
+        secretStorePath,
+        conversationLlmPath);
+}
+
+static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPath, string redisHost)
+{
     File.WriteAllText(
         stateStorePath,
         $"""
@@ -288,46 +338,6 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
             - name: redisMaxRetryInterval
               value: "2s"
         """);
-
-    File.WriteAllText(
-        secretStorePath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: secretstore
-        spec:
-          type: secretstores.local.file
-          version: v1
-          metadata:
-            - name: secretsFile
-              value: "{secretsFile.Replace("\\", "\\\\", StringComparison.Ordinal)}"
-            - name: nestedSeparator
-              value: ":"
-        """);
-
-    File.WriteAllText(
-        conversationLlmPath,
-        """
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: llm
-        spec:
-          type: conversation.echo
-          version: v1
-          metadata:
-            - name: responseCacheTTL
-              value: "0s"
-            - name: piiScrubbing
-              value: "false"
-        """);
-
-    return new GeneratedDaprComponentPaths(
-        stateStorePath,
-        pubSubPath,
-        secretStorePath,
-        conversationLlmPath);
 }
 
 static string ResolveDaprConfigPath()
@@ -477,6 +487,29 @@ static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnviron
     }
 
     return resource;
+}
+
+static (string Host, int Port) ResolveAllocatedEndpoint(IResource resource, string endpointName)
+{
+    if (!resource.TryGetEndpoints(out IEnumerable<EndpointAnnotation>? endpoints))
+    {
+        throw new InvalidOperationException($"Resource '{resource.Name}' does not expose endpoints.");
+    }
+
+    EndpointAnnotation endpoint = endpoints.Single(candidate =>
+        string.Equals(candidate.Name, endpointName, StringComparison.Ordinal));
+    AllocatedEndpoint allocated = endpoint.AllocatedEndpoint
+        ?? throw new InvalidOperationException($"Endpoint '{resource.Name}/{endpointName}' has not been allocated yet.");
+
+    string host = allocated.Address;
+    if (string.IsNullOrWhiteSpace(host) ||
+        string.Equals(host, "0.0.0.0", StringComparison.Ordinal) ||
+        string.Equals(host, "::", StringComparison.Ordinal))
+    {
+        host = "127.0.0.1";
+    }
+
+    return (host, allocated.Port);
 }
 
 static async Task WaitForRedisPingAsync(
