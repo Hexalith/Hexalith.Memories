@@ -2101,3 +2101,275 @@ The post-Epic-12 direction will be informed by:
 - **Do not add Epic 13+ here speculatively.** Any next-epic decision (continue Operations? pivot to Phase 2 features? declare project complete?) requires an explicit directional decision recorded in a new Sprint Change Proposal.
 - **Do not assume the deferred-work backlog is the Phase 2 backlog.** It contains a mix of "fix when triggered," "Phase 2 candidate," and "operational follow-up" items. Phase 2 scoping (if pursued) requires explicit triage, not bulk import.
 - **Do not promote optional stories (12.7 / 12.8) into the active scope without their re-open trigger having actually fired.** Adding them speculatively contradicts Epic 11 retrospective Action A4 (story-file-scope discipline).
+
+> **Update 2026-04-29:** the Decision Point above was resolved by Sprint Change Proposal 2026-04-29 (`_bmad-output/planning-artifacts/sprint-change-proposal-2026-04-29.md`). Epic 13 — Embedding Provider Pluggability + Vector Migration — has been formally accepted as the next epic, driven by the operator's decision to migrate the embedding pipeline from Google Generative Language API to a self-hosted Ollama gateway protected by Keycloak. Epic 12 work continues in parallel; Epic 13 is independent of Epic 12 outcomes.
+
+---
+
+## Epic 13: Embedding Provider Pluggability + Vector Migration
+
+Extend the existing `IEmbeddingProvider`-shaped abstraction (originally built into Stories 1.4 / 1.7 for exactly this kind of growth) so the embedding pipeline can target a self-hosted Ollama gateway protected by Keycloak OIDC client_credentials, retain Google as an opt-in cloud provider, and migrate existing tenants' Redis Vector Search indexes from 768-dimension Google vectors to 2560-dimension Ollama vectors. This epic delivers cost / sovereignty / latency control for the embedding workload (operator's primary motivation) and proves the multi-provider extensibility that PRD §"Embedding Provider Configuration" promised but Story 1.7 deferred.
+
+**Driven by:** Sprint Change Proposal 2026-04-29 (`_bmad-output/planning-artifacts/sprint-change-proposal-2026-04-29.md`). Trigger: operational architecture review on 2026-04-29 after Epics 1–6 closed; operator has a self-hosted Ollama instance reachable at `https://llm.tache.ai` serving `qwen3-embedding:4b` (2560-dim) and a Keycloak realm `tache` ready to mint service-account access tokens for the `memories-embedding` confidential client.
+
+**In scope:**
+
+- Multi-provider validation in `EmbeddingProviderDefaults` (accepts `google` and `ollama`).
+- Ollama-native HTTP request / response shape in `EmbeddingClient` (`POST {BaseUrl}/api/embed` with `{model, input}` payload, parses `embeddings[0]`).
+- OIDC client_credentials token acquisition + cache + refresh + 401-retry — new `OidcTokenProvider` consumed by `EmbeddingClient` when `AuthMode = oidc-client-credentials`.
+- `TenantEmbeddingConfig` non-breaking additive fields: `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, `OidcScope`. Existing Google tenants continue to work without re-provisioning.
+- `TenantConfigurationActor` surfaces and persists the new fields; state migration is non-destructive.
+- Vector migration tool that drops `{tenantId}:semantic` indexes and replays ingestion at the new dimension count, with dry-run + per-tenant progress reporting.
+- Integration test fixtures + Aspire wiring updated to cover both providers.
+- Operator-facing deployment guide at `docs/operations/embedding-providers.md` documenting the gateway contract (Ollama-native HTTP API + Bearer JWT + JWKS validation + audience claim) with anonymized example config and a complete `TenantEmbeddingConfig` field table per provider option (Google api-key, Ollama OIDC, Ollama local-no-auth).
+
+**Out of scope:**
+
+- Path B vector migration (concurrent versioned `{tenantId}:google-768:semantic` + `{tenantId}:ollama-2560:semantic` indexes for live coexistence). Path A — drop-and-reindex — is the default, given current data volume is "test-data" per repo. Path B is documented as a per-tenant operator option but not built.
+- Replacing the DAPR Conversation API path (LLM chat for `GenerateNaturalLanguageDescriptionActivity`). That stays unchanged — the `embedding` and `chat` axes are decoupled in the architecture.
+- cert-manager installation. Wildcard TLS `*.tache.ai` (already provisioned as `tache-ai-tls`) remains operator-managed.
+- Multi-node / GPU-sharing for Ollama.
+- AC amendments to Stories 1.4 / 1.7 / 5.1 / 5.5 are documented in the Sprint Change Proposal but executed at the **architecture / PRD edit layer** — those stories are already `done` and we do NOT re-open them. Their AC text in `epics.md` is updated in lockstep with this epic landing (handled by the sprint-change-proposal acceptance pass), and Epic 13's stories are the carrier for the actual code change.
+
+**Cross-cutting expectations:**
+
+- **Wire compatibility:** `TenantEmbeddingConfig` extensions are additive only. Existing serialized state (DAPR actor state, HTTP request/response bodies) deserializes cleanly with new fields defaulted to null.
+- **Secrets discipline:** the OIDC `client_secret` lives in DAPR Secrets store under `apiSecretKeyName`, never in config or env. Issued Bearer JWTs are never persisted, never surfaced via APIs, never logged at Info+.
+- **Default for new tenants:** flips from Google to Ollama once Epic 13 is shipped end-to-end (Story 13.4 lands the new default; Story 13.6 migrates existing tenants).
+
+### Story 13.1: Extend EmbeddingProviderDefaults to Accept Ollama
+
+As a backend developer,
+I want `EmbeddingProviderDefaults` to recognize `ollama` as a valid provider name with sensible defaults for `qwen3-embedding:4b`,
+So that downstream code (provisioning, validation, embedding-client dispatch) can dispatch to the Ollama path without any caller having to special-case provider strings.
+
+**Acceptance Criteria:**
+
+**Given** a `TenantEmbeddingConfig` with `Provider = "ollama"`,
+**When** `EmbeddingProviderDefaults.Validate(config)` is called,
+**Then** validation succeeds (no exception) when the config also carries a non-empty `Model`, `Dimensions > 0`, `RateLimitPerMinute > 0`, a valid `ApiSecretKeyName`, and the Ollama-mode-required additive fields per Story 13.4 are present (presence-check only — Story 13.1 lands the validation hook; Story 13.4 lands the additive fields and tightens this AC).
+
+**Given** the existing Google-default factory continues to work,
+**When** `EmbeddingProviderDefaults.Google()` is called,
+**Then** it returns the same record shape it has today (provider=google, model=gemini-embedding-001, dimensions=768, rateLimitPerMinute=1500, apiSecretKeyName=google-embedding-api-key, reindexRequired=false) — no observable change for existing callers.
+
+**Given** an operator wants out-of-the-box Ollama defaults,
+**When** they call a new `EmbeddingProviderDefaults.Ollama()` factory method,
+**Then** it returns a `TenantEmbeddingConfig` populated with `Provider = "ollama"`, `Model = "qwen3-embedding:4b"`, `Dimensions = 2560`, a tenant-appropriate `RateLimitPerMinute` default (self-hosted has no provider quota; emit a sensible local default like 6000 — operator can override per tenant), and an `ApiSecretKeyName` placeholder (`memories-embedding-client-secret`) that operators wire to the DAPR Secrets store.
+
+**Given** a `TenantEmbeddingConfig` with an unsupported provider name (e.g., `"openai"`, `"cohere"`),
+**When** `Validate` is called,
+**Then** it throws `ArgumentException` whose message lists exactly the supported provider names — currently `"google"` and `"ollama"` — so future-proofing is honest about MVP scope without claiming non-existent support.
+
+**Given** the existing `Google_ShouldReturnCorrectDefaults` and `Validate_*` tests in `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs`,
+**When** the tests run after the change,
+**Then** every existing test continues to pass without modification (no regressions to Google flow).
+
+**Given** a new test class section covers Ollama,
+**When** the suite runs,
+**Then** it contains at minimum: `Ollama_ShouldReturnCorrectDefaults`, `Validate_OllamaProvider_ShouldNotThrow`, `Validate_OllamaWithEmptyModel_ShouldThrow`, `Validate_UnsupportedProvider_ErrorMessageListsSupportedProviders`.
+
+### Story 13.2: Implement OidcTokenProvider
+
+As a backend developer,
+I want a thread-safe in-process OIDC token provider that performs `client_credentials` grants against Keycloak, caches the access token until 30 s before expiry, and invalidates + refreshes once on 401,
+So that the embedding client can attach `Authorization: Bearer <jwt>` to every Ollama request without flooding Keycloak, leaking tokens, or breaking on routine expiry.
+
+**Acceptance Criteria:**
+
+**Given** a fresh `OidcTokenProvider` instance,
+**When** `GetAccessTokenAsync(tokenEndpoint, clientId, clientSecret, scope?)` is called for the first time,
+**Then** the provider POSTs `grant_type=client_credentials&client_id=...&client_secret=...&scope=...` (URL-encoded form body) to `tokenEndpoint`,
+**And** parses the JSON response (`access_token`, `expires_in`, `token_type`),
+**And** returns `access_token`,
+**And** stores `(token, expiresAt = now + expires_in - 30s)` in an in-memory cache keyed by `(tokenEndpoint, clientId)`.
+
+**Given** a cached entry exists and `now < expiresAt`,
+**When** `GetAccessTokenAsync` is called again for the same `(tokenEndpoint, clientId)`,
+**Then** the cached token is returned without any HTTP call (cache hit).
+
+**Given** a cached entry exists and `now >= expiresAt`,
+**When** `GetAccessTokenAsync` is called,
+**Then** the entry is invalidated, a new token is fetched, and the new entry replaces the old one.
+
+**Given** the embedding client receives a `401 Unauthorized` from Ollama,
+**When** the client calls `OidcTokenProvider.InvalidateAndRefreshAsync(tokenEndpoint, clientId, clientSecret, scope?)`,
+**Then** the cached entry is forcibly evicted,
+**And** exactly one token-fetch request is issued,
+**And** the returned token is cached.
+
+**Given** two concurrent callers both observe a cache miss for the same `(tokenEndpoint, clientId)` at the same instant,
+**When** both call `GetAccessTokenAsync`,
+**Then** exactly one HTTP request is made (per-key concurrency guard via `SemaphoreSlim` or equivalent),
+**And** both callers receive the same token.
+
+**Given** the token endpoint returns a non-2xx response,
+**When** `GetAccessTokenAsync` is called,
+**Then** an `OidcTokenAcquisitionException` (typed) is thrown carrying the HTTP status, the response body (truncated to ≤ 1 KiB to avoid log floods), the token endpoint, the client ID, and a correlation ID,
+**And** the cache is **not** populated (no negative caching).
+
+**Given** the provider is registered in DI as a singleton with a typed `HttpClient`,
+**When** `Program.cs` (or `ServiceCollectionExtensions`) wires it,
+**Then** the typed `HttpClient` carries a Polly retry policy (3 attempts, exponential backoff, retry only on 5xx + transient network errors),
+**And** the timeout is ≤ 10 s (Keycloak token endpoints are sub-second on a healthy stack; longer suggests a problem and we want fail-fast).
+
+**Given** the `client_secret` and the issued `access_token`,
+**When** the provider logs at any level,
+**Then** **neither** value appears in the log output. Tests assert this with a Sink-based logger inspector.
+
+**Given** unit-test coverage,
+**When** `OidcTokenProviderTests` runs,
+**Then** it covers cache-hit, cache-miss-fetch, refresh-before-expiry, 401-invalidate-and-retry, concurrent-callers-single-fetch, non-2xx-throws, secret-and-token-never-logged.
+
+### Story 13.3: Extend EmbeddingClient to Support Ollama
+
+As a backend developer,
+I want `EmbeddingClient` to dispatch to the Ollama-native HTTP API when the tenant's provider is `ollama`, with `Authorization: Bearer <jwt>` injected from `IOidcTokenProvider`,
+So that the existing `GenerateEmbeddingActivity` workflow lands tenant-aware embeddings against the new gateway with no caller-side changes.
+
+**Acceptance Criteria:**
+
+**Given** a tenant configured with `Provider = "ollama"`, `Model = "qwen3-embedding:4b"`, `Dimensions = 2560`, `BaseUrl = "https://llm.tache.ai"`, `AuthMode = "oidc-client-credentials"`, `OidcTokenEndpoint`, `OidcClientId`, `OidcScope`, `ApiSecretKeyName`,
+**When** `EmbeddingClient.GenerateEmbeddingAsync(text, tenantId, ct)` is called,
+**Then** it POSTs `{ "model": "qwen3-embedding:4b", "input": "<text>" }` (Ollama-native shape) to `{BaseUrl}/api/embed`,
+**And** attaches `Authorization: Bearer <jwt>` from `IOidcTokenProvider.GetAccessTokenAsync(...)` (using the tenant's OIDC config + the resolved `client_secret`),
+**And** parses the response as `{ "embeddings": [[...]] }` and returns `embeddings[0]` as `float[]`,
+**And** asserts the returned vector length matches `config.Dimensions` (otherwise throws `EmbeddingApiException` with a clear "expected N got M" message).
+
+**Given** the existing Google flow,
+**When** the tenant is configured with `Provider = "google"`,
+**Then** `EmbeddingClient` continues to use the existing Google path (URL build, `x-goog-api-key`, response shape) without modification — verified by the existing `EmbeddingClientTests` Google scenarios continuing to pass unchanged.
+
+**Given** Ollama returns 401,
+**When** `EmbeddingClient` receives the response,
+**Then** it calls `IOidcTokenProvider.InvalidateAndRefreshAsync(...)` exactly once,
+**And** retries the request once with the fresh token,
+**And** if the second attempt also returns 401, throws `EmbeddingApiException` carrying status + truncated body + correlation ID without leaking the bearer or the secret.
+
+**Given** the dispatcher logic,
+**When** `Provider` is anything other than `"google"` or `"ollama"`,
+**Then** `EmbeddingClient` throws `NotSupportedException` with a message listing the supported providers — defense in depth alongside `EmbeddingProviderDefaults.Validate`.
+
+**Given** unit-test coverage,
+**When** `EmbeddingClientTests` runs,
+**Then** new Ollama-flow tests cover: request shape (URL + verb + body + bearer header injection), success response parsing, dimension-mismatch throws, 401-invalidate-and-retry succeeds, 401-twice throws, bearer never logged, request body never logs the full input text at Info+ (Debug-only with size cap).
+
+### Story 13.4: Extend TenantEmbeddingConfig with Additive OIDC Fields
+
+As a backend developer,
+I want `TenantEmbeddingConfig` extended with non-breaking optional fields (`BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, `OidcScope`),
+So that Ollama tenants can carry the OIDC config they need while existing Google tenants continue to deserialize without re-provisioning.
+
+**Acceptance Criteria:**
+
+**Given** the existing `TenantEmbeddingConfig` with `Provider`, `Model`, `Dimensions`, `RateLimitPerMinute`, `ApiSecretKeyName`, `ReindexRequired`,
+**When** the new optional fields are added,
+**Then** the record exposes additionally: `string? BaseUrl`, `string AuthMode = "api-key"`, `string? OidcTokenEndpoint`, `string? OidcClientId`, `string? OidcScope`.
+
+**Given** historical serialized JSON payloads (existing tenant state) without the new fields,
+**When** they are deserialized via `MemoriesJsonContext.Options`,
+**Then** they deserialize successfully with the new fields defaulted (`null` for nullables, `"api-key"` for `AuthMode`).
+
+**Given** `MemoriesJsonContext.cs` is the AOT serializer context,
+**When** the config record is updated,
+**Then** the source-generator-friendly attributes / JsonSerializable registrations remain valid and the project builds 0W/0E with `<EnableTrimming>true</EnableTrimming>` if applicable.
+
+**Given** `EmbeddingProviderDefaults.Validate(config)`,
+**When** `AuthMode = "oidc-client-credentials"`,
+**Then** validation requires `BaseUrl`, `OidcTokenEndpoint`, `OidcClientId` to be non-empty (throws `ArgumentException` listing the missing field name when violated). `OidcScope` is optional.
+
+**Given** `Validate(config)` with `Provider = "ollama"`,
+**When** `AuthMode = "api-key"`,
+**Then** validation requires `BaseUrl` to be non-empty (Ollama always needs a target URL — the `api-key` mode for Ollama is the documented "local-no-auth or upstream-API-key" path).
+
+**Given** `ApiSecretKeyName` semantics,
+**When** `AuthMode = "oidc-client-credentials"`,
+**Then** it holds the DAPR Secrets store key for the OIDC `client_secret` value (not the API key) — documented in the XML doc comment on the property.
+
+**Given** the existing `EmbeddingProviderDefaults.GetBreakingChangeFields(currentConfig, proposedConfig)`,
+**When** `Provider`, `Model`, or `Dimensions` change,
+**Then** the existing return list still surfaces those three (no behavior change). When `BaseUrl` changes between Ollama instances, `BaseUrl` is also added to the breaking-changes list (operator-controlled migration).
+
+### Story 13.5: Surface New Fields via TenantConfigurationActor
+
+As a backend developer,
+I want `TenantConfigurationActor.GetEmbeddingConfigAsync()` (and the corresponding write paths) to surface and persist the new OIDC fields,
+So that Ollama tenants can be provisioned, listed, and configured end-to-end through the existing actor surface without state loss.
+
+**Acceptance Criteria:**
+
+**Given** an existing tenant whose persisted actor state predates the new fields,
+**When** the actor activates and reads its state,
+**Then** deserialization succeeds with `BaseUrl=null`, `AuthMode="api-key"`, `OidcTokenEndpoint=null`, `OidcClientId=null`, `OidcScope=null` defaulted (non-destructive migration).
+
+**Given** a new tenant is provisioned with an Ollama config,
+**When** `TenantConfigurationActor.SetEmbeddingConfigAsync(config)` is called,
+**Then** the new fields are persisted into actor state, round-trip cleanly across actor reactivations, and are returned by `GetEmbeddingConfigAsync()`.
+
+**Given** the listing surface (Story 5.5's tenant configuration listing endpoint, server-side),
+**When** the configuration is serialized for the public response,
+**Then** `apiSecretKeyName` is exposed (name only, never value) and `oidcTokenEndpoint`, `oidcClientId`, `oidcScope`, `baseUrl`, `authMode`, `provider`, `model`, `dimensions` are exposed as plaintext config metadata, while the `client_secret` value resolved via DAPR is **never** exposed.
+
+**Given** unit-test coverage,
+**When** `TenantConfigurationActorTests` (or equivalent) runs,
+**Then** new tests cover: actor state migration from old to new shape, Ollama-config round-trip, listing-surface masks the secret value but exposes the secret-name reference, GetBreakingChangeFields correctly flags BaseUrl changes for Ollama tenants.
+
+### Story 13.6: Vector Migration Tool
+
+As an operator,
+I want a console tool (or extension to `Hexalith.Memories.Cli`) that drops `{tenantId}:semantic` indexes and replays ingestion at the new dimension count, with a dry-run mode that lists affected tenants and content counts,
+So that I can migrate existing Google tenants to Ollama without ad-hoc Redis CLI operations.
+
+**Acceptance Criteria:**
+
+**Given** the migration tool,
+**When** the operator invokes it in `--dry-run` mode against the live Redis instance,
+**Then** the tool lists every affected tenant (those whose `Provider != target_provider`), the content unit count per tenant, and the current vs. target index dimension — without modifying any state.
+
+**Given** the operator invokes the tool in `--live` mode for a specific tenant,
+**When** the migration runs,
+**Then** the tool: (a) updates the tenant's `TenantEmbeddingConfig` to the new provider/model/dimensions, (b) drops `{tenantId}:semantic`, (c) re-creates the index with the new dimension count, (d) replays ingestion (re-embeds every content unit) emitting per-batch progress (count + percent), (e) emits a final summary (tenant ID, units processed, units failed, elapsed time).
+
+**Given** the migration is interrupted (Ctrl-C or process kill),
+**When** the operator restarts the tool against the same tenant,
+**Then** the tool detects partial state (some content units re-embedded, some not) and resumes from the unprocessed batch — does NOT re-embed already-migrated units (idempotent on the per-unit `EmbeddingProvider:Model` field check).
+
+**Given** the rollback toggle,
+**When** the operator passes `--rollback` for a tenant whose Path-B versioned indexes were retained,
+**Then** the tool re-installs the previous-version index as the active `{tenantId}:semantic`. Path-B coexistence is **not** the default — this is documented as the operator-opt-in safety net.
+
+**Given** documentation,
+**When** the tool ships,
+**Then** `docs/operations/embedding-providers.md` (Story 13.7) carries the runbook entry with the exact command sequence, expected output, and abort/resume semantics.
+
+### Story 13.7: Integration Tests, Aspire Fixtures & Operator Deployment Guide
+
+As an operator and a developer,
+I want the Aspire test fixtures + integration tests to exercise both provider paths (Google + Ollama) and a written deployment guide that documents the gateway contract end-to-end,
+So that a new operator can stand up the Ollama gateway, wire Keycloak, configure a tenant, and verify the result against a documented expectation.
+
+**Acceptance Criteria:**
+
+**Given** the existing Aspire test fixtures,
+**When** the test suite runs,
+**Then** the embedding integration suite is parameterized over `provider in {google, ollama}` and both branches go green against either the existing Google fake or a newly-added Ollama-compatible HTTP fake (gated behind an env-flag for Tier-3 and using a stub for Tier-2). The Tier-2 stub returns deterministic 2560-dim vectors so consistency-verification tests can assert dimension-correctness.
+
+**Given** the new `OllamaEmbeddingEndToEnd` integration test,
+**When** it runs against an Aspire-hosted Ollama-compatible HTTP fake + Keycloak fake (or Wiremock-with-OIDC-stub),
+**Then** it exercises: provisioning an Ollama tenant, ingesting one content unit, verifying the persisted embedding has 2560 dimensions, verifying the stored `EmbeddingProvider` field is `ollama:qwen3-embedding:4b`, verifying that hybrid search returns the unit.
+
+**Given** the operator-facing deployment guide at `docs/operations/embedding-providers.md`,
+**When** an operator reads it,
+**Then** it documents:
+- The gateway contract: Ollama-native HTTP API (`POST /api/embed` with `{model, input}` → `{embeddings: [[...]]}`), Bearer JWT with audience claim, JWKS validation expectations.
+- A generic anonymized Envoy + Ollama stack example with placeholders (`{ISSUER}`, `{AUDIENCE}`, `{JWKS_URL}`, `{HOSTNAME}`).
+- The complete `TenantEmbeddingConfig` field table per provider option: Google api-key, Ollama OIDC, Ollama local-no-auth.
+- The Story 13.6 migration runbook entry.
+- The Keycloak client setup recipe (realm, client ID, audience mapper, service-accounts-enabled, access-token-lifespan, scopes).
+- The DAPR Secrets store entry layout (`memories-embedding-client-secret` per tenant or shared, operator's choice).
+
+**Given** the existing `docs/dev/embedding-providers.md` (or equivalent dev-facing notes),
+**When** Story 13.7 lands,
+**Then** the developer-facing documentation cross-references the new operator guide and notes the dual-mode (api-key vs. oidc-client-credentials) decision matrix.
+
+---

@@ -119,8 +119,7 @@ if ($expectedIds.Count -eq 0) {
     throw "Release package inventory contains no packages."
 }
 
-$rootSourceProjects = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src") -Recurse -Filter "*.csproj" |
-    Where-Object { $_.FullName -notmatch '[\\/]submodules[\\/]' })
+$rootSourceProjects = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot "src") -Recurse -Filter "*.csproj")
 
 $discoveredPackableIds = @()
 $requiredProperties = @(
