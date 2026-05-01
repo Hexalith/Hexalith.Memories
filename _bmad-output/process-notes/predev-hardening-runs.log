@@ -2,3 +2,4 @@
 2026-05-01T14:12:09Z	create-story	12-4-baseline-failures-sweep	ok	created story and promoted it to ready-for-dev
 2026-05-01T14:33:14Z	create-story	12-5-partial-publish-alerting	ok	created ready-for-dev story context; soft preflight warning Hexalith.EventStore
 2026-05-01T14:46:51Z	create-story	12-6-embedding-input-content-kind-baseline-resolution	ok	created ready-for-dev story context; soft preflight warning Hexalith.EventStore
+2026-05-01T15:04:12Z	failed	-	failed	pre-flight hard failure; json=_bmad-output/process-notes/predev-preflight-latest.json; timestamp=2026-05-01T15:01:48Z; failed check: working tree cleanliness; details=5 dirty path(s); stdout=" M CONTRIBUTING.md\n M Hexalith.AI.Tools\n M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n"
