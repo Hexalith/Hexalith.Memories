@@ -2,10 +2,11 @@
 set -eu
 
 repo_root="$(git rev-parse --show-toplevel)"
+git_dir="$(git rev-parse --git-dir)"
 cd "$repo_root"
 
 branch_name="$(git branch --show-current)"
-changed_file="$(mktemp)"
+changed_file="$git_dir/story-scope-changed-$$.txt"
 trap 'rm -f "$changed_file"' EXIT
 
 git diff --cached --name-only -- > "$changed_file"
