@@ -1,6 +1,6 @@
 # Story 12.2: Forbidden Default Tolerances Checklist
 
-Status: review
+Status: done
 
 Story Key: 12-2-forbidden-default-tolerances-checklist
 Epic: 12 - First Release & Operations Foundation
@@ -222,8 +222,8 @@ GPT-5.
 
 - `rg -n "Code Review|Forbidden Default Tolerances|if-no-files-found|skip-duplicate|mapfile|zero-count|catch \\{ \\}|\\|\\| true|PROJECTS=\\(\\\"\\\"\\)|feedback_tolerance_idioms" CONTRIBUTING.md` initially failed because shell quoting stripped part of the regex around `PROJECTS=("")`; reran validation with fixed-string checks.
 - Focused checklist validation: all required phrases were found in `CONTRIBUTING.md`.
-- Diff review: only `CONTRIBUTING.md`, `_bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md`, and `_bmad-output/implementation-artifacts/sprint-status.yaml` are touched by this story pass.
-- Full build/test suite intentionally not run because this is a documentation/governance-only story and no runtime source, tests, workflows, release scripts, or package inventory changed.
+- Diff review (corrected on 2026-05-01 review pass): commit `c4d5217` touched five files, not three. The story-scope artifacts were `CONTRIBUTING.md`, `_bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md`, and `_bmad-output/implementation-artifacts/sprint-status.yaml`. The same commit also advanced two submodule pointers — `Hexalith.AI.Tools` and `Hexalith.EventStore` — by one commit each. The original Dev Agent Record claim of "only three files" was wrong and is corrected here. The submodule pointer bumps were incidental drift from the working tree at commit time and are not in the story File Scope's literal forbidden list (which targets `src/**`, `tests/**`, `.github/workflows/*.yml`, `tools/*`, package metadata). They are accepted in this story under Option 2 of Decision-needed #1; Story 12.3 (file-scope enforcement) is the canonical owner of preventing this drift in future stories.
+- Full build/test suite intentionally not run because this is a documentation/governance-only story and no runtime source, tests, workflows, release scripts, or package inventory changed. The two submodule pointer bumps are unrelated to Story 12.2 acceptance criteria.
 
 ### Completion Notes List
 
@@ -242,11 +242,50 @@ GPT-5.
 - `CONTRIBUTING.md`
 - `_bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `Hexalith.AI.Tools` (submodule pointer, incidental drift in c4d5217 — accepted under Decision-needed #1 Option 2)
+- `Hexalith.EventStore` (submodule pointer, incidental drift in c4d5217 — accepted under Decision-needed #1 Option 2)
 
 ### Change Log
 
 - 2026-05-01: Implemented documentation-only forbidden default tolerances checklist and moved story to review.
+- 2026-05-01: Code review pass (Blind + Edge + Auditor). All six ACs pass. Resolved 2 decision-needed and applied 10 doc-precision patches to CONTRIBUTING.md (added pending Story 12.5 disclaimer for "operator-visible"; added `mapfile`/`pipefail` workaround note; restored PowerShell `SilentlyContinue` / `Ignore` / `$ErrorActionPreference` to the silent-error-suppression bullet; broadened default-empty-array example to include `PROJECTS=()` and `${PATTERN:-*}`; named the `|| true` equivalents; added zero-input fail-loudly clause to per-row zero-count bullet; softened "forbidden by default" to "suspect by default"; clarified retro-file precedence; added `Tolerance Justification:` PR-description convention; tagged Bash-only patterns explicitly). Amended Dev Agent Record to record the two submodule pointer bumps in commit c4d5217 (Decision-needed #1 Option 2; Story 12.3 owns prevention).
 
 ## Story Completion Status
 
-Implementation complete. Status set to `review`.
+Implementation complete. Code review pass closed all decision-needed and patch findings on 2026-05-01. Status set to `done`.
+
+### Review Findings
+
+Code review pass on 2026-05-01 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). All three review layers completed; no layer failed.
+
+Acceptance Auditor verdict: all six ACs pass. Findings below are doc-precision and process-hygiene.
+
+#### Decision-needed
+
+- [x] [Review][Decision] Submodule scope leak in c4d5217 — HIGH. Commit `c4d5217 docs: add Code Review section ...` also bumped `Hexalith.AI.Tools` and `Hexalith.EventStore` submodule pointers (one commit each). The Dev Agent Record in this story file (line 225) explicitly claims "Diff review: only `CONTRIBUTING.md`, ... `12-2-...md`, and `sprint-status.yaml` are touched by this story pass." That claim is factually wrong against the actual commit. Story Dev Notes line 178 also says "Do not use Story 12.2 as a vehicle for similar runtime stabilization." Submodule pointer bumps are not in the literal forbidden-files list (which targets `src/**`, `tests/**`, `.github/workflows/*.yml`, `tools/*`, package metadata), so the Acceptance Auditor classifies it as a hygiene nit; the Edge Case Hunter classifies it as a HIGH governance violation because the very commit introducing the "forbidden default tolerances" rule also commits a silent runtime change in a doc-labelled commit, modeling the anti-pattern the rule exists to forbid. Decision required: (a) revert/separate the two submodule bumps into independent `fix(submodule):` commits and rebase, (b) accept and amend the Dev Agent Record + File List to record the submodule bumps as in-scope incidental drift with rationale, (c) defer to Story 12.3 (file-scope enforcement) and document as a known leak.
+- [x] [Review][Decision] "Operator-visible" and "idempotency precondition" terminology undefined — MEDIUM. CONTRIBUTING.md lines 130–132 and 140–142 use "operator-visible warning, failure, or alert" and "idempotency precondition and operator-visible signal" without defining either term. Reviewers cannot mechanically apply the approval rule until a canonical standard exists. Story 12.5 owns the executable partial-publish alerting standard. Decision required: (a) tighten inline now with a working definition (e.g., "non-zero CI exit, structured log line tagged for operator scan, or auto-opened issue on failure"), (b) add an explicit "pending Story 12.5" note pointing at the canonical mechanism, or (c) defer entirely until 12.5 ships and accept that today's checklist is aspirational on this dimension.
+
+#### Patch
+
+- [x] [Review][Patch] `mapfile` bullet does not name the workaround [`CONTRIBUTING.md`:136-138] — Bullet flags the symptom but not that `set -e` / `set -o pipefail` do NOT capture process-substitution exit codes. Reader may add `pipefail` and assume they fixed it. Add: "Note: `set -o pipefail` and `set -e` do not propagate the substituted command's exit status — capture status explicitly, e.g. via a temp file or `wait`/`$?` after the consumer."
+- [x] [Review][Patch] Restore PowerShell `SilentlyContinue` / `Ignore` to the empty-catch bullet [`CONTRIBUTING.md`:144-145] — Story spec Dev Notes line 148 explicitly listed `SilentlyContinue` as a sibling pattern; the published checklist dropped it. PowerShell suppresses errors via `-ErrorAction SilentlyContinue`, `-ErrorAction Ignore`, and `$ErrorActionPreference = 'SilentlyContinue'` regardless of whether a `catch { }` block is empty. Bullet should read something like: "Empty `catch { }` blocks, `-ErrorAction SilentlyContinue` / `Ignore`, or `$ErrorActionPreference = 'SilentlyContinue'` in PowerShell, and Pokémon `catch (Exception) { }` in C#, that swallow exceptions without a written recovery path or alternate signal."
+- [x] [Review][Patch] Default-empty-array example is a one-element array [`CONTRIBUTING.md`:149-150] — `PROJECTS=("")` produces `${#PROJECTS[@]} = 1`, not 0; reviewers anchored on the literal example may miss the zero-element variant `PROJECTS=()` and wildcard fallbacks like `${PATTERN:-*}`. Broaden the example: "Default-empty or sentinel-fallback inventories, such as `PROJECTS=()`, `PROJECTS=(\"\")`, or `${PATTERN:-*}`, that turn 'no inventory' into 'match everything' or 'verify nothing.'"
+- [x] [Review][Patch] Per-row zero-count wording targets the wrong layer [`CONTRIBUTING.md`:143-144] — Bullet flags per-row aggregation but the actual repo hazard is upstream: the inventory selected zero rows/projects/packages and a per-row check trivially passes. Append: "...and zero-input cases where the inventory selected zero rows, projects, or packages should fail loudly rather than report success on an empty set."
+- [x] [Review][Patch] "Equivalent shell idioms" is hand-wavy [`CONTRIBUTING.md`:147-148] — Either name the equivalents (`set +e`, `cmd 2>/dev/null`, `cmd && true || true`) or remove the qualifier. Cross-language equivalents (PS error suppression, C# pokemon catch) overlap with the empty-catch bullet; reviewers may treat each as "covered by the other" and miss both.
+- [x] [Review][Patch] `Forbidden by default` then `acceptable` — wording whiplash [`CONTRIBUTING.md`:127-130] — Opening sentence says "treat tolerant defaults as forbidden by default" but `--skip-duplicate` is "acceptable for 409-conflict rerun recovery." Soften to: "treat tolerant defaults as suspect by default — block them unless the PR includes ..." This preserves the gate while removing the absolutism that the very next bullet contradicts.
+- [x] [Review][Patch] Two retro files cited without precedence [`CONTRIBUTING.md`:158-160] — Reader gets `epic-11-retro-2026-04-26.md` Pattern 3 plus the "refreshed" 2026-04-30 file; no rule for which is canonical. Clarify: "Canonical source: `epic-11-retro-2026-04-30.md` (refreshed). The 2026-04-26 file is the original Pattern 3 record."
+- [x] [Review][Patch] Story 12.5 forward-reference dates badly [`CONTRIBUTING.md`:160] — Tells reviewers something is coming with no link or status. Per `project_release_readiness.md` memory, Epic 12 stories are still scaffolded as backlog. Add: "(Story 12.5 is currently backlog — until it ships, the partial-publish detection bullet is reviewer guidance only with no automated enforcement.)"
+- [x] [Review][Patch] No mechanism for recording an approved tolerance [`CONTRIBUTING.md`:154-156] — Reviewer rule says PRs "must show why that tolerance is safe" but doesn't say where: PR description? Code comment? ADR? Without a convention this becomes tribal. Add a one-liner: "Record the rationale in the PR description under a `Tolerance Justification:` section, with a link to the operator alert mechanism or recovery path."
+- [x] [Review][Patch] Bash-only constructs not labeled [`CONTRIBUTING.md`:136-150] — `mapfile`, `<( )`, `PROJECTS=(...)`, `|| true` are Bash idioms; readers reviewing PowerShell or POSIX `sh` PRs will not match. Add a short header sentence to the bullet group: "Patterns marked Bash apply to `bash` shell scripts; equivalent PowerShell suppression idioms appear in the `catch` bullet."
+
+#### Dismissed (not written to file, recorded for audit)
+
+- Internal `_bmad-output/...` paths leak into public CONTRIBUTING.md — required by AC #4 (cross-references); not actionable without changing the AC.
+- Acceptance Auditor LOW nit on `alert` → `warning, failure, or alert` broadening — strict superset; Dev Agent Record line 236 acknowledges; not a regression.
+
+#### Layers summary
+
+- Blind Hunter: 9 raised, merged into 7 unique
+- Edge Case Hunter: 9 raised, merged into 8 unique
+- Acceptance Auditor: 3 raised (all ACs pass; 3 LOW nits)
+- After cross-layer dedup: 14 distinct → 2 dismissed → 12 actionable (2 decision-needed, 10 patch)

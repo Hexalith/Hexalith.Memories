@@ -127,37 +127,53 @@ PR CI scope.
 ### Forbidden Default Tolerances
 
 When reviewing infrastructure, scripts, workflow YAML, release automation, or aggregate verification
-changes, treat tolerant defaults as forbidden by default. Approve them only when the PR includes an
-explicit idempotency proof, a clear recovery path, or an operator-visible warning, failure, or alert.
+changes, treat tolerant defaults as suspect by default. Block them unless the PR includes an explicit
+idempotency proof, a clear recovery path, or an operator-visible warning, failure, or alert.
 Otherwise, request fail-fast behavior.
 
-Scan for these warning patterns:
+Until Story 12.5 codifies the canonical mechanism, "operator-visible" means a non-zero CI exit, a
+structured log line tagged for operator scan, or an auto-opened issue on failure. This rule is
+reviewer judgment today, not automated enforcement.
 
-- Process-substitution or pipeline exit-code swallowing, such as `mapfile -t X < <(cmd)`, where the
-  consumer command can succeed after the producer command failed.
-- `actions/upload-artifact` with `if-no-files-found: ignore`, which can make missing build, pack, or
-  test output look successful.
-- `dotnet nuget push --skip-duplicate` used without an idempotency precondition and operator-visible
-  signal. It is acceptable for 409-conflict rerun recovery; it is not a substitute for partial-publish
-  detection.
-- Per-row or per-iteration zero-count checks that allow aggregate verifiers to pass when every
-  selected row, project, or package verified nothing.
-- Empty `catch { }` blocks in PowerShell or C# that swallow exceptions without a written recovery path
-  or alternate signal.
-- `|| true` and equivalent shell idioms that discard non-zero exit codes without making the tolerated
-  failure visible.
-- Default-empty-array fallbacks, such as `PROJECTS=("")`, that turn "no inventory" into "match
-  everything" or "verify nothing."
+Scan for these warning patterns. Patterns marked Bash apply to `bash` shell scripts; equivalent
+PowerShell suppression idioms appear in the `catch` bullet:
+
+- **Process-substitution or pipeline exit-code swallowing** (Bash), such as `mapfile -t X < <(cmd)`,
+  where the consumer command can succeed after the producer command failed. Note: `set -o pipefail`
+  and `set -e` do NOT propagate the substituted command's exit status — capture status explicitly,
+  e.g. via a temp file or by reading `$?` after the consumer.
+- **`actions/upload-artifact` with `if-no-files-found: ignore`**, which can make missing build,
+  pack, or test output look successful. Prefer `error`; use `warn` only when absence is explicitly
+  non-blocking and documented.
+- **`dotnet nuget push --skip-duplicate`** used without an idempotency precondition and
+  operator-visible signal. Acceptable for 409-conflict rerun recovery; not a substitute for
+  partial-publish detection. Story 12.5 (currently backlog) owns the executable partial-publish
+  alert — until it ships, this bullet is reviewer guidance only with no automated enforcement.
+- **Per-row or per-iteration zero-count checks** that allow aggregate verifiers to pass when every
+  selected row, project, or package verified nothing — and zero-input cases where the inventory
+  selected zero rows, projects, or packages should fail loudly rather than report success on an
+  empty set.
+- **Silent error suppression**: empty `catch { }` blocks in C#; empty `catch { }`,
+  `-ErrorAction SilentlyContinue` / `Ignore`, or `$ErrorActionPreference = 'SilentlyContinue'` in
+  PowerShell, that swallow exceptions without a written recovery path or alternate signal.
+- **`|| true` and equivalent Bash idioms** (`set +e` blocks, `cmd 2>/dev/null`,
+  `cmd && true || true`) that discard non-zero exit codes without making the tolerated failure
+  visible.
+- **Default-empty or sentinel-fallback inventories** (Bash), such as `PROJECTS=()`,
+  `PROJECTS=("")`, or `${PATTERN:-*}`, that turn "no inventory" into "match everything" or
+  "verify nothing."
 
 Reviewer question: does this code intentionally tolerate a missing artifact, duplicate package,
-zero-count result, swallowed exception, missing inventory, or failed command? If yes, the PR must show
-why that tolerance is safe and how an operator or reviewer will notice when the tolerated path happens.
+zero-count result, swallowed exception, missing inventory, or failed command? If yes, the PR must
+show why that tolerance is safe and how an operator or reviewer will notice when the tolerated path
+happens. Record the rationale in the PR description under a `Tolerance Justification:` section,
+with a link to the operator alert mechanism or recovery path.
 
-This checklist comes from Epic 11 retrospective Pattern 3 in
-`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md`, the refreshed
-`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md` finding "Tolerant defaults
-repeatedly hid failure," and the referenced external/auto-memory name `feedback_tolerance_idioms.md`.
-Story 12.5 owns executable partial-publish alerting; this section is reviewer guidance only.
+Canonical source: `_bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md` (refreshed
+Epic 11 carry-forward finding "Tolerant defaults repeatedly hid failure"). The original record is
+`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md` Pattern 3. The auto-memory
+name `feedback_tolerance_idioms.md` is referenced by planning artifacts but is not present as a
+repository file at the time of this commit.
 
 ## Release Packages
 
