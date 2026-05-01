@@ -164,6 +164,28 @@ public class IndexSyntacticActivityTests
                 && args[4].ToString() == "TAG"));
     }
 
+    [Fact]
+    public async Task RunAsync_IndexInfoTemporarilyIncomplete_ShouldRetryBeforeHashWrite()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        int infoCalls = 0;
+        ConfigureExistingIndexWithTransientEmptyInfo(db, () => ++infoCalls);
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+
+        IndexInput input = CreateTestInput();
+        IndexSyntacticActivity activity = new(redis, Substitute.For<ILogger<IndexSyntacticActivity>>());
+
+        _ = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        infoCalls.ShouldBeGreaterThanOrEqualTo(2);
+        await db.Received(1).HashSetAsync(
+            $"{input.TenantId}:mu:{input.MemoryUnitId}",
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
+    }
+
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)
     {
         ConfigureExistingIndex(db, includeSubjectField: true);
@@ -199,6 +221,24 @@ public class IndexSyntacticActivityTests
                     _ => RedisResult.Create(new RedisValue("OK")),
                 };
             });
+    }
+
+    private static void ConfigureExistingIndexWithTransientEmptyInfo(IDatabase db, Func<int> nextInfoCall)
+    {
+        RedisResult Execute(string command)
+            => command switch
+            {
+                "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                "FT.INFO" => nextInfoCall() == 1
+                    ? CreateIncompleteIndexInfoResult()
+                    : CreateExistingIndexInfoResult(includeSubjectField: true),
+                _ => RedisResult.Create(new RedisValue("OK")),
+            };
+
+        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(call => Execute(call.ArgAt<string>(0)));
+        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(call => Execute(call.ArgAt<string>(0)));
     }
 
     private static bool HasEntry(IEnumerable<HashEntry> entries, string name, string value)
@@ -267,6 +307,12 @@ public class IndexSyntacticActivityTests
             RedisResult.Create([.. attributes]),
         ]);
     }
+
+    private static RedisResult CreateIncompleteIndexInfoResult() => RedisResult.Create(
+    [
+        RedisResult.Create(new RedisValue("num_docs")),
+        RedisResult.Create(0),
+    ]);
 
     private static RedisResult CreateAttribute(string identifier, string type) => RedisResult.Create(
     [

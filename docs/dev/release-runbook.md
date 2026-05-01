@@ -17,6 +17,9 @@ a workstation.
 - Semantic-release uses `.releaserc.json`.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
 - `tools/publish-nuget.ps1` is the `publishCmd` for `@semantic-release/exec`.
+- Semantic-release does not commit generated files back to `main`. It creates the release tag,
+  GitHub Release, and package assets without using `@semantic-release/git`, so the release path is
+  compatible with the protected-branch rule that requires pull requests for repository changes.
 - `tools/validate-release-packages.ps1` is the canonical package verifier (used both before
   semantic-release runs and inside `pack-release.ps1` after pack).
 - `tools/release-packages.json` is the approved package inventory.
@@ -131,12 +134,11 @@ The release workflow guards against re-entry with:
 if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip actions]')"
 ```
 
-Because branch protection on `main` now blocks direct pushes and `.releaserc.json` still uses
-`@semantic-release/git` to commit `CHANGELOG.md` back to `main`, the next release run could fail at
-the `git` plugin even though packages would already be published. Maintainers should watch the
-next release run closely. If branch protection blocks the release commit, keep package publication
-intact, record the failure evidence, and handle any release-commit strategy change in a separate
-story instead of weakening this story's protection contract.
+Story 12.1 initially identified a protected-branch compatibility risk because the original
+`.releaserc.json` used `@semantic-release/git` to commit `CHANGELOG.md` back to `main`. The
+post-merge release run for PR #12 confirmed that failure mode: GitHub rejected the direct push to
+`main` with rule violation `GH013`. The current release configuration removes the changelog/git
+commit plugins, so future releases should not attempt `HEAD:main` pushes from the release job.
 
 ## Package Evidence
 
@@ -180,8 +182,8 @@ inspection.
 10. Confirm the new tag exists.
 11. Confirm the GitHub Release contains exactly the approved package assets for the new version.
 12. Confirm NuGet flat-container APIs show the new version for all approved packages.
-13. Confirm the release commit is either created with `[skip ci]` or any branch-protection conflict
-    is captured for a follow-up story.
+13. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
+    release commit back to `main`.
 
 ## Failure And Recovery Notes
 
@@ -192,6 +194,10 @@ inspection.
   validator.
 - If semantic-release fails before publishing, inspect the run logs and fix the repository state or
   release configuration through a pull request.
+- If semantic-release reports `GH013` or another protected-branch rejection for `HEAD:main`, keep
+  branch protection intact. The release configuration should not use plugins that commit back to
+  `main`; fix the release configuration through a pull request and rerun by merging a conventional
+  commit.
 - If NuGet publishing partially succeeds, do not delete published packages from nuget.org. There
   are two failure shapes to keep separate:
   - **HTTP 409 (already published).** `tools/publish-nuget.ps1` calls `dotnet nuget push

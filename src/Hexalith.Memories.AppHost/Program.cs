@@ -1,5 +1,7 @@
+using Aspire.Hosting.Eventing;
 using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
+using System.Net.Sockets;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 string secretsFile = EnsureSecretsFile();
@@ -7,6 +9,9 @@ string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
+GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
+string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
+string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
 // Story 5.4 AC3 — DAPR API token authentication.
 //
@@ -32,27 +37,46 @@ IResourceBuilder<ContainerResource> redis = builder
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
-string redisHostMetadata = $"{redisEndpoint.Property(EndpointProperty.HostAndPort)}";
+redis.OnResourceReady((resource, _, _) =>
+{
+    (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
+    WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
+    return Task.CompletedTask;
+});
+builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
+{
+    if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
+        "memories-mcp-dapr" or "memories-mcp-dapr-cli")
+    {
+        (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
+        await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(false);
+    }
+});
 
 IResourceBuilder<IDaprComponentResource> stateStore = builder
-    .AddDaprComponent("statestore", "state.redis")
-    .WithMetadata("redisHost", redisHostMetadata)
-    .WithMetadata("redisPassword", string.Empty)
-    .WithMetadata("actorStateStore", "true");
+    .AddDaprComponent(
+        "statestore",
+        "state.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.StateStore })
+    .WaitFor(redis);
 
-// Story 9.1: DAPR pub/sub component shared with the Redis dependency. Keep the Dapr component metadata
-// pinned to the same Aspire-managed Redis endpoint the application itself references so local/dev and test
-// topologies cannot drift from the runtime broker wiring. Production deployments still bind-mount
-// deploy/dapr/components/pubsub.yaml and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
+// Story 9.1: DAPR pub/sub component shared with the Redis dependency. AppHost emits concrete local
+// component YAML for the host-pinned Redis endpoint so local/dev and test topologies cannot drift from
+// the runtime broker wiring. Production deployments still bind-mount deploy/dapr/components/pubsub.yaml
+// and inject PUBSUB_REDIS_HOST/PUBSUB_REDIS_PASSWORD from secrets.
 IResourceBuilder<IDaprComponentResource> pubSub = builder
-    .AddDaprComponent("pubsub", "pubsub.redis")
-    .WithMetadata("redisHost", redisHostMetadata)
-    .WithMetadata("redisPassword", string.Empty);
+    .AddDaprComponent(
+        "pubsub",
+        "pubsub.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.PubSub })
+    .WaitFor(redis);
 
 IResourceBuilder<IDaprComponentResource> secretStore = builder
-    .AddDaprComponent("secretstore", "secretstores.local.file")
-    .WithMetadata("secretsFile", secretsFile)
-    .WithMetadata("nestedSeparator", ":");
+    .AddDaprComponent(
+        "secretstore",
+        "secretstores.local.file",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.SecretStore });
 
 // Story 9.2: DAPR Conversation component — drives GenerateNaturalLanguageDescriptionActivity in the
 // dual-embedding ingestion path. Dev default is conversation.echo so Aspire/test runs exercise the full
@@ -62,9 +86,10 @@ IResourceBuilder<IDaprComponentResource> secretStore = builder
 // The component name "llm" is referenced by NaturalLanguageDescriptionOptions.DaprComponentName and
 // asserted NOT to equal "conversation.echo" by the options validator when running in Production.
 IResourceBuilder<IDaprComponentResource> conversationLlm = builder
-    .AddDaprComponent("llm", "conversation.echo")
-    .WithMetadata("responseCacheTTL", "0s")
-    .WithMetadata("piiScrubbing", "false");
+    .AddDaprComponent(
+        "llm",
+        "conversation.echo",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.ConversationLlm });
 
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
@@ -80,18 +105,17 @@ IResourceBuilder<ProjectResource> server = builder
     .AddProject<Projects.Hexalith_Memories_Server>("memories-server")
     .WithDaprSidecar(sidecar =>
     {
-        sidecar = sidecar
-            .WithOptions(new DaprSidecarOptions
-            {
-                AppId = daprAppId,
-                DaprHttpPort = 3500,
-                DaprGrpcPort = 50001,
-                Config = daprConfigPath,
-            })
-            .WithReference(stateStore)
-            .WithReference(pubSub)
-            .WithReference(secretStore)
-            .WithReference(conversationLlm);
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
+                appId: daprAppId,
+                httpPort: 3500,
+                grpcPort: 50001,
+                configPath: daprConfigPath,
+                placementHostAddress: daprPlacementHostAddress,
+                schedulerHostAddress: daprSchedulerHostAddress));
+        _ = sidecar.WithReference(stateStore);
+        _ = sidecar.WithReference(pubSub);
+        _ = sidecar.WithReference(secretStore);
+        _ = sidecar.WithReference(conversationLlm);
     })
     .WithEnvironment(
         "ConnectionStrings__redis",
@@ -101,6 +125,14 @@ IResourceBuilder<ProjectResource> server = builder
         ReferenceExpression.Create($"{falkordbEndpoint.Property(EndpointProperty.HostAndPort)}"))
     .WaitFor(redis)
     .WaitFor(falkordb);
+
+#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
+server = server
+    .WithReference(stateStore)
+    .WithReference(pubSub)
+    .WithReference(secretStore)
+    .WithReference(conversationLlm);
+#pragma warning restore CS0618
 
 // Story 6.1: dev-only default allow-list for POST /api/ingest/directory so developers can batch-ingest
 // the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
@@ -146,14 +178,13 @@ IResourceBuilder<ProjectResource> mcp = builder
     .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp")
     .WithDaprSidecar(sidecar =>
     {
-        sidecar = sidecar
-            .WithOptions(new DaprSidecarOptions
-            {
-                AppId = "memories-mcp",
-                DaprHttpPort = 3600,
-                DaprGrpcPort = 50101,
-                Config = daprConfigPath,
-            });
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
+                appId: "memories-mcp",
+                httpPort: 3600,
+                grpcPort: 50101,
+                configPath: daprConfigPath,
+                placementHostAddress: daprPlacementHostAddress,
+                schedulerHostAddress: daprSchedulerHostAddress));
     })
     .WithEnvironment("MEMORIES_MCP_UPSTREAM_APP_ID", daprAppId)
     .WaitFor(server);
@@ -203,6 +234,112 @@ static string EnsureSecretsFile()
     return secretsFile;
 }
 
+static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
+{
+    string componentsDirectory = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", daprAppId);
+    Directory.CreateDirectory(componentsDirectory);
+
+    string stateStorePath = Path.Combine(componentsDirectory, "statestore.yaml");
+    string pubSubPath = Path.Combine(componentsDirectory, "pubsub.yaml");
+    string secretStorePath = Path.Combine(componentsDirectory, "secretstore.yaml");
+    string conversationLlmPath = Path.Combine(componentsDirectory, "llm.yaml");
+
+    // These files are rewritten with Aspire's allocated Redis endpoint before the Dapr sidecars start.
+    // The initial localhost value keeps the files valid for design-time inspection and local fallbacks.
+    WriteDaprRedisComponentFiles(stateStorePath, pubSubPath, "127.0.0.1:6379");
+
+    File.WriteAllText(
+        secretStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: secretstore
+        spec:
+          type: secretstores.local.file
+          version: v1
+          metadata:
+            - name: secretsFile
+              value: "{secretsFile.Replace("\\", "\\\\", StringComparison.Ordinal)}"
+            - name: nestedSeparator
+              value: ":"
+        """);
+
+    File.WriteAllText(
+        conversationLlmPath,
+        """
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: llm
+        spec:
+          type: conversation.echo
+          version: v1
+          metadata:
+            - name: responseCacheTTL
+              value: "0s"
+            - name: piiScrubbing
+              value: "false"
+        """);
+
+    return new GeneratedDaprComponentPaths(
+        stateStorePath,
+        pubSubPath,
+        secretStorePath,
+        conversationLlmPath);
+}
+
+static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPath, string redisHost)
+{
+    File.WriteAllText(
+        stateStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: statestore
+        spec:
+          type: state.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+            - name: redisMaxRetries
+              value: "60"
+            - name: redisMinRetryInterval
+              value: "500ms"
+            - name: redisMaxRetryInterval
+              value: "2s"
+            - name: actorStateStore
+              value: "true"
+        """);
+
+    File.WriteAllText(
+        pubSubPath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: pubsub
+        spec:
+          type: pubsub.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+            - name: redisMaxRetries
+              value: "60"
+            - name: redisMinRetryInterval
+              value: "500ms"
+            - name: redisMaxRetryInterval
+              value: "2s"
+        """);
+}
+
 static string ResolveDaprConfigPath()
 {
     string repoRoot = ResolveRepositoryRoot();
@@ -249,6 +386,36 @@ static string ResolveDaprAppId()
     return string.IsNullOrWhiteSpace(configured)
         ? "memories-server"
         : configured.Trim();
+}
+
+static DaprSidecarOptions CreateDaprSidecarOptions(
+    string appId,
+    int httpPort,
+    int grpcPort,
+    string configPath,
+    string? placementHostAddress,
+    string? schedulerHostAddress)
+{
+    var options = new DaprSidecarOptions
+    {
+        AppId = appId,
+        DaprHttpPort = httpPort,
+        DaprGrpcPort = grpcPort,
+        Config = configPath,
+        // GitHub Linux runners can resolve localhost to ::1 while the locally initialized DAPR
+        // placement/scheduler services listen on IPv4. Keep this opt-in so developer machines and
+        // non-default DAPR installs can use the toolkit defaults.
+        PlacementHostAddress = placementHostAddress,
+        SchedulerHostAddress = schedulerHostAddress,
+    };
+
+    return options;
+}
+
+static string? ResolveOptionalEnvironmentValue(string name)
+{
+    string? configured = Environment.GetEnvironmentVariable(name);
+    return string.IsNullOrWhiteSpace(configured) ? null : configured.Trim();
 }
 
 static string ResolveRedisVolumeName()
@@ -322,6 +489,80 @@ static IResourceBuilder<ProjectResource> PropagateJwtBearerAuthenticationEnviron
     return resource;
 }
 
+static (string Host, int Port) ResolveAllocatedEndpoint(IResource resource, string endpointName)
+{
+    if (!resource.TryGetEndpoints(out IEnumerable<EndpointAnnotation>? endpoints))
+    {
+        throw new InvalidOperationException($"Resource '{resource.Name}' does not expose endpoints.");
+    }
+
+    EndpointAnnotation endpoint = endpoints.Single(candidate =>
+        string.Equals(candidate.Name, endpointName, StringComparison.Ordinal));
+    AllocatedEndpoint allocated = endpoint.AllocatedEndpoint
+        ?? throw new InvalidOperationException($"Endpoint '{resource.Name}/{endpointName}' has not been allocated yet.");
+
+    string host = allocated.Address;
+    if (string.IsNullOrWhiteSpace(host) ||
+        string.Equals(host, "0.0.0.0", StringComparison.Ordinal) ||
+        string.Equals(host, "::", StringComparison.Ordinal))
+    {
+        host = "127.0.0.1";
+    }
+
+    return (host, allocated.Port);
+}
+
+static async Task WaitForRedisPingAsync(
+    string host,
+    int port,
+    TimeSpan timeout,
+    CancellationToken cancellationToken)
+{
+    DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+    Exception? lastError = null;
+    byte[] ping = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
+    byte[] response = new byte[64];
+
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            using CancellationTokenSource attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptCts.CancelAfter(TimeSpan.FromSeconds(2));
+
+            using TcpClient client = new();
+            await client.ConnectAsync(host, port, attemptCts.Token)
+                .AsTask()
+                .ConfigureAwait(false);
+
+            await using NetworkStream stream = client.GetStream();
+            await stream.WriteAsync(ping, attemptCts.Token).ConfigureAwait(false);
+            int bytesRead = await stream.ReadAsync(response.AsMemory(0, response.Length), attemptCts.Token)
+                .ConfigureAwait(false);
+
+            if (bytesRead >= 5 &&
+                response[0] == (byte)'+' &&
+                response[1] == (byte)'P' &&
+                response[2] == (byte)'O' &&
+                response[3] == (byte)'N' &&
+                response[4] == (byte)'G')
+            {
+                return;
+            }
+
+            throw new InvalidOperationException("Redis did not return PONG to the readiness probe.");
+        }
+        catch (Exception ex) when (ex is SocketException or TimeoutException or System.IO.IOException or InvalidOperationException ||
+                                   (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            lastError = ex;
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    throw new TimeoutException($"{host}:{port} did not respond to Redis PING within {timeout}.", lastError);
+}
+
 static string ResolveRepositoryRoot()
 {
     string currentDirectory = Directory.GetCurrentDirectory();
@@ -335,3 +576,9 @@ static string ResolveRepositoryRoot()
         ? candidate
         : currentDirectory;
 }
+
+internal sealed record GeneratedDaprComponentPaths(
+    string StateStore,
+    string PubSub,
+    string SecretStore,
+    string ConversationLlm);

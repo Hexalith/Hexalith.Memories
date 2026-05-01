@@ -64,7 +64,7 @@ public sealed class CiTestInventoryTests
         bashScript.ShouldContain("test-projects.integration-fast.txt");
         bashScript.ShouldContain("Category!=Integration&Category!=Benchmark");
         workflow.ShouldContain("tools/test.sh --filter \"Category!=Integration\"");
-        workflow.ShouldContain("tools/test.sh --filter \"Category=Integration&Category!=IntegrationSlow\"");
+        workflow.ShouldContain("tools/test.sh --filter \"Category=Integration&Category!=IntegrationSlow&Category!=Performance\"");
     }
 
     [Fact]

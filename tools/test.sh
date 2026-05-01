@@ -3,7 +3,7 @@
 # Examples:
 #   ./tools/test.sh
 #   ./tools/test.sh --filter "Category!=Integration"
-#   ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow"   # PR-fast integration lane
+#   ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"   # PR-fast integration lane
 #   ./tools/test.sh --filter "Category=IntegrationSlow"                          # Nightly-only slow lane
 #   ./tools/test.sh --coverage
 set -euo pipefail

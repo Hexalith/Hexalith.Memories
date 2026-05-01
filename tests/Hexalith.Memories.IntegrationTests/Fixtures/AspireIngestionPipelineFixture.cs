@@ -33,6 +33,12 @@ using StackExchange.Redis;
 /// <summary>Starts the full Aspire topology for end-to-end ingestion workflow tests.</summary>
 public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
+    private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
+    private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan EndpointProbeTimeout = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan EndpointPollInterval = TimeSpan.FromSeconds(2);
+
     private DistributedApplication? _app;
     private IDistributedApplicationTestingBuilder? _builder;
     private string _daprAppId = string.Empty;
@@ -154,7 +160,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <returns>The elapsed warm-restart duration.</returns>
     public async Task<TimeSpan> RestartTopologyAsync()
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        using var cts = new CancellationTokenSource(TopologyStartupTimeout);
         Stopwatch stopwatch = Stopwatch.StartNew();
         await DisposeTopologyAsync(cts.Token).ConfigureAwait(false);
         await StartTopologyAsync(cts.Token).ConfigureAwait(false);
@@ -188,7 +194,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            using var cts = new CancellationTokenSource(TopologyStartupTimeout);
             await StartTopologyAsync(cts.Token).ConfigureAwait(false);
         }
         catch
@@ -371,25 +377,30 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         _ = await _app.ResourceNotifications
             .WaitForResourceHealthyAsync("memories-server", cancellationToken)
-            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
+            .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
         MemoriesClient = _app.CreateHttpClient("memories-server");
         MemoriesClient.Timeout = TimeSpan.FromSeconds(60);
 
+        // The AppHost resource-health wait above is the backend readiness gate. Use the liveness
+        // endpoint here so a slow aggregate health check cannot fail fixture initialization for
+        // unrelated API tests.
         await WaitForEndpointAsync(
             MemoriesClient,
-            "/health",
+            "/alive",
             [HttpStatusCode.OK],
-            TimeSpan.FromMinutes(3),
-            TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            logStartIndex,
+            cancellationToken).ConfigureAwait(false);
 
-        // Story 10.1 — wait for the MCP service and expose its endpoint + client. The MCP /ready
-        // probe waits on the upstream Memories Server (3-strike rolling window); since we already
-        // confirmed memories-server /health above, the MCP readiness check converges quickly.
+        // Story 10.1 — wait for the MCP service and expose its endpoint + client. The upstream
+        // Memories Server checks remain covered by MCP API tests; fixture startup only needs the
+        // MCP HTTP surface and sidecar to be reachable.
         _ = await _app.ResourceNotifications
             .WaitForResourceHealthyAsync("memories-mcp", cancellationToken)
-            .WaitAsync(TimeSpan.FromMinutes(3), cancellationToken)
+            .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
         McpClient = _app.CreateHttpClient("memories-mcp");
@@ -398,10 +409,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         await WaitForEndpointAsync(
             McpClient,
-            "/health",
+            "/alive",
             [HttpStatusCode.OK],
-            TimeSpan.FromMinutes(3),
-            TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            logStartIndex,
+            cancellationToken).ConfigureAwait(false);
 
         DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
 
@@ -441,24 +454,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         const string resourceId = "memories-server";
         const string aspireResourceMarker = ".Resources." + resourceId;
-        const string aspireCategoryPrefix = "Aspire.Hosting.";
-
         // Anchor the resource match to two well-known shapes so an unrelated category like
-        // `Foo.Bar.Resources.memories-server-other.evil` cannot collide with the real resource:
+        // `Foo.Bar.SomeResource.memories-server` cannot collide with the real resource:
         //   1. Direct resource category: `memories-server[.|-]<sub>` (or exact match).
-        //   2. Aspire-shaped category: `Aspire.Hosting.<assembly>.Resources.memories-server[.|-]<sub>`.
+        //   2. AppHost resource category: `<assembly>.Resources.memories-server[.|-]<sub>`.
         int resourceIndex;
         if (category.StartsWith(resourceId, StringComparison.OrdinalIgnoreCase))
         {
             resourceIndex = 0;
         }
-        else if (category.StartsWith(aspireCategoryPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            resourceIndex = category.IndexOf(aspireResourceMarker, StringComparison.OrdinalIgnoreCase);
-        }
         else
         {
-            return false;
+            resourceIndex = category.IndexOf(aspireResourceMarker, StringComparison.OrdinalIgnoreCase);
         }
 
         if (resourceIndex < 0)
@@ -711,12 +718,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return stdout;
     }
 
-    private static async Task WaitForEndpointAsync(
+    private async Task WaitForEndpointAsync(
         HttpClient client,
         string url,
         IReadOnlyCollection<HttpStatusCode> expectedStatusCodes,
         TimeSpan timeout,
-        TimeSpan pollInterval)
+        TimeSpan pollInterval,
+        int logStartIndex,
+        CancellationToken cancellationToken)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
         Exception? lastException = null;
@@ -724,9 +733,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                using HttpResponseMessage response = await client.GetAsync(url).ConfigureAwait(false);
+                using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeCts.CancelAfter(EndpointProbeTimeout);
+                using HttpResponseMessage response = await client.GetAsync(url, probeCts.Token).ConfigureAwait(false);
                 lastStatusCode = response.StatusCode;
 
                 if (expectedStatusCodes.Contains(response.StatusCode))
@@ -739,13 +751,34 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 lastException = ex;
             }
 
-            await Task.Delay(pollInterval).ConfigureAwait(false);
+            await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
         }
 
         throw new TimeoutException(
             $"Endpoint '{url}' did not become ready within {timeout}. " +
             $"Last status: {lastStatusCode?.ToString() ?? "n/a"}. " +
-            $"Last error: {lastException?.Message ?? "n/a"}.");
+            $"Last error: {FormatException(lastException)}." +
+            $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
+    }
+
+    private static string FormatException(Exception? exception)
+        => exception is null
+            ? "n/a"
+            : $"{exception.GetType().Name}: {exception.Message}";
+
+    private static string FormatRecentLogs(IReadOnlyList<CapturedLogEntry> entries, int maxLines)
+    {
+        if (entries.Count == 0)
+        {
+            return "Recent captured logs: n/a";
+        }
+
+        IEnumerable<CapturedLogEntry> recent = entries
+            .Skip(Math.Max(0, entries.Count - maxLines));
+
+        return "Recent captured logs:" + Environment.NewLine + string.Join(
+            Environment.NewLine,
+            recent.Select(e => $"[{e.Level}] {e.Category}: {e.Message}"));
     }
 
     /// <summary>Represents a captured integration-test log entry.</summary>

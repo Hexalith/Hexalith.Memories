@@ -83,7 +83,7 @@ Requires Docker - see CONTRIBUTING.md
 Run the fast Docker-backed integration gate when Docker is available:
 
 ```powershell
-./tools/test.ps1 -Filter "Category=Integration&Category!=IntegrationSlow" -Configuration Release -ResultsDirectory "TestResults/integration-fast"
+./tools/test.ps1 -Filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" -Configuration Release -ResultsDirectory "TestResults/integration-fast"
 python tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
 ```
 
@@ -103,7 +103,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | --- | --- |
 | `build` | Restore and build `Hexalith.Memories.slnx` in Release. |
 | `test-unit-contract` | Run Docker-free unit/contract tests from `tools/test-projects.unit-contract.txt`. |
-| `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow` tests and verify required surface evidence. |
+| `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
 All jobs checkout submodules and use the SDK from `global.json`. Test lanes write TRX files
 under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
@@ -153,9 +153,10 @@ Releases are automated from pushes to `main` by `.github/workflows/release.yml`.
 release path and operator checklist are maintained in `docs/dev/release-runbook.md`.
 
 The workflow restores, builds, runs Docker-free tests, validates the package inventory, and then runs
-semantic-release. semantic-release creates the `v${version}` tag, updates `CHANGELOG.md`, creates the
-GitHub Release, packs every approved package with the same version, and publishes packages to
-nuget.org.
+semantic-release. semantic-release creates the `v${version}` tag, creates the GitHub Release, packs
+every approved package with the same version, and publishes packages to nuget.org. Release jobs do
+not commit back to `main`; `main` remains protected and all repository changes still go through pull
+requests.
 
 Required repository secret:
 

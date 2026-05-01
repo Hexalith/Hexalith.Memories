@@ -17,6 +17,9 @@ using StackExchange.Redis;
 /// <summary>DAPR Workflow activity that indexes a memory unit in RediSearch for full-text search.</summary>
 public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexResult>
 {
+    private static readonly TimeSpan IndexInfoRetryDelay = TimeSpan.FromMilliseconds(100);
+    private const int IndexInfoRetryAttempts = 10;
+
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSyntacticActivity> _logger;
 
@@ -162,7 +165,35 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
 
     private void EnsureSyntacticIndexReady(IDatabase db, string indexName, string tenantId)
     {
-        RedisResult info = db.Execute("FT.INFO", indexName);
+        IReadOnlyList<string> problems = [];
+        for (int attempt = 1; attempt <= IndexInfoRetryAttempts; attempt++)
+        {
+            RedisResult info = db.Execute("FT.INFO", indexName);
+            problems = DescribeSyntacticIndexProblems(db, info, indexName, tenantId, out bool incompleteMetadata);
+            if (problems.Count == 0)
+            {
+                return;
+            }
+
+            if (!incompleteMetadata || attempt == IndexInfoRetryAttempts)
+            {
+                break;
+            }
+
+            Thread.Sleep(IndexInfoRetryDelay);
+        }
+
+        throw new InvalidOperationException(
+            $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
+    }
+
+    private IReadOnlyList<string> DescribeSyntacticIndexProblems(
+        IDatabase db,
+        RedisResult info,
+        string indexName,
+        string tenantId,
+        out bool incompleteMetadata)
+    {
         List<string> problems = [];
 
         IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
@@ -174,6 +205,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
 
         HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
         HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
+        incompleteMetadata = prefixes.Count == 0 || actualFields.Count == 0;
         if (!actualFields.SetEquals(expectedFields)
             && IndexSchemaDefinitions.TryUpgradeMissingTagField(db, indexName, actualFields, expectedFields, "cloudeventSubject"))
         {
@@ -189,10 +221,6 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
         }
 
-        if (problems.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
-        }
+        return problems;
     }
 }
