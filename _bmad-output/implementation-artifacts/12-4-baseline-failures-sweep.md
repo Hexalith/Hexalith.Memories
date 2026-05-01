@@ -1,6 +1,6 @@
 # Story 12.4: Baseline Failures Sweep
 
-Status: ready-for-dev
+Status: review
 
 Story Key: 12-4-baseline-failures-sweep
 Epic: 12 - First Release & Operations Foundation
@@ -34,68 +34,68 @@ so that the "baseline failures hiding under script-only execution" pattern from 
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Establish the replay baseline and evidence format (AC: 1, 7)
-  - [ ] Record the current `HEAD`, branch, CI lane definitions, test inventory files, and existing `tools/test-release.ps1` baseline filters before changing anything.
-  - [ ] Read `_bmad-output/implementation-artifacts/deferred-work.md` and identify existing baseline entries, especially `S11-FA`, `S11-FB`, `S11-FC`, and `S11-FD`.
-  - [ ] Decide a consistent evidence format for each discovered failure: stable baseline key when accepted, test fully qualified name, project, lane, exact command or workflow/job, date, branch and commit SHA, environment source, first failing commit/story evidence, disposition, and follow-up trigger.
-  - [ ] List the exact Epic 8.x, 9.x, and 10.x branch/SHA replay points before triage begins, with a short rationale when an expected completion point is unavailable.
-  - [ ] Reconcile raw lane output against `S11-FA`, existing deferred-work entries, and existing `tools/test-release.ps1` filters before creating new accepted baseline records.
-  - [ ] Do not edit submodules or initialize nested submodules. Root-level submodules are already present in this checkout.
+- [x] Task 0 - Establish the replay baseline and evidence format (AC: 1, 7)
+  - [x] Record the current `HEAD`, branch, CI lane definitions, test inventory files, and existing `tools/test-release.ps1` baseline filters before changing anything.
+  - [x] Read `_bmad-output/implementation-artifacts/deferred-work.md` and identify existing baseline entries, especially `S11-FA`, `S11-FB`, `S11-FC`, and `S11-FD`.
+  - [x] Decide a consistent evidence format for each discovered failure: stable baseline key when accepted, test fully qualified name, project, lane, exact command or workflow/job, date, branch and commit SHA, environment source, first failing commit/story evidence, disposition, and follow-up trigger.
+  - [x] List the exact Epic 8.x, 9.x, and 10.x branch/SHA replay points before triage begins, with a short rationale when an expected completion point is unavailable.
+  - [x] Reconcile raw lane output against `S11-FA`, existing deferred-work entries, and existing `tools/test-release.ps1` filters before creating new accepted baseline records.
+  - [x] Do not edit submodules or initialize nested submodules. Root-level submodules are already present in this checkout.
 
-- [ ] Task 1 - Replay the authoritative lanes locally (AC: 1, 7)
-  - [ ] Build once in Release before `--no-build` lane runs:
+- [x] Task 1 - Replay the authoritative lanes locally (AC: 1, 7)
+  - [x] Build once in Release before `--no-build` lane runs:
     ```powershell
     dotnet restore Hexalith.Memories.slnx
     dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
     ```
-  - [ ] Run the Docker-free lane as CI does:
+  - [x] Run the Docker-free lane as CI does:
     ```powershell
     bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
     ```
-  - [ ] Run the fast integration lane as CI does, only when Docker and Dapr prerequisites are available:
+  - [x] Run the fast integration lane as CI does, only when Docker and Dapr prerequisites are available:
     ```powershell
     bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast
     python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
     ```
-  - [ ] If the fast integration lane cannot run locally because Docker or Dapr is unavailable, capture that environment blocker and use GitHub Actions results for the missing lane rather than marking failures absent.
-  - [ ] When using GitHub Actions fallback evidence, record the workflow name, run URL or run id, job name, branch, commit SHA, date, lane command or job command evidence, and result.
-  - [ ] Treat zero executed tests as a lane failure unless the existing verifier explicitly classifies an individual empty TRX as informational while aggregate lane execution remains non-zero.
+  - [x] If the fast integration lane cannot run locally because Docker or Dapr is unavailable, capture that environment blocker and use GitHub Actions results for the missing lane rather than marking failures absent.
+  - [x] When using GitHub Actions fallback evidence, record the workflow name, run URL or run id, job name, branch, commit SHA, date, lane command or job command evidence, and result.
+  - [x] Treat zero executed tests as a lane failure unless the existing verifier explicitly classifies an individual empty TRX as informational while aggregate lane execution remains non-zero.
 
-- [ ] Task 2 - Map failures to story history (AC: 1, 2, 7)
-  - [ ] For every red test, use `git log`, story artifacts, and Dev Agent Records to identify the likely story or commit range that introduced the failure.
-  - [ ] Prioritize Epic 8.x, 9.x, and 10.x because Epic 11 retrospective identified those completion states as likely hiding red tests.
-  - [ ] Keep `S11-FA` separate. It is already tracked and Story 12.6 owns its final resolution; Story 12.4 should only verify that the filter and deferred-work linkage are explicit.
-  - [ ] Do not claim a baseline is pre-existing unless the evidence shows it failed before the current story's changes.
-  - [ ] Use at least one provenance source before assigning a story or commit anchor: story file reference, commit or PR evidence, prior CI failure, prior deferred-work entry, or an explicit `no authoritative source found` note after the bounded search.
+- [x] Task 2 - Map failures to story history (AC: 1, 2, 7)
+  - [x] For every red test, use `git log`, story artifacts, and Dev Agent Records to identify the likely story or commit range that introduced the failure.
+  - [x] Prioritize Epic 8.x, 9.x, and 10.x because Epic 11 retrospective identified those completion states as likely hiding red tests.
+  - [x] Keep `S11-FA` separate. It is already tracked and Story 12.6 owns its final resolution; Story 12.4 should only verify that the filter and deferred-work linkage are explicit.
+  - [x] Do not claim a baseline is pre-existing unless the evidence shows it failed before the current story's changes.
+  - [x] Use at least one provenance source before assigning a story or commit anchor: story file reference, commit or PR evidence, prior CI failure, prior deferred-work entry, or an explicit `no authoritative source found` note after the bounded search.
 
-- [ ] Task 3 - Fix low-risk baseline failures when the cause is clear (AC: 2, 3)
-  - [ ] For each failure with a small, coherent fix, update only the production/test files needed for that test's behavior.
-  - [ ] Preserve public contracts, telemetry names, package inventory, release behavior, and unrelated test expectations unless the failing test directly proves they are wrong.
-  - [ ] Add or update focused tests only when they close the identified regression and do not broaden the story into feature work.
-  - [ ] Record the before/after command and the story/commit anchor in this story's Dev Agent Record.
+- [x] Task 3 - Fix low-risk baseline failures when the cause is clear (AC: 2, 3)
+  - [x] For each failure with a small, coherent fix, update only the production/test files needed for that test's behavior.
+  - [x] Preserve public contracts, telemetry names, package inventory, release behavior, and unrelated test expectations unless the failing test directly proves they are wrong.
+  - [x] Add or update focused tests only when they close the identified regression and do not broaden the story into feature work.
+  - [x] Record the before/after command and the story/commit anchor in this story's Dev Agent Record.
 
-- [ ] Task 4 - Accept or filter unresolved baselines explicitly (AC: 2, 4, 5)
-  - [ ] For each baseline not fixed in this story, add an `S11-FX` style entry to `_bmad-output/implementation-artifacts/deferred-work.md`.
-  - [ ] If a release-lane filter is required, update `tools/test-release.ps1` and add an inline comment that names the matching deferred-work entry.
-  - [ ] Add a new filter only after proving the failure is pre-existing, not low-risk fixable within Story 12.4, and represented by a deferred-work entry with an explicit re-open trigger.
-  - [ ] Do not add broad filters such as whole classes, whole namespaces, or category-wide exclusions unless the deferred-work entry proves that the whole surface is the accepted baseline.
-  - [ ] Keep filters narrow enough that a renamed/removed test fails loudly rather than silently shrinking the release lane.
+- [x] Task 4 - Accept or filter unresolved baselines explicitly (AC: 2, 4, 5)
+  - [x] For each baseline not fixed in this story, add an `S11-FX` style entry to `_bmad-output/implementation-artifacts/deferred-work.md`.
+  - [x] If a release-lane filter is required, update `tools/test-release.ps1` and add an inline comment that names the matching deferred-work entry.
+  - [x] Add a new filter only after proving the failure is pre-existing, not low-risk fixable within Story 12.4, and represented by a deferred-work entry with an explicit re-open trigger.
+  - [x] Do not add broad filters such as whole classes, whole namespaces, or category-wide exclusions unless the deferred-work entry proves that the whole surface is the accepted baseline.
+  - [x] Keep filters narrow enough that a renamed/removed test fails loudly rather than silently shrinking the release lane.
 
-- [ ] Task 5 - Add executable inventory/filter guardrails (AC: 5, 6)
-  - [ ] Extend `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so it parses or otherwise verifies the accepted filter map in `tools/test-release.ps1`.
-  - [ ] Assert that every filtered test has a matching deferred-work entry by key and test name.
-  - [ ] Assert that every deferred-work entry claiming a test-runner filter has a matching `tools/test-release.ps1` filter entry by key and test name.
-  - [ ] Assert that when no open `S11-FX` baseline entries remain, the release-lane filter map is expected to be empty.
-  - [ ] Preserve the existing inventory assertions for `tools/test-projects.unit-contract.txt`, `tools/test-projects.integration-fast.txt`, `tools/test.ps1`, `tools/test.sh`, and `.github/workflows/ci.yml`.
+- [x] Task 5 - Add executable inventory/filter guardrails (AC: 5, 6)
+  - [x] Extend `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so it parses or otherwise verifies the accepted filter map in `tools/test-release.ps1`.
+  - [x] Assert that every filtered test has a matching deferred-work entry by key and test name.
+  - [x] Assert that every deferred-work entry claiming a test-runner filter has a matching `tools/test-release.ps1` filter entry by key and test name.
+  - [x] Assert that when no open `S11-FX` baseline entries remain, the release-lane filter map is expected to be empty.
+  - [x] Preserve the existing inventory assertions for `tools/test-projects.unit-contract.txt`, `tools/test-projects.integration-fast.txt`, `tools/test.ps1`, `tools/test.sh`, and `.github/workflows/ci.yml`.
 
-- [ ] Task 6 - Validate final lane state and close honestly (AC: 1-8)
-  - [ ] Re-run affected focused tests after each fix.
-  - [ ] Re-run the full Docker-free lane before review.
-  - [ ] Re-run `integration-fast` or capture the exact external blocker/GitHub Actions evidence if local Docker/Dapr execution is unavailable.
-  - [ ] Confirm `tools/test-release.ps1` filters, `deferred-work.md`, and `CiTestInventoryTests` agree.
-  - [ ] For any runner or accounting script edit, record the minimal reproduction proving the lane result or coverage accounting was wrong independently of product test failures.
-  - [ ] Final notes distinguish zero unexpected reds from accepted filtered baselines: either the canonical filtered lane is green, or every remaining raw red is fully represented in deferred-work and the canonical filter map.
-  - [ ] Update this story's Dev Agent Record with commands, red/green summaries, file list, and any accepted baselines.
+- [x] Task 6 - Validate final lane state and close honestly (AC: 1-8)
+  - [x] Re-run affected focused tests after each fix.
+  - [x] Re-run the full Docker-free lane before review.
+  - [x] Re-run `integration-fast` or capture the exact external blocker/GitHub Actions evidence if local Docker/Dapr execution is unavailable.
+  - [x] Confirm `tools/test-release.ps1` filters, `deferred-work.md`, and `CiTestInventoryTests` agree.
+  - [x] For any runner or accounting script edit, record the minimal reproduction proving the lane result or coverage accounting was wrong independently of product test failures.
+  - [x] Final notes distinguish zero unexpected reds from accepted filtered baselines: either the canonical filtered lane is green, or every remaining raw red is fully represented in deferred-work and the canonical filter map.
+  - [x] Update this story's Dev Agent Record with commands, red/green summaries, file list, and any accepted baselines.
 
 ## Definition of Done Evidence
 
@@ -293,6 +293,32 @@ GPT-5 Codex
 
 - Pre-dev hardening preflight JSON `_bmad-output/process-notes/predev-preflight-latest.json` reported a soft working-tree warning only: ` M Hexalith.EventStore`.
 - Story selection logic chose `12-4-baseline-failures-sweep` because `ready_count` was `1`, below target `5`, and this was the first backlog story in sprint-status order.
+- 2026-05-01 Task 0 baseline snapshot: branch `main`, HEAD `f0e3a88d49b8f22f4ceb4a9931eb4cb502bfff19`. Pre-existing working-tree changes before Story 12.4 implementation were present in `.github/workflows/ci.yml`, `CONTRIBUTING.md`, `Hexalith.EventStore`, `_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md`, `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `_bmad-output/process-notes/predev-preflight-latest.json`, `tests/tooling/story_scope/story_scope_validator_test.py`, `tools/check-story-file-scope.py`, plus two untracked predev-preflight JSON files. Story 12.4 edits treat those as pre-existing and do not modify submodule contents.
+- 2026-05-01 Task 0 CI lane definitions captured from `.github/workflows/ci.yml`: `test-unit-contract` restores/builds `Hexalith.Memories.slnx` in Release and runs `bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract`; `integration-fast` initializes Dapr 1.17.6, verifies Docker, restores/builds Release, runs `bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast`, then runs `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast`.
+- 2026-05-01 Task 0 inventories captured: `tools/test-projects.unit-contract.txt` lists Contracts.Tests, Server.Tests, Cli.Tests, Mcp.Tests, and EventStore.Tests; `tools/test-projects.integration-fast.txt` lists IntegrationTests only. Existing release-lane accepted filter is the Server.Tests project filter `FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`, linked by comment to `S11-FA`.
+- 2026-05-01 Task 0 deferred-work baseline entries identified: `S11-FA` is the accepted `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` baseline failure and has the current `tools/test-release.ps1` filter; `S11-FB` compile-time symbol verification and `S11-FC` stale-tag preflight are deferred improvements with no test-runner filter; `S11-FD` partial-publish alerting is deferred to Story 12.5 with no test-runner filter.
+- 2026-05-01 Task 0 evidence format set for every discovered red: stable baseline key when accepted, fully qualified test name, project, lane, exact command or workflow/job, date, branch, commit SHA, environment source, observed error summary, first failing commit/story evidence or `unmapped` with bounded-search evidence, disposition (`fix`, `accept`, `filter`, `environment-blocked`, or `not-reproduced`), final validation command, and re-open trigger for accepted debt.
+- 2026-05-01 Task 0 replay points selected before triage: Epic 8.x `d7495a3` (`feat: Implement Redis OTEL instrumentation and harden AC #2 from Story 8.4`) as the available Story 8.5 completion-state artifact anchor; Epic 9.x `bc4d5cc` (`feat: Complete Story 9.3 by resolving final review findings and enhancing Redis observation logic`) as the Story 9.3 close-out anchor; Epic 10.x `8207b54` (`Refactor search and traversal response handling for token budget management`) as the Story 10.2 artifact anchor. These are selected from `git log -- _bmad-output/implementation-artifacts/{8-5,9-3,10-2}*.md`; no historical branch names were available locally, so SHAs are the authoritative replay handles.
+- 2026-05-01 Task 0 reconciliation rule set before creating any new accepted baseline: raw lane failures must first be matched against `S11-FA`, existing `S11-F*` deferred entries, and current `tools/test-release.ps1` filters. No new accepted baseline record may be added until this reconciliation proves the red is confirmed, pre-existing, and not a small coherent fix inside Story 12.4.
+- 2026-05-01 Task 1 environment: local `dotnet --version` = `10.0.300-preview.0.26177.108`; Docker Desktop engine = `29.4.0` linux; local Dapr CLI = `1.17.1`, runtime = `1.17.4`. Existing Dapr containers were already running for 9 days under names `dapr_placement`, `dapr_scheduler`, `dapr_redis`, and `dapr_zipkin`; their placement/scheduler host ports differ from CI's explicit 50005/50006 bindings, so they were not replaced.
+- 2026-05-01 Task 1 restore/build: `dotnet restore Hexalith.Memories.slnx` passed; `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore` passed across 18 projects with 0 warnings and 0 errors.
+- 2026-05-01 Task 1 local Bash notes: default `bash` resolved to WSL and first failed on CRLF then lacked `dotnet`; working-tree `tools/test.sh` was normalized to LF with no content diff and the lane was rerun with `C:\Program Files\Git\bin\bash.exe` so Windows `dotnet` and Windows paths were used without changing the runner script.
+- 2026-05-01 Task 1 `test-unit-contract`: `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract` passed. Results: Contracts.Tests 468/468, Server.Tests 1535/1535, Cli.Tests 326/326, Mcp.Tests 76/76, EventStore.Tests 84/84; aggregate 2489 executed, 0 failed.
+- 2026-05-01 Task 1 `integration-fast`: `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` passed. Results: IntegrationTests 156 passed, 49 skipped, 0 failed, 205 total; aggregate executed count 156.
+- 2026-05-01 Task 1 coverage verifier: `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` passed and reported required surfaces satisfied for ingestion, syntactic-search, semantic-search, graph-search, hybrid-search, tenant-isolation, telemetry-integration, and mcp-integration.
+- 2026-05-01 Task 1 fallback reference checked but not used for final local result: GitHub Actions CI run `25183506496`, job `integration-fast` (`73834615683`), branch `fix/release-protected-main-semantic-release`, commit `ad5aa78fc3ca6da50264ec77a8b721699dbfed2c`, created `2026-04-30T18:51:41Z`, URL `https://github.com/Hexalith/Hexalith.Memories/actions/runs/25183506496`, passed with 156 executed integration tests and coverage verifier success.
+- 2026-05-01 Task 2 mapping outcome: no red tests were produced by either current authoritative lane, so no new failure-to-story anchors were assigned. `S11-FA` remains the only accepted release-lane baseline identified during reconciliation; provenance is the existing `deferred-work.md` entry plus the current `tools/test-release.ps1` project filter, and Story 12.6 remains its resolution owner.
+- 2026-05-01 Task 3 fix outcome: no low-risk baseline failures were available to fix because both authoritative lanes were green. No production files and no focused regression tests were changed for failure correction.
+- 2026-05-01 Task 4 acceptance/filter outcome: no new accepted baselines were created and no new filters were added. Existing `S11-FA` remains unchanged in `deferred-work.md` and `tools/test-release.ps1`; `S11-FB`, `S11-FC`, and `S11-FD` do not claim test-runner filters.
+- 2026-05-01 Task 5 red phase: after adding `TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries` without helpers, `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --filter "FullyQualifiedName~CiTestInventoryTests"` failed to compile with missing `BaselineFilter`, `DeferredBaseline`, `ReadAcceptedReleaseFilters`, and `ReadOpenDeferredBaselines`.
+- 2026-05-01 Task 5 green phase: implemented the minimal parser in `CiTestInventoryTests.cs` using generated regexes. The guard extracts `S11-F*` keys from `tools/test-release.ps1`, verifies narrow `FullyQualifiedName!~...` filters, parses open deferred baseline entries from `deferred-work.md`, asserts filtered tests have matching deferred entries, asserts deferred entries claiming a release filter have matching filters, and asserts filters must be empty if no open accepted baseline entries remain.
+- 2026-05-01 Task 5 validation: `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --filter "FullyQualifiedName~CiTestInventoryTests"` passed 5/5; `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~CiTestInventoryTests"` passed 5/5.
+- 2026-05-01 Task 6 final build: `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore` passed across 18 projects with 0 warnings and 0 errors.
+- 2026-05-01 Task 6 transient runner note: one full `test-unit-contract` rerun timed out after `Cli.Tests` left a stuck `dotnet test` process. The direct check `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter "Category!=Integration&Category!=Benchmark" --logger "trx;LogFileName=CliHangCheck.trx" --results-directory TestResults\cli-hang-check --blame-hang-timeout 60s --blame-hang-dump-type none` then passed 327/327 and reported all tests finished, so the timeout was not reproducible as a product/test failure.
+- 2026-05-01 Task 6 final `test-unit-contract`: after clearing `TestResults/test-unit-contract`, `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract` passed. Results: Contracts.Tests 468/468, Server.Tests 1535/1535, Cli.Tests 327/327, Mcp.Tests 76/76, EventStore.Tests 84/84; aggregate 2490 executed, 0 failed.
+- 2026-05-01 Task 6 final `integration-fast`: after clearing `TestResults/integration-fast`, `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` passed. Results: IntegrationTests 156 passed, 49 skipped, 0 failed, 205 total; aggregate executed count 156.
+- 2026-05-01 Task 6 final coverage verifier: `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` passed and reported all required surfaces satisfied.
+- 2026-05-01 Task 6 final baseline disposition: zero unexpected reds were found in the authoritative lanes. The only accepted filtered baseline remains `S11-FA`, unchanged and now guarded by `CiTestInventoryTests`; no new `S11-FX` entries or `tools/test-release.ps1` filters were added.
 
 ### Completion Notes List
 
@@ -302,16 +328,33 @@ GPT-5 Codex
 - The recommended implementation tightens accepted-baseline accounting around `tools/test-release.ps1`, `_bmad-output/implementation-artifacts/deferred-work.md`, and `CiTestInventoryTests`.
 - Party-mode review on 2026-05-01 tightened replay-point selection, failure disposition, accepted-baseline identity, GitHub Actions fallback evidence, filter gating, bidirectional inventory guardrails, provenance mapping, runner-defect proof, and sprint-status evidence boundaries.
 - No implementation tests were run during story creation; this run only created the ready-for-dev story artifact.
+- Task 0 complete: baseline evidence, CI lane definitions, inventories, existing accepted filter, existing `S11-F*` deferred entries, evidence schema, and replay-point SHAs were recorded before lane execution.
+- Task 1 complete: both authoritative lanes were replayed locally after Release restore/build; no raw reds were discovered beyond the existing accepted release-lane filter owned by Story 12.6.
+- Task 2 complete: no newly discovered red tests required history mapping; existing `S11-FA` was kept separate and unchanged.
+- Task 3 complete: no baseline fixes were needed because the replay found zero unexpected reds.
+- Task 4 complete: no new accepted baselines or release-lane filters were required.
+- Task 5 complete: `CiTestInventoryTests` now enforces bidirectional linkage between accepted release-lane filters and open deferred baseline entries while preserving the existing inventory and CI command assertions.
+- Task 6 complete: final build, Docker-free lane, integration-fast lane, and coverage verifier passed. No unexpected reds remain; existing `S11-FA` is explicitly linked and guarded.
+- Definition of Done validated on 2026-05-01: all tasks/subtasks are checked, acceptance criteria are satisfied, focused and lane validations passed, File List is current, no new accepted baselines were created, and the story is ready for review.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
 
 ### Change Log
 
 - 2026-05-01: Created Story 12.4 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-01: Party-mode review completed; applied clarification-only hardening for evidence comparability, accepted-baseline traceability, filter gating, and guardrail expectations.
+- 2026-05-01: Started development; moved sprint status to `in-progress` and completed Task 0 baseline/evidence setup.
+- 2026-05-01: Replayed `test-unit-contract` and `integration-fast`; both lanes passed locally and integration coverage verification passed.
+- 2026-05-01: Completed failure-history mapping with no new reds; retained `S11-FA` as existing Story 12.6-owned debt.
+- 2026-05-01: Completed low-risk baseline fix pass with no product/test failure fixes required.
+- 2026-05-01: Completed accepted-baseline/filter pass with no new deferred-work or release filter entries.
+- 2026-05-01: Added executable guardrails linking `tools/test-release.ps1` accepted filters to open deferred baseline entries.
+- 2026-05-01: Completed final validation; all authoritative lanes passed and no new accepted baselines were created.
+- 2026-05-01: Completed Story 12.4 implementation and moved status to `review`.
 
 ## Party-Mode Review
 

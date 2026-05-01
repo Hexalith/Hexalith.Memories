@@ -88,6 +88,20 @@ partial-string matches. Overrides also do not bypass forbidden-default areas suc
 contents, release scripts, `package-lock.json`, or runtime/source paths without a separate human,
 product, or architecture decision.
 
+Forbidden-default paths can still appear in a story's `Allowed files for this story:` block when the
+story author has made a deliberate decision to touch them. Listing the path in the allow-list IS the
+"separate human/product/architecture decision" that authorizes the change; reviewers should treat any
+allow-list entry that intersects the forbidden-default list as a load-bearing scope decision and call
+it out explicitly in story review.
+
+The forbidden-default list (one source of truth, in `tools/check-story-file-scope.py`) currently
+covers: `src/**/*.cs`, `tests/**/*.cs`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`,
+`tools/test-release.ps1`, `package-lock.json`, and the submodule trees `Hexalith.AI.Tools/**`,
+`Hexalith.Commons/**`, `Hexalith.EventStore/**`. Submodule pointer changes (a tree entry like the bare
+`Hexalith.EventStore` path with no children) are also detected and treated as forbidden-default — the
+matcher uses recursive `**` semantics so a `<submodule>/**` glob matches both the bare submodule path
+and any path beneath it.
+
 To run the check directly:
 
 ```powershell

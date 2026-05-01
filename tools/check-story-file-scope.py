@@ -5,16 +5,19 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
-import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 
-STORY_KEY_PATTERN = re.compile(r"(?<!\d)(\d+-\d+-[a-z0-9][a-z0-9-]*)(?![a-z0-9-])", re.IGNORECASE)
+STORY_KEY_PATTERN = re.compile(
+    r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
+    re.IGNORECASE,
+)
 BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
+CODE_FENCE_PATTERN = re.compile(r"^\s*(```|~~~)")
 
 ALLOWED_LABELS = {
     "allowed files for this story:",
@@ -75,9 +78,13 @@ def normalize_label(value: str) -> str:
     return value.strip().strip("*").strip().lower()
 
 
+def extract_story_keys(value: str) -> list[str]:
+    return [match.lower() for match in STORY_KEY_PATTERN.findall(value or "")]
+
+
 def extract_story_key(value: str) -> str | None:
-    match = STORY_KEY_PATTERN.search(value or "")
-    return match.group(1).lower() if match else None
+    keys = extract_story_keys(value)
+    return keys[0] if keys else None
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -142,25 +149,37 @@ def parse_trailers(message: str) -> tuple[list[str], list[str]]:
         normalized_key = key.strip().lower()
         normalized_value = value.strip()
         if normalized_key in {"story", "story-key"}:
-            story_key = extract_story_key(normalized_value)
-            if not story_key:
+            keys_in_value = extract_story_keys(normalized_value)
+            if len(keys_in_value) > 1:
+                raise ValidationError(f"Multiple story keys in single trailer: {line}")
+            if not keys_in_value:
                 raise ValidationError(f"Malformed Story trailer: {line}")
-            story_keys.append(story_key)
+            story_keys.append(keys_in_value[0])
         elif normalized_key == "scope-override":
             overrides.append(normalized_value)
 
-    if len(story_keys) > 1:
-        raise ValidationError("Multiple Story/Story-Key trailers found; keep exactly one story trailer.")
+    if len(set(story_keys)) > 1:
+        raise ValidationError(
+            "Conflicting Story/Story-Key trailers: " + ", ".join(sorted(set(story_keys))),
+        )
     return story_keys, overrides
 
 
 def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> StorySource:
     sources: list[StorySource] = []
-    explicit = extract_story_key(args.story_key or "")
-    if explicit:
+
+    explicit_raw = (args.story_key or "").strip()
+    if explicit_raw:
+        explicit = extract_story_key(explicit_raw)
+        if not explicit:
+            raise ValidationError(
+                f"--story-key value is not a valid story key: {explicit_raw}",
+            )
         sources.append(StorySource("cli", explicit))
+
     if trailer_keys:
         sources.append(StorySource("trailer", trailer_keys[0]))
+
     branch = extract_story_key(args.branch_name or "")
     if branch:
         sources.append(StorySource("branch", branch))
@@ -183,26 +202,32 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
 
 
 def extract_backtick_path(line: str) -> str | None:
+    # The first backticked token in a bullet is the path. Additional backticks
+    # in the same bullet are rationale and are intentionally ignored — splitting
+    # one bullet into multiple paths would silently widen scope.
     match = BACKTICK_PATTERN.search(line)
-    if match:
-        return match.group(1)
-
-    value = line.strip()
-    if value.startswith("- "):
-        value = value[2:].strip()
-    if not value or " " in value:
-        return None
-    return value
+    return match.group(1) if match else None
 
 
 def parse_allowed_scope(story_path: Path) -> list[str]:
-    lines = story_path.read_text(encoding="utf-8").splitlines()
+    text = story_path.read_text(encoding="utf-8")
+    if text.startswith("﻿"):
+        text = text[1:]
+    lines = text.splitlines()
+
     in_file_scope = False
     in_allowed = False
+    in_code_block = False
     allowed: list[str] = []
 
-    for line in lines:
-        stripped = line.strip()
+    for raw_line in lines:
+        if CODE_FENCE_PATTERN.match(raw_line):
+            in_code_block = not in_code_block
+            continue
+        if in_code_block:
+            continue
+
+        stripped = raw_line.strip()
         if stripped.startswith("## "):
             if stripped.lower() == "## file scope":
                 in_file_scope = True
@@ -223,7 +248,10 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
 
         if not in_allowed:
             continue
-        if not stripped.startswith("- "):
+
+        # Only accept top-level bullets (no leading indentation). Sub-bullets
+        # under an allowed entry are explanatory, not authoritative.
+        if not raw_line.startswith("- "):
             continue
 
         path = extract_backtick_path(stripped)
@@ -251,12 +279,23 @@ def collect_changed_files(args: argparse.Namespace) -> list[str]:
 
 
 def matches_glob(path: str, pattern: str) -> bool:
-    normalized_pattern = normalize_path(pattern)
-    if fnmatch.fnmatchcase(path, normalized_pattern):
-        return True
-    if "/**/" in normalized_pattern:
-        collapsed = normalized_pattern.replace("/**/", "/")
-        return fnmatch.fnmatchcase(path, collapsed)
+    return _glob_match(path.split("/"), normalize_path(pattern).split("/"))
+
+
+def _glob_match(parts: list[str], pat: list[str]) -> bool:
+    if not pat:
+        return not parts
+    head, *rest = pat
+    if head == "**":
+        # `**` matches zero or more path segments.
+        for i in range(len(parts) + 1):
+            if _glob_match(parts[i:], rest):
+                return True
+        return False
+    if not parts:
+        return False
+    if fnmatch.fnmatchcase(parts[0], head):
+        return _glob_match(parts[1:], rest)
     return False
 
 
@@ -306,6 +345,10 @@ def override_matches(path: str, override: Override) -> bool:
     return path == override.pattern
 
 
+def to_posix(path: Path) -> str:
+    return str(path).replace("\\", "/")
+
+
 def validate(args: argparse.Namespace) -> int:
     changed = collect_changed_files(args)
     if not changed:
@@ -319,20 +362,21 @@ def validate(args: argparse.Namespace) -> int:
     artifacts_root = Path(args.artifacts_root)
     story_path = artifacts_root / f"{source.key}.md"
     if not story_path.exists():
-        raise ValidationError(f"Story artifact not found: {story_path}")
+        raise ValidationError(f"Story artifact not found: {to_posix(story_path)}")
 
     allowed = parse_allowed_scope(story_path)
     overrides = parse_overrides(trailer_overrides)
 
     print(f"Selected story key: {source.key}")
     print(f"Story source: {source.name}")
-    print(f"Story artifact: {story_path}")
+    print(f"Story artifact: {to_posix(story_path)}")
     print("Allowed scope entries:")
     for entry in allowed:
         print(f"  - {entry}")
 
     allowed_files: list[str] = []
     out_of_scope: list[str] = []
+    forbidden_no_override: list[str] = []
     overridden: list[str] = []
     forbidden_overridden: list[str] = []
 
@@ -349,7 +393,10 @@ def validate(args: argparse.Namespace) -> int:
                 overridden.append(path)
             continue
 
-        out_of_scope.append(path)
+        if is_forbidden_default(path):
+            forbidden_no_override.append(path)
+        else:
+            out_of_scope.append(path)
 
     if allowed_files:
         print("In-scope changed files:")
@@ -366,13 +413,18 @@ def validate(args: argparse.Namespace) -> int:
         for path in forbidden_overridden:
             print(f"  - {path}")
 
+    if forbidden_no_override:
+        print("Forbidden-default files (no override; D5-class):")
+        for path in forbidden_no_override:
+            print(f"  - {path}")
+
     if out_of_scope:
         print("Out-of-scope files:")
         for path in out_of_scope:
             print(f"  - {path}")
-        print("Accepted override format: Scope-Override: path/or/narrow-glob - short rationale")
 
-    if out_of_scope or forbidden_overridden:
+    if out_of_scope or forbidden_overridden or forbidden_no_override:
+        print("Accepted override format: Scope-Override: path/or/narrow-glob - short rationale")
         return 1
 
     print("Story file scope validation passed.")

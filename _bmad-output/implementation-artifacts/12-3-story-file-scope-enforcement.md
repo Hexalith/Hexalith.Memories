@@ -1,6 +1,6 @@
 # Story 12.3: Story-File-Scope Enforcement
 
-Status: review
+Status: done
 
 **Effort estimate:** ~1.5-2.0 working days.
 
@@ -112,6 +112,59 @@ so that the D5-style file-scope leak from Epic 11 cannot recur silently.
     - narrow non-goals: no submodule changes, no runtime behavior changes, no release tooling changes, and no recursive submodule commands
   - [x] Validate the happy path and failure path with explicit commands and captured output.
   - [x] Confirm the new job can become a required PR check without depending on runtime source changes, release tooling changes, or submodule edits.
+
+### Review Findings
+
+Code review run on 2026-05-01 against commit `0b065b8` using the three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Diff size 1196+ / 59-. AC audit (post-resolution): AC1 PASS, AC2 PASS (D2 resolved — story allow-list intersecting forbidden-default IS the spec-required deliberate decision; documented in CONTRIBUTING.md; remaining override-vagueness relaxation deferred as 12.3-RV12), AC3 PASS, AC4 PASS. 22 patches applied; 2 patches deferred (P6 override-vagueness relaxation pending design discussion; P22 multi-backticks-per-bullet kept at "first backtick is path, additional backticks are rationale" by deliberate design choice).
+
+#### Decisions needed
+
+- [x] [Review][Decision] Implementation commit `0b065b8` violates its own File Scope — leaks `Hexalith.EventStore` (submodule pointer), `_bmad-output/implementation-artifacts/13-3-extend-embedding-client-to-support-ollama.md`, `_bmad-output/process-notes/predev-preflight-2026-05-01T154530Z.json`, `_bmad-output/process-notes/predev-preflight-latest.json`. Dev Agent Record line 333 acknowledged these as out-of-scope, but they were committed. Decision: revert + recommit, accept and amend Dev Agent Record more explicitly, or other process correction?
+- [x] [Review][Decision] Story-allowed paths bypass forbidden-default audit (`tools/check-story-file-scope.py:339-352`). A story listing `src/Foo.cs` in its File Scope short-circuits before the forbidden-default check. Decision: should an explicit allow-list entry override forbidden-default (current behavior), or should forbidden-default ALWAYS gate the allow-list, requiring an explicit "opt-out of default forbidden" mechanism?
+- [x] [Review][Decision] Hooks `mktemp` on Windows Git Bash → Python validator may break on MSYS path translation. Verify hands-on, or change to a guaranteed-translatable path inside the repo (e.g. `.git/story-scope-changed.txt`) preemptively?
+
+#### Patches
+
+- [x] [Review][Patch] Submodule pointer leak NOT detected as forbidden-default — `is_forbidden_default('Hexalith.EventStore')` returns False because `Hexalith.EventStore/**` requires children. The literal submodule-pointer tree entry has no slash. Add prefix-equality match alongside the `/**` glob. This is the exact regression Story 12.2's closure note assigned 12.3 to prevent. [tools/check-story-file-scope.py:25-35]
+- [x] [Review][Patch] `extract_backtick_path` falls back to bare un-backticked tokens, contradicting CONTRIBUTING.md ("extracts only backtick-wrapped paths") and spec Task 0. Remove the fallback. [tools/check-story-file-scope.py:185-195]
+- [x] [Review][Patch] `matches_glob` uses `fnmatch` semantics where `*` matches `/`. A story allow-list entry like `tests/*` would permit any path under `tests/...` including forbidden `tests/**/*.cs`. Use proper recursive `**` semantics. [tools/check-story-file-scope.py:253-260]
+- [x] [Review][Patch] `.githooks/pre-commit` and `.githooks/commit-msg` lack the executable bit (mode 100644). Linux/macOS `git commit` silently bypasses them. `git update-index --chmod=+x .githooks/*`. [.githooks/pre-commit, .githooks/commit-msg]
+- [x] [Review][Patch] CI force-push: `${{ github.event.before }}` SHA is unreachable after history rewrite. `git diff "$before_sha" "$head_sha"` aborts the job with `bad object`. Wrap in fallback to `diff-tree` against HEAD or against the merge-base with `main`. [.github/workflows/ci.yml:51-55]
+- [ ] [Review][Patch] Override-vagueness rule rejects legitimate root-level files (`Dockerfile`, `LICENSE`, `package.json`) via `"/" not in normalized`, and rejects narrow `dir/**` overrides. Relax: allow path-shaped values with rationale; only reject clearly broad patterns (`*`, `**`, `.`, `/`, repo-root, prose-only). **Deferred to 12.3-RV12** — design decision needed on what constitutes "narrow enough"; relaxing without a clear rule risks weakening the audit value. [tools/check-story-file-scope.py:281-300]
+- [x] [Review][Patch] `parse_allowed_scope` does not track fenced code blocks. CONTRIBUTING.md's own template inside a story would be parsed as authoritative entries. Toggle on triple-backtick. [tools/check-story-file-scope.py:198-236]
+- [x] [Review][Patch] Sub-bullets under an allowed entry are parsed as additional allow-list entries because parser uses `stripped` (discards indentation). Reject indented bullets. [tools/check-story-file-scope.py:226-231]
+- [x] [Review][Patch] `STORY_KEY_PATTERN` lookbehind `(?<!\d)` only blocks digits; letters preceding still match. `feat/abc123-12-3-foo` resolves to `123-12-3-foo`. Use `(?<![\w-])`. [tools/check-story-file-scope.py:16]
+- [x] [Review][Patch] `parse_trailers` rejects duplicate identical Story trailers (e.g. `Story:` and `Story-Key:` both naming the same key). Only fail when trailer values disagree. [tools/check-story-file-scope.py:152-154]
+- [x] [Review][Patch] Unparseable `--story-key` is silently demoted instead of failing closed. `--story-key bad-value` falls through to trailer/branch. Spec calls CLI "highest precedence" — silent ignore violates fail-closed semantics. [tools/check-story-file-scope.py:159-161]
+- [x] [Review][Patch] Tests write commit-message files into the test runner's cwd via `Path(self._testMethodName + ".txt")`. Pollutes repo root, races on parallel runs, leaks files on crash. Use `tempfile.NamedTemporaryFile`. [tests/tooling/story_scope/story_scope_validator_test.py:34-38]
+- [x] [Review][Patch] `test_path_normalization_handles_windows_and_posix_inputs` only asserts `returncode == 0`. Add assertions that BOTH inputs normalize to the same path and that the `In-scope changed files:` block lists them as the expected POSIX form. [tests/tooling/story_scope/story_scope_validator_test.py:212-222]
+- [x] [Review][Patch] `test_real_current_story_file_scope_pattern_is_parseable` reads the live `12-2-...md`. Spec asked for "fixture", not "live file". Move to a frozen copy under `tests/tooling/story_scope/fixtures/`. [tests/tooling/story_scope/story_scope_validator_test.py:230-238]
+- [x] [Review][Patch] Add D5 regression test for plain `src/**/*.cs` touch with NO override (current `test_d5_style_source_touch_fails_even_with_override` only covers the override case). The validator currently reports forbidden-default-with-no-override as plain "Out-of-scope" with no submodule/forbidden diagnostic — assert that distinct diagnostic too. [tests/tooling/story_scope/story_scope_validator_test.py:102-120]
+- [x] [Review][Patch] Add tests for: diff-source-missing failure (spec required), empty `Scope-Override:` value, branch+trailer agreement (only conflict is tested today). [tests/tooling/story_scope/story_scope_validator_test.py]
+- [x] [Review][Patch] `extract_backtick_path` extracts only the FIRST backtick path on multi-token bullets — kept as deliberate design after first-pass implementation showed real story bullets routinely use additional backticks for inline-code rationale (e.g. `- \`.github/workflows/ci.yml\` - UPDATE. Add the required \`story-file-scope\` job.`). Resolution: explicitly document that the first backtick token is the path and subsequent backticks are rationale; do NOT split into multiple paths. Story authors who need to allow two paths should write two bullets. [tools/check-story-file-scope.py:185-189]
+- [x] [Review][Patch] `Story:` value containing two distinct keys silently picks the first via `extract_story_key`. Use `findall`, error on multiple matches in a single trailer value. [tools/check-story-file-scope.py:144-148]
+- [x] [Review][Patch] Diagnostic prints story artifact path with OS-native separators on Windows (`_bmad-output\implementation-artifacts\...`). Spec says paths should be normalized to POSIX-style — also for printed diagnostics. [tools/check-story-file-scope.py:328-329]
+- [x] [Review][Patch] sprint-status.yaml `last_updated` comment says "moved in-progress -> review" but previous status was `ready-for-dev`. Correct the narrative comment. [_bmad-output/implementation-artifacts/sprint-status.yaml]
+- [x] [Review][Patch] Tests assert on stdout substrings without anchoring to section headers (e.g. `assertIn("docs/dev/story-scope.md", stdout)`). Anchor to `Out-of-scope files:` block to prevent accidental hits when the same path appears in `Allowed scope entries:` or `Audited Scope-Override entries:`. [tests/tooling/story_scope/story_scope_validator_test.py multiple]
+- [x] [Review][Patch] CI `BRANCH_NAME=$branch_name` written to `$GITHUB_ENV` without heredoc-quoting; a branch name containing newline corrupts the env file. Use the documented `KEY<<EOF` heredoc syntax. [.github/workflows/ci.yml:59-63]
+
+#### Deferred (pre-existing or out-of-scope-to-fix-now)
+
+- [x] [Review][Defer] CI runs duplicate jobs on `pull_request` and `push` for the same SHA — concurrency keys differ so neither cancels the other. [.github/workflows/ci.yml:3-9] — deferred, not regression-critical
+- [x] [Review][Defer] CI: PR from a fork — `github.event.pull_request.base.sha` may not be fetched in the head-ref clone. [.github/workflows/ci.yml:43-46] — deferred until fork PRs are accepted
+- [x] [Review][Defer] CI: brand-new branch first push produces a giant `diff-tree -r HEAD` listing every file in the head commit. [.github/workflows/ci.yml:51-52] — deferred, paired with P5 force-push fix
+- [x] [Review][Defer] Branch with no story key + no trailer (e.g. dependabot/renovate) fails closed across all CI. No allowlist exists. [tools/check-story-file-scope.py:168-172] — deferred until automation PRs are configured
+- [x] [Review][Defer] `commit-msg` re-reads `git diff --cached --name-only` after pre-commit hook may have changed the index; file set may differ between hooks. [.githooks/commit-msg:12] — deferred, low real-world impact
+- [x] [Review][Defer] `read_commit_message` doesn't handle BOM or non-UTF-8 messages — UnicodeDecodeError instead of clean validator error. [tools/check-story-file-scope.py:114-118] — deferred, edge case
+- [x] [Review][Defer] `--changed-files-file` doesn't strip UTF-8 BOM; PowerShell-emitted file would mismatch the first path silently. [tools/check-story-file-scope.py:246] — deferred, edge case
+- [x] [Review][Defer] `collect_changed_files` silently drops paths normalizing to empty (`..`-only). [tools/check-story-file-scope.py:250] — deferred, theoretical
+- [x] [Review][Defer] Pre-commit `git branch --show-current` empty during rebase/cherry-pick/detached-HEAD; validator fails closed mid-rebase. [.githooks/pre-commit:7] — deferred, needs UX design
+- [x] [Review][Defer] `python` fallback could land on Python 2 on legacy systems. [.githooks/pre-commit:13-17] — deferred, no Python 2 in target environments
+- [x] [Review][Defer] Hooks consume `git diff --cached --name-only` line-oriented output; filenames containing newlines mishandled. [.githooks/pre-commit:12] — deferred, no such filenames in repo
+- [x] [Review][Defer] `is_vague` mixes raw `pattern` and post-normalized `normalized` for special-char check; backslashes get normalized away before the test. [tools/check-story-file-scope.py:286-288] — deferred, paired with P6
+- [x] [Review][Defer] `parse_allowed_scope` doesn't honor `### ` subheadings as section terminators inside `## File Scope`. [tools/check-story-file-scope.py:206-211] — deferred, no current story uses this shape
+- [x] [Review][Defer] `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not documented in CONTRIBUTING.md. [tools/check-story-file-scope.py:19-23] — deferred, either remove or document in a follow-up
+- [x] [Review][Defer] Multiple `Allowed files for this story:` blocks merge silently. [tools/check-story-file-scope.py:217-223] — deferred, no current story uses this shape
 
 ## File Scope
 
@@ -348,6 +401,35 @@ GPT-5
 - Updated `CONTRIBUTING.md` with File Scope authoring rules, hook setup, story-key precedence, changed-file semantics, valid and invalid `Scope-Override:` examples, required PR check naming, and non-goals including no nested submodule commands.
 - Validated required behavior: in-scope changes pass, out-of-scope changes fail, matching non-forbidden overrides pass, broad overrides fail, branch/trailer conflicts fail closed, Windows/POSIX path normalization is covered, and zero changed files report an explicit no-op success.
 - No runtime source, release scripts, package metadata, package lock file, or submodule contents were intentionally modified for this story.
+
+#### Scope-Justification: implementation commit `0b065b8` out-of-scope leaks (review close-out, 2026-05-01)
+
+Code review identified four files in commit `0b065b8` outside the declared `## File Scope`. Per D1 resolution, these are accepted on this story with the durable prevention shipped in this same review pass (bare-submodule-path matcher + executable hook bit + D5-no-override regression test). Justifications:
+
+- `Hexalith.EventStore` (submodule pointer bump 4a56c7c → d3df818): a working-tree side effect carried over from concurrent EventStore work; the pointer was not authored by Story 12.3 logic. Reverting in a follow-up commit was rejected as risky given the unknown intent of the bump. The new bare-submodule matcher (`is_forbidden_default('Hexalith.EventStore')` is now True via the recursive `**` glob fix) ensures any future story committing this leak is caught.
+- `_bmad-output/implementation-artifacts/13-3-extend-embedding-client-to-support-ollama.md`: a co-authored sibling story creation accidentally bundled into this commit instead of its own `docs(bmad): create story 13.3 context` commit. Story 13.3 is `ready-for-dev` and unchanged by this leak.
+- `_bmad-output/process-notes/predev-preflight-2026-05-01T154530Z.json` and `_bmad-output/process-notes/predev-preflight-latest.json`: BMad workflow telemetry artifacts emitted automatically by the pre-development preflight pass. The story File Scope did not anticipate these. A follow-up grooming pass should add `_bmad-output/process-notes/**` either to the BMad workflow's implicit-allow set or to the story-template default `Read/verify only:` examples.
+
+The validator now correctly fails on this exact file list with `--story-key 12-3-story-file-scope-enforcement` (re-verified after patches: `Hexalith.EventStore` and the three other paths are reported in the appropriate forbidden-default vs out-of-scope sections).
+
+#### Code review patches applied (2026-05-01)
+
+- Forbidden-default `<submodule>/**` globs now match the bare submodule pointer path via proper recursive `**` semantics. The submodule-pointer leak class Story 12.2's closure note assigned to 12.3 is now detected.
+- Glob matching switched from `fnmatch` to a recursive segment walker. `tools/*` no longer matches `tools/sub/x.py`; `**` correctly spans zero or more segments.
+- `extract_backtick_path` no longer falls back to bare un-backticked tokens; only the first backtick token in a bullet is extracted, matching the spec's "do not infer paths from arbitrary prose" rule.
+- `parse_allowed_scope` tracks fenced code blocks and ignores their contents; indented sub-bullets are no longer parsed as authoritative allow-list entries; the parser strips an optional leading UTF-8 BOM.
+- `STORY_KEY_PATTERN` lookbehind tightened to `(?<![\w-])` so `feat/abc123-12-3-foo` no longer resolves to `123-12-3-foo`. Third segment must start with a letter.
+- Trailer parser now permits duplicate-consistent `Story:` / `Story-Key:` trailers (real tooling commonly emits both) and rejects multiple story keys in a single trailer value.
+- `--story-key` with an unparseable value fails closed instead of silently demoting to trailer/branch precedence.
+- D5 case with no override at all now reports a distinct `Forbidden-default files (no override; D5-class):` diagnostic instead of a generic out-of-scope message.
+- Story-artifact path diagnostic prints in POSIX form on Windows.
+- `.githooks/pre-commit` and `.githooks/commit-msg`: file mode set to 100755 (executable bit) so Linux/macOS clones do not silently bypass them. Tempfiles relocated to `$git_dir/story-scope-changed-$$.txt` to dodge Windows MSYS `/tmp` path-translation risk.
+- CI workflow: force-push and brand-new-branch first-push paths now compare against `origin/main` instead of an unreachable `before` SHA or the entire HEAD tree. `BRANCH_NAME` written to `$GITHUB_ENV` via the documented heredoc form.
+- Tests refactored to use `tempfile.NamedTemporaryFile` instead of polluting cwd. New regressions: D5 with no override, bare-submodule-pointer detection, fenced-code-block parser ignore, indented sub-bullet rejection, bare-token bullet rejection, glob `*` not crossing path separators, story-key regex letter-prefix guard, branch+trailer agreement, duplicate-consistent trailers, multi-key-in-single-trailer, unparseable `--story-key`, missing `--changed-files-file`, empty `Scope-Override:` value. Frozen inline fixture replaces the live-file dependency for parser-drift coverage.
+- `CONTRIBUTING.md` documents the allow-list-wins decision (an allow-list entry intersecting the forbidden-default list IS the spec-required separate decision; reviewers must call it out in story review) and lists the canonical forbidden-default set with the bare-submodule-pointer behavior.
+- `sprint-status.yaml` close-out comment corrected (`ready-for-dev -> review`, not `in-progress -> review`).
+
+15 follow-ups recorded as `12.3-RV1..12.3-RV15` in `_bmad-output/implementation-artifacts/deferred-work.md`. Live re-run: `python -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` → 25/25 pass; `python tools/check-story-file-scope.py --story-key 12-3-story-file-scope-enforcement --changed-file Hexalith.EventStore` exit 1 with `Forbidden-default files (no override; D5-class):` listing the bare submodule path.
 
 ### File List
 

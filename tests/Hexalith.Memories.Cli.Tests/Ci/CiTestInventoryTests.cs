@@ -6,11 +6,12 @@
 namespace Hexalith.Memories.Cli.Tests.Ci;
 
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 using Shouldly;
 
 /// <summary>Guards the CI test project inventory shared by local scripts and GitHub Actions.</summary>
-public sealed class CiTestInventoryTests
+public sealed partial class CiTestInventoryTests
 {
     private static readonly string[] ExpectedDockerFreeProjects =
     [
@@ -90,6 +91,25 @@ public sealed class CiTestInventoryTests
         }
     }
 
+    [Fact]
+    public void TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries()
+    {
+        string repoRoot = GetRepoRoot();
+
+        BaselineFilter[] filters = ReadAcceptedReleaseFilters(Path.Combine(repoRoot, "tools", "test-release.ps1"));
+        DeferredBaseline[] baselines = ReadOpenDeferredBaselines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
+
+        filters.ShouldAllBe(filter => baselines.Any(baseline => baseline.Key == filter.Key && baseline.TestName == filter.TestName));
+        baselines
+            .Where(static baseline => baseline.HasReleaseFilter)
+            .ShouldAllBe(baseline => filters.Any(filter => filter.Key == baseline.Key && filter.TestName == baseline.TestName));
+
+        if (baselines.Length == 0)
+        {
+            filters.ShouldBeEmpty("release-lane baseline filters must be empty when no open S11-F* baseline entries remain.");
+        }
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0;
@@ -102,6 +122,111 @@ public sealed class CiTestInventoryTests
 
         return count;
     }
+
+    private static BaselineFilter[] ReadAcceptedReleaseFilters(string path)
+    {
+        string[] lines = File.ReadAllLines(path);
+        List<BaselineFilter> filters = [];
+        string? currentKey = null;
+
+        foreach (string line in lines)
+        {
+            Match keyMatch = DeferredKeyRegex().Match(line);
+            if (keyMatch.Success)
+            {
+                currentKey = keyMatch.Groups["key"].Value;
+            }
+
+            Match filterMatch = ProjectFilterRegex().Match(line);
+            if (!filterMatch.Success)
+            {
+                continue;
+            }
+
+            currentKey.ShouldNotBeNullOrWhiteSpace($"release baseline filter '{line.Trim()}' must be preceded by a comment naming its S11-F* deferred-work entry.");
+
+            string testName = filterMatch.Groups["test"].Value.Trim();
+            testName.Contains('.', StringComparison.Ordinal)
+                .ShouldBeTrue($"release baseline filter '{line.Trim()}' must target a single test method, not a class, namespace, or category.");
+            filters.Add(new BaselineFilter(currentKey, testName));
+        }
+
+        return filters.ToArray();
+    }
+
+    private static DeferredBaseline[] ReadOpenDeferredBaselines(string path)
+        => ReadDeferredEntries(path)
+            .Select(ParseDeferredBaseline)
+            .Where(static baseline => baseline is not null)
+            .Cast<DeferredBaseline>()
+            .ToArray();
+
+    private static IEnumerable<string> ReadDeferredEntries(string path)
+    {
+        string[] lines = File.ReadAllLines(path);
+        List<string> current = [];
+
+        foreach (string line in lines)
+        {
+            if (line.StartsWith("- **S11-F", StringComparison.Ordinal) && current.Count > 0)
+            {
+                yield return string.Join(Environment.NewLine, current);
+                current.Clear();
+            }
+
+            if (line.StartsWith("- **S11-F", StringComparison.Ordinal) || current.Count > 0)
+            {
+                current.Add(line);
+            }
+        }
+
+        if (current.Count > 0)
+        {
+            yield return string.Join(Environment.NewLine, current);
+        }
+    }
+
+    private static DeferredBaseline? ParseDeferredBaseline(string entry)
+    {
+        Match keyMatch = DeferredKeyRegex().Match(entry);
+        if (!keyMatch.Success || IsResolvedDeferredEntry(entry))
+        {
+            return null;
+        }
+
+        bool baselineRelated = entry.Contains("baseline", StringComparison.OrdinalIgnoreCase)
+            || entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase);
+        if (!baselineRelated)
+        {
+            return null;
+        }
+
+        Match testMatch = DeferredTestNameRegex().Match(entry);
+        testMatch.Success.ShouldBeTrue($"deferred baseline entry '{keyMatch.Groups["key"].Value}' must name the filtered test.");
+
+        bool hasReleaseFilter = entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase)
+            || entry.Contains("release lane", StringComparison.OrdinalIgnoreCase);
+
+        return new DeferredBaseline(keyMatch.Groups["key"].Value, testMatch.Groups["test"].Value.Trim(), hasReleaseFilter);
+    }
+
+    private static bool IsResolvedDeferredEntry(string entry)
+        => entry.Contains("[resolved", StringComparison.OrdinalIgnoreCase)
+            || entry.Contains("closed for", StringComparison.OrdinalIgnoreCase)
+            || entry.Contains("resolved in", StringComparison.OrdinalIgnoreCase);
+
+    [GeneratedRegex(@"(?<key>S11-F[A-Z0-9]+)\.")]
+    private static partial Regex DeferredKeyRegex();
+
+    [GeneratedRegex("FullyQualifiedName!~(?<test>[^\"&]+)")]
+    private static partial Regex ProjectFilterRegex();
+
+    [GeneratedRegex("`(?<test>[^`]+Tests\\.[^`]+)`")]
+    private static partial Regex DeferredTestNameRegex();
+
+    private sealed record BaselineFilter(string Key, string TestName);
+
+    private sealed record DeferredBaseline(string Key, string TestName, bool HasReleaseFilter);
 
     private static string[] ReadInventory(string path)
         => File.ReadAllLines(path)

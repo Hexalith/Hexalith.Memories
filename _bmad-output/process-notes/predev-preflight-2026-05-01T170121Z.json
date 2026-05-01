@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "produced_by": "jobs/preflight-predev-hardening.py",
-  "timestamp": "2026-05-01T19:10:20Z",
+  "timestamp": "2026-05-01T17:01:21Z",
   "repo": "D:\\Hexalith.Memories",
   "result": "fail",
   "bootstrap_actions": [],
@@ -12,8 +12,8 @@
       "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
       "result": "pass",
       "details": "PARSE OK",
-      "file_size_bytes": 66508,
-      "line_count": 226,
+      "file_size_bytes": 63856,
+      "line_count": 224,
       "top_level_keys": [
         "development_status",
         "generated",
@@ -63,11 +63,11 @@
         ":(exclude)_bmad-output/process-notes/preflight-latest.json"
       ],
       "exit_code": 0,
-      "stdout": " M .github/workflows/ci.yml\n M CONTRIBUTING.md\n M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n M tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs\n M tests/tooling/story_scope/story_scope_validator_test.py\n M tools/check-story-file-scope.py\n M tools/test.sh\n",
+      "stdout": " M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n",
       "stderr": "",
-      "dirty_path_count": 11,
+      "dirty_path_count": 3,
       "result": "fail",
-      "details": "11 dirty path(s)"
+      "details": "3 dirty path(s)"
     }
   ],
   "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."

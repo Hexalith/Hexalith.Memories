@@ -35,29 +35,41 @@ jobs:
 
       - name: Collect story scope inputs
         shell: bash
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           mkdir -p .story-scope
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            branch_name="${{ github.head_ref }}"
-            head_sha="${{ github.event.pull_request.head.sha }}"
-            base_sha="${{ github.event.pull_request.base.sha }}"
-            git diff --name-only "$base_sha" "$head_sha" -- > .story-scope/changed-files.txt
+            branch_name="$PR_HEAD_REF"
+            head_sha="$PR_HEAD_SHA"
+            git diff --name-only "$PR_BASE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
           else
             branch_name="${GITHUB_REF_NAME}"
             head_sha="${GITHUB_SHA}"
-            before_sha="${{ github.event.before }}"
-            if [[ "$before_sha" =~ ^0+$ ]]; then
-              git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
+            # Force-push and brand-new-branch first push: github.event.before is
+            # all-zeros or unreachable. Fall back to comparing against `main` so
+            # the changed-file list reflects the branch contents, not the merge
+            # diff or every file in HEAD.
+            if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]] || ! git rev-parse --verify --quiet "$PUSH_BEFORE_SHA^{commit}" >/dev/null; then
+              git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 || true
+              if git rev-parse --verify --quiet origin/main >/dev/null; then
+                git diff --name-only origin/main..."$head_sha" -- > .story-scope/changed-files.txt
+              else
+                git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
+              fi
             else
-              git diff --name-only "$before_sha" "$head_sha" -- > .story-scope/changed-files.txt
+              git diff --name-only "$PUSH_BEFORE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
             fi
           fi
 
           git log -1 --format=%B "$head_sha" > .story-scope/commit-message.txt
           {
-            echo "BRANCH_NAME=$branch_name"
+            printf 'BRANCH_NAME<<__STORY_SCOPE_EOF__\n%s\n__STORY_SCOPE_EOF__\n' "$branch_name"
             echo "COMMIT_MESSAGE_FILE=.story-scope/commit-message.txt"
             echo "CHANGED_FILES_FILE=.story-scope/changed-files.txt"
           } >> "$GITHUB_ENV"
