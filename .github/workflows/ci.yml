@@ -22,6 +22,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  story-file-scope:
+    name: story-file-scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Collect story scope inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .story-scope
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            branch_name="${{ github.head_ref }}"
+            head_sha="${{ github.event.pull_request.head.sha }}"
+            base_sha="${{ github.event.pull_request.base.sha }}"
+            git diff --name-only "$base_sha" "$head_sha" -- > .story-scope/changed-files.txt
+          else
+            branch_name="${GITHUB_REF_NAME}"
+            head_sha="${GITHUB_SHA}"
+            before_sha="${{ github.event.before }}"
+            if [[ "$before_sha" =~ ^0+$ ]]; then
+              git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
+            else
+              git diff --name-only "$before_sha" "$head_sha" -- > .story-scope/changed-files.txt
+            fi
+          fi
+
+          git log -1 --format=%B "$head_sha" > .story-scope/commit-message.txt
+          {
+            echo "BRANCH_NAME=$branch_name"
+            echo "COMMIT_MESSAGE_FILE=.story-scope/commit-message.txt"
+            echo "CHANGED_FILES_FILE=.story-scope/changed-files.txt"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate story file scope
+        run: python3 tools/check-story-file-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
+
   build:
     name: build
     runs-on: ubuntu-latest

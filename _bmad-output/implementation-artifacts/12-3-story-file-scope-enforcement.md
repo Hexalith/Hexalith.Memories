@@ -1,6 +1,6 @@
 # Story 12.3: Story-File-Scope Enforcement
 
-Status: ready-for-dev
+Status: review
 
 **Effort estimate:** ~1.5-2.0 working days.
 
@@ -30,62 +30,62 @@ so that the D5-style file-scope leak from Epic 11 cannot recur silently.
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Lock the parser contract against real story files (AC: 1, 2)
-  - [ ] Read several current story artifacts with `## File Scope` sections (`11-1`, `11-2`, `12-1`, `12-2`, `13-1`) and define the exact parser rules for:
+- [x] Task 0 - Lock the parser contract against real story files (AC: 1, 2)
+  - [x] Read several current story artifacts with `## File Scope` sections (`11-1`, `11-2`, `12-1`, `12-2`, `13-1`) and define the exact parser rules for:
     - `Allowed files for this story:`
     - `Read/verify only:`
     - `Forbidden by default:`
     - the free-form explanatory line that follows those lists
-  - [ ] Treat the `Allowed files for this story:` list as the authoritative writable allow-list.
-  - [ ] Parse only direct Markdown bullet-list glob entries under `Allowed files for this story:`.
-  - [ ] Ignore fenced code blocks, free-form prose, and nested explanatory bullets unless they contain a direct backtick-wrapped path/glob entry.
-  - [ ] Accept the existing "`path` - rationale" convention by extracting only the backtick-wrapped path or glob; do not infer paths from arbitrary prose.
-  - [ ] Treat `Read/verify only:` and `Forbidden by default:` as explanatory validation output and reviewer guidance, not as the primary matching source.
-  - [ ] Fail with a clear error if the selected story file has no parseable `File Scope` section or has an empty `Allowed files for this story:` list.
+  - [x] Treat the `Allowed files for this story:` list as the authoritative writable allow-list.
+  - [x] Parse only direct Markdown bullet-list glob entries under `Allowed files for this story:`.
+  - [x] Ignore fenced code blocks, free-form prose, and nested explanatory bullets unless they contain a direct backtick-wrapped path/glob entry.
+  - [x] Accept the existing "`path` - rationale" convention by extracting only the backtick-wrapped path or glob; do not infer paths from arbitrary prose.
+  - [x] Treat `Read/verify only:` and `Forbidden by default:` as explanatory validation output and reviewer guidance, not as the primary matching source.
+  - [x] Fail with a clear error if the selected story file has no parseable `File Scope` section or has an empty `Allowed files for this story:` list.
 
-- [ ] Task 1 - Build one shared story-scope validator (AC: 1, 2, 3)
-  - [ ] Add a single cross-platform script, preferably `tools/check-story-file-scope.py`, as the only place that:
+- [x] Task 1 - Build one shared story-scope validator (AC: 1, 2, 3)
+  - [x] Add a single cross-platform script, preferably `tools/check-story-file-scope.py`, as the only place that:
     - resolves the target story key
     - finds the matching story artifact
     - parses allowed globs from `## File Scope`
     - collects changed paths from either staged diff input or a caller-provided file list
     - parses commit trailers for `Story:` / `Story-Key:` and `Scope-Override:`
     - emits a non-zero exit code plus human-readable diagnostics on mismatch
-  - [ ] Resolve the story key in this precedence order:
+  - [x] Resolve the story key in this precedence order:
     - explicit CLI argument from CI or the hook wrapper
     - explicit `Story:` or `Story-Key:` trailer in the commit message
     - branch name containing a full story key such as `12-3-story-file-scope-enforcement`
-  - [ ] Fail closed with a clear conflict diagnostic when multiple available story-key sources resolve to different story keys instead of silently validating against an unexpected story.
-  - [ ] Parse commit trailers with `git interpret-trailers --parse` instead of ad hoc footer splitting.
-  - [ ] Treat `Scope-Override:` as a trailer, not a prose sentence. Require it to name the out-of-scope file or glob plus a short rationale.
-  - [ ] Reject vague overrides such as `*`, `.`, repository-root patterns, bare directory names, empty values, or prose-only rationales that do not identify the affected path or glob.
-  - [ ] Require every changed file to match at least one allowed glob unless a matching `Scope-Override:` covers it.
-  - [ ] Keep the forbidden-default glob list in one Python-owned source of truth used by hooks, CI, and tests; do not duplicate forbidden-path logic in shell wrappers or workflow expressions.
-  - [ ] Normalize changed paths and scope entries to repository-relative POSIX-style paths before matching so Windows local hooks and Linux CI produce the same decision.
-  - [ ] Print the selected story key, the story artifact path, the offending file list, the allowed-scope source, the specific unmatched files, and the accepted `Scope-Override:` format in plain-text failure output.
-  - [ ] Define changed-file handling explicitly: validate destination paths for added, modified, copied, and renamed files; document whether deleted paths are ignored or validated.
-  - [ ] Treat a legitimate empty diff as a plain-text no-op success, but fail when the diff source itself cannot be resolved.
+  - [x] Fail closed with a clear conflict diagnostic when multiple available story-key sources resolve to different story keys instead of silently validating against an unexpected story.
+  - [x] Parse commit trailers with `git interpret-trailers --parse` instead of ad hoc footer splitting.
+  - [x] Treat `Scope-Override:` as a trailer, not a prose sentence. Require it to name the out-of-scope file or glob plus a short rationale.
+  - [x] Reject vague overrides such as `*`, `.`, repository-root patterns, bare directory names, empty values, or prose-only rationales that do not identify the affected path or glob.
+  - [x] Require every changed file to match at least one allowed glob unless a matching `Scope-Override:` covers it.
+  - [x] Keep the forbidden-default glob list in one Python-owned source of truth used by hooks, CI, and tests; do not duplicate forbidden-path logic in shell wrappers or workflow expressions.
+  - [x] Normalize changed paths and scope entries to repository-relative POSIX-style paths before matching so Windows local hooks and Linux CI produce the same decision.
+  - [x] Print the selected story key, the story artifact path, the offending file list, the allowed-scope source, the specific unmatched files, and the accepted `Scope-Override:` format in plain-text failure output.
+  - [x] Define changed-file handling explicitly: validate destination paths for added, modified, copied, and renamed files; document whether deleted paths are ignored or validated.
+  - [x] Treat a legitimate empty diff as a plain-text no-op success, but fail when the diff source itself cannot be resolved.
 
-- [ ] Task 2 - Add local Git-hook enforcement without introducing new package tooling (AC: 1, 2, 4)
-  - [ ] Add repo-managed hook files under a tracked hooks directory such as `.githooks/`.
-  - [ ] Add a `pre-commit` hook that checks the staged diff using `git diff --cached --name-only --`.
-  - [ ] Add a `commit-msg` hook that reads the proposed commit message file and validates trailer-based `Story:` / `Story-Key:` / `Scope-Override:` semantics.
-  - [ ] Keep hook responsibilities explicit: `pre-commit` validates the staged file list with branch or caller-provided story context, while `commit-msg` validates trailers, overrides, and story-key conflicts once the proposed message exists.
-  - [ ] Use `core.hooksPath` documentation and/or a lightweight setup command in `CONTRIBUTING.md`; do not introduce Husky or another Node-only hook framework just for this story.
-  - [ ] Keep the hook wrappers thin. The Python validator should contain the logic so local hooks and CI cannot drift.
+- [x] Task 2 - Add local Git-hook enforcement without introducing new package tooling (AC: 1, 2, 4)
+  - [x] Add repo-managed hook files under a tracked hooks directory such as `.githooks/`.
+  - [x] Add a `pre-commit` hook that checks the staged diff using `git diff --cached --name-only --`.
+  - [x] Add a `commit-msg` hook that reads the proposed commit message file and validates trailer-based `Story:` / `Story-Key:` / `Scope-Override:` semantics.
+  - [x] Keep hook responsibilities explicit: `pre-commit` validates the staged file list with branch or caller-provided story context, while `commit-msg` validates trailers, overrides, and story-key conflicts once the proposed message exists.
+  - [x] Use `core.hooksPath` documentation and/or a lightweight setup command in `CONTRIBUTING.md`; do not introduce Husky or another Node-only hook framework just for this story.
+  - [x] Keep the hook wrappers thin. The Python validator should contain the logic so local hooks and CI cannot drift.
 
-- [ ] Task 3 - Add CI enforcement for branch/PR review time (AC: 1, 2, 3)
-  - [ ] Update `.github/workflows/ci.yml` with a dedicated required job, e.g. `story-file-scope`, that runs on the same `pull_request` and non-`main` `push` triggers as the existing CI workflow.
-  - [ ] In PR context, derive the source branch from `github.head_ref` and the authoritative head commit message from `github.event.pull_request.head.sha` rather than the synthetic merge commit.
-  - [ ] In push context, validate the checked-out branch and `HEAD` commit message.
-  - [ ] Supply CI with a deterministic changed-file list from the PR or push comparison and prove the job does not validate the synthetic merge commit message.
-  - [ ] Keep the CI job narrowly scoped to this guardrail. It must not rebuild the .NET solution or run Docker-backed tests.
-  - [ ] Invoke the same Python validator entrypoint used by `.githooks/pre-commit` and `.githooks/commit-msg`; CI may pass mode-specific arguments, but must not reimplement story-key, parser, forbidden-default, or override logic in YAML.
-  - [ ] Make the new job fail loudly when a story-key cannot be resolved, a story artifact is missing, a `File Scope` section cannot be parsed, or changed files fall outside the allowed scope without an override.
+- [x] Task 3 - Add CI enforcement for branch/PR review time (AC: 1, 2, 3)
+  - [x] Update `.github/workflows/ci.yml` with a dedicated required job, e.g. `story-file-scope`, that runs on the same `pull_request` and non-`main` `push` triggers as the existing CI workflow.
+  - [x] In PR context, derive the source branch from `github.head_ref` and the authoritative head commit message from `github.event.pull_request.head.sha` rather than the synthetic merge commit.
+  - [x] In push context, validate the checked-out branch and `HEAD` commit message.
+  - [x] Supply CI with a deterministic changed-file list from the PR or push comparison and prove the job does not validate the synthetic merge commit message.
+  - [x] Keep the CI job narrowly scoped to this guardrail. It must not rebuild the .NET solution or run Docker-backed tests.
+  - [x] Invoke the same Python validator entrypoint used by `.githooks/pre-commit` and `.githooks/commit-msg`; CI may pass mode-specific arguments, but must not reimplement story-key, parser, forbidden-default, or override logic in YAML.
+  - [x] Make the new job fail loudly when a story-key cannot be resolved, a story artifact is missing, a `File Scope` section cannot be parsed, or changed files fall outside the allowed scope without an override.
 
-- [ ] Task 4 - Add focused automated coverage and fixtures (AC: 1, 2, 3)
-  - [ ] Add focused regression coverage for the validator itself. Prefer stdlib-based Python tests or script fixtures over introducing a new test dependency.
-  - [ ] Cover at minimum:
+- [x] Task 4 - Add focused automated coverage and fixtures (AC: 1, 2, 3)
+  - [x] Add focused regression coverage for the validator itself. Prefer stdlib-based Python tests or script fixtures over introducing a new test dependency.
+  - [x] Cover at minimum:
     - branch-name story-key discovery
     - `Story:` trailer discovery
     - `Scope-Override:` trailer parsing
@@ -99,10 +99,10 @@ so that the D5-style file-scope leak from Epic 11 cannot recur silently.
     - exact override matching does not authorize sibling, suffix, child, or partial-string paths
     - Windows and Linux path normalization cases, including backslashes, leading `./`, repeated separators, and path traversal cleanup
     - legitimate zero-changed-file input returns an explicit no-op success
-  - [ ] Add at least one fixture using a real current story file pattern so parser drift in future story templates is caught quickly.
+    - [x] Add at least one fixture using a real current story file pattern so parser drift in future story templates is caught quickly.
 
-- [ ] Task 5 - Document and validate the operator flow (AC: 4)
-  - [ ] Update `CONTRIBUTING.md` with:
+- [x] Task 5 - Document and validate the operator flow (AC: 4)
+  - [x] Update `CONTRIBUTING.md` with:
     - how to write `## File Scope`
     - how story discovery works
     - how to install repo-managed hooks
@@ -110,8 +110,8 @@ so that the D5-style file-scope leak from Epic 11 cannot recur silently.
     - valid and invalid `Scope-Override:` examples
     - the repo-local hook setup command `git config core.hooksPath .githooks` and a warning not to use `--global`
     - narrow non-goals: no submodule changes, no runtime behavior changes, no release tooling changes, and no recursive submodule commands
-  - [ ] Validate the happy path and failure path with explicit commands and captured output.
-  - [ ] Confirm the new job can become a required PR check without depending on runtime source changes, release tooling changes, or submodule edits.
+  - [x] Validate the happy path and failure path with explicit commands and captured output.
+  - [x] Confirm the new job can become a required PR check without depending on runtime source changes, release tooling changes, or submodule edits.
 
 ## File Scope
 
@@ -324,6 +324,13 @@ GPT-5
 - Party-mode architecture review trace captured on 2026-05-01 by Winston/System Architect. Recommendation was `needs-story-update`; edits applied to lock story-key precedence, bounded override semantics, parser boundaries, hook/CI parity, and forbidden-default single-source ownership.
 - Pre-dev hardening preflight on 2026-05-01T15:18:53Z failed only for working tree cleanliness with stdout ` M Hexalith.EventStore\n`; classified as a soft working-tree warning because the dirty path is outside BMAD story-operation paths.
 - Party-mode review ran on 2026-05-01T15:37:08Z using `/bmad-party-mode 12-3-story-file-scope-enforcement; review;`.
+- Implementation red phase: `python -m unittest discover -s tests\tooling\story_scope -p "*_test.py"` failed because `tools/check-story-file-scope.py` did not exist yet.
+- Implementation validation: `python -m unittest discover -s tests\tooling\story_scope -p "*_test.py"` passed, 13/13.
+- Implementation validation: `python tools\check-story-file-scope.py --help` passed.
+- Implementation validation: `sh .githooks/pre-commit` passed with no staged files and emitted the explicit no-op message.
+- Implementation validation: Story 12.3-owned changed-file list passed `python tools\check-story-file-scope.py --story-key 12-3-story-file-scope-enforcement --changed-files-file <temp>`.
+- Implementation validation: `git diff --check -- .github/workflows/ci.yml CONTRIBUTING.md tools/check-story-file-scope.py tests/tooling/story_scope/story_scope_validator_test.py _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md _bmad-output/implementation-artifacts/sprint-status.yaml` passed; Git emitted CRLF conversion warnings only.
+- Working-tree note: `Hexalith.EventStore`, `_bmad-output/process-notes/predev-preflight-latest.json`, and `_bmad-output/process-notes/predev-preflight-2026-05-01T154530Z.json` were present as unrelated out-of-scope changes/noise and were not included in this story's file list.
 
 ### Completion Notes List
 
@@ -334,9 +341,22 @@ GPT-5
 - The story intentionally avoids Husky or other new package tooling because the repo already has a lightweight script-based tooling pattern and no existing hook manager.
 - Pre-dev party-mode review findings were applied on 2026-05-01 without broadening into runtime/source changes, submodule edits, package tooling, or implementation work.
 - Party-mode review applied clarifications for story-key conflict handling, hook timing, override specificity, parser boundaries, CI input source, path normalization, zero-diff behavior, plain diagnostics, and documentation examples.
+- Implemented one shared Python validator at `tools/check-story-file-scope.py` that resolves story keys from CLI, trailers, and branch names; parses trailers with `git interpret-trailers --parse`; parses `## File Scope`; normalizes paths; checks allowed globs; audits narrow `Scope-Override:` trailers; rejects vague overrides; and keeps forbidden-default path logic in one source.
+- Added repo-managed `.githooks/pre-commit` and `.githooks/commit-msg` wrappers. Both gather staged files with `git diff --cached --name-only --` and delegate all validation rules to the Python script.
+- Added the `story-file-scope` CI job to `.github/workflows/ci.yml`. The job checks out the PR/push head, derives the PR source branch from `github.head_ref`, reads the real head commit message from `github.event.pull_request.head.sha` in PR context, gathers deterministic changed files, and invokes the shared validator without rebuilding the .NET solution.
+- Added stdlib `unittest` regression coverage under `tests/tooling/story_scope/` for branch/trailer discovery, override parsing, in-scope and out-of-scope decisions, D5-style source touches, conflict handling, malformed/vague overrides, exact override boundaries, path normalization, zero-diff no-op behavior, and parser drift against a real current story file.
+- Updated `CONTRIBUTING.md` with File Scope authoring rules, hook setup, story-key precedence, changed-file semantics, valid and invalid `Scope-Override:` examples, required PR check naming, and non-goals including no nested submodule commands.
+- Validated required behavior: in-scope changes pass, out-of-scope changes fail, matching non-forbidden overrides pass, broad overrides fail, branch/trailer conflicts fail closed, Windows/POSIX path normalization is covered, and zero changed files report an explicit no-op success.
+- No runtime source, release scripts, package metadata, package lock file, or submodule contents were intentionally modified for this story.
 
 ### File List
 
+- `.github/workflows/ci.yml`
+- `.githooks/commit-msg`
+- `.githooks/pre-commit`
+- `CONTRIBUTING.md`
+- `tests/tooling/story_scope/story_scope_validator_test.py`
+- `tools/check-story-file-scope.py`
 - `_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
@@ -345,6 +365,7 @@ GPT-5
 - 2026-05-01: Created Story 12.3 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-01: Applied Winston pre-dev party-mode architecture findings to clarify story-key precedence, override limits, parser contract, hook/CI consistency, and forbidden-default ownership.
 - 2026-05-01: Party-mode review completed; story clarifications applied before development.
+- 2026-05-01: Implemented story-file-scope validator, local hooks, CI guardrail job, focused tests, and CONTRIBUTING guidance; story moved to `review`.
 
 ## Party-Mode Review
 

@@ -25,6 +25,79 @@ chore/<short-name>
 Pull requests should describe the user-visible change, list affected packages when package behavior
 or public API changes, and include the validation commands you ran. Reviews must pass before merge.
 
+## Story File Scope
+
+Every implementation story that is used for development should include a `## File Scope` section.
+Use this shape for new stories:
+
+```markdown
+## File Scope
+
+Allowed files for this story:
+
+- `path/or/glob` - short reason
+
+Read/verify only:
+
+- `path/to/context.md`
+
+Forbidden by default:
+
+- `src/**/*.cs`
+```
+
+The writable contract is the direct bullet list under `Allowed files for this story:`. The validator
+extracts only backtick-wrapped paths or globs from that list. `Read/verify only:` and
+`Forbidden by default:` are reviewer guidance and diagnostic context; they do not grant write access.
+Changed-file inputs are normalized to repository-relative POSIX-style paths. Added, modified, copied,
+renamed, and deleted paths are validated; for renames, Git's `--name-only` output supplies the
+destination path.
+
+The story scope check discovers the story key in the same order locally and in CI:
+
+1. explicit CLI argument, such as `--story-key 12-3-story-file-scope-enforcement`
+2. a commit trailer named `Story:` or `Story-Key:`
+3. a branch name containing a full story key, such as `feature/12-3-story-file-scope-enforcement`
+
+If two non-empty sources disagree, the check fails closed. Keep the branch name and commit trailer
+aligned when both are present.
+
+Install the repo-managed hooks per clone:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+Do not use `--global`; this repository's hooks are intentionally project-local. The `pre-commit` hook
+checks the staged file list using branch or caller-provided story context. The `commit-msg` hook reads
+the proposed commit message and validates `Story:`, `Story-Key:`, and `Scope-Override:` trailers
+against the same staged file list. CI runs the same Python validator against PR and non-`main` push
+diffs, using the PR source branch and the real head commit message rather than the synthetic merge
+commit.
+
+Use `Scope-Override:` only for narrow, audited exceptions:
+
+```text
+Scope-Override: docs/dev/story-scope.md - companion operator note discovered during implementation
+```
+
+Valid overrides name an exact repository-relative path or a narrow glob plus a short rationale.
+Invalid examples include `*`, `.`, `src`, `src/**`, and prose-only values such as `repo-wide cleanup`.
+An exact override authorizes only that path; it does not authorize siblings, children, suffixes, or
+partial-string matches. Overrides also do not bypass forbidden-default areas such as submodule
+contents, release scripts, `package-lock.json`, or runtime/source paths without a separate human,
+product, or architecture decision.
+
+To run the check directly:
+
+```powershell
+python tools/check-story-file-scope.py --story-key 12-3-story-file-scope-enforcement --changed-file CONTRIBUTING.md
+python tools/check-story-file-scope.py --branch-name feature/12-3-story-file-scope-enforcement --changed-files-file changed-files.txt --commit-message-file commit-message.txt
+```
+
+This guardrail has narrow non-goals: it does not change runtime behavior, release tooling, package
+metadata, or submodule contents. Do not initialize nested submodules recursively for story-scope work.
+
 ## Conventional Commits
 
 Release versions are computed from commit messages on `main`.
@@ -101,6 +174,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 
 | Check | Purpose |
 | --- | --- |
+| `story-file-scope` | Validate changed files against the originating story's `File Scope`. |
 | `build` | Restore and build `Hexalith.Memories.slnx` in Release. |
 | `test-unit-contract` | Run Docker-free unit/contract tests from `tools/test-projects.unit-contract.txt`. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
@@ -116,8 +190,8 @@ PR lanes; `./tools/test.ps1` is the Windows-first variant and is used in `CONTRI
 brevity.
 
 Required branch protection for `main` is documented in `docs/dev/branch-protection.md`. Maintainers
-must select the exact checks `build`, `test-unit-contract`, and `integration-fast` after the workflow
-has run at least once and GitHub exposes the check names.
+must select the exact checks `story-file-scope`, `build`, `test-unit-contract`, and
+`integration-fast` after the workflow has run at least once and GitHub exposes the check names.
 
 Package publishing, semantic-release, and `NUGET_API_KEY` are Story 11.2 release automation scope, not
 PR CI scope.
