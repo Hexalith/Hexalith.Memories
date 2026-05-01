@@ -122,6 +122,43 @@ has run at least once and GitHub exposes the check names.
 Package publishing, semantic-release, and `NUGET_API_KEY` are Story 11.2 release automation scope, not
 PR CI scope.
 
+## Code Review
+
+### Forbidden Default Tolerances
+
+When reviewing infrastructure, scripts, workflow YAML, release automation, or aggregate verification
+changes, treat tolerant defaults as forbidden by default. Approve them only when the PR includes an
+explicit idempotency proof, a clear recovery path, or an operator-visible warning, failure, or alert.
+Otherwise, request fail-fast behavior.
+
+Scan for these warning patterns:
+
+- Process-substitution or pipeline exit-code swallowing, such as `mapfile -t X < <(cmd)`, where the
+  consumer command can succeed after the producer command failed.
+- `actions/upload-artifact` with `if-no-files-found: ignore`, which can make missing build, pack, or
+  test output look successful.
+- `dotnet nuget push --skip-duplicate` used without an idempotency precondition and operator-visible
+  signal. It is acceptable for 409-conflict rerun recovery; it is not a substitute for partial-publish
+  detection.
+- Per-row or per-iteration zero-count checks that allow aggregate verifiers to pass when every
+  selected row, project, or package verified nothing.
+- Empty `catch { }` blocks in PowerShell or C# that swallow exceptions without a written recovery path
+  or alternate signal.
+- `|| true` and equivalent shell idioms that discard non-zero exit codes without making the tolerated
+  failure visible.
+- Default-empty-array fallbacks, such as `PROJECTS=("")`, that turn "no inventory" into "match
+  everything" or "verify nothing."
+
+Reviewer question: does this code intentionally tolerate a missing artifact, duplicate package,
+zero-count result, swallowed exception, missing inventory, or failed command? If yes, the PR must show
+why that tolerance is safe and how an operator or reviewer will notice when the tolerated path happens.
+
+This checklist comes from Epic 11 retrospective Pattern 3 in
+`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md`, the refreshed
+`_bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md` finding "Tolerant defaults
+repeatedly hid failure," and the referenced external/auto-memory name `feedback_tolerance_idioms.md`.
+Story 12.5 owns executable partial-publish alerting; this section is reviewer guidance only.
+
 ## Release Packages
 
 The approved NuGet package inventory is checked in at `tools/release-packages.json`.
