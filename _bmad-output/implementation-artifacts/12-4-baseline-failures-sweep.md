@@ -16,19 +16,19 @@ so that the "baseline failures hiding under script-only execution" pattern from 
 
 ## Acceptance Criteria
 
-1. Given the new CI lanes are running against `main`, when the quality owner replays `test-unit-contract` and `integration-fast` against recent story completion states from Epic 8.x, 9.x, and 10.x history, then every additional pre-existing red test beyond the already tracked `S11-FA` baseline is identified and documented.
+1. Given the new CI lanes are running against `main`, when the quality owner replays `test-unit-contract` and `integration-fast` against explicitly selected story completion states from Epic 8.x, 9.x, and 10.x history, then every additional pre-existing red test beyond the already tracked `S11-FA` baseline is identified and documented, including the exact branch or commit SHA selected for each replay point.
 
-2. Given the sweep produces a list of baseline failures, when each failure is triaged, then each is either fixed in this story with the fixing commit anchored to the story that introduced the regression, formally accepted as an `S11-FX` style entry in `_bmad-output/implementation-artifacts/deferred-work.md`, or filtered in the appropriate test-runner script with an inline comment pointing at the deferred-work entry.
+2. Given the sweep produces a list of baseline failures, when each failure is triaged, then each is classified as `fix`, `accept`, `filter`, `environment-blocked`, or `not-reproduced`; only `fix`, `accept`, or `filter` can close a confirmed product or test failure, and each closed failure is either fixed in this story with the fixing commit anchored to the story that introduced the regression, formally accepted as an `S11-FX` style entry in `_bmad-output/implementation-artifacts/deferred-work.md`, or filtered in the appropriate test-runner script with an inline comment pointing at the deferred-work entry.
 
 3. Given a failure is fixed rather than accepted, then the fix is limited to the production or test files needed for that specific failing assertion and includes focused regression coverage proving the failure no longer reproduces.
 
-4. Given a failure is accepted, then the deferred-work entry records the test name, the story or commit range that introduced the regression, the rationale for accepting it, the explicit re-open trigger, and any script filter that keeps the authoritative lanes green while the debt remains open.
+4. Given a failure is accepted, then the deferred-work entry records a stable `S11-FX###` identifier, the failing test fully qualified name, lane, observed error summary, the story or commit range that introduced the regression or `unmapped` with evidence, the rationale for accepting it, the explicit re-open trigger, and any script filter that keeps the authoritative lanes green while the debt remains open.
 
-5. Given the sweep completes, then `tools/test-release.ps1` remains the canonical source for currently accepted release-lane baseline filters and each filter entry links to a matching deferred-work entry.
+5. Given the sweep completes, then `tools/test-release.ps1` remains the canonical source for currently accepted release-lane baseline filters and each filter entry links to a matching deferred-work entry by stable `S11-FX###` identifier.
 
-6. Given `CiTestInventoryTests` guards CI test inventory behavior, then it asserts that every accepted baseline filter in `tools/test-release.ps1` has a corresponding deferred-work entry and that zero accepted filters is the expected state when no `S11-FX` entries are open.
+6. Given `CiTestInventoryTests` guards CI test inventory behavior, then it asserts bidirectional linkage: every accepted baseline filter in `tools/test-release.ps1` has a corresponding deferred-work entry by key and test name, every deferred-work entry claiming a runner filter has a matching filter entry, stale filters fail when the deferred-work entry is removed or resolved, and zero accepted filters is the expected state when no `S11-FX` entries are open.
 
-7. Given `test-unit-contract` and `integration-fast` are authoritative CI lanes, then completion notes include the exact commands, date, branch or commit under test, result summary, and any failure-to-story mapping evidence used for triage.
+7. Given `test-unit-contract` and `integration-fast` are authoritative CI lanes, then completion notes include the exact commands or GitHub Actions workflow/job, date, branch and commit SHA under test, environment source, result summary, and any failure-to-story mapping evidence used for triage.
 
 8. Given Story 12.4 is a baseline sweep, then it does not solve unrelated deferred work such as Story 12.5 partial-publish alerting, Story 12.6 S11-FA resolution, branch-protection automation, runtime feature expansion, or submodule updates.
 
@@ -37,7 +37,9 @@ so that the "baseline failures hiding under script-only execution" pattern from 
 - [ ] Task 0 - Establish the replay baseline and evidence format (AC: 1, 7)
   - [ ] Record the current `HEAD`, branch, CI lane definitions, test inventory files, and existing `tools/test-release.ps1` baseline filters before changing anything.
   - [ ] Read `_bmad-output/implementation-artifacts/deferred-work.md` and identify existing baseline entries, especially `S11-FA`, `S11-FB`, `S11-FC`, and `S11-FD`.
-  - [ ] Decide a consistent evidence format for each discovered failure: test fully qualified name, project, lane, command, first failing commit/story evidence, disposition, and follow-up trigger.
+  - [ ] Decide a consistent evidence format for each discovered failure: stable baseline key when accepted, test fully qualified name, project, lane, exact command or workflow/job, date, branch and commit SHA, environment source, first failing commit/story evidence, disposition, and follow-up trigger.
+  - [ ] List the exact Epic 8.x, 9.x, and 10.x branch/SHA replay points before triage begins, with a short rationale when an expected completion point is unavailable.
+  - [ ] Reconcile raw lane output against `S11-FA`, existing deferred-work entries, and existing `tools/test-release.ps1` filters before creating new accepted baseline records.
   - [ ] Do not edit submodules or initialize nested submodules. Root-level submodules are already present in this checkout.
 
 - [ ] Task 1 - Replay the authoritative lanes locally (AC: 1, 7)
@@ -56,6 +58,7 @@ so that the "baseline failures hiding under script-only execution" pattern from 
     python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
     ```
   - [ ] If the fast integration lane cannot run locally because Docker or Dapr is unavailable, capture that environment blocker and use GitHub Actions results for the missing lane rather than marking failures absent.
+  - [ ] When using GitHub Actions fallback evidence, record the workflow name, run URL or run id, job name, branch, commit SHA, date, lane command or job command evidence, and result.
   - [ ] Treat zero executed tests as a lane failure unless the existing verifier explicitly classifies an individual empty TRX as informational while aggregate lane execution remains non-zero.
 
 - [ ] Task 2 - Map failures to story history (AC: 1, 2, 7)
@@ -63,6 +66,7 @@ so that the "baseline failures hiding under script-only execution" pattern from 
   - [ ] Prioritize Epic 8.x, 9.x, and 10.x because Epic 11 retrospective identified those completion states as likely hiding red tests.
   - [ ] Keep `S11-FA` separate. It is already tracked and Story 12.6 owns its final resolution; Story 12.4 should only verify that the filter and deferred-work linkage are explicit.
   - [ ] Do not claim a baseline is pre-existing unless the evidence shows it failed before the current story's changes.
+  - [ ] Use at least one provenance source before assigning a story or commit anchor: story file reference, commit or PR evidence, prior CI failure, prior deferred-work entry, or an explicit `no authoritative source found` note after the bounded search.
 
 - [ ] Task 3 - Fix low-risk baseline failures when the cause is clear (AC: 2, 3)
   - [ ] For each failure with a small, coherent fix, update only the production/test files needed for that test's behavior.
@@ -73,12 +77,14 @@ so that the "baseline failures hiding under script-only execution" pattern from 
 - [ ] Task 4 - Accept or filter unresolved baselines explicitly (AC: 2, 4, 5)
   - [ ] For each baseline not fixed in this story, add an `S11-FX` style entry to `_bmad-output/implementation-artifacts/deferred-work.md`.
   - [ ] If a release-lane filter is required, update `tools/test-release.ps1` and add an inline comment that names the matching deferred-work entry.
+  - [ ] Add a new filter only after proving the failure is pre-existing, not low-risk fixable within Story 12.4, and represented by a deferred-work entry with an explicit re-open trigger.
   - [ ] Do not add broad filters such as whole classes, whole namespaces, or category-wide exclusions unless the deferred-work entry proves that the whole surface is the accepted baseline.
   - [ ] Keep filters narrow enough that a renamed/removed test fails loudly rather than silently shrinking the release lane.
 
 - [ ] Task 5 - Add executable inventory/filter guardrails (AC: 5, 6)
   - [ ] Extend `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so it parses or otherwise verifies the accepted filter map in `tools/test-release.ps1`.
   - [ ] Assert that every filtered test has a matching deferred-work entry by key and test name.
+  - [ ] Assert that every deferred-work entry claiming a test-runner filter has a matching `tools/test-release.ps1` filter entry by key and test name.
   - [ ] Assert that when no open `S11-FX` baseline entries remain, the release-lane filter map is expected to be empty.
   - [ ] Preserve the existing inventory assertions for `tools/test-projects.unit-contract.txt`, `tools/test-projects.integration-fast.txt`, `tools/test.ps1`, `tools/test.sh`, and `.github/workflows/ci.yml`.
 
@@ -87,7 +93,18 @@ so that the "baseline failures hiding under script-only execution" pattern from 
   - [ ] Re-run the full Docker-free lane before review.
   - [ ] Re-run `integration-fast` or capture the exact external blocker/GitHub Actions evidence if local Docker/Dapr execution is unavailable.
   - [ ] Confirm `tools/test-release.ps1` filters, `deferred-work.md`, and `CiTestInventoryTests` agree.
+  - [ ] For any runner or accounting script edit, record the minimal reproduction proving the lane result or coverage accounting was wrong independently of product test failures.
+  - [ ] Final notes distinguish zero unexpected reds from accepted filtered baselines: either the canonical filtered lane is green, or every remaining raw red is fully represented in deferred-work and the canonical filter map.
   - [ ] Update this story's Dev Agent Record with commands, red/green summaries, file list, and any accepted baselines.
+
+## Definition of Done Evidence
+
+- Replay evidence names the lane, exact local command or GitHub Actions workflow/job, date, branch, commit SHA, environment source, and result for both `test-unit-contract` and `integration-fast`.
+- The failure inventory table records each discovered test by fully qualified name, lane, observed error summary, disposition (`fix`, `accept`, `filter`, `environment-blocked`, or `not-reproduced`), linked story/commit/deferred-work entry, and final validation evidence.
+- Accepted unresolved failures use stable `S11-FX###` identifiers. The same identifier appears in `_bmad-output/implementation-artifacts/deferred-work.md`, any `tools/test-release.ps1` filter comment, and any `CiTestInventoryTests` expectation.
+- New filters are last resort only: the failure must be confirmed pre-existing, not low-risk fixable inside Story 12.4, and backed by a deferred-work record with a re-open trigger.
+- Runner or accounting script changes require a short proof that the issue is lane reporting or coverage accounting behavior rather than a product or test failure.
+- Detailed sweep evidence belongs in this story artifact and `_bmad-output/implementation-artifacts/deferred-work.md`; `_bmad-output/implementation-artifacts/sprint-status.yaml` may only reflect formal BMAD state transitions for Story 12.4.
 
 ## File Scope
 
@@ -283,6 +300,7 @@ GPT-5 Codex
 - Discovery loaded the relevant Epic 12 planning material, Epic 11 retrospective findings, current CI/test runner files, `deferred-work.md`, and previous Epic 12 story artifacts.
 - The story keeps `S11-FA` linked but owned by Story 12.6.
 - The recommended implementation tightens accepted-baseline accounting around `tools/test-release.ps1`, `_bmad-output/implementation-artifacts/deferred-work.md`, and `CiTestInventoryTests`.
+- Party-mode review on 2026-05-01 tightened replay-point selection, failure disposition, accepted-baseline identity, GitHub Actions fallback evidence, filter gating, bidirectional inventory guardrails, provenance mapping, runner-defect proof, and sprint-status evidence boundaries.
 - No implementation tests were run during story creation; this run only created the ready-for-dev story artifact.
 
 ### File List
@@ -293,6 +311,27 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-05-01: Created Story 12.4 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-01: Party-mode review completed; applied clarification-only hardening for evidence comparability, accepted-baseline traceability, filter gating, and guardrail expectations.
+
+## Party-Mode Review
+
+- Date: 2026-05-01T16:40:09Z
+- Selected story key: `12-4-baseline-failures-sweep`
+- Command/skill invocation used: `/bmad-party-mode 12-4-baseline-failures-sweep; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor)
+- Findings summary:
+  - Replay evidence needed exact lane command or workflow/job, date, branch, commit SHA, environment source, and result so local and CI evidence remain comparable.
+  - Accepted baseline records needed stable `S11-FX###` identifiers and a minimum schema for test name, lane, observed error, provenance, rationale, re-open trigger, and filter linkage.
+  - Failure triage needed explicit dispositions and a bounded provenance standard to avoid subjective archaeology.
+  - New filters needed a last-resort decision gate and bidirectional `tools/test-release.ps1` / `deferred-work.md` / `CiTestInventoryTests` linkage.
+  - Runner/accounting script edits needed a proof threshold separate from product or test failures.
+- Changes applied:
+  - Updated Acceptance Criteria 1-7 with replay-point, disposition, accepted-baseline identity, bidirectional guardrail, and evidence comparability requirements.
+  - Updated Tasks 0-6 with explicit replay-point selection, GitHub Actions fallback evidence, provenance-source rules, filter preconditions, runner/accounting proof, and final zero-unexpected-reds wording.
+  - Added `Definition of Done Evidence` to consolidate the required evidence table, stable baseline keys, filter last-resort rule, runner proof, and sprint-status boundary.
+- Findings deferred:
+  - No product-scope, architecture-policy, package, release, or cross-story contract changes were applied. Any such discovery during development remains deferred-work material with evidence and a re-open trigger.
+- Final recommendation: `ready-for-dev`
 
 ## Story Completion Status
 

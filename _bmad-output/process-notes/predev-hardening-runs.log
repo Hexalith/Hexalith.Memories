@@ -6,3 +6,4 @@
 2026-05-01T15:07:21Z	create-story	13-2-implement-oidc-token-provider	ok	created ready-for-dev story context for OIDC token provider
 2026-05-01T15:37:08Z	party-mode-review	12-3-story-file-scope-enforcement	ok	applied party-mode review clarifications; soft preflight warning Hexalith.EventStore
 2026-05-01T15:59:04Z	create-story	13-3-extend-embedding-client-to-support-ollama	ok	created ready-for-dev story context; active-dev-story soft preflight warning
+2026-05-01T16:40:09Z	party-mode-review	12-4-baseline-failures-sweep	ok	applied evidence and filter-guardrail clarifications; soft preflight warning Hexalith.EventStore
