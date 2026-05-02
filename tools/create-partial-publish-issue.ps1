@@ -107,7 +107,9 @@ if ($existing.Count -gt 0) {
         }
     }
     finally {
-        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $bodyFile) {
+            Remove-Item -LiteralPath $bodyFile -Force
+        }
     }
 
     Write-Host "Commented on existing partial-publish issue #$($existing[0].number)."
@@ -122,7 +124,9 @@ else {
         }
     }
     finally {
-        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $bodyFile) {
+            Remove-Item -LiteralPath $bodyFile -Force
+        }
     }
 
     Write-Host "Created partial-publish issue: $title"

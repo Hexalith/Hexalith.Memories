@@ -218,6 +218,29 @@ def write_partial_summary(path: Path) -> None:
     path.write_text(json.dumps(summary), encoding="utf-8")
 
 
+def write_publish_failed_summary(path: Path) -> None:
+    summary = {
+        "schemaVersion": 1,
+        "status": "publish-failed",
+        "version": "1.2.3",
+        "packageDirectory": "artifacts/packages/release",
+        "source": "https://api.nuget.org/v3/index.json",
+        "startedAt": "2026-05-02T00:00:00.0000000Z",
+        "completedAt": "2026-05-02T00:01:00.0000000Z",
+        "pushed": [],
+        "failed": [
+            {
+                "package": "Hexalith.Memories.Contracts.1.2.3.nupkg",
+                "exitCode": 401,
+                "error": "auth failure",
+            }
+        ],
+        "notAttempted": [],
+        "recovery": "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages.",
+    }
+    path.write_text(json.dumps(summary), encoding="utf-8")
+
+
 def run_issue_helper(
     summary_path: Path,
     fake_bin: Path,
@@ -423,6 +446,60 @@ class PublishNuGetTests(unittest.TestCase):
             body = calls[1]["body"]
             self.assertIn("Rerun detected", body)
             self.assertIn("docs/dev/release-runbook.md", body)
+
+    def test_all_packages_fail_yields_publish_failed_status_without_partial_annotation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_directory = root / "packages"
+            fake_bin = root / "bin"
+            package_directory.mkdir()
+            fake_bin.mkdir()
+            packages = create_packages(package_directory)
+            write_fake_dotnet(fake_bin)
+
+            plan = {
+                package.name: {
+                    "exitCode": 401,
+                    "stdout": "",
+                    "stderr": "auth failure",
+                }
+                for package in packages
+            }
+
+            result, log_path, _ = run_publish(package_directory, fake_bin, plan)
+
+            self.assertNotEqual(0, result.returncode)
+            calls = [
+                json.loads(line)["package"]
+                for line in log_path.read_text(encoding="utf-8").splitlines()
+            ]
+            self.assertEqual([package.name for package in packages], calls)
+
+            summary_file = package_directory / "publish-summary.json"
+            self.assertTrue(summary_file.exists())
+            summary = json.loads(summary_file.read_text(encoding="utf-8"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual([], summary["pushed"])
+            self.assertEqual(
+                [package.name for package in packages],
+                [item["package"] for item in summary["failed"]],
+            )
+            self.assertNotIn("PARTIAL PUBLISH - manual reconciliation required", result.stdout)
+
+    def test_issue_helper_skips_when_summary_status_is_publish_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            write_fake_gh(fake_bin)
+            summary_path = root / "publish-summary.json"
+            write_publish_failed_summary(summary_path)
+
+            result, log_path = run_issue_helper(summary_path, fake_bin)
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertFalse(log_path.exists())
+            self.assertIn("skipping partial-publish issue alert", result.stdout)
 
 
 if __name__ == "__main__":

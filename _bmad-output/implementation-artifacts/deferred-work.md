@@ -1,5 +1,16 @@
 # Deferred Work
 
+## Deferred from: code review of story-12.5 (2026-05-02)
+
+- **12.5-RV1 — Workflow hardcodes summary path.** `.github/workflows/release.yml:75` literal `artifacts/packages/release/publish-summary.json` is a duplicate of the path computed by `tools/publish-nuget.ps1` from its `-PackageDirectory` parameter. Aligned today via `.releaserc.json` invocation; if either ever changes the alert silently no-ops.
+- **12.5-RV2 — `gh issue list --search` lacks `in:title` qualifier and uses default `--limit 30`.** `tools/create-partial-publish-issue.ps1:92`. Local `Where-Object { $_.title -eq $title }` defends against substring collisions today, but a high-volume backlog of partial-publish issues could push the exact match off the result page. Switch to `--search "in:title \"$title\""` and bump limit when revisited.
+- **12.5-RV3 — Race on concurrent partial-publish runs.** Two workflow runs hitting partial-publish for the same version simultaneously can each create a new issue. `tools/create-partial-publish-issue.ps1:92-119`. Workflow `concurrency: release` reduces but does not eliminate the window. Needs server-side dedupe (search-with-create-or-comment idempotency) before becoming critical.
+- **12.5-RV4 — `Format-ListSection` does not skip `$null` items.** `tools/create-partial-publish-issue.ps1:52-67`. Current JSON shape never emits nulls; a future contract change could produce blank `- :` bullets.
+- **12.5-RV5 — No retry/backoff for transient `gh` failures in the alert path.** `tools/create-partial-publish-issue.ps1:92-128`. A flaky GitHub API turns partial-publish into "release failed AND alert step failed." Release failure is still loud; alert reliability is the deferred gap.
+- **12.5-RV6 — Malformed `publish-summary.json` makes the alert step throw.** `tools/create-partial-publish-issue.ps1:32`. `ConvertFrom-Json` has no `try`; a half-written summary causes the alert step to fail with a JSON-parse trace and obscure the original publish failure.
+- **12.5-RV7 — Empty stdout from `gh issue list` trips `ConvertFrom-Json`.** `tools/create-partial-publish-issue.ps1:97`. Add `if ([string]::IsNullOrWhiteSpace($issuesJson)) { $issues = @() }` guard.
+- **12.5-RV8 — Closed-then-reopened partial-publish issue creates a duplicate.** `tools/create-partial-publish-issue.ps1:92` filters `--state open` only. After a maintainer manually reconciles and closes the issue, a same-version rerun creates a new issue rather than reopening or commenting. Spec is silent; semantics may need refinement after first real reconciliation cycle.
+
 ## Deferred from: code review of story-12.3 (2026-05-01)
 
 - **12.3-RV1 — CI duplicate runs on `pull_request` and `push`.** Concurrency keys differ (`pull_request.number` vs `github.ref`) so neither cancels the other. Not regression-critical; revisit when CI minutes become a constraint or when divergent results from the two paths cause confusion. [.github/workflows/ci.yml:3-9]

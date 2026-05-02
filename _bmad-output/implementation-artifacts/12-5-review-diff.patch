@@ -1,0 +1,1016 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 41b8dd7..fadfcbe 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -68,6 +68,23 @@ jobs:
+           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+ 
++      - name: Alert partial NuGet publish
++        if: failure()
++        shell: pwsh
++        run: |
++          $summaryPath = "artifacts/packages/release/publish-summary.json"
++          if (Test-Path -LiteralPath $summaryPath) {
++            ./tools/create-partial-publish-issue.ps1 -SummaryPath $summaryPath
++          }
++          else {
++            Write-Host "No NuGet publish summary found; skipping partial-publish issue alert."
++          }
++        env:
++          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
++          GITHUB_REPOSITORY: ${{ github.repository }}
++          GITHUB_RUN_ID: ${{ github.run_id }}
++          GITHUB_SERVER_URL: ${{ github.server_url }}
++
+       - name: Upload package artifacts
+         if: success()
+         uses: actions/upload-artifact@v5
+diff --git a/Hexalith.EventStore b/Hexalith.EventStore
+index a7e6931..ecd0282 160000
+--- a/Hexalith.EventStore
++++ b/Hexalith.EventStore
+@@ -1 +1 @@
+-Subproject commit a7e69314f1eed6ecefaa5e65b5c52b5743596f18
++Subproject commit ecd028239cd32d6951961907ebef8896e89c155d
+diff --git a/_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md b/_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md
+index 926542b..7eab1c9 100644
+--- a/_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md
++++ b/_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md
+@@ -1,6 +1,6 @@
+ # Story 12.5: Partial-Publish Alerting
+ 
+-Status: ready-for-dev
++Status: review
+ 
+ Story Key: 12-5-partial-publish-alerting
+ Epic: 12 - First Release & Operations Foundation
+@@ -34,48 +34,48 @@ so that the `--skip-duplicate` self-healing model can be retained without it bec
+ 
+ ## Tasks / Subtasks
+ 
+-- [ ] Task 0 - Lock the current release contract before editing (AC: 1, 8)
+-  - [ ] Read `.github/workflows/release.yml`, `.releaserc.json`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`, `tools/validate-release-packages.ps1`, `tools/release-packages.json`, and `docs/dev/release-runbook.md`.
+-  - [ ] Confirm `release.yml` already grants `issues: write` and forwards `GITHUB_TOKEN` plus `NUGET_API_KEY` only to the `Run semantic-release` step.
+-  - [ ] Confirm `.releaserc.json` still invokes `publish-nuget.ps1` as the `@semantic-release/exec` `publishCmd`.
+-  - [ ] Do not initialize or update nested submodules. Do not stage the existing `Hexalith.EventStore` submodule state unless Jerome separately asks for it.
+-
+-- [ ] Task 1 - Make publish results structured and complete (AC: 1, 2, 3)
+-  - [ ] Update `tools/publish-nuget.ps1` so validation failure before any push still fails fast and writes a non-publish failure summary when running in CI.
+-  - [ ] Keep package discovery sorted by package filename and keep `--skip-duplicate`.
+-  - [ ] For each package push, capture stdout/stderr, `$LASTEXITCODE`, package filename, and disposition.
+-  - [ ] Continue to later packages after a non-zero push exit when the script can still invoke `dotnet nuget push` safely; if a failure is classified as unrecoverable for the rest of the loop, record remaining packages as `not-attempted` with a reason.
+-  - [ ] After the loop, throw only after the full summary is written.
+-  - [ ] Do not echo secret-bearing command lines. It is acceptable to print package names, version, source URL, and sanitized error text.
+-
+-- [ ] Task 2 - Emit a CI-visible summary and annotation (AC: 3, 4, 7)
+-  - [ ] Write a machine-readable summary file, for example `artifacts/packages/release/publish-summary.json`, only when publishing fails or partially succeeds.
+-  - [ ] Include enough fields for the workflow issue step to render an issue body without scraping logs.
+-  - [ ] When `$env:GITHUB_ACTIONS` is true, emit a GitHub Actions `::error` annotation with title `PARTIAL PUBLISH - manual reconciliation required` for partial publish.
+-  - [ ] Append a concise Markdown section to `$env:GITHUB_STEP_SUMMARY` when available.
+-  - [ ] Ensure the non-GitHub local path still prints a readable summary and exits non-zero.
+-
+-- [ ] Task 3 - Add GitHub Issue alerting in `release.yml` (AC: 5, 6, 7)
+-  - [ ] Add a post-semantic-release step that runs on failure and checks for the publish summary file.
+-  - [ ] Use GitHub CLI with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and `GITHUB_REPOSITORY` to create or update an issue.
+-  - [ ] Search for an open issue with a deterministic title such as `PARTIAL PUBLISH <version> - manual reconciliation required`.
+-  - [ ] If found, add a comment with the new run URL and summary. If not found, create a new issue.
+-  - [ ] Include the run URL, version, pushed/failed/not-attempted package lists, and runbook reference.
+-  - [ ] Do not add Slack or webhook integration unless the repository already has a committed non-secret webhook mechanism by implementation time.
+-
+-- [ ] Task 4 - Add focused script/workflow tests (AC: 1-7)
+-  - [ ] Add stdlib-based tooling tests under `tests/tooling/publish_nuget/` that invoke `pwsh` with a fake `dotnet` on `PATH`.
+-  - [ ] Cover all-success, duplicate-compatible success, one middle package failing while later packages are attempted, pre-push validation failure, and no secret leakage in output.
+-  - [ ] Cover the JSON summary shape and the duplicate-issue search/title convention without calling the live GitHub API.
+-  - [ ] If testing the workflow step directly is too brittle, extract the issue-body rendering into a small script such as `tools/create-partial-publish-issue.ps1` and test that script with fake `gh`.
+-  - [ ] Keep tests independent of real nuget.org, real `NUGET_API_KEY`, and real GitHub network calls.
+-
+-- [ ] Task 5 - Update operator documentation and validate the path (AC: 3, 7, 8)
+-  - [ ] Update `docs/dev/release-runbook.md` partial-publish recovery notes to describe the new issue/annotation behavior.
+-  - [ ] Keep the existing recovery model: do not delete packages from nuget.org; rerun the workflow and let 409 duplicates skip while missing packages publish.
+-  - [ ] Validate `tools/validate-release-packages.ps1`.
+-  - [ ] Run the focused tooling tests.
+-  - [ ] Run `npx semantic-release --dry-run --no-ci` after `npm ci` if release workflow or semantic-release-adjacent scripts changed and local Node dependencies are available.
++- [x] Task 0 - Lock the current release contract before editing (AC: 1, 8)
++  - [x] Read `.github/workflows/release.yml`, `.releaserc.json`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`, `tools/validate-release-packages.ps1`, `tools/release-packages.json`, and `docs/dev/release-runbook.md`.
++  - [x] Confirm `release.yml` already grants `issues: write` and forwards `GITHUB_TOKEN` plus `NUGET_API_KEY` only to the `Run semantic-release` step.
++  - [x] Confirm `.releaserc.json` still invokes `publish-nuget.ps1` as the `@semantic-release/exec` `publishCmd`.
++  - [x] Do not initialize or update nested submodules. Do not stage the existing `Hexalith.EventStore` submodule state unless Jerome separately asks for it.
++
++- [x] Task 1 - Make publish results structured and complete (AC: 1, 2, 3)
++  - [x] Update `tools/publish-nuget.ps1` so validation failure before any push still fails fast and writes a non-publish failure summary when running in CI.
++  - [x] Keep package discovery sorted by package filename and keep `--skip-duplicate`.
++  - [x] For each package push, capture stdout/stderr, `$LASTEXITCODE`, package filename, and disposition.
++  - [x] Continue to later packages after a non-zero push exit when the script can still invoke `dotnet nuget push` safely; if a failure is classified as unrecoverable for the rest of the loop, record remaining packages as `not-attempted` with a reason.
++  - [x] After the loop, throw only after the full summary is written.
++  - [x] Do not echo secret-bearing command lines. It is acceptable to print package names, version, source URL, and sanitized error text.
++
++- [x] Task 2 - Emit a CI-visible summary and annotation (AC: 3, 4, 7)
++  - [x] Write a machine-readable summary file, for example `artifacts/packages/release/publish-summary.json`, only when publishing fails or partially succeeds.
++  - [x] Include enough fields for the workflow issue step to render an issue body without scraping logs.
++  - [x] When `$env:GITHUB_ACTIONS` is true, emit a GitHub Actions `::error` annotation with title `PARTIAL PUBLISH - manual reconciliation required` for partial publish.
++  - [x] Append a concise Markdown section to `$env:GITHUB_STEP_SUMMARY` when available.
++  - [x] Ensure the non-GitHub local path still prints a readable summary and exits non-zero.
++
++- [x] Task 3 - Add GitHub Issue alerting in `release.yml` (AC: 5, 6, 7)
++  - [x] Add a post-semantic-release step that runs on failure and checks for the publish summary file.
++  - [x] Use GitHub CLI with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and `GITHUB_REPOSITORY` to create or update an issue.
++  - [x] Search for an open issue with a deterministic title such as `PARTIAL PUBLISH <version> - manual reconciliation required`.
++  - [x] If found, add a comment with the new run URL and summary. If not found, create a new issue.
++  - [x] Include the run URL, version, pushed/failed/not-attempted package lists, and runbook reference.
++  - [x] Do not add Slack or webhook integration unless the repository already has a committed non-secret webhook mechanism by implementation time.
++
++- [x] Task 4 - Add focused script/workflow tests (AC: 1-7)
++  - [x] Add stdlib-based tooling tests under `tests/tooling/publish_nuget/` that invoke `pwsh` with a fake `dotnet` on `PATH`.
++  - [x] Cover all-success, duplicate-compatible success, one middle package failing while later packages are attempted, pre-push validation failure, and no secret leakage in output.
++  - [x] Cover the JSON summary shape and the duplicate-issue search/title convention without calling the live GitHub API.
++  - [x] If testing the workflow step directly is too brittle, extract the issue-body rendering into a small script such as `tools/create-partial-publish-issue.ps1` and test that script with fake `gh`.
++  - [x] Keep tests independent of real nuget.org, real `NUGET_API_KEY`, and real GitHub network calls.
++
++- [x] Task 5 - Update operator documentation and validate the path (AC: 3, 7, 8)
++  - [x] Update `docs/dev/release-runbook.md` partial-publish recovery notes to describe the new issue/annotation behavior.
++  - [x] Keep the existing recovery model: do not delete packages from nuget.org; rerun the workflow and let 409 duplicates skip while missing packages publish.
++  - [x] Validate `tools/validate-release-packages.ps1`.
++  - [x] Run the focused tooling tests.
++  - [x] Run `npx semantic-release --dry-run --no-ci` after `npm ci` if release workflow or semantic-release-adjacent scripts changed and local Node dependencies are available.
+ 
+ ## File Scope
+ 
+@@ -297,6 +297,19 @@ GPT-5 Codex
+ 
+ - Pre-dev hardening preflight JSON `_bmad-output/process-notes/predev-preflight-latest.json` reported a soft working-tree warning only: ` M Hexalith.EventStore`.
+ - Story selection logic chose `12-5-partial-publish-alerting` because the ready-for-dev buffer was below target `5` and this was the first backlog story in sprint-status order.
++- 2026-05-02: Development started; sprint status moved from `ready-for-dev` to `in-progress`.
++- 2026-05-02: Task 0 contract lock read release workflow, semantic-release config, publish/pack/validate scripts, release package inventory, and release runbook.
++- 2026-05-02: Red tests first failed against the original first-failure publish loop and missing validation-failure summary.
++- 2026-05-02: Focused validation green: `./tools/validate-release-packages.ps1`; `python -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"` (6/6).
++- 2026-05-02: `npm ci` completed successfully; `npx semantic-release --dry-run --no-ci` loaded configured plugins but stopped at `ENOGHTOKEN No GitHub token specified` because no local `GH_TOKEN`/`GITHUB_TOKEN` was available.
++- 2026-05-02: Raw `dotnet test Hexalith.Memories.slnx --no-restore` did not complete within 10 minutes; curated release lane `./tools/test-release.ps1` passed Contracts 468/468, Server 1542/1542, CLI 333/333, MCP 76/76, EventStore 84/84.
++
++### Implementation Plan
++
++- Keep semantic-release topology unchanged: `@semantic-release/exec` continues to call `tools/publish-nuget.ps1`.
++- Extend `tools/publish-nuget.ps1` with structured package outcomes, sanitized failure summaries, GitHub Actions annotation/step summary output, and delayed non-zero exit after summary emission.
++- Add a small PowerShell issue helper if workflow YAML-only alerting would be brittle to test.
++- Add stdlib Python tooling tests with fake `dotnet`/`gh` shims and no live NuGet or GitHub calls.
+ 
+ ### Completion Notes List
+ 
+@@ -305,16 +318,28 @@ GPT-5 Codex
+ - The story chooses GitHub Issue alerting because `release.yml` already has `issues: write` and no repository Slack/webhook secret is present.
+ - The recommended implementation keeps `--skip-duplicate`, continues publish attempts where safe, writes structured package outcomes, fails the workflow, and creates/comments a durable issue for partial publish.
+ - No implementation tests were run during story creation; this run only created the ready-for-dev story artifact.
++- Task 0 confirmed the current release contract before edits: `release.yml` has `issues: write`, release secrets are scoped to `Run semantic-release`, `.releaserc.json` still invokes `publish-nuget.ps1`, and no nested submodules were initialized or updated.
++- `tools/publish-nuget.ps1` now captures each push's output and exit code, preserves sorted package order and `--skip-duplicate`, continues to later packages after safe push failures, writes `publish-summary.json` before failing, emits the partial-publish GitHub Actions annotation, appends step-summary Markdown, and scrubs `NUGET_API_KEY` from captured text.
++- Added `tools/create-partial-publish-issue.ps1` and a failure-only release workflow step to create or comment on deterministic `PARTIAL PUBLISH <version> - manual reconciliation required` issues using `GH_TOKEN`.
++- Added stdlib Python tooling tests with fake `dotnet` and fake `gh`; tests cover success, duplicate-compatible success, middle-package failure with later attempts, validation failure summary, secret scrubbing, summary shape, deterministic issue creation, and duplicate issue commenting.
++- Updated `docs/dev/release-runbook.md` to describe the new summary, annotation, GitHub Issue alert, and unchanged rerun recovery model.
+ 
+ ### File List
+ 
+ - `_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md`
+ - `_bmad-output/implementation-artifacts/sprint-status.yaml`
++- `.github/workflows/release.yml`
++- `docs/dev/release-runbook.md`
++- `tools/publish-nuget.ps1`
++- `tools/create-partial-publish-issue.ps1`
++- `tests/tooling/publish_nuget/publish_nuget_test.py`
+ 
+ ### Change Log
+ 
+ - 2026-05-01: Created Story 12.5 and promoted it from `backlog` to `ready-for-dev`.
++- 2026-05-02: Started implementation and moved story tracking to `in-progress`.
++- 2026-05-02: Implemented structured NuGet publish summaries, CI annotation/step summary output, GitHub Issue alerting, focused fake-tool tests, and runbook updates for partial-publish recovery.
+ 
+ ## Story Completion Status
+ 
+-Ultimate context engine analysis completed - comprehensive developer guide created. Status set to `ready-for-dev`.
++Implementation complete. Status set to `review`.
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 29a7b60..62aeeff 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -3,6 +3,8 @@
+ # last_updated: 2026-05-01 # Story 13.2 Implement OidcTokenProvider promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/13-2-implement-oidc-token-provider.md`; scope is limited to singleton OIDC client_credentials token acquisition, in-memory per-key cache, forced invalidation for future 401 retry, sanitized typed exception, DI registration, and focused unit tests. Implementation is gated on Story 13.1 reaching done and explicitly does not touch TenantEmbeddingConfig, EmbeddingClient, provider defaults, tenant actors, AppHost, docs, or migration tooling.
+ # last_updated: 2026-05-01 # Story 12.2 Forbidden Default Tolerances Checklist code-review close-out: three-layer adversarial review (Blind + Edge + Auditor) returned 6/6 AC PASS; resolved 2 decision-needed (submodule scope leak in c4d5217 accepted with Dev Agent Record amendment under Story 12.3 prevention ownership; "operator-visible" terminology disambiguated with pending Story 12.5 disclaimer) and applied 10 doc-precision patches to CONTRIBUTING.md (mapfile pipefail caveat, PowerShell SilentlyContinue/Ignore/$ErrorActionPreference suppression idioms, broadened default-empty-array example, named `|| true` equivalents, zero-input fail-loudly clause, "suspect by default" wording, retro-file precedence, `Tolerance Justification:` PR convention, Bash-only labeling). Story 12.2 moved review -> done.
+ # last_updated: 2026-05-01 # Story 12.6 EmbeddingInputContentKind Baseline Resolution promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-6-embedding-input-content-kind-baseline-resolution.md`; focuses on removing or justifying the single S11-FA release-lane filter, proving the focused telemetry tests and release lane, and returning accepted baseline filters to zero without touching release, provider migration, or submodule scope.
++# last_updated: 2026-05-02 # Story 12.5 Partial-Publish Alerting moved in-progress -> review. Implemented structured publish summaries, CI annotation and step summary output, GitHub Issue create/comment alerting, focused fake dotnet/gh tests, and runbook recovery updates. Validation: release package validator green, publish_nuget tooling tests 6/6 green, test-release.ps1 release lane green (Contracts 468, Server 1542, CLI 333, MCP 76, EventStore 84). Semantic-release dry run blocked locally by missing GH_TOKEN/GITHUB_TOKEN; raw full dotnet test timed out after 10 minutes.
++# last_updated: 2026-05-02 # Story 12.5 Partial-Publish Alerting moved ready-for-dev -> in-progress. Scope remains limited to structured publish summaries, GitHub Issue/annotation alerting, runbook-linked rerun recovery, and focused tooling tests for partial NuGet publish failure.
+ # last_updated: 2026-05-01 # Story 12.5 Partial-Publish Alerting promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md`; selects GitHub Issue alerting via existing release workflow permissions, structured publish summaries, CI annotations, duplicate issue avoidance, and runbook-linked rerun recovery while preserving package inventory and semantic-release topology.
+ # last_updated: 2026-05-01 # Story 12.4 Baseline Failures Sweep promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md`; defines authoritative-lane replay, baseline-to-deferred-work linkage, narrow accepted filters in `tools/test-release.ps1`, and `CiTestInventoryTests` guardrails for zero unaccounted-for baselines.
+ # last_updated: 2026-05-01 # Story 12.3 Story-File-Scope Enforcement code-review close-out (Blind + Edge + Auditor): 4/4 AC PASS (AC2 hardened from PARTIAL via documented allow-list-wins behavior + relaxed override-vagueness rules deferred to 12.3-RV12), 22 patches applied (proper recursive `**` glob semantics; bare submodule path now matches `<submodule>/**` so a Hexalith.EventStore-style pointer change is detected as forbidden-default; D5-no-override branch reports forbidden-default diagnostic; story-key regex tightened against letter-prefixed digit runs; trailer parser permits duplicate-consistent Story/Story-Key trailers but rejects multiple keys in one trailer value; unparseable `--story-key` fails closed; .githooks executable bit set, hook tempfiles moved to `$git_dir/`; CI force-push and brand-new-branch fallbacks compare against origin/main; CI BRANCH_NAME written to GITHUB_ENV via heredoc; tests use `tempfile.NamedTemporaryFile` and frozen inline fixture for parser drift; D5-no-override, fenced-code-block, indented-sub-bullet, bare-token, glob-segment-crossing, and submodule-pointer regressions added). 15 follow-ups deferred (12.3-RV1..12.3-RV15 in deferred-work.md). Story moved review -> done.
+@@ -209,7 +211,7 @@ development_status:
+   12-2-forbidden-default-tolerances-checklist: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 6/6 AC PASS. Resolved 2 decision-needed (submodule pointer leak in c4d5217 accepted via Dev Agent Record amendment with Story 12.3 owning prevention; "operator-visible" defined inline pending Story 12.5 canonical mechanism) and applied 10 doc-precision patches: mapfile pipefail caveat, PowerShell SilentlyContinue/Ignore/$ErrorActionPreference under silent-error-suppression bullet, default-empty-array example broadened to PROJECTS=()/("")/${PATTERN:-*}, named `|| true` equivalents, per-row zero-count gained zero-input fail-loudly clause, "forbidden by default" softened to "suspect by default", retro-file precedence (2026-04-30 canonical), `Tolerance Justification:` PR-description convention, explicit Bash-only labeling. Cross-references feedback_tolerance_idioms.md memory.
+   12-3-story-file-scope-enforcement: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 4/4 AC PASS (AC2 from PARTIAL via documented allow-list-wins behavior plus deferred 12.3-RV12 override-vagueness relaxation). 3 decision-needed resolved: D1 — implementation commit `0b065b8` File-Scope leaks (Hexalith.EventStore submodule pointer + 13-3 story doc + two predev-preflight JSONs) accepted via Dev Agent Record Scope-Justification with the bare-submodule-path matcher fix as the durable prevention; D2 — story allow-list intersecting forbidden-default treated as the deliberate decision spec line 213 calls for, documented in CONTRIBUTING.md; D3 — hook tempfiles moved preemptively to `$git_dir/` to avoid Windows MSYS path-translation risk. 22 patches applied (proper recursive `**` glob semantics; bare submodule path now resolves as forbidden-default via `<submodule>/**`; D5-no-override branch reports a distinct diagnostic; STORY_KEY regex tightened; duplicate-consistent Story/Story-Key trailers permitted while multi-key-in-single-trailer rejected; unparseable `--story-key` fails closed; .githooks executable bit set; CI force-push fallback compares against origin/main; CI BRANCH_NAME heredoc-written to GITHUB_ENV; tests use NamedTemporaryFile and a frozen inline fixture; new regressions for D5-no-override, fenced code blocks, indented sub-bullets, bare-token rejection, glob segment crossing, and bare submodule pointer). 15 follow-ups deferred (12.3-RV1..12.3-RV15 in deferred-work.md).
+   12-4-baseline-failures-sweep: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 8/8 AC PASS or formally resolved (AC #8 Scope-Override accepted for the pre-existing Hexalith.EventStore submodule pointer bump and the bundled Story 12.3 close-out work; AC #1 satisfied via HEAD-replay coverage proof against anchors d7495a3/bc4d5cc/8207b54 — strict per-SHA replay deferred as 12.4-RV20). 8 patches applied to tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs covering the headline TestReleaseBaselineFilters guardrail: ReadDeferredEntries flushes on '## ' headers and sibling bullets so the last S11-F* entry no longer absorbs trailing content to EOF; entries inside '## Closed by …' sections are skipped; IsResolvedDeferredEntry anchors to the bullet header line only and accepts [resolved/[closed/[done] markers; ReadAcceptedReleaseFilters enforces a 3-line proximity guard between S11-F* comment and matching filter and resets currentKey after consumption; TestNameShape regex enforces strict Class.Method shape (rejects namespaces and multi-segment names); DeferredTestNameRegex matches the entry's first line only; ProjectFilterRegex terminator widened to also stop at whitespace plus a Matches.Count==1 single-directive assertion; probe assertion baselines.ShouldContain(b => b.Key == 'S11-FA') prevents vacuous pass on parser regression. 6 new negative-path tests added (EntriesUnderClosedBySection, InlineResolvedMarker, NoOpenBaselines, StaleKeyTooFarFromFilter, NamespaceShape, RealRepoFilter_DetectsKnownS11FA). Validation: Cli.Tests 333/333 green (+6 new tests over baseline 327). 19 follow-ups deferred (12.4-RV1..12.4-RV20 in deferred-work.md): CI workflow hardening (RV1..RV5), schema-strengthening (RV6/RV19), Story 12.3 territory (RV7..RV14), test hardening (RV15..RV18), strict per-SHA replay drill (RV20).
+-  12-5-partial-publish-alerting: ready-for-dev # 2026-05-01 promoted from backlog when the story artifact was created. Scope is limited to structured publish summaries, GitHub Issue/annotation alerting, runbook-linked recovery, and focused tooling tests for partial NuGet publish failure.
++  12-5-partial-publish-alerting: review # 2026-05-02 implementation complete. Structured publish summaries, GitHub Issue/annotation alerting, runbook-linked recovery, and focused tooling tests for partial NuGet publish failure are ready for review.
+   12-6-embedding-input-content-kind-baseline-resolution: ready-for-dev # 2026-05-01 promoted from backlog when the story artifact was created. Scope is limited to resolving the single S11-FA EmbeddingInputContentKindTests baseline filter, returning test-release.ps1 accepted filters to zero, and adding focused guardrails so stale filters cannot persist.
+   epic-12-retrospective: optional # Captures Epic 11's bundled 11.1+11.2 delivery, the 3-layer adversarial review outcome (8/8 decisions resolved, 16/18 patches applied, 4 deferred follow-ups S11-FA/B/C/D), 6 systemic patterns surfaced (file-scope leak D5; baseline failures accumulating under script-only execution; 4 tolerance-idiom silent-failures; convention drift between sibling files; status-checkbox/reality gap W10; untracked package-lock.json P1), 5 action items (A1 branch protection, A2 NUGET_API_KEY, A3 forbidden-default-tolerances checklist, A4 file-scope guardrail enforcement, A5 baseline-failures sweep across recent stories), and the post-MVP transition discussion replacing next-epic preparation since Epic 11 is the last planned epic in epics.md. Recommendation: cut first real release, then sweep deferred-work, then decide between Epic 12/Phase 2 or operations pivot.
+ 
+diff --git a/docs/dev/release-runbook.md b/docs/dev/release-runbook.md
+index c7e3d63..deb8612 100644
+--- a/docs/dev/release-runbook.md
++++ b/docs/dev/release-runbook.md
+@@ -203,16 +203,27 @@ inspection.
+   - **HTTP 409 (already published).** `tools/publish-nuget.ps1` calls `dotnet nuget push
+     --skip-duplicate`, which downgrades 409 to a warning and continues with the next package. A
+     rerun therefore skips already-published packages without errors.
+-  - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero and
+-    `publish-nuget.ps1` throws on the first such failure. Because the script iterates over
+-    packages in a single `foreach` loop, alphabetically-later packages are *not* attempted on the
+-    failing run. A rerun re-attempts every package: 409s on already-published ones are skipped,
+-    and the originally-failed and never-attempted packages are pushed.
+-- The GitHub Actions workflow log is the source of truth for "which packages were pushed before
+-  the failure". Each package emits a `Publishing <PackageId>.<version>.nupkg` line in
+-  `publish-nuget.ps1` before the push, so the run log records the exact stop point. Stronger
+-  alerting on partial publish is intentionally deferred to Story 12.5; until then, read the run
+-  log before rerunning.
++  - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
++    `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
++    to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or
++    unrecoverable condition prevents more attempts, the remaining packages are listed as
++    not-attempted with a reason.
++- `tools/publish-nuget.ps1` records a structured package-by-package summary at
++  `artifacts/packages/release/publish-summary.json` before it exits non-zero. The summary lists the
++  target version, package directory, source, pushed packages, failed packages with exit codes and
++  sanitized output, and not-attempted packages.
++- When at least one package pushed and at least one package failed or was not attempted, the
++  release log includes a GitHub Actions error annotation titled
++  `PARTIAL PUBLISH - manual reconciliation required`. The failed job also appends a concise
++  Markdown summary to the GitHub Actions step summary when that output is available.
++- The release workflow creates a GitHub Issue titled
++  `PARTIAL PUBLISH <version> - manual reconciliation required`. If an open issue already exists
++  for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
++  The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
++  this runbook reference.
++- Recovery remains the same: rerun the Release workflow after investigating the failure. Do not
++  delete packages from nuget.org. `--skip-duplicate` skips already-published packages while the
++  rerun retries the failed or not-attempted packages.
+ - If `tools/test-release.ps1` reports an unexpected test failure, check whether the failure name
+   is on the project's tracked-baseline list before treating it as a release blocker. The script
+   filters `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`
+diff --git a/tests/tooling/publish_nuget/publish_nuget_test.py b/tests/tooling/publish_nuget/publish_nuget_test.py
+new file mode 100644
+index 0000000..afc545f
+--- /dev/null
++++ b/tests/tooling/publish_nuget/publish_nuget_test.py
+@@ -0,0 +1,429 @@
++import json
++import os
++import subprocess
++import sys
++import tempfile
++import textwrap
++import unittest
++import zipfile
++from pathlib import Path
++
++
++REPO_ROOT = Path(__file__).resolve().parents[3]
++SCRIPT = REPO_ROOT / "tools" / "publish-nuget.ps1"
++PACKAGE_IDS = [
++    "Hexalith.Memories.Contracts",
++    "Hexalith.Memories.Client.Rest",
++    "Hexalith.Memories.Redis",
++    "Hexalith.Memories.Cli",
++    "Hexalith.Memories.Mcp",
++    "Hexalith.Memories.EventStore",
++    "Hexalith.Memories.Telemetry",
++]
++
++
++def create_package(directory: Path, package_id: str, version: str) -> Path:
++    package = directory / f"{package_id}.{version}.nupkg"
++    nuspec = f"""<?xml version="1.0" encoding="utf-8"?>
++<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
++  <metadata>
++    <id>{package_id}</id>
++    <version>{version}</version>
++    <description>Test package</description>
++    <authors>ITANEO</authors>
++    <license type="expression">MIT</license>
++    <projectUrl>https://github.com/Hexalith/Hexalith.Memories</projectUrl>
++    <repository type="git" url="https://github.com/Hexalith/Hexalith.Memories" />
++    <tags>hexalith memories test</tags>
++    <readme>README.md</readme>
++  </metadata>
++</package>
++"""
++    with zipfile.ZipFile(package, "w") as archive:
++        archive.writestr(f"{package_id}.nuspec", nuspec)
++        archive.writestr("README.md", "# Test\n")
++    return package
++
++
++def create_packages(directory: Path, version: str = "1.2.3") -> list[Path]:
++    packages = [create_package(directory, package_id, version) for package_id in PACKAGE_IDS]
++    return sorted(packages, key=lambda item: item.name)
++
++
++def write_fake_dotnet(directory: Path) -> None:
++    script = directory / "fake_dotnet.py"
++    script.write_text(
++        textwrap.dedent(
++            """
++            import json
++            import os
++            import sys
++
++            args = sys.argv[1:]
++            plan_path = os.environ["FAKE_DOTNET_PLAN"]
++            log_path = os.environ["FAKE_DOTNET_LOG"]
++            package = None
++            if len(args) >= 3 and args[0:2] == ["nuget", "push"]:
++                package = os.path.basename(args[2])
++
++            with open(log_path, "a", encoding="utf-8") as log:
++                log.write(json.dumps({"package": package, "args": args}) + "\\n")
++
++            with open(plan_path, "r", encoding="utf-8") as plan_file:
++                plan = json.load(plan_file)
++
++            outcome = plan.get(package, {"exitCode": 0, "stdout": "pushed", "stderr": ""})
++            if outcome.get("stdout"):
++                print(outcome["stdout"])
++            if outcome.get("stderr"):
++                print(outcome["stderr"], file=sys.stderr)
++            sys.exit(int(outcome.get("exitCode", 0)))
++            """
++        ).strip()
++        + "\n",
++        encoding="utf-8",
++    )
++
++    (directory / "dotnet.cmd").write_text(
++        f"@echo off\r\n\"{sys.executable}\" \"{script}\" %*\r\n",
++        encoding="utf-8",
++    )
++
++    (directory / "dotnet").write_text(
++        f"#!/usr/bin/env sh\nexec \"{sys.executable}\" \"{script}\" \"$@\"\n",
++        encoding="utf-8",
++    )
++    os.chmod(directory / "dotnet", 0o755)
++
++
++def write_fake_gh(directory: Path) -> None:
++    script = directory / "fake_gh.py"
++    script.write_text(
++        textwrap.dedent(
++            """
++            import json
++            import os
++            import sys
++
++            args = sys.argv[1:]
++            log_path = os.environ["FAKE_GH_LOG"]
++            body = None
++            if "--body-file" in args:
++                body_file = args[args.index("--body-file") + 1]
++                with open(body_file, "r", encoding="utf-8-sig") as body_handle:
++                    body = body_handle.read()
++            with open(log_path, "a", encoding="utf-8") as log:
++                log.write(json.dumps({"args": args, "body": body}) + "\\n")
++
++            if args[:3] == ["issue", "list", "--repo"]:
++                title = os.environ.get("FAKE_GH_EXISTING_TITLE", "")
++                if title:
++                    print(json.dumps([{"number": 17, "title": title}]))
++                else:
++                    print("[]")
++                sys.exit(0)
++
++            if args[:2] in (["issue", "create"], ["issue", "comment"]):
++                print("ok")
++                sys.exit(0)
++
++            print(f"unexpected gh args: {args}", file=sys.stderr)
++            sys.exit(2)
++            """
++        ).strip()
++        + "\n",
++        encoding="utf-8",
++    )
++
++    (directory / "gh.cmd").write_text(
++        f"@echo off\r\n\"{sys.executable}\" \"{script}\" %*\r\n",
++        encoding="utf-8",
++    )
++
++    (directory / "gh").write_text(
++        f"#!/usr/bin/env sh\nexec \"{sys.executable}\" \"{script}\" \"$@\"\n",
++        encoding="utf-8",
++    )
++    os.chmod(directory / "gh", 0o755)
++
++
++def run_publish(
++    package_directory: Path,
++    fake_bin: Path,
++    plan: dict[str, dict[str, object]],
++    *,
++    github_actions: bool = True,
++    api_key: str = "SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK",
++) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
++    plan_path = package_directory.parent / "dotnet-plan.json"
++    log_path = package_directory.parent / "dotnet-calls.jsonl"
++    summary_path = package_directory.parent / "step-summary.md"
++    plan_path.write_text(json.dumps(plan), encoding="utf-8")
++
++    env = os.environ.copy()
++    env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
++    env["FAKE_DOTNET_PLAN"] = str(plan_path)
++    env["FAKE_DOTNET_LOG"] = str(log_path)
++    env["NUGET_API_KEY"] = api_key
++    if github_actions:
++        env["GITHUB_ACTIONS"] = "true"
++        env["GITHUB_STEP_SUMMARY"] = str(summary_path)
++
++    result = subprocess.run(
++        [
++            "pwsh",
++            "-NoLogo",
++            "-NoProfile",
++            "-File",
++            str(SCRIPT),
++            "-Version",
++            "1.2.3",
++            "-PackageDirectory",
++            str(package_directory),
++        ],
++        cwd=REPO_ROOT,
++        env=env,
++        capture_output=True,
++        text=True,
++        check=False,
++    )
++    return result, log_path, summary_path
++
++
++def write_partial_summary(path: Path) -> None:
++    summary = {
++        "schemaVersion": 1,
++        "status": "partial-publish",
++        "version": "1.2.3",
++        "packageDirectory": "artifacts/packages/release",
++        "source": "https://api.nuget.org/v3/index.json",
++        "startedAt": "2026-05-02T00:00:00.0000000Z",
++        "completedAt": "2026-05-02T00:01:00.0000000Z",
++        "pushed": ["Hexalith.Memories.Cli.1.2.3.nupkg"],
++        "failed": [
++            {
++                "package": "Hexalith.Memories.Contracts.1.2.3.nupkg",
++                "exitCode": 42,
++                "error": "network failure",
++            }
++        ],
++        "notAttempted": [
++            {
++                "package": "Hexalith.Memories.Telemetry.1.2.3.nupkg",
++                "reason": "unrecoverable auth failure",
++            }
++        ],
++        "recovery": "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages.",
++    }
++    path.write_text(json.dumps(summary), encoding="utf-8")
++
++
++def run_issue_helper(
++    summary_path: Path,
++    fake_bin: Path,
++    *,
++    existing_title: str = "",
++) -> tuple[subprocess.CompletedProcess[str], Path]:
++    log_path = summary_path.parent / "gh-calls.jsonl"
++    env = os.environ.copy()
++    env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
++    env["FAKE_GH_LOG"] = str(log_path)
++    env["FAKE_GH_EXISTING_TITLE"] = existing_title
++    env["GH_TOKEN"] = "fake-token"
++    env["GITHUB_REPOSITORY"] = "Hexalith/Hexalith.Memories"
++    env["GITHUB_SERVER_URL"] = "https://github.com"
++    env["GITHUB_RUN_ID"] = "123456"
++
++    result = subprocess.run(
++        [
++            "pwsh",
++            "-NoLogo",
++            "-NoProfile",
++            "-File",
++            str(REPO_ROOT / "tools" / "create-partial-publish-issue.ps1"),
++            "-SummaryPath",
++            str(summary_path),
++        ],
++        cwd=REPO_ROOT,
++        env=env,
++        capture_output=True,
++        text=True,
++        check=False,
++    )
++    return result, log_path
++
++
++class PublishNuGetTests(unittest.TestCase):
++    def test_all_packages_publish_successfully_without_failure_summary(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            package_directory = root / "packages"
++            fake_bin = root / "bin"
++            package_directory.mkdir()
++            fake_bin.mkdir()
++            packages = create_packages(package_directory)
++            write_fake_dotnet(fake_bin)
++
++            result, log_path, _ = run_publish(package_directory, fake_bin, {})
++
++            self.assertEqual(0, result.returncode, result.stderr)
++            calls = [
++                json.loads(line)["package"]
++                for line in log_path.read_text(encoding="utf-8").splitlines()
++            ]
++            self.assertEqual([package.name for package in packages], calls)
++            self.assertFalse((package_directory / "publish-summary.json").exists())
++
++            first_call = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
++            self.assertIn("--skip-duplicate", first_call["args"])
++
++    def test_duplicate_compatible_success_does_not_create_failure_summary(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            package_directory = root / "packages"
++            fake_bin = root / "bin"
++            package_directory.mkdir()
++            fake_bin.mkdir()
++            packages = create_packages(package_directory)
++            write_fake_dotnet(fake_bin)
++
++            duplicate_package = packages[0].name
++            result, log_path, _ = run_publish(
++                package_directory,
++                fake_bin,
++                {
++                    duplicate_package: {
++                        "exitCode": 0,
++                        "stdout": "warn : The package already exists and --skip-duplicate was specified.",
++                        "stderr": "",
++                    }
++                },
++            )
++
++            self.assertEqual(0, result.returncode, result.stderr)
++            calls = [
++                json.loads(line)["package"]
++                for line in log_path.read_text(encoding="utf-8").splitlines()
++            ]
++            self.assertEqual([package.name for package in packages], calls)
++            self.assertFalse((package_directory / "publish-summary.json").exists())
++
++    def test_middle_package_failure_still_attempts_later_packages_and_writes_summary(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            package_directory = root / "packages"
++            fake_bin = root / "bin"
++            package_directory.mkdir()
++            fake_bin.mkdir()
++            packages = create_packages(package_directory)
++            write_fake_dotnet(fake_bin)
++
++            failed_package = packages[len(packages) // 2].name
++            plan = {
++                failed_package: {
++                    "exitCode": 42,
++                    "stdout": "push started",
++                    "stderr": "network failure SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK",
++                }
++            }
++
++            result, log_path, summary_path = run_publish(package_directory, fake_bin, plan)
++
++            self.assertNotEqual(0, result.returncode)
++            calls = [
++                json.loads(line)["package"]
++                for line in log_path.read_text(encoding="utf-8").splitlines()
++            ]
++            self.assertEqual([package.name for package in packages], calls)
++
++            summary_file = package_directory / "publish-summary.json"
++            self.assertTrue(summary_file.exists())
++            summary = json.loads(summary_file.read_text(encoding="utf-8"))
++            self.assertEqual("partial-publish", summary["status"])
++            self.assertEqual("1.2.3", summary["version"])
++            self.assertEqual([failed_package], [item["package"] for item in summary["failed"]])
++            self.assertEqual(42, summary["failed"][0]["exitCode"])
++            self.assertIn("PARTIAL PUBLISH - manual reconciliation required", result.stdout)
++            self.assertIn("release-runbook.md", summary["recovery"])
++            self.assertIn("release-runbook.md", summary_path.read_text(encoding="utf-8"))
++            self.assertNotIn("SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK", result.stdout)
++            self.assertNotIn("SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK", result.stderr)
++            self.assertNotIn(
++                "SECRET_NUGET_API_KEY_SHOULD_NOT_LEAK",
++                summary_file.read_text(encoding="utf-8"),
++            )
++
++    def test_prepush_validation_failure_writes_non_publish_summary_without_dotnet_push(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            package_directory = root / "packages"
++            fake_bin = root / "bin"
++            package_directory.mkdir()
++            fake_bin.mkdir()
++            write_fake_dotnet(fake_bin)
++
++            result, log_path, _ = run_publish(package_directory, fake_bin, {})
++
++            self.assertNotEqual(0, result.returncode)
++            self.assertFalse(log_path.exists())
++            summary_file = package_directory / "publish-summary.json"
++            self.assertTrue(summary_file.exists())
++            summary = json.loads(summary_file.read_text(encoding="utf-8"))
++            self.assertEqual("publish-failed", summary["status"])
++            self.assertEqual([], summary["pushed"])
++            self.assertEqual([], summary["failed"])
++            self.assertIn("Package validation failed", summary["notAttempted"][0]["reason"])
++
++    def test_issue_helper_creates_deterministic_partial_publish_issue(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            fake_bin = root / "bin"
++            fake_bin.mkdir()
++            write_fake_gh(fake_bin)
++            summary_path = root / "publish-summary.json"
++            write_partial_summary(summary_path)
++
++            result, log_path = run_issue_helper(summary_path, fake_bin)
++
++            self.assertEqual(0, result.returncode, result.stderr)
++            calls = [
++                json.loads(line)
++                for line in log_path.read_text(encoding="utf-8").splitlines()
++            ]
++            self.assertEqual("list", calls[0]["args"][1])
++            create_call = calls[1]["args"]
++            self.assertEqual(["issue", "create"], create_call[:2])
++            self.assertIn("PARTIAL PUBLISH 1.2.3 - manual reconciliation required", create_call)
++            body = calls[1]["body"]
++            self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", body)
++            self.assertIn("docs/dev/release-runbook.md", body)
++            self.assertIn("--skip-duplicate", body)
++
++    def test_issue_helper_comments_on_existing_partial_publish_issue(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            root = Path(temp)
++            fake_bin = root / "bin"
++            fake_bin.mkdir()
++            write_fake_gh(fake_bin)
++            summary_path = root / "publish-summary.json"
++            write_partial_summary(summary_path)
++            title = "PARTIAL PUBLISH 1.2.3 - manual reconciliation required"
++
++            result, log_path = run_issue_helper(summary_path, fake_bin, existing_title=title)
++
++            self.assertEqual(0, result.returncode, result.stderr)
++            calls = [
++                json.loads(line)
++                for line in log_path.read_text(encoding="utf-8").splitlines()
++            ]
++            self.assertEqual("list", calls[0]["args"][1])
++            comment_call = calls[1]["args"]
++            self.assertEqual(["issue", "comment", "17"], comment_call[:3])
++            self.assertNotIn("create", comment_call)
++            body = calls[1]["body"]
++            self.assertIn("Rerun detected", body)
++            self.assertIn("docs/dev/release-runbook.md", body)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tools/create-partial-publish-issue.ps1 b/tools/create-partial-publish-issue.ps1
+new file mode 100644
+index 0000000..1650775
+--- /dev/null
++++ b/tools/create-partial-publish-issue.ps1
+@@ -0,0 +1,129 @@
++[CmdletBinding()]
++param(
++    [Parameter(Mandatory)]
++    [string]$SummaryPath,
++
++    [string]$Repository = $env:GITHUB_REPOSITORY,
++
++    [string]$RunUrl
++)
++
++$ErrorActionPreference = 'Stop'
++
++if (-not (Test-Path -LiteralPath $SummaryPath)) {
++    throw "Publish summary not found: $SummaryPath"
++}
++
++if ([string]::IsNullOrWhiteSpace($Repository)) {
++    throw "GITHUB_REPOSITORY is required to create or update the partial-publish issue."
++}
++
++if ([string]::IsNullOrWhiteSpace($RunUrl)) {
++    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_SERVER_URL) -and
++        -not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY) -and
++        -not [string]::IsNullOrWhiteSpace($env:GITHUB_RUN_ID)) {
++        $RunUrl = "$($env:GITHUB_SERVER_URL)/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
++    }
++    else {
++        $RunUrl = "GitHub Actions run URL unavailable"
++    }
++}
++
++$summary = Get-Content -LiteralPath $SummaryPath -Raw | ConvertFrom-Json
++if ($summary.status -ne "partial-publish") {
++    Write-Host "Publish summary status is '$($summary.status)'; skipping partial-publish issue alert."
++    return
++}
++
++$title = "PARTIAL PUBLISH $($summary.version) - manual reconciliation required"
++
++function Format-ListSection {
++    param(
++        [Parameter(Mandatory)][string]$Title,
++        [array]$Items
++    )
++
++    $lines = @("### $Title", "")
++    if ($Items.Count -eq 0) {
++        $lines += "- None"
++        return ($lines -join [Environment]::NewLine)
++    }
++
++    foreach ($item in $Items) {
++        if ($item -is [string]) {
++            $lines += "- $item"
++        }
++        elseif ($null -ne $item.exitCode) {
++            $errorText = ([string]$item.error).Trim()
++            if ($errorText.Length -gt 500) {
++                $errorText = $errorText.Substring(0, 500) + "..."
++            }
++
++            $lines += "- $($item.package) (exit code $($item.exitCode)): $errorText"
++        }
++        else {
++            $lines += "- $($item.package): $($item.reason)"
++        }
++    }
++
++    return ($lines -join [Environment]::NewLine)
++}
++
++$bodyParts = @(
++    "A NuGet publish run partially succeeded and requires manual reconciliation.",
++    "",
++    "- Run: $RunUrl",
++    "- Version: $($summary.version)",
++    "- Package directory: $($summary.packageDirectory)",
++    "- Source: $($summary.source)",
++    "",
++    (Format-ListSection -Title "Pushed packages" -Items @($summary.pushed)),
++    "",
++    (Format-ListSection -Title "Failed packages" -Items @($summary.failed)),
++    "",
++    (Format-ListSection -Title "Not-attempted packages" -Items @($summary.notAttempted)),
++    "",
++    "### Recovery",
++    "",
++    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; `--skip-duplicate` skips already-published packages and retries failed or not-attempted packages."
++)
++$body = $bodyParts -join [Environment]::NewLine
++
++$issuesJson = & gh issue list --repo $Repository --state open --search $title --json number,title
++if ($LASTEXITCODE -ne 0) {
++    throw "Failed to query existing partial-publish issues."
++}
++
++$issues = @($issuesJson | ConvertFrom-Json)
++$existing = @($issues | Where-Object { $_.title -eq $title } | Select-Object -First 1)
++if ($existing.Count -gt 0) {
++    $comment = "Rerun detected for the same partial publish version." + [Environment]::NewLine + [Environment]::NewLine + $body
++    $bodyFile = [System.IO.Path]::GetTempFileName()
++    try {
++        Set-Content -LiteralPath $bodyFile -Value $comment -Encoding utf8
++        & gh issue comment $existing[0].number --repo $Repository --body-file $bodyFile
++        if ($LASTEXITCODE -ne 0) {
++            throw "Failed to comment on existing partial-publish issue #$($existing[0].number)."
++        }
++    }
++    finally {
++        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
++    }
++
++    Write-Host "Commented on existing partial-publish issue #$($existing[0].number)."
++}
++else {
++    $bodyFile = [System.IO.Path]::GetTempFileName()
++    try {
++        Set-Content -LiteralPath $bodyFile -Value $body -Encoding utf8
++        & gh issue create --repo $Repository --title $title --body-file $bodyFile
++        if ($LASTEXITCODE -ne 0) {
++            throw "Failed to create partial-publish issue."
++        }
++    }
++    finally {
++        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
++    }
++
++    Write-Host "Created partial-publish issue: $title"
++}
+diff --git a/tools/publish-nuget.ps1 b/tools/publish-nuget.ps1
+index 88e3253..d0e5f15 100644
+--- a/tools/publish-nuget.ps1
++++ b/tools/publish-nuget.ps1
+@@ -9,6 +9,7 @@ param(
+ $ErrorActionPreference = 'Stop'
+ 
+ $repoRoot = Split-Path -Parent $PSScriptRoot
++$sourceUrl = "https://api.nuget.org/v3/index.json"
+ $packagePath = if ([System.IO.Path]::IsPathRooted($PackageDirectory)) {
+     $PackageDirectory
+ }
+@@ -16,27 +17,172 @@ else {
+     Join-Path $repoRoot $PackageDirectory
+ }
+ 
+-if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+-    throw "NUGET_API_KEY is required to publish packages."
++function Protect-LogText {
++    param([string]$Text)
++
++    if ([string]::IsNullOrEmpty($Text)) {
++        return ""
++    }
++
++    $sanitized = $Text
++    if (-not [string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
++        $sanitized = $sanitized.Replace($env:NUGET_API_KEY, "***")
++    }
++
++    return $sanitized.Trim()
++}
++
++function Get-PackageFiles {
++    if (-not (Test-Path -LiteralPath $packagePath)) {
++        return @()
++    }
++
++    return @(Get-ChildItem -LiteralPath $packagePath -Filter "*.nupkg" |
++        Where-Object { $_.Name -notlike "*.snupkg" } |
++        Sort-Object Name)
++}
++
++function New-RecoveryText {
++    return "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages."
++}
++
++function Write-PublishSummary {
++    param(
++        [Parameter(Mandatory)][string]$Status,
++        [Parameter(Mandatory)][datetime]$StartedAt,
++        [array]$Pushed,
++        [array]$Failed,
++        [array]$NotAttempted
++    )
++
++    if (-not (Test-Path -LiteralPath $packagePath)) {
++        New-Item -ItemType Directory -Path $packagePath -Force | Out-Null
++    }
++
++    $completedAt = [datetime]::UtcNow
++    $summary = [ordered]@{
++        schemaVersion = 1
++        status = $Status
++        version = $Version
++        packageDirectory = [System.IO.Path]::GetRelativePath($repoRoot, $packagePath).Replace('\', '/')
++        source = $sourceUrl
++        startedAt = $StartedAt.ToString("o")
++        completedAt = $completedAt.ToString("o")
++        pushed = @($Pushed)
++        failed = @($Failed)
++        notAttempted = @($NotAttempted)
++        recovery = New-RecoveryText
++    }
++
++    $summaryPath = Join-Path $packagePath "publish-summary.json"
++    $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $summaryPath -Encoding utf8
++
++    Write-Host ""
++    Write-Host "NuGet publish summary ($Status)"
++    Write-Host "Version: $Version"
++    Write-Host "Package directory: $($summary.packageDirectory)"
++    Write-Host "Pushed: $(@($Pushed).Count)"
++    Write-Host "Failed: $(@($Failed).Count)"
++    Write-Host "Not attempted: $(@($NotAttempted).Count)"
++    Write-Host "Summary: $summaryPath"
++    Write-Host (New-RecoveryText)
++
++    if ($env:GITHUB_ACTIONS -eq "true" -and $Status -eq "partial-publish") {
++        $message = "Version $Version partially published. See publish-summary.json and docs/dev/release-runbook.md, then rerun the Release workflow."
++        $escapedMessage = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
++        Write-Host "::error title=PARTIAL PUBLISH - manual reconciliation required::$escapedMessage"
++    }
++
++    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
++        $markdown = @(
++            "## NuGet publish summary",
++            "",
++            "- Status: $Status",
++            "- Version: $Version",
++            "- Package directory: $($summary.packageDirectory)",
++            "- Pushed: $(@($Pushed).Count)",
++            "- Failed: $(@($Failed).Count)",
++            "- Not attempted: $(@($NotAttempted).Count)",
++            "- Recovery: see docs/dev/release-runbook.md; rerun the Release workflow because --skip-duplicate skips already-published packages and retries missing packages.",
++            ""
++        )
++        Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ($markdown -join [Environment]::NewLine)
++    }
++
++    return $summaryPath
++}
++
++function New-NotAttemptedPackage {
++    param(
++        [Parameter(Mandatory)][string]$Package,
++        [Parameter(Mandatory)][string]$Reason
++    )
++
++    return [ordered]@{
++        package = $Package
++        reason = Protect-LogText $Reason
++    }
++}
++
++function Complete-PrePushFailure {
++    param(
++        [Parameter(Mandatory)][datetime]$StartedAt,
++        [Parameter(Mandatory)][string]$Reason
++    )
++
++    $packages = Get-PackageFiles
++    $notAttempted = if ($packages.Count -eq 0) {
++        @((New-NotAttemptedPackage -Package "*" -Reason $Reason))
++    }
++    else {
++        @($packages | ForEach-Object { New-NotAttemptedPackage -Package $_.Name -Reason $Reason })
++    }
++
++    Write-PublishSummary -Status "publish-failed" -StartedAt $StartedAt -Pushed @() -Failed @() -NotAttempted $notAttempted | Out-Null
++    throw $Reason
+ }
+ 
+ Push-Location $repoRoot
+ try {
+-    & pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1 -PackageDirectory $packagePath -Version $Version
++    $startedAt = [datetime]::UtcNow
++    if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
++        Complete-PrePushFailure -StartedAt $startedAt -Reason "NUGET_API_KEY is required to publish packages."
++    }
++
++    $validationOutput = @(& pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1 -PackageDirectory $packagePath -Version $Version 2>&1)
+     if ($LASTEXITCODE -ne 0) {
+-        throw "Package validation failed; refusing to publish."
++        $reason = "Package validation failed; refusing to publish. $(Protect-LogText ($validationOutput -join [Environment]::NewLine))"
++        Complete-PrePushFailure -StartedAt $startedAt -Reason $reason
+     }
+ 
+-    $packages = @(Get-ChildItem -LiteralPath $packagePath -Filter "*.nupkg" |
+-        Where-Object { $_.Name -notlike "*.snupkg" } |
+-        Sort-Object Name)
++    $packages = Get-PackageFiles
++    $pushed = @()
++    $failed = @()
++    $notAttempted = @()
+ 
+     foreach ($package in $packages) {
+         Write-Host "Publishing $($package.Name)"
+-        & dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
++        $pushOutput = @(& dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source $sourceUrl --skip-duplicate 2>&1)
+         if ($LASTEXITCODE -ne 0) {
+-            throw "dotnet nuget push failed for $($package.Name)."
++            $exitCode = $LASTEXITCODE
++            $errorText = Protect-LogText ($pushOutput -join [Environment]::NewLine)
++            Write-Host "Publish failed for $($package.Name) with exit code $exitCode. Continuing to remaining packages."
++            $failed += [ordered]@{
++                package = $package.Name
++                exitCode = $exitCode
++                error = $errorText
++            }
++            continue
+         }
++
++        $pushed += $package.Name
++        Write-Host "Published $($package.Name)"
++    }
++
++    if ($failed.Count -gt 0 -or $notAttempted.Count -gt 0) {
++        $status = if ($pushed.Count -gt 0) { "partial-publish" } else { "publish-failed" }
++        Write-PublishSummary -Status $status -StartedAt $startedAt -Pushed $pushed -Failed $failed -NotAttempted $notAttempted | Out-Null
++        throw "NuGet publishing finished with $($failed.Count) failed package(s) and $($notAttempted.Count) not-attempted package(s)."
+     }
+ }
+ finally {
