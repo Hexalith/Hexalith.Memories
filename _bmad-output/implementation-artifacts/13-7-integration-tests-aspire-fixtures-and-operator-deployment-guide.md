@@ -38,11 +38,11 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 ## Acceptance Criteria
 
-1. **AC1 - Provider integration suite covers Google and Ollama.** The embedding integration suite is parameterized over `provider in {google, ollama}` with named xUnit cases or separate facts that map to AC IDs. Google continues to use the existing fake path, does not require OIDC, and must not call the new Ollama or Keycloak fake endpoints. Ollama uses a deterministic Ollama-compatible HTTP fake and Keycloak/OIDC fake for Tier-2/Tier-3 coverage. The bounded matrix is: Google success regression, Ollama success with bearer token, Ollama auth/config failure evidence, vector dimension/provider-marker assertion, and hybrid-search observable result. Tier-2 coverage does not require Docker, real DAPR sidecars, real Keycloak, or real Ollama unless the existing test category already requires them.
+1. **AC1 - Provider integration suite covers Google and Ollama.** The embedding integration suite is parameterized over `provider in {google, ollama}` with named xUnit cases or separate facts that map to AC IDs. Google continues to use the existing fake path, does not require OIDC, and must not call the new Ollama or Keycloak fake endpoints. Ollama uses a deterministic Ollama-compatible HTTP fake and Keycloak/OIDC fake for Tier-2/Tier-3 coverage. The bounded matrix is exactly: Google success regression, Ollama success with bearer token, Ollama auth/config failure evidence, vector dimension/provider-marker assertion, and hybrid-search observable result. Do not expand this into a provider/auth/documentation cross-product. Tier-2 coverage does not require Docker, real DAPR sidecars, real Keycloak, or real Ollama unless the existing test category already requires them.
 
-2. **AC2 - Ollama end-to-end Aspire test proves the committed runtime path.** A new `OllamaEmbeddingEndToEnd` integration test provisions or configures an Ollama tenant through the committed tenant configuration API, ingests one content unit, verifies persisted embedding dimensions are 2560, verifies the committed provider/model metadata fields preserve `provider = "ollama"` and `model = "qwen3-embedding:4b"` or the committed combined marker `ollama:qwen3-embedding:4b`, and verifies hybrid search returns that unit through an observable API result. The test must include a syntactic canary token so a stale or non-semantic result cannot satisfy the assertion accidentally.
+2. **AC2 - Ollama end-to-end Aspire test proves the committed runtime path.** A new `OllamaEmbeddingEndToEnd` integration test provisions or configures an Ollama tenant through the committed tenant configuration API, ingests one content unit, verifies persisted embedding dimensions are 2560, verifies the committed provider/model metadata fields preserve `provider = "ollama"` and `model = "qwen3-embedding:4b"` or the committed combined marker `ollama:qwen3-embedding:4b`, and verifies hybrid search returns that unit through an observable API result. The test must use a unique tenant/case identifier plus a syntactic canary token so a stale Redis record, prior test run, or purely lexical result cannot satisfy the assertion accidentally.
 
-3. **AC3 - Test fixtures provide deterministic 2560-dim Ollama vectors.** The Ollama fake returns repeatable 2560-length vectors derived from `model + "\n" + input` or an equivalently documented deterministic seed. Values must be ordered, finite, stable across test runs, non-zero for at least one element, and distinguishable from the existing Google fake dimensions so dimension drift cannot pass accidentally. Tests should assert length exactly 2560 and compare deterministic output with an explicit tolerance suitable for the numeric type.
+3. **AC3 - Test fixtures provide deterministic 2560-dim Ollama vectors.** The Ollama fake returns repeatable 2560-length vectors derived from `model + "\n" + input` or an equivalently documented deterministic seed. Values must be ordered, finite, stable across test runs and cultures, non-zero for at least one element, and distinguishable from the existing Google fake dimensions so dimension drift cannot pass accidentally. Tests should assert length exactly 2560 and compare deterministic output with an explicit tolerance suitable for the numeric type.
 
 4. **AC4 - OIDC token flow is exercised without leaking credentials.** The fake Keycloak/token endpoint asserts `application/x-www-form-urlencoded` client_credentials form shape, including `grant_type=client_credentials`, `client_id`, `client_secret`, and optional `scope`, and rejects missing or malformed values. The Ollama fake must fail any request that does not use `POST /api/embed` and must prove the outbound request carries `Authorization: Bearer <token>` without storing the raw token in assertion output. Tests prove captured logs, exception text, serialized payloads, docs examples, and committed artifacts do not contain raw sample values such as `super-secret-client-secret`, `client_secret=`, `Bearer eyJ`, or raw Google API keys.
 
@@ -87,6 +87,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
   - [ ] Store the fake OIDC `client_secret` in the local DAPR secretstore or test configuration exactly the way the committed `EmbeddingClient` resolves it; do not bypass production secret retrieval in an integration test.
   - [ ] If existing seams cannot validate production secret retrieval without semantic changes to token provider, EmbeddingClient, tenant config, or AppHost defaults, stop and record a deferred architecture decision instead of expanding scope.
   - [ ] Reuse `EnvVarScope` for all process-wide overrides and dispose scopes on fixture initialization failure.
+  - [ ] Keep Ollama/Keycloak fake base URLs scoped to the selected provider mode and reset them between tests so parallel or later Google/fake-path tests cannot inherit provider-specific state.
   - [ ] Ensure the fake server captures sanitized request evidence for method, path, count, client identity where safe, and JSON/form shape without logging bearer tokens or secrets.
   - [ ] Add a regression proving the default fake embedding path starts and runs without configuring Ollama/Keycloak fakes and without calling either fake endpoint.
 
@@ -108,6 +109,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
   - [ ] Ingest one content unit through the normal ingestion endpoint/workflow.
   - [ ] Verify Redis semantic hash metadata includes target provider/model, 2560 dimensions, tenant/config source where committed, and content-unit correlation key using the committed field names from Stories 13.3/13.6.
   - [ ] Verify hybrid search returns the memory unit. If semantic scoring is nondeterministic, include a syntactic canary token so the assertion cannot pass from stale data.
+  - [ ] Assert returned case/content identifiers match the new unit, not just non-empty search results or a high score.
   - [ ] Assert the fake Ollama endpoint received at least one embed request and the fake token endpoint received the expected token request count.
 
 - [ ] Task 4 - Write `docs/operations/embedding-providers.md` (AC: #6-#11, #14)
@@ -120,6 +122,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
   - [ ] Add the `TenantEmbeddingConfig` field matrix, including required/optional fields and examples for each provider option.
   - [ ] Add DAPR secretstore examples for local file secretstore and production secret-manager equivalents. Keep values as placeholders.
   - [ ] Add the Story 13.6 migration runbook from committed evidence only: dry-run, live, resume, verify, rollback guardrails, and expected output.
+  - [ ] If Story 13.6 still lacks committed command/output evidence, include a short blocked note in the Dev Agent Record and leave the migration command section as a placeholder-free explanation of the dependency; do not invent command names.
   - [ ] Add troubleshooting for common failures: wrong vector dimensions, missing audience, invalid client secret, missing DAPR secret, 401/403 after token refresh, hybrid search empty after migration, and accidental Path B rollback expectation.
 
 - [ ] Task 5 - Add developer-facing cross-reference (AC: #12, #14)
@@ -199,6 +202,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 - Audience validation belongs at the gateway. The guide must tell operators to reject tokens whose `aud` does not match the gateway audience.
 - Local/no-auth Ollama mode must be documented as local/development or trusted-network only unless protected by an upstream gateway. Do not imply it is acceptable for exposed production ingress.
 - The AppHost secretstore may reference repo-root `secrets.json`, but docs must call out that the file is local/dev and production deployments should use platform secret management.
+- Redaction proof should scan only committed docs, captured fake evidence, log output available to the test, and serialized payload examples. Do not add a broad repository-wide secret scan that can fail on unrelated historical fixtures or local audit files.
 
 ### Testing Requirements
 
@@ -210,6 +214,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 - Include a dimension assertion that fails if Ollama vectors are 768 or any value other than 2560.
 - Include a provider/model assertion that preserves the colon in `qwen3-embedding:4b`.
 - Keep one Google-path regression test in the parameterized suite so provider abstraction changes cannot silently break existing tenants.
+- Name or trait new tests with story/AC breadcrumbs where practical, for example `Story13_7_AC2`, so validation evidence can be traced without rereading test bodies.
 
 ### Previous Story Intelligence
 
@@ -264,6 +269,18 @@ The BMad persistent-facts glob found `Hexalith.Commons/_bmad-output/project-cont
 - **Findings deferred:** Live external provider certification, provider capability redesign, gateway JWT/JWKS policy invention, production Kubernetes/cert-manager/GPU guidance, local/no-auth security posture beyond warning language, and migration UX changes beyond documenting committed Story 13.6 behavior remain out of scope or deferred to later product/architecture decisions.
 - **Final recommendation:** `ready-for-dev`
 
+## Advanced Elicitation
+
+- **Date/time:** 2026-05-02T18:47:03+02:00
+- **Selected story key:** `13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide`
+- **Command/skill invocation used:** `/bmad-advanced-elicitation 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide`
+- **Batch 1 method names:** Security Audit Personas; Failure Mode Analysis; Pre-mortem Analysis; Comparative Analysis Matrix; Critique and Refine.
+- **Reshuffled Batch 2 method names:** Red Team vs Blue Team; First Principles Analysis; Self-Consistency Validation; User Persona Focus Group; Expand or Contract for Audience.
+- **Findings summary:** The story was already ready for development, but the elicitation pass found residual ambiguity around matrix expansion risk, stale-data false positives, cross-test fixture contamination, migration-runbook dependency handling, redaction scan boundaries, and validation traceability.
+- **Changes applied:** Bounded AC1 to the exact finite provider matrix; strengthened AC2 against stale Redis/search results with unique case identifiers; made deterministic vectors culture-stable; added fixture reset and cross-test isolation requirements; required search-result identity assertions; clarified Story 13.6 blocked-runbook handling; scoped redaction proof to committed docs/test evidence; and added AC breadcrumb guidance for validation evidence.
+- **Findings deferred:** No product, architecture, or cross-story contract changes were applied. Live provider certification, gateway policy design, migration command invention before Story 13.6 evidence, and broad repository secret scanning remain out of scope.
+- **Final recommendation:** `ready-for-dev`
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -291,5 +308,6 @@ Codex GPT-5
 
 | Date       | Change                                                                                                                                                                                                                                   | Author |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Advanced elicitation completed; tightened finite matrix language, stale-data guards, deterministic vector stability, fixture isolation, migration dependency handling, redaction scan boundaries, and validation traceability. | Codex |
 | 2026-05-02 | Party-mode review completed; clarified prerequisite gating, finite provider test matrix, fake-first `/api/embed` and OIDC assertions, deterministic 2560-vector contract, redaction evidence, Tier-2/Tier-3 skip policy, Story 13.6 runbook dependency, and operator documentation checkpoints. | Codex |
 | 2026-05-02 | Story 13.7 context created: provider-parameterized integration coverage, Ollama/Keycloak fakes, Aspire fixture boundaries, operator deployment guide, provider config matrix, migration runbook handoff, and redaction constraints. | Codex |
