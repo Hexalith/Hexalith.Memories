@@ -99,11 +99,6 @@ public sealed partial class CiTestInventoryTests
         BaselineFilter[] filters = ReadAcceptedReleaseFilters(File.ReadAllLines(Path.Combine(repoRoot, "tools", "test-release.ps1")));
         DeferredBaseline[] baselines = ReadOpenDeferredBaselines(File.ReadAllLines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md")));
 
-        // Probe (review-12-4 P7): S11-FA is the well-known open release-lane baseline. If the
-        // parser regresses and silently returns an empty / wrong set, the vacuous-truth ShouldAllBe
-        // assertions below would pass with no signal. Fail loudly instead.
-        baselines.ShouldContain(static b => b.Key == "S11-FA", "Parser regression: failed to detect the well-known S11-FA open release-lane baseline.");
-
         filters.ShouldAllBe(filter => baselines.Any(baseline => baseline.Key == filter.Key && baseline.TestName == filter.TestName));
         baselines
             .Where(static baseline => baseline.HasReleaseFilter)
@@ -196,13 +191,31 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReadAcceptedReleaseFilters_RealRepoFilter_DetectsKnownS11FA()
+    public void ReadAcceptedReleaseFilters_ValidKeyedFilter_ReturnsFilter()
+    {
+        string[] fixture =
+        [
+            "# entry \"S11-FX. Description\".",
+            "$projectFilters = @{",
+            "    \"foo.csproj\" = \"FullyQualifiedName!~SomeTests.SomeMethod\"",
+            "}",
+        ];
+
+        BaselineFilter[] filters = ReadAcceptedReleaseFilters(fixture);
+
+        BaselineFilter filter = filters.ShouldHaveSingleItem();
+        filter.Key.ShouldBe("S11-FX");
+        filter.TestName.ShouldBe("SomeTests.SomeMethod");
+    }
+
+    [Fact]
+    public void ReadAcceptedReleaseFilters_RealRepo_HasNoAcceptedBaselineFilters()
     {
         string repoRoot = GetRepoRoot();
 
         BaselineFilter[] filters = ReadAcceptedReleaseFilters(File.ReadAllLines(Path.Combine(repoRoot, "tools", "test-release.ps1")));
 
-        filters.ShouldContain(static f => f.Key == "S11-FA" && f.TestName == "EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag");
+        filters.ShouldBeEmpty();
     }
 
     private static int CountOccurrences(string haystack, string needle)

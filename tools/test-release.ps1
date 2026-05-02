@@ -25,16 +25,6 @@ if ($projects.Count -eq 0) {
     throw "Inventory '$inventoryPath' contained no test projects."
 }
 
-# Per-project filter overrides for genuine baseline failures that are NOT fixed by Story 11.x
-# work. Each entry MUST link to a tracking issue; the release lane fails if a listed test
-# is renamed/removed (no silent drift). Tests fixed in this PR (Story 11.1 stabilization
-# pass) intentionally have NO entry here so a regression in a fix would block release.
-# Tracking: https://github.com/Hexalith/Hexalith.Memories/issues — see deferred-work.md
-# entry "S11-FA. EmbeddingInputContentKindTests baseline failure".
-$projectFilters = @{
-    "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj" = "FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag"
-}
-
 # Benchmarks are opt-in (Category=Benchmark); release lane must skip them per 11.1 Task 0.4.
 $benchmarkExcludeFilter = "Category!=Benchmark"
 
@@ -55,14 +45,7 @@ try {
             "none"
         )
 
-        $filterParts = @()
-        if ($projectFilters.ContainsKey($project)) {
-            $filterParts += $projectFilters[$project]
-        }
-        $filterParts += $benchmarkExcludeFilter
-
-        $combinedFilter = ($filterParts -join "&")
-        $arguments += @("--filter", $combinedFilter)
+        $arguments += @("--filter", $benchmarkExcludeFilter)
 
         Write-Host ("dotnet {0}" -f ($arguments -join " "))
         & dotnet @arguments

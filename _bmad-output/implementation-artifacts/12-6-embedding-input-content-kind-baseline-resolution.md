@@ -1,6 +1,6 @@
 # Story 12.6: EmbeddingInputContentKind Baseline Resolution
 
-Status: ready-for-dev
+Status: done
 
 Story Key: 12-6-embedding-input-content-kind-baseline-resolution
 Epic: 12 - First Release & Operations Foundation
@@ -34,55 +34,55 @@ so that the baseline filter list returns to zero and any future addition to it i
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Reproduce and lock the current baseline evidence (AC: 1, 2, 3)
-  - [ ] Record current branch, commit, build configuration, and whether the run uses `--no-build`.
-  - [ ] Run the filtered S11-FA test directly:
+- [x] Task 0 - Reproduce and lock the current baseline evidence (AC: 1, 2, 3)
+  - [x] Record current branch, commit, build configuration, and whether the run uses `--no-build`.
+  - [x] Run the filtered S11-FA test directly:
     ```powershell
     dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag" --logger "console;verbosity=minimal"
     ```
-  - [ ] Run the whole `EmbeddingInputContentKindTests` class.
-  - [ ] Run the existing stronger telemetry theory:
+  - [x] Run the whole `EmbeddingInputContentKindTests` class.
+  - [x] Run the existing stronger telemetry theory:
     ```powershell
     dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag" --logger "console;verbosity=minimal"
     ```
-  - [ ] If the focused test only passes with `--no-build`, perform a clean Release build before drawing conclusions.
-  - [ ] Do not edit submodules or initialize nested submodules.
+  - [x] If the focused test only passes with `--no-build`, perform a clean Release build before drawing conclusions.
+  - [x] Do not edit submodules or initialize nested submodules.
 
-- [ ] Task 1 - Identify whether the filter is stale or still required (AC: 1, 2, 3)
-  - [ ] Inspect `tools/test-release.ps1` and confirm the only current accepted baseline filter is the `S11-FA` `FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` entry.
-  - [ ] Inspect `_bmad-output/implementation-artifacts/deferred-work.md` and confirm the S11-FA entry still points to this exact test.
-  - [ ] Inspect `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs` and `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` before changing either file.
-  - [ ] Compare the S11-FA test with the stronger `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` theory, which uses a unique tenant id and `ShouldHaveSingleItem()` to avoid static-meter contamination.
-  - [ ] If the test is green after clean build, treat the filter as stale unless the full release lane proves otherwise.
+- [x] Task 1 - Identify whether the filter is stale or still required (AC: 1, 2, 3)
+  - [x] Inspect `tools/test-release.ps1` and confirm the only current accepted baseline filter is the `S11-FA` `FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` entry.
+  - [x] Inspect `_bmad-output/implementation-artifacts/deferred-work.md` and confirm the S11-FA entry still points to this exact test.
+  - [x] Inspect `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs` and `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` before changing either file.
+  - [x] Compare the S11-FA test with the stronger `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` theory, which uses a unique tenant id and `ShouldHaveSingleItem()` to avoid static-meter contamination.
+  - [x] If the test is green after clean build, treat the filter as stale unless the full release lane proves otherwise.
 
-- [ ] Task 2 - Remove the accepted-baseline tolerance or fix the real defect (AC: 2, 3, 4, 5)
-  - [ ] Preferred path: remove the `S11-FA` project filter from `tools/test-release.ps1` and leave no empty `$projectFilters` map unless tests prove a guard needs to parse an explicitly empty map.
-  - [ ] If the S11-FA test still fails due to test isolation, rewrite it using the existing stronger pattern: unique tenant id, typed tag extraction, and a single observed measurement for that tenant.
-  - [ ] If the failure is in production telemetry, fix only the minimal code required around `GenerateEmbeddingActivity`, `EmbeddingInput`, or `MemoriesMeter` and keep the telemetry contract `content_kind in {payload, naturalLanguageDescription}` unchanged unless an explicit contract renegotiation is recorded.
-  - [ ] Do not change embedding provider defaults, vector dimensions, rate-limit semantics, workflow routing, or natural-language retry behavior.
+- [x] Task 2 - Remove the accepted-baseline tolerance or fix the real defect (AC: 2, 3, 4, 5)
+  - [x] Preferred path: remove the `S11-FA` project filter from `tools/test-release.ps1` and leave no empty `$projectFilters` map unless tests prove a guard needs to parse an explicitly empty map.
+  - [x] If the S11-FA test still fails due to test isolation, rewrite it using the existing stronger pattern: unique tenant id, typed tag extraction, and a single observed measurement for that tenant.
+  - [x] If the failure is in production telemetry, fix only the minimal code required around `GenerateEmbeddingActivity`, `EmbeddingInput`, or `MemoriesMeter` and keep the telemetry contract `content_kind in {payload, naturalLanguageDescription}` unchanged unless an explicit contract renegotiation is recorded.
+  - [x] Do not change embedding provider defaults, vector dimensions, rate-limit semantics, workflow routing, or natural-language retry behavior.
 
-- [ ] Task 3 - Update executable inventory/baseline guardrails (AC: 5, 6)
-  - [ ] Update `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so `tools/test-release.ps1` cannot keep hidden accepted filters when no open `S11-FX` entries exist.
-  - [ ] Assert that the S11-FA filter string is absent.
-  - [ ] Assert that `test-release.ps1` still drives from `tools/test-projects.unit-contract.txt` and still excludes `Category=Benchmark`.
-  - [ ] If a future accepted filter syntax remains supported, assert every filter names a deferred-work key and fully qualified test name.
+- [x] Task 3 - Update executable inventory/baseline guardrails (AC: 5, 6)
+  - [x] Update `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so `tools/test-release.ps1` cannot keep hidden accepted filters when no open `S11-FX` entries exist.
+  - [x] Assert that the S11-FA filter string is absent.
+  - [x] Assert that `test-release.ps1` still drives from `tools/test-projects.unit-contract.txt` and still excludes `Category=Benchmark`.
+  - [x] If a future accepted filter syntax remains supported, assert every filter names a deferred-work key and fully qualified test name.
 
-- [ ] Task 4 - Close or update deferred-work bookkeeping (AC: 2, 4, 5)
-  - [ ] If the filter is removed, move the S11-FA entry in `_bmad-output/implementation-artifacts/deferred-work.md` into a closed/resolved section or clearly mark it closed with the validating commit/date.
-  - [ ] If the test is skipped as an interim fallback, keep S11-FA open and update it with the skip trait, rationale, and re-open trigger.
-  - [ ] Do not create broad `S11-FX` entries unless new baseline failures are discovered by this story's validation.
+- [x] Task 4 - Close or update deferred-work bookkeeping (AC: 2, 4, 5)
+  - [x] If the filter is removed, move the S11-FA entry in `_bmad-output/implementation-artifacts/deferred-work.md` into a closed/resolved section or clearly mark it closed with the validating commit/date.
+  - [x] If the test is skipped as an interim fallback, keep S11-FA open and update it with the skip trait, rationale, and re-open trigger.
+  - [x] Do not create broad `S11-FX` entries unless new baseline failures are discovered by this story's validation.
 
-- [ ] Task 5 - Validate the release lane and close honestly (AC: 1-8)
-  - [ ] Run focused tests after any code/test change.
-  - [ ] Run `CiTestInventoryTests`.
-  - [ ] Run `tools/test-release.ps1` after a Release build so the release-lane path proves it no longer needs the filter:
+- [x] Task 5 - Validate the release lane and close honestly (AC: 1-8)
+  - [x] Run focused tests after any code/test change.
+  - [x] Run `CiTestInventoryTests`.
+  - [x] Run `tools/test-release.ps1` after a Release build so the release-lane path proves it no longer needs the filter:
     ```powershell
     dotnet restore Hexalith.Memories.slnx
     dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
     ./tools/test-release.ps1 -Configuration Release
     ```
-  - [ ] If full `test-release.ps1` is blocked by environment or runtime, record the exact blocker and at minimum run the Server.Tests project without the S11-FA exclusion plus the CLI inventory test.
-  - [ ] Update this story's Dev Agent Record with commands, results, changed files, and whether S11-FA is closed or deferred.
+  - [x] If full `test-release.ps1` is blocked by environment or runtime, record the exact blocker and at minimum run the Server.Tests project without the S11-FA exclusion plus the CLI inventory test.
+  - [x] Update this story's Dev Agent Record with commands, results, changed files, and whether S11-FA is closed or deferred.
 
 ## File Scope
 
@@ -259,6 +259,24 @@ GPT-5 Codex
 - Story selection logic chose `12-6-embedding-input-content-kind-baseline-resolution` because `ready_count` was `3`, below target `5`, and this was the first backlog story in sprint-status order.
 - Focused no-build validation during story creation showed the S11-FA test currently passes: 1 passed, 0 failed.
 - Focused no-build validation during story creation showed the full `EmbeddingInputContentKindTests` class currently passes: 7 passed, 0 failed.
+- 2026-05-02 implementation start: branch `main`, commit `9cb9d806f477e4124d8ab5fe412106dc198345d6`, configuration `Release`. Initial S11-FA reproduction did not use `--no-build`.
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag" --logger "console;verbosity=minimal"`: passed 1/1.
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~EmbeddingInputContentKindTests" --logger "console;verbosity=minimal"`: passed 7/7.
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --filter "FullyQualifiedName~GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag" --logger "console;verbosity=minimal"`: passed 2/2.
+- `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Release --filter "FullyQualifiedName~CiTestInventoryTests" --logger "console;verbosity=minimal"` after guardrail edits: passed 12/12.
+- `dotnet restore Hexalith.Memories.slnx`: succeeded.
+- `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore`: succeeded, 0 warnings, 0 errors.
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~EmbeddingInputContentKindTests" --logger "console;verbosity=minimal"`: passed 7/7.
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag" --logger "console;verbosity=minimal"`: passed 2/2.
+- `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~CiTestInventoryTests" --logger "console;verbosity=minimal"`: passed 12/12.
+- `./tools/test-release.ps1 -Configuration Release`: passed without S11-FA exclusion. Results: Contracts 468/468, Server 1543/1543, CLI 334/334, MCP 76/76, EventStore 84/84.
+
+### Implementation Plan
+
+- Treat the clean Release S11-FA pass as a stale-filter disposition rather than changing production telemetry or test behavior.
+- Remove the stale `FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` release-lane filter and avoid retaining an empty `$projectFilters` map.
+- Keep future accepted-filter parsing covered with fixture tests while asserting the real repository currently has zero accepted release-lane baseline filters.
+- Close S11-FA in deferred-work bookkeeping after the release lane passes without the exclusion.
 
 ### Completion Notes List
 
@@ -266,16 +284,35 @@ GPT-5 Codex
 - Discovery loaded Epic 12 Story 12.6 planning material, S11-FA deferred-work context, Story 9.2 content-kind/telemetry background, current release-lane filter, current telemetry tests, and prior Epic 12 story artifacts.
 - The story treats the current green focused result as a stale-filter signal that still needs clean-build and release-lane proof during implementation.
 - No implementation changes were made during story creation; this run only created the ready-for-dev story artifact.
+- 2026-05-02 implementation confirmed the S11-FA focused test, full `EmbeddingInputContentKindTests` class, and stronger telemetry theory are green under Release.
+- Removed the stale S11-FA release-lane filter from `tools/test-release.ps1`; the script now applies only `Category!=Benchmark`.
+- Updated `CiTestInventoryTests` to assert zero real accepted release-lane baseline filters, absence of the S11-FA filter string, continued shared inventory usage, continued benchmark exclusion, and valid parsing for any future keyed accepted-filter fixture.
+- Moved S11-FA from open deferred work into a closed Story 12.6 section after release-lane validation passed without the exclusion.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/12-6-embedding-input-content-kind-baseline-resolution.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+- `tools/test-release.ps1`
 
 ### Change Log
 
 - 2026-05-01: Created Story 12.6 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-02: Removed stale S11-FA release-lane baseline filter, closed S11-FA deferred-work entry, added zero-baseline guardrail assertions, and validated the Release lane green without the exclusion.
+- 2026-05-02: Code review applied 2 patches to `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` — removed two over-restrictive `ShouldNotContain` substring assertions (lines 83-84) and two unconditional `ShouldBeEmpty` assertions (lines 104-105) that were stricter than AC #6. The existing conditional guard (lines 112-115) and pairing logic (lines 107-110) continue to enforce zero baseline filters when no S11-F* entries are open. `CiTestInventoryTests` 12/12 green after patches. 5 follow-ups deferred (12.6-RV1..12.6-RV5).
 
 ## Story Completion Status
 
-Ultimate context engine analysis completed - comprehensive developer guide created. Status set to `ready-for-dev`.
+Implementation and code review complete. S11-FA is closed, accepted release-lane baseline filters are zero, all tasks/subtasks are checked, code review patches applied (CiTestInventoryTests 12/12 green), and status is set to `done`. 5 follow-ups deferred (12.6-RV1..12.6-RV5).
+
+### Review Findings
+
+- [x] [Review][Defer] Underlying telemetry test `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` still uses fixed tenant id `"t"` and a non-thread-safe capture list against the static `MemoriesMeter.EmbeddingApiCalls` counter — the flake mode that originally motivated S11-FA is dormant, not eliminated. Story File Scope forbids editing this test unless S11-FA reproduces (it didn't); reopening scope mid-review would violate the same File Scope discipline Story 12.3 established. Tracked as 12.6-RV5; the stronger sibling theory `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` remains as primary regression coverage. [tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs:84-119] — deferred, scope-respecting follow-up
+- [x] [Review][Patch] Removed two `ShouldNotContain` substring assertions (`EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` and `FullyQualifiedName!~`). Duplicated the parser-based `ReadAcceptedReleaseFilters_RealRepo_HasNoAcceptedBaselineFilters` test and would trip on harmless comments or any future legitimate narrow exclusion. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:83-84] — applied
+- [x] [Review][Patch] Removed the two unconditional `ShouldBeEmpty` assertions in `TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries`. AC #6 says "when no open S11-FX entries remain"; the existing conditional guard at lines 112-115 and the pairing logic already enforce exactly that. The unconditional version pinned the test to a one-time snapshot and made the downstream `ShouldAllBe` cross-checks unreachable. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:104-105] — applied
+- [x] [Review][Defer] Real-repo positive parser canary lost — both real-repo tests now expect empty; only fixture tests prove `ReadOpenDeferredBaselines` parses real-file shapes. Tracked as 12.6-RV1. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:217] — deferred, follow-up improvement
+- [x] [Review][Defer] S11-FD wording fragility: changing "release pipeline" to "release lane" in `deferred-work.md` would silently flip its baseline classification (12.4-RV6 surface realized by new `ShouldBeEmpty`). Tracked as 12.6-RV2. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:372-377] — deferred, structural classifier hardening
+- [x] [Review][Defer] New `ReadAcceptedReleaseFilters_ValidKeyedFilter_ReturnsFilter` fixture is single-item; `ShouldHaveSingleItem()` would mask parser over-matching. Tracked as 12.6-RV3. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:198-214] — deferred, fixture strengthening
+- [x] [Review][Defer] Discoverability breadcrumb removed from `tools/test-release.ps1` — consider a one-line trailing comment pointing at `deferred-work.md` so future maintainers can trace baseline-filter policy. Tracked as 12.6-RV4. [tools/test-release.ps1:25] — deferred, optional comment
