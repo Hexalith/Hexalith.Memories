@@ -1,0 +1,1794 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 6ddcb07..d391e16 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -35,29 +35,41 @@ jobs:
+ 
+       - name: Collect story scope inputs
+         shell: bash
++        env:
++          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
++          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
++          PR_HEAD_REF: ${{ github.head_ref }}
++          PUSH_BEFORE_SHA: ${{ github.event.before }}
+         run: |
+           set -euo pipefail
+           mkdir -p .story-scope
+ 
+           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+-            branch_name="${{ github.head_ref }}"
+-            head_sha="${{ github.event.pull_request.head.sha }}"
+-            base_sha="${{ github.event.pull_request.base.sha }}"
+-            git diff --name-only "$base_sha" "$head_sha" -- > .story-scope/changed-files.txt
++            branch_name="$PR_HEAD_REF"
++            head_sha="$PR_HEAD_SHA"
++            git diff --name-only "$PR_BASE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
+           else
+             branch_name="${GITHUB_REF_NAME}"
+             head_sha="${GITHUB_SHA}"
+-            before_sha="${{ github.event.before }}"
+-            if [[ "$before_sha" =~ ^0+$ ]]; then
+-              git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
++            # Force-push and brand-new-branch first push: github.event.before is
++            # all-zeros or unreachable. Fall back to comparing against `main` so
++            # the changed-file list reflects the branch contents, not the merge
++            # diff or every file in HEAD.
++            if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]] || ! git rev-parse --verify --quiet "$PUSH_BEFORE_SHA^{commit}" >/dev/null; then
++              git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 || true
++              if git rev-parse --verify --quiet origin/main >/dev/null; then
++                git diff --name-only origin/main..."$head_sha" -- > .story-scope/changed-files.txt
++              else
++                git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
++              fi
+             else
+-              git diff --name-only "$before_sha" "$head_sha" -- > .story-scope/changed-files.txt
++              git diff --name-only "$PUSH_BEFORE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
+             fi
+           fi
+ 
+           git log -1 --format=%B "$head_sha" > .story-scope/commit-message.txt
+           {
+-            echo "BRANCH_NAME=$branch_name"
++            printf 'BRANCH_NAME<<__STORY_SCOPE_EOF__\n%s\n__STORY_SCOPE_EOF__\n' "$branch_name"
+             echo "COMMIT_MESSAGE_FILE=.story-scope/commit-message.txt"
+             echo "CHANGED_FILES_FILE=.story-scope/changed-files.txt"
+           } >> "$GITHUB_ENV"
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+index ec2a327..9c730d7 100644
+--- a/CONTRIBUTING.md
++++ b/CONTRIBUTING.md
+@@ -88,6 +88,20 @@ partial-string matches. Overrides also do not bypass forbidden-default areas suc
+ contents, release scripts, `package-lock.json`, or runtime/source paths without a separate human,
+ product, or architecture decision.
+ 
++Forbidden-default paths can still appear in a story's `Allowed files for this story:` block when the
++story author has made a deliberate decision to touch them. Listing the path in the allow-list IS the
++"separate human/product/architecture decision" that authorizes the change; reviewers should treat any
++allow-list entry that intersects the forbidden-default list as a load-bearing scope decision and call
++it out explicitly in story review.
++
++The forbidden-default list (one source of truth, in `tools/check-story-file-scope.py`) currently
++covers: `src/**/*.cs`, `tests/**/*.cs`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`,
++`tools/test-release.ps1`, `package-lock.json`, and the submodule trees `Hexalith.AI.Tools/**`,
++`Hexalith.Commons/**`, `Hexalith.EventStore/**`. Submodule pointer changes (a tree entry like the bare
++`Hexalith.EventStore` path with no children) are also detected and treated as forbidden-default — the
++matcher uses recursive `**` semantics so a `<submodule>/**` glob matches both the bare submodule path
++and any path beneath it.
++
+ To run the check directly:
+ 
+ ```powershell
+diff --git a/Hexalith.EventStore b/Hexalith.EventStore
+index d3df818..99f6fe0 160000
+--- a/Hexalith.EventStore
++++ b/Hexalith.EventStore
+@@ -1 +1 @@
+-Subproject commit d3df81845f1641069a0e6badaf9bc0f7246c6919
++Subproject commit 99f6fe0c90f3ac8e2e9a9c2294cedb95a9ba4c80
+diff --git a/_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md b/_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md
+index 6608e67..46002b5 100644
+--- a/_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md
++++ b/_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md
+@@ -1,6 +1,6 @@
+ # Story 12.3: Story-File-Scope Enforcement
+ 
+-Status: review
++Status: done
+ 
+ **Effort estimate:** ~1.5-2.0 working days.
+ 
+@@ -113,6 +113,59 @@ so that the D5-style file-scope leak from Epic 11 cannot recur silently.
+   - [x] Validate the happy path and failure path with explicit commands and captured output.
+   - [x] Confirm the new job can become a required PR check without depending on runtime source changes, release tooling changes, or submodule edits.
+ 
++### Review Findings
++
++Code review run on 2026-05-01 against commit `0b065b8` using the three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Diff size 1196+ / 59-. AC audit (post-resolution): AC1 PASS, AC2 PASS (D2 resolved — story allow-list intersecting forbidden-default IS the spec-required deliberate decision; documented in CONTRIBUTING.md; remaining override-vagueness relaxation deferred as 12.3-RV12), AC3 PASS, AC4 PASS. 22 patches applied; 2 patches deferred (P6 override-vagueness relaxation pending design discussion; P22 multi-backticks-per-bullet kept at "first backtick is path, additional backticks are rationale" by deliberate design choice).
++
++#### Decisions needed
++
++- [x] [Review][Decision] Implementation commit `0b065b8` violates its own File Scope — leaks `Hexalith.EventStore` (submodule pointer), `_bmad-output/implementation-artifacts/13-3-extend-embedding-client-to-support-ollama.md`, `_bmad-output/process-notes/predev-preflight-2026-05-01T154530Z.json`, `_bmad-output/process-notes/predev-preflight-latest.json`. Dev Agent Record line 333 acknowledged these as out-of-scope, but they were committed. Decision: revert + recommit, accept and amend Dev Agent Record more explicitly, or other process correction?
++- [x] [Review][Decision] Story-allowed paths bypass forbidden-default audit (`tools/check-story-file-scope.py:339-352`). A story listing `src/Foo.cs` in its File Scope short-circuits before the forbidden-default check. Decision: should an explicit allow-list entry override forbidden-default (current behavior), or should forbidden-default ALWAYS gate the allow-list, requiring an explicit "opt-out of default forbidden" mechanism?
++- [x] [Review][Decision] Hooks `mktemp` on Windows Git Bash → Python validator may break on MSYS path translation. Verify hands-on, or change to a guaranteed-translatable path inside the repo (e.g. `.git/story-scope-changed.txt`) preemptively?
++
++#### Patches
++
++- [x] [Review][Patch] Submodule pointer leak NOT detected as forbidden-default — `is_forbidden_default('Hexalith.EventStore')` returns False because `Hexalith.EventStore/**` requires children. The literal submodule-pointer tree entry has no slash. Add prefix-equality match alongside the `/**` glob. This is the exact regression Story 12.2's closure note assigned 12.3 to prevent. [tools/check-story-file-scope.py:25-35]
++- [x] [Review][Patch] `extract_backtick_path` falls back to bare un-backticked tokens, contradicting CONTRIBUTING.md ("extracts only backtick-wrapped paths") and spec Task 0. Remove the fallback. [tools/check-story-file-scope.py:185-195]
++- [x] [Review][Patch] `matches_glob` uses `fnmatch` semantics where `*` matches `/`. A story allow-list entry like `tests/*` would permit any path under `tests/...` including forbidden `tests/**/*.cs`. Use proper recursive `**` semantics. [tools/check-story-file-scope.py:253-260]
++- [x] [Review][Patch] `.githooks/pre-commit` and `.githooks/commit-msg` lack the executable bit (mode 100644). Linux/macOS `git commit` silently bypasses them. `git update-index --chmod=+x .githooks/*`. [.githooks/pre-commit, .githooks/commit-msg]
++- [x] [Review][Patch] CI force-push: `${{ github.event.before }}` SHA is unreachable after history rewrite. `git diff "$before_sha" "$head_sha"` aborts the job with `bad object`. Wrap in fallback to `diff-tree` against HEAD or against the merge-base with `main`. [.github/workflows/ci.yml:51-55]
++- [ ] [Review][Patch] Override-vagueness rule rejects legitimate root-level files (`Dockerfile`, `LICENSE`, `package.json`) via `"/" not in normalized`, and rejects narrow `dir/**` overrides. Relax: allow path-shaped values with rationale; only reject clearly broad patterns (`*`, `**`, `.`, `/`, repo-root, prose-only). **Deferred to 12.3-RV12** — design decision needed on what constitutes "narrow enough"; relaxing without a clear rule risks weakening the audit value. [tools/check-story-file-scope.py:281-300]
++- [x] [Review][Patch] `parse_allowed_scope` does not track fenced code blocks. CONTRIBUTING.md's own template inside a story would be parsed as authoritative entries. Toggle on triple-backtick. [tools/check-story-file-scope.py:198-236]
++- [x] [Review][Patch] Sub-bullets under an allowed entry are parsed as additional allow-list entries because parser uses `stripped` (discards indentation). Reject indented bullets. [tools/check-story-file-scope.py:226-231]
++- [x] [Review][Patch] `STORY_KEY_PATTERN` lookbehind `(?<!\d)` only blocks digits; letters preceding still match. `feat/abc123-12-3-foo` resolves to `123-12-3-foo`. Use `(?<![\w-])`. [tools/check-story-file-scope.py:16]
++- [x] [Review][Patch] `parse_trailers` rejects duplicate identical Story trailers (e.g. `Story:` and `Story-Key:` both naming the same key). Only fail when trailer values disagree. [tools/check-story-file-scope.py:152-154]
++- [x] [Review][Patch] Unparseable `--story-key` is silently demoted instead of failing closed. `--story-key bad-value` falls through to trailer/branch. Spec calls CLI "highest precedence" — silent ignore violates fail-closed semantics. [tools/check-story-file-scope.py:159-161]
++- [x] [Review][Patch] Tests write commit-message files into the test runner's cwd via `Path(self._testMethodName + ".txt")`. Pollutes repo root, races on parallel runs, leaks files on crash. Use `tempfile.NamedTemporaryFile`. [tests/tooling/story_scope/story_scope_validator_test.py:34-38]
++- [x] [Review][Patch] `test_path_normalization_handles_windows_and_posix_inputs` only asserts `returncode == 0`. Add assertions that BOTH inputs normalize to the same path and that the `In-scope changed files:` block lists them as the expected POSIX form. [tests/tooling/story_scope/story_scope_validator_test.py:212-222]
++- [x] [Review][Patch] `test_real_current_story_file_scope_pattern_is_parseable` reads the live `12-2-...md`. Spec asked for "fixture", not "live file". Move to a frozen copy under `tests/tooling/story_scope/fixtures/`. [tests/tooling/story_scope/story_scope_validator_test.py:230-238]
++- [x] [Review][Patch] Add D5 regression test for plain `src/**/*.cs` touch with NO override (current `test_d5_style_source_touch_fails_even_with_override` only covers the override case). The validator currently reports forbidden-default-with-no-override as plain "Out-of-scope" with no submodule/forbidden diagnostic — assert that distinct diagnostic too. [tests/tooling/story_scope/story_scope_validator_test.py:102-120]
++- [x] [Review][Patch] Add tests for: diff-source-missing failure (spec required), empty `Scope-Override:` value, branch+trailer agreement (only conflict is tested today). [tests/tooling/story_scope/story_scope_validator_test.py]
++- [x] [Review][Patch] `extract_backtick_path` extracts only the FIRST backtick path on multi-token bullets — kept as deliberate design after first-pass implementation showed real story bullets routinely use additional backticks for inline-code rationale (e.g. `- \`.github/workflows/ci.yml\` - UPDATE. Add the required \`story-file-scope\` job.`). Resolution: explicitly document that the first backtick token is the path and subsequent backticks are rationale; do NOT split into multiple paths. Story authors who need to allow two paths should write two bullets. [tools/check-story-file-scope.py:185-189]
++- [x] [Review][Patch] `Story:` value containing two distinct keys silently picks the first via `extract_story_key`. Use `findall`, error on multiple matches in a single trailer value. [tools/check-story-file-scope.py:144-148]
++- [x] [Review][Patch] Diagnostic prints story artifact path with OS-native separators on Windows (`_bmad-output\implementation-artifacts\...`). Spec says paths should be normalized to POSIX-style — also for printed diagnostics. [tools/check-story-file-scope.py:328-329]
++- [x] [Review][Patch] sprint-status.yaml `last_updated` comment says "moved in-progress -> review" but previous status was `ready-for-dev`. Correct the narrative comment. [_bmad-output/implementation-artifacts/sprint-status.yaml]
++- [x] [Review][Patch] Tests assert on stdout substrings without anchoring to section headers (e.g. `assertIn("docs/dev/story-scope.md", stdout)`). Anchor to `Out-of-scope files:` block to prevent accidental hits when the same path appears in `Allowed scope entries:` or `Audited Scope-Override entries:`. [tests/tooling/story_scope/story_scope_validator_test.py multiple]
++- [x] [Review][Patch] CI `BRANCH_NAME=$branch_name` written to `$GITHUB_ENV` without heredoc-quoting; a branch name containing newline corrupts the env file. Use the documented `KEY<<EOF` heredoc syntax. [.github/workflows/ci.yml:59-63]
++
++#### Deferred (pre-existing or out-of-scope-to-fix-now)
++
++- [x] [Review][Defer] CI runs duplicate jobs on `pull_request` and `push` for the same SHA — concurrency keys differ so neither cancels the other. [.github/workflows/ci.yml:3-9] — deferred, not regression-critical
++- [x] [Review][Defer] CI: PR from a fork — `github.event.pull_request.base.sha` may not be fetched in the head-ref clone. [.github/workflows/ci.yml:43-46] — deferred until fork PRs are accepted
++- [x] [Review][Defer] CI: brand-new branch first push produces a giant `diff-tree -r HEAD` listing every file in the head commit. [.github/workflows/ci.yml:51-52] — deferred, paired with P5 force-push fix
++- [x] [Review][Defer] Branch with no story key + no trailer (e.g. dependabot/renovate) fails closed across all CI. No allowlist exists. [tools/check-story-file-scope.py:168-172] — deferred until automation PRs are configured
++- [x] [Review][Defer] `commit-msg` re-reads `git diff --cached --name-only` after pre-commit hook may have changed the index; file set may differ between hooks. [.githooks/commit-msg:12] — deferred, low real-world impact
++- [x] [Review][Defer] `read_commit_message` doesn't handle BOM or non-UTF-8 messages — UnicodeDecodeError instead of clean validator error. [tools/check-story-file-scope.py:114-118] — deferred, edge case
++- [x] [Review][Defer] `--changed-files-file` doesn't strip UTF-8 BOM; PowerShell-emitted file would mismatch the first path silently. [tools/check-story-file-scope.py:246] — deferred, edge case
++- [x] [Review][Defer] `collect_changed_files` silently drops paths normalizing to empty (`..`-only). [tools/check-story-file-scope.py:250] — deferred, theoretical
++- [x] [Review][Defer] Pre-commit `git branch --show-current` empty during rebase/cherry-pick/detached-HEAD; validator fails closed mid-rebase. [.githooks/pre-commit:7] — deferred, needs UX design
++- [x] [Review][Defer] `python` fallback could land on Python 2 on legacy systems. [.githooks/pre-commit:13-17] — deferred, no Python 2 in target environments
++- [x] [Review][Defer] Hooks consume `git diff --cached --name-only` line-oriented output; filenames containing newlines mishandled. [.githooks/pre-commit:12] — deferred, no such filenames in repo
++- [x] [Review][Defer] `is_vague` mixes raw `pattern` and post-normalized `normalized` for special-char check; backslashes get normalized away before the test. [tools/check-story-file-scope.py:286-288] — deferred, paired with P6
++- [x] [Review][Defer] `parse_allowed_scope` doesn't honor `### ` subheadings as section terminators inside `## File Scope`. [tools/check-story-file-scope.py:206-211] — deferred, no current story uses this shape
++- [x] [Review][Defer] `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not documented in CONTRIBUTING.md. [tools/check-story-file-scope.py:19-23] — deferred, either remove or document in a follow-up
++- [x] [Review][Defer] Multiple `Allowed files for this story:` blocks merge silently. [tools/check-story-file-scope.py:217-223] — deferred, no current story uses this shape
++
+ ## File Scope
+ 
+ Allowed files for this story:
+@@ -349,6 +402,35 @@ GPT-5
+ - Validated required behavior: in-scope changes pass, out-of-scope changes fail, matching non-forbidden overrides pass, broad overrides fail, branch/trailer conflicts fail closed, Windows/POSIX path normalization is covered, and zero changed files report an explicit no-op success.
+ - No runtime source, release scripts, package metadata, package lock file, or submodule contents were intentionally modified for this story.
+ 
++#### Scope-Justification: implementation commit `0b065b8` out-of-scope leaks (review close-out, 2026-05-01)
++
++Code review identified four files in commit `0b065b8` outside the declared `## File Scope`. Per D1 resolution, these are accepted on this story with the durable prevention shipped in this same review pass (bare-submodule-path matcher + executable hook bit + D5-no-override regression test). Justifications:
++
++- `Hexalith.EventStore` (submodule pointer bump 4a56c7c → d3df818): a working-tree side effect carried over from concurrent EventStore work; the pointer was not authored by Story 12.3 logic. Reverting in a follow-up commit was rejected as risky given the unknown intent of the bump. The new bare-submodule matcher (`is_forbidden_default('Hexalith.EventStore')` is now True via the recursive `**` glob fix) ensures any future story committing this leak is caught.
++- `_bmad-output/implementation-artifacts/13-3-extend-embedding-client-to-support-ollama.md`: a co-authored sibling story creation accidentally bundled into this commit instead of its own `docs(bmad): create story 13.3 context` commit. Story 13.3 is `ready-for-dev` and unchanged by this leak.
++- `_bmad-output/process-notes/predev-preflight-2026-05-01T154530Z.json` and `_bmad-output/process-notes/predev-preflight-latest.json`: BMad workflow telemetry artifacts emitted automatically by the pre-development preflight pass. The story File Scope did not anticipate these. A follow-up grooming pass should add `_bmad-output/process-notes/**` either to the BMad workflow's implicit-allow set or to the story-template default `Read/verify only:` examples.
++
++The validator now correctly fails on this exact file list with `--story-key 12-3-story-file-scope-enforcement` (re-verified after patches: `Hexalith.EventStore` and the three other paths are reported in the appropriate forbidden-default vs out-of-scope sections).
++
++#### Code review patches applied (2026-05-01)
++
++- Forbidden-default `<submodule>/**` globs now match the bare submodule pointer path via proper recursive `**` semantics. The submodule-pointer leak class Story 12.2's closure note assigned to 12.3 is now detected.
++- Glob matching switched from `fnmatch` to a recursive segment walker. `tools/*` no longer matches `tools/sub/x.py`; `**` correctly spans zero or more segments.
++- `extract_backtick_path` no longer falls back to bare un-backticked tokens; only the first backtick token in a bullet is extracted, matching the spec's "do not infer paths from arbitrary prose" rule.
++- `parse_allowed_scope` tracks fenced code blocks and ignores their contents; indented sub-bullets are no longer parsed as authoritative allow-list entries; the parser strips an optional leading UTF-8 BOM.
++- `STORY_KEY_PATTERN` lookbehind tightened to `(?<![\w-])` so `feat/abc123-12-3-foo` no longer resolves to `123-12-3-foo`. Third segment must start with a letter.
++- Trailer parser now permits duplicate-consistent `Story:` / `Story-Key:` trailers (real tooling commonly emits both) and rejects multiple story keys in a single trailer value.
++- `--story-key` with an unparseable value fails closed instead of silently demoting to trailer/branch precedence.
++- D5 case with no override at all now reports a distinct `Forbidden-default files (no override; D5-class):` diagnostic instead of a generic out-of-scope message.
++- Story-artifact path diagnostic prints in POSIX form on Windows.
++- `.githooks/pre-commit` and `.githooks/commit-msg`: file mode set to 100755 (executable bit) so Linux/macOS clones do not silently bypass them. Tempfiles relocated to `$git_dir/story-scope-changed-$$.txt` to dodge Windows MSYS `/tmp` path-translation risk.
++- CI workflow: force-push and brand-new-branch first-push paths now compare against `origin/main` instead of an unreachable `before` SHA or the entire HEAD tree. `BRANCH_NAME` written to `$GITHUB_ENV` via the documented heredoc form.
++- Tests refactored to use `tempfile.NamedTemporaryFile` instead of polluting cwd. New regressions: D5 with no override, bare-submodule-pointer detection, fenced-code-block parser ignore, indented sub-bullet rejection, bare-token bullet rejection, glob `*` not crossing path separators, story-key regex letter-prefix guard, branch+trailer agreement, duplicate-consistent trailers, multi-key-in-single-trailer, unparseable `--story-key`, missing `--changed-files-file`, empty `Scope-Override:` value. Frozen inline fixture replaces the live-file dependency for parser-drift coverage.
++- `CONTRIBUTING.md` documents the allow-list-wins decision (an allow-list entry intersecting the forbidden-default list IS the spec-required separate decision; reviewers must call it out in story review) and lists the canonical forbidden-default set with the bare-submodule-pointer behavior.
++- `sprint-status.yaml` close-out comment corrected (`ready-for-dev -> review`, not `in-progress -> review`).
++
++15 follow-ups recorded as `12.3-RV1..12.3-RV15` in `_bmad-output/implementation-artifacts/deferred-work.md`. Live re-run: `python -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` → 25/25 pass; `python tools/check-story-file-scope.py --story-key 12-3-story-file-scope-enforcement --changed-file Hexalith.EventStore` exit 1 with `Forbidden-default files (no override; D5-class):` listing the bare submodule path.
++
+ ### File List
+ 
+ - `.github/workflows/ci.yml`
+diff --git a/_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md b/_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md
+index 6afac07..3946e80 100644
+--- a/_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md
++++ b/_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md
+@@ -1,6 +1,6 @@
+ # Story 12.4: Baseline Failures Sweep
+ 
+-Status: ready-for-dev
++Status: review
+ 
+ Story Key: 12-4-baseline-failures-sweep
+ Epic: 12 - First Release & Operations Foundation
+@@ -34,68 +34,68 @@ so that the "baseline failures hiding under script-only execution" pattern from
+ 
+ ## Tasks / Subtasks
+ 
+-- [ ] Task 0 - Establish the replay baseline and evidence format (AC: 1, 7)
+-  - [ ] Record the current `HEAD`, branch, CI lane definitions, test inventory files, and existing `tools/test-release.ps1` baseline filters before changing anything.
+-  - [ ] Read `_bmad-output/implementation-artifacts/deferred-work.md` and identify existing baseline entries, especially `S11-FA`, `S11-FB`, `S11-FC`, and `S11-FD`.
+-  - [ ] Decide a consistent evidence format for each discovered failure: stable baseline key when accepted, test fully qualified name, project, lane, exact command or workflow/job, date, branch and commit SHA, environment source, first failing commit/story evidence, disposition, and follow-up trigger.
+-  - [ ] List the exact Epic 8.x, 9.x, and 10.x branch/SHA replay points before triage begins, with a short rationale when an expected completion point is unavailable.
+-  - [ ] Reconcile raw lane output against `S11-FA`, existing deferred-work entries, and existing `tools/test-release.ps1` filters before creating new accepted baseline records.
+-  - [ ] Do not edit submodules or initialize nested submodules. Root-level submodules are already present in this checkout.
++- [x] Task 0 - Establish the replay baseline and evidence format (AC: 1, 7)
++  - [x] Record the current `HEAD`, branch, CI lane definitions, test inventory files, and existing `tools/test-release.ps1` baseline filters before changing anything.
++  - [x] Read `_bmad-output/implementation-artifacts/deferred-work.md` and identify existing baseline entries, especially `S11-FA`, `S11-FB`, `S11-FC`, and `S11-FD`.
++  - [x] Decide a consistent evidence format for each discovered failure: stable baseline key when accepted, test fully qualified name, project, lane, exact command or workflow/job, date, branch and commit SHA, environment source, first failing commit/story evidence, disposition, and follow-up trigger.
++  - [x] List the exact Epic 8.x, 9.x, and 10.x branch/SHA replay points before triage begins, with a short rationale when an expected completion point is unavailable.
++  - [x] Reconcile raw lane output against `S11-FA`, existing deferred-work entries, and existing `tools/test-release.ps1` filters before creating new accepted baseline records.
++  - [x] Do not edit submodules or initialize nested submodules. Root-level submodules are already present in this checkout.
+ 
+-- [ ] Task 1 - Replay the authoritative lanes locally (AC: 1, 7)
+-  - [ ] Build once in Release before `--no-build` lane runs:
++- [x] Task 1 - Replay the authoritative lanes locally (AC: 1, 7)
++  - [x] Build once in Release before `--no-build` lane runs:
+     ```powershell
+     dotnet restore Hexalith.Memories.slnx
+     dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
+     ```
+-  - [ ] Run the Docker-free lane as CI does:
++  - [x] Run the Docker-free lane as CI does:
+     ```powershell
+     bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
+     ```
+-  - [ ] Run the fast integration lane as CI does, only when Docker and Dapr prerequisites are available:
++  - [x] Run the fast integration lane as CI does, only when Docker and Dapr prerequisites are available:
+     ```powershell
+     bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast
+     python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
+     ```
+-  - [ ] If the fast integration lane cannot run locally because Docker or Dapr is unavailable, capture that environment blocker and use GitHub Actions results for the missing lane rather than marking failures absent.
+-  - [ ] When using GitHub Actions fallback evidence, record the workflow name, run URL or run id, job name, branch, commit SHA, date, lane command or job command evidence, and result.
+-  - [ ] Treat zero executed tests as a lane failure unless the existing verifier explicitly classifies an individual empty TRX as informational while aggregate lane execution remains non-zero.
+-
+-- [ ] Task 2 - Map failures to story history (AC: 1, 2, 7)
+-  - [ ] For every red test, use `git log`, story artifacts, and Dev Agent Records to identify the likely story or commit range that introduced the failure.
+-  - [ ] Prioritize Epic 8.x, 9.x, and 10.x because Epic 11 retrospective identified those completion states as likely hiding red tests.
+-  - [ ] Keep `S11-FA` separate. It is already tracked and Story 12.6 owns its final resolution; Story 12.4 should only verify that the filter and deferred-work linkage are explicit.
+-  - [ ] Do not claim a baseline is pre-existing unless the evidence shows it failed before the current story's changes.
+-  - [ ] Use at least one provenance source before assigning a story or commit anchor: story file reference, commit or PR evidence, prior CI failure, prior deferred-work entry, or an explicit `no authoritative source found` note after the bounded search.
+-
+-- [ ] Task 3 - Fix low-risk baseline failures when the cause is clear (AC: 2, 3)
+-  - [ ] For each failure with a small, coherent fix, update only the production/test files needed for that test's behavior.
+-  - [ ] Preserve public contracts, telemetry names, package inventory, release behavior, and unrelated test expectations unless the failing test directly proves they are wrong.
+-  - [ ] Add or update focused tests only when they close the identified regression and do not broaden the story into feature work.
+-  - [ ] Record the before/after command and the story/commit anchor in this story's Dev Agent Record.
+-
+-- [ ] Task 4 - Accept or filter unresolved baselines explicitly (AC: 2, 4, 5)
+-  - [ ] For each baseline not fixed in this story, add an `S11-FX` style entry to `_bmad-output/implementation-artifacts/deferred-work.md`.
+-  - [ ] If a release-lane filter is required, update `tools/test-release.ps1` and add an inline comment that names the matching deferred-work entry.
+-  - [ ] Add a new filter only after proving the failure is pre-existing, not low-risk fixable within Story 12.4, and represented by a deferred-work entry with an explicit re-open trigger.
+-  - [ ] Do not add broad filters such as whole classes, whole namespaces, or category-wide exclusions unless the deferred-work entry proves that the whole surface is the accepted baseline.
+-  - [ ] Keep filters narrow enough that a renamed/removed test fails loudly rather than silently shrinking the release lane.
+-
+-- [ ] Task 5 - Add executable inventory/filter guardrails (AC: 5, 6)
+-  - [ ] Extend `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so it parses or otherwise verifies the accepted filter map in `tools/test-release.ps1`.
+-  - [ ] Assert that every filtered test has a matching deferred-work entry by key and test name.
+-  - [ ] Assert that every deferred-work entry claiming a test-runner filter has a matching `tools/test-release.ps1` filter entry by key and test name.
+-  - [ ] Assert that when no open `S11-FX` baseline entries remain, the release-lane filter map is expected to be empty.
+-  - [ ] Preserve the existing inventory assertions for `tools/test-projects.unit-contract.txt`, `tools/test-projects.integration-fast.txt`, `tools/test.ps1`, `tools/test.sh`, and `.github/workflows/ci.yml`.
+-
+-- [ ] Task 6 - Validate final lane state and close honestly (AC: 1-8)
+-  - [ ] Re-run affected focused tests after each fix.
+-  - [ ] Re-run the full Docker-free lane before review.
+-  - [ ] Re-run `integration-fast` or capture the exact external blocker/GitHub Actions evidence if local Docker/Dapr execution is unavailable.
+-  - [ ] Confirm `tools/test-release.ps1` filters, `deferred-work.md`, and `CiTestInventoryTests` agree.
+-  - [ ] For any runner or accounting script edit, record the minimal reproduction proving the lane result or coverage accounting was wrong independently of product test failures.
+-  - [ ] Final notes distinguish zero unexpected reds from accepted filtered baselines: either the canonical filtered lane is green, or every remaining raw red is fully represented in deferred-work and the canonical filter map.
+-  - [ ] Update this story's Dev Agent Record with commands, red/green summaries, file list, and any accepted baselines.
++  - [x] If the fast integration lane cannot run locally because Docker or Dapr is unavailable, capture that environment blocker and use GitHub Actions results for the missing lane rather than marking failures absent.
++  - [x] When using GitHub Actions fallback evidence, record the workflow name, run URL or run id, job name, branch, commit SHA, date, lane command or job command evidence, and result.
++  - [x] Treat zero executed tests as a lane failure unless the existing verifier explicitly classifies an individual empty TRX as informational while aggregate lane execution remains non-zero.
++
++- [x] Task 2 - Map failures to story history (AC: 1, 2, 7)
++  - [x] For every red test, use `git log`, story artifacts, and Dev Agent Records to identify the likely story or commit range that introduced the failure.
++  - [x] Prioritize Epic 8.x, 9.x, and 10.x because Epic 11 retrospective identified those completion states as likely hiding red tests.
++  - [x] Keep `S11-FA` separate. It is already tracked and Story 12.6 owns its final resolution; Story 12.4 should only verify that the filter and deferred-work linkage are explicit.
++  - [x] Do not claim a baseline is pre-existing unless the evidence shows it failed before the current story's changes.
++  - [x] Use at least one provenance source before assigning a story or commit anchor: story file reference, commit or PR evidence, prior CI failure, prior deferred-work entry, or an explicit `no authoritative source found` note after the bounded search.
++
++- [x] Task 3 - Fix low-risk baseline failures when the cause is clear (AC: 2, 3)
++  - [x] For each failure with a small, coherent fix, update only the production/test files needed for that test's behavior.
++  - [x] Preserve public contracts, telemetry names, package inventory, release behavior, and unrelated test expectations unless the failing test directly proves they are wrong.
++  - [x] Add or update focused tests only when they close the identified regression and do not broaden the story into feature work.
++  - [x] Record the before/after command and the story/commit anchor in this story's Dev Agent Record.
++
++- [x] Task 4 - Accept or filter unresolved baselines explicitly (AC: 2, 4, 5)
++  - [x] For each baseline not fixed in this story, add an `S11-FX` style entry to `_bmad-output/implementation-artifacts/deferred-work.md`.
++  - [x] If a release-lane filter is required, update `tools/test-release.ps1` and add an inline comment that names the matching deferred-work entry.
++  - [x] Add a new filter only after proving the failure is pre-existing, not low-risk fixable within Story 12.4, and represented by a deferred-work entry with an explicit re-open trigger.
++  - [x] Do not add broad filters such as whole classes, whole namespaces, or category-wide exclusions unless the deferred-work entry proves that the whole surface is the accepted baseline.
++  - [x] Keep filters narrow enough that a renamed/removed test fails loudly rather than silently shrinking the release lane.
++
++- [x] Task 5 - Add executable inventory/filter guardrails (AC: 5, 6)
++  - [x] Extend `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` so it parses or otherwise verifies the accepted filter map in `tools/test-release.ps1`.
++  - [x] Assert that every filtered test has a matching deferred-work entry by key and test name.
++  - [x] Assert that every deferred-work entry claiming a test-runner filter has a matching `tools/test-release.ps1` filter entry by key and test name.
++  - [x] Assert that when no open `S11-FX` baseline entries remain, the release-lane filter map is expected to be empty.
++  - [x] Preserve the existing inventory assertions for `tools/test-projects.unit-contract.txt`, `tools/test-projects.integration-fast.txt`, `tools/test.ps1`, `tools/test.sh`, and `.github/workflows/ci.yml`.
++
++- [x] Task 6 - Validate final lane state and close honestly (AC: 1-8)
++  - [x] Re-run affected focused tests after each fix.
++  - [x] Re-run the full Docker-free lane before review.
++  - [x] Re-run `integration-fast` or capture the exact external blocker/GitHub Actions evidence if local Docker/Dapr execution is unavailable.
++  - [x] Confirm `tools/test-release.ps1` filters, `deferred-work.md`, and `CiTestInventoryTests` agree.
++  - [x] For any runner or accounting script edit, record the minimal reproduction proving the lane result or coverage accounting was wrong independently of product test failures.
++  - [x] Final notes distinguish zero unexpected reds from accepted filtered baselines: either the canonical filtered lane is green, or every remaining raw red is fully represented in deferred-work and the canonical filter map.
++  - [x] Update this story's Dev Agent Record with commands, red/green summaries, file list, and any accepted baselines.
+ 
+ ## Definition of Done Evidence
+ 
+@@ -293,6 +293,32 @@ GPT-5 Codex
+ 
+ - Pre-dev hardening preflight JSON `_bmad-output/process-notes/predev-preflight-latest.json` reported a soft working-tree warning only: ` M Hexalith.EventStore`.
+ - Story selection logic chose `12-4-baseline-failures-sweep` because `ready_count` was `1`, below target `5`, and this was the first backlog story in sprint-status order.
++- 2026-05-01 Task 0 baseline snapshot: branch `main`, HEAD `f0e3a88d49b8f22f4ceb4a9931eb4cb502bfff19`. Pre-existing working-tree changes before Story 12.4 implementation were present in `.github/workflows/ci.yml`, `CONTRIBUTING.md`, `Hexalith.EventStore`, `_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md`, `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `_bmad-output/process-notes/predev-preflight-latest.json`, `tests/tooling/story_scope/story_scope_validator_test.py`, `tools/check-story-file-scope.py`, plus two untracked predev-preflight JSON files. Story 12.4 edits treat those as pre-existing and do not modify submodule contents.
++- 2026-05-01 Task 0 CI lane definitions captured from `.github/workflows/ci.yml`: `test-unit-contract` restores/builds `Hexalith.Memories.slnx` in Release and runs `bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract`; `integration-fast` initializes Dapr 1.17.6, verifies Docker, restores/builds Release, runs `bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast`, then runs `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast`.
++- 2026-05-01 Task 0 inventories captured: `tools/test-projects.unit-contract.txt` lists Contracts.Tests, Server.Tests, Cli.Tests, Mcp.Tests, and EventStore.Tests; `tools/test-projects.integration-fast.txt` lists IntegrationTests only. Existing release-lane accepted filter is the Server.Tests project filter `FullyQualifiedName!~EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`, linked by comment to `S11-FA`.
++- 2026-05-01 Task 0 deferred-work baseline entries identified: `S11-FA` is the accepted `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` baseline failure and has the current `tools/test-release.ps1` filter; `S11-FB` compile-time symbol verification and `S11-FC` stale-tag preflight are deferred improvements with no test-runner filter; `S11-FD` partial-publish alerting is deferred to Story 12.5 with no test-runner filter.
++- 2026-05-01 Task 0 evidence format set for every discovered red: stable baseline key when accepted, fully qualified test name, project, lane, exact command or workflow/job, date, branch, commit SHA, environment source, observed error summary, first failing commit/story evidence or `unmapped` with bounded-search evidence, disposition (`fix`, `accept`, `filter`, `environment-blocked`, or `not-reproduced`), final validation command, and re-open trigger for accepted debt.
++- 2026-05-01 Task 0 replay points selected before triage: Epic 8.x `d7495a3` (`feat: Implement Redis OTEL instrumentation and harden AC #2 from Story 8.4`) as the available Story 8.5 completion-state artifact anchor; Epic 9.x `bc4d5cc` (`feat: Complete Story 9.3 by resolving final review findings and enhancing Redis observation logic`) as the Story 9.3 close-out anchor; Epic 10.x `8207b54` (`Refactor search and traversal response handling for token budget management`) as the Story 10.2 artifact anchor. These are selected from `git log -- _bmad-output/implementation-artifacts/{8-5,9-3,10-2}*.md`; no historical branch names were available locally, so SHAs are the authoritative replay handles.
++- 2026-05-01 Task 0 reconciliation rule set before creating any new accepted baseline: raw lane failures must first be matched against `S11-FA`, existing `S11-F*` deferred entries, and current `tools/test-release.ps1` filters. No new accepted baseline record may be added until this reconciliation proves the red is confirmed, pre-existing, and not a small coherent fix inside Story 12.4.
++- 2026-05-01 Task 1 environment: local `dotnet --version` = `10.0.300-preview.0.26177.108`; Docker Desktop engine = `29.4.0` linux; local Dapr CLI = `1.17.1`, runtime = `1.17.4`. Existing Dapr containers were already running for 9 days under names `dapr_placement`, `dapr_scheduler`, `dapr_redis`, and `dapr_zipkin`; their placement/scheduler host ports differ from CI's explicit 50005/50006 bindings, so they were not replaced.
++- 2026-05-01 Task 1 restore/build: `dotnet restore Hexalith.Memories.slnx` passed; `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore` passed across 18 projects with 0 warnings and 0 errors.
++- 2026-05-01 Task 1 local Bash notes: default `bash` resolved to WSL and first failed on CRLF then lacked `dotnet`; working-tree `tools/test.sh` was normalized to LF with no content diff and the lane was rerun with `C:\Program Files\Git\bin\bash.exe` so Windows `dotnet` and Windows paths were used without changing the runner script.
++- 2026-05-01 Task 1 `test-unit-contract`: `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract` passed. Results: Contracts.Tests 468/468, Server.Tests 1535/1535, Cli.Tests 326/326, Mcp.Tests 76/76, EventStore.Tests 84/84; aggregate 2489 executed, 0 failed.
++- 2026-05-01 Task 1 `integration-fast`: `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` passed. Results: IntegrationTests 156 passed, 49 skipped, 0 failed, 205 total; aggregate executed count 156.
++- 2026-05-01 Task 1 coverage verifier: `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` passed and reported required surfaces satisfied for ingestion, syntactic-search, semantic-search, graph-search, hybrid-search, tenant-isolation, telemetry-integration, and mcp-integration.
++- 2026-05-01 Task 1 fallback reference checked but not used for final local result: GitHub Actions CI run `25183506496`, job `integration-fast` (`73834615683`), branch `fix/release-protected-main-semantic-release`, commit `ad5aa78fc3ca6da50264ec77a8b721699dbfed2c`, created `2026-04-30T18:51:41Z`, URL `https://github.com/Hexalith/Hexalith.Memories/actions/runs/25183506496`, passed with 156 executed integration tests and coverage verifier success.
++- 2026-05-01 Task 2 mapping outcome: no red tests were produced by either current authoritative lane, so no new failure-to-story anchors were assigned. `S11-FA` remains the only accepted release-lane baseline identified during reconciliation; provenance is the existing `deferred-work.md` entry plus the current `tools/test-release.ps1` project filter, and Story 12.6 remains its resolution owner.
++- 2026-05-01 Task 3 fix outcome: no low-risk baseline failures were available to fix because both authoritative lanes were green. No production files and no focused regression tests were changed for failure correction.
++- 2026-05-01 Task 4 acceptance/filter outcome: no new accepted baselines were created and no new filters were added. Existing `S11-FA` remains unchanged in `deferred-work.md` and `tools/test-release.ps1`; `S11-FB`, `S11-FC`, and `S11-FD` do not claim test-runner filters.
++- 2026-05-01 Task 5 red phase: after adding `TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries` without helpers, `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --filter "FullyQualifiedName~CiTestInventoryTests"` failed to compile with missing `BaselineFilter`, `DeferredBaseline`, `ReadAcceptedReleaseFilters`, and `ReadOpenDeferredBaselines`.
++- 2026-05-01 Task 5 green phase: implemented the minimal parser in `CiTestInventoryTests.cs` using generated regexes. The guard extracts `S11-F*` keys from `tools/test-release.ps1`, verifies narrow `FullyQualifiedName!~...` filters, parses open deferred baseline entries from `deferred-work.md`, asserts filtered tests have matching deferred entries, asserts deferred entries claiming a release filter have matching filters, and asserts filters must be empty if no open accepted baseline entries remain.
++- 2026-05-01 Task 5 validation: `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --filter "FullyQualifiedName~CiTestInventoryTests"` passed 5/5; `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter "FullyQualifiedName~CiTestInventoryTests"` passed 5/5.
++- 2026-05-01 Task 6 final build: `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore` passed across 18 projects with 0 warnings and 0 errors.
++- 2026-05-01 Task 6 transient runner note: one full `test-unit-contract` rerun timed out after `Cli.Tests` left a stuck `dotnet test` process. The direct check `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter "Category!=Integration&Category!=Benchmark" --logger "trx;LogFileName=CliHangCheck.trx" --results-directory TestResults\cli-hang-check --blame-hang-timeout 60s --blame-hang-dump-type none` then passed 327/327 and reported all tests finished, so the timeout was not reproducible as a product/test failure.
++- 2026-05-01 Task 6 final `test-unit-contract`: after clearing `TestResults/test-unit-contract`, `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract` passed. Results: Contracts.Tests 468/468, Server.Tests 1535/1535, Cli.Tests 327/327, Mcp.Tests 76/76, EventStore.Tests 84/84; aggregate 2490 executed, 0 failed.
++- 2026-05-01 Task 6 final `integration-fast`: after clearing `TestResults/integration-fast`, `C:\Program Files\Git\bin\bash.exe ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` passed. Results: IntegrationTests 156 passed, 49 skipped, 0 failed, 205 total; aggregate executed count 156.
++- 2026-05-01 Task 6 final coverage verifier: `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` passed and reported all required surfaces satisfied.
++- 2026-05-01 Task 6 final baseline disposition: zero unexpected reds were found in the authoritative lanes. The only accepted filtered baseline remains `S11-FA`, unchanged and now guarded by `CiTestInventoryTests`; no new `S11-FX` entries or `tools/test-release.ps1` filters were added.
+ 
+ ### Completion Notes List
+ 
+@@ -302,16 +328,33 @@ GPT-5 Codex
+ - The recommended implementation tightens accepted-baseline accounting around `tools/test-release.ps1`, `_bmad-output/implementation-artifacts/deferred-work.md`, and `CiTestInventoryTests`.
+ - Party-mode review on 2026-05-01 tightened replay-point selection, failure disposition, accepted-baseline identity, GitHub Actions fallback evidence, filter gating, bidirectional inventory guardrails, provenance mapping, runner-defect proof, and sprint-status evidence boundaries.
+ - No implementation tests were run during story creation; this run only created the ready-for-dev story artifact.
++- Task 0 complete: baseline evidence, CI lane definitions, inventories, existing accepted filter, existing `S11-F*` deferred entries, evidence schema, and replay-point SHAs were recorded before lane execution.
++- Task 1 complete: both authoritative lanes were replayed locally after Release restore/build; no raw reds were discovered beyond the existing accepted release-lane filter owned by Story 12.6.
++- Task 2 complete: no newly discovered red tests required history mapping; existing `S11-FA` was kept separate and unchanged.
++- Task 3 complete: no baseline fixes were needed because the replay found zero unexpected reds.
++- Task 4 complete: no new accepted baselines or release-lane filters were required.
++- Task 5 complete: `CiTestInventoryTests` now enforces bidirectional linkage between accepted release-lane filters and open deferred baseline entries while preserving the existing inventory and CI command assertions.
++- Task 6 complete: final build, Docker-free lane, integration-fast lane, and coverage verifier passed. No unexpected reds remain; existing `S11-FA` is explicitly linked and guarded.
++- Definition of Done validated on 2026-05-01: all tasks/subtasks are checked, acceptance criteria are satisfied, focused and lane validations passed, File List is current, no new accepted baselines were created, and the story is ready for review.
+ 
+ ### File List
+ 
+ - `_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md`
+ - `_bmad-output/implementation-artifacts/sprint-status.yaml`
++- `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+ 
+ ### Change Log
+ 
+ - 2026-05-01: Created Story 12.4 and promoted it from `backlog` to `ready-for-dev`.
+ - 2026-05-01: Party-mode review completed; applied clarification-only hardening for evidence comparability, accepted-baseline traceability, filter gating, and guardrail expectations.
++- 2026-05-01: Started development; moved sprint status to `in-progress` and completed Task 0 baseline/evidence setup.
++- 2026-05-01: Replayed `test-unit-contract` and `integration-fast`; both lanes passed locally and integration coverage verification passed.
++- 2026-05-01: Completed failure-history mapping with no new reds; retained `S11-FA` as existing Story 12.6-owned debt.
++- 2026-05-01: Completed low-risk baseline fix pass with no product/test failure fixes required.
++- 2026-05-01: Completed accepted-baseline/filter pass with no new deferred-work or release filter entries.
++- 2026-05-01: Added executable guardrails linking `tools/test-release.ps1` accepted filters to open deferred baseline entries.
++- 2026-05-01: Completed final validation; all authoritative lanes passed and no new accepted baselines were created.
++- 2026-05-01: Completed Story 12.4 implementation and moved status to `review`.
+ 
+ ## Party-Mode Review
+ 
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 76407ed..0def316 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -1,5 +1,23 @@
+ # Deferred Work
+ 
++## Deferred from: code review of story-12.3 (2026-05-01)
++
++- **12.3-RV1 — CI duplicate runs on `pull_request` and `push`.** Concurrency keys differ (`pull_request.number` vs `github.ref`) so neither cancels the other. Not regression-critical; revisit when CI minutes become a constraint or when divergent results from the two paths cause confusion. [.github/workflows/ci.yml:3-9]
++- **12.3-RV2 — CI fork-PR base SHA reachability.** `actions/checkout@v6` with `fetch-depth: 0` on the head ref does not fetch the base repo's history. `git diff "$base_sha" "$head_sha"` may fail on PRs from forks. Deferred until fork PRs are accepted; if needed, add an explicit `git fetch origin "$base_sha"` step. [.github/workflows/ci.yml:43-46]
++- **12.3-RV3 — CI brand-new branch first push enumerates entire head commit.** `git diff-tree --no-commit-id --name-only -r "$head_sha"` lists every file at HEAD when `before` is `0000…0`, producing a massive out-of-scope list. Pair with the force-push hardening patch P5; for now, the failure mode is loud and recoverable. [.github/workflows/ci.yml:51-52]
++- **12.3-RV4 — Branch with no story key + no `Story:` trailer fails closed across all CI.** No allowlist for automation branches (dependabot, renovate). Defer until automation PRs are configured for this repo. [tools/check-story-file-scope.py:168-172]
++- **12.3-RV5 — `commit-msg` re-reads index after pre-commit may have modified it.** File set seen by the two hooks can differ in environments that auto-format during pre-commit. Low impact in this repo; reconsider if formatters are introduced. [.githooks/commit-msg:12]
++- **12.3-RV6 — `read_commit_message` raises `UnicodeDecodeError` on non-UTF-8 messages.** Edge case; clean error wrapping is a follow-up nicety. [tools/check-story-file-scope.py:114-118]
++- **12.3-RV7 — `--changed-files-file` does not strip a UTF-8 BOM.** A PowerShell `Set-Content`-emitted file would silently mismatch the first path. Switch to `utf-8-sig` decoding when revisited. [tools/check-story-file-scope.py:246]
++- **12.3-RV8 — `collect_changed_files` silently drops paths normalizing to empty.** Theoretical; `..`-only inputs are not produced by `git diff --name-only`. [tools/check-story-file-scope.py:250]
++- **12.3-RV9 — Pre-commit fails closed during rebase / cherry-pick / detached-HEAD.** `git branch --show-current` returns empty; with no other story-key source the validator blocks. Needs UX design before patching. [.githooks/pre-commit:7]
++- **12.3-RV10 — `python` fallback may land on Python 2 on legacy systems.** Not a target environment today. [.githooks/pre-commit:13-17]
++- **12.3-RV11 — Hooks consume newline-separated `git diff --name-only` output.** Filenames containing newlines (legal POSIX) mishandled. No such filenames in repo. [.githooks/pre-commit:12]
++- **12.3-RV12 — `is_vague` mixes raw `pattern` and post-normalized `normalized` for special-char check.** Backslashes get normalized away before the test. Pair with override-vagueness rework P6. [tools/check-story-file-scope.py:286-288]
++- **12.3-RV13 — `parse_allowed_scope` does not honor `### ` subheadings inside `## File Scope`.** No current story uses this shape. [tools/check-story-file-scope.py:206-211]
++- **12.3-RV14 — `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not in CONTRIBUTING.md.** Either remove the aliases or document them in a follow-up. [tools/check-story-file-scope.py:19-23]
++- **12.3-RV15 — Multiple `Allowed files for this story:` blocks in one story merge silently.** No current story uses this shape. [tools/check-story-file-scope.py:217-223]
++
+ ## Closed by: course correction (2026-04-26)
+ 
+ - **W10 — closed.** AC #6 in Story 11.1 was marked `[x]` while branch protection remained pending maintainer action; `docs/dev/branch-protection.md` already documented the dependency but the task checkboxes alone were misleading. Course correction added an explicit `External Action Pending` status line at the top of `_bmad-output/implementation-artifacts/11-1-github-actions-build-and-test-pipeline.md` calling out the maintainer-only GitHub-settings step. AC #6 task checkboxes (3.4, 3.5, 4.4) remain `[x]` because they cover the documentation work, which is complete; the in-GitHub apply step lives outside the repository and is now visible at the top of the story file rather than buried in the AC text. P1 (`git add package-lock.json`) was resolved separately by commit `5eecf4c` which bundled `package-lock.json` with the rest of the 11.1 + 11.2 work.
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index c90c5d7..a9160d1 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -4,7 +4,8 @@
+ # last_updated: 2026-05-01 # Story 12.6 EmbeddingInputContentKind Baseline Resolution promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-6-embedding-input-content-kind-baseline-resolution.md`; focuses on removing or justifying the single S11-FA release-lane filter, proving the focused telemetry tests and release lane, and returning accepted baseline filters to zero without touching release, provider migration, or submodule scope.
+ # last_updated: 2026-05-01 # Story 12.5 Partial-Publish Alerting promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md`; selects GitHub Issue alerting via existing release workflow permissions, structured publish summaries, CI annotations, duplicate issue avoidance, and runbook-linked rerun recovery while preserving package inventory and semantic-release topology.
+ # last_updated: 2026-05-01 # Story 12.4 Baseline Failures Sweep promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md`; defines authoritative-lane replay, baseline-to-deferred-work linkage, narrow accepted filters in `tools/test-release.ps1`, and `CiTestInventoryTests` guardrails for zero unaccounted-for baselines.
+-# last_updated: 2026-05-01 # Story 12.3 Story-File-Scope Enforcement moved in-progress -> review. Implemented shared Python validator, repo-managed hooks, CI guardrail job, focused unittest coverage, and CONTRIBUTING guidance; no runtime source, release script, package metadata, package lock, or submodule-content changes intentionally included.
++# last_updated: 2026-05-01 # Story 12.3 Story-File-Scope Enforcement code-review close-out (Blind + Edge + Auditor): 4/4 AC PASS (AC2 hardened from PARTIAL via documented allow-list-wins behavior + relaxed override-vagueness rules deferred to 12.3-RV12), 22 patches applied (proper recursive `**` glob semantics; bare submodule path now matches `<submodule>/**` so a Hexalith.EventStore-style pointer change is detected as forbidden-default; D5-no-override branch reports forbidden-default diagnostic; story-key regex tightened against letter-prefixed digit runs; trailer parser permits duplicate-consistent Story/Story-Key trailers but rejects multiple keys in one trailer value; unparseable `--story-key` fails closed; .githooks executable bit set, hook tempfiles moved to `$git_dir/`; CI force-push and brand-new-branch fallbacks compare against origin/main; CI BRANCH_NAME written to GITHUB_ENV via heredoc; tests use `tempfile.NamedTemporaryFile` and frozen inline fixture for parser drift; D5-no-override, fenced-code-block, indented-sub-bullet, bare-token, glob-segment-crossing, and submodule-pointer regressions added). 15 follow-ups deferred (12.3-RV1..12.3-RV15 in deferred-work.md). Story moved review -> done.
++# last_updated: 2026-05-01 # Story 12.3 Story-File-Scope Enforcement moved ready-for-dev -> review. Implemented shared Python validator, repo-managed hooks, CI guardrail job, focused unittest coverage, and CONTRIBUTING guidance; no runtime source, release script, package metadata, package lock, or submodule-content changes intentionally included.
+ # last_updated: 2026-05-01 # Story 12.2 Forbidden Default Tolerances Checklist moved ready-for-dev -> review. Added CONTRIBUTING.md Code Review / Forbidden Default Tolerances reviewer guidance with seven tolerance-warning patterns, approval rule, Epic 11 retrospective references, and feedback_tolerance_idioms.md memory reference; no runtime, CI, test, release, package inventory, or source behavior changed.
+ # last_updated: 2026-05-01 # Story 12.2 Forbidden Default Tolerances Checklist promoted backlog -> ready-for-dev. Story file created at `_bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md`; documents contributor-guide review checklist scope, required tolerance-idiom patterns, Epic 11 retrospective references, and documentation-only file guardrails.
+ # last_updated: 2026-04-30 # Story 12.1 review close-out resolved 3 patch findings: removed unintended untracked Hexalith.Memories.sln, added before/after branch-protection evidence to the runbook, and documented stale approval dismissal as disabled with rationale. Story 12.1 moved review -> done.
+@@ -74,7 +75,8 @@
+ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+ 
+ generated: 2026-03-26
+-last_updated: 2026-04-30 # Story 13.1 (Extend EmbeddingProviderDefaults to Accept Ollama) ready-for-dev → in-progress → review on the same day. Implementation in exactly 2 files (AC11 preserved): src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs gains OllamaProviderName/OllamaModelName public constants, OllamaDimensions/OllamaMaxRateLimitPerMinute private constants, Ollama() factory mirroring Google() shape, IsSupportedProvider private helper, extended ModelNamePattern regex `^[A-Za-z0-9._-]+$` → `^[A-Za-z0-9.:_-]+$` (admits the `:` in qwen3-embedding:4b), Ollama-specific dimension assertion (qwen3-embedding:4b ⇔ 2560), per-provider rate-limit ceiling (Google 3000, Ollama 60_000) with generalized error wording. tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs gains 12 new test methods including the Round 2 pre-mortem dim-pinning Theory `Validate_OllamaQwen3_AcceptsExactly2560` (5 InlineData cases asserting any dim ≠ 2560 throws). Validation green: focused EmbeddingProviderDefaultsTests 48/48, full Hexalith.Memories.Server.Tests 1542/1542 (substantially better than the 1378/1382 baseline noted in Story 9.2 Session 2 — intermediate stories cleared the prior 4 known failures and grew the suite by ~160 tests), Hexalith.Memories.Contracts.Tests 468/468, `dotnet build Hexalith.Memories.slnx` 0W/0E across all 18 projects. Build environment notes: global.json pins SDK 10.0.201 with rollForward=latestFeature but only 10.0.102/103 are installed locally — invoked dotnet from /tmp to bypass project-rooted global.json resolution and consume 10.0.103 (not committed; AC11 preserved); top-level submodules Hexalith.Commons + Hexalith.EventStore initialized from uninitialized state at session start (a known nested self-reference in Hexalith.EventStore's `--recursive` graph is harmless). Tracked debt explicitly NOT addressed (per Round 2 rollback): ParseProvider canonical splitter belongs to Story 13.3, switch-statement-shaped dim assertion re-opens when a third Ollama model lands, Meta-Prompting recommendation re Story 12.3 sequencing escalated outside 13.1. Foundation complete — Stories 13.2/13.3/13.4 unblock once review closes. Prior entry preserved below.
++last_updated: 2026-05-01 # Story 12.4 Baseline Failures Sweep moved in-progress -> review. Authoritative Docker-free and integration-fast lanes were replayed locally with zero unexpected reds; existing S11-FA remains unchanged for Story 12.6 and is now guarded by CiTestInventoryTests filter/deferred-work linkage.
++# last_updated: 2026-04-30 # Story 13.1 (Extend EmbeddingProviderDefaults to Accept Ollama) ready-for-dev → in-progress → review on the same day. Implementation in exactly 2 files (AC11 preserved): src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs gains OllamaProviderName/OllamaModelName public constants, OllamaDimensions/OllamaMaxRateLimitPerMinute private constants, Ollama() factory mirroring Google() shape, IsSupportedProvider private helper, extended ModelNamePattern regex `^[A-Za-z0-9._-]+$` → `^[A-Za-z0-9.:_-]+$` (admits the `:` in qwen3-embedding:4b), Ollama-specific dimension assertion (qwen3-embedding:4b ⇔ 2560), per-provider rate-limit ceiling (Google 3000, Ollama 60_000) with generalized error wording. tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs gains 12 new test methods including the Round 2 pre-mortem dim-pinning Theory `Validate_OllamaQwen3_AcceptsExactly2560` (5 InlineData cases asserting any dim ≠ 2560 throws). Validation green: focused EmbeddingProviderDefaultsTests 48/48, full Hexalith.Memories.Server.Tests 1542/1542 (substantially better than the 1378/1382 baseline noted in Story 9.2 Session 2 — intermediate stories cleared the prior 4 known failures and grew the suite by ~160 tests), Hexalith.Memories.Contracts.Tests 468/468, `dotnet build Hexalith.Memories.slnx` 0W/0E across all 18 projects. Build environment notes: global.json pins SDK 10.0.201 with rollForward=latestFeature but only 10.0.102/103 are installed locally — invoked dotnet from /tmp to bypass project-rooted global.json resolution and consume 10.0.103 (not committed; AC11 preserved); top-level submodules Hexalith.Commons + Hexalith.EventStore initialized from uninitialized state at session start (a known nested self-reference in Hexalith.EventStore's `--recursive` graph is harmless). Tracked debt explicitly NOT addressed (per Round 2 rollback): ParseProvider canonical splitter belongs to Story 13.3, switch-statement-shaped dim assertion re-opens when a third Ollama model lands, Meta-Prompting recommendation re Story 12.3 sequencing escalated outside 13.1. Foundation complete — Stories 13.2/13.3/13.4 unblock once review closes. Prior entry preserved below.
+ # last_updated: 2026-04-29 # Story 13.1 (Extend EmbeddingProviderDefaults to Accept Ollama) promoted backlog → ready-for-dev. Foundation story for Epic 13: adds Ollama() factory + Ollama provider name acceptance + colon-friendly ModelNamePattern regex (qwen3-embedding:4b is the canonical Ollama identifier and contains a colon — existing `^[A-Za-z0-9._-]+$` rejects it) + Ollama dimension assertion (qwen3-embedding:4b ⇔ 2560) + per-provider rate-limit ceiling (Google 3000, Ollama 60 000). Effort estimate: ~0.75–1.0 working day. File scope hard-bounded to 2 files: `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs` + its test file. Explicitly does NOT touch TenantEmbeddingConfig.cs (Story 13.4 scope), EmbeddingClient.cs (13.3), Program.cs (none of 13.x require it). HARD prerequisite: none — 13.1 is the foundation and 13.2/13.3/13.4 all depend on it being `done`. Pre-impl spike T0 confirms the proposal's stale `text-embedding-004` reference is NOT a pending Google change (live model is `gemini-embedding-001`). 11 ACs cover regex extension, dimension assertion, supported-provider error message enumeration, breaking-change-fields preservation, file-scope discipline (per Epic 12 Story 12.3 A4 enforcement). 12 new tests + 18 existing tests unchanged. Prior entry preserved below.
+ # last_updated: 2026-04-29 # Sprint Change Proposal 2026-04-29 ACCEPTED — Epic 13 (Embedding Provider Pluggability + Vector Migration) formally added: epic-13 = in-progress, stories 13-1..13-7 = backlog, epic-13-retrospective = optional. Resolves the Decision Point that was open since 2026-04-26. Driven by operator's decision to migrate the embedding pipeline from Google Generative Language API to a self-hosted Ollama gateway (qwen3-embedding:4b, 2560-dim) at https://llm.tache.ai protected by Keycloak OIDC client_credentials. AC amendments to Stories 1.4 / 1.7 / 5.1 / 5.5 documented in the proposal but executed at the planning-artifact layer (those stories remain `done`); Epic 13 carries the actual code change. Path A vector migration (drop-and-reindex) is the default; Path B (concurrent versioned indexes) documented as opt-in only. Prior entry preserved below.
+ # last_updated: 2026-04-29 # Epic 5 retrospective completed. Document saved at `_bmad-output/implementation-artifacts/epic-5-retro-2026-04-29.md`; `epic-5-retrospective` moved optional -> done. Retro findings: Gate 2 tenant isolation accepted at story-tracking level; carry forward executable isolation-suite evidence, Memories Server authN/authZ scoping, graph metadata/gap-marker tenant checks, operational-log wording, and TENANT_MISMATCH operator guidance.
+@@ -204,8 +206,8 @@ development_status:
+   epic-12: in-progress # 2026-04-30 Story 12.1 created and promoted to ready-for-dev; Epic 12 begins Operations / First Release follow-through.
+   12-1-first-release-path-validation: done # 2026-04-30 code-review close-out: 8/8 AC PASS via three-layer adversarial review. 15 documentation-precision patches applied (Required Main Settings now records strict: true + enforce_admins.enabled: true; required-check → ci.yml job-ID mapping table added; v1.2.0 confirmed as published before branch protection; observed-release sequence corrected to plugin-driven; literal `gh api` 404 body replaces paraphrase; HTTP-409 vs non-409 partial-publish recovery distinguished; workflow log named as partial-publish source of truth). 5 follow-ups deferred (12.1-RV1..12.1-RV5 in deferred-work.md). External maintainer actions A1 (branch protection on main) and A2 (NUGET_API_KEY secret) are now both satisfied — A1 applied by this story; A2 was already satisfied because v1.2.0 published successfully via secrets.NUGET_API_KEY.
+   12-2-forbidden-default-tolerances-checklist: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 6/6 AC PASS. Resolved 2 decision-needed (submodule pointer leak in c4d5217 accepted via Dev Agent Record amendment with Story 12.3 owning prevention; "operator-visible" defined inline pending Story 12.5 canonical mechanism) and applied 10 doc-precision patches: mapfile pipefail caveat, PowerShell SilentlyContinue/Ignore/$ErrorActionPreference under silent-error-suppression bullet, default-empty-array example broadened to PROJECTS=()/("")/${PATTERN:-*}, named `|| true` equivalents, per-row zero-count gained zero-input fail-loudly clause, "forbidden by default" softened to "suspect by default", retro-file precedence (2026-04-30 canonical), `Tolerance Justification:` PR-description convention, explicit Bash-only labeling. Cross-references feedback_tolerance_idioms.md memory.
+-  12-3-story-file-scope-enforcement: review # 2026-05-01 implementation complete. Shared validator, repo-managed hooks, CI guardrail job, CONTRIBUTING guidance, and focused tooling tests added; no runtime source, release script, package metadata, package lock, or submodule-content changes intentionally included.
+-  12-4-baseline-failures-sweep: ready-for-dev # 2026-05-01 promoted from backlog when the story artifact was created. Scope is limited to replaying authoritative CI lanes, fixing or explicitly accepting discovered baselines, linking accepted filters to deferred-work entries, and extending CiTestInventoryTests to prove zero unaccounted-for baselines.
++  12-3-story-file-scope-enforcement: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 4/4 AC PASS (AC2 from PARTIAL via documented allow-list-wins behavior plus deferred 12.3-RV12 override-vagueness relaxation). 3 decision-needed resolved: D1 — implementation commit `0b065b8` File-Scope leaks (Hexalith.EventStore submodule pointer + 13-3 story doc + two predev-preflight JSONs) accepted via Dev Agent Record Scope-Justification with the bare-submodule-path matcher fix as the durable prevention; D2 — story allow-list intersecting forbidden-default treated as the deliberate decision spec line 213 calls for, documented in CONTRIBUTING.md; D3 — hook tempfiles moved preemptively to `$git_dir/` to avoid Windows MSYS path-translation risk. 22 patches applied (proper recursive `**` glob semantics; bare submodule path now resolves as forbidden-default via `<submodule>/**`; D5-no-override branch reports a distinct diagnostic; STORY_KEY regex tightened; duplicate-consistent Story/Story-Key trailers permitted while multi-key-in-single-trailer rejected; unparseable `--story-key` fails closed; .githooks executable bit set; CI force-push fallback compares against origin/main; CI BRANCH_NAME heredoc-written to GITHUB_ENV; tests use NamedTemporaryFile and a frozen inline fixture; new regressions for D5-no-override, fenced code blocks, indented sub-bullets, bare-token rejection, glob segment crossing, and bare submodule pointer). 15 follow-ups deferred (12.3-RV1..12.3-RV15 in deferred-work.md).
++  12-4-baseline-failures-sweep: review # 2026-05-01 moved in-progress -> review. Authoritative Docker-free and integration-fast lanes were replayed locally with zero unexpected reds; existing S11-FA remains unchanged for Story 12.6 and is now guarded by CiTestInventoryTests filter/deferred-work linkage.
+   12-5-partial-publish-alerting: ready-for-dev # 2026-05-01 promoted from backlog when the story artifact was created. Scope is limited to structured publish summaries, GitHub Issue/annotation alerting, runbook-linked recovery, and focused tooling tests for partial NuGet publish failure.
+   12-6-embedding-input-content-kind-baseline-resolution: ready-for-dev # 2026-05-01 promoted from backlog when the story artifact was created. Scope is limited to resolving the single S11-FA EmbeddingInputContentKindTests baseline filter, returning test-release.ps1 accepted filters to zero, and adding focused guardrails so stale filters cannot persist.
+   epic-12-retrospective: optional # Captures Epic 11's bundled 11.1+11.2 delivery, the 3-layer adversarial review outcome (8/8 decisions resolved, 16/18 patches applied, 4 deferred follow-ups S11-FA/B/C/D), 6 systemic patterns surfaced (file-scope leak D5; baseline failures accumulating under script-only execution; 4 tolerance-idiom silent-failures; convention drift between sibling files; status-checkbox/reality gap W10; untracked package-lock.json P1), 5 action items (A1 branch protection, A2 NUGET_API_KEY, A3 forbidden-default-tolerances checklist, A4 file-scope guardrail enforcement, A5 baseline-failures sweep across recent stories), and the post-MVP transition discussion replacing next-epic preparation since Epic 11 is the last planned epic in epics.md. Recommendation: cut first real release, then sweep deferred-work, then decide between Epic 12/Phase 2 or operations pivot.
+diff --git a/_bmad-output/process-notes/predev-preflight-2026-05-01T161549Z.json b/_bmad-output/process-notes/predev-preflight-2026-05-01T161549Z.json
+new file mode 100644
+index 0000000..4c7cefa
+--- /dev/null
++++ b/_bmad-output/process-notes/predev-preflight-2026-05-01T161549Z.json
+@@ -0,0 +1,74 @@
++{
++  "schema_version": 1,
++  "produced_by": "jobs/preflight-predev-hardening.py",
++  "timestamp": "2026-05-01T16:15:49Z",
++  "repo": "D:\\Hexalith.Memories",
++  "result": "fail",
++  "bootstrap_actions": [],
++  "checks": [
++    {
++      "id": 1,
++      "name": "sprint-status.yaml parses as YAML",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
++      "result": "pass",
++      "details": "PARSE OK",
++      "file_size_bytes": 63856,
++      "line_count": 224,
++      "top_level_keys": [
++        "development_status",
++        "generated",
++        "last_updated",
++        "project",
++        "project_key",
++        "story_location",
++        "tracking_system"
++      ],
++      "development_status_count": 89
++    },
++    {
++      "id": 2,
++      "name": "artifacts root exists",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts",
++      "result": "pass",
++      "details": "directory exists"
++    },
++    {
++      "id": 3,
++      "name": "lessons ledger readable",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\process-notes\\story-creation-lessons.md",
++      "result": "pass",
++      "details": "file readable"
++    },
++    {
++      "id": 4,
++      "name": "status-artifact consistency",
++      "story_keys_checked": 63,
++      "result": "pass",
++      "details": "no drift across 63 story keys"
++    },
++    {
++      "id": 5,
++      "name": "working tree cleanliness",
++      "command": [
++        "git",
++        "status",
++        "--porcelain",
++        "--",
++        ".",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/preflight-latest.json"
++      ],
++      "exit_code": 0,
++      "stdout": " M Hexalith.EventStore\n",
++      "stderr": "",
++      "dirty_path_count": 1,
++      "result": "fail",
++      "details": "1 dirty path(s)"
++    }
++  ],
++  "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
++}
+\ No newline at end of file
+diff --git a/_bmad-output/process-notes/predev-preflight-2026-05-01T170121Z.json b/_bmad-output/process-notes/predev-preflight-2026-05-01T170121Z.json
+new file mode 100644
+index 0000000..fbff073
+--- /dev/null
++++ b/_bmad-output/process-notes/predev-preflight-2026-05-01T170121Z.json
+@@ -0,0 +1,74 @@
++{
++  "schema_version": 1,
++  "produced_by": "jobs/preflight-predev-hardening.py",
++  "timestamp": "2026-05-01T17:01:21Z",
++  "repo": "D:\\Hexalith.Memories",
++  "result": "fail",
++  "bootstrap_actions": [],
++  "checks": [
++    {
++      "id": 1,
++      "name": "sprint-status.yaml parses as YAML",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
++      "result": "pass",
++      "details": "PARSE OK",
++      "file_size_bytes": 63856,
++      "line_count": 224,
++      "top_level_keys": [
++        "development_status",
++        "generated",
++        "last_updated",
++        "project",
++        "project_key",
++        "story_location",
++        "tracking_system"
++      ],
++      "development_status_count": 89
++    },
++    {
++      "id": 2,
++      "name": "artifacts root exists",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts",
++      "result": "pass",
++      "details": "directory exists"
++    },
++    {
++      "id": 3,
++      "name": "lessons ledger readable",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\process-notes\\story-creation-lessons.md",
++      "result": "pass",
++      "details": "file readable"
++    },
++    {
++      "id": 4,
++      "name": "status-artifact consistency",
++      "story_keys_checked": 63,
++      "result": "pass",
++      "details": "no drift across 63 story keys"
++    },
++    {
++      "id": 5,
++      "name": "working tree cleanliness",
++      "command": [
++        "git",
++        "status",
++        "--porcelain",
++        "--",
++        ".",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/preflight-latest.json"
++      ],
++      "exit_code": 0,
++      "stdout": " M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n",
++      "stderr": "",
++      "dirty_path_count": 3,
++      "result": "fail",
++      "details": "3 dirty path(s)"
++    }
++  ],
++  "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
++}
+\ No newline at end of file
+diff --git a/_bmad-output/process-notes/predev-preflight-2026-05-01T181034Z.json b/_bmad-output/process-notes/predev-preflight-2026-05-01T181034Z.json
+new file mode 100644
+index 0000000..4b8718b
+--- /dev/null
++++ b/_bmad-output/process-notes/predev-preflight-2026-05-01T181034Z.json
+@@ -0,0 +1,74 @@
++{
++  "schema_version": 1,
++  "produced_by": "jobs/preflight-predev-hardening.py",
++  "timestamp": "2026-05-01T18:10:34Z",
++  "repo": "D:\\Hexalith.Memories",
++  "result": "fail",
++  "bootstrap_actions": [],
++  "checks": [
++    {
++      "id": 1,
++      "name": "sprint-status.yaml parses as YAML",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
++      "result": "pass",
++      "details": "PARSE OK",
++      "file_size_bytes": 66508,
++      "line_count": 226,
++      "top_level_keys": [
++        "development_status",
++        "generated",
++        "last_updated",
++        "project",
++        "project_key",
++        "story_location",
++        "tracking_system"
++      ],
++      "development_status_count": 89
++    },
++    {
++      "id": 2,
++      "name": "artifacts root exists",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts",
++      "result": "pass",
++      "details": "directory exists"
++    },
++    {
++      "id": 3,
++      "name": "lessons ledger readable",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\process-notes\\story-creation-lessons.md",
++      "result": "pass",
++      "details": "file readable"
++    },
++    {
++      "id": 4,
++      "name": "status-artifact consistency",
++      "story_keys_checked": 63,
++      "result": "pass",
++      "details": "no drift across 63 story keys"
++    },
++    {
++      "id": 5,
++      "name": "working tree cleanliness",
++      "command": [
++        "git",
++        "status",
++        "--porcelain",
++        "--",
++        ".",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/preflight-latest.json"
++      ],
++      "exit_code": 0,
++      "stdout": " M .github/workflows/ci.yml\n M CONTRIBUTING.md\n M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n M tests/tooling/story_scope/story_scope_validator_test.py\n M tools/check-story-file-scope.py\n M tools/test.sh\n",
++      "stderr": "",
++      "dirty_path_count": 10,
++      "result": "fail",
++      "details": "10 dirty path(s)"
++    }
++  ],
++  "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
++}
+\ No newline at end of file
+diff --git a/_bmad-output/process-notes/predev-preflight-2026-05-01T191020Z.json b/_bmad-output/process-notes/predev-preflight-2026-05-01T191020Z.json
+new file mode 100644
+index 0000000..1754bfb
+--- /dev/null
++++ b/_bmad-output/process-notes/predev-preflight-2026-05-01T191020Z.json
+@@ -0,0 +1,74 @@
++{
++  "schema_version": 1,
++  "produced_by": "jobs/preflight-predev-hardening.py",
++  "timestamp": "2026-05-01T19:10:20Z",
++  "repo": "D:\\Hexalith.Memories",
++  "result": "fail",
++  "bootstrap_actions": [],
++  "checks": [
++    {
++      "id": 1,
++      "name": "sprint-status.yaml parses as YAML",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
++      "result": "pass",
++      "details": "PARSE OK",
++      "file_size_bytes": 66508,
++      "line_count": 226,
++      "top_level_keys": [
++        "development_status",
++        "generated",
++        "last_updated",
++        "project",
++        "project_key",
++        "story_location",
++        "tracking_system"
++      ],
++      "development_status_count": 89
++    },
++    {
++      "id": 2,
++      "name": "artifacts root exists",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts",
++      "result": "pass",
++      "details": "directory exists"
++    },
++    {
++      "id": 3,
++      "name": "lessons ledger readable",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\process-notes\\story-creation-lessons.md",
++      "result": "pass",
++      "details": "file readable"
++    },
++    {
++      "id": 4,
++      "name": "status-artifact consistency",
++      "story_keys_checked": 63,
++      "result": "pass",
++      "details": "no drift across 63 story keys"
++    },
++    {
++      "id": 5,
++      "name": "working tree cleanliness",
++      "command": [
++        "git",
++        "status",
++        "--porcelain",
++        "--",
++        ".",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/preflight-latest.json"
++      ],
++      "exit_code": 0,
++      "stdout": " M .github/workflows/ci.yml\n M CONTRIBUTING.md\n M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n M tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs\n M tests/tooling/story_scope/story_scope_validator_test.py\n M tools/check-story-file-scope.py\n M tools/test.sh\n",
++      "stderr": "",
++      "dirty_path_count": 11,
++      "result": "fail",
++      "details": "11 dirty path(s)"
++    }
++  ],
++  "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
++}
+\ No newline at end of file
+diff --git a/_bmad-output/process-notes/predev-preflight-2026-05-01T204941Z.json b/_bmad-output/process-notes/predev-preflight-2026-05-01T204941Z.json
+new file mode 100644
+index 0000000..b5859ec
+--- /dev/null
++++ b/_bmad-output/process-notes/predev-preflight-2026-05-01T204941Z.json
+@@ -0,0 +1,74 @@
++{
++  "schema_version": 1,
++  "produced_by": "jobs/preflight-predev-hardening.py",
++  "timestamp": "2026-05-01T20:49:41Z",
++  "repo": "D:\\Hexalith.Memories",
++  "result": "fail",
++  "bootstrap_actions": [],
++  "checks": [
++    {
++      "id": 1,
++      "name": "sprint-status.yaml parses as YAML",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
++      "result": "pass",
++      "details": "PARSE OK",
++      "file_size_bytes": 66560,
++      "line_count": 226,
++      "top_level_keys": [
++        "development_status",
++        "generated",
++        "last_updated",
++        "project",
++        "project_key",
++        "story_location",
++        "tracking_system"
++      ],
++      "development_status_count": 89
++    },
++    {
++      "id": 2,
++      "name": "artifacts root exists",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts",
++      "result": "pass",
++      "details": "directory exists"
++    },
++    {
++      "id": 3,
++      "name": "lessons ledger readable",
++      "path": "D:\\Hexalith.Memories\\_bmad-output\\process-notes\\story-creation-lessons.md",
++      "result": "pass",
++      "details": "file readable"
++    },
++    {
++      "id": 4,
++      "name": "status-artifact consistency",
++      "story_keys_checked": 63,
++      "result": "pass",
++      "details": "no drift across 63 story keys"
++    },
++    {
++      "id": 5,
++      "name": "working tree cleanliness",
++      "command": [
++        "git",
++        "status",
++        "--porcelain",
++        "--",
++        ".",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/predev-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/code-review-preflight-latest.json",
++        ":(exclude)_bmad-output/process-notes/preflight-*.json",
++        ":(exclude)_bmad-output/process-notes/preflight-latest.json"
++      ],
++      "exit_code": 0,
++      "stdout": " M Hexalith.EventStore\n",
++      "stderr": "",
++      "dirty_path_count": 1,
++      "result": "fail",
++      "details": "1 dirty path(s)"
++    }
++  ],
++  "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
++}
+\ No newline at end of file
+diff --git a/_bmad-output/process-notes/predev-preflight-latest.json b/_bmad-output/process-notes/predev-preflight-latest.json
+index 12a3ec0..b5859ec 100644
+--- a/_bmad-output/process-notes/predev-preflight-latest.json
++++ b/_bmad-output/process-notes/predev-preflight-latest.json
+@@ -1,7 +1,7 @@
+ {
+   "schema_version": 1,
+   "produced_by": "jobs/preflight-predev-hardening.py",
+-  "timestamp": "2026-05-01T15:45:30Z",
++  "timestamp": "2026-05-01T20:49:41Z",
+   "repo": "D:\\Hexalith.Memories",
+   "result": "fail",
+   "bootstrap_actions": [],
+@@ -12,8 +12,8 @@
+       "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
+       "result": "pass",
+       "details": "PARSE OK",
+-      "file_size_bytes": 63575,
+-      "line_count": 224,
++      "file_size_bytes": 66560,
++      "line_count": 226,
+       "top_level_keys": [
+         "development_status",
+         "generated",
+@@ -63,11 +63,11 @@
+         ":(exclude)_bmad-output/process-notes/preflight-latest.json"
+       ],
+       "exit_code": 0,
+-      "stdout": " M .github/workflows/ci.yml\n M Hexalith.EventStore\n M _bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n?? .githooks/\n?? tests/tooling/\n?? tools/check-story-file-scope.py\n",
++      "stdout": " M Hexalith.EventStore\n",
+       "stderr": "",
+-      "dirty_path_count": 7,
++      "dirty_path_count": 1,
+       "result": "fail",
+-      "details": "7 dirty path(s)"
++      "details": "1 dirty path(s)"
+     }
+   ],
+   "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."
+diff --git a/tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs b/tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+index 58108be..da73020 100644
+--- a/tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
++++ b/tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+@@ -6,11 +6,12 @@
+ namespace Hexalith.Memories.Cli.Tests.Ci;
+ 
+ using System.Reflection;
++using System.Text.RegularExpressions;
+ 
+ using Shouldly;
+ 
+ /// <summary>Guards the CI test project inventory shared by local scripts and GitHub Actions.</summary>
+-public sealed class CiTestInventoryTests
++public sealed partial class CiTestInventoryTests
+ {
+     private static readonly string[] ExpectedDockerFreeProjects =
+     [
+@@ -90,6 +91,25 @@ public sealed class CiTestInventoryTests
+         }
+     }
+ 
++    [Fact]
++    public void TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries()
++    {
++        string repoRoot = GetRepoRoot();
++
++        BaselineFilter[] filters = ReadAcceptedReleaseFilters(Path.Combine(repoRoot, "tools", "test-release.ps1"));
++        DeferredBaseline[] baselines = ReadOpenDeferredBaselines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
++
++        filters.ShouldAllBe(filter => baselines.Any(baseline => baseline.Key == filter.Key && baseline.TestName == filter.TestName));
++        baselines
++            .Where(static baseline => baseline.HasReleaseFilter)
++            .ShouldAllBe(baseline => filters.Any(filter => filter.Key == baseline.Key && filter.TestName == baseline.TestName));
++
++        if (baselines.Length == 0)
++        {
++            filters.ShouldBeEmpty("release-lane baseline filters must be empty when no open S11-F* baseline entries remain.");
++        }
++    }
++
+     private static int CountOccurrences(string haystack, string needle)
+     {
+         int count = 0;
+@@ -103,6 +123,111 @@ public sealed class CiTestInventoryTests
+         return count;
+     }
+ 
++    private static BaselineFilter[] ReadAcceptedReleaseFilters(string path)
++    {
++        string[] lines = File.ReadAllLines(path);
++        List<BaselineFilter> filters = [];
++        string? currentKey = null;
++
++        foreach (string line in lines)
++        {
++            Match keyMatch = DeferredKeyRegex().Match(line);
++            if (keyMatch.Success)
++            {
++                currentKey = keyMatch.Groups["key"].Value;
++            }
++
++            Match filterMatch = ProjectFilterRegex().Match(line);
++            if (!filterMatch.Success)
++            {
++                continue;
++            }
++
++            currentKey.ShouldNotBeNullOrWhiteSpace($"release baseline filter '{line.Trim()}' must be preceded by a comment naming its S11-F* deferred-work entry.");
++
++            string testName = filterMatch.Groups["test"].Value.Trim();
++            testName.Contains('.', StringComparison.Ordinal)
++                .ShouldBeTrue($"release baseline filter '{line.Trim()}' must target a single test method, not a class, namespace, or category.");
++            filters.Add(new BaselineFilter(currentKey, testName));
++        }
++
++        return filters.ToArray();
++    }
++
++    private static DeferredBaseline[] ReadOpenDeferredBaselines(string path)
++        => ReadDeferredEntries(path)
++            .Select(ParseDeferredBaseline)
++            .Where(static baseline => baseline is not null)
++            .Cast<DeferredBaseline>()
++            .ToArray();
++
++    private static IEnumerable<string> ReadDeferredEntries(string path)
++    {
++        string[] lines = File.ReadAllLines(path);
++        List<string> current = [];
++
++        foreach (string line in lines)
++        {
++            if (line.StartsWith("- **S11-F", StringComparison.Ordinal) && current.Count > 0)
++            {
++                yield return string.Join(Environment.NewLine, current);
++                current.Clear();
++            }
++
++            if (line.StartsWith("- **S11-F", StringComparison.Ordinal) || current.Count > 0)
++            {
++                current.Add(line);
++            }
++        }
++
++        if (current.Count > 0)
++        {
++            yield return string.Join(Environment.NewLine, current);
++        }
++    }
++
++    private static DeferredBaseline? ParseDeferredBaseline(string entry)
++    {
++        Match keyMatch = DeferredKeyRegex().Match(entry);
++        if (!keyMatch.Success || IsResolvedDeferredEntry(entry))
++        {
++            return null;
++        }
++
++        bool baselineRelated = entry.Contains("baseline", StringComparison.OrdinalIgnoreCase)
++            || entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase);
++        if (!baselineRelated)
++        {
++            return null;
++        }
++
++        Match testMatch = DeferredTestNameRegex().Match(entry);
++        testMatch.Success.ShouldBeTrue($"deferred baseline entry '{keyMatch.Groups["key"].Value}' must name the filtered test.");
++
++        bool hasReleaseFilter = entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase)
++            || entry.Contains("release lane", StringComparison.OrdinalIgnoreCase);
++
++        return new DeferredBaseline(keyMatch.Groups["key"].Value, testMatch.Groups["test"].Value.Trim(), hasReleaseFilter);
++    }
++
++    private static bool IsResolvedDeferredEntry(string entry)
++        => entry.Contains("[resolved", StringComparison.OrdinalIgnoreCase)
++            || entry.Contains("closed for", StringComparison.OrdinalIgnoreCase)
++            || entry.Contains("resolved in", StringComparison.OrdinalIgnoreCase);
++
++    [GeneratedRegex(@"(?<key>S11-F[A-Z0-9]+)\.")]
++    private static partial Regex DeferredKeyRegex();
++
++    [GeneratedRegex("FullyQualifiedName!~(?<test>[^\"&]+)")]
++    private static partial Regex ProjectFilterRegex();
++
++    [GeneratedRegex("`(?<test>[^`]+Tests\\.[^`]+)`")]
++    private static partial Regex DeferredTestNameRegex();
++
++    private sealed record BaselineFilter(string Key, string TestName);
++
++    private sealed record DeferredBaseline(string Key, string TestName, bool HasReleaseFilter);
++
+     private static string[] ReadInventory(string path)
+         => File.ReadAllLines(path)
+             .Select(static line => line.Trim())
+diff --git a/tests/tooling/story_scope/story_scope_validator_test.py b/tests/tooling/story_scope/story_scope_validator_test.py
+index 2517165..00be2a3 100644
+--- a/tests/tooling/story_scope/story_scope_validator_test.py
++++ b/tests/tooling/story_scope/story_scope_validator_test.py
+@@ -1,3 +1,4 @@
++import os
+ import subprocess
+ import sys
+ import tempfile
+@@ -10,6 +11,36 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
+ TOOL = REPO_ROOT / "tools" / "check-story-file-scope.py"
+ 
+ 
++# Frozen snapshot of a real `## File Scope` shape (taken from
++# 12-2-forbidden-default-tolerances-checklist on 2026-05-01). Lives inline so
++# the parser-drift fixture is not affected by edits to live story artifacts.
++FROZEN_STORY_FIXTURE = """\
++# Story 12.2: Forbidden-Default Tolerances Checklist
++
++Status: review
++
++## File Scope
++
++Allowed files for this story:
++
++- `CONTRIBUTING.md` - UPDATE. Document the forbidden-default tolerances pattern.
++- `_bmad-output/implementation-artifacts/12-2-forbidden-default-tolerances-checklist.md` - UPDATE Dev Agent Record.
++- `_bmad-output/implementation-artifacts/sprint-status.yaml` - UPDATE only through the BMad workflow.
++
++Read/verify only:
++
++- `_bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md`
++- `tools/test-release.ps1`
++
++Forbidden by default:
++
++- `src/**/*.cs`
++- `tests/**/*.cs`
++- `tools/publish-nuget.ps1`
++- submodule contents
++"""
++
++
+ def run_validator(*args, cwd=REPO_ROOT):
+     return subprocess.run(
+         [sys.executable, str(TOOL), *args],
+@@ -20,23 +51,62 @@ def run_validator(*args, cwd=REPO_ROOT):
+     )
+ 
+ 
++def section_block(stdout: str, header: str) -> list[str]:
++    """Return the bullet lines under `header:` until the next section header."""
++    lines = stdout.splitlines()
++    block: list[str] = []
++    in_section = False
++    for line in lines:
++        if line.strip() == header:
++            in_section = True
++            continue
++        if in_section:
++            if not line.startswith("  - "):
++                break
++            block.append(line[4:])
++    return block
++
++
+ class StoryScopeValidatorTests(unittest.TestCase):
+-    def make_artifacts(self, body: str) -> tempfile.TemporaryDirectory:
++    def write_message(self, text: str) -> Path:
++        handle = tempfile.NamedTemporaryFile(
++            mode="w",
++            suffix=".txt",
++            delete=False,
++            encoding="utf-8",
++        )
++        try:
++            handle.write(textwrap.dedent(text))
++        finally:
++            handle.close()
++        path = Path(handle.name)
++        self.addCleanup(lambda: path.unlink(missing_ok=True))
++        return path
++
++    def write_changed_files(self, *paths: str) -> Path:
++        handle = tempfile.NamedTemporaryFile(
++            mode="w",
++            suffix=".txt",
++            delete=False,
++            encoding="utf-8",
++        )
++        try:
++            handle.write("\n".join(paths))
++        finally:
++            handle.close()
++        path = Path(handle.name)
++        self.addCleanup(lambda: path.unlink(missing_ok=True))
++        return path
++
++    def fixture_artifacts(self, body: str, story_key: str = "12-2-forbidden-default-tolerances-checklist") -> tempfile.TemporaryDirectory:
+         temp = tempfile.TemporaryDirectory()
+-        artifacts = Path(temp.name)
+-        (artifacts / "12-3-story-file-scope-enforcement.md").write_text(
++        (Path(temp.name) / f"{story_key}.md").write_text(
+             textwrap.dedent(body),
+             encoding="utf-8",
+         )
+         self.addCleanup(temp.cleanup)
+         return temp
+ 
+-    def write_message(self, text: str) -> Path:
+-        path = Path(self._testMethodName + ".txt")
+-        path.write_text(textwrap.dedent(text), encoding="utf-8")
+-        self.addCleanup(lambda: path.unlink(missing_ok=True))
+-        return path
+-
+     def test_branch_name_story_key_discovery_allows_in_scope_file(self):
+         result = run_validator(
+             "--branch-name",
+@@ -67,6 +137,28 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+         self.assertIn("Story source: trailer", result.stdout)
+ 
++    def test_branch_and_trailer_agreement_passes(self):
++        message = self.write_message(
++            """
++            docs: align story trailer with branch
++
++            Story: 12-3-story-file-scope-enforcement
++            """
++        )
++
++        result = run_validator(
++            "--branch-name",
++            "feature/12-3-story-file-scope-enforcement",
++            "--commit-message-file",
++            str(message),
++            "--changed-file",
++            "CONTRIBUTING.md",
++        )
++
++        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
++        # Trailer wins over branch when they agree.
++        self.assertIn("Story source: trailer", result.stdout)
++
+     def test_scope_override_trailer_can_cover_specific_non_forbidden_path(self):
+         message = self.write_message(
+             """
+@@ -85,7 +177,7 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         )
+ 
+         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+-        self.assertIn("Audited Scope-Override entries:", result.stdout)
++        self.assertIn("docs/dev/story-scope.md", section_block(result.stdout, "Audited Scope-Override entries:"))
+ 
+     def test_out_of_scope_file_fails_without_override(self):
+         result = run_validator(
+@@ -96,8 +188,24 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         )
+ 
+         self.assertNotEqual(result.returncode, 0)
+-        self.assertIn("Out-of-scope files:", result.stdout)
+-        self.assertIn("docs/dev/story-scope.md", result.stdout)
++        self.assertIn("docs/dev/story-scope.md", section_block(result.stdout, "Out-of-scope files:"))
++
++    def test_d5_style_source_touch_without_override_fails_loudly(self):
++        result = run_validator(
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "src/Hexalith.Memories.Server/Search/SemanticSearchService.cs",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        # The plain D5 case (no override at all) must report the forbidden-default
++        # diagnostic, not a generic out-of-scope message. Story 12.2's closure
++        # note assigned 12.3 ownership of this prevention.
++        self.assertIn(
++            "src/Hexalith.Memories.Server/Search/SemanticSearchService.cs",
++            section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
++        )
+ 
+     def test_d5_style_source_touch_fails_even_with_override(self):
+         message = self.write_message(
+@@ -117,7 +225,26 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         )
+ 
+         self.assertNotEqual(result.returncode, 0)
+-        self.assertIn("Forbidden-default files cannot be authorized", result.stdout)
++        self.assertIn(
++            "src/Hexalith.Memories.Server/Search/SemanticSearchService.cs",
++            section_block(result.stdout, "Forbidden-default files cannot be authorized by Scope-Override:"),
++        )
++
++    def test_bare_submodule_pointer_change_is_forbidden_default(self):
++        # 12.2 closure note: 12.3 owns prevention of submodule-pointer leaks.
++        # The literal submodule-pointer tree entry has no trailing slash.
++        result = run_validator(
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "Hexalith.EventStore",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn(
++            "Hexalith.EventStore",
++            section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
++        )
+ 
+     def test_branch_and_trailer_conflict_fails_closed(self):
+         message = self.write_message(
+@@ -140,7 +267,9 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         self.assertNotEqual(result.returncode, 0)
+         self.assertIn("Conflicting story keys", result.stdout)
+ 
+-    def test_multiple_story_trailers_fail(self):
++    def test_duplicate_consistent_story_trailers_pass(self):
++        # Real tooling commonly emits both Story: and Story-Key: with the same
++        # value (e.g. amend cycles). Failing closed on agreement is over-strict.
+         message = self.write_message(
+             """
+             docs: update scope guidance
+@@ -157,11 +286,60 @@ class StoryScopeValidatorTests(unittest.TestCase):
+             "CONTRIBUTING.md",
+         )
+ 
++        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
++
++    def test_conflicting_story_and_story_key_trailers_fail(self):
++        message = self.write_message(
++            """
++            docs: update scope guidance
++
++            Story: 12-3-story-file-scope-enforcement
++            Story-Key: 12-2-forbidden-default-tolerances-checklist
++            """
++        )
++
++        result = run_validator(
++            "--commit-message-file",
++            str(message),
++            "--changed-file",
++            "CONTRIBUTING.md",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("Conflicting Story/Story-Key trailers", result.stdout)
++
++    def test_multiple_keys_in_single_story_trailer_value_fails(self):
++        message = self.write_message(
++            """
++            docs: update scope guidance
++
++            Story: 12-3-story-file-scope-enforcement and 12-4-baseline-failures-sweep
++            """
++        )
++
++        result = run_validator(
++            "--commit-message-file",
++            str(message),
++            "--changed-file",
++            "CONTRIBUTING.md",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("Multiple story keys in single trailer", result.stdout)
++
++    def test_unparseable_explicit_story_key_fails_closed(self):
++        result = run_validator(
++            "--story-key",
++            "not-a-valid-key",
++            "--changed-file",
++            "CONTRIBUTING.md",
++        )
++
+         self.assertNotEqual(result.returncode, 0)
+-        self.assertIn("Multiple Story/Story-Key trailers", result.stdout)
++        self.assertIn("--story-key value is not a valid story key", result.stdout)
+ 
+     def test_vague_scope_overrides_fail(self):
+-        for override in ["*", ".", "src", "src/**", "repo-wide cleanup"]:
++        for override in ["*", ".", "src", "src/**", "repo-wide cleanup", ""]:
+             with self.subTest(override=override):
+                 message = self.write_message(
+                     f"""
+@@ -207,9 +385,9 @@ class StoryScopeValidatorTests(unittest.TestCase):
+                 )
+ 
+                 self.assertNotEqual(result.returncode, 0)
+-                self.assertIn(changed, result.stdout)
++                self.assertIn(changed, section_block(result.stdout, "Out-of-scope files:"))
+ 
+-    def test_path_normalization_handles_windows_and_posix_inputs(self):
++    def test_path_normalization_makes_windows_and_posix_inputs_equivalent(self):
+         result = run_validator(
+             "--story-key",
+             "12-3-story-file-scope-enforcement",
+@@ -221,14 +399,40 @@ class StoryScopeValidatorTests(unittest.TestCase):
+ 
+         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+ 
++        in_scope = section_block(result.stdout, "In-scope changed files:")
++        # Both inputs must normalize to their POSIX-style canonical form.
++        self.assertIn("tools/check-story-file-scope.py", in_scope)
++        self.assertIn("tests/tooling/story_scope/story_scope_validator_test.py", in_scope)
++        # And no backslash- or `..`-bearing form should leak through.
++        for entry in in_scope:
++            self.assertNotIn("\\", entry)
++            self.assertNotIn("..", entry.split("/"))
++
+     def test_zero_changed_files_is_explicit_no_op_success(self):
+         result = run_validator()
+ 
+         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+         self.assertIn("No changed files; story-scope check is a no-op", result.stdout)
+ 
+-    def test_real_current_story_file_scope_pattern_is_parseable(self):
++    def test_unresolvable_changed_files_input_fails(self):
++        result = run_validator(
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-files-file",
++            "/nonexistent/changed-files.txt",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("Changed-files input does not exist", result.stdout)
++
++    def test_frozen_story_fixture_is_parseable(self):
++        # Pin the parser against a snapshot of a real story shape so future
++        # template drift is caught here even if live story files are edited.
++        temp = self.fixture_artifacts(FROZEN_STORY_FIXTURE)
++
+         result = run_validator(
++            "--artifacts-root",
++            temp.name,
+             "--story-key",
+             "12-2-forbidden-default-tolerances-checklist",
+             "--changed-file",
+@@ -236,9 +440,10 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         )
+ 
+         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
++        self.assertIn("CONTRIBUTING.md", section_block(result.stdout, "In-scope changed files:"))
+ 
+     def test_parser_rejects_missing_allowed_scope(self):
+-        temp = self.make_artifacts(
++        temp = self.fixture_artifacts(
+             """
+             # Story 12.3
+ 
+@@ -247,7 +452,8 @@ class StoryScopeValidatorTests(unittest.TestCase):
+             Read/verify only:
+ 
+             - `CONTRIBUTING.md`
+-            """
++            """,
++            story_key="12-3-story-file-scope-enforcement",
+         )
+ 
+         result = run_validator(
+@@ -262,6 +468,133 @@ class StoryScopeValidatorTests(unittest.TestCase):
+         self.assertNotEqual(result.returncode, 0)
+         self.assertIn("empty allowed scope", result.stdout)
+ 
++    def test_parser_ignores_fenced_code_blocks_inside_file_scope(self):
++        temp = self.fixture_artifacts(
++            """
++            # Story 12.3
++
++            ## File Scope
++
++            Allowed files for this story:
++
++            - `real/path.md` - real authoritative entry
++
++            Example template (illustrative only):
++
++            ```markdown
++            Allowed files for this story:
++
++            - `illusion.md` - must NOT be parsed as authoritative
++            ```
++            """,
++            story_key="12-3-story-file-scope-enforcement",
++        )
++
++        # `illusion.md` would only be allowed if the fence was ignored.
++        result = run_validator(
++            "--artifacts-root",
++            temp.name,
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "illusion.md",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("illusion.md", section_block(result.stdout, "Out-of-scope files:"))
++
++    def test_parser_rejects_indented_sub_bullets_as_authoritative(self):
++        temp = self.fixture_artifacts(
++            """
++            # Story 12.3
++
++            ## File Scope
++
++            Allowed files for this story:
++
++            - `tools/parent.py` - main file
++              - sub-bullet referencing `tools/forbidden_sibling.py` for context only
++            """,
++            story_key="12-3-story-file-scope-enforcement",
++        )
++
++        result = run_validator(
++            "--artifacts-root",
++            temp.name,
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "tools/forbidden_sibling.py",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("tools/forbidden_sibling.py", section_block(result.stdout, "Out-of-scope files:"))
++
++    def test_parser_rejects_bare_unbackticked_bullet_as_path(self):
++        temp = self.fixture_artifacts(
++            """
++            # Story 12.3
++
++            ## File Scope
++
++            Allowed files for this story:
++
++            - `tools/check-story-file-scope.py` - canonical entry
++            - tools/inferred-from-prose.py - bare token, must not be parsed
++            """,
++            story_key="12-3-story-file-scope-enforcement",
++        )
++
++        result = run_validator(
++            "--artifacts-root",
++            temp.name,
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "tools/inferred-from-prose.py",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("tools/inferred-from-prose.py", section_block(result.stdout, "Out-of-scope files:"))
++
++    def test_glob_star_does_not_cross_path_separators(self):
++        temp = self.fixture_artifacts(
++            """
++            # Story 12.3
++
++            ## File Scope
++
++            Allowed files for this story:
++
++            - `tools/*.py` - shallow allow
++            """,
++            story_key="12-3-story-file-scope-enforcement",
++        )
++
++        result = run_validator(
++            "--artifacts-root",
++            temp.name,
++            "--story-key",
++            "12-3-story-file-scope-enforcement",
++            "--changed-file",
++            "tools/sub/nested.py",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("tools/sub/nested.py", section_block(result.stdout, "Out-of-scope files:"))
++
++    def test_story_key_regex_does_not_capture_letter_prefixed_digit_run(self):
++        # `feat/abc123-12-3-foo` must not resolve to `123-12-3-foo`.
++        result = run_validator(
++            "--branch-name",
++            "feat/abc123-12-3-foo",
++            "--changed-file",
++            "CONTRIBUTING.md",
++        )
++
++        self.assertNotEqual(result.returncode, 0)
++        self.assertIn("No story key resolved", result.stdout)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tools/check-story-file-scope.py b/tools/check-story-file-scope.py
+index a115b37..92fce94 100644
+--- a/tools/check-story-file-scope.py
++++ b/tools/check-story-file-scope.py
+@@ -5,16 +5,19 @@ from __future__ import annotations
+ 
+ import argparse
+ import fnmatch
+-import os
+ import re
+ import subprocess
+ import sys
+ from dataclasses import dataclass
+-from pathlib import Path, PurePosixPath
++from pathlib import Path
+ 
+ 
+-STORY_KEY_PATTERN = re.compile(r"(?<!\d)(\d+-\d+-[a-z0-9][a-z0-9-]*)(?![a-z0-9-])", re.IGNORECASE)
++STORY_KEY_PATTERN = re.compile(
++    r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
++    re.IGNORECASE,
++)
+ BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
++CODE_FENCE_PATTERN = re.compile(r"^\s*(```|~~~)")
+ 
+ ALLOWED_LABELS = {
+     "allowed files for this story:",
+@@ -75,9 +78,13 @@ def normalize_label(value: str) -> str:
+     return value.strip().strip("*").strip().lower()
+ 
+ 
++def extract_story_keys(value: str) -> list[str]:
++    return [match.lower() for match in STORY_KEY_PATTERN.findall(value or "")]
++
++
+ def extract_story_key(value: str) -> str | None:
+-    match = STORY_KEY_PATTERN.search(value or "")
+-    return match.group(1).lower() if match else None
++    keys = extract_story_keys(value)
++    return keys[0] if keys else None
+ 
+ 
+ def parse_args(argv: list[str]) -> argparse.Namespace:
+@@ -142,25 +149,37 @@ def parse_trailers(message: str) -> tuple[list[str], list[str]]:
+         normalized_key = key.strip().lower()
+         normalized_value = value.strip()
+         if normalized_key in {"story", "story-key"}:
+-            story_key = extract_story_key(normalized_value)
+-            if not story_key:
++            keys_in_value = extract_story_keys(normalized_value)
++            if len(keys_in_value) > 1:
++                raise ValidationError(f"Multiple story keys in single trailer: {line}")
++            if not keys_in_value:
+                 raise ValidationError(f"Malformed Story trailer: {line}")
+-            story_keys.append(story_key)
++            story_keys.append(keys_in_value[0])
+         elif normalized_key == "scope-override":
+             overrides.append(normalized_value)
+ 
+-    if len(story_keys) > 1:
+-        raise ValidationError("Multiple Story/Story-Key trailers found; keep exactly one story trailer.")
++    if len(set(story_keys)) > 1:
++        raise ValidationError(
++            "Conflicting Story/Story-Key trailers: " + ", ".join(sorted(set(story_keys))),
++        )
+     return story_keys, overrides
+ 
+ 
+ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> StorySource:
+     sources: list[StorySource] = []
+-    explicit = extract_story_key(args.story_key or "")
+-    if explicit:
++
++    explicit_raw = (args.story_key or "").strip()
++    if explicit_raw:
++        explicit = extract_story_key(explicit_raw)
++        if not explicit:
++            raise ValidationError(
++                f"--story-key value is not a valid story key: {explicit_raw}",
++            )
+         sources.append(StorySource("cli", explicit))
++
+     if trailer_keys:
+         sources.append(StorySource("trailer", trailer_keys[0]))
++
+     branch = extract_story_key(args.branch_name or "")
+     if branch:
+         sources.append(StorySource("branch", branch))
+@@ -183,26 +202,32 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
+ 
+ 
+ def extract_backtick_path(line: str) -> str | None:
++    # The first backticked token in a bullet is the path. Additional backticks
++    # in the same bullet are rationale and are intentionally ignored — splitting
++    # one bullet into multiple paths would silently widen scope.
+     match = BACKTICK_PATTERN.search(line)
+-    if match:
+-        return match.group(1)
+-
+-    value = line.strip()
+-    if value.startswith("- "):
+-        value = value[2:].strip()
+-    if not value or " " in value:
+-        return None
+-    return value
++    return match.group(1) if match else None
+ 
+ 
+ def parse_allowed_scope(story_path: Path) -> list[str]:
+-    lines = story_path.read_text(encoding="utf-8").splitlines()
++    text = story_path.read_text(encoding="utf-8")
++    if text.startswith("﻿"):
++        text = text[1:]
++    lines = text.splitlines()
++
+     in_file_scope = False
+     in_allowed = False
++    in_code_block = False
+     allowed: list[str] = []
+ 
+-    for line in lines:
+-        stripped = line.strip()
++    for raw_line in lines:
++        if CODE_FENCE_PATTERN.match(raw_line):
++            in_code_block = not in_code_block
++            continue
++        if in_code_block:
++            continue
++
++        stripped = raw_line.strip()
+         if stripped.startswith("## "):
+             if stripped.lower() == "## file scope":
+                 in_file_scope = True
+@@ -223,7 +248,10 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
+ 
+         if not in_allowed:
+             continue
+-        if not stripped.startswith("- "):
++
++        # Only accept top-level bullets (no leading indentation). Sub-bullets
++        # under an allowed entry are explanatory, not authoritative.
++        if not raw_line.startswith("- "):
+             continue
+ 
+         path = extract_backtick_path(stripped)
+@@ -251,12 +279,23 @@ def collect_changed_files(args: argparse.Namespace) -> list[str]:
+ 
+ 
+ def matches_glob(path: str, pattern: str) -> bool:
+-    normalized_pattern = normalize_path(pattern)
+-    if fnmatch.fnmatchcase(path, normalized_pattern):
+-        return True
+-    if "/**/" in normalized_pattern:
+-        collapsed = normalized_pattern.replace("/**/", "/")
+-        return fnmatch.fnmatchcase(path, collapsed)
++    return _glob_match(path.split("/"), normalize_path(pattern).split("/"))
++
++
++def _glob_match(parts: list[str], pat: list[str]) -> bool:
++    if not pat:
++        return not parts
++    head, *rest = pat
++    if head == "**":
++        # `**` matches zero or more path segments.
++        for i in range(len(parts) + 1):
++            if _glob_match(parts[i:], rest):
++                return True
++        return False
++    if not parts:
++        return False
++    if fnmatch.fnmatchcase(parts[0], head):
++        return _glob_match(parts[1:], rest)
+     return False
+ 
+ 
+@@ -306,6 +345,10 @@ def override_matches(path: str, override: Override) -> bool:
+     return path == override.pattern
+ 
+ 
++def to_posix(path: Path) -> str:
++    return str(path).replace("\\", "/")
++
++
+ def validate(args: argparse.Namespace) -> int:
+     changed = collect_changed_files(args)
+     if not changed:
+@@ -319,20 +362,21 @@ def validate(args: argparse.Namespace) -> int:
+     artifacts_root = Path(args.artifacts_root)
+     story_path = artifacts_root / f"{source.key}.md"
+     if not story_path.exists():
+-        raise ValidationError(f"Story artifact not found: {story_path}")
++        raise ValidationError(f"Story artifact not found: {to_posix(story_path)}")
+ 
+     allowed = parse_allowed_scope(story_path)
+     overrides = parse_overrides(trailer_overrides)
+ 
+     print(f"Selected story key: {source.key}")
+     print(f"Story source: {source.name}")
+-    print(f"Story artifact: {story_path}")
++    print(f"Story artifact: {to_posix(story_path)}")
+     print("Allowed scope entries:")
+     for entry in allowed:
+         print(f"  - {entry}")
+ 
+     allowed_files: list[str] = []
+     out_of_scope: list[str] = []
++    forbidden_no_override: list[str] = []
+     overridden: list[str] = []
+     forbidden_overridden: list[str] = []
+ 
+@@ -349,7 +393,10 @@ def validate(args: argparse.Namespace) -> int:
+                 overridden.append(path)
+             continue
+ 
+-        out_of_scope.append(path)
++        if is_forbidden_default(path):
++            forbidden_no_override.append(path)
++        else:
++            out_of_scope.append(path)
+ 
+     if allowed_files:
+         print("In-scope changed files:")
+@@ -366,13 +413,18 @@ def validate(args: argparse.Namespace) -> int:
+         for path in forbidden_overridden:
+             print(f"  - {path}")
+ 
++    if forbidden_no_override:
++        print("Forbidden-default files (no override; D5-class):")
++        for path in forbidden_no_override:
++            print(f"  - {path}")
++
+     if out_of_scope:
+         print("Out-of-scope files:")
+         for path in out_of_scope:
+             print(f"  - {path}")
+-        print("Accepted override format: Scope-Override: path/or/narrow-glob - short rationale")
+ 
+-    if out_of_scope or forbidden_overridden:
++    if out_of_scope or forbidden_overridden or forbidden_no_override:
++        print("Accepted override format: Scope-Override: path/or/narrow-glob - short rationale")
+         return 1
+ 
+     print("Story file scope validation passed.")
