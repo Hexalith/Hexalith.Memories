@@ -13,3 +13,4 @@
 2026-05-01T20:53:00Z	create-story	13-4-extend-tenant-embedding-config-with-additive-oidc-fields	ok	created ready-for-dev story context; soft preflight warning Hexalith.EventStore
 2026-05-02T06:54:34Z	create-story	13-5-surface-new-fields-via-tenant-configuration-actor	ok	created ready-for-dev story context; preflight passed
 2026-05-02T08:21:12Z	create-story	13-6-vector-migration-tool	ok	created ready-for-dev story context; preflight passed
+2026-05-02T08:36:40Z	party-mode-review	13-2-implement-oidc-token-provider	ok	applied party-mode review clarifications; preflight passed

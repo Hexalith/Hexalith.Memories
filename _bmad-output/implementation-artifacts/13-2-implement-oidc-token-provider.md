@@ -18,7 +18,7 @@ Status: ready-for-dev
 
 ## TL;DR
 
-Add a singleton `IOidcTokenProvider` and `OidcTokenProvider` under `src/Hexalith.Memories.Server/Ingestion/` that performs OAuth2/OIDC `client_credentials` token grants for the future Ollama embedding gateway. It posts URL-encoded form data to the configured token endpoint, caches successful tokens per `(tokenEndpoint, clientId)` until `expires_in - 30 seconds`, prevents duplicate concurrent fetches per key, supports a forced `InvalidateAndRefreshAsync(...)` path for Story 13.3's 401 retry, and never logs or surfaces the `client_secret` or `access_token`.
+Add a singleton `IOidcTokenProvider` and `OidcTokenProvider` under `src/Hexalith.Memories.Server/Ingestion/` that performs OAuth2/OIDC `client_credentials` token grants for the future Ollama embedding gateway. It posts URL-encoded form data to the configured token endpoint, caches successful tokens per `(normalized tokenEndpoint, clientId, normalized scope)` until `expires_in - 30 seconds`, prevents duplicate concurrent fetches per key, supports a forced `InvalidateAndRefreshAsync(...)` path for Story 13.3's 401 retry, and never logs or surfaces the `client_secret` or `access_token`.
 
 This story does **not** change `TenantEmbeddingConfig`, does **not** integrate with `EmbeddingClient`, and does **not** add Ollama request/response parsing. Those are Stories 13.4 and 13.3 respectively.
 
@@ -32,25 +32,25 @@ so that Story 13.3 can attach `Authorization: Bearer <jwt>` to Ollama embedding 
 
 1. **AC1 - First fetch posts the correct token request.** `GetAccessTokenAsync(tokenEndpoint, clientId, clientSecret, scope, ct)` sends an HTTP `POST` to `tokenEndpoint` with `application/x-www-form-urlencoded` content containing `grant_type=client_credentials`, `client_id`, `client_secret`, and `scope` only when `scope` is non-empty.
 
-2. **AC2 - Successful responses are parsed and cached.** The provider parses JSON fields `access_token`, `expires_in`, and `token_type`; requires `token_type` to be `Bearer` case-insensitively; returns `access_token`; and caches it under `(tokenEndpoint, clientId)` with `expiresAt = now + expires_in - 30 seconds`.
+2. **AC2 - Successful responses are parsed and cached.** The provider parses JSON fields `access_token`, `expires_in`, and `token_type`; requires `token_type` to be `Bearer` case-insensitively; returns `access_token`; and caches it under `(normalized tokenEndpoint, clientId, normalized scope)` with `expiresAt = now + expires_in - 30 seconds`. `scope` normalization trims whitespace and treats `null`, empty, and whitespace-only values as the same empty-scope key.
 
-3. **AC3 - Cache hit avoids HTTP.** A second call for the same `(tokenEndpoint, clientId)` while `now < expiresAt` returns the cached token without issuing another HTTP request, even if the caller passes the same secret again.
+3. **AC3 - Cache hit avoids HTTP.** A second call for the same `(normalized tokenEndpoint, clientId, normalized scope)` while `now < expiresAt` returns the cached token without issuing another HTTP request, even if the caller passes the same secret again. Calls that differ by normalized scope must not reuse each other's token.
 
 4. **AC4 - Expired or near-expired entries refresh.** When `now >= expiresAt`, the provider evicts the entry, fetches a new token, caches the new value, and returns it. For `expires_in <= 30`, treat the token as immediately refreshable after the current call rather than caching it as long-lived.
 
-5. **AC5 - Forced invalidation supports Story 13.3.** `InvalidateAndRefreshAsync(tokenEndpoint, clientId, clientSecret, scope, ct)` forcibly removes the cached entry for `(tokenEndpoint, clientId)`, performs exactly one token fetch under the per-key guard, caches the returned token, and returns it.
+5. **AC5 - Forced invalidation supports Story 13.3.** `InvalidateAndRefreshAsync(tokenEndpoint, clientId, clientSecret, scope, ct)` forcibly removes the cached entry for `(normalized tokenEndpoint, clientId, normalized scope)`, waits on the same per-key guard used by normal cache misses, performs exactly one fresh token fetch for that key, caches the returned token, and returns it. It must not evict tokens for different scopes, clients, or token endpoints.
 
-6. **AC6 - Concurrent cache misses collapse to one HTTP request.** Two or more concurrent callers for the same `(tokenEndpoint, clientId)` receive the same token and trigger exactly one outbound HTTP request. Concurrent callers for different keys must not block each other.
+6. **AC6 - Concurrent cache misses collapse to one HTTP request.** Two or more concurrent callers for the same `(normalized tokenEndpoint, clientId, normalized scope)` receive the same token and trigger exactly one outbound HTTP request. Concurrent callers for different keys must not block each other. A caller cancelling while waiting for a shared same-key acquisition must not cancel or poison the shared acquisition for other waiters.
 
-7. **AC7 - Non-2xx token endpoint responses throw a typed exception.** A non-success response throws `OidcTokenAcquisitionException` carrying `StatusCode`, a response-body preview truncated to at most 1024 characters, `TokenEndpoint`, `ClientId`, and a generated correlation ID. The cache is not populated on failure.
+7. **AC7 - Non-2xx token endpoint responses throw a typed exception.** A non-success response throws `OidcTokenAcquisitionException` carrying `StatusCode`, a sanitized response-body preview truncated to at most 1024 characters, a sanitized token endpoint value without query string, `ClientId`, and a generated correlation ID. The cache is not populated on failure, failures are not negative-cached, and a later caller can retry.
 
-8. **AC8 - Malformed success responses throw without caching.** Missing/blank `access_token`, missing/non-positive `expires_in`, unsupported `token_type`, invalid JSON, and empty endpoint/client ID/client secret inputs fail with clear exceptions and do not populate the cache.
+8. **AC8 - Malformed success responses throw without caching.** Missing/blank `access_token`, missing/non-positive/non-numeric `expires_in`, missing or unsupported `token_type`, invalid JSON, non-JSON 2xx responses, and empty endpoint/client ID/client secret inputs fail with clear exceptions and do not populate the cache. A positive `expires_in <= 30` is valid but immediately refreshable after the current call.
 
-9. **AC9 - DI registration is singleton and resilient.** `Program.cs` registers `IOidcTokenProvider` / `OidcTokenProvider` as singleton and configures a typed `HttpClient` with timeout <= 10 seconds. The client must use the repository's standard `Microsoft.Extensions.Http.Resilience` pipeline and must not stack duplicate resilience handlers.
+9. **AC9 - DI registration is singleton and resilient.** `Program.cs` registers `IOidcTokenProvider` / `OidcTokenProvider` as singleton and configures a typed `HttpClient` for `OidcTokenProvider` with `HttpClient.Timeout <= 10 seconds`. The typed client relies on `builder.AddServiceDefaults()` / `ConfigureHttpClientDefaults(... AddStandardResilienceHandler() ...)` for the repository standard `Microsoft.Extensions.Http.Resilience` pipeline and must not stack duplicate resilience handlers or reuse the named `"EmbeddingClient"` client.
 
-10. **AC10 - Secrets and tokens never appear in logs or exception messages.** Unit tests prove that neither `client_secret` nor `access_token` appears in captured log output, `OidcTokenAcquisitionException.Message`, or response previews.
+10. **AC10 - Secrets and tokens never appear in logs or exception messages.** Unit tests prove that `client_secret`, `access_token`, `refresh_token`-like fields, request bodies, authorization values, and endpoint query strings do not appear in captured log output, `OidcTokenAcquisitionException.Message`, or response previews.
 
-11. **AC11 - Focused tests cover the full behavior.** `OidcTokenProviderTests` covers cache miss, cache hit, refresh-before-expiry, forced invalidation, concurrent-callers-single-fetch, independent-key concurrency, non-2xx typed exception, malformed success responses, cancellation propagation, and secret/token redaction.
+11. **AC11 - Focused tests cover the full behavior.** `OidcTokenProviderTests` covers cache miss, cache hit, scope-distinct cache entries, refresh-before-expiry, forced invalidation, concurrent-callers-single-fetch, independent-key concurrency, caller-cancellation-without-shared-acquisition-poisoning, non-2xx typed exception, malformed success responses, cancellation propagation, and secret/token redaction.
 
 12. **AC12 - Sibling Epic 13 scopes remain untouched.** This story does not edit `TenantEmbeddingConfig.cs`, `EmbeddingClient.cs`, `EmbeddingProviderDefaults.cs`, tenant actors, AppHost, appsettings, docs/operations, migration tools, or vector-index code.
 
@@ -67,19 +67,20 @@ so that Story 13.3 can attach `Authorization: Bearer <jwt>` to Ollama embedding 
     - `Task<string> GetAccessTokenAsync(string tokenEndpoint, string clientId, string clientSecret, string? scope, CancellationToken ct)`
     - `Task<string> InvalidateAndRefreshAsync(string tokenEndpoint, string clientId, string clientSecret, string? scope, CancellationToken ct)`
   - [ ] Add `src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs` as a `sealed` singleton-safe class using typed `HttpClient`, `TimeProvider`, and `ILogger<OidcTokenProvider>`.
-  - [ ] Use `ConcurrentDictionary<OidcTokenCacheKey, CachedOidcToken>` for token state, keyed only by normalized `tokenEndpoint` and `clientId`; do not include `clientSecret` in the key.
+  - [ ] Use `ConcurrentDictionary<OidcTokenCacheKey, CachedOidcToken>` for token state, keyed by normalized `tokenEndpoint`, `clientId`, and normalized `scope`; do not include `clientSecret` in the key.
   - [ ] Use a separate `ConcurrentDictionary<OidcTokenCacheKey, SemaphoreSlim>` or equivalent per-key guard so identical cache misses collapse to one fetch while different tenants/client IDs proceed independently.
+  - [ ] Ensure a caller's cancellation token can cancel that caller's wait/request path without cancelling a shared same-key acquisition that other callers are awaiting.
   - [ ] Build the token request with `FormUrlEncodedContent`. Include `scope` only when `!string.IsNullOrWhiteSpace(scope)`.
   - [ ] Parse the response with `System.Text.Json` and a small internal DTO/record. Do not introduce Newtonsoft.Json.
   - [ ] Treat `token_type` values other than `Bearer` (case-insensitive) as acquisition failures. Missing `token_type` may be accepted only if the code documents why, but tests must pin the chosen behavior.
   - [ ] Truncate non-success response bodies and malformed-response previews to 1024 characters before storing them on the exception.
-  - [ ] Log only metadata: token endpoint host/path, client ID, correlation ID, HTTP status, and cache hit/miss/refresh state. Never log `clientSecret`, `access_token`, full form bodies, or raw response bodies that may contain tokens.
+  - [ ] Log only metadata: token endpoint host/path without query string, client ID, correlation ID, HTTP status, and cache hit/miss/refresh state. Never log `clientSecret`, `access_token`, `refresh_token`, authorization values, full form bodies, or raw response bodies that may contain tokens.
   - [ ] Clean up unused per-key semaphores after guarded fetches when safe; do not leak unbounded entries for every failed random client ID.
 
 - [ ] Task 2 - Add the typed exception (AC: #7, #8, #10)
   - [ ] Add `src/Hexalith.Memories.Server/Ingestion/OidcTokenAcquisitionException.cs`.
   - [ ] Expose `HttpStatusCode? StatusCode`, `string ResponseBodyPreview`, `string TokenEndpoint`, `string ClientId`, and `string CorrelationId`.
-  - [ ] Ensure the exception message is actionable but sanitized. It may include endpoint, client ID, status, and correlation ID; it must not include `clientSecret` or `access_token`.
+  - [ ] Ensure the exception message is actionable but sanitized. It may include sanitized endpoint host/path, client ID, status, and correlation ID; it must not include endpoint query strings, `clientSecret`, `access_token`, `refresh_token`, request body values, or authorization values.
   - [ ] Use the typed exception for token endpoint non-2xx responses and malformed success payloads. Use `ArgumentException.ThrowIfNullOrWhiteSpace` / `ArgumentNullException.ThrowIfNull` for programmer input validation.
 
 - [ ] Task 3 - Wire DI and HttpClient registration (AC: #9)
@@ -97,9 +98,12 @@ so that Story 13.3 can attach `Authorization: Bearer <jwt>` to Ollama embedding 
     - `GetAccessTokenAsync_CacheMiss_PostsClientCredentialsForm`
     - `GetAccessTokenAsync_CacheHit_DoesNotSendSecondHttpRequest`
     - `GetAccessTokenAsync_ExpiredEntry_FetchesNewToken`
+    - `GetAccessTokenAsync_DifferentScopes_DoNotReuseCachedToken`
     - `InvalidateAndRefreshAsync_EvictsAndFetchesExactlyOnce`
+    - `InvalidateAndRefreshAsync_OnlyEvictsMatchingScopeKey`
     - `GetAccessTokenAsync_ConcurrentSameKey_SendsSingleRequest`
     - `GetAccessTokenAsync_ConcurrentDifferentKeys_DoNotBlockEachOther`
+    - `GetAccessTokenAsync_CancelledWaiter_DoesNotCancelSharedAcquisition`
     - `GetAccessTokenAsync_NonSuccess_ThrowsTypedExceptionWithoutCaching`
     - `GetAccessTokenAsync_MalformedSuccess_ThrowsTypedExceptionWithoutCaching`
     - `GetAccessTokenAsync_Cancellation_PropagatesOperationCanceledException`
@@ -147,30 +151,32 @@ so that Story 13.3 can attach `Authorization: Bearer <jwt>` to Ollama embedding 
 
 ### Implementation Guidance
 
-- Prefer a small internal value record for the cache key, for example `private sealed record OidcTokenCacheKey(string TokenEndpoint, string ClientId);`.
-- Normalize `tokenEndpoint` by constructing an absolute `Uri` and using `Uri.AbsoluteUri`; reject relative or invalid endpoints early. Do not silently trim to host only because different realms use different paths.
+- Prefer a small internal value record for the cache key, for example `private sealed record OidcTokenCacheKey(string TokenEndpoint, string ClientId, string Scope);`.
+- Normalize `tokenEndpoint` by constructing an absolute `Uri` and using `Uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped)` or an equivalent absolute-URI representation that excludes query and fragment values; reject relative or invalid endpoints early. Do not silently trim to host only because different realms use different paths.
+- Normalize `scope` before keying and before form emission: `null`, empty, and whitespace-only values become the empty-scope key and are omitted from the form body; non-empty values are trimmed and included in both the cache key and the form body.
 - Use `TimeProvider.GetUtcNow()` for cache expiration so tests can advance time without sleeping.
 - Cache only successful token acquisitions. Do not negative-cache failures; Keycloak/network failures should be retried on the next caller.
-- After `InvalidateAndRefreshAsync`, do not perform two HTTP calls. The forced path should evict and then reuse the same guarded fetch primitive.
+- After `InvalidateAndRefreshAsync`, do not perform two HTTP calls. The forced path should evict only the exact `(normalized tokenEndpoint, clientId, normalized scope)` key and then reuse the same guarded fetch primitive.
 - Be careful with response preview truncation: the exception's `ResponseBodyPreview` must be capped to 1024 characters before it can hit logs or assertion output.
+- Sanitize response previews before storing them. If a token endpoint returns token-shaped fields such as `access_token`, `refresh_token`, or `client_secret`, replace their values with a redaction marker before assigning `ResponseBodyPreview`.
 - If the provider logs success/failure events, use structured source-generated `LoggerMessage` helpers only if it keeps the diff small. A simple direct `ILogger` call is acceptable here if sanitized and tested.
 - Do not log full endpoint URLs if query strings are present. Token endpoints should not include secrets in query strings, but the provider should still avoid copying query content into logs.
-- Cancellation should flow into `SendAsync` and response-body reads. An `OperationCanceledException` triggered by the caller's token should not be wrapped in `OidcTokenAcquisitionException`.
+- Cancellation should flow into `SendAsync` and response-body reads for an unshared acquisition. For a collapsed same-key acquisition with multiple waiters, a single caller cancellation must cancel that caller's wait without cancelling the in-flight fetch for remaining waiters. An `OperationCanceledException` triggered by the caller's token should not be wrapped in `OidcTokenAcquisitionException`.
 
 ### Security Requirements
 
 - `client_secret` is a secret fetched from DAPR by Story 13.3 before calling this provider. In 13.2 tests it is supplied directly; never persist it.
 - `access_token` is bearer credential material. Never log it, never include it in exception messages, and never expose it through public properties other than the `GetAccessTokenAsync` return value.
 - Cache entries are in-memory only. Do not write tokens to configuration, DAPR state, files, environment variables, or telemetry attributes.
-- The cache key intentionally excludes `clientSecret`; rotating a secret for the same `(tokenEndpoint, clientId)` requires `InvalidateAndRefreshAsync`, which Story 13.3 will call after 401/403.
-- The `scope` value is not part of the initial planning key. If implementation finds that Keycloak can issue materially different tokens for the same client and different scopes, either include normalized scope in the cache key and document that adjustment in the Dev Agent Record, or stop for a product/security decision. Do not silently cache the wrong-scoped token.
+- The cache key intentionally excludes `clientSecret`; rotating a secret for the same `(normalized tokenEndpoint, clientId, normalized scope)` requires `InvalidateAndRefreshAsync`, which Story 13.3 will call after 401/403.
+- The cache key intentionally includes normalized `scope`. Do not return a token minted for one non-empty scope to a caller requesting another scope, and do not reuse an empty-scope token for a scoped request.
 
 ### Testing Requirements
 
 - Use xUnit + Shouldly only. Avoid raw `Assert.*`.
 - Keep tests fully deterministic with scripted handlers and `FakeTimeProvider`.
 - Tests should inspect captured `HttpRequestMessage` bodies and headers to prove URL-encoded form shape, not just count requests.
-- For concurrency tests, avoid timing-based sleeps. Use `TaskCompletionSource` gates inside the test handler so both callers are pending before the first response completes.
+- For concurrency tests, avoid timing-based sleeps. Use `TaskCompletionSource` gates inside the test handler so both callers are pending before the first response completes. Assert request counts and release ordering rather than elapsed time.
 - For log redaction, reuse the local capturing logger pattern from existing tests if helpful (`DirectoryIngestionServiceTests`, `RateLimitingLogTests`, `RetryFailureLogTests`), or add a small private logger inside `OidcTokenProviderTests`.
 - No Docker, no real Keycloak, no Aspire fixture in this story.
 
@@ -221,6 +227,7 @@ Codex GPT-5
 ### Debug Log References
 
 - Story authored on 2026-05-01 by the recurring pre-dev hardening automation after pre-flight pass `2026-05-01T15:04:11Z`.
+- Party-mode review completed on 2026-05-02T08:35:09Z by the recurring pre-dev hardening automation after pre-flight pass `2026-05-02T08:32:43Z`.
 - No code implementation was performed in this run; this is a create-story artifact only.
 
 ### Completion Notes List
@@ -228,14 +235,27 @@ Codex GPT-5
 - Story created with status `ready-for-dev`.
 - Sprint status updated from `backlog` to `ready-for-dev` for `13-2-implement-oidc-token-provider`.
 - The story is ready for party-mode review / later development, with implementation gated on Story 13.1 reaching `done`.
+- Party-mode review tightened story semantics for scope-aware cache keys, invalidation, caller cancellation, DI timeout/resilience registration, malformed responses, and redaction before development starts.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/13-2-implement-oidc-token-provider.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+## Party-Mode Review
+
+- **ISO date/time:** 2026-05-02T08:35:09Z
+- **Selected story key:** `13-2-implement-oidc-token-provider`
+- **Command/skill invocation used:** `/bmad-party-mode 13-2-implement-oidc-token-provider; review;`
+- **Participating BMAD agents:** Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- **Findings summary:** Review found the story was directionally ready but needed tighter pre-dev semantics for scope-aware cache keys, endpoint/scope normalization, forced invalidation, cancellation under collapsed same-key acquisition, malformed response handling, failure retry behavior, typed HttpClient timeout/resilience wording, per-key guard cleanup, and redaction coverage.
+- **Changes applied:** Updated AC2/AC3/AC5/AC6/AC7/AC8/AC9/AC10/AC11; updated Task 1/2/4 checklist items; updated implementation, security, and testing guidance so the provider caches by `(normalized tokenEndpoint, clientId, normalized scope)`, treats scope-separated tokens independently, sanitizes endpoint query strings and token-shaped response fields, avoids poisoning shared acquisition on caller cancellation, and verifies scope/invalidation/cancellation cases with deterministic tests.
+- **Findings deferred:** None. All review findings were coherent story clarifications within existing OIDC-provider scope; no product-scope, architecture-policy, or cross-story decision remains open from this review.
+- **Final recommendation:** `ready-for-dev`
+
 ### Change Log
 
 | Date       | Change                                                                                                                                                                                                                                                                                                           | Author |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Party-mode review applied pre-dev hardening: pinned scope-aware cache key semantics, exact invalidation boundaries, caller-cancellation behavior under collapsed acquisition, sanitized exception/log contracts, DI timeout/resilience wording, and deterministic edge-case tests.                                  | Codex |
 | 2026-05-01 | Story 13.2 context created: scoped `IOidcTokenProvider` / `OidcTokenProvider` / typed exception / tests / DI registration; pinned cache, concurrency, forced invalidation, redaction, and sibling-story boundaries; status promoted backlog -> ready-for-dev.                                                        | Codex |
