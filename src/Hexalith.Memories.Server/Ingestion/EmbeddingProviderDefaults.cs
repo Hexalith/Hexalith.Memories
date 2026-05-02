@@ -24,6 +24,12 @@ public static partial class EmbeddingProviderDefaults
     /// <summary>The default Ollama embedding model (qwen3-embedding:4b — note the colon between model and tag is required by the Ollama identifier convention).</summary>
     public const string OllamaModelName = "qwen3-embedding:4b";
 
+    /// <summary>The API-key authentication mode.</summary>
+    public const string ApiKeyAuthMode = "api-key";
+
+    /// <summary>The OIDC client credentials authentication mode.</summary>
+    public const string OidcClientCredentialsAuthMode = "oidc-client-credentials";
+
     private const int GoogleMaxRateLimitPerMinute = 3000;
 
     /// <summary>Default dimension count emitted by qwen3-embedding:4b on a self-hosted Ollama deployment.</summary>
@@ -53,6 +59,11 @@ public static partial class EmbeddingProviderDefaults
         Dimensions = OllamaDimensions,
         RateLimitPerMinute = 6000,
         ApiSecretKeyName = "memories-embedding-client-secret",
+        BaseUrl = "https://llm.tache.ai",
+        AuthMode = OidcClientCredentialsAuthMode,
+        OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
+        OidcClientId = "memories-embedding",
+        OidcScope = "openid",
         ReindexRequired = false,
     };
 
@@ -84,6 +95,16 @@ public static partial class EmbeddingProviderDefaults
             affectedFields.Add("dimensions");
         }
 
+        if (string.Equals(currentConfig.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(proposedConfig.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(
+                NormalizeBaseUrl(currentConfig.BaseUrl),
+                NormalizeBaseUrl(proposedConfig.BaseUrl),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            affectedFields.Add("baseUrl");
+        }
+
         return [.. affectedFields];
     }
 
@@ -107,8 +128,15 @@ public static partial class EmbeddingProviderDefaults
         if (!ModelNamePattern().IsMatch(config.Model))
         {
             throw new ArgumentException(
-                "Model must contain only letters, numbers, dots, colons, underscores, and hyphens.",
+                "Model must start with a letter or number and contain only letters, numbers, dots, colons, underscores, and hyphens.",
                 nameof(config.Model));
+        }
+
+        if (!IsSupportedAuthMode(config.AuthMode))
+        {
+            throw new ArgumentException(
+                $"AuthMode {DescribeAuthMode(config.AuthMode)} is not supported. Supported auth modes: '{ApiKeyAuthMode}', '{OidcClientCredentialsAuthMode}'.",
+                nameof(config.AuthMode));
         }
 
         if (config.Dimensions <= 0)
@@ -148,6 +176,48 @@ public static partial class EmbeddingProviderDefaults
                 nameof(config.RateLimitPerMinute));
         }
 
+        bool isOllama = string.Equals(config.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
+        bool isOidcClientCredentials = string.Equals(config.AuthMode, OidcClientCredentialsAuthMode, StringComparison.OrdinalIgnoreCase);
+
+        // AC9: any non-empty BaseUrl / OidcTokenEndpoint must parse as an absolute HTTP(S) URL,
+        // independent of provider or auth mode. Mode-specific required-presence checks follow.
+        ValidateOptionalHttpUrl(config.BaseUrl, nameof(config.BaseUrl));
+        ValidateOptionalHttpUrl(config.OidcTokenEndpoint, nameof(config.OidcTokenEndpoint));
+
+        // AC4: OIDC client-credentials auth is only meaningful for the Ollama provider. Reject the
+        // mode itself on non-Ollama providers so the configuration cannot enable token acquisition
+        // behavior on a provider that does not support it.
+        if (isOidcClientCredentials && !isOllama)
+        {
+            throw new ArgumentException(
+                $"AuthMode '{OidcClientCredentialsAuthMode}' is only supported for the '{OllamaProviderName}' provider.",
+                nameof(config.AuthMode));
+        }
+
+        if (isOllama && string.IsNullOrWhiteSpace(config.BaseUrl))
+        {
+            throw new ArgumentException(
+                $"{nameof(config.BaseUrl)} is required for this embedding provider configuration.",
+                nameof(config.BaseUrl));
+        }
+
+        if (isOidcClientCredentials)
+        {
+            if (string.IsNullOrWhiteSpace(config.OidcTokenEndpoint))
+            {
+                throw new ArgumentException(
+                    $"{nameof(config.OidcTokenEndpoint)} is required for this embedding provider configuration.",
+                    nameof(config.OidcTokenEndpoint));
+            }
+
+            if (string.IsNullOrWhiteSpace(config.OidcClientId))
+            {
+                throw new ArgumentException(
+                    "OidcClientId is required for OIDC client credentials authentication.",
+                    nameof(config.OidcClientId));
+            }
+        }
+
         if (!ApiSecretKeyNamePattern().IsMatch(config.ApiSecretKeyName))
         {
             throw new ArgumentException(
@@ -160,9 +230,38 @@ public static partial class EmbeddingProviderDefaults
         string.Equals(provider, GoogleProviderName, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSupportedAuthMode(string? authMode) =>
+        string.Equals(authMode, ApiKeyAuthMode, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(authMode, OidcClientCredentialsAuthMode, StringComparison.OrdinalIgnoreCase);
+
+    private static void ValidateOptionalHttpUrl(string? value, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException($"{propertyName} must be an absolute HTTP or HTTPS URL.", propertyName);
+        }
+    }
+
+    private static string DescribeAuthMode(string? authMode) => authMode switch
+    {
+        null => "<null>",
+        "" => "<empty>",
+        _ when string.IsNullOrWhiteSpace(authMode) => "<whitespace>",
+        _ => $"'{authMode}'",
+    };
+
+    private static string NormalizeBaseUrl(string? baseUrl)
+        => (baseUrl ?? string.Empty).Trim().TrimEnd('/');
+
     [GeneratedRegex("^[a-z0-9-]+$")]
     private static partial Regex ApiSecretKeyNamePattern();
 
-    [GeneratedRegex("^[A-Za-z0-9.:_-]+$")]
+    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9.:_-]*$")]
     private static partial Regex ModelNamePattern();
 }

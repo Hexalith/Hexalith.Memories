@@ -1,6 +1,6 @@
 # Story 13.4: Extend TenantEmbeddingConfig with Additive OIDC Fields
 
-Status: in-progress
+Status: done
 
 **Effort estimate:** ~0.75-1.0 working day. Breakdown:
 
@@ -73,51 +73,51 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Verify current state and prerequisite boundaries (AC: #4, #12)
-  - [ ] Confirm Story 13.1 is `done` before editing code. If it is still `review` or lower, stop and report the prerequisite blocker.
-  - [ ] Read `src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs` completely before editing.
-  - [ ] Read `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs` completely; preserve the Google validation path and the Story 13.1 Ollama provider/model constants.
-  - [ ] Read `tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs` and append tests in the existing style.
-  - [ ] Inspect the existing endpoint exposure points (`GET/PUT /api/tenants/{tenantId}/embedding-config` and `TenantConfigurationView`) so tests pin the fact that `ApiSecretKeyName` remains a reference, not a secret value.
+- [x] Task 0 - Verify current state and prerequisite boundaries (AC: #4, #12)
+  - [x] Confirm Story 13.1 is `done` before editing code. If it is still `review` or lower, stop and report the prerequisite blocker.
+  - [x] Read `src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs` completely before editing.
+  - [x] Read `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs` completely; preserve the Google validation path and the Story 13.1 Ollama provider/model constants.
+  - [x] Read `tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs` and append tests in the existing style.
+  - [x] Inspect the existing endpoint exposure points (`GET/PUT /api/tenants/{tenantId}/embedding-config` and `TenantConfigurationView`) so tests pin the fact that `ApiSecretKeyName` remains a reference, not a secret value.
 
-- [ ] Task 1 - Extend the contract record additively (AC: #1, #2, #3, #10)
-  - [ ] Add `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, and `OidcScope` to `TenantEmbeddingConfig`.
-  - [ ] Do not mark the new fields `required`; historical JSON must not fail deserialization.
-  - [ ] Initialize `AuthMode` to `"api-key"` on the property so constructor/default deserialization behavior is stable.
-  - [ ] Add validation coverage proving missing `AuthMode` defaults to `"api-key"` while explicit `null`, empty, whitespace-only, and whitespace-wrapped values fail validation.
-  - [ ] Keep the existing properties and JSON names unchanged.
-  - [ ] Update XML docs, especially `ApiSecretKeyName`, to cover both API-key and OIDC `client_secret` semantics.
-  - [ ] Do not add a custom `JsonConverter`; the current `MemoriesJsonContext` source-generation registration should remain enough.
+- [x] Task 1 - Extend the contract record additively (AC: #1, #2, #3, #10)
+  - [x] Add `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, and `OidcScope` to `TenantEmbeddingConfig`.
+  - [x] Do not mark the new fields `required`; historical JSON must not fail deserialization.
+  - [x] Initialize `AuthMode` to `"api-key"` on the property so constructor/default deserialization behavior is stable.
+  - [x] Add validation coverage proving missing `AuthMode` defaults to `"api-key"` while explicit `null`, empty, whitespace-only, and whitespace-wrapped values fail validation.
+  - [x] Keep the existing properties and JSON names unchanged.
+  - [x] Update XML docs, especially `ApiSecretKeyName`, to cover both API-key and OIDC `client_secret` semantics.
+  - [x] Do not add a custom `JsonConverter`; the current `MemoriesJsonContext` source-generation registration should remain enough.
 
-- [ ] Task 2 - Update validation and defaults (AC: #4-#9, #11)
-  - [ ] Add or reuse small constants for auth modes (`api-key`, `oidc-client-credentials`) in `EmbeddingProviderDefaults`; avoid scattering magic strings.
-  - [ ] Update `EmbeddingProviderDefaults.Ollama()` to populate the OIDC-ready defaults from the Sprint Change Proposal.
-  - [ ] Keep `EmbeddingProviderDefaults.Google()` unchanged except for whatever the new record initializer requires implicitly.
-  - [ ] Validate `AuthMode` with `StringComparison.OrdinalIgnoreCase`; reject unsupported values with a message listing both valid modes.
-  - [ ] Validate `BaseUrl` only when provider/auth mode requires it, and validate it as an absolute `http` or `https` URL.
-  - [ ] Validate `OidcTokenEndpoint` as an absolute `http` or `https` URL when `AuthMode = "oidc-client-credentials"`.
-  - [ ] Require `OidcClientId` for OIDC mode; leave `OidcScope` optional.
-  - [ ] Do not require or interpret OIDC metadata when `AuthMode = "api-key"` or when validating historical Google configs; this story stores metadata only and does not implement authentication behavior.
-  - [ ] Preserve `ApiSecretKeyNamePattern()` validation for all auth modes.
-  - [ ] Extend `GetBreakingChangeFields(...)` to add `baseUrl` only for changed Ollama-to-Ollama base URLs after simple normalization (trim whitespace, trim trailing slash, and compare case-insensitively) without broader URI canonicalization.
+- [x] Task 2 - Update validation and defaults (AC: #4-#9, #11)
+  - [x] Add or reuse small constants for auth modes (`api-key`, `oidc-client-credentials`) in `EmbeddingProviderDefaults`; avoid scattering magic strings.
+  - [x] Update `EmbeddingProviderDefaults.Ollama()` to populate the OIDC-ready defaults from the Sprint Change Proposal.
+  - [x] Keep `EmbeddingProviderDefaults.Google()` unchanged except for whatever the new record initializer requires implicitly.
+  - [x] Validate `AuthMode` with `StringComparison.OrdinalIgnoreCase`; reject unsupported values with a message listing both valid modes.
+  - [x] Validate `BaseUrl` only when provider/auth mode requires it, and validate it as an absolute `http` or `https` URL.
+  - [x] Validate `OidcTokenEndpoint` as an absolute `http` or `https` URL when `AuthMode = "oidc-client-credentials"`.
+  - [x] Require `OidcClientId` for OIDC mode; leave `OidcScope` optional.
+  - [x] Do not require or interpret OIDC metadata when `AuthMode = "api-key"` or when validating historical Google configs; this story stores metadata only and does not implement authentication behavior.
+  - [x] Preserve `ApiSecretKeyNamePattern()` validation for all auth modes.
+  - [x] Extend `GetBreakingChangeFields(...)` to add `baseUrl` only for changed Ollama-to-Ollama base URLs after simple normalization (trim whitespace, trim trailing slash, and compare case-insensitively) without broader URI canonicalization.
 
-- [ ] Task 3 - Add focused tests (AC: #1-#11)
-  - [ ] Add `RoundTrip_OllamaOidcFields_ShouldPreserveAllValues` to `TenantEmbeddingConfigSerializationTests`.
-  - [ ] Add `Deserialize_LegacyGoogleJson_ShouldDefaultNewFields` to prove old payload compatibility.
-  - [ ] Extend `PropertyNames_ShouldBeCamelCase` assertions to include `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, and `oidcScope`.
-  - [ ] Add `Ollama_ShouldReturnOidcReadyDefaults` or extend the existing 13.1 defaults test to assert the new fields.
-  - [ ] Add validation tests for missing `BaseUrl`, missing `OidcTokenEndpoint`, missing `OidcClientId`, unsupported `AuthMode`, relative URL rejection, and `http://localhost` acceptance.
-  - [ ] Add per-field URL tests covering `http`, `https`, `localhost`, `127.0.0.1`, relative paths, scheme-less values, malformed values, and non-HTTP schemes for every URL field that is validated in this story.
-  - [ ] Add `Validate_GoogleLegacyConfigWithoutOidcFields_ShouldNotThrow`.
-  - [ ] Add `GetBreakingChangeFields_OllamaBaseUrlChanged_ShouldIncludeBaseUrl`.
-  - [ ] Add `GetBreakingChangeFields_OidcMetadataChanged_ShouldNotRequireReindex`, covering auth mode, token endpoint, client ID, secret key name, and scope changes.
-  - [ ] Add or update a configuration-view serialization test that inspects raw JSON and asserts `apiSecretKeyName` remains visible as a secret-name reference while `client_secret`, `clientSecret`, and resolved secret values are absent.
+- [x] Task 3 - Add focused tests (AC: #1-#11)
+  - [x] Add `RoundTrip_OllamaOidcFields_ShouldPreserveAllValues` to `TenantEmbeddingConfigSerializationTests`.
+  - [x] Add `Deserialize_LegacyGoogleJson_ShouldDefaultNewFields` to prove old payload compatibility.
+  - [x] Extend `PropertyNames_ShouldBeCamelCase` assertions to include `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, and `oidcScope`.
+  - [x] Add `Ollama_ShouldReturnOidcReadyDefaults` or extend the existing 13.1 defaults test to assert the new fields.
+  - [x] Add validation tests for missing `BaseUrl`, missing `OidcTokenEndpoint`, missing `OidcClientId`, unsupported `AuthMode`, relative URL rejection, and `http://localhost` acceptance.
+  - [x] Add per-field URL tests covering `http`, `https`, `localhost`, `127.0.0.1`, relative paths, scheme-less values, malformed values, and non-HTTP schemes for every URL field that is validated in this story.
+  - [x] Add `Validate_GoogleLegacyConfigWithoutOidcFields_ShouldNotThrow`.
+  - [x] Add `GetBreakingChangeFields_OllamaBaseUrlChanged_ShouldIncludeBaseUrl`.
+  - [x] Add `GetBreakingChangeFields_OidcMetadataChanged_ShouldNotRequireReindex`, covering auth mode, token endpoint, client ID, secret key name, and scope changes.
+  - [x] Add or update a configuration-view serialization test that inspects raw JSON and asserts `apiSecretKeyName` remains visible as a secret-name reference while `client_secret`, `clientSecret`, and resolved secret values are absent.
 
-- [ ] Task 4 - Validate and record completion (AC: #3, #12)
-  - [ ] Run focused contract tests for `TenantEmbeddingConfigSerializationTests`.
-  - [ ] Run focused server tests for `EmbeddingProviderDefaultsTests` and endpoint/config tests touched by this story.
-  - [ ] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
-  - [ ] Record exact commands and outcomes in the Dev Agent Record. If the SDK pin in `global.json` blocks validation, record the exact SDK error and do not claim green tests.
+- [x] Task 4 - Validate and record completion (AC: #3, #12)
+  - [x] Run focused contract tests for `TenantEmbeddingConfigSerializationTests`.
+  - [x] Run focused server tests for `EmbeddingProviderDefaultsTests` and endpoint/config tests touched by this story.
+  - [x] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
+  - [x] Record exact commands and outcomes in the Dev Agent Record. If the SDK pin in `global.json` blocks validation, record the exact SDK error and do not claim green tests.
 
 ## Dev Notes
 
@@ -223,9 +223,23 @@ Codex GPT-5
 - Story authored on 2026-05-01 by the recurring pre-dev hardening automation after preflight JSON timestamp `2026-05-01T20:49:41Z`.
 - Preflight reported a working-tree cleanliness failure only, with stdout `" M Hexalith.EventStore\n"`. It was classified as a soft working-tree warning because the dirty path is outside BMAD-owned story-operation paths.
 - No code implementation was performed in this run; this is a create-story artifact only.
+- 2026-05-02 implementation red phase: `dotnet test tests\Hexalith.Memories.Contracts.Tests\Hexalith.Memories.Contracts.Tests.csproj --filter TenantEmbeddingConfigSerializationTests` failed as expected because `TenantEmbeddingConfig` did not yet expose `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, or `OidcScope`. The parallel server red-phase command hit a transient compiler file lock while the contract project was also building.
+- 2026-05-02 focused green phase: `dotnet test tests\Hexalith.Memories.Contracts.Tests\Hexalith.Memories.Contracts.Tests.csproj --filter TenantEmbeddingConfigSerializationTests` passed 6/6.
+- 2026-05-02 focused green phase: `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter "EmbeddingProviderDefaultsTests|TenantConfigurationEndpointTests"` passed 106/106.
+- 2026-05-02 build validation: `dotnet build Hexalith.Memories.slnx` succeeded with 0 warnings and 0 errors.
+- 2026-05-02 regression validation: `dotnet test Hexalith.Memories.slnx --no-build` timed out after 15 minutes in the integration topology lane; the test-spawned `dotnet test`, integration runner, Server, and MCP child processes were stopped.
+- 2026-05-02 project regression slices: Contracts 470/470, Server 1604/1604, CLI 335/335, EventStore 84/84, and MCP 76/76 passed with `--no-build`.
+- 2026-05-02 integration relevance check: `dotnet test tests\Hexalith.Memories.IntegrationTests\Hexalith.Memories.IntegrationTests.csproj --no-build --filter FullyQualifiedName~TenantConfigurationIntegrationTests` returned 0 failed, 0 passed, 10 skipped because the project integration gating skipped the live-topology tenant configuration class.
 
 ### Completion Notes List
 
+- Story 13.4 implementation complete and ready for review.
+- Added additive `TenantEmbeddingConfig` fields for `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, and `OidcScope`; missing legacy JSON `authMode` defaults through the source-generated JSON constructor while explicit invalid values remain validation failures.
+- Added OIDC-ready Ollama defaults, pinned auth modes, conditional BaseUrl/OIDC validation, HTTP(S)-only URL checks, optional `OidcScope`, preserved Google legacy validation, and extended Ollama-to-Ollama `baseUrl` breaking-change detection.
+- Added focused serialization, validation, breaking-change, and configuration-view JSON tests proving secret-name exposure remains safe and secret values are absent.
+- Scope preserved: no `IOidcTokenProvider`, `EmbeddingClient`, tenant actor storage behavior, AppHost/docs, or migration tooling changes were made.
+- Full solution aggregate test did not complete locally; all non-integration project test suites passed and the relevant integration class was skipped by the repository's integration gate.
+- Task 0 complete: verified Story 13.1 is `done`, read the scoped contract/defaults/tests, and inspected the GET/PUT embedding-config plus `TenantConfigurationView` exposure path before implementation.
 - Story created with status `ready-for-dev`.
 - Sprint status updated from `backlog` to `ready-for-dev` for `13-4-extend-tenant-embedding-config-with-additive-oidc-fields`.
 - Implementation is explicitly gated on Story 13.1 reaching `done`.
@@ -234,6 +248,11 @@ Codex GPT-5
 
 - `_bmad-output/implementation-artifacts/13-4-extend-tenant-embedding-config-with-additive-oidc-fields.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs`
+- `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantConfigurationEndpointTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs`
 
 ## Party-Mode Review
 
@@ -250,5 +269,33 @@ Codex GPT-5
 
 | Date       | Change                                                                                                                                                                                                                                                         | Author |
 |------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Code review (adversarial 3-layer) closed 3 decisions and 3 patches: tightened `ModelNamePattern` to alnum-start regex with positive/negative tests; explicitly rejected `oidc-client-credentials` on non-Ollama providers (AC4 enforcement); tightened URL-shape validation to apply unconditionally on non-empty `BaseUrl`/`OidcTokenEndpoint` (AC9 strict); replaced JSON-ctor `string? authMode!` type lie with non-nullable `string authMode = "api-key"`; added `DescribeAuthMode` placeholder for blank-class messages; tightened endpoint test to assert exact JSON key shape. Contracts 6/6, server defaults+endpoints 136/136, full solution build 0/0. Story 13.4 review → done. | Claude |
+| 2026-05-02 | Implemented additive TenantEmbeddingConfig OIDC fields, OIDC-ready Ollama defaults, conditional validation, BaseUrl reindex detection, focused tests, and moved story to review. | Codex |
 | 2026-05-02 | Party-mode review completed; clarified `AuthMode` invalid-value handling, conditional OIDC validation boundaries, raw secret non-exposure tests, URL/reindex edge cases, and mixed-mode metadata scope while preserving Story 13.4 boundaries. | Codex |
 | 2026-05-01 | Story 13.4 context created: additive `TenantEmbeddingConfig` fields, legacy JSON compatibility, OIDC/URL validation, Ollama default metadata, `ApiSecretKeyName` client-secret semantics, `BaseUrl` reindex detection, tests, and sibling-story boundaries. | Codex |
+
+### Review Findings
+
+_Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on 2026-05-02 — full mode, spec-anchored. Scope: 5 files, +422/-6 lines._
+
+**Decisions resolved:**
+
+- [x] [Review][Decision] **F1 — `ModelNamePattern` regex tightening: partial fulfillment of deferred 13.1-RV11.** Resolved by tightening regex to the deferred-suggested `^[A-Za-z0-9][A-Za-z0-9.:_-]*$` (alnum START) with a clearer error message ("Model must start with a letter or number…"). Added 9 positive `Validate_ModelNameStartsWithAlphanumeric_ShouldNotThrow` cases and 11 negative `Validate_ModelNameStartsWithPunctuation_ShouldThrow` cases. The provider→model→dim-allowlist registry and cross-pollination tests remain in deferred-work for a future dedicated story (still tracked by 13.1-RV11).
+- [x] [Review][Decision] **F2 — Cross-provider OIDC: Google + `AuthMode = "oidc-client-credentials"` is implicitly accepted.** Resolved by explicitly rejecting `oidc-client-credentials` on non-Ollama providers in `Validate(...)`: `if (isOidcClientCredentials && !isOllama) throw`. AC4's "metadata-only on non-Ollama" is now enforced at the auth-mode boundary rather than left as an emergent property. Added test `Validate_GoogleWithOidcClientCredentialsAuthMode_ShouldThrow`.
+- [x] [Review][Decision] **F3 — AC9 strict reading vs. AC4 conditional metadata.** Resolved by tightening implementation to validate non-empty `BaseUrl` / `OidcTokenEndpoint` shape unconditionally (new `ValidateOptionalHttpUrl(...)` helper). AC4 metadata-only stays true (no behavioral activation), but stored garbage URLs are now rejected at validation regardless of mode. Updated `Validate_GoogleWithOidcMetadata_ShouldNotRequireOidcMode` → `Validate_GoogleWithValidOidcMetadata_ShouldNotRequireOidcMode` to use a real URL; added 6 negative cases in `Validate_GoogleWithMalformedUrlMetadata_ShouldThrow`.
+
+**Patches applied:**
+
+- [x] [Review][Patch] **P1 — `[JsonConstructor]` + null-forgiving + parameterless ctor weakened AuthMode and `required` invariants.** [`src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs`] Replaced the type lie: changed JSON ctor parameter `string? authMode = "api-key"` to non-nullable `string authMode = "api-key"` and removed the `AuthMode = authMode!` force-assignment. The JSON ctor remains (it's the only mechanism that distinguishes "missing in legacy JSON → default 'api-key'" from "explicit JSON null → kept and fails validation"), but its parameter type now matches the property type, eliminating the compiler lie. Required-string ctor parameters were already non-nullable, so JSON null on `provider`/`model`/`apiSecretKeyName` will surface as a JSON deserialization error or be caught by `Validate`'s `ThrowIfNullOrWhiteSpace`.
+- [x] [Review][Patch] **P2 — Validate's AuthMode error renders empty `''` for null/whitespace inputs.** [`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs`] Added `DescribeAuthMode(...)` helper rendering `<null>`, `<empty>`, `<whitespace>`, or `'value'` markers in the error message so blank-class inputs are diagnostically distinguishable. Added `Validate_BlankAuthMode_ShouldDescribeBlankClassInMessage` test.
+- [x] [Review][Patch] **P3 — Test assertions on `client_secret`/`clientSecret` substrings are brittle.** [`tests/Hexalith.Memories.Server.Tests/Endpoints/TenantConfigurationEndpointTests.cs`] Tightened to assert exact JSON key shape `"\"clientSecret\":"` / `"\"client_secret\":"` so a future benign metadata-key rename does not falsely fail the test.
+
+**Deferred (pre-existing or out of story scope):**
+
+- [x] [Review][Defer] **W1 — `RateLimitPerMinute` boundary / arithmetic overflow concerns.** [`EmbeddingProviderDefaults.cs:147-161`] — deferred, pre-existing. Validator caps the value but downstream arithmetic on it is not audited.
+- [x] [Review][Defer] **W2 — `OidcScope` whitespace-only not validated.** [`EmbeddingProviderDefaults.cs:163-181`] — deferred. Spec leaves scope optional and unvalidated; whitespace-only would surface at IdP.
+- [x] [Review][Defer] **W3 — OIDC mode does not enforce `ApiSecretKeyName` distinctness/role.** [`EmbeddingProviderDefaults.cs:163-181`] — deferred. A tenant could carry over a Google API-key secret name when flipping to OIDC; out of story scope.
+- [x] [Review][Defer] **W4 — No assertion that endpoint paths invoke `Validate`.** [`Hexalith.Memories.Server`] — deferred. Validator hardening is dead code if no caller invokes it on POST/PUT; cross-cutting concern, addressed by Story 13.5 / 13.7.
+- [x] [Review][Defer] **W5 — URLs with userinfo (`https://user:pw@host`) are accepted.** [`EmbeddingProviderDefaults.cs:214-226`] — deferred, mirrors Story 13.2's deferred 13.2-RV5; defensive rejection should apply uniformly across providers.
+
+**Dismissed as noise (not persisted): 9 items** — auth-mode/OIDC field changes ignored by `GetBreakingChangeFields` (AC11 intentional); `NormalizeBaseUrl` simple-trim edge cases (AC11 mandates simple normalization, no Uri canonicalization); speculative `affectedFields` double-add; hardcoded operator URLs in `Ollama()` (AC5 mandates exact values); JSON null serialization cosmetic concerns; multi-roundtrip validation UX (first-fail is conventional); test path-case sensitivity (spec-required `OrdinalIgnoreCase`); pre-existing `reindexRequired = false` ctor default; validation-ordering refactor risk (style nit).

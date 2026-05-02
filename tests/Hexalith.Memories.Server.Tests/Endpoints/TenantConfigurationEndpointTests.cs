@@ -138,7 +138,7 @@ public class TenantConfigurationEndpointTests
     [Fact]
     public void TenantConfigurationView_EmbedsFullEmbeddingConfig_NotProjected()
     {
-        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
         TenantConfigurationView view = new()
         {
             Id = "acme",
@@ -151,9 +151,16 @@ public class TenantConfigurationEndpointTests
 
         string json = JsonSerializer.Serialize(view, MemoriesJsonContext.Options);
         // apiSecretKeyName is non-sensitive and should appear (Amendment C).
-        json.ShouldContain("\"apiSecretKeyName\":\"google-embedding-api-key\"");
-        json.ShouldContain("\"provider\":\"google\"");
-        json.ShouldContain("\"model\":\"gemini-embedding-001\"");
+        json.ShouldContain("\"apiSecretKeyName\":\"memories-embedding-client-secret\"");
+        json.ShouldContain("\"provider\":\"ollama\"");
+        json.ShouldContain("\"model\":\"qwen3-embedding:4b\"");
+        json.ShouldContain("\"authMode\":\"oidc-client-credentials\"");
+        json.ShouldContain("\"oidcClientId\":\"memories-embedding\"");
+        // Assert exact JSON key shape rather than bare substrings so future field renames
+        // (e.g. an unrelated `oidcClientSecretName` metadata reference) do not falsely fail.
+        json.ShouldNotContain("\"client_secret\":");
+        json.ShouldNotContain("\"clientSecret\":");
+        json.ShouldNotContain("resolved-secret-value");
     }
 
     [Fact]

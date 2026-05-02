@@ -46,6 +46,11 @@ public class TenantEmbeddingConfigSerializationTests
 
         string json = JsonSerializer.Serialize(config, MemoriesJsonContext.Options);
 
+        json.ShouldContain("\"baseUrl\":");
+        json.ShouldContain("\"authMode\":");
+        json.ShouldContain("\"oidcTokenEndpoint\":");
+        json.ShouldContain("\"oidcClientId\":");
+        json.ShouldContain("\"oidcScope\":");
         json.ShouldContain("\"provider\":");
         json.ShouldContain("\"model\":");
         json.ShouldContain("\"dimensions\":");
@@ -71,6 +76,60 @@ public class TenantEmbeddingConfigSerializationTests
         deserialized.ReindexRequired.ShouldBeFalse();
     }
 
+    [Fact]
+    public void RoundTrip_OllamaOidcFields_ShouldPreserveAllValues()
+    {
+        TenantEmbeddingConfig original = new()
+        {
+            Provider = "ollama",
+            Model = "qwen3-embedding:4b",
+            Dimensions = 2560,
+            RateLimitPerMinute = 6000,
+            ApiSecretKeyName = "memories-embedding-client-secret",
+            ReindexRequired = false,
+            BaseUrl = "https://llm.tache.ai",
+            AuthMode = "oidc-client-credentials",
+            OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
+            OidcClientId = "memories-embedding",
+            OidcScope = "openid",
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.BaseUrl.ShouldBe("https://llm.tache.ai");
+        deserialized.AuthMode.ShouldBe("oidc-client-credentials");
+        deserialized.OidcTokenEndpoint.ShouldBe("https://auth.tache.ai/realms/tache/protocol/openid-connect/token");
+        deserialized.OidcClientId.ShouldBe("memories-embedding");
+        deserialized.OidcScope.ShouldBe("openid");
+    }
+
+    [Fact]
+    public void Deserialize_LegacyGoogleJson_ShouldDefaultNewFields()
+    {
+        const string Json = """
+            {
+              "provider": "google",
+              "model": "gemini-embedding-001",
+              "dimensions": 768,
+              "rateLimitPerMinute": 1500,
+              "apiSecretKeyName": "google-embedding-api-key",
+              "reindexRequired": false
+            }
+            """;
+
+        TenantEmbeddingConfig? deserialized = JsonSerializer.Deserialize<TenantEmbeddingConfig>(Json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.Provider.ShouldBe("google");
+        deserialized.BaseUrl.ShouldBeNull();
+        deserialized.AuthMode.ShouldBe("api-key");
+        deserialized.OidcTokenEndpoint.ShouldBeNull();
+        deserialized.OidcClientId.ShouldBeNull();
+        deserialized.OidcScope.ShouldBeNull();
+    }
+
     private static TenantEmbeddingConfig CreateFullConfig() => new()
     {
         Provider = "google",
@@ -79,5 +138,10 @@ public class TenantEmbeddingConfigSerializationTests
         RateLimitPerMinute = 1500,
         ApiSecretKeyName = "google-embedding-api-key",
         ReindexRequired = false,
+        BaseUrl = "https://example.test/embeddings",
+        AuthMode = "api-key",
+        OidcTokenEndpoint = null,
+        OidcClientId = null,
+        OidcScope = null,
     };
 }
