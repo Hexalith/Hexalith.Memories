@@ -1,6 +1,6 @@
 # Story 12.5: Partial-Publish Alerting
 
-Status: ready-for-dev
+Status: review
 
 Story Key: 12-5-partial-publish-alerting
 Epic: 12 - First Release & Operations Foundation
@@ -34,48 +34,48 @@ so that the `--skip-duplicate` self-healing model can be retained without it bec
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Lock the current release contract before editing (AC: 1, 8)
-  - [ ] Read `.github/workflows/release.yml`, `.releaserc.json`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`, `tools/validate-release-packages.ps1`, `tools/release-packages.json`, and `docs/dev/release-runbook.md`.
-  - [ ] Confirm `release.yml` already grants `issues: write` and forwards `GITHUB_TOKEN` plus `NUGET_API_KEY` only to the `Run semantic-release` step.
-  - [ ] Confirm `.releaserc.json` still invokes `publish-nuget.ps1` as the `@semantic-release/exec` `publishCmd`.
-  - [ ] Do not initialize or update nested submodules. Do not stage the existing `Hexalith.EventStore` submodule state unless Jerome separately asks for it.
+- [x] Task 0 - Lock the current release contract before editing (AC: 1, 8)
+  - [x] Read `.github/workflows/release.yml`, `.releaserc.json`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`, `tools/validate-release-packages.ps1`, `tools/release-packages.json`, and `docs/dev/release-runbook.md`.
+  - [x] Confirm `release.yml` already grants `issues: write` and forwards `GITHUB_TOKEN` plus `NUGET_API_KEY` only to the `Run semantic-release` step.
+  - [x] Confirm `.releaserc.json` still invokes `publish-nuget.ps1` as the `@semantic-release/exec` `publishCmd`.
+  - [x] Do not initialize or update nested submodules. Do not stage the existing `Hexalith.EventStore` submodule state unless Jerome separately asks for it.
 
-- [ ] Task 1 - Make publish results structured and complete (AC: 1, 2, 3)
-  - [ ] Update `tools/publish-nuget.ps1` so validation failure before any push still fails fast and writes a non-publish failure summary when running in CI.
-  - [ ] Keep package discovery sorted by package filename and keep `--skip-duplicate`.
-  - [ ] For each package push, capture stdout/stderr, `$LASTEXITCODE`, package filename, and disposition.
-  - [ ] Continue to later packages after a non-zero push exit when the script can still invoke `dotnet nuget push` safely; if a failure is classified as unrecoverable for the rest of the loop, record remaining packages as `not-attempted` with a reason.
-  - [ ] After the loop, throw only after the full summary is written.
-  - [ ] Do not echo secret-bearing command lines. It is acceptable to print package names, version, source URL, and sanitized error text.
+- [x] Task 1 - Make publish results structured and complete (AC: 1, 2, 3)
+  - [x] Update `tools/publish-nuget.ps1` so validation failure before any push still fails fast and writes a non-publish failure summary when running in CI.
+  - [x] Keep package discovery sorted by package filename and keep `--skip-duplicate`.
+  - [x] For each package push, capture stdout/stderr, `$LASTEXITCODE`, package filename, and disposition.
+  - [x] Continue to later packages after a non-zero push exit when the script can still invoke `dotnet nuget push` safely; if a failure is classified as unrecoverable for the rest of the loop, record remaining packages as `not-attempted` with a reason.
+  - [x] After the loop, throw only after the full summary is written.
+  - [x] Do not echo secret-bearing command lines. It is acceptable to print package names, version, source URL, and sanitized error text.
 
-- [ ] Task 2 - Emit a CI-visible summary and annotation (AC: 3, 4, 7)
-  - [ ] Write a machine-readable summary file, for example `artifacts/packages/release/publish-summary.json`, only when publishing fails or partially succeeds.
-  - [ ] Include enough fields for the workflow issue step to render an issue body without scraping logs.
-  - [ ] When `$env:GITHUB_ACTIONS` is true, emit a GitHub Actions `::error` annotation with title `PARTIAL PUBLISH - manual reconciliation required` for partial publish.
-  - [ ] Append a concise Markdown section to `$env:GITHUB_STEP_SUMMARY` when available.
-  - [ ] Ensure the non-GitHub local path still prints a readable summary and exits non-zero.
+- [x] Task 2 - Emit a CI-visible summary and annotation (AC: 3, 4, 7)
+  - [x] Write a machine-readable summary file, for example `artifacts/packages/release/publish-summary.json`, only when publishing fails or partially succeeds.
+  - [x] Include enough fields for the workflow issue step to render an issue body without scraping logs.
+  - [x] When `$env:GITHUB_ACTIONS` is true, emit a GitHub Actions `::error` annotation with title `PARTIAL PUBLISH - manual reconciliation required` for partial publish.
+  - [x] Append a concise Markdown section to `$env:GITHUB_STEP_SUMMARY` when available.
+  - [x] Ensure the non-GitHub local path still prints a readable summary and exits non-zero.
 
-- [ ] Task 3 - Add GitHub Issue alerting in `release.yml` (AC: 5, 6, 7)
-  - [ ] Add a post-semantic-release step that runs on failure and checks for the publish summary file.
-  - [ ] Use GitHub CLI with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and `GITHUB_REPOSITORY` to create or update an issue.
-  - [ ] Search for an open issue with a deterministic title such as `PARTIAL PUBLISH <version> - manual reconciliation required`.
-  - [ ] If found, add a comment with the new run URL and summary. If not found, create a new issue.
-  - [ ] Include the run URL, version, pushed/failed/not-attempted package lists, and runbook reference.
-  - [ ] Do not add Slack or webhook integration unless the repository already has a committed non-secret webhook mechanism by implementation time.
+- [x] Task 3 - Add GitHub Issue alerting in `release.yml` (AC: 5, 6, 7)
+  - [x] Add a post-semantic-release step that runs on failure and checks for the publish summary file.
+  - [x] Use GitHub CLI with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}` and `GITHUB_REPOSITORY` to create or update an issue.
+  - [x] Search for an open issue with a deterministic title such as `PARTIAL PUBLISH <version> - manual reconciliation required`.
+  - [x] If found, add a comment with the new run URL and summary. If not found, create a new issue.
+  - [x] Include the run URL, version, pushed/failed/not-attempted package lists, and runbook reference.
+  - [x] Do not add Slack or webhook integration unless the repository already has a committed non-secret webhook mechanism by implementation time.
 
-- [ ] Task 4 - Add focused script/workflow tests (AC: 1-7)
-  - [ ] Add stdlib-based tooling tests under `tests/tooling/publish_nuget/` that invoke `pwsh` with a fake `dotnet` on `PATH`.
-  - [ ] Cover all-success, duplicate-compatible success, one middle package failing while later packages are attempted, pre-push validation failure, and no secret leakage in output.
-  - [ ] Cover the JSON summary shape and the duplicate-issue search/title convention without calling the live GitHub API.
-  - [ ] If testing the workflow step directly is too brittle, extract the issue-body rendering into a small script such as `tools/create-partial-publish-issue.ps1` and test that script with fake `gh`.
-  - [ ] Keep tests independent of real nuget.org, real `NUGET_API_KEY`, and real GitHub network calls.
+- [x] Task 4 - Add focused script/workflow tests (AC: 1-7)
+  - [x] Add stdlib-based tooling tests under `tests/tooling/publish_nuget/` that invoke `pwsh` with a fake `dotnet` on `PATH`.
+  - [x] Cover all-success, duplicate-compatible success, one middle package failing while later packages are attempted, pre-push validation failure, and no secret leakage in output.
+  - [x] Cover the JSON summary shape and the duplicate-issue search/title convention without calling the live GitHub API.
+  - [x] If testing the workflow step directly is too brittle, extract the issue-body rendering into a small script such as `tools/create-partial-publish-issue.ps1` and test that script with fake `gh`.
+  - [x] Keep tests independent of real nuget.org, real `NUGET_API_KEY`, and real GitHub network calls.
 
-- [ ] Task 5 - Update operator documentation and validate the path (AC: 3, 7, 8)
-  - [ ] Update `docs/dev/release-runbook.md` partial-publish recovery notes to describe the new issue/annotation behavior.
-  - [ ] Keep the existing recovery model: do not delete packages from nuget.org; rerun the workflow and let 409 duplicates skip while missing packages publish.
-  - [ ] Validate `tools/validate-release-packages.ps1`.
-  - [ ] Run the focused tooling tests.
-  - [ ] Run `npx semantic-release --dry-run --no-ci` after `npm ci` if release workflow or semantic-release-adjacent scripts changed and local Node dependencies are available.
+- [x] Task 5 - Update operator documentation and validate the path (AC: 3, 7, 8)
+  - [x] Update `docs/dev/release-runbook.md` partial-publish recovery notes to describe the new issue/annotation behavior.
+  - [x] Keep the existing recovery model: do not delete packages from nuget.org; rerun the workflow and let 409 duplicates skip while missing packages publish.
+  - [x] Validate `tools/validate-release-packages.ps1`.
+  - [x] Run the focused tooling tests.
+  - [x] Run `npx semantic-release --dry-run --no-ci` after `npm ci` if release workflow or semantic-release-adjacent scripts changed and local Node dependencies are available.
 
 ## File Scope
 
@@ -297,6 +297,19 @@ GPT-5 Codex
 
 - Pre-dev hardening preflight JSON `_bmad-output/process-notes/predev-preflight-latest.json` reported a soft working-tree warning only: ` M Hexalith.EventStore`.
 - Story selection logic chose `12-5-partial-publish-alerting` because the ready-for-dev buffer was below target `5` and this was the first backlog story in sprint-status order.
+- 2026-05-02: Development started; sprint status moved from `ready-for-dev` to `in-progress`.
+- 2026-05-02: Task 0 contract lock read release workflow, semantic-release config, publish/pack/validate scripts, release package inventory, and release runbook.
+- 2026-05-02: Red tests first failed against the original first-failure publish loop and missing validation-failure summary.
+- 2026-05-02: Focused validation green: `./tools/validate-release-packages.ps1`; `python -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"` (6/6).
+- 2026-05-02: `npm ci` completed successfully; `npx semantic-release --dry-run --no-ci` loaded configured plugins but stopped at `ENOGHTOKEN No GitHub token specified` because no local `GH_TOKEN`/`GITHUB_TOKEN` was available.
+- 2026-05-02: Raw `dotnet test Hexalith.Memories.slnx --no-restore` did not complete within 10 minutes; curated release lane `./tools/test-release.ps1` passed Contracts 468/468, Server 1542/1542, CLI 333/333, MCP 76/76, EventStore 84/84.
+
+### Implementation Plan
+
+- Keep semantic-release topology unchanged: `@semantic-release/exec` continues to call `tools/publish-nuget.ps1`.
+- Extend `tools/publish-nuget.ps1` with structured package outcomes, sanitized failure summaries, GitHub Actions annotation/step summary output, and delayed non-zero exit after summary emission.
+- Add a small PowerShell issue helper if workflow YAML-only alerting would be brittle to test.
+- Add stdlib Python tooling tests with fake `dotnet`/`gh` shims and no live NuGet or GitHub calls.
 
 ### Completion Notes List
 
@@ -305,16 +318,28 @@ GPT-5 Codex
 - The story chooses GitHub Issue alerting because `release.yml` already has `issues: write` and no repository Slack/webhook secret is present.
 - The recommended implementation keeps `--skip-duplicate`, continues publish attempts where safe, writes structured package outcomes, fails the workflow, and creates/comments a durable issue for partial publish.
 - No implementation tests were run during story creation; this run only created the ready-for-dev story artifact.
+- Task 0 confirmed the current release contract before edits: `release.yml` has `issues: write`, release secrets are scoped to `Run semantic-release`, `.releaserc.json` still invokes `publish-nuget.ps1`, and no nested submodules were initialized or updated.
+- `tools/publish-nuget.ps1` now captures each push's output and exit code, preserves sorted package order and `--skip-duplicate`, continues to later packages after safe push failures, writes `publish-summary.json` before failing, emits the partial-publish GitHub Actions annotation, appends step-summary Markdown, and scrubs `NUGET_API_KEY` from captured text.
+- Added `tools/create-partial-publish-issue.ps1` and a failure-only release workflow step to create or comment on deterministic `PARTIAL PUBLISH <version> - manual reconciliation required` issues using `GH_TOKEN`.
+- Added stdlib Python tooling tests with fake `dotnet` and fake `gh`; tests cover success, duplicate-compatible success, middle-package failure with later attempts, validation failure summary, secret scrubbing, summary shape, deterministic issue creation, and duplicate issue commenting.
+- Updated `docs/dev/release-runbook.md` to describe the new summary, annotation, GitHub Issue alert, and unchanged rerun recovery model.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/12-5-partial-publish-alerting.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `.github/workflows/release.yml`
+- `docs/dev/release-runbook.md`
+- `tools/publish-nuget.ps1`
+- `tools/create-partial-publish-issue.ps1`
+- `tests/tooling/publish_nuget/publish_nuget_test.py`
 
 ### Change Log
 
 - 2026-05-01: Created Story 12.5 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-02: Started implementation and moved story tracking to `in-progress`.
+- 2026-05-02: Implemented structured NuGet publish summaries, CI annotation/step summary output, GitHub Issue alerting, focused fake-tool tests, and runbook updates for partial-publish recovery.
 
 ## Story Completion Status
 
-Ultimate context engine analysis completed - comprehensive developer guide created. Status set to `ready-for-dev`.
+Implementation complete. Status set to `review`.

@@ -68,6 +68,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
+      - name: Alert partial NuGet publish
+        if: failure()
+        shell: pwsh
+        run: |
+          $summaryPath = "artifacts/packages/release/publish-summary.json"
+          if (Test-Path -LiteralPath $summaryPath) {
+            ./tools/create-partial-publish-issue.ps1 -SummaryPath $summaryPath
+          }
+          else {
+            Write-Host "No NuGet publish summary found; skipping partial-publish issue alert."
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+
       - name: Upload package artifacts
         if: success()
         uses: actions/upload-artifact@v5

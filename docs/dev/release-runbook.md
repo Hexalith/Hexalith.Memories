@@ -203,16 +203,27 @@ inspection.
   - **HTTP 409 (already published).** `tools/publish-nuget.ps1` calls `dotnet nuget push
     --skip-duplicate`, which downgrades 409 to a warning and continues with the next package. A
     rerun therefore skips already-published packages without errors.
-  - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero and
-    `publish-nuget.ps1` throws on the first such failure. Because the script iterates over
-    packages in a single `foreach` loop, alphabetically-later packages are *not* attempted on the
-    failing run. A rerun re-attempts every package: 409s on already-published ones are skipped,
-    and the originally-failed and never-attempted packages are pushed.
-- The GitHub Actions workflow log is the source of truth for "which packages were pushed before
-  the failure". Each package emits a `Publishing <PackageId>.<version>.nupkg` line in
-  `publish-nuget.ps1` before the push, so the run log records the exact stop point. Stronger
-  alerting on partial publish is intentionally deferred to Story 12.5; until then, read the run
-  log before rerunning.
+  - **Non-409 failures (auth, network, server error).** `dotnet nuget push` exits non-zero.
+    `publish-nuget.ps1` records the failed package, exit code, and sanitized output, then continues
+    to later packages where it can still safely invoke `dotnet nuget push`. If a preflight or
+    unrecoverable condition prevents more attempts, the remaining packages are listed as
+    not-attempted with a reason.
+- `tools/publish-nuget.ps1` records a structured package-by-package summary at
+  `artifacts/packages/release/publish-summary.json` before it exits non-zero. The summary lists the
+  target version, package directory, source, pushed packages, failed packages with exit codes and
+  sanitized output, and not-attempted packages.
+- When at least one package pushed and at least one package failed or was not attempted, the
+  release log includes a GitHub Actions error annotation titled
+  `PARTIAL PUBLISH - manual reconciliation required`. The failed job also appends a concise
+  Markdown summary to the GitHub Actions step summary when that output is available.
+- The release workflow creates a GitHub Issue titled
+  `PARTIAL PUBLISH <version> - manual reconciliation required`. If an open issue already exists
+  for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
+  The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
+  this runbook reference.
+- Recovery remains the same: rerun the Release workflow after investigating the failure. Do not
+  delete packages from nuget.org. `--skip-duplicate` skips already-published packages while the
+  rerun retries the failed or not-attempted packages.
 - If `tools/test-release.ps1` reports an unexpected test failure, check whether the failure name
   is on the project's tracked-baseline list before treating it as a release blocker. The script
   filters `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`
