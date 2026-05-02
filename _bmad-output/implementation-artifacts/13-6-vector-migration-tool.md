@@ -1,6 +1,6 @@
 # Story 13.6: Vector Migration Tool
 
-Status: ready-for-dev
+Status: blocked
 
 **Effort estimate:** ~1.5-2.0 working days. Breakdown:
 
@@ -233,6 +233,17 @@ so that existing tenants can move to the self-hosted provider without ad-hoc Red
 ## Project Context Reference
 
 The BMad persistent-facts glob found `Hexalith.Commons/_bmad-output/project-context.md` but no Memories-local `project-context.md`. Treat the Commons context as general Hexalith ecosystem guidance only. Repository-specific constraints in this story and the Memories planning artifacts take precedence.
+
+## Party-Mode Review
+
+- **Date/time:** 2026-05-02T13:44:02Z
+- **Selected story key:** `13-6-vector-migration-tool`
+- **Command/skill invocation used:** `/bmad-party-mode 13-6-vector-migration-tool; review;`
+- **Participating BMAD agents:** Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- **Findings summary:** The story direction is valid, but implementation is blocked by unmet hard prerequisites: Stories 13.3 and 13.5 remain `ready-for-dev`, so the required 13.2-13.5 implementation chain is not complete. The review also identified decision-budget risk around migration state identity, resume markers, raw semantic provider/model/dimension metadata, tenant config update verification, per-unit failure bounds, exact live confirmation behavior, and whether `SemanticIndexer.ReIndexFromSyntacticAsync(...)` should be completed or bypassed by a migration-local path.
+- **Changes applied:** Recorded this canonical party-mode trace and moved the story status to `blocked` so it is not handed to `bmad-dev-story` before prerequisite stories complete.
+- **Findings deferred:** Resolve whether raw semantic hashes gain provider/model/dimension metadata as a platform schema contract or whether the migration relies on durable migration markers; define the migration attempt id / per-tenant / per-index / per-unit checkpoint shape; define retry and failure-retention limits; confirm the exact command/output format; decide whether tenant config is updated before index work or after readiness proof with a documented recovery path; decide whether to complete the shared `SemanticIndexer` helper or keep the implementation migration-local.
+- **Final recommendation:** `blocked`
 
 ## Dev Agent Record
 
