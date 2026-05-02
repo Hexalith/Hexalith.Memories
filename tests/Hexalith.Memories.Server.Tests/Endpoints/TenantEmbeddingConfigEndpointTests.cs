@@ -87,6 +87,8 @@ public class TenantEmbeddingConfigEndpointTests
         doc.RootElement.GetProperty("apiSecretKeyName").GetString().ShouldBe("memories-embedding-client-secret");
         json.ShouldNotContain("\"client_secret\":");
         json.ShouldNotContain("\"clientSecret\":");
+        json.ShouldNotContain("\"oidcClientSecret\":");
+        json.ShouldNotContain("\"oidc_client_secret\":");
         json.ShouldNotContain("super-secret-client-secret");
     }
 
@@ -118,6 +120,8 @@ public class TenantEmbeddingConfigEndpointTests
         doc.RootElement.GetProperty("affectedFields")[0].GetString().ShouldBe("baseUrl");
         json.ShouldNotContain("\"client_secret\":");
         json.ShouldNotContain("\"clientSecret\":");
+        json.ShouldNotContain("\"oidcClientSecret\":");
+        json.ShouldNotContain("\"oidc_client_secret\":");
         json.ShouldNotContain("super-secret-client-secret");
     }
 

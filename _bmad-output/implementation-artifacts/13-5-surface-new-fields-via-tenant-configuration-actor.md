@@ -1,6 +1,6 @@
 # Story 13.5: Surface New Fields via TenantConfigurationActor
 
-Status: review
+Status: done
 
 **Effort estimate:** ~0.75-1.0 working day. Breakdown:
 
@@ -94,6 +94,35 @@ so that Ollama tenants can be provisioned, listed, and configured end-to-end thr
   - [x] Run focused contract serialization tests for `TenantEmbeddingConfigSerializationTests` if Story 13.4 created them.
   - [x] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
   - [x] Record exact commands and outcomes in the Dev Agent Record. If `global.json` SDK pinning blocks validation, record the exact SDK error and do not claim green tests.
+
+### Review Findings
+
+Adversarial 3-layer review run 2026-05-02 (Blind Hunter, Edge Case Hunter, Acceptance Auditor). All `decision-needed` findings resolved autonomously per `feedback_review_autonomy.md`; all `patch` items below have been applied and validated (`dotnet test --filter "FullyQualifiedName~TenantConfigurationActorTests|FullyQualifiedName~TenantConfigurationEndpointTests|FullyQualifiedName~TenantEmbeddingConfigEndpointTests"` → 48/48 passed).
+
+**Patches applied:**
+
+- [x] [Review][Patch] AC5 normalization test bundled all three rules — split into whitespace-only / trailing-slash-only / casing-only deltas so a regression dropping any single rule is localized [`tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:174-247`].
+- [x] [Review][Patch] AC5 OidcMetadataChanged bundled 5 field changes — split into `AuthModeOnlyDelta` / `OidcTokenEndpointOnlyDelta` / `OidcClientIdOnlyDelta` / `ApiSecretKeyNameOnlyDelta` / `OidcScopeOnlyDelta`; each predicate now also pins the persisted field value, and the AuthMode test exercises ordinal-ignore-case validation [`tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:249-358`].
+- [x] [Review][Patch] AC5 missing positive force-reindex Ollama BaseUrl path — added `SetEmbeddingConfigAsync_OllamaBaseUrlChanged_WithForceReindex_ShouldSaveAndSetReindexRequired` so the throw and save branches are both pinned for Ollama, not only transitively via Google [`tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs:174-191`].
+- [x] [Review][Patch] AC7 listing test used substring matching — converted `TenantConfigurationView_EmbedsFullEmbeddingConfig_NotProjected` to `JsonDocument.GetProperty("embeddingConfig")` structural assertions so a regression that emits OIDC fields outside `embeddingConfig` (or under a wrong nesting) cannot pass [`tests/Hexalith.Memories.Server.Tests/Endpoints/TenantConfigurationEndpointTests.cs:138-176`].
+- [x] [Review][Patch] AC7 raw-secret negative assertions only covered `client_secret` / `clientSecret` — added `"oidcClientSecret":` and `"oidc_client_secret":` absence on all three serialization tests so the canonical leak shape that would appear if a secret-value field were ever added to `TenantEmbeddingConfig` is now guarded [`tests/Hexalith.Memories.Server.Tests/Endpoints/TenantConfigurationEndpointTests.cs:172-176`, `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs:88-92,121-125`].
+
+**Deferred (added to `_bmad-output/implementation-artifacts/deferred-work.md`):**
+
+- [x] [Review][Defer] 13.5-RV1 — `Hexalith.EventStore` submodule pointer bump (`f812bfb` → `f8e8f14`) is outside Story 13.5's declared file scope; drift content verified innocuous (5 doc/story commits authored by Jerome) so accepted in-place. Process note: future feat commits should isolate ecosystem submodule bumps into separate `chore: update subproject commit reference` commits. Re-open trigger: any future feat commit that bundles a submodule pointer change without a separating commit.
+- [x] [Review][Defer] 13.5-RV2 — AC6 PUT/Conflict body not pinned end-to-end through ASP.NET Core's `HttpJsonOptions` pipeline. All new tests serialize via `MemoriesJsonContext.Options` directly; production uses `Results.Ok(updatedConfig)` and `Results.Conflict(body)`. If runtime HTTP JSON options ever diverge (different naming policy / converters), tests stay green while real bodies change. Story 13.7's integration suite is the natural enforcement point.
+- [x] [Review][Defer] 13.5-RV3 — No Ollama-flavored Provider/Model/Dimensions breaking-change actor tests. Existing breaking-change coverage (Model, Dimensions) is Google-flavored only; the Ollama-specific `Validate(...)` ceilings (qwen3 dimension lock at 2560, rate-limit ceiling 60_000) are exercised by `EmbeddingProviderDefaultsTests` separately. Re-open trigger: a second Ollama model lands and the dimension/provider breaking-change matrix grows.
+- [x] [Review][Defer] 13.5-RV4 — Legacy `provider="ollama"` payload with missing OIDC fields not exercised by `DeserializeLegacyGoogleConfig`. Pre-13.4 actor state cannot be Ollama because the provider was added in Story 13.1; the deserialize-then-Validate fallback path for a hypothetical injected legacy Ollama payload is currently un-pinned. Re-open trigger: any operational incident where an actor state predates the current provider list.
+- [x] [Review][Defer] 13.5-RV5 — Whitespace-only / empty-string `BaseUrl` legacy state behavior not pinned. `ValidateOptionalHttpUrl` early-returns on whitespace for non-Ollama providers and the empty value persists into `TenantConfigurationView`; for Ollama, validation rejects and the read path falls back to Google. Low likelihood, low impact. Re-open trigger: a tenant config audit that surfaces an empty/whitespace `BaseUrl` in the wild.
+- [x] [Review][Defer] 13.5-RV6 — `SetEmbeddingConfigAsync_FirstOllamaWrite_ShouldIgnoreClientSuppliedReindexFlag` passes both signals (`forceReindex: true` and `newConfig.ReindexRequired = true`), so a regression that respects only one of the two while ignoring the other would still pass. Mirrors the pre-existing Google `FirstWrite_ShouldIgnoreClientSuppliedReindexFlag` pattern; not a 13.5-introduced regression. Re-open trigger: a refactor of `TenantConfigurationActor`'s first-write semantics where the two signals are split into distinct branches.
+
+**Dismissed (false positives or noise):**
+
+- AC5 normalization test "asserts un-normalized stored value" (Blind Hunter) — production normalization is comparison-only via `EmbeddingProviderDefaults.NormalizeBaseUrl` (`src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:259-260`); stored form is intentionally unchanged. Test name "after normalization" refers to *input equivalence*, not stored form.
+- `GetEmbeddingConfigAsync_OllamaOidcState_ShouldReturnAllMetadataFields` is a tautology (Blind Hunter) — round-trip via mock pins "no fields are dropped on read" which is meaningful defensive coverage even with weak signal.
+- Legacy-default test asserts `AuthMode == "api-key"` from JSON that omits the field (Blind Hunter) — this correctly pins Story 13.4's record-default contract from the receive side; nothing to fix.
+- AC9 negative `TenantProvisioningInput` shape pin absent (Edge Case Hunter) — story explicitly bounds AC9 to "do not change those files"; absence-of-test for a "do not modify" constraint is normal.
+- AC2 reindex-flag-preservation-across-fallback test (Edge Case Hunter) — logically subsumed by the existing `DidNotReceive().SetStateAsync(...)` assertion (no write means no clearing).
 
 ## Dev Notes
 

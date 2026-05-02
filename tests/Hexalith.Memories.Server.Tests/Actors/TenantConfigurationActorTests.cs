@@ -172,11 +172,70 @@ public class TenantConfigurationActorTests
     }
 
     [Fact]
-    public async Task SetEmbeddingConfigAsync_OllamaBaseUrlEquivalentAfterNormalization_ShouldNotRequireForceReindex()
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrlChanged_WithForceReindex_ShouldSaveAndSetReindexRequired()
     {
         // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
-        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = " https://llm.tache.ai/ " });
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai" });
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://other-llm.tache.ai" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.BaseUrl == "https://other-llm.tache.ai" && c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    // BaseUrl normalization is split into three isolated cases so that a regression dropping
+    // any single rule (whitespace trim, trailing-slash trim, ordinal-ignore-case) is localized.
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrl_WhitespaceOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = " https://llm.tache.ai " });
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrl_TrailingSlashOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai/" });
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrl_CasingOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai" });
 
         TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://LLM.TACHE.AI" };
 
@@ -190,8 +249,30 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
+    // Each AC5 non-BaseUrl OIDC field is exercised in isolation so that a regression which
+    // started forcing reindex for one specific field is not masked by the others.
     [Fact]
-    public async Task SetEmbeddingConfigAsync_OidcMetadataChanged_ShouldNotRequireForceReindex()
+    public async Task SetEmbeddingConfigAsync_AuthModeOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        // OIDC-CLIENT-CREDENTIALS exercises the validation case-insensitivity contract too.
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { AuthMode = "OIDC-CLIENT-CREDENTIALS" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.AuthMode == "OIDC-CLIENT-CREDENTIALS" && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OidcTokenEndpointOnlyDelta_ShouldNotRequireForceReindex()
     {
         // Arrange
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
@@ -199,11 +280,7 @@ public class TenantConfigurationActorTests
 
         TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with
         {
-            AuthMode = "OIDC-CLIENT-CREDENTIALS",
             OidcTokenEndpoint = "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token",
-            OidcClientId = "other-client",
-            ApiSecretKeyName = "memories-embedding-client-secret-2",
-            OidcScope = "openid profile",
         };
 
         // Act
@@ -214,10 +291,69 @@ public class TenantConfigurationActorTests
             "embeddingConfig",
             Arg.Is<TenantEmbeddingConfig>(c =>
                 c.OidcTokenEndpoint == "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token" &&
-                c.OidcClientId == "other-client" &&
-                c.ApiSecretKeyName == "memories-embedding-client-secret-2" &&
-                c.OidcScope == "openid profile" &&
                 !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OidcClientIdOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { OidcClientId = "other-client" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.OidcClientId == "other-client" && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_ApiSecretKeyNameOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with
+        {
+            ApiSecretKeyName = "memories-embedding-client-secret-2",
+        };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c =>
+                c.ApiSecretKeyName == "memories-embedding-client-secret-2" &&
+                !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OidcScopeOnlyDelta_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { OidcScope = "openid profile" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.OidcScope == "openid profile" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 

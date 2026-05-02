@@ -150,23 +150,26 @@ public class TenantConfigurationEndpointTests
         };
 
         string json = JsonSerializer.Serialize(view, MemoriesJsonContext.Options);
-        // apiSecretKeyName is non-sensitive and should appear (Amendment C).
-        json.ShouldContain("\"apiSecretKeyName\":\"memories-embedding-client-secret\"");
-        json.ShouldContain("\"provider\":\"ollama\"");
-        json.ShouldContain("\"model\":\"qwen3-embedding:4b\"");
-        json.ShouldContain("\"dimensions\":2560");
-        json.ShouldContain("\"rateLimitPerMinute\":6000");
-        json.ShouldContain("\"reindexRequired\":false");
-        json.ShouldContain("\"baseUrl\":\"https://llm.tache.ai\"");
-        json.ShouldContain("\"authMode\":\"oidc-client-credentials\"");
-        json.ShouldContain("\"oidcTokenEndpoint\":\"https://auth.tache.ai/realms/tache/protocol/openid-connect/token\"");
-        json.ShouldContain("\"oidcClientId\":\"memories-embedding\"");
-        json.ShouldContain("\"oidcScope\":\"openid\"");
-        // Assert exact JSON key shape rather than bare substrings so future field renames
-        // (e.g. an unrelated `oidcClientSecretName` metadata reference) do not falsely fail.
-        // apiSecretKeyName is a DAPR secret-name reference; raw client secrets must not appear.
+        using JsonDocument doc = JsonDocument.Parse(json);
+
+        JsonElement embeddingConfig = doc.RootElement.GetProperty("embeddingConfig");
+        embeddingConfig.GetProperty("provider").GetString().ShouldBe("ollama");
+        embeddingConfig.GetProperty("model").GetString().ShouldBe("qwen3-embedding:4b");
+        embeddingConfig.GetProperty("dimensions").GetInt32().ShouldBe(2560);
+        embeddingConfig.GetProperty("rateLimitPerMinute").GetInt32().ShouldBe(6000);
+        embeddingConfig.GetProperty("reindexRequired").GetBoolean().ShouldBeFalse();
+        embeddingConfig.GetProperty("baseUrl").GetString().ShouldBe("https://llm.tache.ai");
+        embeddingConfig.GetProperty("authMode").GetString().ShouldBe("oidc-client-credentials");
+        embeddingConfig.GetProperty("oidcTokenEndpoint").GetString().ShouldBe("https://auth.tache.ai/realms/tache/protocol/openid-connect/token");
+        embeddingConfig.GetProperty("oidcClientId").GetString().ShouldBe("memories-embedding");
+        embeddingConfig.GetProperty("oidcScope").GetString().ShouldBe("openid");
+        // apiSecretKeyName is a DAPR secret-name reference and is intentionally exposed (Amendment C).
+        embeddingConfig.GetProperty("apiSecretKeyName").GetString().ShouldBe("memories-embedding-client-secret");
+        // Raw client secrets must never appear under any of the canonical leak shapes.
         json.ShouldNotContain("\"client_secret\":");
         json.ShouldNotContain("\"clientSecret\":");
+        json.ShouldNotContain("\"oidcClientSecret\":");
+        json.ShouldNotContain("\"oidc_client_secret\":");
         json.ShouldNotContain("resolved-secret-value");
         json.ShouldNotContain("super-secret-client-secret");
     }
