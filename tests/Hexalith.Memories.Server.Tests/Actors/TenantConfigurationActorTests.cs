@@ -156,6 +156,71 @@ public class TenantConfigurationActorTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrlChanged_WithoutForceReindex_ShouldThrow()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = "https://llm.tache.ai/" });
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://other-llm.tache.ai" };
+
+        // Act & Assert
+        EmbeddingConfigChangeException ex = await Should.ThrowAsync<EmbeddingConfigChangeException>(
+            () => actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false));
+        ex.AffectedFields.ShouldContain("baseUrl");
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaBaseUrlEquivalentAfterNormalization_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig() with { BaseUrl = " https://llm.tache.ai/ " });
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { BaseUrl = "https://LLM.TACHE.AI" };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => c.BaseUrl == "https://LLM.TACHE.AI" && !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OidcMetadataChanged_ShouldNotRequireForceReindex()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with
+        {
+            AuthMode = "OIDC-CLIENT-CREDENTIALS",
+            OidcTokenEndpoint = "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token",
+            OidcClientId = "other-client",
+            ApiSecretKeyName = "memories-embedding-client-secret-2",
+            OidcScope = "openid profile",
+        };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c =>
+                c.OidcTokenEndpoint == "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token" &&
+                c.OidcClientId == "other-client" &&
+                c.ApiSecretKeyName == "memories-embedding-client-secret-2" &&
+                c.OidcScope == "openid profile" &&
+                !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
     // Story 5.5 Task 5.3 — protect AC3's rate-limit update path by asserting that the breaking-
     // fields contract does not include rateLimitPerMinute. If it ever did, PUT /embedding-config
     // rate-limit-only updates would start throwing 409 by accident.
@@ -227,6 +292,51 @@ public class TenantConfigurationActorTests
         // Assert
         config.Provider.ShouldBe("google");
         config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+        await stateManager.DidNotReceive().SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_LegacyGoogleState_ShouldDefaultNewFields()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        TenantEmbeddingConfig legacyConfig = DeserializeLegacyGoogleConfig();
+        SetupExistingState(stateManager, legacyConfig);
+
+        // Act
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        // Assert
+        config.Provider.ShouldBe("google");
+        config.Model.ShouldBe("gemini-embedding-001");
+        config.Dimensions.ShouldBe(768);
+        config.RateLimitPerMinute.ShouldBe(1500);
+        config.ApiSecretKeyName.ShouldBe("google-embedding-api-key");
+        config.BaseUrl.ShouldBeNull();
+        config.AuthMode.ShouldBe("api-key");
+        config.OidcTokenEndpoint.ShouldBeNull();
+        config.OidcClientId.ShouldBeNull();
+        config.OidcScope.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_LegacyState_ShouldNotWriteReplacementState()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, DeserializeLegacyGoogleConfig());
+
+        // Act
+        _ = await actor.GetEmbeddingConfigAsync();
+
+        // Assert
+        await stateManager.DidNotReceive().SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -246,6 +356,61 @@ public class TenantConfigurationActorTests
             "embeddingConfig",
             Arg.Is<TenantEmbeddingConfig>(c => !c.ReindexRequired),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_FirstOllamaWrite_ShouldIgnoreClientSuppliedReindexFlag()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig() with { ReindexRequired = true };
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c =>
+                c.Provider == "ollama" &&
+                c.AuthMode == "oidc-client-credentials" &&
+                !c.ReindexRequired),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetEmbeddingConfigAsync_OllamaOidcConfig_ShouldPersistAllMetadataFields()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        TenantEmbeddingConfig newConfig = CreateOllamaOidcConfig();
+
+        // Act
+        await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: false);
+
+        // Assert
+        await stateManager.Received().SetStateAsync(
+            "embeddingConfig",
+            Arg.Is<TenantEmbeddingConfig>(c => HasOllamaOidcMetadata(c)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetEmbeddingConfigAsync_OllamaOidcState_ShouldReturnAllMetadataFields()
+    {
+        // Arrange
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupExistingState(stateManager, CreateOllamaOidcConfig());
+
+        // Act
+        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+
+        // Assert
+        HasOllamaOidcMetadata(config).ShouldBeTrue();
     }
 
     [Fact]
@@ -288,5 +453,45 @@ public class TenantConfigurationActorTests
     {
         stateManager.TryGetStateAsync<TenantEmbeddingConfig>("embeddingConfig", Arg.Any<CancellationToken>())
             .Returns(new ConditionalValue<TenantEmbeddingConfig>(true, config));
+    }
+
+    private static TenantEmbeddingConfig CreateOllamaOidcConfig() => EmbeddingProviderDefaults.Ollama() with
+    {
+        BaseUrl = "https://llm.tache.ai",
+        AuthMode = "oidc-client-credentials",
+        OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
+        OidcClientId = "memories-embedding",
+        OidcScope = "openid",
+        ApiSecretKeyName = "memories-embedding-client-secret",
+    };
+
+    private static bool HasOllamaOidcMetadata(TenantEmbeddingConfig config) =>
+        config.Provider == "ollama" &&
+        config.Model == "qwen3-embedding:4b" &&
+        config.Dimensions == 2560 &&
+        config.RateLimitPerMinute == 6000 &&
+        config.BaseUrl == "https://llm.tache.ai" &&
+        config.AuthMode == "oidc-client-credentials" &&
+        config.OidcTokenEndpoint == "https://auth.tache.ai/realms/tache/protocol/openid-connect/token" &&
+        config.OidcClientId == "memories-embedding" &&
+        config.OidcScope == "openid" &&
+        config.ApiSecretKeyName == "memories-embedding-client-secret";
+
+    private static TenantEmbeddingConfig DeserializeLegacyGoogleConfig()
+    {
+        const string Json = """
+            {
+              "provider": "google",
+              "model": "gemini-embedding-001",
+              "dimensions": 768,
+              "rateLimitPerMinute": 1500,
+              "apiSecretKeyName": "google-embedding-api-key",
+              "reindexRequired": false
+            }
+            """;
+
+        TenantEmbeddingConfig? config = JsonSerializer.Deserialize<TenantEmbeddingConfig>(Json, MemoriesJsonContext.Options);
+        config.ShouldNotBeNull();
+        return config;
     }
 }

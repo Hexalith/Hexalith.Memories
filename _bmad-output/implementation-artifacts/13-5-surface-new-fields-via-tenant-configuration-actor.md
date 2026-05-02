@@ -1,6 +1,6 @@
 # Story 13.5: Surface New Fields via TenantConfigurationActor
 
-Status: ready-for-dev
+Status: review
 
 **Effort estimate:** ~0.75-1.0 working day. Breakdown:
 
@@ -57,43 +57,43 @@ so that Ollama tenants can be provisioned, listed, and configured end-to-end thr
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Verify prerequisites and current surfaces (AC: #1-#10)
-  - [ ] Confirm `13-1-extend-embedding-provider-defaults-to-accept-ollama` is `done`; if still `review` or lower, stop.
-  - [ ] Confirm `13-4-extend-tenant-embedding-config-with-additive-oidc-fields` is `done`; if still `review` or lower, stop.
-  - [ ] Read `src/Hexalith.Memories.Server/Actors/TenantConfigurationActor.cs` completely. Preserve `StateName = "embeddingConfig"`, validation-before-store, fallback-to-Google behavior, and first-write `ReindexRequired = false` behavior.
-  - [ ] Read `src/Hexalith.Memories.Server/Actors/ITenantConfigurationActor.cs`; do not change the actor API unless a committed prerequisite requires it.
-  - [ ] Read the embedding-config minimal API delegates in `src/Hexalith.Memories.Server/Program.cs` before changing endpoint tests.
-  - [ ] Read `src/Hexalith.Memories.Server/Tenants/TenantEndpointHandlers.cs` and `src/Hexalith.Memories.Contracts/V1/TenantConfigurationView.cs`; the listing surface already embeds `TenantEmbeddingConfig` directly.
+- [x] Task 0 - Verify prerequisites and current surfaces (AC: #1-#10)
+  - [x] Confirm `13-1-extend-embedding-provider-defaults-to-accept-ollama` is `done`; if still `review` or lower, stop.
+  - [x] Confirm `13-4-extend-tenant-embedding-config-with-additive-oidc-fields` is `done`; if still `review` or lower, stop.
+  - [x] Read `src/Hexalith.Memories.Server/Actors/TenantConfigurationActor.cs` completely. Preserve `StateName = "embeddingConfig"`, validation-before-store, fallback-to-Google behavior, and first-write `ReindexRequired = false` behavior.
+  - [x] Read `src/Hexalith.Memories.Server/Actors/ITenantConfigurationActor.cs`; do not change the actor API unless a committed prerequisite requires it.
+  - [x] Read the embedding-config minimal API delegates in `src/Hexalith.Memories.Server/Program.cs` before changing endpoint tests.
+  - [x] Read `src/Hexalith.Memories.Server/Tenants/TenantEndpointHandlers.cs` and `src/Hexalith.Memories.Contracts/V1/TenantConfigurationView.cs`; the listing surface already embeds `TenantEmbeddingConfig` directly.
 
-- [ ] Task 1 - Add actor state migration and round-trip tests (AC: #1-#5)
-  - [ ] In `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs`, add a legacy JSON test that deserializes a pre-13.4 Google payload via `MemoriesJsonContext.Options`, feeds it through the mock state manager, and asserts the new fields have 13.4 defaults.
-  - [ ] Add `GetEmbeddingConfigAsync_LegacyState_ShouldNotWriteReplacementState` to prove read migration is non-destructive.
-  - [ ] Add an Ollama helper config using the actual Story 13.4 field names/defaults and `EmbeddingProviderDefaults.Ollama()` as the base.
-  - [ ] Add `SetEmbeddingConfigAsync_OllamaOidcConfig_ShouldPersistAllMetadataFields`.
-  - [ ] Add `GetEmbeddingConfigAsync_OllamaOidcState_ShouldReturnAllMetadataFields`.
-  - [ ] Add or update a breaking-change test for Ollama `BaseUrl` to match Story 13.4's `GetBreakingChangeFields(...)` contract: whitespace trim, trailing-slash trim, ordinal-ignore-case comparison, and no broader URI canonicalization.
-  - [ ] Add or update a test proving `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, `ApiSecretKeyName`, and `OidcScope` changes alone do not force reindex.
-  - [ ] Keep the existing corrupt-state and invalid-state fallback tests passing without changing their intent.
-  - [ ] Extend corrupt-state and invalid-state fallback tests to assert no repaired state is written and no reindex flag is cleared during read fallback.
+- [x] Task 1 - Add actor state migration and round-trip tests (AC: #1-#5)
+  - [x] In `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs`, add a legacy JSON test that deserializes a pre-13.4 Google payload via `MemoriesJsonContext.Options`, feeds it through the mock state manager, and asserts the new fields have 13.4 defaults.
+  - [x] Add `GetEmbeddingConfigAsync_LegacyState_ShouldNotWriteReplacementState` to prove read migration is non-destructive.
+  - [x] Add an Ollama helper config using the actual Story 13.4 field names/defaults and `EmbeddingProviderDefaults.Ollama()` as the base.
+  - [x] Add `SetEmbeddingConfigAsync_OllamaOidcConfig_ShouldPersistAllMetadataFields`.
+  - [x] Add `GetEmbeddingConfigAsync_OllamaOidcState_ShouldReturnAllMetadataFields`.
+  - [x] Add or update a breaking-change test for Ollama `BaseUrl` to match Story 13.4's `GetBreakingChangeFields(...)` contract: whitespace trim, trailing-slash trim, ordinal-ignore-case comparison, and no broader URI canonicalization.
+  - [x] Add or update a test proving `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, `ApiSecretKeyName`, and `OidcScope` changes alone do not force reindex.
+  - [x] Keep the existing corrupt-state and invalid-state fallback tests passing without changing their intent.
+  - [x] Extend corrupt-state and invalid-state fallback tests to assert no repaired state is written and no reindex flag is cleared during read fallback.
 
-- [ ] Task 2 - Pin embedding-config endpoint serialization (AC: #6, #10)
-  - [ ] Extend `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs` with a conflict/response serialization test using an Ollama OIDC config.
-  - [ ] If a direct handler extraction already exists for `PUT /embedding-config`, use it. If not, keep the test at contract/response-shape level and do not refactor `Program.cs` just for testability unless the diff stays small.
-  - [ ] Assert camel-case JSON names: `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, `oidcScope`, and `apiSecretKeyName`.
-  - [ ] Assert the response body exposes the secret name, for example `memories-embedding-client-secret`, and does not expose `client_secret`, `clientSecret`, or a sample secret value.
+- [x] Task 2 - Pin embedding-config endpoint serialization (AC: #6, #10)
+  - [x] Extend `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs` with a conflict/response serialization test using an Ollama OIDC config.
+  - [x] If a direct handler extraction already exists for `PUT /embedding-config`, use it. If not, keep the test at contract/response-shape level and do not refactor `Program.cs` just for testability unless the diff stays small.
+  - [x] Assert camel-case JSON names: `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, `oidcScope`, and `apiSecretKeyName`.
+  - [x] Assert the response body exposes the secret name, for example `memories-embedding-client-secret`, and does not expose `client_secret`, `clientSecret`, or a sample secret value.
 
-- [ ] Task 3 - Pin tenant configuration/listing surface (AC: #7, #8)
-  - [ ] Extend `TenantConfigurationEndpointTests.TenantConfigurationView_EmbedsFullEmbeddingConfig_NotProjected` or add a focused sibling test for an Ollama OIDC config.
-  - [ ] Assert `TenantConfigurationView` still serializes the embedded `TenantEmbeddingConfig` directly with every OIDC metadata field.
-  - [ ] Assert no `client_secret`, `clientSecret`, or sample raw secret string appears in serialized JSON.
-  - [ ] Do not add a masking layer for `apiSecretKeyName`; document in the test comment that the field is safe because it is a secret-name reference.
+- [x] Task 3 - Pin tenant configuration/listing surface (AC: #7, #8)
+  - [x] Extend `TenantConfigurationEndpointTests.TenantConfigurationView_EmbedsFullEmbeddingConfig_NotProjected` or add a focused sibling test for an Ollama OIDC config.
+  - [x] Assert `TenantConfigurationView` still serializes the embedded `TenantEmbeddingConfig` directly with every OIDC metadata field.
+  - [x] Assert no `client_secret`, `clientSecret`, or sample raw secret string appears in serialized JSON.
+  - [x] Do not add a masking layer for `apiSecretKeyName`; document in the test comment that the field is safe because it is a secret-name reference.
 
-- [ ] Task 4 - Validate and record completion (AC: #1-#10)
-  - [ ] Run focused actor tests: `TenantConfigurationActorTests`.
-  - [ ] Run focused endpoint tests: `TenantEmbeddingConfigEndpointTests` and `TenantConfigurationEndpointTests`.
-  - [ ] Run focused contract serialization tests for `TenantEmbeddingConfigSerializationTests` if Story 13.4 created them.
-  - [ ] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
-  - [ ] Record exact commands and outcomes in the Dev Agent Record. If `global.json` SDK pinning blocks validation, record the exact SDK error and do not claim green tests.
+- [x] Task 4 - Validate and record completion (AC: #1-#10)
+  - [x] Run focused actor tests: `TenantConfigurationActorTests`.
+  - [x] Run focused endpoint tests: `TenantEmbeddingConfigEndpointTests` and `TenantConfigurationEndpointTests`.
+  - [x] Run focused contract serialization tests for `TenantEmbeddingConfigSerializationTests` if Story 13.4 created them.
+  - [x] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
+  - [x] Record exact commands and outcomes in the Dev Agent Record. If `global.json` SDK pinning blocks validation, record the exact SDK error and do not claim green tests.
 
 ## Dev Notes
 
@@ -212,22 +212,42 @@ Codex GPT-5
 
 - Story authored on 2026-05-02 by the recurring pre-dev hardening automation after preflight JSON timestamp `2026-05-02T06:51:11Z`.
 - Preflight result was `pass` with `working tree cleanliness` reporting `0 dirty paths`.
-- No code implementation was performed in this run; this is a create-story artifact only.
+- 2026-05-02: Verified sprint prerequisites: Story 13.1 and Story 13.4 are `done` in `sprint-status.yaml`.
+- 2026-05-02: Read `TenantConfigurationActor`, `ITenantConfigurationActor`, `Program.cs` embedding-config delegates, `TenantEndpointHandlers`, and `TenantConfigurationView`; no runtime API or projection change was required.
+- 2026-05-02: Added actor tests for legacy JSON defaults, read-only fallback/no repair writes, Ollama OIDC persistence/readback, first-write `ReindexRequired = false`, `baseUrl` breaking-change behavior, and non-breaking OIDC metadata changes.
+- 2026-05-02: Added embedding-config response/conflict serialization coverage for Ollama OIDC metadata and raw-secret non-exposure.
+- 2026-05-02: Extended `TenantConfigurationView` serialization coverage to assert full embedded `TenantEmbeddingConfig` OIDC metadata, `apiSecretKeyName` as a secret-name reference, and no raw client-secret field/value exposure.
+- Validation: `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter FullyQualifiedName~TenantConfigurationActorTests` -> Passed 21/21.
+- Validation: `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter FullyQualifiedName~TenantEmbeddingConfigEndpointTests` -> Passed 6/6.
+- Validation: `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter FullyQualifiedName~TenantConfigurationEndpointTests` -> Passed 14/14.
+- Validation: `dotnet test tests\Hexalith.Memories.Contracts.Tests\Hexalith.Memories.Contracts.Tests.csproj --filter FullyQualifiedName~TenantEmbeddingConfigSerializationTests` -> Passed 6/6.
+- Validation: `dotnet build Hexalith.Memories.slnx` -> Succeeded, 0 warnings, 0 errors.
+- Regression validation: `dotnet test tests\Hexalith.Memories.Contracts.Tests\Hexalith.Memories.Contracts.Tests.csproj --no-build` -> Passed 470/470.
+- Regression validation: `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --no-build` -> Passed 1676/1676.
+- Regression validation: `dotnet test tests\Hexalith.Memories.EventStore.Tests\Hexalith.Memories.EventStore.Tests.csproj --no-build` -> Passed 84/84.
+- Regression validation: `dotnet test tests\Hexalith.Memories.Mcp.Tests\Hexalith.Memories.Mcp.Tests.csproj --no-build` -> Passed 76/76.
+- Regression validation: `dotnet test Hexalith.Memories.slnx --no-build` timed out after 10 minutes without a completed test result; `dotnet test tests\Hexalith.Memories.Cli.Tests\Hexalith.Memories.Cli.Tests.csproj --no-build` timed out after 4 minutes without a completed test result.
 
 ### Completion Notes List
 
-- Story created with status `ready-for-dev`.
-- Sprint status updated from `backlog` to `ready-for-dev` for `13-5-surface-new-fields-via-tenant-configuration-actor`.
-- Implementation is explicitly gated on Stories 13.1 and 13.4 reaching `done`.
+- Runtime implementation remained unchanged: the committed actor and endpoint surfaces already carry the additive Story 13.4 `TenantEmbeddingConfig` fields directly.
+- Added focused actor coverage proving legacy Google state defaults new fields, corrupt/invalid read fallbacks are non-destructive, Ollama OIDC metadata persists and reads back, first-write reindex clearing is preserved, `baseUrl` changes require reindex only per Story 13.4 normalization, and other OIDC metadata changes do not force reindex.
+- Added endpoint/listing serialization coverage proving `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, `oidcScope`, and `apiSecretKeyName` are exposed as metadata while `client_secret`, `clientSecret`, and sample raw secret values are absent.
+- Did not modify `TenantEmbeddingConfig`, `EmbeddingProviderDefaults`, `EmbeddingClient`, OIDC token-provider code, provisioning workflow/input, AppHost/appsettings/docs, or migration tooling.
+- Focused story validation and main non-integration regression suites are green; full solution and CLI project test commands timed out locally and are recorded above without claiming green results.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/13-5-surface-new-fields-via-tenant-configuration-actor.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantConfigurationEndpointTests.cs`
 
 ### Change Log
 
 | Date       | Change                                                                                                                                                                                                                                                      | Author |
 |------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Implemented Story 13.5 as focused test coverage only: actor legacy/default/fallback/Ollama metadata behavior, embedding-config response/conflict serialization, configuration-view serialization, and secret-value non-exposure. Runtime surfaces required no changes. | Codex |
 | 2026-05-02 | Party-mode review completed; clarified exact OIDC field propagation, read-only invalid fallback, direct full-config serialization, raw secret non-exposure assertions, and Story 13.4 `BaseUrl` reindex semantics while deferring any unresolved `ApiSecretKeyName` validation policy back to the prerequisite contract. | Codex |
 | 2026-05-02 | Story 13.5 context created: actor state migration, Ollama config round-trip, embedding-config and configuration-view serialization, secret-name exposure without secret-value leakage, and strict boundaries against token provider, client dispatch, docs, provisioning, and migration scopes. | Codex |

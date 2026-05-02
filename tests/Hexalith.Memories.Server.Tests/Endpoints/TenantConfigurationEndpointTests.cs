@@ -154,13 +154,21 @@ public class TenantConfigurationEndpointTests
         json.ShouldContain("\"apiSecretKeyName\":\"memories-embedding-client-secret\"");
         json.ShouldContain("\"provider\":\"ollama\"");
         json.ShouldContain("\"model\":\"qwen3-embedding:4b\"");
+        json.ShouldContain("\"dimensions\":2560");
+        json.ShouldContain("\"rateLimitPerMinute\":6000");
+        json.ShouldContain("\"reindexRequired\":false");
+        json.ShouldContain("\"baseUrl\":\"https://llm.tache.ai\"");
         json.ShouldContain("\"authMode\":\"oidc-client-credentials\"");
+        json.ShouldContain("\"oidcTokenEndpoint\":\"https://auth.tache.ai/realms/tache/protocol/openid-connect/token\"");
         json.ShouldContain("\"oidcClientId\":\"memories-embedding\"");
+        json.ShouldContain("\"oidcScope\":\"openid\"");
         // Assert exact JSON key shape rather than bare substrings so future field renames
         // (e.g. an unrelated `oidcClientSecretName` metadata reference) do not falsely fail.
+        // apiSecretKeyName is a DAPR secret-name reference; raw client secrets must not appear.
         json.ShouldNotContain("\"client_secret\":");
         json.ShouldNotContain("\"clientSecret\":");
         json.ShouldNotContain("resolved-secret-value");
+        json.ShouldNotContain("super-secret-client-secret");
     }
 
     [Fact]
