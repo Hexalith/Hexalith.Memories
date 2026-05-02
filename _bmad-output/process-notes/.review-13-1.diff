@@ -1,0 +1,255 @@
+diff --git a/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs b/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+index b409d28..7adf4fb 100644
+--- a/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
++++ b/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+@@ -12,14 +12,26 @@ using Hexalith.Memories.Contracts.V1;
+ /// <summary>Default embedding provider configurations and validation.</summary>
+ public static partial class EmbeddingProviderDefaults
+ {
+-    /// <summary>The only supported embedding provider name in the MVP.</summary>
++    /// <summary>The Google embedding provider name.</summary>
+     public const string GoogleProviderName = "google";
+ 
++    /// <summary>The Ollama embedding provider name.</summary>
++    public const string OllamaProviderName = "ollama";
++
+     /// <summary>The default Google embedding model used in the MVP.</summary>
+     public const string GoogleModelName = "gemini-embedding-001";
+ 
++    /// <summary>The default Ollama embedding model (qwen3-embedding:4b — note the colon between model and tag is required by the Ollama identifier convention).</summary>
++    public const string OllamaModelName = "qwen3-embedding:4b";
++
+     private const int GoogleMaxRateLimitPerMinute = 3000;
+ 
++    /// <summary>Default dimension count emitted by qwen3-embedding:4b on a self-hosted Ollama deployment.</summary>
++    private const int OllamaDimensions = 2560;
++
++    /// <summary>Self-hosted Ollama has no provider-side quota; this ceiling protects operator backend throughput from accidental misconfiguration.</summary>
++    private const int OllamaMaxRateLimitPerMinute = 60_000;
++
+     /// <summary>Returns the default Google embedding configuration using gemini-embedding-001.</summary>
+     /// <returns>A <see cref="TenantEmbeddingConfig"/> with Google defaults.</returns>
+     public static TenantEmbeddingConfig Google() => new()
+@@ -32,6 +44,18 @@ public static partial class EmbeddingProviderDefaults
+         ReindexRequired = false,
+     };
+ 
++    /// <summary>Returns the default Ollama embedding configuration using qwen3-embedding:4b (2560 dimensions, self-hosted).</summary>
++    /// <returns>A <see cref="TenantEmbeddingConfig"/> with Ollama defaults.</returns>
++    public static TenantEmbeddingConfig Ollama() => new()
++    {
++        Provider = OllamaProviderName,
++        Model = OllamaModelName,
++        Dimensions = OllamaDimensions,
++        RateLimitPerMinute = 6000,
++        ApiSecretKeyName = "memories-embedding-client-secret",
++        ReindexRequired = false,
++    };
++
+     /// <summary>Gets the configuration fields that require a full reindex when changed.</summary>
+     /// <param name="currentConfig">The currently stored configuration.</param>
+     /// <param name="proposedConfig">The proposed replacement configuration.</param>
+@@ -73,17 +97,17 @@ public static partial class EmbeddingProviderDefaults
+         ArgumentException.ThrowIfNullOrWhiteSpace(config.Provider, nameof(config.Provider));
+         ArgumentException.ThrowIfNullOrWhiteSpace(config.Model, nameof(config.Model));
+ 
+-        if (!string.Equals(config.Provider, GoogleProviderName, StringComparison.OrdinalIgnoreCase))
++        if (!IsSupportedProvider(config.Provider))
+         {
+             throw new ArgumentException(
+-                $"Provider '{config.Provider}' is not supported in the MVP implementation. Only '{GoogleProviderName}' is currently supported.",
++                $"Provider '{config.Provider}' is not supported. Supported providers: '{GoogleProviderName}', '{OllamaProviderName}'.",
+                 nameof(config.Provider));
+         }
+ 
+         if (!ModelNamePattern().IsMatch(config.Model))
+         {
+             throw new ArgumentException(
+-                "Model must contain only letters, numbers, dots, underscores, and hyphens.",
++                "Model must contain only letters, numbers, dots, colons, underscores, and hyphens.",
+                 nameof(config.Model));
+         }
+ 
+@@ -100,15 +124,27 @@ public static partial class EmbeddingProviderDefaults
+                 nameof(config.Dimensions));
+         }
+ 
++        if (string.Equals(config.Model, OllamaModelName, StringComparison.OrdinalIgnoreCase) &&
++            config.Dimensions != OllamaDimensions)
++        {
++            throw new ArgumentException(
++                $"Model '{OllamaModelName}' only supports {OllamaDimensions} dimensions.",
++                nameof(config.Dimensions));
++        }
++
+         if (config.RateLimitPerMinute <= 0)
+         {
+             throw new ArgumentException("RateLimitPerMinute must be greater than 0.", nameof(config.RateLimitPerMinute));
+         }
+ 
+-        if (config.RateLimitPerMinute > GoogleMaxRateLimitPerMinute)
++        int maxRateLimit = string.Equals(config.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase)
++            ? OllamaMaxRateLimitPerMinute
++            : GoogleMaxRateLimitPerMinute;
++
++        if (config.RateLimitPerMinute > maxRateLimit)
+         {
+             throw new ArgumentException(
+-                $"RateLimitPerMinute must be {GoogleMaxRateLimitPerMinute} or less to prevent monopolizing shared API keys.",
++                $"RateLimitPerMinute must be {maxRateLimit} or less for provider '{config.Provider}'.",
+                 nameof(config.RateLimitPerMinute));
+         }
+ 
+@@ -120,9 +156,13 @@ public static partial class EmbeddingProviderDefaults
+         }
+     }
+ 
++    private static bool IsSupportedProvider(string provider) =>
++        string.Equals(provider, GoogleProviderName, StringComparison.OrdinalIgnoreCase) ||
++        string.Equals(provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
++
+     [GeneratedRegex("^[a-z0-9-]+$")]
+     private static partial Regex ApiSecretKeyNamePattern();
+ 
+-    [GeneratedRegex("^[A-Za-z0-9._-]+$")]
++    [GeneratedRegex("^[A-Za-z0-9.:_-]+$")]
+     private static partial Regex ModelNamePattern();
+ }
+diff --git a/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs b/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
+index 4b018ad..eec0a86 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
+@@ -176,4 +176,133 @@ public class EmbeddingProviderDefaultsTests
+ 
+         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+     }
++
++    [Fact]
++    public void Ollama_ShouldReturnCorrectDefaults()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
++
++        config.Provider.ShouldBe("ollama");
++        config.Model.ShouldBe("qwen3-embedding:4b");
++        config.Dimensions.ShouldBe(2560);
++        config.RateLimitPerMinute.ShouldBe(6000);
++        config.ApiSecretKeyName.ShouldBe("memories-embedding-client-secret");
++        config.ReindexRequired.ShouldBeFalse();
++    }
++
++    [Fact]
++    public void Validate_OllamaProvider_ShouldNotThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
++
++        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Theory]
++    [InlineData("")]
++    [InlineData("   ")]
++    public void Validate_OllamaWithEmptyModel_ShouldThrow(string model)
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Model = model };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_OllamaUnsupportedDimension_ShouldThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = 768 };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_OllamaWithModelColon_ShouldNotThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
++
++        config.Model.ShouldBe("qwen3-embedding:4b");
++        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Theory]
++    [InlineData("model/with/slash")]
++    [InlineData("model with space")]
++    [InlineData("model;semi")]
++    public void Validate_OllamaModelWithUnsafeCharacters_ShouldThrow(string unsafeModel)
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Model = unsafeModel };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_UnsupportedProvider_ErrorMessageListsSupportedProviders()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = "openai" };
++
++        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++        ex.Message.ShouldContain("google");
++        ex.Message.ShouldContain("ollama");
++    }
++
++    [Fact]
++    public void Validate_OllamaRateLimitAtMaximum_ShouldNotThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 60_000 };
++
++        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_OllamaRateLimitExceedsMaximum_ShouldThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 60_001 };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_GoogleAtRateLimitAboveOllamaCeiling_ShouldThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 5000 };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void Validate_OllamaProviderWithGoogleModel_DimensionMismatch_ShouldThrow()
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with
++        {
++            Model = "qwen3-embedding:4b",
++            Dimensions = 768,
++        };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
++
++    [Fact]
++    public void GetBreakingChangeFields_GoogleToOllama_ShouldReportProviderModelAndDimensions()
++    {
++        TenantEmbeddingConfig current = EmbeddingProviderDefaults.Google();
++        TenantEmbeddingConfig proposed = EmbeddingProviderDefaults.Ollama();
++
++        string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(current, proposed);
++
++        affectedFields.ShouldBe(["provider", "model", "dimensions"]);
++    }
++
++    [Theory]
++    [InlineData(2559)]
++    [InlineData(2561)]
++    [InlineData(768)]
++    [InlineData(1024)]
++    [InlineData(1536)]
++    public void Validate_OllamaQwen3_AcceptsExactly2560(int dimensions)
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { Dimensions = dimensions };
++
++        Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++    }
+ }
