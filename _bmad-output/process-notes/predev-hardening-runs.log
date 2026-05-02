@@ -14,3 +14,4 @@
 2026-05-02T06:54:34Z	create-story	13-5-surface-new-fields-via-tenant-configuration-actor	ok	created ready-for-dev story context; preflight passed
 2026-05-02T08:21:12Z	create-story	13-6-vector-migration-tool	ok	created ready-for-dev story context; preflight passed
 2026-05-02T08:36:40Z	party-mode-review	13-2-implement-oidc-token-provider	ok	applied party-mode review clarifications; preflight passed
+2026-05-02T08:52:16Z	create-story	13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide	ok	created ready-for-dev story context; active-dev-story soft preflight warning
