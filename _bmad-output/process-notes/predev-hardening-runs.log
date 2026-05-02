@@ -17,3 +17,4 @@
 2026-05-02T08:52:16Z	create-story	13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide	ok	created ready-for-dev story context; active-dev-story soft preflight warning
 2026-05-02T09:28:31Z	party-mode-review	13-3-extend-embedding-client-to-support-ollama	ok	applied party-mode review trace and hardening; active-dev-story soft preflight warning
 2026-05-02T10:04:31Z	party-mode-review	13-4-extend-tenant-embedding-config-with-additive-oidc-fields	ok	applied party-mode review clarifications; active-dev-story soft preflight warning
+2026-05-02T12:23:49Z	party-mode-review	13-5-surface-new-fields-via-tenant-configuration-actor	ok	applied party-mode review clarifications; preflight passed
