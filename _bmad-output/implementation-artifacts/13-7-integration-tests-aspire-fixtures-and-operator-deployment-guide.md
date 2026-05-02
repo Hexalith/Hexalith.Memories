@@ -10,7 +10,7 @@ Status: ready-for-dev
 - **0.35 day - Task 3:** Write the operator deployment guide and developer cross-reference.
 - **0.20 day - Task 4:** Run focused Tier-2/Tier-3/docs validation and record exact outcomes.
 
-**HARD prerequisite:** Stories 13.2, 13.3, 13.4, 13.5, and 13.6 must be `done` before implementation starts. This story is the final Epic 13 proof-and-documentation pass; it depends on the committed token provider, Ollama dispatch, additive tenant config, actor/config surfaces, and migration command/runbook output. If any prerequisite remains `ready-for-dev`, `in-progress`, or `review`, stop before editing code.
+**HARD prerequisite:** Stories 13.2, 13.3, 13.4, 13.5, and 13.6 must be `done` before implementation starts. Verify both the matching `_bmad-output/implementation-artifacts/sprint-status.yaml` entries and the top-level `Status:` line in each story artifact. This story is the final Epic 13 proof-and-documentation pass; it depends on the committed token provider, Ollama dispatch, additive tenant config, actor/config surfaces, and migration command/runbook output. If any prerequisite remains `ready-for-dev`, `in-progress`, `review`, `blocked`, or has partially merged behavior, stop before editing code and record the affected ACs as blocked rather than inventing fallback contracts.
 
 **SOFT prerequisite:** Keep the Story 13.6 Dev Agent Record open while writing the migration runbook section. The operator guide must describe the actual command names, flags, output fields, abort/resume behavior, and rollback limits that Story 13.6 committed, not the earlier planning shorthand.
 
@@ -20,11 +20,13 @@ Status: ready-for-dev
 
 Finish Epic 13 by proving the Google and Ollama embedding paths through the integration harness and by shipping the operator-facing guide at `docs/operations/embedding-providers.md`.
 
-The implementation must not require a real Keycloak realm, real Ollama server, or real `llm.tache.ai` endpoint in unit/Tier-2 coverage. Add deterministic stubs/fakes that mimic the committed contracts:
+The implementation must not require a real Keycloak realm, real Ollama server, or real `llm.tache.ai` endpoint in unit/Tier-2 coverage or routine CI. Add deterministic stubs/fakes that mimic the committed contracts:
 
 - Ollama embed endpoint: `POST /api/embed` with `{ "model": "...", "input": "..." }`, returning `{ "embeddings": [[...]] }`.
 - Keycloak token endpoint: client_credentials form post, returning a bearer token with audience `llm.tache.ai` or the configured audience.
 - Tier-2 vectors: deterministic 2560-dim values for Ollama so Redis Vector and consistency assertions can pin dimensions.
+
+The operator journey must be documented as observable checkpoints: gateway reachable, Keycloak client configured, tenant embedding config written, migration completed or explicitly skipped when no prior data exists, and post-migration verification completed.
 
 The operator guide must be generic and anonymized. Use placeholders such as `{ISSUER}`, `{AUDIENCE}`, `{JWKS_URL}`, `{HOSTNAME}`, `{TOKEN_ENDPOINT}`, `{CLIENT_ID}`, and `{SECRET_NAME}`. Do not publish real client secrets, bearer tokens, host credentials, or tenant data.
 
@@ -36,15 +38,15 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 ## Acceptance Criteria
 
-1. **AC1 - Provider integration suite covers Google and Ollama.** The embedding integration suite is parameterized over `provider in {google, ollama}`. Google continues to use the existing fake path. Ollama uses a deterministic Ollama-compatible HTTP fake and Keycloak/OIDC fake for Tier-2/Tier-3 coverage. Tier-2 coverage does not require Docker, real DAPR sidecars, real Keycloak, or real Ollama unless the existing test category already requires them.
+1. **AC1 - Provider integration suite covers Google and Ollama.** The embedding integration suite is parameterized over `provider in {google, ollama}` with named xUnit cases or separate facts that map to AC IDs. Google continues to use the existing fake path, does not require OIDC, and must not call the new Ollama or Keycloak fake endpoints. Ollama uses a deterministic Ollama-compatible HTTP fake and Keycloak/OIDC fake for Tier-2/Tier-3 coverage. The bounded matrix is: Google success regression, Ollama success with bearer token, Ollama auth/config failure evidence, vector dimension/provider-marker assertion, and hybrid-search observable result. Tier-2 coverage does not require Docker, real DAPR sidecars, real Keycloak, or real Ollama unless the existing test category already requires them.
 
-2. **AC2 - Ollama end-to-end Aspire test proves the committed runtime path.** A new `OllamaEmbeddingEndToEnd` integration test provisions or configures an Ollama tenant, ingests one content unit, verifies persisted embedding dimensions are 2560, verifies the stored provider/model marker is `ollama:qwen3-embedding:4b`, and verifies hybrid search returns the unit.
+2. **AC2 - Ollama end-to-end Aspire test proves the committed runtime path.** A new `OllamaEmbeddingEndToEnd` integration test provisions or configures an Ollama tenant through the committed tenant configuration API, ingests one content unit, verifies persisted embedding dimensions are 2560, verifies the committed provider/model metadata fields preserve `provider = "ollama"` and `model = "qwen3-embedding:4b"` or the committed combined marker `ollama:qwen3-embedding:4b`, and verifies hybrid search returns that unit through an observable API result. The test must include a syntactic canary token so a stale or non-semantic result cannot satisfy the assertion accidentally.
 
-3. **AC3 - Test fixtures provide deterministic 2560-dim Ollama vectors.** The Ollama fake returns repeatable 2560-length vectors derived from model + input or another deterministic seed. The values must be non-empty, stable across test runs, and distinguishable from the existing Google fake dimensions so dimension drift cannot pass accidentally.
+3. **AC3 - Test fixtures provide deterministic 2560-dim Ollama vectors.** The Ollama fake returns repeatable 2560-length vectors derived from `model + "\n" + input` or an equivalently documented deterministic seed. Values must be ordered, finite, stable across test runs, non-zero for at least one element, and distinguishable from the existing Google fake dimensions so dimension drift cannot pass accidentally. Tests should assert length exactly 2560 and compare deterministic output with an explicit tolerance suitable for the numeric type.
 
-4. **AC4 - OIDC token flow is exercised without leaking credentials.** The fake Keycloak/token endpoint asserts the client_credentials form shape, including `grant_type=client_credentials`, `client_id`, `client_secret`, and optional `scope`. Tests prove the outbound Ollama request carries `Authorization: Bearer <token>` and that captured logs, exception text, and docs examples do not contain raw sample values such as `super-secret-client-secret` or `Bearer eyJ`.
+4. **AC4 - OIDC token flow is exercised without leaking credentials.** The fake Keycloak/token endpoint asserts `application/x-www-form-urlencoded` client_credentials form shape, including `grant_type=client_credentials`, `client_id`, `client_secret`, and optional `scope`, and rejects missing or malformed values. The Ollama fake must fail any request that does not use `POST /api/embed` and must prove the outbound request carries `Authorization: Bearer <token>` without storing the raw token in assertion output. Tests prove captured logs, exception text, serialized payloads, docs examples, and committed artifacts do not contain raw sample values such as `super-secret-client-secret`, `client_secret=`, `Bearer eyJ`, or raw Google API keys.
 
-5. **AC5 - Aspire/AppHost wiring remains local and opt-in.** AppHost or fixture changes may inject local test configuration for Ollama base URL, token endpoint, client id, scope, and DAPR secretstore entries. They must not hard-code real `llm.tache.ai` / `auth.tache.ai` as required runtime values, must not break the existing `Memories__Testing__UseFakeEmbedding=true` fixture path, and must keep Google/local tests green.
+5. **AC5 - Aspire/AppHost wiring remains local and opt-in.** AppHost or fixture changes may inject local test configuration for Ollama base URL, token endpoint, client id, scope, and DAPR secretstore entries only when an Ollama-specific test enables them. They must not hard-code real `llm.tache.ai` / `auth.tache.ai` as required runtime values, must not change default provider behavior, must not break the existing `Memories__Testing__UseFakeEmbedding=true` fixture path, and must keep Google/local tests green without real Google, Ollama, Keycloak, or gateway credentials.
 
 6. **AC6 - Operator guide documents the gateway contract.** `docs/operations/embedding-providers.md` documents the Ollama-native HTTP contract: `POST /api/embed`, request body `{model,input}`, response body `{embeddings:[[...]]}`, bearer JWT authentication, audience claim validation, JWKS validation expectations, and the fact that Ollama's default local API base is `/api` while the configured gateway base URL should be joined safely with `/api/embed`.
 
@@ -56,24 +58,26 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 10. **AC10 - Operator guide includes DAPR secretstore layout.** The guide documents local `secretstores.local.file` shape and production secret-store expectations for `memories-embedding-client-secret` or tenant-specific names. It must state that secret values are never stored in `TenantEmbeddingConfig`, never returned from configuration APIs, and never logged.
 
-11. **AC11 - Story 13.6 migration runbook is included.** The guide carries the actual migration command sequence from Story 13.6: dry-run, live tenant migration, resume after interruption, final verification, and rollback behavior. It includes expected human and JSON output shapes when available and explicitly says Path B coexistence/rollback is only available when retained previous-version indexes exist.
+11. **AC11 - Story 13.6 migration runbook is included.** The guide carries the actual committed migration command sequence from Story 13.6: dry-run, live tenant migration, resume after interruption, final verification, and rollback behavior. It includes expected human and JSON output shapes when available and explicitly says Path B coexistence/rollback is only available when retained previous-version indexes exist. If Story 13.6 is not `done` or its Dev Agent Record lacks committed command/output evidence, this AC is blocked; Story 13.7 must not invent migration commands.
 
 12. **AC12 - Developer documentation cross-references the operator guide.** `docs/dev/embedding-providers.md` is created or the closest existing developer-facing docs page is updated to link to the operator guide and summarize the provider decision matrix: Google api-key, Ollama OIDC, and Ollama local/no-auth. The developer doc must stay concise and point operators to `docs/operations/embedding-providers.md` for runbook detail.
 
 13. **AC13 - Existing provider behavior is not regressed.** Existing Google/fake embedding tests continue to pass. Existing `AspireIngestionPipelineFixture` consumers continue to boot without requiring the new Ollama fake unless the specific Ollama test enables it.
 
-14. **AC14 - Documentation examples are redacted and stable.** All docs examples use placeholders, fake tokens, or secret names. No real tenant IDs, real client secrets, bearer tokens, raw Google API keys, or host credentials are committed. Markdown links are relative and valid.
+14. **AC14 - Documentation examples are redacted and stable.** All docs examples use placeholders, fake tokens, or secret names. Acceptable placeholder style is `{TOKEN_ENDPOINT}`, `{CLIENT_ID}`, `{SECRET_NAME}`, `{AUDIENCE}`, `{JWKS_URL}`, `{HOSTNAME}`, or obviously fake values prefixed with `example-`. No real tenant IDs, real client secrets, bearer tokens, raw Google API keys, host credentials, or production hostnames are committed. Markdown links are relative and valid.
 
-15. **AC15 - Validation evidence is recorded.** The Dev Agent Record lists exact commands and outcomes for focused provider tests, the new Ollama end-to-end test or skipped reason, docs link checks when available, and `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
+15. **AC15 - Validation evidence is recorded.** The Dev Agent Record lists exact commands, filters, test names, and pass/fail/skip outcomes for focused provider tests, the new Ollama end-to-end test or skipped reason, docs link checks when available, and `dotnet build Hexalith.Memories.slnx` if the local SDK allows it. If an Aspire/Tier-3 test is environment-gated, the skip must state the missing prerequisite, and Tier-2 contract/fake tests must still run.
 
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Verify prerequisites and current surfaces (AC: #1-#15)
   - [ ] Confirm Stories 13.2, 13.3, 13.4, 13.5, and 13.6 are `done`; if any is not done, stop.
+  - [ ] Confirm each prerequisite with both the sprint-status entry and the story artifact `Status:` line. Treat `blocked` and partial merge evidence as a hard stop.
   - [ ] Read `src/Hexalith.Memories.AppHost/Program.cs`; preserve current DAPR sidecar, secretstore, fake embedding, Redis/FalkorDB, and MCP wiring.
   - [ ] Read `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs`; preserve process-wide env-var scoping, randomized DAPR app id / Redis volume, `Memories__Testing__UseFakeEmbedding=true`, and existing fixture startup behavior.
   - [ ] Read `tests/Hexalith.Memories.IntegrationTests/Fixtures/ScriptedHttpServer.cs`; reuse or extend it for Ollama/Keycloak fakes before adding another local HTTP server.
   - [ ] Read the committed Story 13.6 migration tool story and implementation record; copy actual command names and output fields into the runbook.
+  - [ ] Read the committed Story 13.3 and 13.6 implementation records for exact provider/model metadata field names before writing Redis assertions.
   - [ ] Inspect existing docs under `docs/operations/` and `docs/dev/` for tone, headings, and relative-link style.
 
 - [ ] Task 1 - Add provider-aware integration fixture support (AC: #1, #3, #4, #5, #13)
@@ -81,34 +85,41 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
   - [ ] Keep the existing `Memories__Testing__UseFakeEmbedding=true` path for tests that are not explicitly validating the real provider dispatch path.
   - [ ] For the Ollama mode, configure the server under test with the fake Ollama base URL, fake token endpoint, client id, scope, and DAPR secret name expected by the committed Story 13.4/13.5 config surface.
   - [ ] Store the fake OIDC `client_secret` in the local DAPR secretstore or test configuration exactly the way the committed `EmbeddingClient` resolves it; do not bypass production secret retrieval in an integration test.
+  - [ ] If existing seams cannot validate production secret retrieval without semantic changes to token provider, EmbeddingClient, tenant config, or AppHost defaults, stop and record a deferred architecture decision instead of expanding scope.
   - [ ] Reuse `EnvVarScope` for all process-wide overrides and dispose scopes on fixture initialization failure.
-  - [ ] Ensure the fake server captures requests for assertions without logging bearer tokens or secrets.
+  - [ ] Ensure the fake server captures sanitized request evidence for method, path, count, client identity where safe, and JSON/form shape without logging bearer tokens or secrets.
+  - [ ] Add a regression proving the default fake embedding path starts and runs without configuring Ollama/Keycloak fakes and without calling either fake endpoint.
 
 - [ ] Task 2 - Add Ollama and Keycloak HTTP fakes (AC: #2, #3, #4, #6)
   - [ ] Implement an Ollama-compatible fake endpoint for `POST /api/embed`.
+  - [ ] Fail the test if production code calls `/api/embeddings`, an OpenAI-compatible endpoint, the wrong HTTP method, or any path other than `/api/embed`.
   - [ ] Assert request JSON contains the configured `model` and `input`; do not require a specific property order.
-  - [ ] Return `{ "model": "<model>", "embeddings": [[...]] }` with exactly 2560 floats for `qwen3-embedding:4b`.
+  - [ ] Return `{ "model": "<model>", "embeddings": [[...]] }` with exactly 2560 floats for `qwen3-embedding:4b`, generated from a documented deterministic seed and asserted with an explicit tolerance.
   - [ ] Add failure hooks only if useful for existing retry tests; do not duplicate Story 13.3 unit-test coverage at integration level.
   - [ ] Implement a Keycloak token fake for the `client_credentials` grant. It should validate form encoding and return `access_token`, `expires_in`, and `token_type`.
+  - [ ] Reject missing `Content-Type`, missing `grant_type`, missing `client_id`, missing `client_secret`, and malformed form bodies in the token fake.
   - [ ] If a JWT is needed for gateway validation tests, mint a test JWT with `aud = llm.tache.ai` or the configured audience. Otherwise, a synthetic opaque bearer is enough when only the app's outbound header is under test.
 
 - [ ] Task 3 - Parameterize provider tests and add Ollama end-to-end coverage (AC: #1, #2, #3, #4, #13)
   - [ ] Identify the smallest existing embedding integration slice to parameterize without exploding Tier-3 runtime.
   - [ ] Add or update tests so Google still proves the existing fake/provider path.
   - [ ] Add `OllamaEmbeddingEndToEnd` or an equivalent focused test in `tests/Hexalith.Memories.IntegrationTests/`.
-  - [ ] Provision/configure an Ollama tenant through the committed tenant configuration API or actor path, not by writing actor state directly.
+  - [ ] Provision/configure an Ollama tenant through the committed tenant configuration API as the preferred acceptance path; use actor-level setup only for a separate focused helper test or if the committed API is unavailable and that blocker is recorded.
   - [ ] Ingest one content unit through the normal ingestion endpoint/workflow.
-  - [ ] Verify Redis semantic hash metadata includes target provider/model and 2560 dimensions using the committed field names from Stories 13.3/13.6.
+  - [ ] Verify Redis semantic hash metadata includes target provider/model, 2560 dimensions, tenant/config source where committed, and content-unit correlation key using the committed field names from Stories 13.3/13.6.
   - [ ] Verify hybrid search returns the memory unit. If semantic scoring is nondeterministic, include a syntactic canary token so the assertion cannot pass from stale data.
   - [ ] Assert the fake Ollama endpoint received at least one embed request and the fake token endpoint received the expected token request count.
 
 - [ ] Task 4 - Write `docs/operations/embedding-providers.md` (AC: #6-#11, #14)
   - [ ] Start with operator decision guidance: when to choose Google api-key, Ollama OIDC, or Ollama local/no-auth.
+  - [ ] Label local/no-auth Ollama as local development or trusted-network only; do not present it as acceptable for exposed production ingress.
+  - [ ] Split operator-owned infrastructure from repository-owned configuration and commands.
+  - [ ] Include observable checkpoints: gateway reachable, Keycloak client configured, tenant config written, migration completed or explicitly skipped, and verification complete.
   - [ ] Document the Ollama gateway contract using the committed `EmbeddingClient` behavior and the current official Ollama `/api/embed` shape.
   - [ ] Document Keycloak client_credentials setup with audience mapper guidance and token lifetime recommendations.
   - [ ] Add the `TenantEmbeddingConfig` field matrix, including required/optional fields and examples for each provider option.
   - [ ] Add DAPR secretstore examples for local file secretstore and production secret-manager equivalents. Keep values as placeholders.
-  - [ ] Add the Story 13.6 migration runbook: dry-run, live, resume, verify, rollback guardrails, and expected output.
+  - [ ] Add the Story 13.6 migration runbook from committed evidence only: dry-run, live, resume, verify, rollback guardrails, and expected output.
   - [ ] Add troubleshooting for common failures: wrong vector dimensions, missing audience, invalid client secret, missing DAPR secret, 401/403 after token refresh, hybrid search empty after migration, and accidental Path B rollback expectation.
 
 - [ ] Task 5 - Add developer-facing cross-reference (AC: #12, #14)
@@ -119,6 +130,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 - [ ] Task 6 - Validate and record completion (AC: #1-#15)
   - [ ] Run focused unit/Tier-2 tests for any new fake servers or fixture helpers.
   - [ ] Run the new Ollama end-to-end test when Docker/DAPR/Aspire prerequisites are available.
+  - [ ] If the Ollama end-to-end test is skipped, record the exact missing prerequisite and the Tier-2 tests that still ran.
   - [ ] Run existing Google/fake embedding integration tests touched by parameterization.
   - [ ] Run docs checks if the repo has one; otherwise manually verify relative links in the new docs.
   - [ ] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
@@ -169,13 +181,16 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 - Make provider mode an explicit fixture/test choice. Do not flip the global default fixture away from fake embeddings; many existing integration tests rely on deterministic low-cost startup.
 - Keep fake servers in-process and loopback-only. Avoid requiring containerized Keycloak/Ollama for routine CI unless explicitly placed in Tier-3/nightly.
+- Treat real external provider certification as out of scope. The acceptance proof is fake-first contract coverage plus optional operator guidance, not live `llm.tache.ai`, live Keycloak, or live Google certification.
 - If AppHost needs to consume fake URLs from environment variables, name them under a clear `Embedding__...` or existing config prefix and ensure they are optional. Production deployments should continue to bind values from environment/secrets.
 - Use `MemoriesJsonContext.Options` for JSON payloads where contract types are involved.
 - Use Shouldly and existing fixture naming conventions. Avoid raw `Assert.*`.
 - Preserve cancellation tokens and timeouts in new fixture startup paths. A fake server startup failure should tear down env-var scopes just like the existing fixture does.
 - Do not implement JWT validation inside Memories Server for the Ollama gateway. The gateway validates inbound bearer tokens; Memories Server is the client that obtains and sends them.
+- Do not invent gateway JWT audience/JWKS policy beyond the committed gateway expectations and sprint-change proposal. If the expected policy is unclear, record a deferred architecture decision.
 - For docs, distinguish the three bases clearly: tenant `BaseUrl` for the gateway/Ollama API, `OidcTokenEndpoint` for Keycloak, and DAPR `secretstore` for the client secret value.
 - Do not tell operators that changing provider/model/dimensions is a simple config edit. Link it to Story 13.6 migration and explain Path A downtime/resume semantics.
+- "Tiny prerequisite fallout" in possible source edits means compile/test adaptation only. No semantic changes to token acquisition, embedding dispatch, tenant config, actor behavior, or migration behavior are allowed without a story update.
 
 ### Security Requirements
 
@@ -190,6 +205,7 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 - Use xUnit + Shouldly and the existing integration fixture style.
 - Tier-2 fake tests should not require Docker, DAPR sidecars, Keycloak, or Ollama.
 - Tier-3 Aspire tests may require Docker/DAPR/Aspire and should remain in the `AspireIngestionPipeline` collection.
+- Keep Tier-2 contract/fake tests mandatory even when a Tier-3 Aspire test is environment-gated; silent skips do not satisfy the story.
 - Include a redaction test that scans captured logs and serialized docs/examples for sample raw secrets/tokens.
 - Include a dimension assertion that fails if Ollama vectors are 768 or any value other than 2560.
 - Include a provider/model assertion that preserves the colon in `qwen3-embedding:4b`.
@@ -237,6 +253,17 @@ so that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 The BMad persistent-facts glob found `Hexalith.Commons/_bmad-output/project-context.md` but no Memories-local `project-context.md`. Treat the Commons context as general Hexalith ecosystem guidance only. Repository-specific constraints in this story and in the Memories planning artifacts take precedence.
 
+## Party-Mode Review
+
+- **Date/time:** 2026-05-02T18:18:22+02:00
+- **Selected story key:** `13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide`
+- **Command/skill invocation used:** `/bmad-party-mode 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide; review;`
+- **Participating BMAD agents:** Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- **Findings summary:** The story is valuable as Epic 13's final proof-and-documentation pass, but the review found pre-dev ambiguity around the hard prerequisite gate, provider test matrix, fake-first runtime proof, deterministic vector contract, exact provider/model metadata assertions, Story 13.6 migration dependency, redaction evidence, Tier-2 versus Tier-3 boundaries, and local/no-auth adopter warnings.
+- **Changes applied:** Tightened the hard prerequisite to require both sprint-status and story-artifact `Status:` evidence; bounded the Google/Ollama provider test matrix; clarified the Ollama end-to-end path as fake-first and tenant-configuration-API driven; required `/api/embed` failure on wrong method/path; specified deterministic 2560-vector generation and tolerance expectations; added exact redaction forbidden substrings; added default fake-path negative assertions; split operator documentation into observable checkpoints and repository-owned versus operator-owned responsibilities; made Story 13.6 command/runbook evidence a blocking dependency; and narrowed "tiny prerequisite fallout" to compile/test adaptation only.
+- **Findings deferred:** Live external provider certification, provider capability redesign, gateway JWT/JWKS policy invention, production Kubernetes/cert-manager/GPU guidance, local/no-auth security posture beyond warning language, and migration UX changes beyond documenting committed Story 13.6 behavior remain out of scope or deferred to later product/architecture decisions.
+- **Final recommendation:** `ready-for-dev`
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -264,4 +291,5 @@ Codex GPT-5
 
 | Date       | Change                                                                                                                                                                                                                                   | Author |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Party-mode review completed; clarified prerequisite gating, finite provider test matrix, fake-first `/api/embed` and OIDC assertions, deterministic 2560-vector contract, redaction evidence, Tier-2/Tier-3 skip policy, Story 13.6 runbook dependency, and operator documentation checkpoints. | Codex |
 | 2026-05-02 | Story 13.7 context created: provider-parameterized integration coverage, Ollama/Keycloak fakes, Aspire fixture boundaries, operator deployment guide, provider config matrix, migration runbook handoff, and redaction constraints. | Codex |
