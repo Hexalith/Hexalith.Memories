@@ -28,6 +28,7 @@ public class EmbeddingClient
     private readonly ConcurrentDictionary<string, string> _apiKeyCache = new();
     private readonly DaprClient _daprClient;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IOidcTokenProvider? _oidcTokenProvider;
     private readonly bool _useFakeEmbedding;
 
     /// <summary>Initializes a new instance of the <see cref="EmbeddingClient"/> class.</summary>
@@ -35,10 +36,31 @@ public class EmbeddingClient
     /// <param name="daprClient">The DAPR client for secret retrieval.</param>
     /// <param name="configuration">The application configuration.</param>
     /// <param name="hostEnvironment">The current host environment.</param>
-    public EmbeddingClient(IHttpClientFactory httpClientFactory, DaprClient daprClient, IConfiguration configuration, IHostEnvironment hostEnvironment)
+    public EmbeddingClient(
+        IHttpClientFactory httpClientFactory,
+        DaprClient daprClient,
+        IConfiguration configuration,
+        IHostEnvironment hostEnvironment)
+        : this(httpClientFactory, daprClient, configuration, hostEnvironment, oidcTokenProvider: null)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="EmbeddingClient"/> class.</summary>
+    /// <param name="httpClientFactory">The HTTP client factory for creating HTTP clients.</param>
+    /// <param name="daprClient">The DAPR client for secret retrieval.</param>
+    /// <param name="configuration">The application configuration.</param>
+    /// <param name="hostEnvironment">The current host environment.</param>
+    /// <param name="oidcTokenProvider">The optional OIDC token provider used by Ollama client-credentials authentication.</param>
+    public EmbeddingClient(
+        IHttpClientFactory httpClientFactory,
+        DaprClient daprClient,
+        IConfiguration configuration,
+        IHostEnvironment hostEnvironment,
+        IOidcTokenProvider? oidcTokenProvider = null)
     {
         _httpClientFactory = httpClientFactory;
         _daprClient = daprClient;
+        _oidcTokenProvider = oidcTokenProvider;
         _useFakeEmbedding = configuration.GetValue<bool>(FakeEmbeddingConfigKey);
 
         if (_useFakeEmbedding && !hostEnvironment.IsDevelopment())
@@ -61,6 +83,7 @@ public class EmbeddingClient
             return;
         }
 
+        EnsureSupportedOllamaAuthMode(config, tenantId);
         _ = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
     }
 
@@ -81,9 +104,59 @@ public class EmbeddingClient
             return CreateDeterministicVector(text, config.Dimensions);
         }
 
+        if (IsGoogle(config.Provider))
+        {
+            return await GenerateGoogleAsync(text, tenantId, config, ct).ConfigureAwait(false);
+        }
+
+        if (IsOllama(config.Provider))
+        {
+            return await GenerateOllamaAsync(text, tenantId, config, ct).ConfigureAwait(false);
+        }
+
+        throw new ArgumentException(
+            $"Provider '{config.Provider}' is not supported. Supported providers: '{EmbeddingProviderDefaults.GoogleProviderName}', '{EmbeddingProviderDefaults.OllamaProviderName}'.",
+            nameof(config.Provider));
+    }
+
+    /// <summary>Parses a persisted embedding provider identifier using the first colon as separator.</summary>
+    /// <param name="embeddingProvider">The persisted embedding provider identifier.</param>
+    /// <returns>The parsed provider and model components.</returns>
+    /// <exception cref="ArgumentException">Thrown when the identifier is malformed or uses an unsupported provider.</exception>
+    internal static EmbeddingProviderIdentifier ParseEmbeddingProviderIdentifier(string embeddingProvider)
+    {
+        if (string.IsNullOrWhiteSpace(embeddingProvider))
+        {
+            throw CreateEmbeddingProviderIdentifierException(embeddingProvider);
+        }
+
+        int separatorIndex = embeddingProvider.IndexOf(':', StringComparison.Ordinal);
+        if (separatorIndex <= 0 || separatorIndex == embeddingProvider.Length - 1)
+        {
+            throw CreateEmbeddingProviderIdentifierException(embeddingProvider);
+        }
+
+        string provider = embeddingProvider[..separatorIndex].Trim();
+        string model = embeddingProvider[(separatorIndex + 1)..].Trim();
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(model) || (!IsGoogle(provider) && !IsOllama(provider)))
+        {
+            throw CreateEmbeddingProviderIdentifierException(embeddingProvider);
+        }
+
+        return new EmbeddingProviderIdentifier(provider.ToLowerInvariant(), model);
+    }
+
+    private static ArgumentException CreateEmbeddingProviderIdentifierException(string? embeddingProvider)
+        => new(
+            "EmbeddingProvider must use '{provider}:{model}' with a non-empty model and one of the supported providers: " +
+            $"'{EmbeddingProviderDefaults.GoogleProviderName}', '{EmbeddingProviderDefaults.OllamaProviderName}'.",
+            nameof(embeddingProvider));
+
+    private async Task<float[]> GenerateGoogleAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
+    {
         string apiKey = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
 
-        string endpointUrl = BuildEndpointUrl(config);
+        string endpointUrl = BuildGoogleEndpointUrl(config);
 
         string requestJson = JsonSerializer.Serialize(new
         {
@@ -97,28 +170,97 @@ public class EmbeddingClient
             output_dimensionality = config.Dimensions,
         });
 
-        using HttpResponseMessage response = await SendEmbeddingRequestAsync(endpointUrl, requestJson, apiKey, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, apiKey, ct).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             _apiKeyCache.TryRemove(config.ApiSecretKeyName, out _);
             string refreshedApiKey = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
-            using HttpResponseMessage retryResponse = await SendEmbeddingRequestAsync(endpointUrl, requestJson, refreshedApiKey, ct).ConfigureAwait(false);
-            return await HandleEmbeddingResponseAsync(retryResponse, tenantId, config.Dimensions, ct).ConfigureAwait(false);
+            using HttpResponseMessage retryResponse = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, refreshedApiKey, ct).ConfigureAwait(false);
+            return await HandleEmbeddingResponseAsync(
+                retryResponse,
+                tenantId,
+                config.Dimensions,
+                EmbeddingProviderDefaults.GoogleProviderName,
+                ct).ConfigureAwait(false);
         }
 
-        return await HandleEmbeddingResponseAsync(response, tenantId, config.Dimensions, ct).ConfigureAwait(false);
+        return await HandleEmbeddingResponseAsync(
+            response,
+            tenantId,
+            config.Dimensions,
+            EmbeddingProviderDefaults.GoogleProviderName,
+            ct).ConfigureAwait(false);
     }
 
-    private static string BuildEndpointUrl(TenantEmbeddingConfig config)
-        => config.Provider.ToLowerInvariant() switch
-        {
-            EmbeddingProviderDefaults.GoogleProviderName => $"https://generativelanguage.googleapis.com/v1beta/models/{config.Model}:embedContent",
-            _ => throw new ArgumentException(
-                $"Provider '{config.Provider}' is not supported in the MVP implementation.",
-                nameof(config.Provider)),
-        };
+    private async Task<float[]> GenerateOllamaAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
+    {
+        EnsureSupportedOllamaAuthMode(config, tenantId);
+        IOidcTokenProvider tokenProvider = _oidcTokenProvider
+            ?? throw new EmbeddingApiException("IOidcTokenProvider is required for Ollama OIDC client credentials authentication.", tenantId);
 
-    private async Task<HttpResponseMessage> SendEmbeddingRequestAsync(
+        string clientSecret = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
+        string accessToken = await tokenProvider
+            .GetAccessTokenAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
+            .ConfigureAwait(false);
+
+        string endpointUrl = BuildOllamaEndpointUrl(config);
+        string requestJson = JsonSerializer.Serialize(new
+        {
+            model = config.Model,
+            input = text,
+        });
+
+        using HttpResponseMessage response = await SendOllamaEmbeddingRequestAsync(endpointUrl, requestJson, accessToken, ct).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            string refreshedAccessToken = await tokenProvider
+                .InvalidateAndRefreshAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
+                .ConfigureAwait(false);
+            using HttpResponseMessage retryResponse = await SendOllamaEmbeddingRequestAsync(
+                endpointUrl,
+                requestJson,
+                refreshedAccessToken,
+                ct).ConfigureAwait(false);
+            return await HandleEmbeddingResponseAsync(
+                retryResponse,
+                tenantId,
+                config.Dimensions,
+                EmbeddingProviderDefaults.OllamaProviderName,
+                ct,
+                clientSecret,
+                accessToken,
+                refreshedAccessToken,
+                text).ConfigureAwait(false);
+        }
+
+        return await HandleEmbeddingResponseAsync(
+            response,
+            tenantId,
+            config.Dimensions,
+            EmbeddingProviderDefaults.OllamaProviderName,
+            ct,
+            clientSecret,
+            accessToken,
+            text).ConfigureAwait(false);
+    }
+
+    private static string BuildGoogleEndpointUrl(TenantEmbeddingConfig config)
+        => $"https://generativelanguage.googleapis.com/v1beta/models/{config.Model}:embedContent";
+
+    private static string BuildOllamaEndpointUrl(TenantEmbeddingConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(config.BaseUrl) ||
+            !Uri.TryCreate(config.BaseUrl.Trim(), UriKind.Absolute, out Uri? baseUri) ||
+            (baseUri.Scheme != Uri.UriSchemeHttp && baseUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException($"{nameof(config.BaseUrl)} must be an absolute HTTP or HTTPS URL.", nameof(config.BaseUrl));
+        }
+
+        string normalized = baseUri.ToString().TrimEnd('/') + "/";
+        return new Uri(new Uri(normalized, UriKind.Absolute), "api/embed").ToString();
+    }
+
+    private async Task<HttpResponseMessage> SendGoogleEmbeddingRequestAsync(
         string endpointUrl,
         string requestJson,
         string apiKey,
@@ -132,11 +274,27 @@ public class EmbeddingClient
         return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
     }
 
+    private async Task<HttpResponseMessage> SendOllamaEmbeddingRequestAsync(
+        string endpointUrl,
+        string requestJson,
+        string accessToken,
+        CancellationToken ct)
+    {
+        HttpClient httpClient = _httpClientFactory.CreateClient("EmbeddingClient");
+        using HttpRequestMessage request = new(HttpMethod.Post, endpointUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+        return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+    }
+
     private static async Task<float[]> HandleEmbeddingResponseAsync(
         HttpResponseMessage response,
         string tenantId,
         int expectedDimensions,
-        CancellationToken ct)
+        string provider,
+        CancellationToken ct,
+        params string?[] sensitiveValues)
     {
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -148,10 +306,12 @@ public class EmbeddingClient
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new EmbeddingApiException((int)response.StatusCode, responseBody, tenantId);
+            throw new EmbeddingApiException((int)response.StatusCode, RedactSensitiveValues(responseBody, sensitiveValues), tenantId);
         }
 
-        return ParseEmbeddingResponse(responseBody, tenantId, expectedDimensions);
+        return IsOllama(provider)
+            ? ParseOllamaEmbeddingResponse(responseBody, tenantId, expectedDimensions)
+            : ParseGoogleEmbeddingResponse(responseBody, tenantId, expectedDimensions);
     }
 
     /// <summary>Parses the <c>Retry-After</c> header per RFC 9110 §10.2.3 — either a delta-seconds value
@@ -200,14 +360,14 @@ public class EmbeddingClient
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             throw new EmbeddingApiException(
-                $"Failed to retrieve embedding API key from DAPR secret store '{SecretStoreName}'. " +
+                $"Failed to retrieve embedding credential secret from DAPR secret store '{SecretStoreName}'. " +
                 "Ensure the DAPR sidecar is running and deploy/dapr/components/secretstore.yaml is configured.",
                 tenantId,
                 ex);
         }
     }
 
-    private static float[] ParseEmbeddingResponse(string responseBody, string tenantId, int expectedDimensions)
+    private static float[] ParseGoogleEmbeddingResponse(string responseBody, string tenantId, int expectedDimensions)
     {
         try
         {
@@ -229,7 +389,7 @@ public class EmbeddingClient
             {
                 throw new EmbeddingApiException(
                     $"Expected {expectedDimensions} dimensions but received {values.Length}. " +
-                    "Google API may have returned truncated or malformed response.",
+                    "Embedding API may have returned a truncated or malformed response.",
                     tenantId);
             }
 
@@ -242,6 +402,96 @@ public class EmbeddingClient
                 tenantId,
                 ex);
         }
+    }
+
+    private static float[] ParseOllamaEmbeddingResponse(string responseBody, string tenantId, int expectedDimensions)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(responseBody);
+            if (!doc.RootElement.TryGetProperty("embeddings", out JsonElement embeddingsElement) ||
+                embeddingsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new EmbeddingApiException(
+                    "Malformed embedding API response: missing 'embeddings' array.",
+                    tenantId);
+            }
+
+            if (embeddingsElement.GetArrayLength() == 0)
+            {
+                throw new EmbeddingApiException(
+                    "Malformed embedding API response: 'embeddings' array is empty.",
+                    tenantId);
+            }
+
+            JsonElement firstEmbedding = embeddingsElement[0];
+            if (firstEmbedding.ValueKind != JsonValueKind.Array)
+            {
+                throw new EmbeddingApiException(
+                    "Malformed embedding API response: first 'embeddings' item must be an array.",
+                    tenantId);
+            }
+
+            float[] values = firstEmbedding.Deserialize<float[]>()
+                ?? throw new EmbeddingApiException(
+                    "Malformed embedding API response: first 'embeddings' item deserialized to null.",
+                    tenantId);
+
+            if (values.Length != expectedDimensions)
+            {
+                throw new EmbeddingApiException(
+                    $"Expected {expectedDimensions} dimensions but received {values.Length}. " +
+                    "Embedding API may have returned a truncated or malformed response.",
+                    tenantId);
+            }
+
+            return values;
+        }
+        catch (JsonException ex)
+        {
+            throw new EmbeddingApiException(
+                "Malformed embedding API response: invalid JSON or non-numeric vector values.",
+                tenantId,
+                ex);
+        }
+    }
+
+    private static bool IsGoogle(string provider)
+        => string.Equals(provider, EmbeddingProviderDefaults.GoogleProviderName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsOllama(string provider)
+        => string.Equals(provider, EmbeddingProviderDefaults.OllamaProviderName, StringComparison.OrdinalIgnoreCase);
+
+    private static void EnsureSupportedOllamaAuthMode(TenantEmbeddingConfig config, string tenantId)
+    {
+        if (!IsOllama(config.Provider))
+        {
+            return;
+        }
+
+        if (string.Equals(config.AuthMode, EmbeddingProviderDefaults.OidcClientCredentialsAuthMode, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        throw new EmbeddingApiException(
+            $"Ollama auth mode '{config.AuthMode}' is not supported by EmbeddingClient. " +
+            $"Use '{EmbeddingProviderDefaults.OidcClientCredentialsAuthMode}' until a provider-specific api-key contract is defined.",
+            tenantId);
+    }
+
+    private static string RedactSensitiveValues(string responseBody, params string?[] sensitiveValues)
+    {
+        string sanitized = responseBody;
+        foreach (string? sensitiveValue in sensitiveValues)
+        {
+            if (!string.IsNullOrEmpty(sensitiveValue))
+            {
+                sanitized = sanitized.Replace(sensitiveValue, "[redacted]", StringComparison.Ordinal);
+            }
+        }
+
+        return sanitized;
     }
 
     private static float[] CreateDeterministicVector(string text, int dimensions)
@@ -257,3 +507,8 @@ public class EmbeddingClient
         return vector;
     }
 }
+
+/// <summary>Parsed persisted embedding provider identifier.</summary>
+/// <param name="Provider">The embedding provider name.</param>
+/// <param name="Model">The provider-specific embedding model identifier.</param>
+internal sealed record EmbeddingProviderIdentifier(string Provider, string Model);
