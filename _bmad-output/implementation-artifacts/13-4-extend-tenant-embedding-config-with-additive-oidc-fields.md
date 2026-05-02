@@ -1,6 +1,6 @@
 # Story 13.4: Extend TenantEmbeddingConfig with Additive OIDC Fields
 
-Status: ready-for-dev
+Status: in-progress
 
 **Effort estimate:** ~0.75-1.0 working day. Breakdown:
 
