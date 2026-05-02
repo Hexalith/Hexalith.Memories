@@ -49,25 +49,25 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
 
 1. **AC1 - Additive config fields are exposed.** `TenantEmbeddingConfig` exposes `string? BaseUrl`, `string AuthMode = "api-key"`, `string? OidcTokenEndpoint`, `string? OidcClientId`, and `string? OidcScope` in addition to the existing fields.
 
-2. **AC2 - Historical JSON remains wire-compatible.** Existing serialized payloads that contain only `provider`, `model`, `dimensions`, `rateLimitPerMinute`, `apiSecretKeyName`, and `reindexRequired` deserialize successfully via `MemoriesJsonContext.Options`; the new nullable fields are `null` and `AuthMode` is `"api-key"`.
+2. **AC2 - Historical JSON remains wire-compatible.** Existing serialized payloads that contain only `provider`, `model`, `dimensions`, `rateLimitPerMinute`, `apiSecretKeyName`, and `reindexRequired` deserialize successfully via `MemoriesJsonContext.Options`; the new nullable fields are `null` and missing `AuthMode` defaults to `"api-key"`. Explicit `null`, empty, or whitespace `AuthMode` values are invalid during validation and must not be treated as legacy defaults.
 
 3. **AC3 - Source-generated JSON context remains valid.** `MemoriesJsonContext` continues to serialize and deserialize `TenantEmbeddingConfig` with camel-case property names and without reflection-only requirements. No new custom converter is introduced.
 
-4. **AC4 - Google validation remains behaviorally unchanged.** `EmbeddingProviderDefaults.Google()` and historical Google configs without the new fields still pass `Validate(...)`. Google does not require `BaseUrl`, `OidcTokenEndpoint`, `OidcClientId`, or `OidcScope`.
+4. **AC4 - Google validation remains behaviorally unchanged.** `EmbeddingProviderDefaults.Google()` and historical Google configs without the new fields still pass `Validate(...)`. Google does not require `BaseUrl`, `OidcTokenEndpoint`, `OidcClientId`, or `OidcScope`; populated OIDC metadata on non-Ollama providers is configuration metadata only in this story and must not enable token acquisition or dispatch behavior.
 
 5. **AC5 - Ollama defaults include OIDC-ready metadata.** `EmbeddingProviderDefaults.Ollama()` populates `BaseUrl = "https://llm.tache.ai"`, `AuthMode = "oidc-client-credentials"`, `OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token"`, `OidcClientId = "memories-embedding"`, and `OidcScope = "openid"` in addition to the Story 13.1 defaults.
 
-6. **AC6 - OIDC mode validates required fields.** When `AuthMode = "oidc-client-credentials"`, validation requires non-empty `BaseUrl`, `OidcTokenEndpoint`, and `OidcClientId`; failures throw `ArgumentException` and the message names the missing field. `OidcScope` is optional.
+6. **AC6 - OIDC mode validates required fields.** When `AuthMode = "oidc-client-credentials"`, validation requires non-empty `BaseUrl`, `OidcTokenEndpoint`, and `OidcClientId`; failures throw `ArgumentException` and the message names the missing field. `OidcScope` is optional, and `ApiSecretKeyName` remains the existing secret-name reference that identifies the DAPR secret containing the client secret.
 
 7. **AC7 - Ollama API-key mode still needs a target URL.** When `Provider = "ollama"` and `AuthMode = "api-key"`, validation requires non-empty `BaseUrl`. This covers local-no-auth or upstream-API-key gateway deployments without guessing their auth header behavior.
 
-8. **AC8 - Auth mode values are pinned.** The supported values are exactly `"api-key"` and `"oidc-client-credentials"` with ordinal-ignore-case comparison. Unsupported values throw `ArgumentException` whose message lists both supported values. Do not use the stale camelCase planning spelling `oidcClientCredentials` as the canonical value.
+8. **AC8 - Auth mode values are pinned.** The supported values are exactly `"api-key"` and `"oidc-client-credentials"` with ordinal-ignore-case comparison and no trimming. Unsupported values, including `null`, empty, whitespace-only, whitespace-wrapped supported values, `api_key`, `api key`, and stale camelCase `oidcClientCredentials`, throw `ArgumentException` whose message lists both supported values.
 
 9. **AC9 - URL fields are validated as absolute HTTP(S) URLs.** Non-empty `BaseUrl` and `OidcTokenEndpoint` must parse as absolute `http` or `https` URLs. `http://localhost` is allowed for local gateway tests; relative paths and non-HTTP schemes are rejected.
 
 10. **AC10 - Secret semantics are documented.** The XML doc for `ApiSecretKeyName` explicitly states that in OIDC mode the secret value is the OIDC `client_secret`; it is still only a secret name/reference and remains safe to expose through configuration responses.
 
-11. **AC11 - Breaking-change detection includes Ollama BaseUrl.** `GetBreakingChangeFields(current, proposed)` still reports `provider`, `model`, and `dimensions` exactly as before. If both configs are Ollama and `BaseUrl` changes ignoring case/trailing slash normalization, it also reports `baseUrl`. Auth mode, token endpoint, client ID, and scope changes do not require vector reindexing by themselves.
+11. **AC11 - Breaking-change detection includes Ollama BaseUrl.** `GetBreakingChangeFields(current, proposed)` still reports `provider`, `model`, and `dimensions` exactly as before. If both configs are Ollama and `BaseUrl` changes after simple string normalization (trim whitespace, trim trailing `/`, and compare the resulting string with `StringComparison.OrdinalIgnoreCase`), it also reports `baseUrl`. Do not use `Uri` canonicalization, DNS resolution, network calls, or path rewriting. Auth mode, token endpoint, client ID, secret key name, and scope changes do not require vector reindexing by themselves.
 
 12. **AC12 - Sibling story scopes remain untouched.** This story does not implement `IOidcTokenProvider`, does not modify `EmbeddingClient`, does not change `TenantConfigurationActor` storage behavior beyond accepting the expanded record, does not add migration tooling, and does not add AppHost/docs/integration-test wiring.
 
@@ -84,6 +84,7 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
   - [ ] Add `BaseUrl`, `AuthMode`, `OidcTokenEndpoint`, `OidcClientId`, and `OidcScope` to `TenantEmbeddingConfig`.
   - [ ] Do not mark the new fields `required`; historical JSON must not fail deserialization.
   - [ ] Initialize `AuthMode` to `"api-key"` on the property so constructor/default deserialization behavior is stable.
+  - [ ] Add validation coverage proving missing `AuthMode` defaults to `"api-key"` while explicit `null`, empty, whitespace-only, and whitespace-wrapped values fail validation.
   - [ ] Keep the existing properties and JSON names unchanged.
   - [ ] Update XML docs, especially `ApiSecretKeyName`, to cover both API-key and OIDC `client_secret` semantics.
   - [ ] Do not add a custom `JsonConverter`; the current `MemoriesJsonContext` source-generation registration should remain enough.
@@ -96,8 +97,9 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
   - [ ] Validate `BaseUrl` only when provider/auth mode requires it, and validate it as an absolute `http` or `https` URL.
   - [ ] Validate `OidcTokenEndpoint` as an absolute `http` or `https` URL when `AuthMode = "oidc-client-credentials"`.
   - [ ] Require `OidcClientId` for OIDC mode; leave `OidcScope` optional.
+  - [ ] Do not require or interpret OIDC metadata when `AuthMode = "api-key"` or when validating historical Google configs; this story stores metadata only and does not implement authentication behavior.
   - [ ] Preserve `ApiSecretKeyNamePattern()` validation for all auth modes.
-  - [ ] Extend `GetBreakingChangeFields(...)` to add `baseUrl` only for changed Ollama-to-Ollama base URLs after simple normalization (trim trailing slash and compare case-insensitively).
+  - [ ] Extend `GetBreakingChangeFields(...)` to add `baseUrl` only for changed Ollama-to-Ollama base URLs after simple normalization (trim whitespace, trim trailing slash, and compare case-insensitively) without broader URI canonicalization.
 
 - [ ] Task 3 - Add focused tests (AC: #1-#11)
   - [ ] Add `RoundTrip_OllamaOidcFields_ShouldPreserveAllValues` to `TenantEmbeddingConfigSerializationTests`.
@@ -105,10 +107,11 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
   - [ ] Extend `PropertyNames_ShouldBeCamelCase` assertions to include `baseUrl`, `authMode`, `oidcTokenEndpoint`, `oidcClientId`, and `oidcScope`.
   - [ ] Add `Ollama_ShouldReturnOidcReadyDefaults` or extend the existing 13.1 defaults test to assert the new fields.
   - [ ] Add validation tests for missing `BaseUrl`, missing `OidcTokenEndpoint`, missing `OidcClientId`, unsupported `AuthMode`, relative URL rejection, and `http://localhost` acceptance.
+  - [ ] Add per-field URL tests covering `http`, `https`, `localhost`, `127.0.0.1`, relative paths, scheme-less values, malformed values, and non-HTTP schemes for every URL field that is validated in this story.
   - [ ] Add `Validate_GoogleLegacyConfigWithoutOidcFields_ShouldNotThrow`.
   - [ ] Add `GetBreakingChangeFields_OllamaBaseUrlChanged_ShouldIncludeBaseUrl`.
-  - [ ] Add `GetBreakingChangeFields_OidcMetadataChanged_ShouldNotRequireReindex`.
-  - [ ] Add or update a configuration-view serialization test to assert `apiSecretKeyName` remains visible as a secret-name reference and no `client_secret` value is introduced.
+  - [ ] Add `GetBreakingChangeFields_OidcMetadataChanged_ShouldNotRequireReindex`, covering auth mode, token endpoint, client ID, secret key name, and scope changes.
+  - [ ] Add or update a configuration-view serialization test that inspects raw JSON and asserts `apiSecretKeyName` remains visible as a secret-name reference while `client_secret`, `clientSecret`, and resolved secret values are absent.
 
 - [ ] Task 4 - Validate and record completion (AC: #3, #12)
   - [ ] Run focused contract tests for `TenantEmbeddingConfigSerializationTests`.
@@ -160,6 +163,7 @@ so that Ollama tenants can carry the configuration required by the self-hosted K
 - Do not accept `oidcClientCredentials` as an alias unless a product decision is recorded. The rest of Epic 13 has standardized on `oidc-client-credentials`.
 - Leave `OidcScope` as a string. Do not parse scopes or enforce `openid`; some Keycloak clients may not require it.
 - Do not hide `ApiSecretKeyName` from configuration responses. It is still the secret-name reference operators need to troubleshoot, not the secret value.
+- Treat mixed-mode configuration predictably: OIDC metadata may be present on stored config, but this story only validates and acts on it when `AuthMode = "oidc-client-credentials"`. Authentication behavior remains owned by Stories 13.2 and 13.3.
 
 ### Security Requirements
 
@@ -231,8 +235,20 @@ Codex GPT-5
 - `_bmad-output/implementation-artifacts/13-4-extend-tenant-embedding-config-with-additive-oidc-fields.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+## Party-Mode Review
+
+- **Date/time:** 2026-05-02T10:04:31Z
+- **Selected story key:** `13-4-extend-tenant-embedding-config-with-additive-oidc-fields`
+- **Command/skill invocation used:** `/bmad-party-mode 13-4-extend-tenant-embedding-config-with-additive-oidc-fields; review;`
+- **Participating BMAD agents:** Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- **Findings summary:** Story scope is sound, but the review found pre-dev ambiguity around legacy `AuthMode` defaults versus invalid explicit values, conditional OIDC validation boundaries, mixed-mode metadata behavior, per-field URL validation, secret-name exposure assertions, and simple `BaseUrl` comparison semantics for reindex detection.
+- **Changes applied:** Tightened AC2, AC4, AC6, AC8, AC11, Task 1, Task 2, Task 3, and Implementation Guidance to pin missing-versus-invalid `AuthMode`, avoid accidental OIDC behavior in API-key or Google validation paths, require raw JSON secret non-exposure checks, expand URL/auth-mode/reindex negative tests, and clarify simple `BaseUrl` string normalization.
+- **Findings deferred:** Generic OAuth2-versus-OIDC model expansion, token acquisition behavior, EmbeddingClient dispatch, TenantConfigurationActor API/storage behavior beyond compile compatibility, AppHost/docs/operator wiring, migration tooling, and any broader provider registry abstraction remain out of scope for Stories 13.2, 13.3, 13.5, 13.6, or 13.7.
+- **Final recommendation:** ready-for-dev
+
 ### Change Log
 
 | Date       | Change                                                                                                                                                                                                                                                         | Author |
 |------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-02 | Party-mode review completed; clarified `AuthMode` invalid-value handling, conditional OIDC validation boundaries, raw secret non-exposure tests, URL/reindex edge cases, and mixed-mode metadata scope while preserving Story 13.4 boundaries. | Codex |
 | 2026-05-01 | Story 13.4 context created: additive `TenantEmbeddingConfig` fields, legacy JSON compatibility, OIDC/URL validation, Ollama default metadata, `ApiSecretKeyName` client-secret semantics, `BaseUrl` reindex detection, tests, and sibling-story boundaries. | Codex |
