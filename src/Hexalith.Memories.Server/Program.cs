@@ -106,6 +106,17 @@ builder.Services.AddHttpClient("EmbeddingClient", client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddSingleton<EmbeddingClient>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddHttpClient(OidcTokenProvider.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddSingleton<OidcTokenProvider>(sp =>
+    new OidcTokenProvider(
+        sp.GetRequiredService<IHttpClientFactory>().CreateClient(OidcTokenProvider.HttpClientName),
+        sp.GetRequiredService<TimeProvider>(),
+        sp.GetRequiredService<ILogger<OidcTokenProvider>>()));
+builder.Services.AddSingleton<IOidcTokenProvider>(sp => sp.GetRequiredService<OidcTokenProvider>());
 
 // Story 6.1: URL and directory ingestion — settings, named HttpClient, and services.
 builder.Services.Configure<IngestionSettings>(builder.Configuration.GetSection("Ingestion"));
@@ -205,7 +216,6 @@ builder.Services.AddSingleton<TelemetrySummaryService>();
 builder.Services.AddSingleton<TelemetrySnapshotCache>();
 
 // Story 9.3 — handler registry + mismatch detector (scoped, mirror TelemetrySummaryService lifetime).
-builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<Hexalith.Memories.Server.Handlers.ProcessLifetimeClock>();
 builder.Services.AddScoped<Hexalith.Memories.Server.Handlers.HandlerRegistryService>();
 builder.Services.AddScoped<Hexalith.Memories.Server.Handlers.HandlerMismatchDetector>();
