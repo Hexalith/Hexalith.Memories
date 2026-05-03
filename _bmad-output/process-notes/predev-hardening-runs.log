@@ -32,3 +32,4 @@
 2026-05-03T11:26:06Z	create-story	14-3-oidc-and-embedding-security-hardening	ok	created Story 14.3 context; preflight soft warning stdout:  M Hexalith.EventStore
 2026-05-03T11:29:24Z	failed	-	failed	hard preflight failure; json=_bmad-output/process-notes/predev-preflight-latest.json; timestamp=2026-05-03T11:28:57Z; failed check working tree cleanliness details="3 dirty path(s)" stdout=" M _bmad-output/implementation-artifacts/sprint-status.yaml\n M _bmad-output/process-notes/predev-hardening-runs.log\n?? _bmad-output/implementation-artifacts/14-3-oidc-and-embedding-security-hardening.md\n"
 2026-05-03T13:35:49+02:00	create-story	14-4-migration-and-integration-test-hardening	ok	created Story 14.4 context and promoted it to ready-for-dev
+2026-05-03T13:56:32+02:00	create-story	14-5-deferred-register-governance-and-sprint-status-hygiene	ok	created Story 14.5 context and promoted it to ready-for-dev
