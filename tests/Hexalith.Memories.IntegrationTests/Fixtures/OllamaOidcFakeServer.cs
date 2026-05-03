@@ -31,20 +31,18 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
     /// <summary>The committed default DAPR secret-name reference.</summary>
     public const string SecretName = "memories-embedding-client-secret";
 
-    private const string AccessToken = "example-bearer-token";
+    /// <summary>The deterministic bearer-token literal returned by the fake token endpoint.</summary>
+    /// <remarks>Internal so redaction tests can assert the exact value never leaks into logs.</remarks>
+    internal const string AccessToken = "example-bearer-token";
 
-    private readonly ScriptedHttpServer _server;
     private readonly string _clientSecret;
     private readonly object _gate = new();
     private readonly List<FakeHttpRequestEvidence> _requestEvidence = [];
+    private ScriptedHttpServer _server = null!;
     private int _embedRequestCount;
     private int _tokenRequestCount;
 
-    private OllamaOidcFakeServer(ScriptedHttpServer server, string clientSecret)
-    {
-        _server = server;
-        _clientSecret = clientSecret;
-    }
+    private OllamaOidcFakeServer(string clientSecret) => _clientSecret = clientSecret;
 
     /// <summary>Gets the fake Ollama gateway base URL.</summary>
     public Uri OllamaBaseUrl => _server.BaseAddress;
@@ -77,11 +75,13 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clientSecret);
 
-        OllamaOidcFakeServer? fake = null;
+        // Construct the instance first so the dispatcher closure cannot dereference null
+        // if ScriptedHttpServer accepts a request before the assignment completes.
+        OllamaOidcFakeServer fake = new(clientSecret);
         ScriptedHttpServer server = await ScriptedHttpServer
-            .StartAsync((request, cancellationToken) => fake!.HandleAsync(request, cancellationToken))
+            .StartAsync(fake.HandleAsync)
             .ConfigureAwait(false);
-        fake = new OllamaOidcFakeServer(server, clientSecret);
+        fake._server = server;
         return fake;
     }
 
@@ -149,18 +149,38 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
         }
 
         IFormCollection form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-        if (form["grant_type"] != "client_credentials" ||
-            form["client_id"] != ClientId ||
-            form["client_secret"] != _clientSecret ||
-            (form.TryGetValue("scope", out Microsoft.Extensions.Primitives.StringValues scope) && scope != Scope))
+        if (!TryReadSingle(form, "grant_type", out string? grantType) ||
+            !TryReadSingle(form, "client_id", out string? clientId) ||
+            !TryReadSingle(form, "client_secret", out string? clientSecret))
+        {
+            return ScriptedHttpResponse.Text(
+                "Token endpoint requires exactly one value each for grant_type, client_id, and client_secret.",
+                HttpStatusCode.BadRequest);
+        }
+
+        if (!string.Equals(grantType, "client_credentials", StringComparison.Ordinal) ||
+            !string.Equals(clientId, ClientId, StringComparison.Ordinal) ||
+            !string.Equals(clientSecret, _clientSecret, StringComparison.Ordinal))
         {
             return ScriptedHttpResponse.Text("Malformed client credentials request.", HttpStatusCode.BadRequest);
+        }
+
+        // Scope is optional per RFC 6749 §4.4.2; reject only when present and wrong, but require single-value form.
+        if (form.ContainsKey("scope"))
+        {
+            if (!TryReadSingle(form, "scope", out string? scopeValue) ||
+                !string.Equals(scopeValue, Scope, StringComparison.Ordinal))
+            {
+                return ScriptedHttpResponse.Text(
+                    $"Token endpoint scope must be exactly '{Scope}' when supplied.",
+                    HttpStatusCode.BadRequest);
+            }
         }
 
         AddEvidence(new FakeHttpRequestEvidence(
             request.Method,
             request.Path.Value ?? string.Empty,
-            ClientId: form["client_id"].ToString(),
+            ClientId: clientId,
             HasClientSecret: true));
         _ = Interlocked.Increment(ref _tokenRequestCount);
 
@@ -181,33 +201,67 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
             return ScriptedHttpResponse.Text("Ollama embed endpoint requires bearer authorization.", HttpStatusCode.Unauthorized);
         }
 
-        using JsonDocument doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (!doc.RootElement.TryGetProperty("model", out JsonElement modelElement) ||
-            !doc.RootElement.TryGetProperty("input", out JsonElement inputElement))
+        JsonDocument doc;
+        try
         {
-            return ScriptedHttpResponse.Text("Ollama embed request requires model and input.", HttpStatusCode.BadRequest);
+            doc = await JsonDocument.ParseAsync(request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (JsonException)
+        {
+            return ScriptedHttpResponse.Text("Ollama embed request body must be valid JSON.", HttpStatusCode.BadRequest);
         }
 
-        string? model = modelElement.GetString();
-        string? input = inputElement.GetString();
-        if (!string.Equals(model, DefaultModel, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(input))
+        using (doc)
         {
-            return ScriptedHttpResponse.Text("Ollama embed request has invalid model or input.", HttpStatusCode.BadRequest);
-        }
+            if (!doc.RootElement.TryGetProperty("model", out JsonElement modelElement) ||
+                !doc.RootElement.TryGetProperty("input", out JsonElement inputElement) ||
+                modelElement.ValueKind != JsonValueKind.String ||
+                inputElement.ValueKind != JsonValueKind.String)
+            {
+                return ScriptedHttpResponse.Text(
+                    "Ollama embed request requires string model and input properties.",
+                    HttpStatusCode.BadRequest);
+            }
 
-        float[] vector = CreateDeterministicVector(model!, input, OllamaDimensions);
+            string model = modelElement.GetString()!;
+            string input = inputElement.GetString()!;
+            if (!string.Equals(model, DefaultModel, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(input))
+            {
+                return ScriptedHttpResponse.Text("Ollama embed request has invalid model or input.", HttpStatusCode.BadRequest);
+            }
+
+            return BuildEmbedResponse(model, input, request.Method, request.Path.Value);
+        }
+    }
+
+    private ScriptedHttpResponse BuildEmbedResponse(string model, string input, string method, string? path)
+    {
+        float[] vector = CreateDeterministicVector(model, input, OllamaDimensions);
         string values = string.Join(
             ",",
             vector.Select(value => value.ToString("R", CultureInfo.InvariantCulture)));
 
         AddEvidence(new FakeHttpRequestEvidence(
-            request.Method,
-            request.Path.Value ?? string.Empty,
+            method,
+            path ?? string.Empty,
             Model: model,
             HasBearerToken: true));
         _ = Interlocked.Increment(ref _embedRequestCount);
 
         return Json($$"""{"model":"{{DefaultModel}}","embeddings":[[{{values}}]]}""");
+    }
+
+    private static bool TryReadSingle(IFormCollection form, string key, out string? value)
+    {
+        Microsoft.Extensions.Primitives.StringValues raw = form[key];
+        if (raw.Count != 1)
+        {
+            value = null;
+            return false;
+        }
+
+        value = raw[0];
+        return value is not null;
     }
 
     private void AddEvidence(FakeHttpRequestEvidence evidence)

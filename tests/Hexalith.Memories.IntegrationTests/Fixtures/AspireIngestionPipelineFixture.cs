@@ -292,14 +292,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string id = tenantId ?? $"tenant-it-{Guid.NewGuid():N}";
         string name = displayName ?? $"Tenant {id}";
 
+        TenantProvisioningInput payload = new(id, name);
+        if (vectorDimensions is { } dimensions)
+        {
+            payload = payload with { VectorDimensions = dimensions };
+        }
+
         using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
             "/api/tenants",
-            new
-            {
-                tenantId = id,
-                displayName = name,
-                vectorDimensions = vectorDimensions ?? 768,
-            },
+            payload,
+            MemoriesJsonContext.Options,
             cancellationToken).ConfigureAwait(false);
 
         // 202 Accepted on fresh provision; 409 Conflict when the caller passed a pre-existing id —
@@ -397,16 +399,21 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             return;
         }
 
-        _secretsFilePath = Path.Combine(ResolveRepositoryRoot(), "secrets.json");
-        _secretsFileExisted = File.Exists(_secretsFilePath);
-        _originalSecretsFileContent = _secretsFileExisted
-            ? File.ReadAllText(_secretsFilePath)
-            : null;
+        // Snapshot existence and content BEFORE storing the path so a read failure cannot cause
+        // RestoreLocalDaprSecret to delete a pre-existing user secrets.json (data loss).
+        string secretsPath = Path.Combine(ResolveRepositoryRoot(), "secrets.json");
+        bool existed = File.Exists(secretsPath);
+        string? originalContent = existed ? File.ReadAllText(secretsPath) : null;
 
         JsonObject root;
-        if (_secretsFileExisted && !string.IsNullOrWhiteSpace(_originalSecretsFileContent))
+        if (existed && !string.IsNullOrWhiteSpace(originalContent))
         {
-            root = JsonNode.Parse(_originalSecretsFileContent)?.AsObject() ?? [];
+            JsonNode? parsed = JsonNode.Parse(originalContent);
+            // JsonNode.AsObject() throws when the root is an array or primitive; cast as JsonObject
+            // and surface a clear error so we never silently overwrite a non-object secrets file.
+            root = parsed as JsonObject
+                ?? throw new InvalidOperationException(
+                    $"'{secretsPath}' must be a JSON object at its root for DAPR local secret-store; found {parsed?.GetType().Name ?? "null"}.");
         }
         else
         {
@@ -414,8 +421,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         root[_embeddingProviderSecret.Name] = _embeddingProviderSecret.Value;
+
+        _secretsFilePath = secretsPath;
+        _secretsFileExisted = existed;
+        _originalSecretsFileContent = originalContent;
         File.WriteAllText(
-            _secretsFilePath,
+            secretsPath,
             root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
     }
 
@@ -488,16 +499,23 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     private static string ResolveRepositoryRoot()
     {
+        const string Marker = "Hexalith.Memories.slnx";
         string currentDirectory = Directory.GetCurrentDirectory();
-        if (File.Exists(Path.Combine(currentDirectory, "Hexalith.Memories.slnx")))
+        if (File.Exists(Path.Combine(currentDirectory, Marker)))
         {
             return currentDirectory;
         }
 
         string candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        return File.Exists(Path.Combine(candidate, "Hexalith.Memories.slnx"))
-            ? candidate
-            : currentDirectory;
+        if (File.Exists(Path.Combine(candidate, Marker)))
+        {
+            return candidate;
+        }
+
+        // Failing closed prevents writing/restoring secrets.json in an arbitrary working directory.
+        throw new InvalidOperationException(
+            $"Could not locate '{Marker}' from CWD '{currentDirectory}' or candidate '{candidate}'. " +
+            "Run integration tests from the repository root or set the test working directory accordingly.");
     }
 
     private async Task StartTopologyAsync(CancellationToken cancellationToken)

@@ -30,10 +30,22 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _fakeServer = await OllamaOidcFakeServer.StartAsync(_clientSecret);
-        _fixture = new AspireIngestionPipelineFixture(
-            EmbeddingProviderTestMode.OllamaOidcFake,
-            new EmbeddingProviderSecret(OllamaOidcFakeServer.SecretName, _clientSecret));
-        await _fixture.InitializeAsync();
+        try
+        {
+            _fixture = new AspireIngestionPipelineFixture(
+                EmbeddingProviderTestMode.OllamaOidcFake,
+                new EmbeddingProviderSecret(OllamaOidcFakeServer.SecretName, _clientSecret));
+            await _fixture.InitializeAsync();
+        }
+        catch
+        {
+            // xUnit does not call DisposeAsync after InitializeAsync throws, so the Kestrel
+            // listener inside _fakeServer would leak its loopback port until process exit.
+            await _fakeServer.DisposeAsync();
+            _fakeServer = null;
+            _fixture = null;
+            throw;
+        }
     }
 
     public async Task DisposeAsync()
@@ -89,7 +101,6 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             MemoriesJsonContext.Options))!;
         accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
         (string semanticKey, string memoryUnitId) = await WaitForSemanticHashAsync(
-            fixture,
             fakeServer,
             tenantId,
             caseId,
@@ -115,9 +126,13 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         fakeServer.TokenRequestCount.ShouldBeGreaterThanOrEqualTo(1);
         fakeServer.EmbedRequestCount.ShouldBeGreaterThanOrEqualTo(2);
         string logs = string.Join(Environment.NewLine, fixture.GetLogEntriesSince(0).Select(entry => entry.Message));
+        // Assert the actual secret/token literals never appear, plus the form-encoded leak shape.
+        // The fake mints a deterministic opaque token, so a 'Bearer eyJ' (JWT prefix) substring
+        // would never match — exercise the actual token value instead.
         logs.ShouldNotContain(_clientSecret);
-        logs.ShouldNotContain("client_" + "secret=");
-        logs.ShouldNotContain("Bearer " + "eyJ");
+        logs.ShouldNotContain($"client_secret={_clientSecret}");
+        logs.ShouldNotContain(OllamaOidcFakeServer.AccessToken);
+        logs.ShouldNotContain($"Bearer {OllamaOidcFakeServer.AccessToken}");
     }
 
     private static async Task ConfigureOllamaTenantAsync(
@@ -175,17 +190,18 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         }
     }
 
-    private static async Task<(string SemanticKey, string MemoryUnitId)> WaitForSemanticHashAsync(
-        AspireIngestionPipelineFixture fixture,
+    private async Task<(string SemanticKey, string MemoryUnitId)> WaitForSemanticHashAsync(
         OllamaOidcFakeServer fakeServer,
         string tenantId,
         string caseId,
         string instanceId)
     {
+        AspireIngestionPipelineFixture fixture = _fixture!;
         DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(3);
         IServer redisServer = fixture.RedisConnection.GetServer(fixture.RedisConnection.GetEndPoints().Single());
         IDatabase db = fixture.RedisConnection.GetDatabase();
         string lastWorkflowPayload = string.Empty;
+        WorkflowTerminalStatus terminalStatus = WorkflowTerminalStatus.NotReached;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -211,7 +227,8 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             if (workflowResponse.StatusCode == HttpStatusCode.OK)
             {
                 lastWorkflowPayload = await workflowResponse.Content.ReadAsStringAsync();
-                if (WorkflowReachedTerminalStatus(lastWorkflowPayload))
+                terminalStatus = WorkflowReachedTerminalStatus(lastWorkflowPayload);
+                if (terminalStatus != WorkflowTerminalStatus.NotReached)
                 {
                     break;
                 }
@@ -224,39 +241,100 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             ", ",
             redisServer.Keys(pattern: $"{tenantId}:*").Select(key => key.ToString()).Order(StringComparer.Ordinal));
         string logs = string.Join(Environment.NewLine, fixture.GetLogEntriesSince(0).TakeLast(40).Select(entry => entry.Message));
-        throw new TimeoutException(
-            $"Ollama semantic hash for tenant '{tenantId}' and case '{caseId}' was not written. " +
+        string redactedPayload = Redact(lastWorkflowPayload);
+        string redactedLogs = Redact(logs);
+        string detail =
+            $"tenant '{tenantId}' case '{caseId}'. " +
             $"TokenRequests={fakeServer.TokenRequestCount}, EmbedRequests={fakeServer.EmbedRequestCount}. " +
-            $"Redis keys: {allTenantKeys}. Last workflow payload: {lastWorkflowPayload}. Recent logs: {logs}");
+            $"Redis keys: {allTenantKeys}. Last workflow payload: {redactedPayload}. Recent logs: {redactedLogs}";
+
+        throw terminalStatus switch
+        {
+            WorkflowTerminalStatus.Failed => new InvalidOperationException(
+                $"Ollama ingestion workflow reached terminal Failed before semantic hash was written for {detail}"),
+            WorkflowTerminalStatus.Completed => new InvalidOperationException(
+                $"Ollama ingestion workflow reported Completed but no Ollama semantic hash was written for {detail}"),
+            _ => new TimeoutException(
+                $"Ollama semantic hash was not written within wait budget for {detail}"),
+        };
     }
 
-    private static bool WorkflowReachedTerminalStatus(string payload)
+    private string Redact(string text)
     {
-        using JsonDocument document = JsonDocument.Parse(payload);
-        if (document.RootElement.TryGetProperty("runtimeStatus", out JsonElement runtimeStatus))
+        if (string.IsNullOrEmpty(text))
         {
-            if (runtimeStatus.ValueKind == JsonValueKind.String &&
-                (string.Equals(runtimeStatus.GetString(), "Failed", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(runtimeStatus.GetString(), "Completed", StringComparison.OrdinalIgnoreCase)))
+            return text;
+        }
+
+        return text
+            .Replace(_clientSecret, "[REDACTED_SECRET]", StringComparison.Ordinal)
+            .Replace(OllamaOidcFakeServer.AccessToken, "[REDACTED_TOKEN]", StringComparison.Ordinal);
+    }
+
+    private static WorkflowTerminalStatus WorkflowReachedTerminalStatus(string payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return WorkflowTerminalStatus.NotReached;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(payload);
+        }
+        catch (JsonException)
+        {
+            // A non-JSON status body is not a terminal signal — keep polling.
+            return WorkflowTerminalStatus.NotReached;
+        }
+
+        using (document)
+        {
+            if (document.RootElement.TryGetProperty("runtimeStatus", out JsonElement runtimeStatus))
             {
-                return true;
+                if (runtimeStatus.ValueKind == JsonValueKind.String)
+                {
+                    string? value = runtimeStatus.GetString();
+                    if (string.Equals(value, "Failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return WorkflowTerminalStatus.Failed;
+                    }
+
+                    if (string.Equals(value, "Completed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return WorkflowTerminalStatus.Completed;
+                    }
+                }
+
+                if (runtimeStatus.ValueKind == JsonValueKind.Number &&
+                    runtimeStatus.TryGetInt32(out int ordinal))
+                {
+                    return ordinal switch
+                    {
+                        // Durable Task runtime status: 3 = Completed, 5 = Failed.
+                        3 => WorkflowTerminalStatus.Completed,
+                        5 => WorkflowTerminalStatus.Failed,
+                        _ => WorkflowTerminalStatus.NotReached,
+                    };
+                }
             }
 
-            if (runtimeStatus.ValueKind == JsonValueKind.Number &&
-                runtimeStatus.TryGetInt32(out int ordinal) &&
-                ordinal is 3 or 5)
+            if (document.RootElement.TryGetProperty("isWorkflowCompleted", out JsonElement completed) &&
+                completed.ValueKind == JsonValueKind.True)
             {
-                return true;
+                return WorkflowTerminalStatus.Completed;
             }
         }
 
-        if (document.RootElement.TryGetProperty("isWorkflowCompleted", out JsonElement completed) &&
-            completed.ValueKind == JsonValueKind.True)
-        {
-            return true;
-        }
+        return WorkflowTerminalStatus.NotReached;
+    }
 
-        return false;
+    private enum WorkflowTerminalStatus
+    {
+        NotReached,
+        Completed,
+        Failed,
     }
 
     private sealed record AcceptedResponse(string InstanceId);

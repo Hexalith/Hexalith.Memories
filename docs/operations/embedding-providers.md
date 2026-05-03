@@ -5,11 +5,11 @@ DAPR secret layout, and the Story 13.6 migration runbook.
 
 ## Provider Choice
 
-| Option | Use when | Production posture |
-|--------|----------|--------------------|
-| Google API key | You want managed embeddings and existing 768-dimension defaults. | Supported through DAPR secret-store API key lookup. |
-| Ollama OIDC | You operate a self-hosted Ollama-compatible gateway and want Memories Server to acquire a bearer token with client credentials. | Supported production path for Ollama in the current server runtime. |
-| Ollama local/no-auth or upstream API key | You run a local developer Ollama instance, or a trusted internal gateway already handles auth before traffic reaches Ollama. | Local or trusted-network only. The current `EmbeddingClient` accepts Ollama only with `oidc-client-credentials`; use a protected gateway for exposed production ingress until a provider-specific API-key/no-auth runtime contract is committed. |
+| Option | Runtime status | Use when | Production posture |
+|--------|----------------|----------|--------------------|
+| Google API key | Runtime-supported | You want managed embeddings and existing 768-dimension defaults. | Supported through DAPR secret-store API key lookup. |
+| Ollama OIDC | Runtime-supported | You operate a self-hosted Ollama-compatible gateway and want Memories Server to acquire a bearer token with client credentials. | Supported production path for Ollama in the current server runtime. |
+| Ollama local/no-auth or upstream API key | **Config schema only — not yet runtime-accepted** | You run a local developer Ollama instance, or a trusted internal gateway already handles auth before traffic reaches Ollama. | The current `EmbeddingClient` accepts Ollama only with `oidc-client-credentials`. Tenant configuration will accept this shape, but ingestion will fail until a provider-specific API-key/no-auth runtime contract is committed. Use Ollama OIDC for any path that must succeed today. |
 
 Changing provider, model, dimensions, or an Ollama `BaseUrl` is a breaking embedding change. Do not treat it
 as a simple configuration edit for tenants with existing data; run the migration section below or explicitly
@@ -33,7 +33,7 @@ tests, and the migration tool only.
 All secret values stay in DAPR or the platform secret manager. `ApiSecretKeyName` is only the secret-name
 reference and is safe to return from configuration APIs.
 
-| Field | Google API key | Ollama OIDC | Ollama local/no-auth or upstream API key |
+| Field | Google API key | Ollama OIDC | Ollama local/no-auth or upstream API key (config schema only — see runtime note above) |
 |-------|----------------|-------------|------------------------------------------|
 | `Provider` | `google` | `ollama` | `ollama` |
 | `Model` | `gemini-embedding-001` | `qwen3-embedding:4b` | `qwen3-embedding:4b` |

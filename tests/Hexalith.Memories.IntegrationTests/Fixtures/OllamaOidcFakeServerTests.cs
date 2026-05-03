@@ -73,10 +73,12 @@ public sealed class OllamaOidcFakeServerTests
         server.TokenRequestCount.ShouldBe(1);
         server.EmbedRequestCount.ShouldBe(1);
         string evidence = string.Join(Environment.NewLine, server.RequestEvidence.Select(item => item.ToString()));
+        // Assert against the actual values rather than substrings that happen to be absent
+        // by coincidence of FakeHttpRequestEvidence.ToString() shape.
         evidence.ShouldNotContain(clientSecret);
         evidence.ShouldNotContain(token);
-        evidence.ShouldNotContain("client_" + "secret=");
-        evidence.ShouldNotContain("Bearer ");
+        evidence.ShouldNotContain($"client_secret={clientSecret}");
+        evidence.ShouldNotContain($"Bearer {token}");
     }
 
     [Fact]
