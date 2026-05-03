@@ -29,3 +29,4 @@
 2026-05-03T09:01:55Z	none	-	none	no eligible create, party-mode, or advanced-elicitation operation; soft working-tree warning at 2026-05-03T09:01:23Z
 2026-05-03T10:04:28Z	create-story	14-1-ci-story-scope-enforcement-hardening	ok	created story context and promoted to ready-for-dev; preflight passed at 2026-05-03T10:02:28Z
 2026-05-03T11:17:45Z	create-story	14-2-release-pipeline-audit-hardening	ok	created story context and promoted to ready-for-dev; preflight passed at 2026-05-03T11:16:13Z
+2026-05-03T11:26:06Z	create-story	14-3-oidc-and-embedding-security-hardening	ok	created Story 14.3 context; preflight soft warning stdout:  M Hexalith.EventStore
