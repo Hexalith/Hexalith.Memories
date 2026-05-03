@@ -1633,6 +1633,36 @@ So that I can ship releases with confidence that NFR28 and FR67 hold on real inf
 
 **Source:** Follow-up for Story 7.5 Tasks 11.3 + 11.4 (deferred in Rev 1.3/1.4 on Docker availability). Depends on `AspireIngestionPipelineFixture` (Epic 6) and the `OpenTelemetry.Exporter.InMemory` package (already in `Directory.Packages.props`).
 
+### Story 8.5: Redis OTEL Instrumentation
+
+As the Memories release manager,
+I want Redis client calls (RediSearch, Redis Vector, and FalkorDB) to emit OpenTelemetry spans inside the same distributed trace as the originating request,
+So that operators can attribute search and traversal latency to the correct backend, and Story 8.4's Redis-span check is a hard assertion rather than a soft skip.
+
+**Acceptance Criteria:**
+
+**Given** the Memories Server is running via Aspire or `dotnet run`
+**When** a search, ingest, traverse, or case-access request touches Redis-backed infrastructure
+**Then** at least one activity with `Source.Name == "OpenTelemetry.Instrumentation.StackExchangeRedis"` is emitted for backend Redis calls
+**And** the activity shares the `TraceId` of the originating ASP.NET Core request
+**And** instrumentation covers both keyed `IConnectionMultiplexer` connections: `redis` for RediSearch and Redis Vector, and `falkordb` for graph operations.
+
+**Given** the Tier-3 telemetry fixture runs `CliSearch_EndToEnd_SingleTraceIdAcrossAllHops`
+**When** the end-to-end trace is captured
+**Then** at least one Redis-source activity appears in the trace
+**And** its parent chain reaches the CLI root activity
+**And** the retired `Ac2RedisSkipReviewBy` helper, its tests, and the `telemetry.redis.instrumentation.skipped` warning path no longer exist.
+
+**Given** Tier-2 telemetry registration tests run without Docker or Aspire
+**When** the tracer provider is built through the shared service-defaults path
+**Then** the Redis instrumentation source is subscribed
+**And** missing keyed Redis multiplexers fail eagerly with a clear `IConnectionMultiplexer` key error.
+
+**Given** `docs/dev/telemetry.md`
+**When** an operator or developer reviews the end-to-end trace verification guidance
+**Then** Redis spans are documented in the signal inventory
+**And** the previous Story 8.4 AC #2 deferral language is replaced with the shipped hard-assertion behavior.
+
 ### Story 8.3: Data Export
 
 As a developer,
@@ -2371,5 +2401,178 @@ So that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 **Given** the existing `docs/dev/embedding-providers.md` (or equivalent dev-facing notes),
 **When** Story 13.7 lands,
 **Then** the developer-facing documentation cross-references the new operator guide and notes the dual-mode (api-key vs. oidc-client-credentials) decision matrix.
+
+---
+
+### Epic 14: Deferred Work Hardening and Operational Readiness
+
+Developer and operator can close the highest-value deferred review findings without reopening completed epics, improving CI correctness, release integrity, OIDC/embedding security, migration reliability, and deferred-work governance.
+
+**FRs reinforced:** FR43, FR56, FR57, FR67, FR68, FR69, FR70, FR72, FR73, FR74
+**NFRs reinforced:** NFR8, NFR9, NFR10, NFR11, NFR17, NFR18, NFR19, NFR22, NFR27, NFR28, NFR30, NFR31
+
+### Story 14.1: CI Story-Scope Enforcement Hardening
+
+As a maintainer,
+I want story-scope validation and CI diff discovery to fail loudly and parse story keys consistently,
+So that future feature work cannot bypass file-scope enforcement through shallow fetches, malformed story keys, or ambiguous branch metadata.
+
+**Acceptance Criteria:**
+
+**Given** the CI story-scope job fetches the comparison base,
+**When** the fetch fails because of auth, network, repository rename, or unavailable refs,
+**Then** the workflow fails loudly with a diagnostic that names the failed fetch operation
+**And** it does not continue into a degraded `git diff-tree -r HEAD` fallback caused by `|| true`.
+
+**Given** the workflow runs on a push to `main`,
+**When** the calculated diff is empty or `origin/main` resolves to the same commit as `HEAD`,
+**Then** the story-scope check fails with a direct-push/empty-diff diagnostic
+**And** it does not silently pass file-scope validation.
+
+**Given** branch metadata or explicit `--story-key` input contains more than one story key,
+**When** `tools/check-story-file-scope.py` parses it,
+**Then** validation rejects the input consistently with trailer multi-key rejection
+**And** reports all detected conflicting keys.
+
+**Given** `git interpret-trailers` is unavailable,
+**When** the story-scope validator needs trailer parsing,
+**Then** it raises a clean validation error with an actionable installation/path message
+**And** no raw `FileNotFoundError` stack trace is emitted.
+
+**Given** the story-scope validator parses story files,
+**When** boundary cases are exercised for `STORY_KEY_PATTERN`, code fences, backtick paths, allow-list termination, and diagnostics,
+**Then** focused tests cover those cases using Shouldly/xUnit or the existing Python test harness as appropriate
+**And** all existing story-scope tests remain green.
+
+**Given** Story 14.1 closes deferred work,
+**When** the story is marked done,
+**Then** deferred IDs 12.4-RV1 through 12.4-RV5, 12.4-RV7 through 12.4-RV18, and any implemented related 12.3 parser findings are removed from `deferred-work.md` or marked resolved with validation evidence.
+
+### Story 14.2: Release Pipeline Audit Hardening
+
+As a release maintainer,
+I want release workflow and package validation guardrails strengthened,
+So that package publication, stale tags, release evidence, and package inventory drift are caught before they can create ambiguous release states.
+
+**Acceptance Criteria:**
+
+**Given** release workflow hardening is applied,
+**When** `.github/workflows/release.yml` is reviewed,
+**Then** action pinning, stale-tag handling, and partial-publish signal behavior are explicitly decided and either implemented or documented with a new defer-by date.
+
+**Given** package validation runs,
+**When** `tools/validate-release-packages.ps1` scans `src/**/*.csproj`,
+**Then** every packable and non-packable project is accounted for in release package inventory
+**And** direct operator version inputs with build metadata fail or normalize with a clear message.
+
+**Given** release evidence is collected,
+**When** `docs/dev/release-runbook.md` is updated,
+**Then** package evidence includes checksum or equivalent audit evidence for newly validated packages
+**And** the release bot identity is pinned enough for future forensic review.
+
+**Given** `tools/release-packages.json` is edited,
+**When** validation runs,
+**Then** schema validation or a schema reference catches misspelled package fields before publish-time scripts run.
+
+**Given** CI inventory tests guard release lanes,
+**When** workflow text is parsed,
+**Then** tests avoid broad substring matching where a structural or narrower assertion is feasible.
+
+### Story 14.3: OIDC and Embedding Security Hardening
+
+As an operator,
+I want OIDC token acquisition and embedding-client error handling hardened,
+So that cancellation, credential rotation, malformed URLs, token refresh storms, and transport errors do not leak secrets or produce avoidable outages.
+
+**Acceptance Criteria:**
+
+**Given** several callers wait on the same OIDC token acquisition,
+**When** the caller that started the fetch cancels,
+**Then** remaining waiters are not forced to refire the HTTP token request solely because the leader cancelled.
+
+**Given** OIDC and embedding clients are registered in DI,
+**When** their HttpClient lifetime is inspected,
+**Then** the implementation follows the chosen `IHttpClientFactory` or typed-client pattern without singleton-captured stale handlers.
+
+**Given** provider URLs and OIDC token endpoints are validated,
+**When** a URL contains userinfo such as `https://user:pw@host`,
+**Then** validation rejects it for both `OidcTokenProvider` and `EmbeddingProviderDefaults`.
+
+**Given** several callers force-refresh the same token concurrently,
+**When** invalidation occurs,
+**Then** refresh requests collapse where practical or are explicitly bounded and covered by tests.
+
+**Given** OIDC or embedding transport fails because of network, timeout, or IO errors,
+**When** the caller receives the failure,
+**Then** it is wrapped in the typed exception expected by the higher-level retry and classification code
+**And** secret values and bearer tokens are not present in exception text or logs.
+
+**Given** an Ollama tenant's DAPR secret has rotated,
+**When** the first request returns 401 or 403 and retry is attempted,
+**Then** stale `client_secret` cache state is evicted symmetrically with the Google API-key path.
+
+**Given** redaction handles sensitive values,
+**When** values overlap, are short, or appear in upstream error payloads,
+**Then** redaction is length-aware, longest-value-first, and tested with realistic OIDC and embedding failure text.
+
+### Story 14.4: Migration and Integration Test Hardening
+
+As an operator and maintainer,
+I want migration and Aspire integration tests hardened,
+So that provider migration evidence remains stable under CI pressure and malformed fake-server input cannot weaken coverage silently.
+
+**Acceptance Criteria:**
+
+**Given** migration service expected-failure paths are refactored,
+**When** options or tenant migration results are invalid,
+**Then** business failures use `ValueOrError<T>` where appropriate or retain exceptions with a documented, focused reason.
+
+**Given** migration redaction is expanded,
+**When** AWS access keys, raw JWTs, HTTP Basic auth, and approved secret-value shapes appear in captured payloads,
+**Then** the redactor masks them without masking benign secret-name references unless the story explicitly chooses stricter behavior.
+
+**Given** the Ollama integration test waits for Redis state,
+**When** a bounded targeted alternative exists,
+**Then** it no longer uses Redis `KEYS` polling in the 3-minute loop.
+
+**Given** Aspire fixture DAPR config files are created in temp directories,
+**When** the fixture disposes or initialization fails,
+**Then** generated config files and parent temp directories are cleaned up.
+
+**Given** the Ollama OIDC fake server rejects malformed token requests,
+**When** tests run,
+**Then** dedicated theory cases cover missing content type, missing grant type, missing client ID, missing client secret, duplicate form values, and malformed body branches.
+
+**Given** provider integration assertions depend on expected embedding call counts,
+**When** the raw + natural-language embedding path is asserted,
+**Then** magic numeric thresholds are replaced with named constants or clearer assertions.
+
+### Story 14.5: Deferred Register Governance and Sprint-Status Hygiene
+
+As a maintainer,
+I want deferred-work entries and sprint-status history to stay auditable,
+So that future planning can distinguish open risk, resolved risk, accepted risk, and stale historical noise without manual archaeology.
+
+**Acceptance Criteria:**
+
+**Given** `deferred-work.md` remains the canonical deferred register,
+**When** new or migrated entries are written,
+**Then** each entry has a minimal consistent structure for ID, status, source story, target artifact, and re-open trigger.
+
+**Given** Epic 14 stories resolve deferred items,
+**When** each story completes,
+**Then** its targeted deferred entries are updated as `resolved`, `accepted`, or `carried-forward` with validation evidence or rationale.
+
+**Given** `sprint-status.yaml` records history,
+**When** future status updates are appended,
+**Then** guidance avoids unbounded one-line history comments and prefers concise dated notes.
+
+**Given** tests or scripts parse deferred-work entries,
+**When** the register structure changes,
+**Then** those tests or scripts are updated to parse the new structure without broad author-controlled substring heuristics.
+
+**Given** this governance story touches planning and tracking files,
+**When** it is implemented,
+**Then** it avoids submodule pointer changes and follows root-level submodule discipline.
 
 ---
