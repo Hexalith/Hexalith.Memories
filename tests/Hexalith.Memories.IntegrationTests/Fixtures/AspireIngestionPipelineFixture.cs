@@ -9,6 +9,8 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using Aspire.Hosting;
@@ -52,9 +54,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _fakeEmbeddingScope;
     private EnvVarScope? _allowPrivateHostsScope;
     private EnvVarScope? _daprAppIdScope;
+    private EnvVarScope? _daprConfigPathScope;
     private EnvVarScope? _redisVolumeNameScope;
     private EnvVarScope? _eventStoreSourceMapScope;
     private EnvVarScope? _telemetryInMemoryScope;
+    private readonly EmbeddingProviderTestMode _providerMode;
+    private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
+    private bool _secretsFileExisted;
+    private string? _originalSecretsFileContent;
+    private string? _secretsFilePath;
+    private string? _tempDaprConfigPath;
     private readonly TestLogProvider _logProvider = new();
     private static readonly Regex DaprHttpPortRegex = new(
         @"HTTP server listening on TCP address: :(?<port>\d+)",
@@ -62,6 +71,26 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
     public HttpClient MemoriesClient { get; private set; } = null!;
+
+    /// <summary>Initializes a new instance of the <see cref="AspireIngestionPipelineFixture"/> class.</summary>
+    public AspireIngestionPipelineFixture()
+        : this(EmbeddingProviderTestMode.GoogleFake, embeddingProviderSecret: null)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="AspireIngestionPipelineFixture"/> class.</summary>
+    /// <param name="providerMode">The embedding provider mode to use for this topology.</param>
+    /// <param name="embeddingProviderSecret">Optional DAPR secret-store entry for provider-specific tests.</param>
+    internal AspireIngestionPipelineFixture(
+        EmbeddingProviderTestMode providerMode,
+        EmbeddingProviderSecret? embeddingProviderSecret)
+    {
+        _providerMode = providerMode;
+        _embeddingProviderSecret = embeddingProviderSecret;
+    }
+
+    /// <summary>Gets the embedding provider mode used by the fixture.</summary>
+    public EmbeddingProviderTestMode ProviderMode => _providerMode;
 
     /// <summary>Gets the HTTP client for the MCP server resource (Story 10.1).</summary>
     public HttpClient McpClient { get; private set; } = null!;
@@ -186,7 +215,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 InMemoryTelemetryEnvironment.EnabledValue);
             _aspNetCoreEnvironmentScope = EnvVarScope.Set("ASPNETCORE_ENVIRONMENT", "Development");
             _dotNetEnvironmentScope = EnvVarScope.Set("DOTNET_ENVIRONMENT", "Development");
-            _fakeEmbeddingScope = EnvVarScope.Set("Memories__Testing__UseFakeEmbedding", "true");
+            _fakeEmbeddingScope = EnvVarScope.Set(
+                "Memories__Testing__UseFakeEmbedding",
+                _providerMode == EmbeddingProviderTestMode.GoogleFake ? "true" : "false");
             _allowPrivateHostsScope = EnvVarScope.Set("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
             _daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", _daprAppId);
             _redisVolumeNameScope = EnvVarScope.Set("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
@@ -194,12 +225,17 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
 
+            WriteLocalDaprSecretIfNeeded();
+            _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
+
             using var cts = new CancellationTokenSource(TopologyStartupTimeout);
             await StartTopologyAsync(cts.Token).ConfigureAwait(false);
         }
         catch
         {
             DisposeEnvVarScopes();
+            RestoreLocalDaprSecret();
+            DeleteTempDaprConfig();
             throw;
         }
     }
@@ -212,6 +248,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _redisVolumeNameScope = null;
         _daprAppIdScope?.Dispose();
         _daprAppIdScope = null;
+        _daprConfigPathScope?.Dispose();
+        _daprConfigPathScope = null;
         _allowPrivateHostsScope?.Dispose();
         _allowPrivateHostsScope = null;
         _fakeEmbeddingScope?.Dispose();
@@ -240,12 +278,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// </summary>
     /// <param name="tenantId">Optional tenant identifier. When null, a random one is generated.</param>
     /// <param name="displayName">Optional display name. Defaults to the tenant id.</param>
+    /// <param name="vectorDimensions">Optional semantic vector dimensions to provision for the tenant.</param>
     /// <param name="activationTimeout">Max wait for Active status. Defaults to <see cref="DefaultTenantActivationTimeout"/>.</param>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>The provisioned tenant id.</returns>
     public async Task<string> ProvisionActiveTenantAsync(
         string? tenantId = null,
         string? displayName = null,
+        int? vectorDimensions = null,
         TimeSpan? activationTimeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -254,8 +294,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
             "/api/tenants",
-            new TenantProvisioningInput(id, name),
-            MemoriesJsonContext.Options,
+            new
+            {
+                tenantId = id,
+                displayName = name,
+                vectorDimensions = vectorDimensions ?? 768,
+            },
             cancellationToken).ConfigureAwait(false);
 
         // 202 Accepted on fresh provision; 409 Conflict when the caller passed a pre-existing id —
@@ -331,6 +375,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
         DisposeEnvVarScopes();
+        RestoreLocalDaprSecret();
+        DeleteTempDaprConfig();
     }
 
     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
@@ -342,6 +388,116 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         return _actorProxyFactory.CreateActorProxy<TActor>(new ActorId(actorId), actorType, _actorProxyOptions);
+    }
+
+    private void WriteLocalDaprSecretIfNeeded()
+    {
+        if (_providerMode != EmbeddingProviderTestMode.OllamaOidcFake || _embeddingProviderSecret is null)
+        {
+            return;
+        }
+
+        _secretsFilePath = Path.Combine(ResolveRepositoryRoot(), "secrets.json");
+        _secretsFileExisted = File.Exists(_secretsFilePath);
+        _originalSecretsFileContent = _secretsFileExisted
+            ? File.ReadAllText(_secretsFilePath)
+            : null;
+
+        JsonObject root;
+        if (_secretsFileExisted && !string.IsNullOrWhiteSpace(_originalSecretsFileContent))
+        {
+            root = JsonNode.Parse(_originalSecretsFileContent)?.AsObject() ?? [];
+        }
+        else
+        {
+            root = [];
+        }
+
+        root[_embeddingProviderSecret.Name] = _embeddingProviderSecret.Value;
+        File.WriteAllText(
+            _secretsFilePath,
+            root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
+    }
+
+    private void RestoreLocalDaprSecret()
+    {
+        if (_secretsFilePath is null)
+        {
+            return;
+        }
+
+        if (_secretsFileExisted)
+        {
+            File.WriteAllText(_secretsFilePath, _originalSecretsFileContent ?? string.Empty);
+        }
+        else if (File.Exists(_secretsFilePath))
+        {
+            File.Delete(_secretsFilePath);
+        }
+
+        _secretsFilePath = null;
+        _originalSecretsFileContent = null;
+        _secretsFileExisted = false;
+    }
+
+    private EnvVarScope? CreateDaprConfigOverrideIfNeeded()
+    {
+        if (_providerMode != EmbeddingProviderTestMode.OllamaOidcFake || _embeddingProviderSecret is null)
+        {
+            return null;
+        }
+
+        string tempDirectory = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", _daprAppId);
+        Directory.CreateDirectory(tempDirectory);
+        _tempDaprConfigPath = Path.Combine(tempDirectory, "config.yaml");
+        File.WriteAllText(
+            _tempDaprConfigPath,
+            $$"""
+            apiVersion: dapr.io/v1alpha1
+            kind: Configuration
+            metadata:
+              name: memories-config
+            spec:
+              secrets:
+                scopes:
+                  - storeName: secretstore
+                    defaultAccess: deny
+                    allowedSecrets:
+                      - embedding-api-key
+                      - llm-secret
+                      - {{_embeddingProviderSecret.Name}}
+            """);
+
+        return EnvVarScope.Set("MEMORIES_DAPR_CONFIG_PATH", _tempDaprConfigPath);
+    }
+
+    private void DeleteTempDaprConfig()
+    {
+        if (_tempDaprConfigPath is null)
+        {
+            return;
+        }
+
+        if (File.Exists(_tempDaprConfigPath))
+        {
+            File.Delete(_tempDaprConfigPath);
+        }
+
+        _tempDaprConfigPath = null;
+    }
+
+    private static string ResolveRepositoryRoot()
+    {
+        string currentDirectory = Directory.GetCurrentDirectory();
+        if (File.Exists(Path.Combine(currentDirectory, "Hexalith.Memories.slnx")))
+        {
+            return currentDirectory;
+        }
+
+        string candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        return File.Exists(Path.Combine(candidate, "Hexalith.Memories.slnx"))
+            ? candidate
+            : currentDirectory;
     }
 
     private async Task StartTopologyAsync(CancellationToken cancellationToken)

@@ -342,6 +342,20 @@ static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPat
 
 static string ResolveDaprConfigPath()
 {
+    string? configured = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_CONFIG_PATH");
+    if (!string.IsNullOrWhiteSpace(configured))
+    {
+        string configuredPath = Path.GetFullPath(configured);
+        if (!File.Exists(configuredPath))
+        {
+            throw new FileNotFoundException(
+                "Configured DAPR configuration not found. Ensure MEMORIES_DAPR_CONFIG_PATH points to an existing file.",
+                configuredPath);
+        }
+
+        return configuredPath;
+    }
+
     string repoRoot = ResolveRepositoryRoot();
     string configPath = Path.Combine(repoRoot, "deploy", "dapr", "config.yaml");
 
