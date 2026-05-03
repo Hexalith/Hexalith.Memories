@@ -1,0 +1,2020 @@
+warning: in the working copy of 'Hexalith.Memories.slnx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs', LF will be replaced by CRLF the next time Git touches it
+diff --git a/Hexalith.Memories.slnx b/Hexalith.Memories.slnx
+index f4aebc7..2c7d9c9 100644
+--- a/Hexalith.Memories.slnx
++++ b/Hexalith.Memories.slnx
+@@ -11,6 +11,9 @@
+     <Project Path="src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj" />
+     <Project Path="src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj" />
+   </Folder>
++  <Folder Name="/tools/">
++    <Project Path="tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj" />
++  </Folder>
+   <Folder Name="/tests/">
+     <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />
+     <Project Path="tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj" />
+diff --git a/src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs b/src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs
+index 1ee3e66..ba63352 100644
+--- a/src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs
++++ b/src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs
+@@ -72,6 +72,9 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
+             new HashEntry("embedding", vectorBytes),
+             new HashEntry("memoryUnitId", input.MemoryUnitId),
+             new HashEntry("caseId", input.CaseId),
++            new HashEntry("embeddingProvider", input.EmbeddingProvider),
++            new HashEntry("embeddingModel", input.EmbeddingModel),
++            new HashEntry("embeddingDimensions", input.EmbeddingDimensions),
+         ];
+ 
+         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
+
+===NEW FILE: tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj===
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.Actors" />
+    <PackageReference Include="Dapr.Client" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+</Project>
+
+===NEW FILE: tools/MigrateEmbeddingVectors/Program.cs===
+// <copyright file="Program.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+using System.Text.Json;
+
+using Dapr.Actors.Client;
+using Dapr.Client;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
+using Hexalith.Memories.Server.Tenants;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+
+using StackExchange.Redis;
+
+ParsedCommand parsed = ParsedCommand.Parse(args);
+if (parsed.ShowHelp)
+{
+    Console.WriteLine(ToolHelp.Text);
+    return EmbeddingMigrationExitCodes.Success;
+}
+
+if (!string.IsNullOrWhiteSpace(parsed.Error))
+{
+    Console.Error.WriteLine(parsed.Error);
+    Console.Error.WriteLine("Run with --help for usage.");
+    return EmbeddingMigrationExitCodes.Plumbing;
+}
+
+EmbeddingMigrationOptions options = parsed.Options!;
+options.Interactive = !Console.IsInputRedirected;
+if (options.Mode is not EmbeddingMigrationMode.DryRun && !options.Yes && options.Interactive)
+{
+    Console.Error.Write($"Migrate tenant '{options.TenantId}' now? This drops and recreates active semantic indexes. [y/N]: ");
+    string? answer = Console.ReadLine();
+    options.Yes = string.Equals(answer?.Trim(), "y", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(answer?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
+}
+
+options.ProgressHandler = async (progress, _) =>
+{
+    if (!string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+    {
+        await Console.Out.WriteLineAsync(
+            $"{progress.TenantId} {progress.ContentKind} batch {progress.BatchNumber}: " +
+            $"processed={progress.ProcessedCount} skipped={progress.SkippedCount} failed={progress.FailedCount} " +
+            $"total={progress.TotalCount} percent={progress.Percent:0.##} elapsed={progress.Elapsed}");
+    }
+};
+
+await using ToolResources resources = await ToolResources.CreateAsync(parsed.RedisConnectionString!, parsed.DaprHttpEndpoint!).ConfigureAwait(false);
+EmbeddingVectorMigrationService service = resources.CreateService();
+EmbeddingMigrationResult result = await service.RunAsync(options, CancellationToken.None).ConfigureAwait(false);
+
+if (string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+{
+    Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+}
+else
+{
+    WriteHumanResult(result);
+}
+
+return result.ExitCode;
+
+static void WriteHumanResult(EmbeddingMigrationResult result)
+{
+    Console.WriteLine(result.Message);
+    foreach (EmbeddingMigrationTenantReport report in result.Tenants)
+    {
+        Console.WriteLine(
+            $"{report.TenantId}: affected={report.Affected} " +
+            $"current={report.CurrentConfig.Provider}/{report.CurrentConfig.Model}/{report.CurrentConfig.Dimensions} " +
+            $"target={report.TargetConfig.Provider}/{report.TargetConfig.Model}/{report.TargetConfig.Dimensions} " +
+            $"syntactic={report.Counts.SyntacticMemoryUnitCount} raw={report.Counts.RawSemanticUnitCount} nl={report.Counts.NaturalLanguageSemanticUnitCount} " +
+            $"raw processed/skipped/failed={report.Raw.Processed}/{report.Raw.Skipped}/{report.Raw.Failed} " +
+            $"nl processed/skipped/failed={report.NaturalLanguage.Processed}/{report.NaturalLanguage.Skipped}/{report.NaturalLanguage.Failed} " +
+            $"manualFollowUp={report.ManualFollowUpRequired}");
+    }
+
+    foreach (EmbeddingMigrationUnitFailure failure in result.Failures)
+    {
+        Console.Error.WriteLine($"{failure.TenantId}/{failure.MemoryUnitId}/{failure.ContentKind}: {failure.ErrorCategory}: {failure.Message}");
+    }
+}
+
+internal sealed class ToolResources : IAsyncDisposable
+{
+    private readonly DaprClient _daprClient;
+    private readonly IConnectionMultiplexer _redis;
+    private readonly ActorProxyFactory _actorProxyFactory;
+    private readonly HttpClient _oidcHttpClient;
+
+    private ToolResources(
+        DaprClient daprClient,
+        IConnectionMultiplexer redis,
+        ActorProxyFactory actorProxyFactory,
+        HttpClient oidcHttpClient)
+    {
+        _daprClient = daprClient;
+        _redis = redis;
+        _actorProxyFactory = actorProxyFactory;
+        _oidcHttpClient = oidcHttpClient;
+    }
+
+    public static async Task<ToolResources> CreateAsync(string redisConnectionString, string daprHttpEndpoint)
+    {
+        DaprClient daprClient = new DaprClientBuilder().Build();
+        IConnectionMultiplexer redis = await ConnectionMultiplexer.ConnectAsync(redisConnectionString).ConfigureAwait(false);
+        ActorProxyOptions actorOptions = new()
+        {
+            HttpEndpoint = daprHttpEndpoint,
+            RequestTimeout = TimeSpan.FromMinutes(2),
+            JsonSerializerOptions = MemoriesJsonContext.Options,
+        };
+        ActorProxyFactory actorProxyFactory = new(actorOptions);
+        return new ToolResources(daprClient, redis, actorProxyFactory, new HttpClient());
+    }
+
+    public EmbeddingVectorMigrationService CreateService()
+    {
+        TenantRegistryService registry = new(_daprClient, NullLogger<TenantRegistryService>.Instance);
+        RedisEmbeddingMigrationStore store = new(_redis, registry, _actorProxyFactory);
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Memories:Testing:UseFakeEmbedding"] = "false" })
+            .Build();
+        OidcTokenProvider tokenProvider = new(_oidcHttpClient, TimeProvider.System, NullLogger<OidcTokenProvider>.Instance);
+        EmbeddingClient embeddingClient = new(
+            new SimpleHttpClientFactory(),
+            _daprClient,
+            configuration,
+            new ToolHostEnvironment(),
+            tokenProvider);
+        return new EmbeddingVectorMigrationService(store, new EmbeddingClientMigrationVectorGenerator(embeddingClient));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _oidcHttpClient.Dispose();
+        _daprClient.Dispose();
+        await _redis.CloseAsync().ConfigureAwait(false);
+        _redis.Dispose();
+    }
+}
+
+internal sealed class SimpleHttpClientFactory : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) => new();
+}
+
+internal sealed class ToolHostEnvironment : IHostEnvironment
+{
+    public string EnvironmentName { get; set; } = Environments.Production;
+
+    public string ApplicationName { get; set; } = "MigrateEmbeddingVectors";
+
+    public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
+
+    public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+        new Microsoft.Extensions.FileProviders.NullFileProvider();
+}
+
+internal sealed class ParsedCommand
+{
+    public bool ShowHelp { get; private init; }
+
+    public string? Error { get; private init; }
+
+    public EmbeddingMigrationOptions? Options { get; private init; }
+
+    public string? RedisConnectionString { get; private init; }
+
+    public string? DaprHttpEndpoint { get; private init; }
+
+    public static ParsedCommand Parse(string[] args)
+    {
+        if (args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase))
+        {
+            return new ParsedCommand { ShowHelp = true };
+        }
+
+        EmbeddingMigrationOptions options = new();
+        string redis = Environment.GetEnvironmentVariable("MEMORIES_REDIS") ?? "localhost:6379";
+        string daprHttp = Environment.GetEnvironmentVariable("DAPR_HTTP_ENDPOINT") ?? "http://localhost:3500";
+        int selectedModes = 0;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i];
+            switch (arg)
+            {
+                case "--dry-run":
+                    options.Mode = EmbeddingMigrationMode.DryRun;
+                    selectedModes++;
+                    break;
+                case "--live":
+                    options.Mode = EmbeddingMigrationMode.Live;
+                    selectedModes++;
+                    break;
+                case "--rollback":
+                    options.Mode = EmbeddingMigrationMode.Rollback;
+                    selectedModes++;
+                    break;
+                case "--tenant":
+                    options.TenantId = ReadValue(args, ref i, arg);
+                    break;
+                case "--target-provider":
+                    options.TargetProvider = ReadValue(args, ref i, arg);
+                    break;
+                case "--target-model":
+                    options.TargetModel = ReadValue(args, ref i, arg);
+                    break;
+                case "--target-dimensions":
+                    options.TargetDimensions = int.Parse(ReadValue(args, ref i, arg), System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--batch-size":
+                    options.BatchSize = int.Parse(ReadValue(args, ref i, arg), System.Globalization.CultureInfo.InvariantCulture);
+                    break;
+                case "--yes":
+                    options.Yes = true;
+                    break;
+                case "--resume":
+                    options.Resume = true;
+                    break;
+                case "--format":
+                    options.Format = ReadValue(args, ref i, arg);
+                    break;
+                case "--redis":
+                    redis = ReadValue(args, ref i, arg);
+                    break;
+                case "--dapr-http":
+                    daprHttp = ReadValue(args, ref i, arg);
+                    break;
+                default:
+                    return new ParsedCommand { Error = $"Unknown option '{arg}'." };
+            }
+        }
+
+        if (selectedModes != 1)
+        {
+            return new ParsedCommand { Error = "Select exactly one mode: --dry-run, --live, or --rollback." };
+        }
+
+        if (!string.Equals(options.Format, "human", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ParsedCommand { Error = "--format must be 'human' or 'json'." };
+        }
+
+        return new ParsedCommand { Options = options, RedisConnectionString = redis, DaprHttpEndpoint = daprHttp };
+    }
+
+    private static string ReadValue(string[] args, ref int index, string option)
+    {
+        if (index + 1 >= args.Length || args[index + 1].StartsWith("--", StringComparison.Ordinal))
+        {
+            throw new ArgumentException($"{option} requires a value.");
+        }
+
+        index++;
+        return args[index];
+    }
+}
+
+internal static class ToolHelp
+{
+    public const string Text = """
+    MigrateEmbeddingVectors --dry-run|--live|--rollback [options]
+
+    Required mutation safety:
+      --live --tenant <tenantId> --yes
+      --rollback --tenant <tenantId> --yes
+
+    Options:
+      --dry-run                 Inventory affected tenants without writes.
+      --live                    Execute Path A migration for one tenant.
+      --rollback                Fail closed unless retained previous-version indexes exist.
+      --tenant <tenantId>       Tenant for live/rollback, optional dry-run filter.
+      --target-provider <name>  Target provider, default ollama.
+      --target-model <name>     Target model, default qwen3-embedding:4b.
+      --target-dimensions <n>   Target dimensions, default 2560.
+      --batch-size <n>          Progress batch size, default 100.
+      --yes                     Confirm non-interactive mutation.
+      --resume                  Resume a previous live migration attempt.
+      --format <human|json>     Output format, default human.
+      --redis <connection>      Redis connection string, default MEMORIES_REDIS or localhost:6379.
+      --dapr-http <endpoint>    DAPR sidecar HTTP endpoint, default DAPR_HTTP_ENDPOINT or http://localhost:3500.
+    """;
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingClientMigrationVectorGenerator.cs===
+// <copyright file="EmbeddingClientMigrationVectorGenerator.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
+
+/// <summary>Migration vector generator backed by the committed provider-aware <see cref="EmbeddingClient"/>.</summary>
+/// <param name="embeddingClient">The embedding client.</param>
+public sealed class EmbeddingClientMigrationVectorGenerator(EmbeddingClient embeddingClient) : IEmbeddingMigrationVectorGenerator
+{
+    /// <inheritdoc/>
+    public Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
+        => embeddingClient.GenerateAsync(text, tenantId, config, ct);
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationExitCodes.cs===
+// <copyright file="EmbeddingMigrationExitCodes.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Exit codes returned by the embedding vector migration command.</summary>
+public static class EmbeddingMigrationExitCodes
+{
+    /// <summary>Successful migration or dry-run.</summary>
+    public const int Success = 0;
+
+    /// <summary>Domain failure, such as failed units or unavailable rollback state.</summary>
+    public const int DomainError = 1;
+
+    /// <summary>Command-line or infrastructure configuration failure.</summary>
+    public const int Plumbing = 2;
+
+    /// <summary>Operation cancelled by the caller.</summary>
+    public const int Cancelled = 130;
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationIndexInfo.cs===
+// <copyright file="EmbeddingMigrationIndexInfo.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Dimension inventory for the two active semantic Redis Vector indexes.</summary>
+/// <param name="RawSemanticDimensions">The raw semantic vector dimensions, or null when unavailable.</param>
+/// <param name="NaturalLanguageSemanticDimensions">The natural-language semantic vector dimensions, or null when unavailable.</param>
+public sealed record EmbeddingMigrationIndexInfo(int? RawSemanticDimensions, int? NaturalLanguageSemanticDimensions);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMode.cs===
+// <copyright file="EmbeddingMigrationMode.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Mutation mode selected for the embedding vector migration command.</summary>
+public enum EmbeddingMigrationMode
+{
+    /// <summary>No mode was selected.</summary>
+    None,
+
+    /// <summary>Inventory affected tenants without writes.</summary>
+    DryRun,
+
+    /// <summary>Execute a live Path A tenant migration.</summary>
+    Live,
+
+    /// <summary>Attempt guarded rollback to retained previous-version indexes.</summary>
+    Rollback,
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationOptions.cs===
+// <copyright file="EmbeddingMigrationOptions.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Options for dry-run, live, resume, and rollback embedding vector migration.</summary>
+public sealed class EmbeddingMigrationOptions
+{
+    /// <summary>Gets or sets the selected command mode.</summary>
+    public EmbeddingMigrationMode Mode { get; set; }
+
+    /// <summary>Gets or sets the tenant identifier for live or rollback mode.</summary>
+    public string? TenantId { get; set; }
+
+    /// <summary>Gets or sets the target embedding provider.</summary>
+    public string? TargetProvider { get; set; }
+
+    /// <summary>Gets or sets the target embedding model.</summary>
+    public string? TargetModel { get; set; }
+
+    /// <summary>Gets or sets the target embedding dimensions.</summary>
+    public int? TargetDimensions { get; set; }
+
+    /// <summary>Gets or sets the per-batch progress size.</summary>
+    public int BatchSize { get; set; } = 100;
+
+    /// <summary>Gets or sets a value indicating whether mutation confirmation is supplied.</summary>
+    public bool Yes { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether an interactive prompt may ask for confirmation.</summary>
+    public bool Interactive { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the migration is resuming a prior attempt.</summary>
+    public bool Resume { get; set; }
+
+    /// <summary>Gets or sets the output format requested by the command.</summary>
+    public string Format { get; set; } = "human";
+
+    /// <summary>Gets or sets an optional progress callback used by interactive command hosts.</summary>
+    public Func<EmbeddingMigrationProgress, CancellationToken, Task>? ProgressHandler { get; set; }
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationProgress.cs===
+// <copyright file="EmbeddingMigrationProgress.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Per-batch operator-visible migration progress.</summary>
+/// <param name="TenantId">The tenant identifier.</param>
+/// <param name="ContentKind">The migrated content kind.</param>
+/// <param name="BatchNumber">The one-based batch number.</param>
+/// <param name="ProcessedCount">The processed unit count.</param>
+/// <param name="SkippedCount">The skipped unit count.</param>
+/// <param name="FailedCount">The failed unit count.</param>
+/// <param name="TotalCount">The total unit count for the content kind.</param>
+/// <param name="Percent">The completed percentage.</param>
+/// <param name="Elapsed">The elapsed migration time.</param>
+public sealed record EmbeddingMigrationProgress(
+    string TenantId,
+    string ContentKind,
+    int BatchNumber,
+    int ProcessedCount,
+    int SkippedCount,
+    int FailedCount,
+    int TotalCount,
+    double Percent,
+    TimeSpan Elapsed);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs===
+// <copyright file="EmbeddingMigrationRedactor.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using System.Text.RegularExpressions;
+
+/// <summary>Sanitizes migration output before it reaches logs, artifacts, or command output.</summary>
+public static partial class EmbeddingMigrationRedactor
+{
+    private const int MaxMessageLength = 512;
+
+    /// <summary>Redacts known secret and token shapes from an operator-visible value.</summary>
+    /// <param name="value">The value to sanitize.</param>
+    /// <returns>The sanitized value.</returns>
+    public static string Redact(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        string sanitized = BearerRegex().Replace(value, "Bearer [redacted]");
+        sanitized = GoogleApiKeyRegex().Replace(sanitized, "AIza[redacted]");
+        sanitized = SecretFieldRegex().Replace(sanitized, "$1[redacted]$3");
+        return sanitized.Length <= MaxMessageLength
+            ? sanitized
+            : sanitized[..MaxMessageLength] + "...";
+    }
+
+    [GeneratedRegex("Bearer\\s+[A-Za-z0-9._~+/=-]+", RegexOptions.IgnoreCase)]
+    private static partial Regex BearerRegex();
+
+    [GeneratedRegex("AIza[A-Za-z0-9_-]{8,}", RegexOptions.IgnoreCase)]
+    private static partial Regex GoogleApiKeyRegex();
+
+    [GeneratedRegex("((?:client[_-]?secret|api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token)\\s*[:=]\\s*[\"']?)([^\\s\"',;]+)([\"']?)", RegexOptions.IgnoreCase)]
+    private static partial Regex SecretFieldRegex();
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationResult.cs===
+// <copyright file="EmbeddingMigrationResult.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Full migration command result.</summary>
+/// <param name="Mode">The selected migration mode.</param>
+/// <param name="ExitCode">The process exit code.</param>
+/// <param name="Message">The operator-facing summary message.</param>
+/// <param name="Elapsed">The elapsed command time.</param>
+/// <param name="Tenants">The tenant reports.</param>
+/// <param name="Failures">The sanitized per-unit failures.</param>
+/// <param name="Progress">The emitted progress records.</param>
+public sealed record EmbeddingMigrationResult(
+    EmbeddingMigrationMode Mode,
+    int ExitCode,
+    string Message,
+    TimeSpan Elapsed,
+    IReadOnlyList<EmbeddingMigrationTenantReport> Tenants,
+    IReadOnlyList<EmbeddingMigrationUnitFailure> Failures,
+    IReadOnlyList<EmbeddingMigrationProgress> Progress);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationTenantCounts.cs===
+// <copyright file="EmbeddingMigrationTenantCounts.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Inventory counts for one tenant's migration-relevant Redis keys.</summary>
+/// <param name="SyntacticMemoryUnitCount">The count of syntactic memory-unit hashes.</param>
+/// <param name="RawSemanticUnitCount">The count of raw semantic vector hashes.</param>
+/// <param name="NaturalLanguageSemanticUnitCount">The count of natural-language semantic vector hashes.</param>
+/// <param name="RawStaleMetadataCount">The count of raw semantic hashes not stamped with the target metadata.</param>
+/// <param name="NaturalLanguageStaleMetadataCount">The count of natural-language semantic hashes not stamped with the target metadata.</param>
+public sealed record EmbeddingMigrationTenantCounts(
+    long SyntacticMemoryUnitCount,
+    long RawSemanticUnitCount,
+    long NaturalLanguageSemanticUnitCount,
+    long RawStaleMetadataCount,
+    long NaturalLanguageStaleMetadataCount);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationTenantReport.cs===
+// <copyright file="EmbeddingMigrationTenantReport.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Dry-run or live migration report for a single tenant.</summary>
+/// <param name="TenantId">The tenant identifier.</param>
+/// <param name="Affected">Whether the tenant differs from the target or has stale vector state.</param>
+/// <param name="CurrentConfig">The old tenant embedding configuration.</param>
+/// <param name="TargetConfig">The target tenant embedding configuration.</param>
+/// <param name="Counts">The inventory counts.</param>
+/// <param name="IndexInfo">The active semantic index dimensions.</param>
+/// <param name="DimensionMismatch">Whether any active semantic index dimension differs from the target.</param>
+/// <param name="Raw">The raw semantic counters.</param>
+/// <param name="NaturalLanguage">The natural-language semantic counters.</param>
+/// <param name="ManualFollowUpRequired">Whether manual operator follow-up is required.</param>
+public sealed record EmbeddingMigrationTenantReport(
+    string TenantId,
+    bool Affected,
+    TenantEmbeddingConfig CurrentConfig,
+    TenantEmbeddingConfig TargetConfig,
+    EmbeddingMigrationTenantCounts Counts,
+    EmbeddingMigrationIndexInfo IndexInfo,
+    bool DimensionMismatch,
+    EmbeddingMigrationUnitCounters Raw,
+    EmbeddingMigrationUnitCounters NaturalLanguage,
+    bool ManualFollowUpRequired);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationUnitCounters.cs===
+// <copyright file="EmbeddingMigrationUnitCounters.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Processed, skipped, and failed counts for one migration content kind.</summary>
+/// <param name="Processed">The number of units successfully processed.</param>
+/// <param name="Skipped">The number of units skipped.</param>
+/// <param name="Failed">The number of units that failed.</param>
+public sealed record EmbeddingMigrationUnitCounters(int Processed, int Skipped, int Failed)
+{
+    /// <summary>Gets an empty counter value.</summary>
+    public static EmbeddingMigrationUnitCounters Empty { get; } = new(0, 0, 0);
+
+    /// <summary>Returns a copy with one additional processed unit.</summary>
+    public EmbeddingMigrationUnitCounters AddProcessed() => this with { Processed = Processed + 1 };
+
+    /// <summary>Returns a copy with one additional skipped unit.</summary>
+    public EmbeddingMigrationUnitCounters AddSkipped() => this with { Skipped = Skipped + 1 };
+
+    /// <summary>Returns a copy with one additional failed unit.</summary>
+    public EmbeddingMigrationUnitCounters AddFailed() => this with { Failed = Failed + 1 };
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationUnitFailure.cs===
+// <copyright file="EmbeddingMigrationUnitFailure.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Durable per-unit migration failure detail.</summary>
+/// <param name="TenantId">The tenant identifier.</param>
+/// <param name="MemoryUnitId">The memory unit identifier.</param>
+/// <param name="ContentKind">The failed content kind.</param>
+/// <param name="ErrorCategory">The error category.</param>
+/// <param name="Message">The sanitized and truncated error message.</param>
+public sealed record EmbeddingMigrationUnitFailure(
+    string TenantId,
+    string MemoryUnitId,
+    string ContentKind,
+    string ErrorCategory,
+    string Message);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs===
+// <copyright file="EmbeddingVectorMigrationService.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using System.Diagnostics;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
+
+/// <summary>Coordinates dry-run, live, resume, and guarded rollback for Path A embedding vector migration.</summary>
+/// <param name="store">The migration storage boundary.</param>
+/// <param name="vectorGenerator">The provider-aware embedding generator.</param>
+public sealed class EmbeddingVectorMigrationService(
+    IEmbeddingMigrationStore store,
+    IEmbeddingMigrationVectorGenerator vectorGenerator)
+{
+    private const string RawContentKind = "payload";
+    private const string NaturalLanguageContentKind = "naturalLanguageDescription";
+
+    /// <summary>Runs the migration command.</summary>
+    /// <param name="options">The command options.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>The migration result.</returns>
+    public async Task<EmbeddingMigrationResult> RunAsync(EmbeddingMigrationOptions options, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        List<EmbeddingMigrationTenantReport> reports = [];
+        List<EmbeddingMigrationUnitFailure> failures = [];
+        List<EmbeddingMigrationProgress> progress = [];
+
+        string? validationError = ValidateOptions(options);
+        if (validationError is not null)
+        {
+            return new EmbeddingMigrationResult(
+                options.Mode,
+                EmbeddingMigrationExitCodes.Plumbing,
+                validationError,
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
+
+        TenantEmbeddingConfig targetConfig = BuildTargetConfig(options);
+
+        try
+        {
+            return options.Mode switch
+            {
+                EmbeddingMigrationMode.DryRun => await DryRunAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
+                EmbeddingMigrationMode.Live => await LiveAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
+                EmbeddingMigrationMode.Rollback => await RollbackAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
+                _ => CreateInvalidModeResult(options, stopwatch, reports, failures, progress),
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new EmbeddingMigrationResult(
+                options.Mode,
+                EmbeddingMigrationExitCodes.Cancelled,
+                "Embedding vector migration cancelled.",
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
+    }
+
+    private static string? ValidateOptions(EmbeddingMigrationOptions options)
+    {
+        if (options.Mode is EmbeddingMigrationMode.None)
+        {
+            return "Select exactly one mode: --dry-run, --live, or --rollback.";
+        }
+
+        if (options.Mode is EmbeddingMigrationMode.Live && string.IsNullOrWhiteSpace(options.TenantId))
+        {
+            return "--live requires --tenant <tenantId>.";
+        }
+
+        if (options.Mode is EmbeddingMigrationMode.Rollback && string.IsNullOrWhiteSpace(options.TenantId))
+        {
+            return "--rollback requires --tenant <tenantId>.";
+        }
+
+        if (options.Mode is not EmbeddingMigrationMode.DryRun && !options.Yes && !options.Interactive)
+        {
+            return "Non-interactive mutation requires --yes.";
+        }
+
+        if (options.BatchSize <= 0)
+        {
+            return "--batch-size must be greater than zero.";
+        }
+
+        return null;
+    }
+
+    private static TenantEmbeddingConfig BuildTargetConfig(EmbeddingMigrationOptions options)
+    {
+        string provider = options.TargetProvider ?? EmbeddingProviderDefaults.OllamaProviderName;
+        TenantEmbeddingConfig defaults = string.Equals(provider, EmbeddingProviderDefaults.GoogleProviderName, StringComparison.OrdinalIgnoreCase)
+            ? EmbeddingProviderDefaults.Google()
+            : EmbeddingProviderDefaults.Ollama();
+
+        TenantEmbeddingConfig target = defaults with
+        {
+            Provider = provider,
+            Model = options.TargetModel ?? defaults.Model,
+            Dimensions = options.TargetDimensions ?? defaults.Dimensions,
+            ReindexRequired = false,
+        };
+
+        EmbeddingProviderDefaults.Validate(target);
+        return target;
+    }
+
+    private async Task<EmbeddingMigrationResult> DryRunAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationTenantReport> reports,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        IReadOnlyList<string> tenantIds = await ResolveTenantIdsAsync(options.TenantId, ct).ConfigureAwait(false);
+        foreach (string tenantId in tenantIds)
+        {
+            TenantEmbeddingConfig currentConfig = await store.GetEmbeddingConfigAsync(tenantId, ct).ConfigureAwait(false);
+            EmbeddingMigrationTenantCounts counts = await store.GetCountsAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+            EmbeddingMigrationIndexInfo indexInfo = await store.GetIndexInfoAsync(tenantId, ct).ConfigureAwait(false);
+
+            bool dimensionMismatch = IsDimensionMismatch(indexInfo, targetConfig.Dimensions);
+            bool affected = ConfigDiffers(currentConfig, targetConfig)
+                || dimensionMismatch
+                || counts.RawStaleMetadataCount > 0
+                || counts.NaturalLanguageStaleMetadataCount > 0;
+
+            if (affected)
+            {
+                reports.Add(new EmbeddingMigrationTenantReport(
+                    tenantId,
+                    true,
+                    currentConfig,
+                    targetConfig,
+                    counts,
+                    indexInfo,
+                    dimensionMismatch,
+                    EmbeddingMigrationUnitCounters.Empty,
+                    EmbeddingMigrationUnitCounters.Empty,
+                    ManualFollowUpRequired: false));
+            }
+        }
+
+        return new EmbeddingMigrationResult(
+            EmbeddingMigrationMode.DryRun,
+            EmbeddingMigrationExitCodes.Success,
+            $"Dry-run found {reports.Count} affected tenant(s).",
+            stopwatch.Elapsed,
+            reports,
+            failures,
+            progress);
+    }
+
+    private async Task<EmbeddingMigrationResult> LiveAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationTenantReport> reports,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        string tenantId = options.TenantId!;
+        TenantEmbeddingConfig currentConfig = await store.GetEmbeddingConfigAsync(tenantId, ct).ConfigureAwait(false);
+        EmbeddingMigrationTenantCounts counts = await store.GetCountsAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+        EmbeddingMigrationIndexInfo indexInfo = await store.GetIndexInfoAsync(tenantId, ct).ConfigureAwait(false);
+
+        await store.StartMigrationMarkerAsync(tenantId, targetConfig, options.Resume, ct).ConfigureAwait(false);
+        await store.SetEmbeddingConfigAsync(tenantId, targetConfig, forceReindex: true, ct).ConfigureAwait(false);
+        await store.DropAndRecreateSemanticIndexesAsync(tenantId, targetConfig.Dimensions, ct).ConfigureAwait(false);
+
+        List<SyntacticMigrationUnit> units = [];
+        await foreach (SyntacticMigrationUnit unit in store.EnumerateSyntacticUnitsAsync(tenantId, options.BatchSize, ct).ConfigureAwait(false))
+        {
+            units.Add(unit);
+        }
+
+        EmbeddingMigrationUnitCounters raw = await MigrateRawAsync(
+            options,
+            targetConfig,
+            tenantId,
+            units,
+            stopwatch,
+            failures,
+            progress,
+            ct).ConfigureAwait(false);
+
+        EmbeddingMigrationUnitCounters naturalLanguage = await MigrateNaturalLanguageAsync(
+            options,
+            targetConfig,
+            tenantId,
+            units,
+            stopwatch,
+            failures,
+            progress,
+            ct).ConfigureAwait(false);
+
+        await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+
+        bool manualFollowUp = raw.Failed > 0 || naturalLanguage.Failed > 0;
+        reports.Add(new EmbeddingMigrationTenantReport(
+            tenantId,
+            true,
+            currentConfig,
+            targetConfig,
+            counts,
+            indexInfo,
+            IsDimensionMismatch(indexInfo, targetConfig.Dimensions),
+            raw,
+            naturalLanguage,
+            manualFollowUp));
+
+        int exitCode = manualFollowUp ? EmbeddingMigrationExitCodes.DomainError : EmbeddingMigrationExitCodes.Success;
+        string message = manualFollowUp
+            ? "Live migration completed with failed units; rerun with --resume after resolving failures."
+            : "Live migration completed successfully.";
+
+        return new EmbeddingMigrationResult(
+            EmbeddingMigrationMode.Live,
+            exitCode,
+            message,
+            stopwatch.Elapsed,
+            reports,
+            failures,
+            progress);
+    }
+
+    private async Task<EmbeddingMigrationResult> RollbackAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationTenantReport> reports,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        string tenantId = options.TenantId!;
+        bool retainedIndexesExist = await store.HasRetainedPreviousVersionIndexesAsync(tenantId, ct).ConfigureAwait(false);
+        string message = retainedIndexesExist
+            ? "Rollback detected retained previous-version indexes, but no committed Path B restore convention is available in this story."
+            : "Rollback is unavailable for this Path A migration because no retained previous-version indexes were detected.";
+
+        return new EmbeddingMigrationResult(
+            EmbeddingMigrationMode.Rollback,
+            EmbeddingMigrationExitCodes.DomainError,
+            message,
+            stopwatch.Elapsed,
+            reports,
+            failures,
+            progress);
+    }
+
+    private static EmbeddingMigrationResult CreateInvalidModeResult(
+        EmbeddingMigrationOptions options,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationTenantReport> reports,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress)
+        => new(
+            options.Mode,
+            EmbeddingMigrationExitCodes.Plumbing,
+            "Unsupported migration mode.",
+            stopwatch.Elapsed,
+            reports,
+            failures,
+            progress);
+
+    private async Task<IReadOnlyList<string>> ResolveTenantIdsAsync(string? tenantId, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(tenantId))
+        {
+            return [tenantId];
+        }
+
+        return await store.ListTenantIdsAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task<EmbeddingMigrationUnitCounters> MigrateRawAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        string tenantId,
+        IReadOnlyList<SyntacticMigrationUnit> units,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        EmbeddingMigrationUnitCounters counters = EmbeddingMigrationUnitCounters.Empty;
+        int batchNumber = 0;
+        foreach (SyntacticMigrationUnit unit in units)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                SemanticMigrationState? state = await store.GetRawSemanticStateAsync(tenantId, unit.MemoryUnitId, ct).ConfigureAwait(false);
+                if (IsTargetState(state, targetConfig))
+                {
+                    counters = counters.AddSkipped();
+                }
+                else if (string.IsNullOrWhiteSpace(unit.Content) || string.IsNullOrWhiteSpace(unit.CaseId))
+                {
+                    counters = counters.AddFailed();
+                    await AddFailureAsync(tenantId, unit.MemoryUnitId, RawContentKind, "Validation", "Syntactic hash is missing content or caseId.", failures, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    float[] vector = await vectorGenerator.GenerateAsync(unit.Content, tenantId, targetConfig, ct).ConfigureAwait(false);
+                    await store.WriteRawSemanticAsync(
+                        tenantId,
+                        targetConfig,
+                        new RawSemanticMigrationWrite(unit.MemoryUnitId, unit.CaseId, unit.CloudEventSubject, vector),
+                        ct).ConfigureAwait(false);
+                    counters = counters.AddProcessed();
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                counters = counters.AddFailed();
+                await AddFailureAsync(tenantId, unit.MemoryUnitId, RawContentKind, ex.GetType().Name, ex.Message, failures, ct).ConfigureAwait(false);
+            }
+
+            if ((counters.Processed + counters.Skipped + counters.Failed) % options.BatchSize == 0)
+            {
+                batchNumber++;
+                await ReportProgressAsync(options, tenantId, RawContentKind, batchNumber, counters, units.Count, stopwatch, progress, ct).ConfigureAwait(false);
+            }
+        }
+
+        if ((counters.Processed + counters.Skipped + counters.Failed) % options.BatchSize != 0 || units.Count == 0)
+        {
+            batchNumber++;
+            await ReportProgressAsync(options, tenantId, RawContentKind, batchNumber, counters, units.Count, stopwatch, progress, ct).ConfigureAwait(false);
+        }
+
+        return counters;
+    }
+
+    private async Task<EmbeddingMigrationUnitCounters> MigrateNaturalLanguageAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        string tenantId,
+        IReadOnlyList<SyntacticMigrationUnit> units,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        EmbeddingMigrationUnitCounters counters = EmbeddingMigrationUnitCounters.Empty;
+        int batchNumber = 0;
+        foreach (SyntacticMigrationUnit unit in units)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                NaturalLanguageMigrationUnit? nl = await store.GetNaturalLanguageSemanticUnitAsync(tenantId, unit.MemoryUnitId, ct).ConfigureAwait(false);
+                if (nl is null || string.IsNullOrWhiteSpace(nl.NaturalLanguageDescription))
+                {
+                    counters = counters.AddSkipped();
+                }
+                else if (IsTargetState(nl.State, targetConfig))
+                {
+                    counters = counters.AddSkipped();
+                }
+                else if (string.IsNullOrWhiteSpace(nl.CaseId))
+                {
+                    counters = counters.AddFailed();
+                    await AddFailureAsync(tenantId, unit.MemoryUnitId, NaturalLanguageContentKind, "Validation", "NL semantic hash is missing caseId.", failures, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    float[] vector = await vectorGenerator.GenerateAsync(nl.NaturalLanguageDescription, tenantId, targetConfig, ct).ConfigureAwait(false);
+                    await store.WriteNaturalLanguageSemanticAsync(
+                        tenantId,
+                        targetConfig,
+                        new NaturalLanguageSemanticMigrationWrite(
+                            unit.MemoryUnitId,
+                            nl.CaseId,
+                            nl.NaturalLanguageDescription,
+                            string.IsNullOrWhiteSpace(nl.DescriptionOrigin) ? "ai" : nl.DescriptionOrigin,
+                            nl.DescriptionConfidence ?? string.Empty,
+                            string.IsNullOrWhiteSpace(nl.DescriptionConfidenceSource) ? "unknown" : nl.DescriptionConfidenceSource,
+                            vector),
+                        ct).ConfigureAwait(false);
+                    counters = counters.AddProcessed();
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                counters = counters.AddFailed();
+                await AddFailureAsync(tenantId, unit.MemoryUnitId, NaturalLanguageContentKind, ex.GetType().Name, ex.Message, failures, ct).ConfigureAwait(false);
+            }
+
+            if ((counters.Processed + counters.Skipped + counters.Failed) % options.BatchSize == 0)
+            {
+                batchNumber++;
+                await ReportProgressAsync(options, tenantId, NaturalLanguageContentKind, batchNumber, counters, units.Count, stopwatch, progress, ct).ConfigureAwait(false);
+            }
+        }
+
+        if ((counters.Processed + counters.Skipped + counters.Failed) % options.BatchSize != 0 || units.Count == 0)
+        {
+            batchNumber++;
+            await ReportProgressAsync(options, tenantId, NaturalLanguageContentKind, batchNumber, counters, units.Count, stopwatch, progress, ct).ConfigureAwait(false);
+        }
+
+        return counters;
+    }
+
+    private async Task AddFailureAsync(
+        string tenantId,
+        string memoryUnitId,
+        string contentKind,
+        string category,
+        string message,
+        List<EmbeddingMigrationUnitFailure> failures,
+        CancellationToken ct)
+    {
+        EmbeddingMigrationUnitFailure failure = new(
+            tenantId,
+            memoryUnitId,
+            contentKind,
+            category,
+            EmbeddingMigrationRedactor.Redact(message));
+        failures.Add(failure);
+        await store.RecordFailureAsync(failure, ct).ConfigureAwait(false);
+    }
+
+    private static async Task ReportProgressAsync(
+        EmbeddingMigrationOptions options,
+        string tenantId,
+        string contentKind,
+        int batchNumber,
+        EmbeddingMigrationUnitCounters counters,
+        int total,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        int completed = counters.Processed + counters.Skipped + counters.Failed;
+        double percent = total == 0 ? 100 : Math.Round((completed * 100d) / total, 2);
+        EmbeddingMigrationProgress item = new(
+            tenantId,
+            contentKind,
+            batchNumber,
+            counters.Processed,
+            counters.Skipped,
+            counters.Failed,
+            total,
+            percent,
+            stopwatch.Elapsed);
+        progress.Add(item);
+
+        if (options.ProgressHandler is not null)
+        {
+            await options.ProgressHandler(item, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static bool ConfigDiffers(TenantEmbeddingConfig currentConfig, TenantEmbeddingConfig targetConfig)
+        => !string.Equals(currentConfig.Provider, targetConfig.Provider, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(currentConfig.Model, targetConfig.Model, StringComparison.OrdinalIgnoreCase)
+            || currentConfig.Dimensions != targetConfig.Dimensions;
+
+    private static bool IsDimensionMismatch(EmbeddingMigrationIndexInfo info, int targetDimensions)
+        => (info.RawSemanticDimensions is not null && info.RawSemanticDimensions != targetDimensions)
+            || (info.NaturalLanguageSemanticDimensions is not null && info.NaturalLanguageSemanticDimensions != targetDimensions);
+
+    private static bool IsTargetState(SemanticMigrationState? state, TenantEmbeddingConfig targetConfig)
+        => state is not null
+            && string.Equals(state.Provider, targetConfig.Provider, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(state.Model, targetConfig.Model, StringComparison.Ordinal)
+            && state.Dimensions == targetConfig.Dimensions;
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/IEmbeddingMigrationStore.cs===
+// <copyright file="IEmbeddingMigrationStore.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Storage boundary for tenant config, Redis indexes, vector hashes, and migration markers.</summary>
+public interface IEmbeddingMigrationStore
+{
+    /// <summary>Lists registered tenant identifiers.</summary>
+    Task<IReadOnlyList<string>> ListTenantIdsAsync(CancellationToken ct);
+
+    /// <summary>Reads the current tenant embedding configuration through the committed actor/config surface.</summary>
+    Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(string tenantId, CancellationToken ct);
+
+    /// <summary>Writes the target tenant embedding configuration through the committed actor/config surface.</summary>
+    Task SetEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config, bool forceReindex, CancellationToken ct);
+
+    /// <summary>Gets counts for syntactic, raw semantic, and natural-language semantic units.</summary>
+    Task<EmbeddingMigrationTenantCounts> GetCountsAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct);
+
+    /// <summary>Gets active semantic index dimension information.</summary>
+    Task<EmbeddingMigrationIndexInfo> GetIndexInfoAsync(string tenantId, CancellationToken ct);
+
+    /// <summary>Drops and recreates both active semantic indexes for Path A migration.</summary>
+    Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct);
+
+    /// <summary>Starts or resumes a durable migration marker.</summary>
+    Task StartMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, bool resume, CancellationToken ct);
+
+    /// <summary>Marks a durable migration marker complete.</summary>
+    Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct);
+
+    /// <summary>Records a durable per-unit failure.</summary>
+    Task RecordFailureAsync(EmbeddingMigrationUnitFailure failure, CancellationToken ct);
+
+    /// <summary>Enumerates syntactic units using cursor-based Redis scanning.</summary>
+    IAsyncEnumerable<SyntacticMigrationUnit> EnumerateSyntacticUnitsAsync(string tenantId, int pageSize, CancellationToken ct);
+
+    /// <summary>Reads target-detection metadata from a raw semantic hash.</summary>
+    Task<SemanticMigrationState?> GetRawSemanticStateAsync(string tenantId, string memoryUnitId, CancellationToken ct);
+
+    /// <summary>Reads a natural-language semantic hash when it exists.</summary>
+    Task<NaturalLanguageMigrationUnit?> GetNaturalLanguageSemanticUnitAsync(string tenantId, string memoryUnitId, CancellationToken ct);
+
+    /// <summary>Writes a raw semantic hash using the existing indexing shape plus target metadata.</summary>
+    Task WriteRawSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, RawSemanticMigrationWrite write, CancellationToken ct);
+
+    /// <summary>Writes a natural-language semantic hash using the existing indexing shape.</summary>
+    Task WriteNaturalLanguageSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, NaturalLanguageSemanticMigrationWrite write, CancellationToken ct);
+
+    /// <summary>Returns whether explicitly retained previous-version Path B indexes exist.</summary>
+    Task<bool> HasRetainedPreviousVersionIndexesAsync(string tenantId, CancellationToken ct);
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/IEmbeddingMigrationVectorGenerator.cs===
+// <copyright file="IEmbeddingMigrationVectorGenerator.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using Hexalith.Memories.Contracts.V1;
+
+/// <summary>Generates provider-aware embeddings for the migration service.</summary>
+public interface IEmbeddingMigrationVectorGenerator
+{
+    /// <summary>Generates an embedding vector for one tenant and target configuration.</summary>
+    /// <param name="text">The text to embed.</param>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="config">The target embedding configuration.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>The generated embedding vector.</returns>
+    Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct);
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/NaturalLanguageMigrationUnit.cs===
+// <copyright file="NaturalLanguageMigrationUnit.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Natural-language semantic hash data used for NL vector migration.</summary>
+/// <param name="MemoryUnitId">The memory unit identifier.</param>
+/// <param name="CaseId">The case identifier.</param>
+/// <param name="NaturalLanguageDescription">The persisted natural-language description.</param>
+/// <param name="DescriptionOrigin">The persisted description origin.</param>
+/// <param name="DescriptionConfidence">The persisted description confidence.</param>
+/// <param name="DescriptionConfidenceSource">The persisted confidence source.</param>
+/// <param name="State">The current provider, model, and dimension metadata.</param>
+public sealed record NaturalLanguageMigrationUnit(
+    string MemoryUnitId,
+    string? CaseId,
+    string? NaturalLanguageDescription,
+    string? DescriptionOrigin,
+    string? DescriptionConfidence,
+    string? DescriptionConfidenceSource,
+    SemanticMigrationState State);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/NaturalLanguageSemanticMigrationWrite.cs===
+// <copyright file="NaturalLanguageSemanticMigrationWrite.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Natural-language semantic hash write payload.</summary>
+/// <param name="MemoryUnitId">The memory unit identifier.</param>
+/// <param name="CaseId">The case identifier.</param>
+/// <param name="NaturalLanguageDescription">The persisted natural-language description.</param>
+/// <param name="DescriptionOrigin">The persisted description origin.</param>
+/// <param name="DescriptionConfidence">The persisted description confidence.</param>
+/// <param name="DescriptionConfidenceSource">The persisted confidence source.</param>
+/// <param name="Embedding">The generated embedding vector.</param>
+public sealed record NaturalLanguageSemanticMigrationWrite(
+    string MemoryUnitId,
+    string CaseId,
+    string NaturalLanguageDescription,
+    string DescriptionOrigin,
+    string DescriptionConfidence,
+    string DescriptionConfidenceSource,
+    float[] Embedding);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/RawSemanticMigrationWrite.cs===
+// <copyright file="RawSemanticMigrationWrite.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Raw semantic hash write payload.</summary>
+/// <param name="MemoryUnitId">The memory unit identifier.</param>
+/// <param name="CaseId">The case identifier.</param>
+/// <param name="CloudEventSubject">The optional CloudEvent subject.</param>
+/// <param name="Embedding">The generated embedding vector.</param>
+public sealed record RawSemanticMigrationWrite(
+    string MemoryUnitId,
+    string CaseId,
+    string? CloudEventSubject,
+    float[] Embedding);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs===
+// <copyright file="RedisEmbeddingMigrationStore.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+using System.Globalization;
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+
+using Dapr.Actors;
+using Dapr.Actors.Client;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Tenants;
+
+using NRedisStack.RedisStackCommands;
+
+using StackExchange.Redis;
+
+/// <summary>Redis, DAPR actor, and tenant registry implementation of <see cref="IEmbeddingMigrationStore"/>.</summary>
+/// <param name="redis">The Redis connection multiplexer.</param>
+/// <param name="tenantRegistry">The committed tenant registry surface.</param>
+/// <param name="actorProxyFactory">The DAPR actor proxy factory.</param>
+public sealed class RedisEmbeddingMigrationStore(
+    IConnectionMultiplexer redis,
+    TenantRegistryService tenantRegistry,
+    IActorProxyFactory actorProxyFactory) : IEmbeddingMigrationStore
+{
+    private const int ScanPageSize = 1000;
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<string>> ListTenantIdsAsync(CancellationToken ct)
+    {
+        IReadOnlyList<TenantInfo> tenants = await tenantRegistry.ListTenantsAsync(ct).ConfigureAwait(false);
+        return tenants.Select(t => t.Id).Where(id => !string.IsNullOrWhiteSpace(id)).Order(StringComparer.Ordinal).ToList();
+    }
+
+    /// <inheritdoc/>
+    public async Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(string tenantId, CancellationToken ct)
+    {
+        ITenantConfigurationActor actor = CreateTenantConfigActor(tenantId);
+        return await actor.GetEmbeddingConfigAsync().WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task SetEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config, bool forceReindex, CancellationToken ct)
+    {
+        ITenantConfigurationActor actor = CreateTenantConfigActor(tenantId);
+        await actor.SetEmbeddingConfigAsync(config, forceReindex).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<EmbeddingMigrationTenantCounts> GetCountsAsync(
+        string tenantId,
+        TenantEmbeddingConfig targetConfig,
+        CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        string syntacticPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
+        string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
+        string nlPrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId);
+
+        long syntactic = 0;
+        await foreach (RedisKey _ in ScanKeysAsync(syntacticPrefix, ct).ConfigureAwait(false))
+        {
+            syntactic++;
+        }
+
+        long raw = 0;
+        long rawStale = 0;
+        await foreach (RedisKey key in ScanKeysAsync(rawPrefix, ct).ConfigureAwait(false))
+        {
+            if (key.ToString().StartsWith(nlPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            raw++;
+            SemanticMigrationState state = await ReadSemanticStateAsync(db, key).ConfigureAwait(false);
+            if (!IsTargetState(state, targetConfig))
+            {
+                rawStale++;
+            }
+        }
+
+        long nl = 0;
+        long nlStale = 0;
+        await foreach (RedisKey key in ScanKeysAsync(nlPrefix, ct).ConfigureAwait(false))
+        {
+            nl++;
+            SemanticMigrationState state = await ReadSemanticStateAsync(db, key).ConfigureAwait(false);
+            if (!IsTargetState(state, targetConfig))
+            {
+                nlStale++;
+            }
+        }
+
+        return new EmbeddingMigrationTenantCounts(syntactic, raw, nl, rawStale, nlStale);
+    }
+
+    /// <inheritdoc/>
+    public Task<EmbeddingMigrationIndexInfo> GetIndexInfoAsync(string tenantId, CancellationToken ct)
+    {
+        _ = ct;
+        IDatabase db = redis.GetDatabase();
+        int? rawDimensions = TryGetIndexDimensions(db, IndexSchemaDefinitions.GetSemanticIndexName(tenantId));
+        int? nlDimensions = TryGetIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId));
+        return Task.FromResult(new EmbeddingMigrationIndexInfo(rawDimensions, nlDimensions));
+    }
+
+    /// <inheritdoc/>
+    public Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct)
+    {
+        _ = ct;
+        IDatabase db = redis.GetDatabase();
+        DropIndexIfExists(db, IndexSchemaDefinitions.GetSemanticIndexName(tenantId));
+        DropIndexIfExists(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId));
+
+        var ft = db.FT();
+        ft.Create(
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateSemanticSchema(dimensions));
+        ft.Create(
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(dimensions));
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public async Task StartMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, bool resume, CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        string key = GetMarkerKey(tenantId, targetConfig);
+        HashEntry[] entries =
+        [
+            new("tenantId", tenantId),
+            new("targetProvider", targetConfig.Provider),
+            new("targetModel", targetConfig.Model),
+            new("targetDimensions", targetConfig.Dimensions),
+            new("status", resume ? "resumed" : "started"),
+            new("startedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
+        ];
+        await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        string key = GetMarkerKey(tenantId, targetConfig);
+        HashEntry[] entries =
+        [
+            new("status", "completed"),
+            new("completedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
+        ];
+        await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task RecordFailureAsync(EmbeddingMigrationUnitFailure failure, CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        string listKey = $"{failure.TenantId}:embedding-migration:failures";
+        string json = JsonSerializer.Serialize(failure);
+        await db.ListRightPushAsync(listKey, json).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async IAsyncEnumerable<SyntacticMigrationUnit> EnumerateSyntacticUnitsAsync(
+        string tenantId,
+        int pageSize,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        string prefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
+        await foreach (RedisKey key in ScanKeysAsync(prefix, ct, pageSize).ConfigureAwait(false))
+        {
+            string? keyText = key.ToString();
+            if (string.IsNullOrEmpty(keyText) || keyText.Length <= prefix.Length)
+            {
+                continue;
+            }
+
+            string memoryUnitId = keyText[prefix.Length..];
+            RedisValue[] values = await db.HashGetAsync(
+                    key,
+                    ["content", "caseId", "cloudeventSubject"])
+                .WaitAsync(ct)
+                .ConfigureAwait(false);
+
+            yield return new SyntacticMigrationUnit(
+                memoryUnitId,
+                values[0].ToString(),
+                values[1].ToString(),
+                values[2].ToString());
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<SemanticMigrationState?> GetRawSemanticStateAsync(string tenantId, string memoryUnitId, CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        RedisKey key = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + memoryUnitId;
+        if (!await db.KeyExistsAsync(key).WaitAsync(ct).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return await ReadSemanticStateAsync(db, key).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<NaturalLanguageMigrationUnit?> GetNaturalLanguageSemanticUnitAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        RedisKey key = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + memoryUnitId;
+        if (!await db.KeyExistsAsync(key).WaitAsync(ct).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        RedisValue[] values = await db.HashGetAsync(
+                key,
+                [
+                    "caseId",
+                    "naturalLanguageDescription",
+                    "descriptionOrigin",
+                    "descriptionConfidence",
+                    "descriptionConfidenceSource",
+                    "embeddingProvider",
+                    "embeddingModel",
+                    "embeddingDimensions",
+                ])
+            .WaitAsync(ct)
+            .ConfigureAwait(false);
+
+        return new NaturalLanguageMigrationUnit(
+            memoryUnitId,
+            values[0].ToString(),
+            values[1].ToString(),
+            values[2].ToString(),
+            values[3].ToString(),
+            values[4].ToString(),
+            new SemanticMigrationState(values[5].ToString(), values[6].ToString(), TryParseInt(values[7])));
+    }
+
+    /// <inheritdoc/>
+    public async Task WriteRawSemanticAsync(
+        string tenantId,
+        TenantEmbeddingConfig targetConfig,
+        RawSemanticMigrationWrite write,
+        CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        byte[] vectorBytes = MemoryMarshal.AsBytes(write.Embedding.AsSpan()).ToArray();
+        List<HashEntry> entries =
+        [
+            new("embedding", vectorBytes),
+            new("memoryUnitId", write.MemoryUnitId),
+            new("caseId", write.CaseId),
+            new("embeddingProvider", targetConfig.Provider),
+            new("embeddingModel", targetConfig.Model),
+            new("embeddingDimensions", targetConfig.Dimensions),
+        ];
+        if (!string.IsNullOrWhiteSpace(write.CloudEventSubject))
+        {
+            entries.Add(new HashEntry("cloudeventSubject", write.CloudEventSubject));
+        }
+
+        await db.HashSetAsync(IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + write.MemoryUnitId, [.. entries])
+            .WaitAsync(ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task WriteNaturalLanguageSemanticAsync(
+        string tenantId,
+        TenantEmbeddingConfig targetConfig,
+        NaturalLanguageSemanticMigrationWrite write,
+        CancellationToken ct)
+    {
+        IDatabase db = redis.GetDatabase();
+        byte[] vectorBytes = MemoryMarshal.AsBytes(write.Embedding.AsSpan()).ToArray();
+        HashEntry[] entries =
+        [
+            new("embedding", vectorBytes),
+            new("memoryUnitId", write.MemoryUnitId),
+            new("caseId", write.CaseId),
+            new("naturalLanguageDescription", write.NaturalLanguageDescription),
+            new("descriptionOrigin", write.DescriptionOrigin),
+            new("descriptionConfidence", write.DescriptionConfidence),
+            new("descriptionConfidenceSource", write.DescriptionConfidenceSource),
+            new("embeddingProvider", targetConfig.Provider),
+            new("embeddingModel", targetConfig.Model),
+            new("embeddingDimensions", targetConfig.Dimensions),
+        ];
+        await db.HashSetAsync(IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + write.MemoryUnitId, entries)
+            .WaitAsync(ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public Task<bool> HasRetainedPreviousVersionIndexesAsync(string tenantId, CancellationToken ct)
+    {
+        _ = ct;
+        IDatabase db = redis.GetDatabase();
+        bool rawExists = IndexExists(db, IndexSchemaDefinitions.GetSemanticIndexName(tenantId) + ":previous");
+        bool nlExists = IndexExists(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId) + ":previous");
+        return Task.FromResult(rawExists && nlExists);
+    }
+
+    private ITenantConfigurationActor CreateTenantConfigActor(string tenantId)
+        => actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
+            new ActorId(tenantId),
+            nameof(TenantConfigurationActor));
+
+    private async IAsyncEnumerable<RedisKey> ScanKeysAsync(
+        string prefix,
+        [EnumeratorCancellation] CancellationToken ct,
+        int pageSize = ScanPageSize)
+    {
+        IServer server = GetAnyServer();
+        await foreach (RedisKey key in server.KeysAsync(pattern: prefix + "*", pageSize: pageSize).WithCancellation(ct))
+        {
+            yield return key;
+        }
+    }
+
+    private IServer GetAnyServer()
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        throw new InvalidOperationException("No connected Redis server is available for embedding vector migration.");
+    }
+
+    private static async Task<SemanticMigrationState> ReadSemanticStateAsync(IDatabase db, RedisKey key)
+    {
+        RedisValue[] values = await db.HashGetAsync(key, ["embeddingProvider", "embeddingModel", "embeddingDimensions"]).ConfigureAwait(false);
+        return new SemanticMigrationState(values[0].ToString(), values[1].ToString(), TryParseInt(values[2]));
+    }
+
+    private static bool IsTargetState(SemanticMigrationState state, TenantEmbeddingConfig targetConfig)
+        => string.Equals(state.Provider, targetConfig.Provider, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(state.Model, targetConfig.Model, StringComparison.Ordinal)
+            && state.Dimensions == targetConfig.Dimensions;
+
+    private static int? TryGetIndexDimensions(IDatabase db, string indexName)
+    {
+        try
+        {
+            RedisResult info = db.Execute("FT.INFO", indexName);
+            return IndexSchemaDefinitions.TryGetVectorDimensions(info, "embedding", out int dimensions) ? dimensions : null;
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+    }
+
+    private static bool IndexExists(IDatabase db, string indexName)
+    {
+        try
+        {
+            _ = db.Execute("FT.INFO", indexName);
+            return true;
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+    }
+
+    private static void DropIndexIfExists(IDatabase db, string indexName)
+    {
+        try
+        {
+            db.Execute("FT.DROPINDEX", indexName);
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+        {
+        }
+    }
+
+    private static int? TryParseInt(RedisValue value)
+        => int.TryParse(value.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) ? parsed : null;
+
+    private static string GetMarkerKey(string tenantId, TenantEmbeddingConfig targetConfig)
+        => $"{tenantId}:embedding-migration:{targetConfig.Provider}:{targetConfig.Model.Replace(":", "_", StringComparison.Ordinal)}";
+}
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/SemanticMigrationState.cs===
+// <copyright file="SemanticMigrationState.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Provider, model, and dimension metadata persisted on a semantic vector hash.</summary>
+/// <param name="Provider">The embedding provider.</param>
+/// <param name="Model">The embedding model.</param>
+/// <param name="Dimensions">The embedding dimension count.</param>
+public sealed record SemanticMigrationState(string? Provider, string? Model, int? Dimensions);
+
+===NEW FILE: src/Hexalith.Memories.Server/Migration/SyntacticMigrationUnit.cs===
+// <copyright file="SyntacticMigrationUnit.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Migration;
+
+/// <summary>Authoritative syntactic memory-unit data used for raw re-embedding.</summary>
+/// <param name="MemoryUnitId">The memory unit identifier.</param>
+/// <param name="Content">The persisted raw content.</param>
+/// <param name="CaseId">The case identifier.</param>
+/// <param name="CloudEventSubject">The optional CloudEvent subject.</param>
+public sealed record SyntacticMigrationUnit(string MemoryUnitId, string? Content, string? CaseId, string? CloudEventSubject);
+
+===NEW FILE: tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs===
+// <copyright file="EmbeddingVectorMigrationServiceTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Tests.Migration;
+
+using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
+
+using Shouldly;
+
+/// <summary>Focused unit coverage for Story 13.6 embedding vector migration orchestration.</summary>
+public sealed class EmbeddingVectorMigrationServiceTests
+{
+    [Fact]
+    public async Task LiveWithoutTenantShouldReturnPlumbingError()
+    {
+        FakeStore store = new();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions { Mode = EmbeddingMigrationMode.Live, Yes = true },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Plumbing);
+        result.Message.ShouldContain("--live requires --tenant");
+        store.SetConfigCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task DryRunShouldReportAffectedTenantsWithoutWrites()
+    {
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(2, 2, 1, 2, 1);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions { Mode = EmbeddingMigrationMode.DryRun },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        result.Tenants.Count.ShouldBe(1);
+        result.Tenants[0].TenantId.ShouldBe("tenant-a");
+        result.Tenants[0].DimensionMismatch.ShouldBeTrue();
+        store.SetConfigCalls.ShouldBe(0);
+        store.DropAndRecreateCalls.ShouldBe(0);
+        store.RawWrites.Count.ShouldBe(0);
+        store.NaturalLanguageWrites.Count.ShouldBe(0);
+        store.RecordedFailures.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task LiveMigrationShouldUpdateConfigRecreateIndexesSkipResumeAndRecordFailures()
+    {
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(3, 3, 2, 2, 1);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-process", "raw text", "case-1", "subject-a"),
+            new SyntacticMigrationUnit("mu-skip", "already migrated", "case-1", null),
+            new SyntacticMigrationUnit("mu-fail", "throw-secret", "case-1", null),
+        ];
+        store.RawStates[("tenant-a", "mu-skip")] = new SemanticMigrationState(target.Provider, target.Model, target.Dimensions);
+        store.NaturalLanguageUnits[("tenant-a", "mu-process")] = new NaturalLanguageMigrationUnit(
+            "mu-process",
+            "case-1",
+            "business description",
+            "ai",
+            "0.95",
+            "model",
+            new SemanticMigrationState("google", "gemini-embedding-001", 768));
+        store.NaturalLanguageUnits[("tenant-a", "mu-skip")] = new NaturalLanguageMigrationUnit(
+            "mu-skip",
+            "case-1",
+            "already migrated description",
+            "ai",
+            "0.90",
+            "model",
+            new SemanticMigrationState(target.Provider, target.Model, target.Dimensions));
+
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+                Resume = true,
+                BatchSize = 2,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        store.MarkerStarted.ShouldBeTrue();
+        store.MarkerCompleted.ShouldBeTrue();
+        store.SetConfigCalls.ShouldBe(1);
+        store.ForceReindexValues.ShouldBe([true]);
+        store.DropAndRecreateCalls.ShouldBe(1);
+        store.RawWrites.Select(w => w.MemoryUnitId).ShouldBe(["mu-process"]);
+        store.NaturalLanguageWrites.Select(w => w.MemoryUnitId).ShouldBe(["mu-process"]);
+        result.Tenants[0].Raw.ShouldBe(new EmbeddingMigrationUnitCounters(1, 1, 1));
+        result.Tenants[0].NaturalLanguage.ShouldBe(new EmbeddingMigrationUnitCounters(1, 2, 0));
+        result.Progress.Count.ShouldBe(4);
+        result.Failures.Count.ShouldBe(1);
+        result.Failures[0].Message.ShouldNotContain("super-secret-client-secret");
+        result.Failures[0].Message.ShouldNotContain("Bearer eyJ");
+        result.Failures[0].Message.ShouldNotContain("AIzaFake");
+        result.Failures[0].Message.ShouldContain("[redacted]");
+        store.RecordedFailures.ShouldBe(result.Failures);
+    }
+
+    [Fact]
+    public async Task RollbackWithoutRetainedPreviousIndexesShouldFailClosed()
+    {
+        FakeStore store = new();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Rollback,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        result.Message.ShouldContain("Rollback is unavailable");
+        store.DropAndRecreateCalls.ShouldBe(0);
+    }
+
+    private sealed class FakeVectorGenerator : IEmbeddingMigrationVectorGenerator
+    {
+        public Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
+        {
+            if (text == "throw-secret")
+            {
+                throw new InvalidOperationException(
+                    "provider failed: client_secret=super-secret-client-secret Authorization: Bearer eyJabcdef AIzaFake123456789");
+            }
+
+            return Task.FromResult(Enumerable.Repeat(0.1f, config.Dimensions).ToArray());
+        }
+    }
+
+    private sealed class FakeStore : IEmbeddingMigrationStore
+    {
+        public List<string> Tenants { get; } = [];
+
+        public Dictionary<string, TenantEmbeddingConfig> Configs { get; } = [];
+
+        public Dictionary<string, EmbeddingMigrationTenantCounts> Counts { get; } = [];
+
+        public Dictionary<string, EmbeddingMigrationIndexInfo> Indexes { get; } = [];
+
+        public Dictionary<string, List<SyntacticMigrationUnit>> SyntacticUnits { get; } = [];
+
+        public Dictionary<(string TenantId, string MemoryUnitId), SemanticMigrationState> RawStates { get; } = [];
+
+        public Dictionary<(string TenantId, string MemoryUnitId), NaturalLanguageMigrationUnit> NaturalLanguageUnits { get; } = [];
+
+        public List<RawSemanticMigrationWrite> RawWrites { get; } = [];
+
+        public List<NaturalLanguageSemanticMigrationWrite> NaturalLanguageWrites { get; } = [];
+
+        public List<EmbeddingMigrationUnitFailure> RecordedFailures { get; } = [];
+
+        public List<bool> ForceReindexValues { get; } = [];
+
+        public int SetConfigCalls { get; private set; }
+
+        public int DropAndRecreateCalls { get; private set; }
+
+        public bool MarkerStarted { get; private set; }
+
+        public bool MarkerCompleted { get; private set; }
+
+        public Task<IReadOnlyList<string>> ListTenantIdsAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<string>>(Tenants);
+
+        public Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(string tenantId, CancellationToken ct)
+            => Task.FromResult(Configs.GetValueOrDefault(tenantId) ?? EmbeddingProviderDefaults.Google());
+
+        public Task SetEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config, bool forceReindex, CancellationToken ct)
+        {
+            Configs[tenantId] = config;
+            SetConfigCalls++;
+            ForceReindexValues.Add(forceReindex);
+            return Task.CompletedTask;
+        }
+
+        public Task<EmbeddingMigrationTenantCounts> GetCountsAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
+            => Task.FromResult(Counts.GetValueOrDefault(tenantId) ?? new EmbeddingMigrationTenantCounts(0, 0, 0, 0, 0));
+
+        public Task<EmbeddingMigrationIndexInfo> GetIndexInfoAsync(string tenantId, CancellationToken ct)
+            => Task.FromResult(Indexes.GetValueOrDefault(tenantId) ?? new EmbeddingMigrationIndexInfo(null, null));
+
+        public Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct)
+        {
+            DropAndRecreateCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task StartMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, bool resume, CancellationToken ct)
+        {
+            MarkerStarted = true;
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
+        {
+            MarkerCompleted = true;
+            return Task.CompletedTask;
+        }
+
+        public Task RecordFailureAsync(EmbeddingMigrationUnitFailure failure, CancellationToken ct)
+        {
+            RecordedFailures.Add(failure);
+            return Task.CompletedTask;
+        }
+
+        public async IAsyncEnumerable<SyntacticMigrationUnit> EnumerateSyntacticUnitsAsync(string tenantId, int pageSize, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            foreach (SyntacticMigrationUnit unit in SyntacticUnits.GetValueOrDefault(tenantId) ?? [])
+            {
+                yield return unit;
+            }
+
+            await Task.CompletedTask;
+        }
+
+        public Task<SemanticMigrationState?> GetRawSemanticStateAsync(string tenantId, string memoryUnitId, CancellationToken ct)
+            => Task.FromResult(RawStates.GetValueOrDefault((tenantId, memoryUnitId)));
+
+        public Task<NaturalLanguageMigrationUnit?> GetNaturalLanguageSemanticUnitAsync(string tenantId, string memoryUnitId, CancellationToken ct)
+            => Task.FromResult(NaturalLanguageUnits.GetValueOrDefault((tenantId, memoryUnitId)));
+
+        public Task WriteRawSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, RawSemanticMigrationWrite write, CancellationToken ct)
+        {
+            RawWrites.Add(write);
+            RawStates[(tenantId, write.MemoryUnitId)] = new SemanticMigrationState(targetConfig.Provider, targetConfig.Model, targetConfig.Dimensions);
+            return Task.CompletedTask;
+        }
+
+        public Task WriteNaturalLanguageSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, NaturalLanguageSemanticMigrationWrite write, CancellationToken ct)
+        {
+            NaturalLanguageWrites.Add(write);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> HasRetainedPreviousVersionIndexesAsync(string tenantId, CancellationToken ct)
+            => Task.FromResult(false);
+    }
+}
+

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.Actors" />
+    <PackageReference Include="Dapr.Client" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,6 @@
 # Story 13.6: Vector Migration Tool
 
-Status: blocked
+Status: done
 
 **Effort estimate:** ~1.5-2.0 working days. Breakdown:
 
@@ -51,7 +51,7 @@ so that existing tenants can move to the self-hosted provider without ad-hoc Red
 
 9. **AC9 - Failures are bounded and resumable.** A per-unit embedding or write failure records that unit ID, content kind (`payload` or `naturalLanguageDescription`), error category, and truncated message in a migration result artifact or Redis marker. The run continues to the next unit unless the failure is a tenant-level configuration/index error. A non-zero failed count exits with the existing domain-error exit code or equivalent.
 
-10. **AC10 - Rollback is guarded, not invented.** `--rollback --tenant <tenantId>` is available only when explicitly retained Path B previous-version indexes can be detected. If no retained previous-version index exists, the command fails closed with a clear message. This story does not implement read-side fan-out, dual-write, or automatic versioned-index coexistence.
+10. **AC10 - Rollback is guarded, not invented.** `--rollback --tenant <tenantId>` is available only when explicitly retained Path B previous-version indexes can be detected. The command always fails closed under Path A: when no retained previous-version index exists it returns a clear "rollback unavailable" message; when retained indexes are detected it returns a distinct "no committed Path B restore convention" message. This story does not implement read-side fan-out, dual-write, automatic versioned-index coexistence, or any actual restore action — Task 5.3 was struck during code review on 2026-05-03 because Path A explicitly does not retain previous-version indexes.
 
 11. **AC11 - Secret and token discipline is preserved.** Command output, logs, errors, result artifacts, and tests never include raw OIDC `client_secret`, Google API key values, or Bearer tokens. It is acceptable to show `ApiSecretKeyName` as a secret-name reference.
 
@@ -59,63 +59,63 @@ so that existing tenants can move to the self-hosted provider without ad-hoc Red
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Verify prerequisites and current implementation state (AC: #1-#12)
-  - [ ] Confirm `13-2-implement-oidc-token-provider`, `13-3-extend-embedding-client-to-support-ollama`, `13-4-extend-tenant-embedding-config-with-additive-oidc-fields`, and `13-5-surface-new-fields-via-tenant-configuration-actor` are `done`; if not, stop.
-  - [ ] Read `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs`; reuse it for index names, prefixes, schemas, and dimension validation.
-  - [ ] Read `src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs` and `IndexNaturalLanguageSemanticActivity.cs`; preserve their Redis hash field shapes.
-  - [ ] Read `src/Hexalith.Memories.Server/Consistency/SemanticIndexer.cs`; either complete this helper or avoid using it. Do not leave migration blocked by its current `NotSupportedException`.
-  - [ ] Read `src/Hexalith.Memories.Server/Activities/Indexing/EnumerateMemoryUnitIdsActivity.cs`; reuse its cursor-based scan pattern and avoid blocking `KEYS`.
-  - [ ] Read `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs` if extending CLI, or `tools/GenerateBenchmarkVectors` if creating a standalone tool project.
+- [x] Task 0 - Verify prerequisites and current implementation state (AC: #1-#12)
+  - [x] Confirm `13-2-implement-oidc-token-provider`, `13-3-extend-embedding-client-to-support-ollama`, `13-4-extend-tenant-embedding-config-with-additive-oidc-fields`, and `13-5-surface-new-fields-via-tenant-configuration-actor` are `done`; if not, stop.
+  - [x] Read `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs`; reuse it for index names, prefixes, schemas, and dimension validation.
+  - [x] Read `src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs` and `IndexNaturalLanguageSemanticActivity.cs`; preserve their Redis hash field shapes.
+  - [x] Read `src/Hexalith.Memories.Server/Consistency/SemanticIndexer.cs`; either complete this helper or avoid using it. Do not leave migration blocked by its current `NotSupportedException`.
+  - [x] Read `src/Hexalith.Memories.Server/Activities/Indexing/EnumerateMemoryUnitIdsActivity.cs`; reuse its cursor-based scan pattern and avoid blocking `KEYS`.
+  - [x] Read `src/Hexalith.Memories.Cli/Commands/RootCommandFactory.cs` if extending CLI, or `tools/GenerateBenchmarkVectors` if creating a standalone tool project.
 
-- [ ] Task 1 - Choose and add the operator command surface (AC: #1, #2, #8, #11)
-  - [ ] Prefer an extension to `Hexalith.Memories.Cli` only if the migration can be executed through committed server endpoints/workflows. Otherwise create a dedicated `tools/MigrateEmbeddingVectors/` console tool so direct Redis/DAPR dependencies do not leak into the normal CLI.
-  - [ ] Define options: `--dry-run`, `--live`, `--tenant`, `--target-provider`, `--target-model`, `--target-dimensions`, `--batch-size`, `--yes`, `--resume`, `--rollback`, and `--format`.
-  - [ ] Default target values to the committed Story 13.4/13.5 Ollama config: provider `ollama`, model `qwen3-embedding:4b`, dimensions `2560`.
-  - [ ] Reject mutation when `--dry-run` and `--live` are both present, when neither is present, when `--live` lacks `--tenant`, or when non-interactive mutation lacks `--yes`.
-  - [ ] Register human and JSON output shapes so automation can parse dry-run and final summaries.
+- [x] Task 1 - Choose and add the operator command surface (AC: #1, #2, #8, #11)
+  - [x] Prefer an extension to `Hexalith.Memories.Cli` only if the migration can be executed through committed server endpoints/workflows. Otherwise create a dedicated `tools/MigrateEmbeddingVectors/` console tool so direct Redis/DAPR dependencies do not leak into the normal CLI.
+  - [x] Define options: `--dry-run`, `--live`, `--tenant`, `--target-provider`, `--target-model`, `--target-dimensions`, `--batch-size`, `--yes`, `--resume`, `--rollback`, and `--format`.
+  - [x] Default target values to the committed Story 13.4/13.5 Ollama config: provider `ollama`, model `qwen3-embedding:4b`, dimensions `2560`.
+  - [x] Reject mutation when `--dry-run` and `--live` are both present, when neither is present, when `--live` lacks `--tenant`, or when non-interactive mutation lacks `--yes`.
+  - [x] Register human and JSON output shapes so automation can parse dry-run and final summaries.
 
-- [ ] Task 2 - Implement dry-run inventory without writes (AC: #1, #11)
-  - [ ] Enumerate tenants via the committed tenant registry/listing surface, not by guessing Redis key prefixes.
-  - [ ] For each tenant, read current embedding config through `TenantConfigurationActor.GetEmbeddingConfigAsync()` or the committed REST/config surface.
-  - [ ] Count syntactic units from `{tenantId}:mu:*`, raw semantic units from `{tenantId}:vec:*`, and NL semantic units from `{tenantId}:vec:nl:*` with cursor-based scanning.
-  - [ ] Read `FT.INFO` for both semantic indexes when present and report current dimensions using `IndexSchemaDefinitions.TryGetVectorDimensions(...)`.
-  - [ ] Mark a tenant affected when provider/model/dimensions differ from target, when raw/NL index dimensions differ from target, or when hashes carry stale provider/model metadata.
-  - [ ] Prove by test that dry-run does not call `SetEmbeddingConfigAsync`, `FT.DROPINDEX`, `FT.CREATE`, `HashSet`, `KeyDelete`, or DAPR secret reads.
+- [x] Task 2 - Implement dry-run inventory without writes (AC: #1, #11)
+  - [x] Enumerate tenants via the committed tenant registry/listing surface, not by guessing Redis key prefixes.
+  - [x] For each tenant, read current embedding config through `TenantConfigurationActor.GetEmbeddingConfigAsync()` or the committed REST/config surface.
+  - [x] Count syntactic units from `{tenantId}:mu:*`, raw semantic units from `{tenantId}:vec:*`, and NL semantic units from `{tenantId}:vec:nl:*` with cursor-based scanning.
+  - [x] Read `FT.INFO` for both semantic indexes when present and report current dimensions using `IndexSchemaDefinitions.TryGetVectorDimensions(...)`.
+  - [x] Mark a tenant affected when provider/model/dimensions differ from target, when raw/NL index dimensions differ from target, or when hashes carry stale provider/model metadata.
+  - [x] Prove by test that dry-run does not call `SetEmbeddingConfigAsync`, `FT.DROPINDEX`, `FT.CREATE`, `HashSet`, `KeyDelete`, or DAPR secret reads.
 
-- [ ] Task 3 - Implement live Path A migration (AC: #3-#6, #8, #11)
-  - [ ] Capture and report the old tenant config before mutation.
-  - [ ] Update tenant config via the actor/config endpoint with `forceReindex: true`; do not edit actor state directly.
-  - [ ] Drop raw and NL semantic indexes with `FT.DROPINDEX` without the `DD` flag for the Path A active-index reset. Then explicitly delete old raw/NL semantic hashes only after the replacement plan is ready, or rewrite hashes as units are successfully migrated so interruption remains resumable.
-  - [ ] Recreate both indexes through `IndexSchemaDefinitions.CreateSemanticSchema(targetDimensions)` and `CreateNaturalLanguageSemanticSchema(targetDimensions)`.
-  - [ ] For raw payload migration, read `content`, `caseId`, `sourceUri`, `sourceType`, `metadataJson`, `embeddingProvider`, and `embeddingModel` from syntactic hashes; validate required fields before embedding.
-  - [ ] Generate raw vectors through `EmbeddingClient.GenerateAsync(content, tenantId, targetConfig, ct)` so Story 13.3 auth, retry, dimension validation, and redaction behavior are reused.
-  - [ ] Write raw semantic hashes with fields `embedding`, `memoryUnitId`, `caseId`, and optional `cloudeventSubject`, plus target `embeddingProvider`, `embeddingModel`, and `embeddingDimensions` metadata needed for resume detection.
-  - [ ] For NL migration, read the existing NL hash's `naturalLanguageDescription`; generate a vector from that text and write the existing NL fields plus target provider/model/dimensions.
-  - [ ] Do not regenerate natural-language descriptions in this story. Story 9.2's NL retry service owns missing descriptions.
+- [x] Task 3 - Implement live Path A migration (AC: #3-#6, #8, #11)
+  - [x] Capture and report the old tenant config before mutation.
+  - [x] Update tenant config via the actor/config endpoint with `forceReindex: true`; do not edit actor state directly. Order: drop+recreate first (atomic — second create rolls back the first), then `SetEmbeddingConfigAsync`, then migrate. This minimizes the window where ingestion sees a config-vs-index dimension mismatch.
+  - [x] Drop raw and NL semantic indexes with `FT.DROPINDEX` without the `DD` flag for the Path A active-index reset. Per-unit migration writes use a Redis transaction that `KEY DELETE`s the prior hash before `HSET` of the new generation, so old fields cannot leak into the new document and old vectors are evicted as units are migrated.
+  - [x] Recreate both indexes through `IndexSchemaDefinitions.CreateSemanticSchema(targetDimensions)` and `CreateNaturalLanguageSemanticSchema(targetDimensions)`. Wrap the pair in a try/catch so that if the NL `FT.CREATE` throws after the raw `FT.CREATE` succeeded, the raw index is dropped to keep the tenant in a recoverable state.
+  - [x] For raw payload migration, read `content`, `caseId`, and `cloudeventSubject` from syntactic hashes; validate that `content` and `caseId` are non-empty before embedding. **Spec amendment 2026-05-03:** the original wording also listed `sourceUri`, `sourceType`, `metadataJson`, `embeddingProvider`, and `embeddingModel`; verification against `IndexSemanticActivity.cs` confirmed those fields are not written into the raw semantic hash, so loading them is unnecessary. `cloudeventSubject` is read as a top-level hash field because `IndexSyntacticActivity.cs` already parses `cloudevent.subject` from `metadataJson` and persists it as a top-level field; the migration honors that committed contract rather than re-parsing JSON.
+  - [x] Generate raw vectors through `EmbeddingClient.GenerateAsync(content, tenantId, targetConfig, ct)` so Story 13.3 auth, retry, dimension validation, and redaction behavior are reused.
+  - [x] Write raw semantic hashes with fields `embedding`, `memoryUnitId`, `caseId`, and optional `cloudeventSubject`, plus target `embeddingProvider`, `embeddingModel`, and `embeddingDimensions` metadata needed for resume detection.
+  - [x] For NL migration, read the existing NL hash's `naturalLanguageDescription`; generate a vector from that text and write the existing NL fields plus target provider/model/dimensions. Preserve missing-as-missing for `descriptionOrigin`, `descriptionConfidence`, and `descriptionConfidenceSource` — never substitute fabricated defaults like `"ai"`/`"unknown"`/`""` when the source field is absent.
+  - [x] Do not regenerate natural-language descriptions in this story. Story 9.2's NL retry service owns missing descriptions.
 
-- [ ] Task 4 - Add interruption-safe resume behavior (AC: #7, #9)
-  - [ ] Define a durable migration marker shape, for example `{tenantId}:embedding-migration:{targetProvider}:{targetModel}` or a local JSON result file when running as a tool. It must track started/completed timestamps, target config, failed units, and last completed batch.
-  - [ ] Before embedding a raw unit, skip it when `{tenantId}:vec:{memoryUnitId}` already carries target provider, target model, and target dimensions.
-  - [ ] Before embedding an NL unit, skip it when `{tenantId}:vec:nl:{memoryUnitId}` already carries target provider, target model, and target dimensions.
-  - [ ] On Ctrl-C, stop after the current unit or batch, flush the marker/result artifact, and return the existing cancelled exit code when available.
-  - [ ] On rerun with `--resume`, continue remaining units and keep previous failure records unless `--retry-failed` or equivalent is intentionally added.
+- [x] Task 4 - Add interruption-safe resume behavior (AC: #7, #9)
+  - [x] Define a durable migration marker shape, for example `{tenantId}:embedding-migration:{targetProvider}:{targetModel}` or a local JSON result file when running as a tool. It must track started/completed timestamps, target config, failed units, and last completed batch.
+  - [x] Before embedding a raw unit, skip it when `{tenantId}:vec:{memoryUnitId}` already carries target provider, target model, and target dimensions.
+  - [x] Before embedding an NL unit, skip it when `{tenantId}:vec:nl:{memoryUnitId}` already carries target provider, target model, and target dimensions.
+  - [x] On Ctrl-C, stop after the current unit or batch, flush the marker/result artifact, and return the existing cancelled exit code when available.
+  - [x] On rerun with `--resume`, continue remaining units and keep previous failure records unless `--retry-failed` or equivalent is intentionally added.
 
-- [ ] Task 5 - Add rollback guardrails (AC: #10)
-  - [ ] Detect retained previous-version indexes only through explicit names from the committed Path B convention, not by guessing arbitrary backup keys.
-  - [ ] If retained indexes do not exist, return a fail-closed error that explains rollback is unavailable for Path A-only migrations.
-  - [ ] If retained indexes exist, require `--yes` and restore only the active semantic index aliases/names documented by the committed migration implementation.
-  - [ ] Do not implement dual-write, search fan-out across old/new indexes, or automatic backup retention in this story.
+- [x] Task 5 - Add rollback guardrails (AC: #10)
+  - [x] Detect retained previous-version indexes only through explicit names from the committed Path B convention, not by guessing arbitrary backup keys.
+  - [x] If retained indexes do not exist, return a fail-closed error that explains rollback is unavailable for Path A-only migrations.
+  - [x] **Struck 2026-05-03 in code review:** "If retained indexes exist, require `--yes` and restore only the active semantic index aliases/names documented by the committed migration implementation." — Path A explicitly does not retain previous-version indexes per the sprint-change-proposal, so no committed Path B restore convention exists for this story to call. The code returns a distinct `DomainError` message when retained indexes are unexpectedly detected, but does not perform any restore action.
+  - [x] Do not implement dual-write, search fan-out across old/new indexes, or automatic backup retention in this story.
 
-- [ ] Task 6 - Add focused tests and validation (AC: #1-#12)
-  - [ ] Add dry-run tests for affected/unaffected tenant detection, counts, index-dimension reporting, and no writes.
-  - [ ] Add option-validation tests for invalid mode combinations and confirmation requirements.
-  - [ ] Add live-flow tests using fake Redis/embedding/actor boundaries or small adapters so unit tests do not require Docker, DAPR sidecars, Keycloak, or Ollama.
-  - [ ] Add resume tests proving already-migrated raw and NL hashes are skipped.
-  - [ ] Add failure tests proving per-unit errors are recorded and the run continues.
-  - [ ] Add secret-redaction tests that scan output/log/result payloads for sample secret/token values and assert they are absent.
-  - [ ] Run focused tests for the new tool/CLI/server slice.
-  - [ ] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
-  - [ ] Record exact commands and outcomes in the Dev Agent Record.
+- [x] Task 6 - Add focused tests and validation (AC: #1-#12)
+  - [x] Add dry-run tests for affected/unaffected tenant detection, counts, index-dimension reporting, and no writes.
+  - [x] Add option-validation tests for invalid mode combinations and confirmation requirements.
+  - [x] Add live-flow tests using fake Redis/embedding/actor boundaries or small adapters so unit tests do not require Docker, DAPR sidecars, Keycloak, or Ollama.
+  - [x] Add resume tests proving already-migrated raw and NL hashes are skipped.
+  - [x] Add failure tests proving per-unit errors are recorded and the run continues.
+  - [x] Add secret-redaction tests that scan output/log/result payloads for sample secret/token values and assert they are absent.
+  - [x] Run focused tests for the new tool/CLI/server slice.
+  - [x] Run `dotnet build Hexalith.Memories.slnx` if the local SDK allows it.
+  - [x] Record exact commands and outcomes in the Dev Agent Record.
 
 ## Dev Notes
 
@@ -256,20 +256,114 @@ Codex GPT-5
 - Story authored on 2026-05-02 by the recurring pre-dev hardening automation after preflight JSON timestamp `2026-05-02T08:10:53Z`.
 - Preflight result was `pass` with `working tree cleanliness` reporting `0 dirty paths`.
 - No code implementation was performed in this run; this is a create-story artifact only.
+- 2026-05-03: Verified sprint prerequisites 13.2, 13.3, 13.4, and 13.5 are all `done`; story status was stale `blocked`, but the hard prerequisite gate is satisfied.
+- 2026-05-03: Implemented a migration-local service path instead of completing `SemanticIndexer.ReIndexFromSyntacticAsync(...)`, preserving the existing repair helper boundary.
+- 2026-05-03: Validation commands:
+  - `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter EmbeddingVectorMigrationServiceTests --no-restore` -> Passed 4/4.
+  - `dotnet restore tools\MigrateEmbeddingVectors\MigrateEmbeddingVectors.csproj` -> Passed.
+  - `dotnet build Hexalith.Memories.slnx --no-restore` -> Passed 0 warnings / 0 errors.
+  - `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --filter EmbeddingVectorMigrationServiceTests --no-build` -> Passed 4/4.
+  - `dotnet tools\MigrateEmbeddingVectors\bin\Debug\net10.0\MigrateEmbeddingVectors.dll --help` -> Passed.
+  - `dotnet test Hexalith.Memories.slnx --no-build` -> Timed out after 10 minutes in the integration lane; leftover `testhost` was stopped.
+  - `dotnet test tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --no-build` -> Passed 1687/1687.
 
 ### Completion Notes List
 
 - Story created with status `ready-for-dev`.
 - Sprint status updated from `backlog` to `ready-for-dev` for `13-6-vector-migration-tool`.
 - Implementation is explicitly gated on Stories 13.2, 13.3, 13.4, and 13.5 reaching `done`.
+- Implemented dedicated `tools/MigrateEmbeddingVectors` operator surface with dry-run, live, resume, rollback, target override, batch, confirmation, and JSON/human output options.
+- Added server-owned migration orchestration with fakeable Redis/actor/embedding boundaries, tenant inventory, Path A index recreation, raw and natural-language re-embedding, durable Redis marker/failure recording, per-batch progress, fail-closed rollback, and redaction.
+- Added raw semantic provider/model/dimension metadata stamping to the normal indexing activity so new raw vectors match the migration resume contract.
+- Added focused migration unit tests proving dry-run no-write behavior, option validation, live resume skip behavior, per-unit failure continuation, secret/token redaction, and rollback fail-closed behavior.
+- Full solution build passed; full solution test run timed out locally in the integration lane, while full `Hexalith.Memories.Server.Tests` passed.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/13-6-vector-migration-tool.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `Hexalith.Memories.slnx`
+- `src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingClientMigrationVectorGenerator.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationExitCodes.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationIndexInfo.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMode.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationOptions.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationProgress.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationResult.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationTenantCounts.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationTenantReport.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationUnitCounters.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationUnitFailure.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`
+- `src/Hexalith.Memories.Server/Migration/IEmbeddingMigrationStore.cs`
+- `src/Hexalith.Memories.Server/Migration/IEmbeddingMigrationVectorGenerator.cs`
+- `src/Hexalith.Memories.Server/Migration/NaturalLanguageMigrationUnit.cs`
+- `src/Hexalith.Memories.Server/Migration/NaturalLanguageSemanticMigrationWrite.cs`
+- `src/Hexalith.Memories.Server/Migration/RawSemanticMigrationWrite.cs`
+- `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`
+- `src/Hexalith.Memories.Server/Migration/SemanticMigrationState.cs`
+- `src/Hexalith.Memories.Server/Migration/SyntacticMigrationUnit.cs`
+- `tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs`
+- `tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj`
+- `tools/MigrateEmbeddingVectors/Program.cs`
+
+### Review Findings
+
+Adversarial review on 2026-05-03 across three layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). Diff snapshot at `_bmad-output/implementation-artifacts/13-6-review-diff.patch`.
+
+#### Decision-needed (resolved 2026-05-03)
+
+- [x] [Review][Decision] Confirmation gate inversion lets unconfirmed mutations through — **Resolved (a):** dropped the `!options.Interactive` predicate from `ValidateOptions`. `--yes` is now always required for mutations; the interactive prompt only promotes to `Yes=true` on explicit `y`/`yes`, and the CLI returns `Plumbing` exit code "Aborted by operator." otherwise. Test added: `LiveWithoutYesShouldReturnPlumbingError`.
+- [x] [Review][Decision] Live migration mutates tenant config before any embedding work succeeds — **Resolved (b, modified):** reordered to `StartMarker → DropAndRecreateSemanticIndexesAsync → SetEmbeddingConfigAsync → MigrateRaw → MigrateNaturalLanguage → CompleteMarker`, with the entire mutation block wrapped in a tenant-level try/catch that records a `tenant`-kind failure and returns `DomainError` rather than throwing. The drop+recreate is atomic (see DN4); config update lands immediately after so ingestion sees consistent dimensions, and per-batch failures don't roll back tenant config. Test added: `TenantLevelErrorShouldRecordFailureAndReturnDomainError`.
+- [x] [Review][Decision] `FT.DROPINDEX` invoked without `DD` — **Resolved (b):** kept `FT.DROPINDEX` without `DD` to preserve hash data for resume detection, but `WriteRawSemanticAsync` and `WriteNaturalLanguageSemanticAsync` now use a Redis transaction that `KeyDelete`s the prior hash before `HSET`-ing the new generation. Old fields cannot leak into the new document, and stale-dimension hashes are removed atomically as the migration progresses.
+- [x] [Review][Decision] Rollback Task 5.3 not implemented — **Resolved (b):** Task 5.3 struck from the spec because Path A explicitly does not retain previous-version indexes per `sprint-change-proposal-2026-04-29.md`. AC10 wording amended to clarify rollback always fails closed with two distinct messages depending on whether retained indexes are unexpectedly detected. Test added: `RollbackWithRetainedPreviousIndexesShouldStillFailClosed`.
+- [x] [Review][Decision] Drop-then-create atomicity — **Resolved (a):** `DropAndRecreateSemanticIndexesAsync` wraps the two `FT.CREATE` calls in a try/catch; if the NL create throws after the raw create succeeded, the raw index is dropped to leave the tenant in a recoverable state and the original exception is rethrown into the tenant-level error path.
+- [x] [Review][Decision] Silent NL default substitution — **Resolved (b):** `MigrateNaturalLanguageAsync` no longer substitutes `"ai"`/`"unknown"`/`""` for missing fields; `NaturalLanguageSemanticMigrationWrite` now accepts `string?` for `DescriptionOrigin`/`DescriptionConfidence`/`DescriptionConfidenceSource`, and `WriteNaturalLanguageSemanticAsync` only emits the corresponding hash fields when the source value is non-empty. Test added: `LiveMigrationShouldNotInventNaturalLanguageDefaults`.
+- [x] [Review][Decision] AC5 syntactic enumeration field set narrower than spec — **Resolved (b):** spec Task 3.5 amended to drop `sourceUri`, `sourceType`, `metadataJson`, `embeddingProvider`, `embeddingModel` from the required-read list. `IndexSemanticActivity` does not persist those fields into the raw semantic hash, so loading them was dead weight. The amended task now requires `content`, `caseId`, and `cloudeventSubject` only.
+- [x] [Review][Decision] CloudEvent subject sourcing — **Resolved (b):** verified against `IndexSyntacticActivity.cs:47,92` that `cloudevent.subject` is parsed from `Metadata` and persisted as a top-level `cloudeventSubject` hash field. Migration's direct read honors the committed contract; the spec's "from parsed metadataJson" wording was describing where the value originates upstream, not the runtime field shape. Implementation Guidance amended in Task 3.
+
+#### Patch
+
+- [x] [Review][Patch] Stream syntactic units instead of buffering the entire enumeration into `List<SyntacticMigrationUnit>` [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`]
+- [x] [Review][Patch] `HashSetAsync` overwrites only enumerated entries, retaining stale fields from the prior generation (e.g., legacy `cloudeventSubject` on a unit whose subject is now empty); `KeyDelete` then `HashSet`, or write a complete field set including explicit empty values [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` `WriteRawSemanticAsync`, `WriteNaturalLanguageSemanticAsync`]
+- [x] [Review][Patch] Vector byte conversion via `MemoryMarshal.AsBytes` is host-endian; add an explicit little-endian guard or convert via `BinaryPrimitives.WriteSingleLittleEndian` [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`]
+- [x] [Review][Patch] `CancellationToken` not propagated into per-key `HashGetAsync` calls inside `GetCountsAsync` and `ReadSemanticStateAsync`, and `DropAndRecreateSemanticIndexesAsync` discards `ct` with `_ = ct;`; thread the token through [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`]
+- [x] [Review][Patch] `int.Parse` on `--target-dimensions` and `--batch-size` throws on non-numeric input, escaping the parser; use `int.TryParse` and return a `Plumbing` error [`tools/MigrateEmbeddingVectors/Program.cs`]
+- [x] [Review][Patch] `ReadValue` rejects any value starting with `--` and throws `ArgumentException`, blocking legitimate values and crashing the tool with a stack trace; treat the next arg as a value when the current option requires one [`tools/MigrateEmbeddingVectors/Program.cs`]
+- [x] [Review][Patch] `SimpleHttpClientFactory.CreateClient` returns a fresh `HttpClient` every call, never disposed; reuse a single instance per factory or use `IHttpClientFactory` [`tools/MigrateEmbeddingVectors/Program.cs`]
+- [x] [Review][Patch] `EmbeddingMigrationResult` is JSON-serialized via reflection-based `JsonSerializer.Serialize` instead of `MemoriesJsonContext`; under trimming/AOT this fails at runtime — wire the source-generated context [`tools/MigrateEmbeddingVectors/Program.cs`]
+- [x] [Review][Patch] NL skip when description is missing is indistinguishable from "already migrated" — separate counters or status (e.g., `NlMissing` vs `NlSkipped`) so operators can investigate [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`, `EmbeddingMigrationUnitCounters.cs`]
+- [x] [Review][Patch] `ErrorCategory` is set to `ex.GetType().Name`, leaking provider-specific exception types (e.g., `OllamaApiException`) past the redactor; normalize to a fixed taxonomy or pass through the redactor [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`]
+- [x] [Review][Patch] Final progress reporter fires twice when `units.Count == 0` (post-loop branch with `total=0 percent=100`) and emits asymmetric batch numbers across runs; rewrite the predicate to suppress empty-batch reports [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`]
+- [x] [Review][Patch] `GetMarkerKey` only sanitizes `:` in the model name; sanitize a broader set (`/`, whitespace, control chars) or hash the model identifier [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`]
+- [x] [Review][Patch] `RedisValue.ToString()` on a missing hash field returns `""`, so resume detection cannot distinguish "field absent" from "field empty"; use `RedisValue.IsNull` checks before stamping `SemanticMigrationState` [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`]
+- [x] [Review][Patch] `IsTargetState` compares `Provider` with `OrdinalIgnoreCase` but `Model` with case-sensitive `string.Equals`; pick one and apply consistently [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`]
+- [x] [Review][Patch] `--batch-size` is unbounded — a huge value defeats per-batch progress and marker flushing; cap at a sensible upper bound (e.g., 10_000) [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs` `ValidateOptions`]
+- [x] [Review][Patch] `BuildTargetConfig`'s `EmbeddingProviderDefaults.Validate` throws on invalid target dimensions / unknown auth-mode combinations; `RunAsync` only catches `OperationCanceledException`, so the tool exits with a stack trace — wrap in a controlled `Plumbing` error path [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`]
+- [x] [Review][Patch] `--resume` without a prior marker silently treats the run as fresh; emit a warning or fail with a clear message [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` `StartMigrationMarkerAsync`]
+- [x] [Review][Patch] Failure-list Redis key is unbounded across repeated `--resume` runs; add TTL, rotation, or a documented cleanup step [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` `RecordFailureAsync`]
+- [x] [Review][Patch] Redactor truncates after redaction but secret patterns spanning the truncation boundary may survive when the regex did not match; redact, then truncate, then redact-again on the truncated tail [`src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs`]
+- [x] [Review][Patch] Redactor `SecretFieldRegex` does not catch JSON-encoded secrets in escaped exception strings (`\"client_secret\":\"...\"`); add a JSON-escaped variant or normalize before matching [`src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs`]
+- [x] [Review][Patch] Tenant-level errors (`SetEmbeddingConfigAsync`, `DropAndRecreateSemanticIndexesAsync` exceptions) escape `RunAsync` instead of producing a controlled `EmbeddingMigrationResult` with `manualFollowUp = true`; wrap the orchestration in a tenant-scoped try/catch [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs` `LiveAsync`]
+- [x] [Review][Patch] Public method boundaries lack `ArgumentNullException.ThrowIfNull` / `ArgumentException.ThrowIfNullOrWhiteSpace` validation per Hexalith convention [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`, `EmbeddingClientMigrationVectorGenerator.cs`]
+- [x] [Review][Patch] `EmbeddingMigrationUnitFailure` (and other migration records serialized to Redis / JSON output) lack `[DataContract]` / `[DataMember]` / `JsonPropertyOrder` per Hexalith convention [`src/Hexalith.Memories.Server/Migration/EmbeddingMigrationUnitFailure.cs` and siblings]
+- [x] [Review][Patch] Add tests: cancellation mid-batch, invalid `--target-provider`/`--target-dimensions`, stale-metadata-only resume detection (target provider but stale dimensions, target model with stale provider), batch-size boundary (exact multiple, last partial), `--resume` without prior marker, rollback with retained indexes present [`tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs`]
+
+#### Deferred
+
+- [x] [Review][Defer] Concurrent ingestion racing the migration (a separate writer with cached old config writes a fresh hash with old provider during enumeration) [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`] — deferred, broader ingestion-vs-migration concurrency is out of scope for this tool
+- [x] [Review][Defer] Pre-existing missing copyright header [`src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs`] — deferred, pre-existing
+- [x] [Review][Defer] Migration tool surfaces use ad-hoc `string` error returns + exit codes rather than `ValueOrError<T>` [`src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`] — deferred, refactor scope
+- [x] [Review][Defer] Redactor does not match AWS access keys, raw JWT signatures without `Bearer ` prefix, or HTTP Basic auth headers [`src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs`] — deferred, low likelihood for embedding-provider error surfaces
+- [x] [Review][Defer] Redactor skips `client_secret named foo` style strings without `:` or `=` separator [`src/Hexalith.Memories.Server/Migration/EmbeddingMigrationRedactor.cs`] — deferred, pattern correct in typical case (separator-bound value), name-only references are not credential exposure
 
 ### Change Log
 
 | Date       | Change                                                                                                                                                                                                                         | Author |
 |------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
 | 2026-05-02 | Story 13.6 context created: Path A Redis Vector migration tool with dry-run, live confirmation, actor-based config update, raw/NL re-embedding, resume behavior, guarded rollback, secret discipline, and Story 13.7 boundaries. | Codex |
+| 2026-05-03 | Implemented Path A vector migration tool, migration service, Redis/DAPR adapter, raw metadata stamping, focused tests, and validation evidence; moved story to review.                                                          | Codex |
+| 2026-05-03 | Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) appended Review Findings: 8 decision-needed, 23 patches, 5 deferred.                                                                            | Claude |
+| 2026-05-03 | Resolved all 8 decision-needed items, applied all 23 patches, amended Task 3 / Task 5 / AC10 wording, expanded migration test coverage to 13 tests (was 4); full Server.Tests suite green at 1696/1696. Story moved to `done`. | Claude |

@@ -1,6 +1,6 @@
 # Story 13.7: Integration Tests, Aspire Fixtures & Operator Deployment Guide
 
-Status: ready-for-dev
+Status: blocked
 
 **Effort estimate:** ~1.25-1.75 working days. Breakdown:
 
@@ -292,12 +292,14 @@ Codex GPT-5
 - Story authored on 2026-05-02 by the recurring pre-dev hardening automation after preflight JSON timestamp `2026-05-02T08:49:49Z`.
 - Preflight reported a working-tree cleanliness failure only. It was classified as an active-dev-story soft warning because `13-2-implement-oidc-token-provider.md` and the matching `sprint-status.yaml` entry are `in-progress`; other dirty paths in the JSON are ordinary implementation paths for Story 13.2.
 - No code implementation was performed in this run; this is a create-story artifact only.
+- 2026-05-03 dev-story prerequisite check halted implementation: Stories 13.2, 13.3, 13.4, and 13.5 are `done`, but Story 13.6 is `blocked` in both `sprint-status.yaml` and `13-6-vector-migration-tool.md`.
 
 ### Completion Notes List
 
 - Story created with status `ready-for-dev`.
 - Sprint status updated from `backlog` to `ready-for-dev` for `13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide`.
 - Implementation is explicitly gated on Stories 13.2, 13.3, 13.4, 13.5, and 13.6 reaching `done`.
+- Implementation halted before code changes because Story 13.6 is not `done`; AC11 is blocked and AC1-AC15 remain unimplemented until the migration tool story supplies committed command/output evidence.
 
 ### File List
 
@@ -308,6 +310,7 @@ Codex GPT-5
 
 | Date       | Change                                                                                                                                                                                                                                   | Author |
 |------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 2026-05-03 | Dev-story prerequisite check halted implementation and moved Story 13.7 to `blocked` because Story 13.6 remains `blocked`; AC11 and dependent validation/documentation work cannot be implemented without committed migration evidence. | Codex |
 | 2026-05-02 | Advanced elicitation completed; tightened finite matrix language, stale-data guards, deterministic vector stability, fixture isolation, migration dependency handling, redaction scan boundaries, and validation traceability. | Codex |
 | 2026-05-02 | Party-mode review completed; clarified prerequisite gating, finite provider test matrix, fake-first `/api/embed` and OIDC assertions, deterministic 2560-vector contract, redaction evidence, Tier-2/Tier-3 skip policy, Story 13.6 runbook dependency, and operator documentation checkpoints. | Codex |
 | 2026-05-02 | Story 13.7 context created: provider-parameterized integration coverage, Ollama/Keycloak fakes, Aspire fixture boundaries, operator deployment guide, provider config matrix, migration runbook handoff, and redaction constraints. | Codex |

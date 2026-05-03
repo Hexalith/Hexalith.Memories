@@ -72,6 +72,9 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
             new HashEntry("embedding", vectorBytes),
             new HashEntry("memoryUnitId", input.MemoryUnitId),
             new HashEntry("caseId", input.CaseId),
+            new HashEntry("embeddingProvider", input.EmbeddingProvider),
+            new HashEntry("embeddingModel", input.EmbeddingModel),
+            new HashEntry("embeddingDimensions", input.EmbeddingDimensions),
         ];
 
         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
