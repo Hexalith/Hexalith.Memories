@@ -191,6 +191,7 @@ GPT-5
 - The story deliberately keeps scope on the existing story-scope guardrail lane and does not reopen runtime, release-publishing, provider, migration, integration, package-lock, or submodule work.
 - The implementation guidance distinguishes local no-op validation from CI empty-diff bypass detection.
 - Target deferred IDs and likely duplicate deferred-work entries are called out so implementation can resolve bookkeeping without losing evidence.
+- Party-mode review on 2026-05-03 kept the story `ready-for-dev` and clarified implementation constraints: preserve PR-head SHA validation, model CI/local empty-diff behavior explicitly, centralize story-key extraction semantics, surface `git interpret-trailers` absence as a clean validation error, and close or carry forward every targeted deferred ID with evidence.
 
 ### File List
 
@@ -200,6 +201,27 @@ GPT-5
 ### Change Log
 
 - 2026-05-03: Created Story 14.1 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-03: Party-mode review completed; constraints triaged and recorded for development.
+
+## Party-Mode Review
+
+- ISO date and time: 2026-05-03T15:31:15+02:00
+- Selected story key: 14-1-ci-story-scope-enforcement-hardening
+- Command/skill invocation used: `/bmad-party-mode 14-1-ci-story-scope-enforcement-hardening; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - Keep PR validation anchored to `github.event.pull_request.head.sha` and avoid regressions to synthetic merge-commit validation.
+  - Make the CI/local empty-diff split explicit in implementation and tests: CI empty diff fails, local no-op validation remains successful.
+  - Centralize story-key extraction/rejection semantics so CLI, branch metadata, and trailers do not drift on zero-key, malformed, repeated, or multi-key inputs.
+  - Preserve original Git command/ref/exit/stderr context in fetch-failure diagnostics, and expose missing `git interpret-trailers` as a clean `ValidationError` with remediation guidance.
+  - Treat deferred-work closure as evidence-bearing bookkeeping: each targeted ID must be resolved or carried forward with rationale and successor reference.
+- Changes applied:
+  - Added this review trace and completion-note clarification to the story artifact.
+  - Left acceptance criteria, file scope, and sprint status unchanged.
+- Findings deferred:
+  - Full GitHub Actions workflow simulation may remain manual unless existing infrastructure makes it cheap; validator-level CI-mode behavior should still be automated.
+  - Broader validator refactors, new fixture files, contributor examples, and unrelated workflow modernization remain out of scope unless required by the listed ACs.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 
