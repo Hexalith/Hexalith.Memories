@@ -328,6 +328,17 @@ Local SDK note: this machine had only `10.0.103` installed and `global.json` pin
 - 2026-05-04: Implemented Tasks 1-7 (OIDC leader-cancellation detachment, IHttpClientFactory injection, credential-bearing URL rejection, forced-refresh storm collapse, Ollama 401 secret rotation, transport-exception wrapping, length-aware redaction). Closed deferred IDs 13.2-RV1/2/3/5/6, 13.3-RV6/7/11/12/14/15, 13.4-RV5. Transitioned `in-progress` -> `review`. Validation: solution build 0W/0E, focused suites OidcTokenProvider 28/28, EmbeddingClient 56/56, EmbeddingProviderDefaults 130/130, full Server.Tests 1725/1725, `git diff --check` clean except non-blocking LF/CRLF warnings.
 - 2026-05-04: Code review close-out applied 8/8 review patches: separated forced-refresh in-flight token acquisitions from normal cache-miss fetches, removed cache recheck race, wrapped Google embedding transport failures, wrapped response-read transport failures, validated invalid bearer header values, redacted bearer-shaped OIDC previews, force-redacted full input text including short values, and short-circuited already-canceled token callers before detached fetch creation. Transitioned `review` -> `done`. Validation: OidcTokenProviderTests 31/31, EmbeddingClientTests 62/62, EmbeddingProviderDefaultsTests 130/130, full Server.Tests 1734/1734, `git diff --check` clean except non-blocking LF/CRLF warnings.
 
+## Party-Mode Review
+
+- ISO date and time: 2026-05-04T13:03:03+02:00
+- Selected story key: `14-3-oidc-and-embedding-security-hardening`
+- Command/skill invocation used: `/bmad-party-mode 14-3-oidc-and-embedding-security-hardening; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary: The review flagged that the pre-dev story needed sharper contracts for shared-acquisition cancellation, `IHttpClientFactory` lifetime shape, credential-bearing URL rejection, per-key forced-refresh single-flight or bounded behavior, Ollama 401/403 secret-cache eviction ordering and one-retry limit, typed transport exception wrapping, deterministic redaction, and unit-test evidence.
+- Changes applied: Trace recorded only after rebase because `origin/main` advanced first with Story 14.3 implementation and code-review close-out. The completed implementation evidence above is left authoritative; no retroactive AC/task rewrites were replayed over the done story.
+- Findings deferred: Production TLS enforcement for non-loopback HTTP token endpoints, broad cache/guard lifecycle cleanup, large-token-body limits, 429 `Retry-After` and circuit-breaker policy, tenant/provider contract changes, migration/integration-test work, and deployment/docs expansion remain outside Story 14.3 unless directly touched and justified during implementation.
+- Final recommendation: ready-for-dev
+
 ## Story Completion Status
 
 Code review complete. All review findings resolved and validation passed. Status set to `done`.
