@@ -161,6 +161,18 @@ Out of scope unless explicitly approved:
 - When building query strings in tests, use structured URI/query helpers or `Uri.EscapeDataString(...)`; do not concatenate unescaped arbitrary values into URLs.
 - Do not initialize or update nested submodules. Do not change root-level submodule pointers.
 
+### Party-Mode Review Clarifications - 2026-05-04
+
+- Treat the implementation as three bounded lanes: migration evidence/result surfaces, integration fixture stability, and fake-server/malformed-input coverage. Deferred-work bookkeeping is documentation-only except where a targeted code change resolves the named ID.
+- Use `ValueOrError<T>` for expected business failures such as invalid user/configuration input and predictable tenant-level migration result failures when the change stays local. Cancellation, programmer errors, invariant violations, and unexpected infrastructure failures may remain exception-based, but the Dev Agent Record must state the focused reason and tests must prove unexpected failures still fail loudly.
+- Preserve the migration tool's automation-readable behavior: controlled domain failures must continue to surface through `EmbeddingMigrationResult`/documented exit behavior with sanitized provider/model context and a stable failure category; unexpected plumbing failures must not be hidden as successful domain results.
+- Redaction policy for this story is value-focused: raw secret values are always redacted; benign name-only references such as `client_secret named memories-embedding-client-secret`, `ApiSecretKeyName`, or a configured secret name remain visible unless a future security policy explicitly changes that rule.
+- Redaction tests must include synthetic sentinel values for AWS access-key-shaped strings, compact raw JWT-like tokens, HTTP Basic authorization values, separator-based secret values, JSON-escaped secret values, and benign secret-name references. Include boundary-split truncation cases so full-token, prefix-only, suffix-only, and split-across-limit inputs cannot leak raw values.
+- Redis wait replacement must use a targeted known-key lookup or bounded cursor/SCAN-style strategy with named timeout/poll constants. Add code-level or test evidence that `KEYS` is not used in the Ollama wait path while stale-data guards still require unique tenant ID, case ID, canary path, 2560 dimensions, and the newly returned memory-unit ID for durable/vector-state checks.
+- DAPR temp cleanup must be best-effort, diagnostic, and scoped to the resolved fixture-owned `%TEMP%/hexalith-memories-dapr/{daprAppId}` leaf directory only. Cover normal dispose and initialization-failure cleanup where feasible; never delete the shared `%TEMP%/hexalith-memories-dapr` parent as a whole.
+- Malformed token tests must keep parser-boundary cases distinct: wrong or missing content type, missing grant type, missing client ID, missing client secret, duplicate form values, malformed body, wrong optional scope, empty/junk bearer-like input, malformed Basic value, and unsupported authorization scheme where those branches exist. Rejected token requests must not increment accepted-request counters or record sanitized evidence.
+- Do not implement or close `13.7-RV5`; sprint-status long-line cleanup belongs to Story 14.5. Non-targeted deferred IDs must remain unchanged.
+
 ### Technical Constraints and References
 
 - Redis `SCAN` is the cursor-based keyspace iteration command; Redis documentation describes it as the production-safe alternative to blocking broad key discovery. Source: https://redis.io/docs/latest/commands/scan/
@@ -235,9 +247,30 @@ GPT-5
 - `_bmad-output/implementation-artifacts/14-4-migration-and-integration-test-hardening.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+### Party-Mode Review
+
+- Date/time: `2026-05-04T14:30:38+02:00`
+- Selected story key: `14-4-migration-and-integration-test-hardening`
+- Command/skill invocation used: `/bmad-party-mode 14-4-migration-and-integration-test-hardening; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - Tighten the `ValueOrError<T>` versus retained-exception boundary so implementation does not make hidden result-contract decisions.
+  - Add concrete redaction examples, including truncation-boundary cases, while preserving the existing benign secret-name policy.
+  - Require Redis wait replacement evidence that `KEYS` is not used and stale-data guards remain intact.
+  - Prove DAPR temp cleanup across dispose and initialization-failure paths, scoped only to the fixture-owned leaf directory.
+  - Split malformed-token fake-server coverage by parser boundary and assert rejected requests do not affect accepted counters/evidence.
+  - Protect deferred-work boundaries, especially keeping `13.7-RV5` open for Story 14.5.
+- Changes applied:
+  - Added `Party-Mode Review Clarifications - 2026-05-04` with bounded implementation lanes, result-surface rules, redaction policy/examples, Redis wait evidence, DAPR cleanup scope, malformed-token test boundaries, and deferred-work non-closure guard.
+- Findings deferred:
+  - Splitting Story 14.4 into multiple smaller stories is a product planning decision; current review keeps the story ready after adding lane boundaries and explicit out-of-scope constraints.
+  - Broader migration API redesign, stricter secret-name suppression policy, AppHost changes, production ingestion-vs-migration coordination, and non-targeted deferred IDs remain out of scope.
+- Final recommendation: `ready-for-dev`
+
 ### Change Log
 
 - 2026-05-03: Created Story 14.4 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-04: Party-mode review completed; added pre-dev clarification notes and kept status `ready-for-dev`.
 
 ## Story Completion Status
 
