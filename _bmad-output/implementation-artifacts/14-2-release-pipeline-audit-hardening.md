@@ -88,7 +88,7 @@ Allowed files for this story:
 - `tools/publish-nuget.ps1` - UPDATE only if partial-publish signal audit finds a concrete gap in the existing summary/annotation behavior.
 - `tools/create-partial-publish-issue.ps1` - UPDATE only if partial-publish issue creation/commenting needs hardening.
 - `tests/tooling/publish_nuget/publish_nuget_test.py` - UPDATE for partial-publish issue or summary behavior.
-- `tests/tooling/release_packages/` - NEW optional. Use for focused package inventory/schema/version validation tests if Python fixtures are the lowest-risk path.
+- `tests/tooling/release_packages/**` - NEW optional. Use for focused package inventory/schema/version validation tests if Python fixtures are the lowest-risk path. Recursive glob so the story-file-scope check matches files inside the new directory.
 - `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` - UPDATE. Narrow release-lane workflow/script assertions.
 - `docs/dev/release-runbook.md` - UPDATE. Checksum/equivalent package evidence and release bot identity guidance.
 - `_bmad-output/implementation-artifacts/deferred-work.md` - UPDATE. Resolve or carry forward targeted deferred IDs with evidence.
