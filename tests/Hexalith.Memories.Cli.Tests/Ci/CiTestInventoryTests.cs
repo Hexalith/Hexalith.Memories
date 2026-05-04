@@ -92,6 +92,122 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_ValidatePackageInventoryStep_RunsCanonicalScript()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Validate package inventory before release");
+
+        step.Shell.ShouldBe("pwsh", "Validate package inventory step must execute under pwsh so PowerShell 7-only validator features (Test-Json -SchemaFile) are available.");
+        step.Run.ShouldBe("./tools/validate-release-packages.ps1");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_RunSemanticReleaseStep_UsesCanonicalCommand()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run semantic-release");
+
+        step.Run.ShouldBe("npx semantic-release");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_ReleasePackageValidatorFixtures_RunBeforePublish()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run release package validator fixtures");
+
+        step.Run.ShouldBe("python3 -m unittest discover -s tests/tooling/release_packages -p \"*_test.py\"");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_AlertPartialPublishStep_GuardsOnFailureAndReferencesAuditPaths()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Alert partial NuGet publish");
+
+        // Anchored to step name so a future workflow refactor that moves the alert outside of the
+        // failure() guard (or to a different shell) fails this assertion instead of degrading
+        // partial-publish recovery silently.
+        step.If.ShouldBe("failure()");
+        step.Shell.ShouldBe("pwsh");
+        step.RunBlock.ShouldContain("./tools/create-partial-publish-issue.ps1");
+        step.RunBlock.ShouldContain("artifacts/packages/release/publish-summary.json");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_TestReleaseStep_DelegatesToSharedScript()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Test unit and non-Docker suite");
+
+        step.Shell.ShouldBe("pwsh");
+        step.Run.ShouldBe("./tools/test-release.ps1");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_ThirdPartyActions_ArePinnedToCommitSha()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+
+        // Match 'uses: <ref>' allowing a trailing '# v<x.y.z>' comment after the SHA so the pin
+        // can carry a human-readable tag annotation alongside the canonical commit SHA.
+        Regex usesRegex = new(@"^\s*uses:\s*(?<ref>\S+)");
+        Regex shaRegex = new(@"^[0-9a-f]{40}$");
+        bool foundAny = false;
+
+        foreach (string line in lines)
+        {
+            Match match = usesRegex.Match(line);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            string reference = match.Groups["ref"].Value;
+            if (reference.StartsWith("./", StringComparison.Ordinal) || reference.StartsWith("../", StringComparison.Ordinal))
+            {
+                // Local repository action; SHA-pinning does not apply.
+                continue;
+            }
+
+            int atIndex = reference.LastIndexOf('@');
+            atIndex.ShouldBeGreaterThan(0, $"third-party action reference '{reference}' must include a '@<ref>' suffix");
+            string refSuffix = reference[(atIndex + 1)..];
+            shaRegex.IsMatch(refSuffix).ShouldBeTrue($"third-party action '{reference}' must be SHA-pinned (got '@{refSuffix}'); follow https://docs.github.com/actions/learn-github-actions/security-hardening-for-github-actions and use a 40-char commit SHA.");
+            foundAny = true;
+        }
+
+        foundAny.ShouldBeTrue("expected release.yml to declare at least one third-party action under 'uses:'.");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_TopLevelPermissions_AreLeastPrivilege()
+    {
+        IDictionary<string, string> permissions = GetReleaseWorkflowTopLevelMapping("permissions");
+
+        // Locked to exactly the permissions audited by Story 14.2 (AC1 'preserve least privilege').
+        // Adding a write scope must come with a documented reason and an updated test, not a silent
+        // workflow edit.
+        permissions.Count.ShouldBe(3, $"unexpected permissions block contents: {string.Join(", ", permissions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+        permissions.ShouldContainKeyAndValue("contents", "write");
+        permissions.ShouldContainKeyAndValue("issues", "write");
+        permissions.ShouldContainKeyAndValue("pull-requests", "write");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_Concurrency_PreservesPartialPublishSelfHeal()
+    {
+        IDictionary<string, string> concurrency = GetReleaseWorkflowTopLevelMapping("concurrency");
+
+        // cancel-in-progress: false is the documented trade-off (W19 + S11-FD): cancelling a
+        // release mid-publish would convert a recoverable partial-publish into an indeterminate
+        // half-state. If a future change must enable cancellation, it has to land an explicit
+        // recovery model, not just flip the flag.
+        concurrency["group"].ShouldBe("release");
+        concurrency["cancel-in-progress"].ShouldBe("false");
+    }
+
+    [Fact]
     public void TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries()
     {
         string repoRoot = GetRepoRoot();
@@ -217,6 +333,186 @@ public sealed partial class CiTestInventoryTests
 
         filters.ShouldBeEmpty();
     }
+
+    private static ReleaseWorkflowStep GetReleaseWorkflowStep(string stepName)
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(lines);
+        ReleaseWorkflowStep[] matches = [.. steps.Where(step => string.Equals(step.Name, stepName, StringComparison.Ordinal))];
+
+        matches.Length.ShouldBe(1, $"expected exactly one step named '{stepName}' in release.yml; found {matches.Length} (steps present: {string.Join(", ", steps.Select(s => $"\"{s.Name}\""))})");
+        return matches[0];
+    }
+
+    // Hand-rolled step parser: release.yml has a single 'release' job whose steps are at the
+    // 6-space indent level. Each step starts with `      - name: <NAME>` and continues at 8-space
+    // body indent until the next sibling step or the end of the steps array. The release.yml
+    // shape is stable; if a future restructure breaks this assumption these tests will fail
+    // loudly with a "no step found" diagnostic rather than silently passing.
+    private static ReleaseWorkflowStep[] ParseReleaseWorkflowSteps(string[] lines)
+    {
+        const string StepHeaderPrefix = "      - name:";
+        const string BodyIndent = "        ";
+
+        List<ReleaseWorkflowStep> steps = [];
+        int i = 0;
+        while (i < lines.Length)
+        {
+            string line = lines[i];
+            if (!line.StartsWith(StepHeaderPrefix, StringComparison.Ordinal))
+            {
+                i++;
+                continue;
+            }
+
+            string name = line[StepHeaderPrefix.Length..].Trim();
+            string? shell = null;
+            string? @if = null;
+            string? run = null;
+            string? uses = null;
+            List<string> runBlockLines = [];
+            bool inRunBlock = false;
+
+            i++;
+            while (i < lines.Length)
+            {
+                string body = lines[i];
+                if (body.StartsWith(StepHeaderPrefix, StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                // End of jobs.<job>.steps array: any line at or below 4-space indent that is
+                // not blank and not part of the step body.
+                if (body.Length > 0 && !body.StartsWith(BodyIndent, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(body))
+                {
+                    break;
+                }
+
+                if (inRunBlock)
+                {
+                    if (string.IsNullOrWhiteSpace(body) || body.StartsWith(BodyIndent + "  ", StringComparison.Ordinal))
+                    {
+                        runBlockLines.Add(body);
+                        i++;
+                        continue;
+                    }
+
+                    inRunBlock = false;
+                }
+
+                string trimmed = body.TrimStart();
+                if (trimmed.StartsWith("shell:", StringComparison.Ordinal))
+                {
+                    shell = trimmed["shell:".Length..].Trim();
+                }
+                else if (trimmed.StartsWith("if:", StringComparison.Ordinal))
+                {
+                    @if = StripQuotes(trimmed["if:".Length..].Trim());
+                }
+                else if (trimmed.StartsWith("uses:", StringComparison.Ordinal))
+                {
+                    uses = trimmed["uses:".Length..].Trim();
+                }
+                else if (trimmed.StartsWith("run:", StringComparison.Ordinal))
+                {
+                    string runTail = trimmed["run:".Length..].Trim();
+                    if (runTail == "|" || runTail == ">" || runTail == "|-" || runTail == ">-")
+                    {
+                        inRunBlock = true;
+                    }
+                    else
+                    {
+                        run = runTail;
+                    }
+                }
+
+                i++;
+            }
+
+            steps.Add(new ReleaseWorkflowStep(
+                Name: name,
+                Shell: shell,
+                If: @if,
+                Run: run,
+                Uses: uses,
+                RunBlock: string.Join('\n', runBlockLines)));
+        }
+
+        return [.. steps];
+    }
+
+    private static IDictionary<string, string> GetReleaseWorkflowTopLevelMapping(string mappingName)
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+
+        // Top-level mapping starts at column 0 with `<name>:` and members are 2-space-indented
+        // scalar entries `  <key>: <value>`. Comments and blank lines inside the block are
+        // skipped; the block ends at the first non-blank line that does not start with two
+        // spaces (i.e. the next top-level key).
+        Regex headerRegex = new($"^{Regex.Escape(mappingName)}:\\s*$", RegexOptions.None);
+        Dictionary<string, string> mapping = new(StringComparer.Ordinal);
+        bool inside = false;
+
+        foreach (string line in lines)
+        {
+            if (!inside)
+            {
+                if (headerRegex.IsMatch(line))
+                {
+                    inside = true;
+                }
+
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            if (!line.StartsWith("  ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            string trimmed = line.TrimStart();
+            if (trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            int colon = trimmed.IndexOf(':');
+            if (colon <= 0)
+            {
+                continue;
+            }
+
+            string key = trimmed[..colon].Trim();
+            string value = StripQuotes(trimmed[(colon + 1)..].Trim());
+            mapping[key] = value;
+        }
+
+        inside.ShouldBeTrue($"release.yml does not declare a top-level '{mappingName}:' mapping.");
+        return mapping;
+    }
+
+    private static string StripQuotes(string value)
+    {
+        if (value.Length >= 2 &&
+            ((value[0] == '"' && value[^1] == '"') ||
+             (value[0] == '\'' && value[^1] == '\'')))
+        {
+            return value[1..^1];
+        }
+
+        return value;
+    }
+
+    private sealed record ReleaseWorkflowStep(string Name, string? Shell, string? If, string? Run, string? Uses, string RunBlock);
 
     private static int CountOccurrences(string haystack, string needle)
     {

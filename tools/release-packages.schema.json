@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Hexalith/Hexalith.Memories/tools/release-packages.schema.json",
+  "title": "Hexalith.Memories release package inventory",
+  "description": "Approved package inventory consumed by tools/validate-release-packages.ps1, tools/pack-release.ps1, and tools/publish-nuget.ps1. Misspellings here would otherwise only surface at pack/publish time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["packages", "nonPackableProjects"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor and validator tool support."
+    },
+    "packages": {
+      "type": "array",
+      "description": "Approved packable projects published to nuget.org. Order is informational; the validator compares as a set.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["packageId", "project"],
+        "properties": {
+          "packageId": {
+            "type": "string",
+            "description": "NuGet package id; must match <PackageId> in the project file with case-sensitive equality (NuGet locks first-published casing).",
+            "minLength": 1,
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+          },
+          "project": {
+            "type": "string",
+            "description": "Repo-relative path to the .csproj using forward slashes; must live under src/ and end in .csproj.",
+            "minLength": 1,
+            "pattern": "^src/[^\\\\\"]+\\.csproj$"
+          }
+        }
+      }
+    },
+    "nonPackableProjects": {
+      "type": "array",
+      "description": "Projects under src/ that intentionally declare <IsPackable>false</IsPackable>. Required so a new non-packable project cannot silently bypass inventory enforcement.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "description": "Repo-relative path to the .csproj using forward slashes; must live under src/ and end in .csproj.",
+        "minLength": 1,
+        "pattern": "^src/[^\\\\\"]+\\.csproj$"
+      }
+    }
+  }
+}

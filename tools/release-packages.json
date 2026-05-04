@@ -1,4 +1,5 @@
 {
+  "$schema": "./release-packages.schema.json",
   "packages": [
     {
       "packageId": "Hexalith.Memories.Contracts",
