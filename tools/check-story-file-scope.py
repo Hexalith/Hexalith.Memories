@@ -16,13 +16,27 @@ STORY_KEY_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
     re.IGNORECASE,
 )
+AND_JOINED_STORY_KEYS_PATTERN = re.compile(
+    r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*?[a-z0-9])?)-and-(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
+    re.IGNORECASE,
+)
 BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
-CODE_FENCE_PATTERN = re.compile(r"^\s*(```|~~~)")
+# Track open-fence length so fences > 3 backticks/tildes can contain shorter
+# nested fence lines without prematurely closing (12.4-RV12).
+CODE_FENCE_PATTERN = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 
 ALLOWED_LABELS = {
     "allowed files for this story:",
     "expected files to add or edit:",
     "allowed to modify:",
+}
+
+# Recognized non-allowed-list labels that terminate the bullet collection.
+# Other trailing-colon prose under `## File Scope` must NOT terminate the
+# allow-list because rationales legitimately end with `:` (12.4-RV13).
+TERMINATING_LABELS = {
+    "read/verify only:",
+    "forbidden by default:",
 }
 
 FORBIDDEN_DEFAULT_GLOBS = (
@@ -79,7 +93,20 @@ def normalize_label(value: str) -> str:
 
 
 def extract_story_keys(value: str) -> list[str]:
-    return [match.lower() for match in STORY_KEY_PATTERN.findall(value or "")]
+    text = value or ""
+    keys: list[str] = []
+    joined_spans: list[tuple[int, int]] = []
+
+    for match in AND_JOINED_STORY_KEYS_PATTERN.finditer(text):
+        keys.extend([match.group(1).lower(), match.group(2).lower()])
+        joined_spans.append(match.span())
+
+    for match in STORY_KEY_PATTERN.finditer(text):
+        if any(start <= match.start() < end for start, end in joined_spans):
+            continue
+        keys.append(match.group(1).lower())
+
+    return keys
 
 
 def extract_story_key(value: str) -> str | None:
@@ -107,12 +134,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def run_git(args: list[str]) -> str:
-    completed = subprocess.run(
-        ["git", *args],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise ValidationError(
+            "Required tool not found: 'git' is unavailable. "
+            "Install Git or ensure 'git' is on PATH."
+        ) from exc
     if completed.returncode != 0:
         raise ValidationError(completed.stderr.strip() or f"git {' '.join(args)} failed")
     return completed.stdout
@@ -130,15 +163,31 @@ def parse_trailers(message: str) -> tuple[list[str], list[str]]:
     if not message.strip():
         return [], []
 
-    completed = subprocess.run(
-        ["git", "interpret-trailers", "--parse"],
-        input=message,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "interpret-trailers", "--parse"],
+            input=message,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        # Convert raw FileNotFoundError to a clean ValidationError so contributors
+        # see an actionable message instead of a Python stack trace (12.4-RV14).
+        raise ValidationError(
+            "Required tool not found: 'git interpret-trailers' is unavailable. "
+            "Install Git (with the interpret-trailers helper) or ensure 'git' is on PATH."
+        ) from exc
+
     if completed.returncode != 0:
-        raise ValidationError(completed.stderr.strip() or "git interpret-trailers --parse failed")
+        # Preserve git stderr context, but surface as a ValidationError so the
+        # caller does not see a Python traceback for an expected failure mode.
+        detail = completed.stderr.strip() or "git interpret-trailers --parse failed"
+        raise ValidationError(
+            "Git with 'interpret-trailers' is required. "
+            "Install Git (with the interpret-trailers helper) or ensure 'git' is on PATH. "
+            f"Command output: {detail}"
+        )
 
     story_keys: list[str] = []
     overrides: list[str] = []
@@ -170,19 +219,36 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
 
     explicit_raw = (args.story_key or "").strip()
     if explicit_raw:
-        explicit = extract_story_key(explicit_raw)
-        if not explicit:
+        explicit_keys = extract_story_keys(explicit_raw)
+        if not explicit_keys:
             raise ValidationError(
                 f"--story-key value is not a valid story key: {explicit_raw}",
             )
-        sources.append(StorySource("cli", explicit))
+        unique_explicit = sorted(set(explicit_keys))
+        if len(unique_explicit) > 1:
+            # Mirror trailer multi-key rejection so CLI input cannot bypass the
+            # same guard (12.4-RV7). Report every detected key.
+            raise ValidationError(
+                "--story-key value contains multiple story keys: "
+                + ", ".join(unique_explicit),
+            )
+        sources.append(StorySource("cli", unique_explicit[0]))
 
     if trailer_keys:
         sources.append(StorySource("trailer", trailer_keys[0]))
 
-    branch = extract_story_key(args.branch_name or "")
-    if branch:
-        sources.append(StorySource("branch", branch))
+    branch_keys = extract_story_keys(args.branch_name or "")
+    if branch_keys:
+        unique_branch = sorted(set(branch_keys))
+        if len(unique_branch) > 1:
+            # Mirror trailer/CLI multi-key rejection (12.4-RV8). Report every
+            # detected key so contributors can fix the branch name without
+            # guessing which key the validator picked.
+            raise ValidationError(
+                "Branch name contains multiple story keys: "
+                + ", ".join(unique_branch),
+            )
+        sources.append(StorySource("branch", unique_branch[0]))
 
     if not sources:
         raise ValidationError(
@@ -217,14 +283,26 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
 
     in_file_scope = False
     in_allowed = False
-    in_code_block = False
+    fence_marker: str | None = None  # full opener, e.g. "```" or "````"
     allowed: list[str] = []
 
     for raw_line in lines:
-        if CODE_FENCE_PATTERN.match(raw_line):
-            in_code_block = not in_code_block
-            continue
-        if in_code_block:
+        fence_match = CODE_FENCE_PATTERN.match(raw_line)
+        if fence_match:
+            marker = fence_match.group(1)
+            trailing = fence_match.group(2)
+            if fence_marker is None:
+                fence_marker = marker
+                continue
+            # CommonMark: a closing fence must be the same marker character
+            # (backtick vs tilde) and at least as long as the opener. A shorter
+            # 3-backtick line nested inside a 4-backtick fence must NOT close
+            # the outer fence (12.4-RV12).
+            if marker[0] == fence_marker[0] and len(marker) >= len(fence_marker) and not trailing.strip():
+                fence_marker = None
+                continue
+            # Otherwise treat as ordinary content inside the open fence.
+        if fence_marker is not None:
             continue
 
         stripped = raw_line.strip()
@@ -240,11 +318,22 @@ def parse_allowed_scope(story_path: Path) -> list[str]:
             continue
 
         label = normalize_label(stripped)
-        if label in ALLOWED_LABELS:
+        # Bold-wrapped section labels like `**Forbidden by default:**` should
+        # behave like the plain form for both opening and terminating checks.
+        bold_label: str | None = None
+        if stripped.startswith("**") and stripped.endswith(":**"):
+            bold_label = stripped[2:-3].strip().lower() + ":"
+
+        if label in ALLOWED_LABELS or (bold_label is not None and bold_label in ALLOWED_LABELS):
             in_allowed = True
             continue
-        if in_allowed and (stripped.endswith(":") or (stripped.startswith("**") and stripped.endswith(":**"))):
-            break
+
+        if in_allowed and (
+            label in TERMINATING_LABELS
+            or (bold_label is not None and bold_label in TERMINATING_LABELS)
+        ):
+            in_allowed = False
+            continue
 
         if not in_allowed:
             continue

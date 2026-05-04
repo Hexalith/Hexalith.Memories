@@ -5,8 +5,6 @@ name: CI
     branches:
       - main
   push:
-    branches-ignore:
-      - main
 
 permissions:
   contents: read
@@ -40,36 +38,106 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_REF: ${{ github.head_ref }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           mkdir -p .story-scope
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          fail() {
+            echo "::error::story-file-scope: $1"
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
             branch_name="$PR_HEAD_REF"
             head_sha="$PR_HEAD_SHA"
-            git diff --name-only "$PR_BASE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
+            base_sha="$PR_BASE_SHA"
+
+            if [[ -z "$branch_name" ]]; then
+              fail "github.head_ref is empty for pull_request event; cannot derive branch metadata"
+            fi
+            if [[ -z "$head_sha" ]]; then
+              fail "github.event.pull_request.head.sha is empty; cannot validate PR head"
+            fi
+            if [[ -z "$base_sha" ]]; then
+              fail "github.event.pull_request.base.sha is empty; cannot establish PR diff base"
+            fi
+
+            if ! git diff --name-only "$base_sha" "$head_sha" -- > .story-scope/changed-files.txt; then
+              fail "'git diff --name-only $base_sha $head_sha' failed; cannot establish PR diff"
+            fi
           else
-            branch_name="${GITHUB_REF_NAME}"
-            head_sha="${GITHUB_SHA}"
-            # Force-push and brand-new-branch first push: github.event.before is
-            # all-zeros or unreachable. Fall back to comparing against `main` so
-            # the changed-file list reflects the branch contents, not the merge
-            # diff or every file in HEAD.
-            if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]] || ! git rev-parse --verify --quiet "$PUSH_BEFORE_SHA^{commit}" >/dev/null; then
-              git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 || true
-              if git rev-parse --verify --quiet origin/main >/dev/null; then
-                git diff --name-only origin/main..."$head_sha" -- > .story-scope/changed-files.txt
-              else
-                git diff-tree --no-commit-id --name-only -r "$head_sha" > .story-scope/changed-files.txt
+            branch_name="${GITHUB_REF_NAME:-}"
+            head_sha="${GITHUB_SHA:-}"
+
+            if [[ -z "$branch_name" ]]; then
+              fail "GITHUB_REF_NAME is empty for $EVENT_NAME event; cannot derive branch metadata"
+            fi
+            if [[ -z "$head_sha" ]]; then
+              fail "GITHUB_SHA is empty for $EVENT_NAME event; cannot resolve HEAD"
+            fi
+
+            use_main_base=0
+            if [[ "$branch_name" == "main" ]]; then
+              use_main_base=1
+            elif [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+              use_main_base=1
+            elif ! git rev-parse --verify --quiet "$PUSH_BEFORE_SHA^{commit}" >/dev/null; then
+              # Force-push or otherwise unreachable previous commit: fall back to
+              # diffing against origin/main rather than swallowing the failure
+              # and degrading to "every file in HEAD".
+              use_main_base=1
+            fi
+
+            if [[ "$use_main_base" == "1" ]]; then
+              # `actions/checkout@v6` with fetch-depth: 0 already pulled full
+              # history; refresh main without `|| true` so auth/network/repo-rename
+              # failures are loud and named (12.4-RV1).
+              if ! git fetch --no-tags --prune origin main; then
+                fail "'git fetch --no-tags --prune origin main' failed; cannot establish base for diff against origin/main"
+              fi
+              if ! git rev-parse --verify --quiet origin/main >/dev/null; then
+                fail "'git rev-parse origin/main' did not resolve after fetch; cannot establish diff base"
+              fi
+
+              base_sha="$(git rev-parse origin/main)"
+
+              if [[ "$base_sha" == "$head_sha" ]]; then
+                # Direct push to main, fully-rebased branch with no new commits,
+                # or new branch at exactly origin/main HEAD: diff would be empty
+                # and would silently pass file-scope validation (12.4-RV3).
+                fail "HEAD ($head_sha) equals origin/main; refusing to validate empty diff (direct-push, fully-rebased, or branch at origin/main)"
+              fi
+
+              # 2-dot semantics avoid the shallow merge-base reachability that
+              # `A...B` requires (12.4-RV2). The local clone has full history.
+              if ! git diff --name-only "$base_sha" "$head_sha" -- > .story-scope/changed-files.txt; then
+                fail "'git diff --name-only $base_sha $head_sha' failed when diffing branch against origin/main"
               fi
             else
-              git diff --name-only "$PUSH_BEFORE_SHA" "$head_sha" -- > .story-scope/changed-files.txt
+              if ! git diff --name-only "$PUSH_BEFORE_SHA" "$head_sha" -- > .story-scope/changed-files.txt; then
+                fail "'git diff --name-only $PUSH_BEFORE_SHA $head_sha' failed when diffing push range"
+              fi
             fi
           fi
 
-          git log -1 --format=%B "$head_sha" > .story-scope/commit-message.txt
+          if [[ ! -s .story-scope/changed-files.txt ]]; then
+            # CI must fail on empty diff because the validator's local CLI
+            # no-op-success path is intentional for hooks/manual runs and is
+            # the historical bypass under review (AC #2).
+            fail "changed-files list is empty for $EVENT_NAME event; refusing to silently pass file-scope validation"
+          fi
+
+          if ! git log -1 --format=%B "$head_sha" > .story-scope/commit-message.txt; then
+            fail "'git log -1 --format=%B $head_sha' failed; cannot read commit message for trailer parsing"
+          fi
+
+          # Randomized heredoc sentinel so a hostile branch name cannot collide
+          # with the closer (12.4-RV4). $RANDOM is shell-internal; combine with
+          # nanoseconds and PID for a delimiter no caller can predict.
+          delim="STORY_SCOPE_EOF_$(date +%s%N)_$$_${RANDOM}_${RANDOM}"
           {
-            printf 'BRANCH_NAME<<__STORY_SCOPE_EOF__\n%s\n__STORY_SCOPE_EOF__\n' "$branch_name"
+            printf 'BRANCH_NAME<<%s\n%s\n%s\n' "$delim" "$branch_name" "$delim"
             echo "COMMIT_MESSAGE_FILE=.story-scope/commit-message.txt"
             echo "CHANGED_FILES_FILE=.story-scope/changed-files.txt"
           } >> "$GITHUB_ENV"
