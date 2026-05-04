@@ -8,6 +8,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 using Shouldly;
@@ -93,5 +94,201 @@ public sealed class OllamaOidcFakeServerTests
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         server.EmbedRequestCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafAndConfigOnNormalDispose()
+    {
+        string fixtureAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", fixtureAppId);
+        string configPath = Path.Combine(parentDir, "config.yaml");
+        string componentPath = Path.Combine(parentDir, "components", "fake-component.yaml");
+        Directory.CreateDirectory(Path.GetDirectoryName(componentPath)!);
+        File.WriteAllText(configPath, "config: yes");
+        File.WriteAllText(componentPath, "kind: Component");
+
+        AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(configPath, fixtureAppId);
+
+        File.Exists(configPath).ShouldBeFalse();
+        File.Exists(componentPath).ShouldBeFalse();
+        Directory.Exists(parentDir).ShouldBeFalse();
+        // The shared root %TEMP%/hexalith-memories-dapr must remain untouched.
+        Directory.Exists(Path.GetDirectoryName(parentDir)!).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafEvenWhenConfigWriteNeverSucceeded()
+    {
+        string fixtureAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", fixtureAppId);
+        Directory.CreateDirectory(parentDir);
+        string configPath = Path.Combine(parentDir, "config.yaml");
+        // Intentionally do not create config.yaml — simulates initialization failure between
+        // Directory.CreateDirectory and File.WriteAllText.
+
+        AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(configPath, fixtureAppId);
+
+        Directory.Exists(parentDir).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRefuseDeletionWhenLeafNameDoesNotMatchFixtureAppId()
+    {
+        string realLeaf = $"memories-server-it-{Guid.NewGuid():N}";
+        string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", realLeaf);
+        Directory.CreateDirectory(parentDir);
+        string configPath = Path.Combine(parentDir, "config.yaml");
+        File.WriteAllText(configPath, "config: yes");
+
+        try
+        {
+            AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(
+                configPath,
+                fixtureAppId: $"memories-server-it-{Guid.NewGuid():N}");
+
+            File.Exists(configPath).ShouldBeTrue();
+            Directory.Exists(parentDir).ShouldBeTrue();
+        }
+        finally
+        {
+            if (Directory.Exists(parentDir))
+            {
+                Directory.Delete(parentDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldNoOpWhenConfigPathIsNull()
+    {
+        // Should never throw; covers the "fixture never created the temp dir" branch.
+        AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(configFilePath: null, fixtureAppId: "irrelevant");
+        AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(configFilePath: string.Empty, fixtureAppId: "irrelevant");
+    }
+
+    public enum TokenRejectionScenario
+    {
+        MissingContentType,
+        MissingGrantType,
+        MissingClientId,
+        MissingClientSecret,
+        DuplicateGrantType,
+        DuplicateClientId,
+        DuplicateClientSecret,
+        DuplicateScope,
+        WrongGrantType,
+        WrongScope,
+        MalformedBody,
+        WrongHttpMethod,
+    }
+
+    [Theory]
+    [InlineData(TokenRejectionScenario.MissingContentType)]
+    [InlineData(TokenRejectionScenario.MissingGrantType)]
+    [InlineData(TokenRejectionScenario.MissingClientId)]
+    [InlineData(TokenRejectionScenario.MissingClientSecret)]
+    [InlineData(TokenRejectionScenario.DuplicateGrantType)]
+    [InlineData(TokenRejectionScenario.DuplicateClientId)]
+    [InlineData(TokenRejectionScenario.DuplicateClientSecret)]
+    [InlineData(TokenRejectionScenario.DuplicateScope)]
+    [InlineData(TokenRejectionScenario.WrongGrantType)]
+    [InlineData(TokenRejectionScenario.WrongScope)]
+    [InlineData(TokenRejectionScenario.MalformedBody)]
+    [InlineData(TokenRejectionScenario.WrongHttpMethod)]
+    public async Task Story14_4_AC5_TokenEndpoint_ShouldReject400AndNotCount(TokenRejectionScenario scenario)
+    {
+        string clientSecret = $"example-{Guid.NewGuid():N}";
+        await using OllamaOidcFakeServer server = await OllamaOidcFakeServer.StartAsync(clientSecret);
+        using HttpClient client = new();
+
+        using HttpRequestMessage request = BuildTokenRequest(server, clientSecret, scenario);
+        using HttpResponseMessage response = await client.SendAsync(request);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        // The fake's per-request counters and evidence are gated on the success path, so a
+        // rejected request must never bump them. This guards against a future regression where
+        // a branch falls through to AddEvidence/Increment by mistake.
+        server.TokenRequestCount.ShouldBe(0);
+        server.EmbedRequestCount.ShouldBe(0);
+        server.RequestEvidence.ShouldBeEmpty();
+    }
+
+    private static HttpRequestMessage BuildTokenRequest(
+        OllamaOidcFakeServer server,
+        string clientSecret,
+        TokenRejectionScenario scenario)
+    {
+        if (scenario == TokenRejectionScenario.WrongHttpMethod)
+        {
+            return new HttpRequestMessage(HttpMethod.Get, server.OidcTokenEndpoint);
+        }
+
+        if (scenario == TokenRejectionScenario.MissingContentType)
+        {
+            // Plain text body without application/x-www-form-urlencoded so HasFormContentType is false.
+            HttpRequestMessage request = new(HttpMethod.Post, server.OidcTokenEndpoint)
+            {
+                Content = new StringContent(
+                    $"grant_type=client_credentials&client_id={OllamaOidcFakeServer.ClientId}&client_secret={clientSecret}",
+                    Encoding.UTF8,
+                    "text/plain"),
+            };
+            return request;
+        }
+
+        if (scenario == TokenRejectionScenario.MalformedBody)
+        {
+            HttpRequestMessage request = new(HttpMethod.Post, server.OidcTokenEndpoint)
+            {
+                Content = new StringContent("not&a=valid;form==body=??", Encoding.UTF8, "application/x-www-form-urlencoded"),
+            };
+            return request;
+        }
+
+        // Build the form starting from a known-good baseline, then mutate per scenario.
+        List<KeyValuePair<string, string>> form =
+        [
+            new("grant_type", "client_credentials"),
+            new("client_id", OllamaOidcFakeServer.ClientId),
+            new("client_secret", clientSecret),
+        ];
+
+        switch (scenario)
+        {
+            case TokenRejectionScenario.MissingGrantType:
+                form.RemoveAll(kv => kv.Key == "grant_type");
+                break;
+            case TokenRejectionScenario.MissingClientId:
+                form.RemoveAll(kv => kv.Key == "client_id");
+                break;
+            case TokenRejectionScenario.MissingClientSecret:
+                form.RemoveAll(kv => kv.Key == "client_secret");
+                break;
+            case TokenRejectionScenario.DuplicateGrantType:
+                form.Add(new("grant_type", "client_credentials"));
+                break;
+            case TokenRejectionScenario.DuplicateClientId:
+                form.Add(new("client_id", OllamaOidcFakeServer.ClientId));
+                break;
+            case TokenRejectionScenario.DuplicateClientSecret:
+                form.Add(new("client_secret", clientSecret));
+                break;
+            case TokenRejectionScenario.DuplicateScope:
+                form.Add(new("scope", OllamaOidcFakeServer.Scope));
+                form.Add(new("scope", OllamaOidcFakeServer.Scope));
+                break;
+            case TokenRejectionScenario.WrongGrantType:
+                form.RemoveAll(kv => kv.Key == "grant_type");
+                form.Add(new("grant_type", "password"));
+                break;
+            case TokenRejectionScenario.WrongScope:
+                form.Add(new("scope", "openid profile email"));
+                break;
+        }
+
+        return new HttpRequestMessage(HttpMethod.Post, server.OidcTokenEndpoint)
+        {
+            Content = new FormUrlEncodedContent(form),
+        };
     }
 }

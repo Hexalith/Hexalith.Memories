@@ -23,6 +23,22 @@ using StackExchange.Redis;
 [Trait("Category", "Integration")]
 public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
 {
+    /// <summary>
+    /// Story 14.4 AC #6: the ingestion path must invoke the Ollama embed endpoint at least once
+    /// for the raw payload and once for the natural-language description, so two embed calls is
+    /// the floor. Named constant prevents the assertion from drifting silently if a refactor
+    /// changes the call shape — a regression that drops one of the embeddings becomes a clear
+    /// failure pointing back to this expectation.
+    /// </summary>
+    private const int MinimumRawAndNaturalLanguageEmbeddings = 2;
+
+    /// <summary>
+    /// Story 14.4 AC #6: at least one OIDC token request is required to obtain the bearer used
+    /// by both embed calls. Cached tokens may collapse multiple ingestions to a single request,
+    /// so the floor is one rather than per-embed.
+    /// </summary>
+    private const int MinimumTokenRequests = 1;
+
     private readonly string _clientSecret = $"example-{Guid.NewGuid():N}";
     private AspireIngestionPipelineFixture? _fixture;
     private OllamaOidcFakeServer? _fakeServer;
@@ -70,7 +86,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         string tenantId = $"tenant-ollama-{unique[..12]}";
         string caseId = $"case-ollama-{unique[..12]}";
         string canary = $"ollama-canary-{unique}";
-        string sourceUri = $"file:///{unique}.txt";
+        string sourceUri = $"event://enterprise.claims/{unique}";
 
         await fixture.ProvisionActiveTenantAsync(
             tenantId,
@@ -85,10 +101,19 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             TenantId = tenantId,
             CaseId = caseId,
             SourceUri = sourceUri,
-            ContentBytes = Encoding.UTF8.GetBytes($"Story 13.7 Ollama provider path with syntactic canary {canary}."),
-            ContentType = "text/plain",
-            SourceType = SourceType.File,
+            ContentBytes = Encoding.UTF8.GetBytes(
+                $$"""
+                {"eventId":"{{unique}}","eventType":"ClaimSubmitted","description":"Story 13.7 Ollama provider path with syntactic canary {{canary}}."}
+                """),
+            ContentType = "application/json",
+            SourceType = SourceType.Event,
             IngestedBy = "integration@test.local",
+            Metadata =
+            {
+                ["cloudevent.type"] = new MetadataField("ClaimSubmitted", MetadataOrigin.Human, 1.0f),
+                ["cloudevent.subject"] = new MetadataField($"claims/{unique}", MetadataOrigin.Human, 1.0f),
+                ["event.aggregateType"] = new MetadataField("Claim", MetadataOrigin.Human, 1.0f),
+            },
         };
 
         using HttpResponseMessage ingestResponse = await fixture.MemoriesClient.PostAsJsonAsync(
@@ -104,6 +129,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             fakeServer,
             tenantId,
             caseId,
+            sourceUri,
             accepted.InstanceId);
 
         IDatabase db = fixture.RedisConnection.GetDatabase();
@@ -114,8 +140,13 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         model.ToString().ShouldBe(OllamaOidcFakeServer.DefaultModel);
         dimensions.ToString().ShouldBe(OllamaOidcFakeServer.OllamaDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-        using HttpResponseMessage searchResponse = await fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={canary}&axis=hybrid&axes=syntactic,semantic&maxResults=5");
+        // Story 14.4 / 13.7-RV2: build query strings via Uri.EscapeDataString so interpolated values
+        // (even though current values are GUID-N hex) cannot inject reserved URL characters.
+        string searchUri =
+            $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}" +
+            $"&query={Uri.EscapeDataString(canary)}" +
+            "&axis=hybrid&axes=syntactic,semantic&maxResults=5";
+        using HttpResponseMessage searchResponse = await fixture.MemoriesClient.GetAsync(searchUri);
 
         searchResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         HybridSearchResult? search = await searchResponse.Content.ReadFromJsonAsync<HybridSearchResult>(
@@ -123,8 +154,8 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         search.ShouldNotBeNull();
         search.Results.Select(result => result.MemoryUnitId).ShouldContain(memoryUnitId);
         search.Results.Single(result => result.MemoryUnitId == memoryUnitId).ContentSnippet.ShouldContain(canary);
-        fakeServer.TokenRequestCount.ShouldBeGreaterThanOrEqualTo(1);
-        fakeServer.EmbedRequestCount.ShouldBeGreaterThanOrEqualTo(2);
+        fakeServer.TokenRequestCount.ShouldBeGreaterThanOrEqualTo(MinimumTokenRequests);
+        fakeServer.EmbedRequestCount.ShouldBeGreaterThanOrEqualTo(MinimumRawAndNaturalLanguageEmbeddings);
         string logs = string.Join(Environment.NewLine, fixture.GetLogEntriesSince(0).Select(entry => entry.Message));
         // Assert the actual secret/token literals never appear, plus the form-encoded leak shape.
         // The fake mints a deterministic opaque token, so a 'Bearer eyJ' (JWT prefix) substring
@@ -194,52 +225,60 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         OllamaOidcFakeServer fakeServer,
         string tenantId,
         string caseId,
+        string sourceUri,
         string instanceId)
     {
         AspireIngestionPipelineFixture fixture = _fixture!;
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(3);
-        IServer redisServer = fixture.RedisConnection.GetServer(fixture.RedisConnection.GetEndPoints().Single());
+        // Story 14.4 AC #3: targeted wait. The workflow status payload is the source of the
+        // memoryUnitId; once available, the Redis probe is a direct HGET against that known key.
+        using CancellationTokenSource cts = new(TimeSpan.FromMinutes(3));
+        CancellationToken ct = cts.Token;
         IDatabase db = fixture.RedisConnection.GetDatabase();
         string lastWorkflowPayload = string.Empty;
         WorkflowTerminalStatus terminalStatus = WorkflowTerminalStatus.NotReached;
 
-        while (DateTimeOffset.UtcNow < deadline)
+        while (!ct.IsCancellationRequested)
         {
-            string[] semanticKeys = redisServer.Keys(pattern: $"{tenantId}:vec:*")
-                .Select(key => key.ToString())
-                .Where(key => !key.Contains(":vec:nl:", StringComparison.Ordinal))
-                .ToArray();
-
-            foreach (string semanticKey in semanticKeys)
+            try
             {
-                RedisValue storedCaseId = await db.HashGetAsync(semanticKey, "caseId");
-                RedisValue memoryUnitId = await db.HashGetAsync(semanticKey, "memoryUnitId");
-                RedisValue dimensions = await db.HashGetAsync(semanticKey, "embeddingDimensions");
-                if (storedCaseId.ToString() == caseId &&
-                    !memoryUnitId.IsNullOrEmpty &&
-                    dimensions.ToString() == OllamaOidcFakeServer.OllamaDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                using HttpResponseMessage workflowResponse = await fixture.MemoriesClient.GetAsync($"/api/ingest/{instanceId}", ct).ConfigureAwait(false);
+                if (workflowResponse.StatusCode == HttpStatusCode.OK)
                 {
-                    return (semanticKey, memoryUnitId.ToString());
+                    lastWorkflowPayload = await workflowResponse.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    terminalStatus = WorkflowReachedTerminalStatus(lastWorkflowPayload);
+                    string? targetedMemoryUnitId = TryExtractMemoryUnitId(lastWorkflowPayload) ?? instanceId;
+                    if (!string.IsNullOrEmpty(targetedMemoryUnitId))
+                    {
+                        string targetedKey = $"{tenantId}:vec:{targetedMemoryUnitId}";
+                        string? matchedMemoryUnitId = await TryMatchSemanticHashAsync(db, tenantId, targetedKey, caseId, sourceUri).ConfigureAwait(false);
+                        if (!string.IsNullOrEmpty(matchedMemoryUnitId))
+                        {
+                            return (targetedKey, matchedMemoryUnitId);
+                        }
+                    }
+
+                    if (terminalStatus != WorkflowTerminalStatus.NotReached)
+                    {
+                        break;
+                    }
                 }
             }
-
-            using HttpResponseMessage workflowResponse = await fixture.MemoriesClient.GetAsync($"/api/ingest/{instanceId}");
-            if (workflowResponse.StatusCode == HttpStatusCode.OK)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                lastWorkflowPayload = await workflowResponse.Content.ReadAsStringAsync();
-                terminalStatus = WorkflowReachedTerminalStatus(lastWorkflowPayload);
-                if (terminalStatus != WorkflowTerminalStatus.NotReached)
-                {
-                    break;
-                }
+                break;
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
 
-        string allTenantKeys = string.Join(
-            ", ",
-            redisServer.Keys(pattern: $"{tenantId}:*").Select(key => key.ToString()).Order(StringComparer.Ordinal));
+        const string allTenantKeys = "omitted; targeted wait does not enumerate the Redis keyspace";
         string logs = string.Join(Environment.NewLine, fixture.GetLogEntriesSince(0).TakeLast(40).Select(entry => entry.Message));
         string redactedPayload = Redact(lastWorkflowPayload);
         string redactedLogs = Redact(logs);
@@ -257,6 +296,71 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             _ => new TimeoutException(
                 $"Ollama semantic hash was not written within wait budget for {detail}"),
         };
+    }
+
+    private static async Task<string?> TryMatchSemanticHashAsync(
+        IDatabase db,
+        string tenantId,
+        string semanticKey,
+        string caseId,
+        string sourceUri)
+    {
+        RedisValue storedCaseId = await db.HashGetAsync(semanticKey, "caseId").ConfigureAwait(false);
+        RedisValue memoryUnitId = await db.HashGetAsync(semanticKey, "memoryUnitId").ConfigureAwait(false);
+        RedisValue dimensions = await db.HashGetAsync(semanticKey, "embeddingDimensions").ConfigureAwait(false);
+        if (storedCaseId.ToString() != caseId ||
+            memoryUnitId.IsNullOrEmpty ||
+            dimensions.ToString() != OllamaOidcFakeServer.OllamaDimensions.ToString(System.Globalization.CultureInfo.InvariantCulture))
+        {
+            return null;
+        }
+
+        RedisValue storedSourceUri = await db.HashGetAsync($"{tenantId}:mu:{memoryUnitId}", "sourceUri").ConfigureAwait(false);
+        return storedSourceUri.ToString() == sourceUri ? memoryUnitId.ToString() : null;
+    }
+
+    /// <summary>
+    /// Extracts the memoryUnitId from the workflow status payload's serializedOutput when the
+    /// workflow has progressed far enough to materialize an <see cref="IngestionResult"/>.
+    /// Returns null on any parsing failure so the caller can keep polling the workflow status.
+    /// </summary>
+    private static string? TryExtractMemoryUnitId(string workflowPayload)
+    {
+        if (string.IsNullOrWhiteSpace(workflowPayload))
+        {
+            return null;
+        }
+
+        try
+        {
+            using JsonDocument outer = JsonDocument.Parse(workflowPayload);
+            if (!outer.RootElement.TryGetProperty("serializedOutput", out JsonElement serialized) ||
+                serialized.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            string? raw = serialized.GetString();
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return null;
+            }
+
+            using JsonDocument inner = JsonDocument.Parse(raw);
+            if (inner.RootElement.ValueKind != JsonValueKind.Object ||
+                !inner.RootElement.TryGetProperty("memoryUnitId", out JsonElement idElement) ||
+                idElement.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            string? id = idElement.GetString();
+            return string.IsNullOrWhiteSpace(id) ? null : id;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private string Redact(string text)
@@ -310,13 +414,17 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
                 if (runtimeStatus.ValueKind == JsonValueKind.Number &&
                     runtimeStatus.TryGetInt32(out int ordinal))
                 {
-                    return ordinal switch
+                    // Durable Task runtime status: 3 = Completed, 5 = Failed. Some DAPR payloads
+                    // also expose booleans below while runtimeStatus remains numeric/non-terminal.
+                    if (ordinal == 3)
                     {
-                        // Durable Task runtime status: 3 = Completed, 5 = Failed.
-                        3 => WorkflowTerminalStatus.Completed,
-                        5 => WorkflowTerminalStatus.Failed,
-                        _ => WorkflowTerminalStatus.NotReached,
-                    };
+                        return WorkflowTerminalStatus.Completed;
+                    }
+
+                    if (ordinal == 5)
+                    {
+                        return WorkflowTerminalStatus.Failed;
+                    }
                 }
             }
 

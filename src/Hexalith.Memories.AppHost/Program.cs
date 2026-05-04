@@ -102,7 +102,7 @@ EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 // AppPort is intentionally omitted so Aspire Testing can auto-detect the
 // randomized project port instead of pinning the sidecar to localhost:5000.
 IResourceBuilder<ProjectResource> server = builder
-    .AddProject<Projects.Hexalith_Memories_Server>("memories-server")
+    .AddProject<Projects.Hexalith_Memories_Server>("memories-server", launchProfileName: "http")
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
@@ -175,7 +175,7 @@ _ = server;
 // `WaitFor(server)` blocks the MCP startup probe until the Memories Server health check passes,
 // avoiding a flapping `/ready` row in the Aspire Dashboard during cold starts.
 IResourceBuilder<ProjectResource> mcp = builder
-    .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp")
+    .AddProject<Projects.Hexalith_Memories_Mcp>("memories-mcp", launchProfileName: "http")
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
