@@ -40,3 +40,4 @@
 2026-05-04T12:13:05.8188136+02:00	failed	-	failed	hard preflight failure; json=_bmad-output/process-notes/predev-preflight-latest.json; timestamp=2026-05-04T10:02:35Z; failed check working tree cleanliness details="1 dirty path(s)" stdout=" M _bmad-output/implementation-artifacts/14-2-release-pipeline-audit-hardening.md\n"
 2026-05-04T13:06:16.1925155+02:00	party-mode-review	14-3-oidc-and-embedding-security-hardening	ok	party-mode review completed; final recommendation ready-for-dev
 2026-05-04T14:30:38+02:00	party-mode-review	14-4-migration-and-integration-test-hardening	ok	party-mode review completed; final recommendation ready-for-dev
+2026-05-04T15:03:24+02:00	party-mode-review	14-5-deferred-register-governance-and-sprint-status-hygiene	ok	party-mode review completed; final recommendation ready-for-dev

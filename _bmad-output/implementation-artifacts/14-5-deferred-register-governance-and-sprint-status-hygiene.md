@@ -145,6 +145,19 @@ Do not sweep adjacent Epic 14 implementation entries into this story. Stories 14
 - Do not create a second canonical deferred-work register. If optional tooling is added, it validates `_bmad-output/implementation-artifacts/deferred-work.md`; it does not own a new source of truth.
 - Keep parser changes deterministic and local. `CiTestInventoryTests` should not require network, GitHub, release artifacts, Docker, DAPR, or Aspire.
 - Do not initialize or update nested submodules. Do not change root-level submodule pointers.
+- Before moving the story to review, verify the diff contains no runtime source, CI workflow, package/project metadata, release script, or submodule pointer changes.
+
+### Party-Mode Review Clarifications - 2026-05-04
+
+- Define a canonical Markdown field block for each Story 14.5 target entry before changing parser behavior. The exact field labels are `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`; tests must parse these labels as structure rather than matching surrounding prose.
+- Keep the status vocabulary closed and lowercase: `open` means planned action is still needed; `resolved` means evidence shows the risk no longer applies; `accepted` means the risk remains but is intentionally accepted with rationale; `carried-forward` means the risk remains and is moved to a named future artifact or trigger.
+- Migrate only `12.4-RV6`, `12.4-RV19`, `12.6-RV2`, and `13.7-RV5` to the structured field block. Do not normalize unrelated historical entries, bulk-migrate the deferred register, or require legacy prose-only entries to satisfy the new schema unless they are deliberately touched by a future story.
+- Preserve historical context around the migrated entries, but make the structured fields the source of truth for tests and planning. A maintainer must be able to determine each targeted risk's current disposition without reading arbitrary narrative paragraphs.
+- Parser updates must be field-aware and ID-exact. Add negative coverage proving unrelated prose mentions do not count as entries, malformed or missing required fields fail closed, invalid statuses such as `done` or `closed` are rejected, and IDs like `12x4-RV6` or `112.4-RV6` do not match `12.4-RV6`.
+- Keep `CiTestInventoryTests` tolerant of historical noise while strict for structured target entries. Test fixtures should include `open`, `resolved`, `accepted`, and `carried-forward` examples, a migrated `S11-F*` release-baseline entry, and a non-baseline entry whose narrative still contains words like `baseline`, `release lane`, or `test-release.ps1`.
+- Sprint-status hygiene is forward-looking. Add guidance that future `sprint-status.yaml` notes should be short dated breadcrumbs to story artifacts, deferred-work IDs, run logs, or review documents instead of accumulating multi-sentence evidence on one YAML line; do not rewrite Epic 1-13 history comments as part of this story.
+- If an optional checker is added, keep it small, stdlib-only, and scoped to validating `_bmad-output/implementation-artifacts/deferred-work.md` field blocks and status vocabulary. Do not turn it into a general Markdown linter or new canonical registry.
+- Do not change runtime behavior, CI configuration, release scripts, package metadata, production source, or submodule pointers. Do not initialize or update nested submodules.
 
 ### Technical Constraints and References
 
@@ -171,6 +184,8 @@ Additional probes to record when relevant:
 - A non-baseline deferred item containing the words `baseline`, `release lane`, or `test-release.ps1` in narrative prose is not misclassified unless the structured fields say it is a baseline filter item.
 - `12.4-RV6`, `12.4-RV19`, `12.6-RV2`, and `13.7-RV5` are each marked `resolved`, `accepted`, or `carried-forward` with evidence or rationale.
 - Sprint-status guidance points developers to story artifacts or deferred-work entries for detail instead of encouraging long inline YAML comments.
+- Required-field parser fixtures cover every missing-field case, one invalid status, and exact-ID boundary cases for dotted IDs.
+- Repository-scope validation records that no forbidden paths, package/project files, CI or release scripts, runtime source files, or submodule pointers changed.
 
 ## Project Structure Notes
 
@@ -215,9 +230,30 @@ GPT-5
 - `_bmad-output/implementation-artifacts/14-5-deferred-register-governance-and-sprint-status-hygiene.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+### Party-Mode Review
+
+- Date/time: `2026-05-04T15:03:24+02:00`
+- Selected story key: `14-5-deferred-register-governance-and-sprint-status-hygiene`
+- Command/skill invocation used: `/bmad-party-mode 14-5-deferred-register-governance-and-sprint-status-hygiene; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - The deferred-register schema needed an exact Markdown field contract before parser work starts.
+  - The status vocabulary needed clear semantics so `resolved`, `accepted`, and `carried-forward` cannot become synonyms.
+  - The story needed stronger scope boundaries to avoid broad migration of the historical deferred register.
+  - Parser tests needed positive and negative fixtures for field parsing, exact dotted IDs, invalid statuses, and prose false positives.
+  - Sprint-status hygiene needed a concrete forward-looking rule and repository-scope validation needed explicit no-forbidden-file/no-submodule evidence.
+- Changes applied:
+  - Added `Party-Mode Review Clarifications - 2026-05-04` covering canonical field labels, closed status semantics, targeted migration scope, field-aware parser expectations, sprint-status note guidance, optional checker constraints, and forbidden-path/submodule guardrails.
+  - Expanded testing probes to include missing-field, invalid-status, exact-ID, and repository-scope validation evidence.
+- Findings deferred:
+  - Full historical deferred-register migration remains out of scope and should only be considered in a separate governance cleanup story if maintainers decide the planning value justifies the churn.
+  - Adding a standalone checker remains optional; it should be used only if it stays small and clearer than focused C# parser tests.
+- Final recommendation: `ready-for-dev`
+
 ### Change Log
 
 - 2026-05-03: Created Story 14.5 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-04: Party-mode review completed; added pre-dev schema, parser, status-semantics, sprint-status, and scope guardrail clarifications.
 
 ## Story Completion Status
 
