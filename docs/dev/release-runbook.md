@@ -140,6 +140,33 @@ post-merge release run for PR #12 confirmed that failure mode: GitHub rejected t
 `main` with rule violation `GH013`. The current release configuration removes the changelog/git
 commit plugins, so future releases should not attempt `HEAD:main` pushes from the release job.
 
+## Release Identity And Forensic Anchors
+
+Release-time writes (tag, GitHub Release, package upload) are produced under
+`secrets.GITHUB_TOKEN`. In a GitHub Actions run, `GITHUB_TOKEN` is minted by the GitHub Actions
+GitHub App (`github-actions`, `https://github.com/apps/github-actions`) and posts as the bot user
+`github-actions[bot]` (GitHub user id `41898282`). This is the identity reviewers should pin in any
+forensic comparison; the historical "semantic-release-bot" display recorded for `v1.2.0` was the
+author name configured by `@semantic-release/git` for the legacy release commit and is not the
+underlying token identity.
+
+For each release, capture the following forensic anchors so a future review can confirm the
+release was driven by Actions and not by a workstation:
+
+- The Actions run URL of the `Release` workflow run that produced the tag
+  (`github.com/Hexalith/Hexalith.Memories/actions/runs/<run-id>`).
+- The tag commit SHA (`git rev-parse v<version>` once the tag exists locally) and its tagger
+  identity. With the post-12.1 release config that no longer uses `@semantic-release/git`, the
+  tag is created via the GitHub API and is attributed to `github-actions[bot]`.
+- The GitHub Release "Created by" user — must be `github-actions[bot]`. Anything else (a personal
+  user, a non-github-actions GitHub App) is a forensic red flag and must be investigated before
+  any further publish action.
+- Whether the workflow run was triggered by a `push` event on `main` (the only allowed release
+  trigger). `workflow_dispatch` or other event names are also red flags.
+
+If any of those checks fail, treat the release as untrusted, do not delete published packages
+from nuget.org, and escalate before merging another release-eligible commit to `main`.
+
 ## Package Evidence
 
 The approved package set published as part of `v1.2.0` is:
@@ -166,6 +193,57 @@ Validation commands used during Story 12.1:
 
 Both validations passed. Keep this script canonical; do not replace it with manual package
 inspection.
+
+### Per-Release Package Audit Evidence
+
+`tools/validate-release-packages.ps1` proves the inventory and metadata shape of the generated
+packages, but it does not by itself prove byte-identity or signature provenance. For every
+release starting after Story 14.2 closes, capture an explicit per-package audit record alongside
+the `Package Evidence` table. Choose at least one of the following options and record the exact
+commands that produced the evidence in the release Pull Request body or the GitHub Release notes:
+
+1. **SHA-256 checksums (preferred default).** Hash every `.nupkg` produced under
+   `artifacts/packages/release/` and pair the hash with the package id and version. Both
+   commands below return the same SHA-256 value for the same input file, so Windows and Linux
+   reviewers can compare results directly:
+
+   ```powershell
+   # Windows runners (pwsh 7+, Windows PowerShell 5.1)
+   Get-ChildItem artifacts/packages/release -Filter *.nupkg |
+     ForEach-Object { Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName } |
+     Select-Object Hash, Path
+   ```
+
+   ```bash
+   # Linux/macOS runners
+   ( cd artifacts/packages/release && sha256sum *.nupkg )
+   ```
+
+   Both forms emit a deterministic `Hash  Path` (PowerShell) or `<hash>  <name>` (sha256sum)
+   record. Paste the resulting block into the release evidence under the package table.
+
+2. **`dotnet nuget verify --all` evidence.** When the release introduces or rotates package
+   signing, the equivalent provenance check is signature verification. Run the command per
+   `.nupkg` and record the `Successfully verified` / `Signature type` lines as audit output.
+   Signature verification proves origin; it does not replace SHA-256 for byte-level identity.
+
+   ```powershell
+   Get-ChildItem artifacts/packages/release -Filter *.nupkg |
+     ForEach-Object { dotnet nuget verify --all $_.FullName }
+   ```
+
+3. **`nuget verify -Signatures`.** Functional equivalent to option 2 when only the standalone
+   `nuget` CLI is available; record the same successful-verification output.
+
+The historical `v1.2.0` package set is not retroactively backfilled with SHA-256 evidence
+because the CI build that produced those `.nupkg` files is no longer available locally; use the
+NuGet flat-container API entries plus the existing `Package Evidence` table as the audit record
+for that specific version. Future releases must produce per-release evidence before the GitHub
+Release is treated as final.
+
+Package publishing remains CI-only. Operators must not run `dotnet nuget push`, manual checksum
+spot-checks, or signature spoof checks from a workstation against the canonical NuGet source —
+those actions can move the published state away from the CI-recorded audit anchors above.
 
 ## Second Release Checklist
 

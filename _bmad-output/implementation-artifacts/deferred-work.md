@@ -350,8 +350,8 @@
 
 ## Deferred from: code review of stories 11-1 + 11-2 (2026-04-26)
 
-- **W1. SHA-pin actions in `release.yml`.** Major-version pins (`@v4`/`@v5`/`@v6`) work today but the release workflow has `NUGET_API_KEY` access — SHA-pin specifically for that workflow as a follow-up hardening. (`.github/workflows/release.yml:21,27,32,38,70`)
-- **W2. `validate-release-packages.ps1` doesn't enforce non-Packable inventory completeness.** Only validates the packable list; new `<IsPackable>false</IsPackable>` projects bypass the inventory silently. Iterate every `*.csproj` under `src/` and assert it is in `packages` or `nonPackableProjects`. (`tools/validate-release-packages.ps1:175-186`)
+- **W1 [resolved in 14.2]. SHA-pin actions in `release.yml`.** All five third-party `actions/*` references in `.github/workflows/release.yml` are now pinned to a 40-char commit SHA with a trailing `# v<x.y.z>` comment for review context. `CiTestInventoryTests.ReleaseWorkflow_ThirdPartyActions_ArePinnedToCommitSha` enforces the SHA shape so a future bump back to a floating tag fails the test.
+- **W2 [resolved in 14.2]. `validate-release-packages.ps1` doesn't enforce non-Packable inventory completeness.** The validator now iterates every `src/**/*.csproj`, requires an explicit `<IsPackable>true|false</IsPackable>` declaration, and asserts every project is in exactly one of `packages` or `nonPackableProjects`. Coverage in `tests/tooling/release_packages/release_packages_test.py` exercises missing/unexpected/duplicate inventory entries and missing/blank/unsupported `IsPackable` values.
 - **W3. `tools/test.sh` Python heredoc has no error path if `python3` is missing.** Linux/macOS runners always have it; Windows uses `test.ps1`. Add `command -v python3` guard with a clear error if Linux/macOS distros are added later that omit it. (`tools/test.sh:134`)
 - **W4. Python `{*}Counters` namespace XPath requires Python ≥ 3.8.** Current ubuntu-latest ships 3.10+; document as a runner-version floor or hardcode the TRX namespace `http://microsoft.com/schemas/VisualStudio/TeamTest/2010`. (`tools/test.sh:140`, `tools/verify-integration-fast-coverage.py:54`)
 - **W5. `if-no-files-found: error` + `if: always()` upgrades a build failure to two red checks.** Noisy but correct; reviewers must read the build step first. Resolve by gating artifact upload on `success() || failure()` against the test step specifically. (`.github/workflows/ci.yml:67-74,108-115`)
@@ -359,27 +359,27 @@
 - **W7. `Substitute.For<WorkflowActivityContext>()` may fail if Dapr.Workflow seals the type in a future SDK.** Works against 1.17.6; failure mode is loud (NSubstitute throws at instantiation). (`tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs:330`)
 - **W9. CONTRIBUTING.md skip wording (`Requires Docker - see CONTRIBUTING.md`) is documented but not wired into any test SkipAttribute.** Spec text is aspirational, not enforced as a contract. Wire it via a custom SkipAttribute when Docker-required local skips are needed. (`CONTRIBUTING.md:76-81`)
 - **W11. `branch-protection.md` is a manual checklist with no automation.** Commit a `.github/rulesets/main.json` and a daily audit workflow. Out of scope for 11.x. (`docs/dev/branch-protection.md`)
-- **W12. `tools/release-packages.json` has no `$schema` reference.** Silent typos break only at runtime. Add a `$schema` link or a JSON-schema validation step.
+- **W12 [resolved in 14.2]. `tools/release-packages.json` has no `$schema` reference.** New `tools/release-packages.schema.json` now defines required keys, `additionalProperties: false`, and `pattern`/`minItems` constraints. The inventory references the schema via `$schema` and `validate-release-packages.ps1` invokes `Test-Json -SchemaFile` before any structural use, so misspellings such as `packageID`, `projectPath`, or `nonPackableProject` fail loudly before pack/publish scripts run.
 - **W13. `Cli/README.md` pre-announces the global tool before first publish on nuget.org.** Either ship the tool first, or document `--prerelease` until 1.0.0 lands. (`src/Hexalith.Memories.Cli/README.md:7-9`)
 - **W14. CI workflow `fetch-depth: 0` not set on PR checkout.** commitlint isn't run in CI yet (only locally per CONTRIBUTING); add when CI adopts commit validation. (`.github/workflows/ci.yml:28-30`)
-- **W15. `validate-release-packages.ps1 -Version` regex not enforced inside the script.** Operator running it directly with `1.0.0+local` produces a confusing mismatch error because NuGet strips `+...`. Strip `+...` before equality compare. (`tools/validate-release-packages.ps1:218-221`)
-- **W16. `Where-Object {-notlike *.snupkg}` masks regression risk.** Defensive only; replace with `Where-Object { $_.Extension -ieq '.nupkg' }` for clarity if symbols are ever added. (`tools/publish-nuget.ps1:30-32`, `tools/validate-release-packages.ps1:208`)
+- **W15 [resolved in 14.2]. `validate-release-packages.ps1 -Version` regex not enforced inside the script.** `ConvertTo-NormalizedNuGetVersion` strips `+...` build metadata before equality compare, emits a `Note:` diagnostic naming both the original and NuGet-normalized form, and threads the normalized value through both the per-package version assertion and the internal cross-package dependency-version assertion. Coverage: `test_version_with_build_metadata_normalizes_with_clear_message` in `tests/tooling/release_packages/`.
+- **W16 [partially resolved in 14.2]. `Where-Object {-notlike *.snupkg}` masks regression risk.** `tools/validate-release-packages.ps1` now uses `Where-Object { $_.Extension -ieq '.nupkg' }` for explicit extension matching. The mirror in `tools/publish-nuget.ps1:40-42` is intentionally not touched in 14.2 because the story's file scope only permits a `publish-nuget.ps1` edit when there is a concrete partial-publish gap; cosmetic alignment alone does not meet that bar. Re-open trigger: a partial-publish recovery story that already touches `publish-nuget.ps1`, or first .snupkg-symbol introduction.
 - **W17. `verify-integration-fast-coverage.py` exit codes don't distinguish "missing surface" from "tool error".** Both yield exit 1; use distinct codes (e.g., 2 for parse error, 3 for empty results, 1 for missing surfaces). (`tools/verify-integration-fast-coverage.py`)
 - **W18. CI `runs-on: ubuntu-latest` is unpinned.** Works today; pin to `ubuntu-22.04` if Docker engine version drift causes Testcontainers regression. (`.github/workflows/ci.yml`)
-- **W19. `concurrency: cancel-in-progress: false` enables stuck-release deadlock with `--skip-duplicate` self-heal.** Mitigate via D4 resolution. (`.github/workflows/release.yml:7-9`)
+- **W19 [resolved in 14.2]. `concurrency: cancel-in-progress: false` enables stuck-release deadlock with `--skip-duplicate` self-heal.** Story 14.2 keeps `cancel-in-progress: false` deliberately because cancelling a release mid-publish would convert a recoverable partial-publish into an indeterminate half-state — `tools/publish-nuget.ps1 --skip-duplicate` rerun-and-self-heal recovery requires that the in-flight release runs to completion. The 30-minute job timeout and the partial-publish issue alert (S11-FD) bound the worst-case stuck-release window. `CiTestInventoryTests.ReleaseWorkflow_Concurrency_PreservesPartialPublishSelfHeal` enforces the policy so a future flag flip lands with an explicit recovery model rather than a silent edit.
 - **W20. Release workflow runs build+restore+test+pack twice.** Pre-release validation + semantic-release internal pack pipeline duplicate work; optimize when CI minutes become a constraint.
 - **W21. `tools/test.sh` Slow/Integration arms collapsed via `|`.** Functionally correct today (same project list); diverges from `test.ps1`. Resync if Slow ever gets its own list. (`tools/test.sh:79`)
 - **W22. `PublicContractSerializationCoverageTests` uses name-suffix filter (`Validator`/`Defaults`/`Taxonomy`).** Fragile but works today; replace with `[ExcludeFromContractCoverage]` attribute when a false-positive is observed. (`tests/Hexalith.Memories.Contracts.Tests/V1/PublicContractSerializationCoverageTests.cs:54-58`)
 - **W23. `CiTestInventoryTests` uses `Contains` for workflow text.** Too permissive; a future workflow refactor adding another `dotnet test` step with the wrong arguments still passes the assertion. Replace with structural YAML parsing. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:66-68`)
 - **W24. `CiTestInventoryTests` opaque error if `RepoRoot` AssemblyMetadata missing.** Minor diagnostic improvement; emit a wire-up hint message. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:79-84`)
 - **S11-FB. Compile-time symbol verification for `tools/integration-fast-required-surfaces.txt` (review patch P9).** Currently the verifier surfaces missing classes only after CI runs the lane. Promoting the check to compile-time requires either (a) a `ProjectReference` to `Hexalith.Memories.IntegrationTests` from a Docker-free test project (pulls integration deps), (b) a refactor of the surfaces file into a typed C# inventory consumed by both the verifier (after build) and a unit test, or (c) a `dotnet test --list-tests` step in CI before the test run. Re-open trigger: first surface drift incident, or the next time the surfaces list grows past ~10 entries.
-- **S11-FC. Pre-flight stale-tag detection on release.yml (review patch P16).** `tagFormat: "v${version}"` collides with stale tags from manual or aborted releases. Currently the natural `git push tag` failure is the gate. Adding a structured pre-flight requires running `npx semantic-release --dry-run` to compute `nextRelease.version` (wasteful on every release) or carrying our own version-computation logic. Re-open trigger: first stale-tag-collision incident, or migration from another release tool that left tags behind.
-- **S11-FD. Partial-publish alerting on the release pipeline (review decision D4).** `tools/publish-nuget.ps1 --skip-duplicate` + semantic-release's plugin order (`exec → github → git`) means a half-published release self-heals on the next run with potentially-rebuilt content (because `pack-release.ps1` runs with `ContinuousIntegrationBuild=true`). The current model is "operator re-run heals"; an explicit signal (Slack/issue/email) on partial publish would convert silent half-states into actionable alerts. Re-open trigger: first observed half-published release in the wild, or adoption of operator-alerting infrastructure.
+- **S11-FC. Pre-flight stale-tag detection on release.yml (review patch P16).** `tagFormat: "v${version}"` collides with stale tags from manual or aborted releases. Currently the natural `git push tag` failure is the gate. Adding a structured pre-flight requires running `npx semantic-release --dry-run` to compute `nextRelease.version` (wasteful on every release) or carrying our own version-computation logic. Story 14.2 reassessed and chose to carry forward — neither preflight option meets the cost/benefit bar without an observed collision. Re-open trigger: first stale-tag-collision incident on `main`, migration from another release tool that left tags behind, or a release-time decision that the dry-run cost is acceptable. Defer-by: 2026-08-04 (re-evaluate at the next release-pipeline hardening pass if no triggering incident occurs).
+- **S11-FD [resolved in 14.2]. Partial-publish alerting on the release pipeline (review decision D4).** Story 14.2 audited the existing path and confirmed it satisfies the spec: `tools/publish-nuget.ps1` writes a structured `publish-summary.json` (pushed/failed/notAttempted), emits a `PARTIAL PUBLISH - manual reconciliation required` GitHub Actions error annotation, and appends a Markdown step summary; `.github/workflows/release.yml` invokes `tools/create-partial-publish-issue.ps1` on workflow failure; the helper opens or comments on a `PARTIAL PUBLISH <version>` GitHub Issue with the run URL, status, package lists, and runbook reference. Coverage in `tests/tooling/publish_nuget/publish_nuget_test.py` exercises success, all-fail (`publish-failed`), middle-package-fail (`partial-publish`), pre-push validation failure, issue creation, issue commenting on rerun, and helper skip on `publish-failed` status. Operator recovery is explicit in `docs/dev/release-runbook.md` Failure And Recovery Notes (HTTP 409 vs non-409 distinction, rerun-and-self-heal contract).
 
 ## Deferred from: code review of story-12.1 (2026-04-30)
 
-- **12.1-RV1. Add SHA-256 / checksum evidence to release-runbook package table.** Currently the Package Evidence table lists names + filenames + NuGet version only. For long-term audit and supply-chain verification, capturing per-package SHA-256 (or `.snupkg` symbol-package status) on each release would strengthen the evidence trail. Out of Story 12.1 scope; candidate for Story 12.5 (partial-publish alerting) or a dedicated audit story. (`docs/dev/release-runbook.md:104-114`)
-- **12.1-RV2. Pin "semantic-release-bot" display name to a concrete GitHub App / user identity.** The runbook records the release-commit author as `semantic-release-bot` (display name), not the actual GitHub identity. For forensic clarity (spoof-resistance), pinning the App ID or the bot's GitHub user would tighten the evidence. No current story claim depends on this. (`docs/dev/release-runbook.md:66`)
+- **12.1-RV1 [resolved in 14.2]. Add SHA-256 / checksum evidence to release-runbook package table.** `docs/dev/release-runbook.md` now ships a `Per-Release Package Audit Evidence` subsection that requires SHA-256 capture for every future release alongside the Package Evidence table, with deterministic Windows pwsh (`Get-FileHash -Algorithm SHA256`) and Linux (`sha256sum`) commands and explicit equivalents (`dotnet nuget verify --all`, `nuget verify -Signatures`) for signature-based provenance. The historical `v1.2.0` block remains as-is because the source CI artifacts are no longer available locally; the requirement applies to releases after Story 14.2.
+- **12.1-RV2 [resolved in 14.2]. Pin "semantic-release-bot" display name to a concrete GitHub App / user identity.** `docs/dev/release-runbook.md` adds a `Release Identity And Forensic Anchors` section that pins the GitHub Actions GitHub App (App ID `41898282`, posts as `github-actions[bot]`) as the canonical token identity for tag, GitHub Release, and package-asset writes; lists the four anchors reviewers should capture per release (Actions run URL, tag commit SHA + tagger identity, Release "Created by", trigger event); and treats anything else as a forensic red flag.
 - **12.1-RV3. Document edge case where PR-merge commit body contains `[skip ci]` substring.** `release.yml`'s skip-CI guard checks `head_commit.message` for the substring. A merge commit whose squash body legitimately contains `[skip ci]` (quoting another commit, copying changelog text) would silently suppress the release. Branch protection now blocks direct pushes, so the only producer of merge commits is PRs. Re-open trigger: first observed silently-skipped release. (`.github/workflows/release.yml:18`)
 - **12.1-RV4. Verify `package-lock.json` is tracked in git.** Sprint-status comment dated 2026-04-26 (Epic 11 closeout, P1) flagged the file as in working tree but untracked. `v1.2.0` shipped successfully on 2026-04-30, which implies `npm ci` worked, but neither this story's runbook nor the Dev Agent Record confirms `package-lock.json` is committed. Re-open trigger: first `npm ci` failure on a fresh clone, or sweep of Epic 11 leftover P-items. (`package-lock.json`)
 - **12.1-RV5. Add `CONTRIBUTING.md` cross-link to the new release runbook.** File Scope explicitly permits an `UPDATE only for a cross-link to the runbook`; spec intent treats the runbook as the new operational source of truth. Adds discoverability without scope creep into Story 12.2. (`CONTRIBUTING.md`)
@@ -481,6 +481,73 @@ refreshed rationale and a re-open trigger:
   Windows path in a maintainer-facing channel.
 - **12.4-RV19** — out of 14.1 scope (deferred-work parser brittleness in `CiTestInventoryTests`).
 - **12.4-RV20** — out of 14.1 scope (Story 12.4 strict-literal AC #1 evidence drill).
+
+
+## Closed by: Story 14.2 Release Pipeline Audit Hardening (2026-05-04)
+
+Story 14.2 took ownership of the release-workflow, package-validation, and release-evidence
+findings deferred from the Story 11.1 + 11.2 review pass and the Story 12.1 review pass. Each
+closure below names the change that closes it and where the evidence lives. Entries with an
+inline `[resolved in 14.2]` marker above are also listed here for the per-story rollup.
+
+- **W1 — closed.** `.github/workflows/release.yml` pins `actions/checkout`, `actions/setup-dotnet`,
+  `actions/setup-node`, `actions/cache`, and `actions/upload-artifact` to 40-char commit SHAs with
+  trailing `# v<x.y.z>` comments. `CiTestInventoryTests.ReleaseWorkflow_ThirdPartyActions_ArePinnedToCommitSha`
+  enforces the SHA shape so a future revert to a floating major-tag fails the test.
+- **W2 — closed.** `tools/validate-release-packages.ps1` iterates every `src/**/*.csproj`, requires
+  an explicit `<IsPackable>true|false</IsPackable>` declaration, asserts the project appears in
+  exactly one inventory bucket, and rejects missing/blank/unsupported `IsPackable` values. New
+  Python fixture suite at `tests/tooling/release_packages/release_packages_test.py` covers
+  missing/unexpected/duplicate inventory entries, both bucket misuses, and the three IsPackable
+  failure modes via temporary sentinel csproj files under `src/`.
+- **W12 — closed.** `tools/release-packages.schema.json` defines required keys with
+  `additionalProperties: false`, `pattern` constraints on IDs and project paths, and `uniqueItems`.
+  `tools/release-packages.json` now references the schema via `$schema`, and the validator runs
+  `Test-Json -SchemaFile` before any structural use, so misspellings such as `packageID`,
+  `projectPath`, or `nonPackableProject` fail loudly before pack/publish scripts run.
+- **W15 — closed.** `validate-release-packages.ps1` normalizes `-Version 1.2.3+local` to the
+  NuGet-comparable `1.2.3` via `ConvertTo-NormalizedNuGetVersion`, emits a `Note:` diagnostic
+  naming both forms, and threads the normalized value through both per-package and internal
+  cross-package dependency-version assertions. `pack-release.ps1` is unchanged because
+  semantic-release passes versions without build metadata in the CI path.
+- **W19 — closed.** `concurrency: cancel-in-progress: false` is preserved deliberately to keep
+  rerun-and-self-heal partial-publish recovery viable (`tools/publish-nuget.ps1 --skip-duplicate`).
+  An inline comment in `release.yml` documents the trade-off and
+  `CiTestInventoryTests.ReleaseWorkflow_Concurrency_PreservesPartialPublishSelfHeal` enforces it.
+- **S11-FD — closed.** Existing structured `publish-summary.json`, `PARTIAL PUBLISH` annotation,
+  step-summary, and `tools/create-partial-publish-issue.ps1` issue/comment path were audited as
+  sufficient. `tests/tooling/publish_nuget/publish_nuget_test.py` exercises success, all-fail,
+  middle-package-fail, pre-push validation failure, issue creation, issue commenting on rerun,
+  and helper skip on `publish-failed` status. Operator recovery (HTTP 409 vs non-409, rerun
+  contract) is explicit in `docs/dev/release-runbook.md` Failure And Recovery Notes.
+- **12.1-RV1 — closed.** `docs/dev/release-runbook.md` Per-Release Package Audit Evidence
+  subsection now requires SHA-256 capture for every release with deterministic Windows pwsh
+  (`Get-FileHash -Algorithm SHA256`) and Linux (`sha256sum`) commands, plus
+  `dotnet nuget verify --all` and `nuget verify -Signatures` as audit-equivalent options for
+  signature-based provenance. Historical `v1.2.0` is not retroactively backfilled.
+- **12.1-RV2 — closed.** `docs/dev/release-runbook.md` Release Identity And Forensic Anchors
+  section pins the GitHub Actions GitHub App (App ID `41898282`, posts as `github-actions[bot]`)
+  as the canonical token identity and lists the four anchors reviewers must capture per release.
+
+The Story 11.1 + 11.2 deferred entries below are intentionally NOT closed by 14.2; they are
+carried forward with refreshed rationale and a re-open trigger:
+
+- **W3..W11, W13, W14, W17, W18, W20..W24** — out of 14.2 scope (CI workflow, test infra, and
+  contracts/CLI hardening unrelated to the release-lane audit). 14.2 limits its file scope to
+  release-pipeline artifacts.
+- **W16 — partially closed.** Cleaned up in `tools/validate-release-packages.ps1`. The mirror in
+  `tools/publish-nuget.ps1` is intentionally not touched in 14.2 because the story's file scope
+  only permits a `publish-nuget.ps1` edit when there is a concrete partial-publish gap; cosmetic
+  alignment alone does not meet that bar.
+- **S11-FB** — out of 14.2 scope (compile-time symbol verification for integration-fast surfaces).
+- **S11-FC — carried forward with fresh defer-by 2026-08-04.** Stale-tag preflight still requires
+  either an `npx semantic-release --dry-run` cost on every release or carrying our own
+  version-computation logic. Story 14.2 reassessed and confirmed neither option meets the
+  cost/benefit bar without an observed collision; refreshed the re-open trigger and defer-by date.
+
+The Story 12.1 deferred entries `12.1-RV3`, `12.1-RV4`, and `12.1-RV5` were intentionally left out
+of 14.2 scope per the story file scope, even though they are adjacent to the runbook edits. They
+remain open with their original re-open triggers.
 
 
 ## Deferred from: code review of 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide (2026-05-03)

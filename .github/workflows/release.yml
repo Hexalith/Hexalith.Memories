@@ -4,10 +4,21 @@ on:
   push:
     branches: [main]
 
+# cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
+# would leave NuGet in a partial-publish state; the rerun-and-self-heal recovery model
+# (see docs/dev/release-runbook.md and tools/publish-nuget.ps1 with --skip-duplicate)
+# requires that an in-flight release runs to completion rather than being cancelled by
+# the next push to main.
 concurrency:
   group: release
   cancel-in-progress: false
 
+# Least-privilege scopes for the release job:
+# - contents: write — semantic-release creates the release tag and GitHub Release.
+# - issues: write — Alert partial NuGet publish step opens / comments on the
+#   PARTIAL PUBLISH reconciliation issue.
+# - pull-requests: write — @semantic-release/github comments on the PR that triggered
+#   the release. No additional write scopes are added without a documented justification.
 permissions:
   contents: write
   issues: write
@@ -20,25 +31,31 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # Third-party actions are SHA-pinned per GitHub's supply-chain hardening guidance
+      # (https://docs.github.com/actions/learn-github-actions/security-hardening-for-github-actions).
+      # The release workflow has NUGET_API_KEY access, so the supply-chain blast radius
+      # for an unexpected major-tag retag would publish under our identity. Re-pin when
+      # bumping versions; the trailing comment names the human-readable tag for review
+      # context, but the SHA is the authoritative reference.
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
           submodules: true
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
           global-json-file: global.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: lts/*
           cache: npm
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
@@ -61,6 +78,9 @@ jobs:
       - name: Validate package inventory before release
         shell: pwsh
         run: ./tools/validate-release-packages.ps1
+
+      - name: Run release package validator fixtures
+        run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
 
       - name: Run semantic-release
         run: npx semantic-release
@@ -87,7 +107,7 @@ jobs:
 
       - name: Upload package artifacts
         if: success()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: release-packages
           path: artifacts/packages/release/*.nupkg
