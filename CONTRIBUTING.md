@@ -59,8 +59,18 @@ The story scope check discovers the story key in the same order locally and in C
 2. a commit trailer named `Story:` or `Story-Key:`
 3. a branch name containing a full story key, such as `feature/12-3-story-file-scope-enforcement`
 
-If two non-empty sources disagree, the check fails closed. Keep the branch name and commit trailer
-aligned when both are present.
+If two non-empty sources disagree, the check fails closed and reports each `source=key` pair so you
+know which input to fix. Keep the branch name and commit trailer aligned when both are present.
+
+The validator also fails closed if any single source contains more than one story key — for
+example, a `--story-key "<key-a> and <key-b>"` value, a single `Story:` or `Story-Key:` trailer
+that lists two keys, or a branch name with two distinct keys separated by a non-`-`/`_` character
+such as `/`. The diagnostic enumerates every detected key so the contributor does not have to
+guess which one was preferred.
+
+If `git interpret-trailers` is unavailable (Git missing or not on `PATH`), the validator surfaces
+a clean validation error that names the missing tool and points at the install/`PATH` fix; it does
+not emit a Python `FileNotFoundError` traceback.
 
 Install the repo-managed hooks per clone:
 
@@ -74,6 +84,12 @@ the proposed commit message and validates `Story:`, `Story-Key:`, and `Scope-Ove
 against the same staged file list. CI runs the same Python validator against PR and non-`main` push
 diffs, using the PR source branch and the real head commit message rather than the synthetic merge
 commit.
+
+Local hook and direct CLI runs treat an empty changed-file list as a successful no-op (e.g., a
+`pre-commit` invocation with nothing staged). CI does not — the `story-file-scope` workflow job
+fails loudly when its computed changed-file list is empty, when `origin/main` resolves to the same
+commit as `HEAD`, or when the comparison base cannot be fetched. Fetch failures name the failed
+operation in the diagnostic instead of degrading to a "every file in HEAD" fallback.
 
 Use `Scope-Override:` only for narrow, audited exceptions:
 

@@ -99,7 +99,7 @@
 - **12.3-RV12 — `is_vague` mixes raw `pattern` and post-normalized `normalized` for special-char check.** Backslashes get normalized away before the test. Pair with override-vagueness rework P6. [tools/check-story-file-scope.py:286-288]
 - **12.3-RV13 — `parse_allowed_scope` does not honor `### ` subheadings inside `## File Scope`.** No current story uses this shape. [tools/check-story-file-scope.py:206-211]
 - **12.3-RV14 — `ALLOWED_LABELS` set has aliases (`Expected files to add or edit:`, `Allowed to modify:`) not in CONTRIBUTING.md.** Either remove the aliases or document them in a follow-up. [tools/check-story-file-scope.py:19-23]
-- **12.3-RV15 — Multiple `Allowed files for this story:` blocks in one story merge silently.** No current story uses this shape. [tools/check-story-file-scope.py:217-223]
+- **12.3-RV15 [resolved in 14.1] — Multiple `Allowed files for this story:` blocks in one story merge silently.** No current story uses this shape. [tools/check-story-file-scope.py:217-223]
 
 ## Closed by: course correction (2026-04-26)
 
@@ -387,26 +387,100 @@
 
 ## Deferred from: code review of story-12.4 (2026-05-01)
 
-- **12.4-RV1. CI shallow `git fetch ... || true` swallows ALL fetch failures.** `.github/workflows/ci.yml:37` masks auth/network/repository-rename errors and silently degrades the story-scope diff to `git diff-tree -r HEAD` (every file in HEAD). Drop `|| true` so fetch failures are loud. Out of Story 12.4 file scope; should land in a CI-hardening story.
-- **12.4-RV2. CI uses 3-dot `git diff origin/main..."$head_sha"` with `--depth=1` shallow fetch.** `.github/workflows/ci.yml:39` — `A...B` requires a reachable merge-base, which depth=1 cannot guarantee. Either fetch enough history (`--depth=50` or `--unshallow`) or switch to 2-dot semantics. Out of Story 12.4 file scope.
-- **12.4-RV3. CI force-push fallback no-ops on first push to `main` itself.** `.github/workflows/ci.yml:36-46` — when `origin/main` after fetch equals `head_sha`, `git diff` returns empty and the validator silently passes. A direct push to main bypasses story-scope checks entirely. Branch protection should normally prevent this, but the workflow should fail loudly when the diff is empty under push-to-main.
-- **12.4-RV4. CI `BRANCH_NAME` heredoc uses fixed sentinel `__STORY_SCOPE_EOF__`.** `.github/workflows/ci.yml:51-55` — predictable delimiter that a hostile branch name could contain. Defense-in-depth; replace with a randomized sentinel.
-- **12.4-RV5. CI propagates empty / blank `branch_name` with unhelpful diagnostic.** `.github/workflows/ci.yml:23-27` — when both `PR_HEAD_REF` and `GITHUB_REF_NAME` are empty, downstream errors blame "no story key" instead of identifying the missing env. Hard-fail at the env-binding step.
+- **12.4-RV1 [resolved in 14.1]. CI shallow `git fetch ... || true` swallows ALL fetch failures.** `.github/workflows/ci.yml:37` masks auth/network/repository-rename errors and silently degrades the story-scope diff to `git diff-tree -r HEAD` (every file in HEAD). Drop `|| true` so fetch failures are loud. Out of Story 12.4 file scope; should land in a CI-hardening story.
+- **12.4-RV2 [resolved in 14.1]. CI uses 3-dot `git diff origin/main..."$head_sha"` with `--depth=1` shallow fetch.** `.github/workflows/ci.yml:39` — `A...B` requires a reachable merge-base, which depth=1 cannot guarantee. Either fetch enough history (`--depth=50` or `--unshallow`) or switch to 2-dot semantics. Out of Story 12.4 file scope.
+- **12.4-RV3 [resolved in 14.1]. CI force-push fallback no-ops on first push to `main` itself.** `.github/workflows/ci.yml:36-46` — when `origin/main` after fetch equals `head_sha`, `git diff` returns empty and the validator silently passes. A direct push to main bypasses story-scope checks entirely. Branch protection should normally prevent this, but the workflow should fail loudly when the diff is empty under push-to-main.
+- **12.4-RV4 [resolved in 14.1]. CI `BRANCH_NAME` heredoc uses fixed sentinel `__STORY_SCOPE_EOF__`.** `.github/workflows/ci.yml:51-55` — predictable delimiter that a hostile branch name could contain. Defense-in-depth; replace with a randomized sentinel.
+- **12.4-RV5 [resolved in 14.1]. CI propagates empty / blank `branch_name` with unhelpful diagnostic.** `.github/workflows/ci.yml:23-27` — when both `PR_HEAD_REF` and `GITHUB_REF_NAME` are empty, downstream errors blame "no story key" instead of identifying the missing env. Hard-fail at the env-binding step.
 - **12.4-RV6. `baselineRelated` and `HasReleaseFilter` rely on substring heuristics over author-controlled prose.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:189-202` — tokens `baseline`, `test-release.ps1`, `release lane` drive classification. Schema-strengthen the deferred-work entry format (e.g., a `Filter:` line per entry) and parse structure rather than prose. Follow-up to the patches landed in this review pass.
-- **12.4-RV7. `--story-key` value with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:170-178` — inconsistent with trailer multi-key rejection. Story 12.3 territory; reject loudly to mirror trailer behavior.
-- **12.4-RV8. Branch name with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:183-185` — same asymmetry as 12.4-RV7. Story 12.3 territory.
-- **12.4-RV9. `STORY_KEY_PATTERN` lacks unit assertions for boundary cases.** `tools/check-story-file-scope.py:13-16` — single-letter third segment, trailing-hyphen rejection are not directly tested. Story 12.3 territory.
+- **12.4-RV7 [resolved in 14.1]. `--story-key` value with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:170-178` — inconsistent with trailer multi-key rejection. Story 12.3 territory; reject loudly to mirror trailer behavior.
+- **12.4-RV8 [resolved in 14.1]. Branch name with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:183-185` — same asymmetry as 12.4-RV7. Story 12.3 territory.
+- **12.4-RV9 [resolved in 14.1]. `STORY_KEY_PATTERN` lacks unit assertions for boundary cases.** `tools/check-story-file-scope.py:13-16` — single-letter third segment, trailing-hyphen rejection are not directly tested. Story 12.3 territory.
 - **12.4-RV10. `extract_backtick_path` silently drops bare-token bullets without an author-facing diagnostic.** `tools/check-story-file-scope.py:204-212` — author who forgets backticks gets no warning. Story 12.3 author UX.
 - **12.4-RV11. `to_posix(path)` embeds Windows drive letter in diagnostic header.** `tools/check-story-file-scope.py:347-348` — emit `story_path.relative_to(REPO_ROOT).as_posix()` instead. Story 12.3 territory; cosmetic.
-- **12.4-RV12. Code-fence toggle mis-parses fences of length > 3 with nested 3-backtick content.** `tools/check-story-file-scope.py:20,222-228` — Markdown's nested-fence form is supported by parsers but breaks the toggle. Story 12.3 territory.
-- **12.4-RV13. `ALLOWED_LABELS` trailing-`:` heuristic truncates allow-list on legitimate trailing-colon prose.** `tools/check-story-file-scope.py:243-247` — only known section markers should terminate the allow-list. Story 12.3 territory.
-- **12.4-RV14. `git interpret-trailers` not on PATH crashes the validator with raw `FileNotFoundError`.** `tools/check-story-file-scope.py:133-141` — emit a clean `ValidationError` with actionable message. Story 12.3 territory.
-- **12.4-RV15. `section_block` test helper trims blank lines as section terminators.** `tests/tooling/story_scope/story_scope_validator_test.py:1108-1120` — could mask future validator regressions where Out-of-scope sections gain a blank-line continuation. Test-helper hardening.
-- **12.4-RV16. `test_branch_and_trailer_agreement_passes` lacks `assertNotIn("Conflicting", ...)` negative assertion.** `tests/tooling/story_scope/story_scope_validator_test.py:1196-1199` — passes today but would silently co-exist with a future conflict-detection regression that exits 0. Test hardening.
-- **12.4-RV17. `test_unparseable_explicit_story_key_fails_closed` couples to stdout sink.** `tests/tooling/story_scope/story_scope_validator_test.py:1324-1334` — `assertIn` only checks stdout; if the error path moves to stderr, the test silently breaks. Test hardening.
-- **12.4-RV18. Fixture-based scope tests do not assert which story file was loaded.** `tests/tooling/story_scope/story_scope_validator_test.py:1426-1456` — a future loader-precedence bug could silently load a different file. Test hardening.
+- **12.4-RV12 [resolved in 14.1]. Code-fence toggle mis-parses fences of length > 3 with nested 3-backtick content.** `tools/check-story-file-scope.py:20,222-228` — Markdown's nested-fence form is supported by parsers but breaks the toggle. Story 12.3 territory.
+- **12.4-RV13 [resolved in 14.1]. `ALLOWED_LABELS` trailing-`:` heuristic truncates allow-list on legitimate trailing-colon prose.** `tools/check-story-file-scope.py:243-247` — only known section markers should terminate the allow-list. Story 12.3 territory.
+- **12.4-RV14 [resolved in 14.1]. `git interpret-trailers` not on PATH crashes the validator with raw `FileNotFoundError`.** `tools/check-story-file-scope.py:133-141` — emit a clean `ValidationError` with actionable message. Story 12.3 territory.
+- **12.4-RV15 [resolved in 14.1]. `section_block` test helper trims blank lines as section terminators.** `tests/tooling/story_scope/story_scope_validator_test.py:1108-1120` — could mask future validator regressions where Out-of-scope sections gain a blank-line continuation. Test-helper hardening.
+- **12.4-RV16 [resolved in 14.1]. `test_branch_and_trailer_agreement_passes` lacks `assertNotIn("Conflicting", ...)` negative assertion.** `tests/tooling/story_scope/story_scope_validator_test.py:1196-1199` — passes today but would silently co-exist with a future conflict-detection regression that exits 0. Test hardening.
+- **12.4-RV17 [resolved in 14.1]. `test_unparseable_explicit_story_key_fails_closed` couples to stdout sink.** `tests/tooling/story_scope/story_scope_validator_test.py:1324-1334` — `assertIn` only checks stdout; if the error path moves to stderr, the test silently breaks. Test hardening.
+- **12.4-RV18 [resolved in 14.1]. Fixture-based scope tests do not assert which story file was loaded.** `tests/tooling/story_scope/story_scope_validator_test.py:1426-1456` — a future loader-precedence bug could silently load a different file. Test hardening.
 - **12.4-RV19. `DeferredKeyRegex` format brittleness — uppercase `S11-F[A-Z0-9]+\.` with literal trailing dot only.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:1041` — em-dash, colon, or lowercase variants are silently ignored. Today all S11-F* entries use the literal-period format, so future-resilience only. Re-open trigger: first deferred-work format change.
 - **12.4-RV20. AC #1 strict literal per-SHA replay drill.** Story 12.4 satisfied AC #1 via HEAD-replay coverage (HEAD strictly includes Epic 8.x SHA `d7495a3`, Epic 9.x SHA `bc4d5cc`, and Epic 10.x SHA `8207b54` in its ancestry, and the surviving test inventory at HEAD is a superset of those completion states — see Story 12.4 Decision Resolutions D3). A literal interpretation of AC #1 would also exercise each anchor SHA via `git checkout`, restore, build, and run both authoritative lanes against that exact tree. Re-open trigger: a release post-mortem that traces a regression to a test that existed at one of the named SHAs and was silently fixed before HEAD; or a future quality-discipline story that prefers strict literal AC #1 evidence over inheritance argumentation.
+
+## Closed by: Story 14.1 CI Story-Scope Enforcement Hardening (2026-05-04)
+
+Story 14.1 took ownership of the CI story-scope, validator, and test-hardening findings deferred
+from the Story 12.3 and 12.4 review passes. Each closure below names the change that closes it and
+where the evidence lives.
+
+- **12.4-RV1 — closed.** `.github/workflows/ci.yml` no longer wraps `git fetch ... origin main` with
+  `|| true` and no longer falls back to `git diff-tree -r HEAD`. Fetch failures exit 1 with a
+  `::error::story-file-scope:` diagnostic that names the failed operation.
+- **12.4-RV2 — closed.** The push-fallback path now resolves an explicit `base_sha=$(git rev-parse
+  origin/main)` and runs a 2-dot `git diff --name-only "$base_sha" "$head_sha"`, on top of
+  `actions/checkout@v6`'s `fetch-depth: 0` clone. No more 3-dot reachability against shallow history.
+- **12.4-RV3 — closed.** When `origin/main` resolves to the same commit as `head_sha`, the job
+  exits 1 with a direct-push / empty-diff diagnostic instead of silently passing file-scope
+  validation.
+- **12.4-RV4 — closed.** `BRANCH_NAME` heredoc delimiter is randomized per run as
+  `STORY_SCOPE_EOF_$(date +%s%N)_${$}_${RANDOM}_${RANDOM}` so a hostile branch name cannot collide
+  with the closer.
+- **12.4-RV5 — closed.** Empty `branch_name` (and empty `head_sha` / `base_sha`) hard-fails the
+  job at the env-binding step with a diagnostic that names the missing variable; "no story key
+  resolved" no longer hides a missing-env case.
+- **12.4-RV7 — closed.** `--story-key` rejects values containing more than one story key and lists
+  every detected key. Test: `test_multiple_keys_in_explicit_story_key_value_fails_with_all_keys_reported`.
+- **12.4-RV8 — closed.** Branch-name parsing rejects branches whose value contains more than one
+  distinct story key (separated by a non-`[\w-]` character such as `/`) and lists every detected
+  key. Test: `test_multiple_keys_in_branch_name_fails_with_all_keys_reported`.
+- **12.4-RV9 — closed.** Added `STORY_KEY_PATTERN` boundary tests for trailing-hyphen rejection,
+  uppercase normalization, and single-letter title segment.
+- **12.4-RV12 — closed.** `parse_allowed_scope` tracks the open fence's marker character and
+  length so fences longer than three backticks containing nested 3-backtick fences (and tilde
+  fences containing nested backtick fences) both parse correctly. Tests:
+  `test_parser_handles_fences_longer_than_three_backticks`,
+  `test_parser_handles_tilde_fence_with_nested_backtick_fence`.
+- **12.4-RV13 — closed.** Allow-list collection terminates only on known section labels
+  (`Read/verify only:`, `Forbidden by default:`, including their `**bold:**` variants) or `## `
+  headings; bullets whose rationale ends with `:` are no longer dropped. Tests:
+  `test_parser_does_not_terminate_on_bullet_with_trailing_colon_rationale`,
+  `test_parser_terminates_on_known_section_label_only`,
+  `test_parser_does_not_terminate_on_unrecognized_prose_with_trailing_colon`.
+- **12.4-RV14 — closed.** `subprocess.run(["git", ...])` calls in `parse_trailers` and `run_git`
+  catch `FileNotFoundError` and raise a clean `ValidationError` naming `git interpret-trailers`
+  with an install / `PATH` hint. No Python traceback reaches contributors. Test:
+  `test_missing_git_interpret_trailers_reports_clean_validation_error`.
+- **12.4-RV15 — closed.** `section_block` helper no longer terminates on blank lines; only
+  non-blank, non-bullet lines end a section.
+- **12.4-RV16 — closed.** `test_branch_and_trailer_agreement_passes` asserts the diagnostic does
+  NOT contain `Conflicting story keys`, so a future regression that exits 0 while emitting the
+  conflict diagnostic cannot silently co-exist with the test.
+- **12.4-RV17 — closed.** `test_unparseable_explicit_story_key_fails_closed` matches against
+  combined stdout + stderr via the `stdio()` helper, so the test does not break silently if the
+  error path moves between sinks.
+- **12.4-RV18 — closed.** `test_fixture_test_reports_loaded_story_artifact_path` pins the full
+  `Story artifact:` line under the fixture artifacts root, so a future loader-precedence bug that
+  loads a different file fails loudly.
+- **12.3-RV15 — closed.** Multi-block `Allowed files for this story:` parsing is now exercised by
+  `test_parser_merges_multiple_allowed_files_blocks`. The validator merges entries across blocks
+  consistently; future shape drift fails the test instead of changing scope silently.
+
+The Story 12.4 entries below are intentionally NOT closed by 14.1; they are carried forward with
+refreshed rationale and a re-open trigger:
+
+- **12.4-RV6** — out of 14.1 scope (CI test inventory parser, not the story-scope lane).
+- **12.4-RV10** — the existing `Out-of-scope files:` diagnostic surfaces dropped bare-token bullets
+  whenever a contributor's changed-file landing references one. A separate parse-time stderr
+  warning would help story authors before any commit, but adding it was not part of 14.1's ACs and
+  risks noisy false positives on legitimate non-bullet prose. Re-open trigger: an author-confusion
+  incident or a story template redesign that needs pre-commit author warnings.
+- **12.4-RV11** — cosmetic only. CI uses a repo-relative `_bmad-output/implementation-artifacts`
+  artifacts root, so production diagnostics never embed a drive letter; the issue surfaces only
+  in local Windows runs. Re-open trigger: a maintainer-visible diagnostic that exposes a local
+  Windows path in a maintainer-facing channel.
+- **12.4-RV19** — out of 14.1 scope (deferred-work parser brittleness in `CiTestInventoryTests`).
+- **12.4-RV20** — out of 14.1 scope (Story 12.4 strict-literal AC #1 evidence drill).
 
 
 ## Deferred from: code review of 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide (2026-05-03)
