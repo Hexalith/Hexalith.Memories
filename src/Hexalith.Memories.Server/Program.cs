@@ -113,7 +113,7 @@ builder.Services.AddHttpClient(OidcTokenProvider.HttpClientName, client =>
 });
 builder.Services.AddSingleton<OidcTokenProvider>(sp =>
     new OidcTokenProvider(
-        sp.GetRequiredService<IHttpClientFactory>().CreateClient(OidcTokenProvider.HttpClientName),
+        sp.GetRequiredService<IHttpClientFactory>(),
         sp.GetRequiredService<TimeProvider>(),
         sp.GetRequiredService<ILogger<OidcTokenProvider>>()));
 builder.Services.AddSingleton<IOidcTokenProvider>(sp => sp.GetRequiredService<OidcTokenProvider>());

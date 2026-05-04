@@ -14,6 +14,8 @@ using Hexalith.Memories.Server.Ingestion;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 
+using NSubstitute;
+
 using Shouldly;
 
 public class OidcTokenProviderTests
@@ -244,6 +246,95 @@ public class OidcTokenProviderTests
     }
 
     [Fact]
+    public async Task GetAccessTokenAsync_CancelledLeader_DoesNotPoisonSharedAcquisition()
+    {
+        // Story 14.3 AC1: a caller cancellation must not cancel the in-flight HTTP fetch shared
+        // by other waiters. The leader cancels mid-fetch and the second same-key waiter still
+        // receives the original token without a second HTTP request.
+        TaskCompletionSource<HttpResponseMessage> responseGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ScriptedTokenHandler handler = new((_, _) => responseGate.Task);
+        OidcTokenProvider provider = CreateProvider(handler);
+        using CancellationTokenSource leaderCts = new();
+
+        Task<string> leader = provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, leaderCts.Token);
+        await handler.WaitForRequestsAsync(1);
+        Task<string> waiter = provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+        await leaderCts.CancelAsync();
+        await Should.ThrowAsync<OperationCanceledException>(() => leader);
+        responseGate.SetResult(TokenResponse("shared-token", 3600));
+
+        string waiterToken = await waiter;
+        waiterToken.ShouldBe("shared-token");
+        handler.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task InvalidateAndRefreshAsync_ConcurrentForcedCallers_CollapseToOneRequest()
+    {
+        // Story 14.3 AC4: concurrent forced refresh callers for the same key must not each fire
+        // a token endpoint request.
+        TaskCompletionSource<HttpResponseMessage> responseGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ScriptedTokenHandler handler = new((_, _) => responseGate.Task);
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        Task<string> first = provider.InvalidateAndRefreshAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+        Task<string> second = provider.InvalidateAndRefreshAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+        Task<string> third = provider.InvalidateAndRefreshAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None);
+        await handler.WaitForRequestsAsync(1);
+        responseGate.SetResult(TokenResponse("forced-token", 3600));
+        string[] tokens = await Task.WhenAll(first, second, third);
+
+        tokens.ShouldAllBe(t => t == "forced-token");
+        handler.Requests.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task InvalidateAndRefreshAsync_DoesNotJoinNormalInflightFetchWithStaleSecret()
+    {
+        // A forced refresh may carry a rotated client_secret after a 401/403 retry; it must not
+        // join an older normal cache-miss fetch that was started with stale credentials.
+        TaskCompletionSource<HttpResponseMessage> normalResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<HttpResponseMessage> forcedResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requestCount = 0;
+        ScriptedTokenHandler handler = new((_, _) =>
+            Interlocked.Increment(ref requestCount) == 1
+                ? normalResponse.Task
+                : forcedResponse.Task);
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        Task<string> normal = provider.GetAccessTokenAsync(TokenEndpoint, ClientId, "stale-secret", null, CancellationToken.None);
+        await handler.WaitForRequestsAsync(1);
+        Task<string> forced = provider.InvalidateAndRefreshAsync(TokenEndpoint, ClientId, "rotated-secret", null, CancellationToken.None);
+        await handler.WaitForRequestsAsync(2);
+
+        forcedResponse.SetResult(TokenResponse("rotated-token", 3600));
+        normalResponse.SetResult(TokenResponse("stale-token", 3600));
+
+        string forcedToken = await forced;
+        string normalToken = await normal;
+
+        forcedToken.ShouldBe("rotated-token");
+        normalToken.ShouldBe("stale-token");
+        handler.Requests.Count.ShouldBe(2);
+        handler.Requests[0].Form["client_secret"].ShouldBe("stale-secret");
+        handler.Requests[1].Form["client_secret"].ShouldBe("rotated-secret");
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_AlreadyCancelled_DoesNotStartDetachedFetch()
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-used", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, cts.Token));
+
+        handler.Requests.Count.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task GetAccessTokenAsync_NonSuccess_ThrowsTypedExceptionWithoutCaching()
     {
         // Arrange
@@ -312,31 +403,107 @@ public class OidcTokenProviderTests
     [Fact]
     public async Task GetAccessTokenAsync_Cancellation_PropagatesOperationCanceledException()
     {
-        // Arrange
-        ScriptedTokenHandler handler = new(async (_, ct) =>
-        {
-            await Task.Delay(TimeSpan.FromMinutes(1), ct);
-            return TokenResponse("never-used", 3600);
-        });
+        // Arrange — handler completes immediately when its own cancellation token cancels, so the
+        // detached fetch returns promptly when the test cancels (even though the public surface
+        // already throws OperationCanceledException via Task.WaitAsync(ct)).
+        TaskCompletionSource<HttpResponseMessage> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ScriptedTokenHandler handler = new((_, _) => gate.Task);
         OidcTokenProvider provider = CreateProvider(handler);
         using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(50));
 
         // Act & Assert
         await Should.ThrowAsync<OperationCanceledException>(
             () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, cts.Token));
+
+        // Release the gate so the detached HTTP task does not leak past the test.
+        gate.TrySetResult(TokenResponse("never-used", 3600));
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_HttpRequestException_WrappedInOidcAcquisitionException()
+    {
+        // Story 14.3 AC5: transport failures cross the provider boundary as OidcTokenAcquisitionException.
+        ScriptedTokenHandler handler = new((_, _) =>
+            Task.FromException<HttpResponseMessage>(new HttpRequestException("simulated transport failure")));
+        CapturingLogger<OidcTokenProvider> logger = new();
+        OidcTokenProvider provider = CreateProvider(handler, logger: logger);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.StatusCode.ShouldBeNull();
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.TokenEndpoint.ShouldBe(TokenEndpoint);
+        ex.ClientId.ShouldBe(ClientId);
+        ex.Message.ShouldNotContain(ClientSecret);
+        ex.ResponseBodyPreview.ShouldNotContain(ClientSecret);
+        string logText = string.Join(Environment.NewLine, logger.Entries.Select(e => e.Message));
+        logText.ShouldNotContain(ClientSecret);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_IOException_WrappedInOidcAcquisitionException()
+    {
+        ScriptedTokenHandler handler = new((_, _) =>
+            Task.FromException<HttpResponseMessage>(new IOException("simulated socket reset")));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.StatusCode.ShouldBeNull();
+        ex.InnerException.ShouldBeOfType<IOException>();
+        ex.Message.ShouldNotContain(ClientSecret);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_TimeoutException_WrappedInOidcAcquisitionException()
+    {
+        // Simulates HttpClient.Timeout by raising TaskCanceledException while the caller's CT is
+        // not cancelled — this is the case the provider must surface as a typed transport error
+        // rather than as a caller-cancellation OperationCanceledException.
+        ScriptedTokenHandler handler = new((_, _) =>
+            Task.FromException<HttpResponseMessage>(new TaskCanceledException("simulated request timeout")));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.StatusCode.ShouldBeNull();
+        ex.InnerException.ShouldBeOfType<TaskCanceledException>();
+        ex.Message.ShouldContain("timed out");
+        ex.Message.ShouldNotContain(ClientSecret);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_ResponseContentReadFailure_WrappedInOidcAcquisitionException()
+    {
+        ScriptedTokenHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ThrowingContent(new IOException("simulated response stream reset")),
+        });
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.StatusCode.ShouldBeNull();
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.Message.ShouldNotContain(ClientSecret);
     }
 
     [Fact]
     public async Task LogsAndExceptions_DoNotContainClientSecretOrAccessToken()
     {
-        // Arrange
+        // Arrange — exercise the response-body redaction for token-shaped JSON properties; the
+        // endpoint itself is sanitized (no embedded credentials, no query, no fragment) since
+        // those shapes are now rejected synchronously by ValidateAndCreateKey.
         string token = "token-material-that-must-not-leak";
-        string endpointWithQuery = TokenEndpoint + "?client_secret=" + ClientSecret;
         CapturingLogger<OidcTokenProvider> logger = new();
         ScriptedTokenHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
         {
             Content = new StringContent(
-                $$"""{"error":"invalid_client","access_token":"{{token}}","client_secret":"{{ClientSecret}}"}""",
+                $$"""{"error":"invalid_client","access_token":"{{token}}","client_secret":"{{ClientSecret}}","refresh_token":"{{token}}","id_token":"{{token}}"}""",
                 Encoding.UTF8,
                 "application/json"),
         });
@@ -344,7 +511,7 @@ public class OidcTokenProviderTests
 
         // Act
         OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
-            () => provider.GetAccessTokenAsync(endpointWithQuery, ClientId, ClientSecret, null, CancellationToken.None));
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
 
         // Assert
         string logText = string.Join(Environment.NewLine, logger.Entries.Select(e => e.Message));
@@ -358,14 +525,104 @@ public class OidcTokenProviderTests
         handler.Requests[0].RequestUri!.AbsoluteUri.ShouldBe(TokenEndpoint);
     }
 
+    [Fact]
+    public async Task SanitizePreview_OverlappingTokenFields_AllRedacted()
+    {
+        // Multiple sensitive JSON properties of varying length, including overlapping bearer
+        // values, must all be redacted by the response preview.
+        string longToken = new('A', 600);
+        string shortToken = "ttt";
+        string bearerToken = "bearer-token-material-that-must-not-leak";
+        ScriptedTokenHandler handler = new(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = new StringContent(
+                $$"""{"access_token":"{{longToken}}","refresh_token":"{{longToken}}","id_token":"{{shortToken}}","client_secret":"{{ClientSecret}}","error_description":"Bearer {{bearerToken}}"}""",
+                Encoding.UTF8,
+                "application/json"),
+        });
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        OidcTokenAcquisitionException ex = await Should.ThrowAsync<OidcTokenAcquisitionException>(
+            () => provider.GetAccessTokenAsync(TokenEndpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.ResponseBodyPreview.ShouldNotContain(longToken);
+        ex.ResponseBodyPreview.ShouldNotContain(ClientSecret);
+        ex.ResponseBodyPreview.ShouldNotContain(bearerToken);
+        ex.ResponseBodyPreview.ShouldContain("\"access_token\":\"[redacted]\"");
+        ex.ResponseBodyPreview.ShouldContain("\"refresh_token\":\"[redacted]\"");
+        ex.ResponseBodyPreview.ShouldContain("\"id_token\":\"[redacted]\"");
+        ex.ResponseBodyPreview.ShouldContain("\"client_secret\":\"[redacted]\"");
+        ex.ResponseBodyPreview.ShouldContain("Bearer [redacted]");
+    }
+
+    [Theory]
+    [InlineData("https://user:pw@keycloak.example/realms/memories/protocol/openid-connect/token")]
+    [InlineData("https://only-user@keycloak.example/realms/memories/protocol/openid-connect/token")]
+    public async Task GetAccessTokenAsync_TokenEndpointWithUserInfo_ThrowsArgumentExceptionWithoutEchoingCredentials(string endpoint)
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.Message.ShouldNotContain("user:pw");
+        ex.Message.ShouldNotContain("only-user");
+        ex.Message.ShouldContain("user-info");
+        handler.Requests.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_TokenEndpointWithQuery_ThrowsArgumentExceptionWithoutEchoingQueryValues()
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+        string endpoint = TokenEndpoint + "?client_secret=" + ClientSecret;
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.Message.ShouldNotContain(ClientSecret);
+        ex.Message.ShouldContain("query string");
+        handler.Requests.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_TokenEndpointWithFragment_ThrowsArgumentException()
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+        string endpoint = TokenEndpoint + "#frag";
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        ex.Message.ShouldContain("fragment");
+        handler.Requests.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Constructor_NullHttpClientFactory_ThrowsArgumentNullException()
+    {
+        // Story 14.3 AC2: factory-driven HttpClient lifetime; null factory should fail loudly.
+        Should.Throw<ArgumentNullException>(() => new OidcTokenProvider(
+            null!,
+            new FakeTimeProvider(),
+            Substitute.For<ILogger<OidcTokenProvider>>()));
+    }
+
     private static OidcTokenProvider CreateProvider(
         ScriptedTokenHandler handler,
         FakeTimeProvider? timeProvider = null,
         CapturingLogger<OidcTokenProvider>? logger = null)
-        => new(
-            new HttpClient(handler),
+    {
+        IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(OidcTokenProvider.HttpClientName).Returns(_ => new HttpClient(handler, disposeHandler: false));
+        return new OidcTokenProvider(
+            factory,
             timeProvider ?? new FakeTimeProvider(new DateTimeOffset(2026, 5, 2, 8, 0, 0, TimeSpan.Zero)),
             logger ?? new CapturingLogger<OidcTokenProvider>());
+    }
 
     private static HttpResponseMessage TokenResponse(string token, int expiresIn)
         => new(HttpStatusCode.OK)
@@ -384,7 +641,8 @@ public class OidcTokenProviderTests
     private sealed class ScriptedTokenHandler : DelegatingHandler
     {
         private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _handler;
-        private readonly TaskCompletionSource _requestObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _gate = new();
+        private readonly List<TaskCompletionSource> _waiters = [];
 
         public ScriptedTokenHandler(Func<HttpRequestMessage, HttpResponseMessage> handler)
             : this((request, _) => Task.FromResult(handler(request)))
@@ -405,9 +663,21 @@ public class OidcTokenProviderTests
 
         public async Task WaitForRequestsAsync(int count)
         {
-            while (Requests.Count < count)
+            while (true)
             {
-                await _requestObserved.Task.ConfigureAwait(false);
+                TaskCompletionSource? toAwait = null;
+                lock (_gate)
+                {
+                    if (Requests.Count >= count)
+                    {
+                        return;
+                    }
+
+                    toAwait = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _waiters.Add(toAwait);
+                }
+
+                await toAwait.Task.ConfigureAwait(false);
             }
         }
 
@@ -418,12 +688,25 @@ public class OidcTokenProviderTests
             string body = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            Requests.Add(new CapturedRequest(
+            CapturedRequest captured = new(
                 request.Method,
                 request.RequestUri,
                 request.Content?.Headers.ContentType?.MediaType,
-                ParseForm(body)));
-            _requestObserved.TrySetResult();
+                ParseForm(body));
+
+            TaskCompletionSource[] toRelease;
+            lock (_gate)
+            {
+                Requests.Add(captured);
+                toRelease = [.. _waiters];
+                _waiters.Clear();
+            }
+
+            foreach (TaskCompletionSource waiter in toRelease)
+            {
+                waiter.TrySetResult();
+            }
+
             return await _handler(request, cancellationToken).ConfigureAwait(false);
         }
 
@@ -441,6 +724,25 @@ public class OidcTokenProviderTests
         Uri? RequestUri,
         string? ContentType,
         IReadOnlyDictionary<string, string> Form);
+
+    private sealed class ThrowingContent : HttpContent
+    {
+        private readonly Exception _exception;
+
+        public ThrowingContent(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => Task.FromException(_exception);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return true;
+        }
+    }
 
     private sealed class CapturingLogger<T> : ILogger<T>
     {

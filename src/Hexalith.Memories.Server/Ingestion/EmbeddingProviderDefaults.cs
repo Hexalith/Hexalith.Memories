@@ -246,6 +246,34 @@ public static partial class EmbeddingProviderDefaults
         {
             throw new ArgumentException($"{propertyName} must be an absolute HTTP or HTTPS URL.", propertyName);
         }
+
+        // AC3 (Story 14.3): reject credential-bearing URL shapes for both BaseUrl and
+        // OidcTokenEndpoint. Error text deliberately does not echo the offending URL component
+        // so embedded user-info, query secrets, or fragment values cannot leak through logs.
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+        {
+            throw new ArgumentException(
+                $"{propertyName} must not contain embedded credentials (user-info component).",
+                propertyName);
+        }
+
+        // RFC 6749 §3.2 permits token endpoints with query components in the abstract; this
+        // repository rejects them uniformly so credential-bearing query strings (e.g.,
+        // `?client_secret=...`) cannot slip past validation. Provider base URLs likewise reject
+        // query strings.
+        if (!string.IsNullOrEmpty(uri.Query))
+        {
+            throw new ArgumentException(
+                $"{propertyName} must not contain a query string.",
+                propertyName);
+        }
+
+        if (!string.IsNullOrEmpty(uri.Fragment))
+        {
+            throw new ArgumentException(
+                $"{propertyName} must not contain a fragment.",
+                propertyName);
+        }
     }
 
     private static string DescribeAuthMode(string? authMode) => authMode switch

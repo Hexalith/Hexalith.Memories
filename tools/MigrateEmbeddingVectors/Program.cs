@@ -158,7 +158,7 @@ internal sealed class ToolResources : IAsyncDisposable
         IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Memories:Testing:UseFakeEmbedding"] = "false" })
             .Build();
-        OidcTokenProvider tokenProvider = new(_httpClientFactory.GetSharedClient(), TimeProvider.System, NullLogger<OidcTokenProvider>.Instance);
+        OidcTokenProvider tokenProvider = new(_httpClientFactory, TimeProvider.System, NullLogger<OidcTokenProvider>.Instance);
         EmbeddingClient embeddingClient = new(
             _httpClientFactory,
             _daprClient,
