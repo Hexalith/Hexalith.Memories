@@ -128,6 +128,48 @@ python tools/check-story-file-scope.py --branch-name feature/12-3-story-file-sco
 This guardrail has narrow non-goals: it does not change runtime behavior, release tooling, package
 metadata, or submodule contents. Do not initialize nested submodules recursively for story-scope work.
 
+## Sprint Status History Conventions
+
+`_bmad-output/implementation-artifacts/sprint-status.yaml` records story state
+transitions on a single YAML line per story. To keep that file readable and to
+keep tooling free of multi-thousand-character one-liners, status updates must
+follow these rules.
+
+- Use a short dated breadcrumb when a status changes. The breadcrumb names what
+  changed and points at the durable artifact that holds the detail. Example:
+  `done # 2026-05-04 review close-out; see 14-3 story artifact and deferred-work.md 13.x-RV* close-outs.`
+- Put detailed evidence in the story artifact under
+  `_bmad-output/implementation-artifacts/<story-key>.md` (Dev Agent Record,
+  Change Log, Completion Notes), in the deferred-work entry, in the run log, or
+  in a dedicated review or retrospective document. Then link or name that
+  artifact from `sprint-status.yaml`.
+- Do not append multi-sentence narratives, full validation transcripts, or
+  multi-line Markdown to a single YAML status line. If a recap is worth keeping,
+  put it in the story artifact and reference it.
+- Historical Epic 1-13 status lines are intentionally not rewritten. The rules
+  above apply forward, not retroactively. A targeted edit is only justified when
+  a parser, dashboard, or auditor proves it is required.
+
+## Epic 14 Story Close-out Rules
+
+Epic 14 stories exist to take ownership of deferred review findings. The
+following bookkeeping rules apply to every Epic 14 story before it is moved to
+review.
+
+- List every targeted deferred ID in the story's Dev Agent Record completion
+  notes and mark each one `resolved`, `accepted`, or `carried-forward` using the
+  schema documented at the top of
+  `_bmad-output/implementation-artifacts/deferred-work.md`.
+- Discussing an item is not closure. Closure requires code, test, documentation,
+  or explicit acceptance evidence captured in the entry's `Evidence:` or
+  `Rationale:` field.
+- An entry intentionally left open after the story completes must carry a fresh
+  `Re-open trigger:` value that names the future condition under which it should
+  be revisited. Do not silently delete or hide such entries.
+- Root-level submodule pointer changes are forbidden by default. An Epic 14
+  story must not initialize, update, or bump nested submodule pointers as part
+  of its scope.
+
 ## Conventional Commits
 
 Release versions are computed from commit messages on `main`.

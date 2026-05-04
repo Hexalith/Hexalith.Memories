@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-04T15:40:00+02:00 # Story 14.4 code-review close-out complete; required Ollama E2E validation is green.
+last_updated: 2026-05-04T16:40:32+02:00 # Story 14.5 code-review close-out complete; 3/3 patches applied, CiTestInventoryTests 44/44 PASS.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -184,5 +184,5 @@ development_status:
   14-2-release-pipeline-audit-hardening: done
   14-3-oidc-and-embedding-security-hardening: done # 2026-05-04 code-review close-out applied 8/8 review patches after 3-layer review: forced-refresh in-flight acquisitions no longer join normal stale-secret fetches; cache recheck uses captured token value; Google + Ollama embedding transport failures and response-read failures wrap in typed exceptions while caller cancellation stays raw; invalid non-blank bearer tokens fail as EmbeddingApiException; OIDC previews redact bearer-shaped text; full input text is force-redacted even below the secret length floor; already-canceled token callers do not start detached fetches. Prior dev-story work remains: IHttpClientFactory OIDC lifetime, URL validation, Ollama 401 DAPR secret eviction, deferred-work closure, and Scope-Override tool ctor fix. Validation: OidcTokenProviderTests 31/31, EmbeddingClientTests 62/62, EmbeddingProviderDefaultsTests 130/130, combined focused slice 223/223, full Server.Tests 1734/1734, git diff --check clean except LF/CRLF warnings.
   14-4-migration-and-integration-test-hardening: done # 2026-05-04 code-review close-out applied 10/10 original findings and resolved the required Ollama E2E blocker by selecting the existing http launch profile for AppHost Server/MCP resources. Temporary SDK 10.0.201 installed under %TEMP% for validation; commands used DOTNET_HOST_PATH for Aspire child projects. Focused migration tests 29/29 PASS; fake-server tests 19/19 PASS; OllamaEmbeddingEndToEndTests 1/1 PASS.
-  14-5-deferred-register-governance-and-sprint-status-hygiene: ready-for-dev
+  14-5-deferred-register-governance-and-sprint-status-hygiene: done # 2026-05-04 code-review close-out complete; see story artifact Review Findings.
   epic-14-retrospective: optional
