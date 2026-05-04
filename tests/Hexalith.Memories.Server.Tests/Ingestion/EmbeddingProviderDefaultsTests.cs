@@ -592,6 +592,53 @@ public class EmbeddingProviderDefaultsTests
         affectedFields.ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("BaseUrl", "https://user:pw@llm.tache.ai")]
+    [InlineData("BaseUrl", "https://user@llm.tache.ai")]
+    [InlineData("OidcTokenEndpoint", "https://user:pw@auth.tache.ai/token")]
+    [InlineData("OidcTokenEndpoint", "https://creds@auth.tache.ai/token")]
+    public void Validate_UrlsWithEmbeddedCredentials_ShouldThrowAndNotEchoCredentials(string fieldName, string value)
+    {
+        // Story 14.3 AC3: provider URLs and OIDC token endpoints must reject userinfo and the
+        // resulting exception must not echo any embedded user/password values.
+        TenantEmbeddingConfig config = SetUrlField(EmbeddingProviderDefaults.Ollama(), fieldName, value);
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        ex.Message.ShouldContain(fieldName);
+        ex.Message.ShouldContain("user-info");
+        ex.Message.ShouldNotContain("user:pw");
+        ex.Message.ShouldNotContain("creds");
+    }
+
+    [Theory]
+    [InlineData("BaseUrl", "https://llm.tache.ai/?secret=value")]
+    [InlineData("OidcTokenEndpoint", "https://auth.tache.ai/realms/tache/token?client_secret=leaked")]
+    public void Validate_UrlsWithQuery_ShouldThrowAndNotEchoQueryValues(string fieldName, string value)
+    {
+        TenantEmbeddingConfig config = SetUrlField(EmbeddingProviderDefaults.Ollama(), fieldName, value);
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        ex.Message.ShouldContain(fieldName);
+        ex.Message.ShouldContain("query string");
+        ex.Message.ShouldNotContain("leaked");
+        ex.Message.ShouldNotContain("secret=value");
+    }
+
+    [Theory]
+    [InlineData("BaseUrl", "https://llm.tache.ai/#section")]
+    [InlineData("OidcTokenEndpoint", "https://auth.tache.ai/realms/tache/token#bookmark")]
+    public void Validate_UrlsWithFragment_ShouldThrow(string fieldName, string value)
+    {
+        TenantEmbeddingConfig config = SetUrlField(EmbeddingProviderDefaults.Ollama(), fieldName, value);
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        ex.Message.ShouldContain(fieldName);
+        ex.Message.ShouldContain("fragment");
+    }
+
     private static TenantEmbeddingConfig SetUrlField(TenantEmbeddingConfig config, string fieldName, string value)
         => fieldName switch
         {

@@ -188,7 +188,7 @@ public class EmbeddingClientTests
     }
 
     [Fact]
-    public async Task GenerateAsync_HttpTimeout_ThrowsTaskCanceledException()
+    public async Task GenerateAsync_HttpTimeout_ThrowsEmbeddingApiException()
     {
         // Arrange
         DaprClient daprClient = CreateDaprClientWithSecret();
@@ -205,8 +205,50 @@ public class EmbeddingClientTests
         EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
 
         // Act & Assert
-        await Should.ThrowAsync<TaskCanceledException>(
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
             () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+        ex.InnerException.ShouldBeOfType<TaskCanceledException>();
+        ex.TenantId.ShouldBe(TenantId);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_Google_HttpRequestException_WrappedInEmbeddingApiException()
+    {
+        // Story 14.3 AC5 decision: Google transport failures also cross the embedding boundary
+        // as EmbeddingApiException instead of raw HttpRequestException.
+        TestDelegatingHandler handler = new((_, _) =>
+            Task.FromException<HttpResponseMessage>(new HttpRequestException("simulated Google transport failure")));
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(handler);
+        DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.Message.ShouldContain("Google");
+        ex.Message.ShouldNotContain(TestApiKey);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_Google_ResponseContentReadFailure_WrappedInEmbeddingApiException()
+    {
+        TestDelegatingHandler handler = new((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ThrowingContent(new IOException("simulated Google response stream reset")),
+            }));
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(handler);
+        DaprClient daprClient = CreateDaprClientWithSecret();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment());
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.Message.ShouldContain("Google");
     }
 
     [Fact]
@@ -675,6 +717,224 @@ public class EmbeddingClientTests
         ex.ResponseBody.ShouldNotContain(sensitiveInput);
     }
 
+    [Fact]
+    public async Task GenerateAsync_Ollama_Unauthorized_EvictsApiKeyCacheBeforeRefresh()
+    {
+        // Story 14.3 AC6: Ollama 401 retry must evict the cached DAPR client_secret so a rotated
+        // secret is re-read from DAPR before the OIDC token is refreshed; the InvalidateAndRefresh
+        // call must receive the rotated value, not the stale cached one.
+        const string staleSecret = "stale-client-secret-value";
+        const string rotatedSecret = "rotated-client-secret-value";
+        int daprCallCount = 0;
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetSecretAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<Dictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                daprCallCount++;
+                string value = daprCallCount == 1 ? staleSecret : rotatedSecret;
+                return new Dictionary<string, string> { ["memories-embedding-client-secret"] = value };
+            });
+
+        int httpCallCount = 0;
+        TestDelegatingHandler handler = new((_, _) =>
+        {
+            httpCallCount++;
+            return Task.FromResult(httpCallCount == 1
+                ? CreateJsonResponse(HttpStatusCode.Unauthorized, "stale token")
+                : CreateJsonResponse(HttpStatusCode.OK, CreateOllamaResponse(CreateVector(2560))));
+        });
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(handler);
+
+        IOidcTokenProvider tokenProvider = Substitute.For<IOidcTokenProvider>();
+        tokenProvider.GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns("old-token");
+        tokenProvider.InvalidateAndRefreshAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns("new-token");
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        // Act
+        float[] result = await client.GenerateAsync(TestText, TenantId, config, CancellationToken.None);
+
+        // Assert
+        result.Length.ShouldBe(2560);
+        daprCallCount.ShouldBe(2);
+        await tokenProvider.Received(1).GetAccessTokenAsync(
+            config.OidcTokenEndpoint!,
+            config.OidcClientId!,
+            staleSecret,
+            config.OidcScope,
+            Arg.Any<CancellationToken>());
+        await tokenProvider.Received(1).InvalidateAndRefreshAsync(
+            config.OidcTokenEndpoint!,
+            config.OidcClientId!,
+            rotatedSecret,
+            config.OidcScope,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GenerateAsync_Ollama_TokenAcquisitionThrows_WrappedInEmbeddingApiException()
+    {
+        // Story 14.3 AC5: OIDC acquisition failures must surface to ingestion as
+        // EmbeddingApiException with the original transport exception preserved as InnerException.
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        DaprClient daprClient = CreateDaprClientWithSecret("memories-embedding-client-secret", TestClientSecret);
+        IOidcTokenProvider tokenProvider = Substitute.For<IOidcTokenProvider>();
+        OidcTokenAcquisitionException underlying = new(
+            statusCode: null,
+            responseBodyPreview: string.Empty,
+            tokenEndpoint: "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
+            clientId: "memories-embedding",
+            correlationId: Guid.NewGuid().ToString("N"),
+            reason: "transport error during token request",
+            innerException: new HttpRequestException("simulated"));
+        tokenProvider.GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(underlying);
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.InnerException.ShouldBeSameAs(underlying);
+        ex.TenantId.ShouldBe(TenantId);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_Ollama_HttpRequestException_WrappedInEmbeddingApiException()
+    {
+        TestDelegatingHandler handler = new((_, _) =>
+            Task.FromException<HttpResponseMessage>(new HttpRequestException("simulated transport failure")));
+        IHttpClientFactory httpClientFactory = CreateHttpClientFactory(handler);
+        DaprClient daprClient = CreateDaprClientWithSecret("memories-embedding-client-secret", TestClientSecret);
+        IOidcTokenProvider tokenProvider = CreateTokenProvider(TestAccessToken);
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.InnerException.ShouldBeOfType<HttpRequestException>();
+        ex.Message.ShouldNotContain(TestAccessToken);
+        ex.Message.ShouldNotContain(TestClientSecret);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GenerateAsync_Ollama_BlankBearerToken_ThrowsEmbeddingApiException(string? bearer)
+    {
+        // Story 14.3 AC5: a blank token must be rejected with a sanitized typed exception before
+        // any AuthenticationHeaderValue is constructed (which would FormatException on whitespace).
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        DaprClient daprClient = CreateDaprClientWithSecret("memories-embedding-client-secret", TestClientSecret);
+        IOidcTokenProvider tokenProvider = Substitute.For<IOidcTokenProvider>();
+        tokenProvider.GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(bearer!);
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.Message.ShouldContain("blank");
+        ex.TenantId.ShouldBe(TenantId);
+    }
+
+    [Theory]
+    [InlineData(" token-with-leading-space")]
+    [InlineData("token-with-trailing-space ")]
+    [InlineData("token-with\r\nnewline")]
+    public async Task GenerateAsync_Ollama_InvalidBearerToken_ThrowsEmbeddingApiException(string bearer)
+    {
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        DaprClient daprClient = CreateDaprClientWithSecret("memories-embedding-client-secret", TestClientSecret);
+        IOidcTokenProvider tokenProvider = Substitute.For<IOidcTokenProvider>();
+        tokenProvider.GetAccessTokenAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(bearer);
+        TenantEmbeddingConfig config = CreateOllamaConfig();
+        EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
+
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+
+        ex.Message.ShouldContain("invalid access token");
+        ex.Message.ShouldNotContain(bearer);
+        ex.TenantId.ShouldBe(TenantId);
+    }
+
+    [Fact]
+    public void RedactSensitiveValues_LongestFirst_DoesNotCorruptOverlappingSecrets()
+    {
+        // A longer secret containing a shorter secret as a substring must be redacted entirely;
+        // the shorter secret then has no remaining matches, instead of the shorter secret
+        // mangling the longer one's matching substring.
+        const string shorter = "secret-prefix";
+        const string longer = "secret-prefix-with-suffix-tail";
+        string body = $"{{\"error\":\"oops {longer} and {shorter} both leaked\"}}";
+
+        string sanitized = EmbeddingClient.RedactSensitiveValues(
+            body,
+            new string?[] { shorter, longer });
+
+        sanitized.ShouldNotContain(longer);
+        sanitized.ShouldNotContain(shorter);
+        sanitized.ShouldContain("[redacted]");
+    }
+
+    [Fact]
+    public void RedactSensitiveValues_ShortBenignSubstrings_NotMasked()
+    {
+        // Values shorter than the redaction floor must not be redacted; an "ai" in
+        // "fail" should not turn into "f[redacted]l" because of an unrelated 2-char value.
+        string body = "{\"error\":\"the system failed because of a transient ai issue\"}";
+
+        string sanitized = EmbeddingClient.RedactSensitiveValues(
+            body,
+            new string?[] { "ai", "ok", "the", null, "  " });
+
+        sanitized.ShouldBe(body);
+    }
+
+    [Fact]
+    public void RedactSensitiveValues_ShortFullInputText_IsMasked()
+    {
+        string body = "{\"error\":\"provider echoed ok\"}";
+
+        string sanitized = EmbeddingClient.RedactSensitiveValues(
+            body,
+            Array.Empty<string?>(),
+            "ok");
+
+        sanitized.ShouldNotContain("ok");
+        sanitized.ShouldContain("[redacted]");
+    }
+
+    [Fact]
+    public void RedactSensitiveValues_NullCollection_ReturnsBodyUnchanged()
+    {
+        string body = "{\"error\":\"transient\"}";
+        string sanitized = EmbeddingClient.RedactSensitiveValues(body, Array.Empty<string?>());
+        sanitized.ShouldBe(body);
+    }
+
+    [Fact]
+    public void Constructor_NullHttpClientFactory_ThrowsArgumentNullException()
+    {
+        // Story 14.3 AC2: factory-driven HttpClient lifetime; null factory should fail loudly.
+        Should.Throw<ArgumentNullException>(() => new EmbeddingClient(
+            null!,
+            Substitute.For<DaprClient>(),
+            CreateConfiguration(),
+            CreateHostEnvironment()));
+    }
+
     private static float[] CreateVector(int dimensions)
     {
         float[] vector = new float[dimensions];
@@ -796,5 +1056,24 @@ public class EmbeddingClientTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
             => _handler(request, cancellationToken);
+    }
+
+    private sealed class ThrowingContent : HttpContent
+    {
+        private readonly Exception _exception;
+
+        public ThrowingContent(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+            => Task.FromException(_exception);
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return true;
+        }
     }
 }

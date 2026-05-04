@@ -22,6 +22,10 @@ using Microsoft.Extensions.Hosting;
 /// <summary>Singleton HTTP client for generating embeddings via configurable provider APIs.</summary>
 public class EmbeddingClient
 {
+    /// <summary>Minimum length below which a value is not redacted, to avoid masking benign short
+    /// substrings (e.g., common words) that happen to overlap with a sensitive value.</summary>
+    internal const int RedactionMinLength = 8;
+
     private const string FakeEmbeddingConfigKey = "Memories:Testing:UseFakeEmbedding";
     private const string SecretStoreName = "secretstore";
 
@@ -50,14 +54,19 @@ public class EmbeddingClient
     /// <param name="daprClient">The DAPR client for secret retrieval.</param>
     /// <param name="configuration">The application configuration.</param>
     /// <param name="hostEnvironment">The current host environment.</param>
-    /// <param name="oidcTokenProvider">The optional OIDC token provider used by Ollama client-credentials authentication.</param>
+    /// <param name="oidcTokenProvider">The OIDC token provider used by Ollama client-credentials authentication, or <c>null</c> when no Ollama tenants are configured.</param>
     public EmbeddingClient(
         IHttpClientFactory httpClientFactory,
         DaprClient daprClient,
         IConfiguration configuration,
         IHostEnvironment hostEnvironment,
-        IOidcTokenProvider? oidcTokenProvider = null)
+        IOidcTokenProvider? oidcTokenProvider)
     {
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
+        ArgumentNullException.ThrowIfNull(daprClient);
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(hostEnvironment);
+
         _httpClientFactory = httpClientFactory;
         _daprClient = daprClient;
         _oidcTokenProvider = oidcTokenProvider;
@@ -146,6 +155,52 @@ public class EmbeddingClient
         return new EmbeddingProviderIdentifier(provider.ToLowerInvariant(), model);
     }
 
+    /// <summary>Redacts the supplied sensitive values from <paramref name="text"/> using a length-aware,
+    /// longest-first substring replacement so overlapping secrets are fully masked and short benign
+    /// substrings are not accidentally masked.</summary>
+    /// <param name="text">The upstream payload that may contain leaked secrets.</param>
+    /// <param name="sensitiveValues">The values that must not appear in the redacted output.</param>
+    /// <returns>The redacted string.</returns>
+    internal static string RedactSensitiveValues(string text, IReadOnlyCollection<string?> sensitiveValues)
+        => RedactSensitiveValues(text, sensitiveValues, fullInputText: null);
+
+    /// <summary>Redacts the supplied sensitive values plus the full input text when present.</summary>
+    /// <param name="text">The upstream payload that may contain leaked secrets.</param>
+    /// <param name="sensitiveValues">The secret-like values that must not appear in the redacted output.</param>
+    /// <param name="fullInputText">The full embedding input text, redacted without the secret-length floor.</param>
+    /// <returns>The redacted string.</returns>
+    internal static string RedactSensitiveValues(
+        string text,
+        IReadOnlyCollection<string?> sensitiveValues,
+        string? fullInputText)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        // Filter to non-blank, sufficiently-long, distinct values; longest first so a longer
+        // secret is replaced before any shorter secret it contains as a substring.
+        IEnumerable<string> ordered = (sensitiveValues ?? [])
+            .Where(static v => !string.IsNullOrWhiteSpace(v) && v!.Length >= RedactionMinLength)
+            .Select(static v => v!)
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(static v => v.Length);
+
+        string sanitized = text;
+        foreach (string value in ordered)
+        {
+            sanitized = sanitized.Replace(value, "[redacted]", StringComparison.Ordinal);
+        }
+
+        if (!string.IsNullOrEmpty(fullInputText))
+        {
+            sanitized = sanitized.Replace(fullInputText, "[redacted]", StringComparison.Ordinal);
+        }
+
+        return sanitized;
+    }
+
     private static ArgumentException CreateEmbeddingProviderIdentifierException(string? embeddingProvider)
         => new(
             "EmbeddingProvider must use '{provider}:{model}' with a non-empty model and one of the supported providers: " +
@@ -170,17 +225,19 @@ public class EmbeddingClient
             output_dimensionality = config.Dimensions,
         });
 
-        using HttpResponseMessage response = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, apiKey, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, apiKey, tenantId, ct).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             _apiKeyCache.TryRemove(config.ApiSecretKeyName, out _);
             string refreshedApiKey = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
-            using HttpResponseMessage retryResponse = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, refreshedApiKey, ct).ConfigureAwait(false);
+            using HttpResponseMessage retryResponse = await SendGoogleEmbeddingRequestAsync(endpointUrl, requestJson, refreshedApiKey, tenantId, ct).ConfigureAwait(false);
             return await HandleEmbeddingResponseAsync(
                 retryResponse,
                 tenantId,
                 config.Dimensions,
                 EmbeddingProviderDefaults.GoogleProviderName,
+                [apiKey, refreshedApiKey],
+                text,
                 ct).ConfigureAwait(false);
         }
 
@@ -189,6 +246,8 @@ public class EmbeddingClient
             tenantId,
             config.Dimensions,
             EmbeddingProviderDefaults.GoogleProviderName,
+            [apiKey],
+            text,
             ct).ConfigureAwait(false);
     }
 
@@ -199,9 +258,8 @@ public class EmbeddingClient
             ?? throw new EmbeddingApiException("IOidcTokenProvider is required for Ollama OIDC client credentials authentication.", tenantId);
 
         string clientSecret = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
-        string accessToken = await tokenProvider
-            .GetAccessTokenAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
-            .ConfigureAwait(false);
+        string accessToken = await GetAccessTokenWrappedAsync(tokenProvider, config, clientSecret, tenantId, ct).ConfigureAwait(false);
+        EnsureNonBlankBearerToken(accessToken, tenantId);
 
         string endpointUrl = BuildOllamaEndpointUrl(config);
         string requestJson = JsonSerializer.Serialize(new
@@ -210,27 +268,35 @@ public class EmbeddingClient
             input = text,
         });
 
-        using HttpResponseMessage response = await SendOllamaEmbeddingRequestAsync(endpointUrl, requestJson, accessToken, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await SendOllamaEmbeddingRequestAsync(endpointUrl, requestJson, accessToken, tenantId, ct).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            string refreshedAccessToken = await tokenProvider
-                .InvalidateAndRefreshAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
-                .ConfigureAwait(false);
+            // AC6: evict the cached DAPR client_secret before refreshing the bearer so a rotated
+            // secret is re-read symmetrically with the Google API-key path. The refreshed secret
+            // becomes the input to the OIDC token request.
+            _apiKeyCache.TryRemove(config.ApiSecretKeyName, out _);
+            string refreshedClientSecret = await GetApiKeyAsync(tenantId, config.ApiSecretKeyName, ct).ConfigureAwait(false);
+            string refreshedAccessToken = await InvalidateAndRefreshWrappedAsync(
+                tokenProvider,
+                config,
+                refreshedClientSecret,
+                tenantId,
+                ct).ConfigureAwait(false);
+            EnsureNonBlankBearerToken(refreshedAccessToken, tenantId);
             using HttpResponseMessage retryResponse = await SendOllamaEmbeddingRequestAsync(
                 endpointUrl,
                 requestJson,
                 refreshedAccessToken,
+                tenantId,
                 ct).ConfigureAwait(false);
             return await HandleEmbeddingResponseAsync(
                 retryResponse,
                 tenantId,
                 config.Dimensions,
                 EmbeddingProviderDefaults.OllamaProviderName,
-                ct,
-                clientSecret,
-                accessToken,
-                refreshedAccessToken,
-                text).ConfigureAwait(false);
+                [clientSecret, refreshedClientSecret, accessToken, refreshedAccessToken],
+                text,
+                ct).ConfigureAwait(false);
         }
 
         return await HandleEmbeddingResponseAsync(
@@ -238,10 +304,9 @@ public class EmbeddingClient
             tenantId,
             config.Dimensions,
             EmbeddingProviderDefaults.OllamaProviderName,
-            ct,
-            clientSecret,
-            accessToken,
-            text).ConfigureAwait(false);
+            [clientSecret, accessToken],
+            text,
+            ct).ConfigureAwait(false);
     }
 
     private static string BuildGoogleEndpointUrl(TenantEmbeddingConfig config)
@@ -264,6 +329,7 @@ public class EmbeddingClient
         string endpointUrl,
         string requestJson,
         string apiKey,
+        string tenantId,
         CancellationToken ct)
     {
         HttpClient httpClient = _httpClientFactory.CreateClient("EmbeddingClient");
@@ -271,21 +337,150 @@ public class EmbeddingClient
         request.Headers.Add("x-goog-api-key", apiKey);
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        return await SendEmbeddingRequestAsync(httpClient, request, "Google", tenantId, ct).ConfigureAwait(false);
     }
 
     private async Task<HttpResponseMessage> SendOllamaEmbeddingRequestAsync(
         string endpointUrl,
         string requestJson,
         string accessToken,
+        string tenantId,
         CancellationToken ct)
     {
         HttpClient httpClient = _httpClientFactory.CreateClient("EmbeddingClient");
         using HttpRequestMessage request = new(HttpMethod.Post, endpointUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Authorization = CreateBearerAuthorizationHeader(accessToken, tenantId);
         request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
-        return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        return await SendEmbeddingRequestAsync(httpClient, request, "Ollama", tenantId, ct).ConfigureAwait(false);
+    }
+
+    private static async Task<HttpResponseMessage> SendEmbeddingRequestAsync(
+        HttpClient httpClient,
+        HttpRequestMessage request,
+        string providerName,
+        string tenantId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await httpClient.SendAsync(request, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Caller cancellation must surface as OperationCanceledException, not a wrapped
+            // transport failure (Story 14.3 Task 5 Implementation Guardrails).
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new EmbeddingApiException(
+                $"{providerName} embedding provider transport error while sending request.",
+                tenantId,
+                ex);
+        }
+        catch (TaskCanceledException ex)
+        {
+            // Not caused by caller cancellation (handled above) — therefore HttpClient.Timeout.
+            throw new EmbeddingApiException(
+                $"{providerName} embedding provider request timed out.",
+                tenantId,
+                ex);
+        }
+        catch (IOException ex)
+        {
+            throw new EmbeddingApiException(
+                $"{providerName} embedding provider IO error while sending request.",
+                tenantId,
+                ex);
+        }
+    }
+
+    private static async Task<string> GetAccessTokenWrappedAsync(
+        IOidcTokenProvider tokenProvider,
+        TenantEmbeddingConfig config,
+        string clientSecret,
+        string tenantId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await tokenProvider
+                .GetAccessTokenAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is OidcTokenAcquisitionException or HttpRequestException or IOException or TaskCanceledException)
+        {
+            throw new EmbeddingApiException(
+                "Failed to acquire OIDC access token for Ollama embedding provider.",
+                tenantId,
+                ex);
+        }
+    }
+
+    private static async Task<string> InvalidateAndRefreshWrappedAsync(
+        IOidcTokenProvider tokenProvider,
+        TenantEmbeddingConfig config,
+        string clientSecret,
+        string tenantId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await tokenProvider
+                .InvalidateAndRefreshAsync(config.OidcTokenEndpoint!, config.OidcClientId!, clientSecret, config.OidcScope, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is OidcTokenAcquisitionException or HttpRequestException or IOException or TaskCanceledException)
+        {
+            throw new EmbeddingApiException(
+                "Failed to refresh OIDC access token for Ollama embedding provider after a 401/403 response.",
+                tenantId,
+                ex);
+        }
+    }
+
+    private static void EnsureNonBlankBearerToken(string accessToken, string tenantId)
+        => _ = CreateBearerAuthorizationHeader(accessToken, tenantId);
+
+    private static AuthenticationHeaderValue CreateBearerAuthorizationHeader(string accessToken, string tenantId)
+    {
+        // AuthenticationHeaderValue throws FormatException on whitespace-only parameters; reject
+        // before construction with a sanitized typed exception so callers above ingestion can
+        // distinguish a bad-token contract from a bad-network outcome.
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            throw new EmbeddingApiException(
+                "OIDC token provider returned a blank access token; refusing to construct a bearer header.",
+                tenantId);
+        }
+
+        if (!string.Equals(accessToken, accessToken.Trim(), StringComparison.Ordinal))
+        {
+            throw new EmbeddingApiException(
+                "OIDC token provider returned an invalid access token; refusing to construct a bearer header.",
+                tenantId);
+        }
+
+        try
+        {
+            return new AuthenticationHeaderValue("Bearer", accessToken);
+        }
+        catch (FormatException ex)
+        {
+            throw new EmbeddingApiException(
+                "OIDC token provider returned an invalid access token; refusing to construct a bearer header.",
+                tenantId,
+                ex);
+        }
     }
 
     private static async Task<float[]> HandleEmbeddingResponseAsync(
@@ -293,8 +488,9 @@ public class EmbeddingClient
         string tenantId,
         int expectedDimensions,
         string provider,
-        CancellationToken ct,
-        params string?[] sensitiveValues)
+        IReadOnlyCollection<string?> sensitiveValues,
+        string fullInputText,
+        CancellationToken ct)
     {
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -302,16 +498,53 @@ public class EmbeddingClient
             throw new EmbeddingRateLimitException(tenantId) { RetryAfterSeconds = retryAfter };
         }
 
-        string responseBody = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        string responseBody = await ReadEmbeddingResponseBodyAsync(response, provider, tenantId, ct).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
         {
-            throw new EmbeddingApiException((int)response.StatusCode, RedactSensitiveValues(responseBody, sensitiveValues), tenantId);
+            throw new EmbeddingApiException((int)response.StatusCode, RedactSensitiveValues(responseBody, sensitiveValues, fullInputText), tenantId);
         }
 
         return IsOllama(provider)
             ? ParseOllamaEmbeddingResponse(responseBody, tenantId, expectedDimensions)
             : ParseGoogleEmbeddingResponse(responseBody, tenantId, expectedDimensions);
+    }
+
+    private static async Task<string> ReadEmbeddingResponseBodyAsync(
+        HttpResponseMessage response,
+        string provider,
+        string tenantId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new EmbeddingApiException(
+                $"{provider} embedding provider transport error while reading response.",
+                tenantId,
+                ex);
+        }
+        catch (TaskCanceledException ex)
+        {
+            throw new EmbeddingApiException(
+                $"{provider} embedding provider response read timed out.",
+                tenantId,
+                ex);
+        }
+        catch (IOException ex)
+        {
+            throw new EmbeddingApiException(
+                $"{provider} embedding provider IO error while reading response.",
+                tenantId,
+                ex);
+        }
     }
 
     /// <summary>Parses the <c>Retry-After</c> header per RFC 9110 §10.2.3 — either a delta-seconds value
@@ -478,20 +711,6 @@ public class EmbeddingClient
             $"Ollama auth mode '{config.AuthMode}' is not supported by EmbeddingClient. " +
             $"Use '{EmbeddingProviderDefaults.OidcClientCredentialsAuthMode}' until a provider-specific api-key contract is defined.",
             tenantId);
-    }
-
-    private static string RedactSensitiveValues(string responseBody, params string?[] sensitiveValues)
-    {
-        string sanitized = responseBody;
-        foreach (string? sensitiveValue in sensitiveValues)
-        {
-            if (!string.IsNullOrEmpty(sensitiveValue))
-            {
-                sanitized = sanitized.Replace(sensitiveValue, "[redacted]", StringComparison.Ordinal);
-            }
-        }
-
-        return sanitized;
     }
 
     private static float[] CreateDeterministicVector(string text, int dimensions)
