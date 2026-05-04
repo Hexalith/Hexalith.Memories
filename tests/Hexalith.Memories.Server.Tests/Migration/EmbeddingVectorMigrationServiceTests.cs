@@ -14,6 +14,108 @@ using Shouldly;
 /// <summary>Focused unit coverage for Story 13.6 embedding vector migration orchestration.</summary>
 public sealed class EmbeddingVectorMigrationServiceTests
 {
+    [Theory]
+    [InlineData("provider failed: AKIAEXAMPLE123456789 reset key", "AKIAEXAMPLE123456789")]
+    [InlineData("temporary creds ASIA0123456789ABCDEF rotated", "ASIA0123456789ABCDEF")]
+    public void RedactorShouldMaskAwsAccessKeyIds(string input, string secret)
+    {
+        string output = EmbeddingMigrationRedactor.Redact(input);
+
+        output.ShouldNotContain(secret);
+        output.ShouldContain("[redacted-aws-key]");
+    }
+
+    [Fact]
+    public void RedactorShouldMaskRawJwtWithoutBearerPrefix()
+    {
+        // Realistic-shape JWT body so the test would have caught a JWT regex that only matched
+        // when prefixed with "Bearer ".
+        const string rawJwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signaturePartXYZ";
+        string output = EmbeddingMigrationRedactor.Redact($"upstream returned token {rawJwt} for request");
+
+        output.ShouldNotContain(rawJwt);
+        output.ShouldContain("[redacted-jwt]");
+    }
+
+    [Theory]
+    [InlineData("Basic")]
+    [InlineData("basic")]
+    [InlineData("BASIC")]
+    [InlineData("bAsIc")]
+    public void RedactorShouldMaskHttpBasicAuthorizationValues(string scheme)
+    {
+        // The literal value used by the embedded credential.
+        const string basicValue = "dXNlcjpwYXNzd29yZA==";
+        string output = EmbeddingMigrationRedactor.Redact($"Authorization: {scheme} {basicValue} forwarded.");
+
+        output.ShouldNotContain(basicValue);
+        output.ShouldContain("[redacted]");
+    }
+
+    [Theory]
+    [InlineData("client_secret named memories-embedding-client-secret was not found", "memories-embedding-client-secret")]
+    [InlineData("ApiSecretKeyName memories-embedding-client-secret missing", "memories-embedding-client-secret")]
+    [InlineData("the secret 'memories-embedding-client-secret' could not be resolved", "memories-embedding-client-secret")]
+    public void RedactorShouldPreserveNameOnlySecretReferences(string input, string benignName)
+    {
+        string output = EmbeddingMigrationRedactor.Redact(input);
+
+        // Benign secret-name references must remain operator-visible per Story 14.4 AC #2.
+        output.ShouldContain(benignName);
+        output.ShouldNotContain("[redacted]");
+    }
+
+    [Fact]
+    public void RedactorShouldKeepExistingGoogleAndBearerAndSecretFieldRedactions()
+    {
+        const string google = "AIzaFakeKeyExampleValue123";
+        const string bearer = "eyJfake.bearer.body";
+        const string secretValue = "super-secret-client-secret";
+        string input = $"google={google} Authorization: Bearer {bearer} client_secret={secretValue}";
+
+        string output = EmbeddingMigrationRedactor.Redact(input);
+
+        output.ShouldNotContain(google);
+        output.ShouldNotContain(bearer);
+        output.ShouldNotContain(secretValue);
+        output.ShouldContain("AIza[redacted]");
+        output.ShouldContain("Bearer [redacted]");
+        output.ShouldContain("client_secret=[redacted]");
+    }
+
+    [Fact]
+    public void RedactorShouldMaskJsonEscapedSecretFields()
+    {
+        const string secretValue = "super-secret-json-value";
+        string input = $"event payload {{\\\"client_secret\\\":\\\"{secretValue}\\\"}}";
+
+        string output = EmbeddingMigrationRedactor.Redact(input);
+
+        output.ShouldNotContain(secretValue);
+        output.ShouldContain("[redacted]");
+    }
+
+    [Fact]
+    public void RedactorShouldNotLeakSecretsAcrossTruncationBoundary()
+    {
+        // Build a >MaxMessageLength input whose AWS key sits within the first 512 chars and a JWT
+        // straddling the boundary. The redactor must apply masks on the full input *before*
+        // truncation so neither secret survives in the truncated output.
+        string awsKey = "AKIA0123456789ABCDEF";
+        string jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJib3VuZGFyeSJ9.bbbbbbbbbbbbbbbb";
+        string preFiller = new string('p', 200);
+        string straddleFiller = new string('s', 280); // AWS key at ~210, JWT at ~510 (straddles 512)
+        string suffixFiller = new string('q', 600);
+        string input = $"{preFiller} {awsKey} {straddleFiller} {jwt} {suffixFiller}";
+        input.Length.ShouldBeGreaterThan(512);
+
+        string output = EmbeddingMigrationRedactor.Redact(input);
+
+        output.ShouldNotContain(awsKey);
+        output.ShouldNotContain(jwt);
+        output.EndsWith("...").ShouldBeTrue();
+    }
+
     [Fact]
     public async Task LiveWithoutTenantShouldReturnPlumbingError()
     {
@@ -167,7 +269,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
         store.MarkerStarted.ShouldBeTrue();
-        store.MarkerCompleted.ShouldBeTrue();
+        store.MarkerCompleted.ShouldBeFalse();
         store.SetConfigCalls.ShouldBe(1);
         store.ForceReindexValues.ShouldBe([true]);
         store.DropAndRecreateCalls.ShouldBe(1);
@@ -367,6 +469,60 @@ public sealed class EmbeddingVectorMigrationServiceTests
     }
 
     [Fact]
+    public async Task NoModeSelectedShouldReturnPlumbingErrorWithActionableCliMessage()
+    {
+        FakeStore store = new();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions { Yes = true },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Plumbing);
+        result.Message.ShouldContain("--dry-run");
+        result.Message.ShouldContain("--live");
+        result.Message.ShouldContain("--rollback");
+        store.SetConfigCalls.ShouldBe(0);
+        store.DropAndRecreateCalls.ShouldBe(0);
+        store.MarkerStarted.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ResumeWithoutMarkerShouldReportTenantLevelDomainErrorWithoutCompletingMarker()
+    {
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(0, 0, 0, 0, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        // intentionally no MigrationMarkers entry — --resume should fail closed.
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+                Resume = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        result.Message.ShouldContain("aborted on tenant-level error");
+        result.Message.ShouldContain("--resume");
+        result.Failures.Count.ShouldBe(1);
+        result.Failures[0].ContentKind.ShouldBe("tenant");
+        result.Failures[0].ErrorCategory.ShouldBe("InvalidOperation");
+        // CompleteMigrationMarkerAsync MUST NOT run when start failed; otherwise we would
+        // stamp a "completed" marker over a non-existent one.
+        store.MarkerStarted.ShouldBeFalse();
+        store.MarkerCompleted.ShouldBeFalse();
+        store.SetConfigCalls.ShouldBe(0);
+        store.DropAndRecreateCalls.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task TenantLevelErrorShouldRecordFailureAndReturnDomainError()
     {
         FakeStore store = new();
@@ -388,6 +544,37 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
         result.Message.ShouldContain("aborted on tenant-level error");
+        store.RecordedFailures.Count.ShouldBe(1);
+        store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
+        store.MarkerStarted.ShouldBeTrue();
+        store.MarkerCompleted.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task CompleteMarkerFailureShouldReturnDomainErrorWithoutEscaping()
+    {
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(0, 0, 0, 0, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.CompleteMarkerException = new InvalidOperationException("marker write failed");
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        result.Message.ShouldContain("aborted on tenant-level error");
+        result.Message.ShouldContain("marker write failed");
+        store.MarkerStarted.ShouldBeTrue();
+        store.MarkerCompleted.ShouldBeFalse();
         store.RecordedFailures.Count.ShouldBe(1);
         store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
     }
@@ -435,6 +622,8 @@ public sealed class EmbeddingVectorMigrationServiceTests
         public HashSet<string> RetainedPreviousIndexes { get; } = [];
 
         public Exception? DropAndRecreateException { get; set; }
+
+        public Exception? CompleteMarkerException { get; set; }
 
         public int SetConfigCalls { get; private set; }
 
@@ -489,6 +678,11 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
         {
+            if (CompleteMarkerException is not null)
+            {
+                throw CompleteMarkerException;
+            }
+
             MarkerCompleted = true;
             return Task.CompletedTask;
         }

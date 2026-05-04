@@ -211,14 +211,16 @@ public sealed class EmbeddingVectorMigrationService(
         EmbeddingMigrationTenantCounts counts = await store.GetCountsAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
         EmbeddingMigrationIndexInfo indexInfo = await store.GetIndexInfoAsync(tenantId, ct).ConfigureAwait(false);
 
-        await store.StartMigrationMarkerAsync(tenantId, targetConfig, options.Resume, ct).ConfigureAwait(false);
-
         EmbeddingMigrationUnitCounters raw = EmbeddingMigrationUnitCounters.Empty;
         EmbeddingMigrationUnitCounters naturalLanguage = EmbeddingMigrationUnitCounters.Empty;
         string? tenantLevelError = null;
+        bool markerStarted = false;
 
         try
         {
+            await store.StartMigrationMarkerAsync(tenantId, targetConfig, options.Resume, ct).ConfigureAwait(false);
+            markerStarted = true;
+
             await store.DropAndRecreateSemanticIndexesAsync(tenantId, targetConfig.Dimensions, ct).ConfigureAwait(false);
             await store.SetEmbeddingConfigAsync(tenantId, targetConfig, forceReindex: true, ct).ConfigureAwait(false);
 
@@ -246,9 +248,24 @@ public sealed class EmbeddingVectorMigrationService(
             await AddFailureAsync(tenantId, string.Empty, "tenant", NormalizeErrorCategory(ex), ex.Message, failures, ct).ConfigureAwait(false);
         }
 
-        await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+        // Skip CompleteMigrationMarkerAsync when marker start failed (e.g. --resume without prior
+        // marker), tenant-level work failed, or per-unit failures require resume. The marker is
+        // only "completed" after a clean live run.
+        bool hasUnitFailures = raw.Failed > 0 || naturalLanguage.Failed > 0;
+        if (markerStarted && tenantLevelError is null && !hasUnitFailures)
+        {
+            try
+            {
+                await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                tenantLevelError = EmbeddingMigrationRedactor.Redact(ex.Message);
+                await AddFailureAsync(tenantId, string.Empty, "tenant", NormalizeErrorCategory(ex), ex.Message, failures, ct).ConfigureAwait(false);
+            }
+        }
 
-        bool manualFollowUp = tenantLevelError is not null || raw.Failed > 0 || naturalLanguage.Failed > 0;
+        bool manualFollowUp = tenantLevelError is not null || hasUnitFailures;
         reports.Add(new EmbeddingMigrationTenantReport(
             tenantId,
             true,

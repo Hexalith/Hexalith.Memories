@@ -484,17 +484,81 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     private void DeleteTempDaprConfig()
     {
-        if (_tempDaprConfigPath is null)
+        DeleteFixtureOwnedTempDaprDirectory(_tempDaprConfigPath, _daprAppId);
+        _tempDaprConfigPath = null;
+    }
+
+    /// <summary>
+    /// Removes the fixture-owned <c>%TEMP%/hexalith-memories-dapr/{daprAppId}</c> directory
+    /// (containing <c>config.yaml</c> plus any AppHost-generated component yamls). The caller's
+    /// <paramref name="fixtureAppId"/> must match the leaf directory name; otherwise the directory
+    /// is left in place. The shared parent <c>%TEMP%/hexalith-memories-dapr</c> is never deleted.
+    /// </summary>
+    /// <param name="configFilePath">Path to <c>config.yaml</c>, or <c>null</c> if it was never set.</param>
+    /// <param name="fixtureAppId">The fixture-owned DAPR app id used as the leaf directory name.</param>
+    internal static void DeleteFixtureOwnedTempDaprDirectory(string? configFilePath, string? fixtureAppId)
+    {
+        if (string.IsNullOrEmpty(configFilePath))
         {
             return;
         }
 
-        if (File.Exists(_tempDaprConfigPath))
+        string? parentDir = Path.GetDirectoryName(configFilePath);
+        if (string.IsNullOrEmpty(parentDir) || string.IsNullOrEmpty(fixtureAppId))
         {
-            File.Delete(_tempDaprConfigPath);
+            return;
         }
 
-        _tempDaprConfigPath = null;
+        // Anchor cleanup to the fixture-owned leaf so a misconfigured caller cannot accidentally
+        // delete the shared %TEMP%/hexalith-memories-dapr root or anything outside its own dir.
+        if (!string.Equals(Path.GetFileName(parentDir), fixtureAppId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string expectedParentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", fixtureAppId);
+        if (!string.Equals(
+            Path.GetFullPath(parentDir),
+            Path.GetFullPath(expectedParentDir),
+            StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (File.Exists(configFilePath))
+        {
+            try
+            {
+                File.Delete(configFilePath);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup; another process may still hold a handle to config.yaml.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Same rationale as IOException.
+            }
+        }
+
+        if (!Directory.Exists(parentDir))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Delete(parentDir, recursive: true);
+        }
+        catch (IOException)
+        {
+            // AppHost-generated component yamls may briefly be locked during teardown. The temp
+            // root is already namespaced per-fixture, so leftovers do not leak across fixtures.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same rationale as IOException.
+        }
     }
 
     private static string ResolveRepositoryRoot()
