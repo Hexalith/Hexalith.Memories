@@ -22,6 +22,10 @@ public sealed partial class CiTestInventoryTests
         "tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj",
     ];
 
+    private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];
+
+    private const string ReleaseLaneTargetArtifact = "tools/test-release.ps1";
+
     [Fact]
     public void DockerFreeProjectInventory_ShouldMatchExpectedUnitAndContractAssemblies()
     {
@@ -227,31 +231,35 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReadOpenDeferredBaselines_EntriesUnderClosedBySection_AreSkipped()
+    public void ReadOpenDeferredBaselines_StructuredOpenBaselineEntry_IsReturned()
     {
-        string[] fixture =
-        [
-            "## Closed by: course correction (test-fixture)",
-            string.Empty,
-            "- **S11-FX. `OldTests.OldMethod` baseline failure.** Released via `tools/test-release.ps1`; remove the filter.",
-            string.Empty,
-            "## Deferred from: code review of story-test (test-fixture)",
-            string.Empty,
-            "- **S11-FY. `NewTests.NewMethod` baseline failure.** Currently excluded via `tools/test-release.ps1`.",
-        ];
+        string[] fixture = OpenStructuredBaselineFixture("S11-FX", "SomeTests.SomeMethod");
 
         DeferredBaseline[] baselines = ReadOpenDeferredBaselines(fixture);
 
-        baselines.Length.ShouldBe(1);
-        baselines[0].Key.ShouldBe("S11-FY");
+        DeferredBaseline baseline = baselines.ShouldHaveSingleItem();
+        baseline.Key.ShouldBe("S11-FX");
+        baseline.TestName.ShouldBe("SomeTests.SomeMethod");
+        baseline.HasReleaseFilter.ShouldBeTrue();
     }
 
-    [Fact]
-    public void ReadOpenDeferredBaselines_InlineResolvedMarker_IsSkipped()
+    [Theory]
+    [InlineData("resolved")]
+    [InlineData("accepted")]
+    [InlineData("carried-forward")]
+    public void ReadOpenDeferredBaselines_StructuredEntryWithNonOpenStatus_IsSkipped(string status)
     {
         string[] fixture =
         [
-            "- **S11-FZ [resolved in test].** Old baseline tied to `tools/test-release.ps1` filter referencing `OldTests.OldMethod`.",
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            $"  - Status: {status}",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+            "  - Evidence: closed by fixture story.",
+            "  - Rationale: fixture rationale.",
         ];
 
         DeferredBaseline[] baselines = ReadOpenDeferredBaselines(fixture);
@@ -260,18 +268,238 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReadOpenDeferredBaselines_NoOpenBaselines_ReturnsEmpty()
+    public void ReadOpenDeferredBaselines_NarrativeMentionsBaseline_NotMisclassified()
     {
         string[] fixture =
         [
-            "## Closed by: course correction (test-fixture)",
+            "- **12.4-RV99. Narrative mentions `baseline`, `release lane`, and `tools/test-release.ps1` in prose only.**",
+            "  Pre-Story-14.5 deferred entries that talk about `baseline` filters in prose without a structured field block must not be classified as baselines.",
             string.Empty,
-            "- **S11-FQ [resolved in test].** Done.",
+            "- **12.4-RV100 — narrative entry with structured fields targeting a non-baseline file.**",
+            "  - ID: 12.4-RV100",
+            "  - Status: open",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs",
+            "  - Re-open trigger: future fixture coverage.",
+            "  - Rationale: prose mentions of baseline/release lane must not flip a non-release-lane target into baseline classification.",
         ];
 
         DeferredBaseline[] baselines = ReadOpenDeferredBaselines(fixture);
 
         baselines.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_NoStructuredEntries_ReturnsEmpty()
+    {
+        string[] fixture =
+        [
+            "## Deferred from: code review of legacy-story (test-fixture)",
+            string.Empty,
+            "- **12.4-RV101. Legacy prose entry without structured fields.** Existing prose does not match the structured schema, so the parser must ignore it.",
+        ];
+
+        DeferredBaseline[] baselines = ReadOpenDeferredBaselines(fixture);
+
+        baselines.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("ID")]
+    [InlineData("Status")]
+    [InlineData("Source story")]
+    [InlineData("Target artifact")]
+    [InlineData("Re-open trigger")]
+    public void ReadOpenDeferredBaselines_StructuredEntryMissingRequiredField_FailsLoudly(string missingField)
+    {
+        string[] fixture = BuildStructuredFixtureWithoutField(missingField);
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain($"'{missingField}");
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_StructuredEntryMissingEvidenceAndRationale_FailsLoudly()
+    {
+        string[] fixture =
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            "  - Status: open",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+        ];
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Evidence");
+        assertion.Message.ShouldContain("Rationale");
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_ResolvedEntryWithoutEvidence_FailsLoudly()
+    {
+        string[] fixture =
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            "  - Status: resolved",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+            "  - Rationale: fixture rationale.",
+        ];
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Evidence");
+    }
+
+    [Theory]
+    [InlineData("accepted")]
+    [InlineData("carried-forward")]
+    public void ReadOpenDeferredBaselines_NonResolvedDispositionWithoutRationale_FailsLoudly(string status)
+    {
+        string[] fixture =
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            $"  - Status: {status}",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+            "  - Evidence: fixture evidence.",
+        ];
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Rationale");
+    }
+
+    [Theory]
+    [InlineData("done")]
+    [InlineData("closed")]
+    [InlineData("fixed")]
+    [InlineData("deferred-again")]
+    [InlineData("Open")]
+    [InlineData("OPEN")]
+    public void ReadOpenDeferredBaselines_StructuredEntryWithInvalidStatus_FailsLoudly(string invalidStatus)
+    {
+        string[] fixture =
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            $"  - Status: {invalidStatus}",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+            "  - Rationale: fixture rationale.",
+        ];
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Status");
+    }
+
+    [Theory]
+    [InlineData("12x4-RV6")]
+    [InlineData("112.4-RV6")]
+    [InlineData("12.4-RV60")]
+    public void ReadOpenDeferredBaselines_StructuredEntryWithSimilarId_DoesNotCountAsTargetId(string similarId)
+    {
+        string[] fixture = OpenStructuredBaselineFixture(similarId, "SomeTests.SomeMethod");
+
+        DeferredBaseline[] baselines = ReadOpenDeferredBaselines(fixture);
+
+        DeferredBaseline baseline = baselines.ShouldHaveSingleItem();
+        baseline.Key.ShouldBe(similarId);
+        baseline.Key.ShouldNotBe("12.4-RV6");
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_OpenBaselineEntryWithoutTestField_FailsLoudly()
+    {
+        string[] fixture =
+        [
+            "- **S11-FX. Test fixture entry.**",
+            "  - ID: S11-FX",
+            "  - Status: open",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Rationale: fixture rationale.",
+        ];
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Test");
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_OpenBaselineEntryWithMultiSegmentTestName_FailsLoudly()
+    {
+        string[] fixture = OpenStructuredBaselineFixture("S11-FX", "Hexalith.Memories.Server.Tests.SomeTests.SomeMethod");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => ReadOpenDeferredBaselines(fixture));
+        assertion.Message.ShouldContain("Class.Method");
+    }
+
+    [Fact]
+    public void ReadOpenDeferredBaselines_RealRepo_DoesNotThrowAndReturnsOnlyTargetedEntries()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
+
+        DeferredBaseline[] baselines = ReadOpenDeferredBaselines(lines);
+
+        // Story 14.5 close-out: no open structured S11-F* baseline entries exist in the real
+        // register; the four migrated entries (12.4-RV6, 12.4-RV19, 12.6-RV2, 13.7-RV5) are all
+        // resolved and target non-release-lane artifacts. If a future migration introduces a real
+        // open baseline entry, this test catches the change explicitly.
+        baselines.ShouldBeEmpty();
+    }
+
+    private static string[] OpenStructuredBaselineFixture(string id, string testName)
+        =>
+        [
+            $"- **{id}. Test fixture entry.**",
+            $"  - ID: {id}",
+            "  - Status: open",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            $"  - Test: {testName}",
+            "  - Rationale: fixture rationale.",
+        ];
+
+    private static string[] BuildStructuredFixtureWithoutField(string missingField)
+    {
+        string[] fields =
+        [
+            "  - ID: S11-FX",
+            "  - Status: open",
+            "  - Source story: 14-5-fixture",
+            "  - Target artifact: tools/test-release.ps1",
+            "  - Re-open trigger: fixture trigger",
+            "  - Test: SomeTests.SomeMethod",
+            "  - Rationale: fixture rationale.",
+        ];
+
+        List<string> kept =
+        [
+            "- **S11-FX. Test fixture entry.**",
+        ];
+        foreach (string field in fields)
+        {
+            if (field.Contains($"- {missingField}:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            kept.Add(field);
+        }
+
+        return [.. kept];
     }
 
     [Fact]
@@ -582,104 +810,116 @@ public sealed partial class CiTestInventoryTests
     }
 
     private static DeferredBaseline[] ReadOpenDeferredBaselines(string[] lines)
-        => ReadDeferredEntries(lines)
-            .Select(ParseDeferredBaseline)
-            .Where(static baseline => baseline is not null)
-            .Cast<DeferredBaseline>()
-            .ToArray();
-
-    private static IEnumerable<string> ReadDeferredEntries(string[] lines)
     {
-        // review-12-4 P1 + P2: bound entry accumulation by section header / sibling-bullet so the
-        // last S11-F* entry no longer absorbs everything to EOF, and skip entries whose containing
-        // section is `## Closed by ...` (the canonical resolved-section header).
-        List<string> current = [];
-        bool inResolvedSection = false;
+        StructuredDeferredEntry[] entries = ParseStructuredDeferredEntries(lines);
+        List<DeferredBaseline> baselines = [];
 
-        foreach (string line in lines)
+        foreach (StructuredDeferredEntry entry in entries)
         {
-            if (line.StartsWith("## ", StringComparison.Ordinal))
-            {
-                if (current.Count > 0)
-                {
-                    yield return string.Join(Environment.NewLine, current);
-                    current.Clear();
-                }
-
-                inResolvedSection = line.StartsWith("## Closed by", StringComparison.OrdinalIgnoreCase);
-                continue;
-            }
-
-            if (inResolvedSection)
+            if (entry.Status != "open")
             {
                 continue;
             }
 
-            if (line.StartsWith("- **S11-F", StringComparison.Ordinal))
+            if (!string.Equals(entry.TargetArtifact, ReleaseLaneTargetArtifact, StringComparison.Ordinal))
             {
-                if (current.Count > 0)
-                {
-                    yield return string.Join(Environment.NewLine, current);
-                    current.Clear();
-                }
-
-                current.Add(line);
                 continue;
             }
 
-            // Sibling top-level bullet (different prefix) closes the current entry without
-            // being absorbed.
-            if (line.StartsWith("- ", StringComparison.Ordinal) && current.Count > 0)
-            {
-                yield return string.Join(Environment.NewLine, current);
-                current.Clear();
-                continue;
-            }
+            entry.Test.ShouldNotBeNullOrWhiteSpace($"open structured deferred entry '{entry.Id}' targets '{ReleaseLaneTargetArtifact}' but is missing the required 'Test:' field.");
+            TestNameShape().IsMatch(entry.Test!).ShouldBeTrue($"open structured deferred entry '{entry.Id}' has 'Test: {entry.Test}' which is not a single Class.Method (namespaces, multi-segment names, and wildcards are rejected).");
 
-            if (current.Count > 0)
-            {
-                current.Add(line);
-            }
+            baselines.Add(new DeferredBaseline(entry.Id, entry.Test!, HasReleaseFilter: true));
         }
 
-        if (current.Count > 0)
-        {
-            yield return string.Join(Environment.NewLine, current);
-        }
+        return [.. baselines];
     }
 
-    private static DeferredBaseline? ParseDeferredBaseline(string entry)
+    private static StructuredDeferredEntry[] ParseStructuredDeferredEntries(string[] lines)
     {
-        // review-12-4 P5: anchor test-name and resolved-marker checks to the entry's first line
-        // (the bullet header) — descendant prose is not authoritative for those signals.
-        string firstLine = entry.Split('\n', 2)[0];
+        List<StructuredDeferredEntry> result = [];
+        Dictionary<string, string> fields = new(StringComparer.Ordinal);
+        int? idLineIndex = null;
 
-        Match keyMatch = DeferredKeyRegex().Match(firstLine);
-        if (!keyMatch.Success || IsResolvedDeferredEntry(firstLine))
+        for (int i = 0; i < lines.Length; i++)
         {
-            return null;
+            Match match = StructuredFieldRegex().Match(lines[i]);
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            string label = match.Groups["label"].Value;
+            string value = match.Groups["value"].Value.Trim();
+
+            if (label == "ID")
+            {
+                FlushPendingStructuredEntry(result, fields, idLineIndex);
+                fields.Clear();
+                idLineIndex = i;
+            }
+
+            if (idLineIndex is null)
+            {
+                label.ShouldBe("ID", $"structured deferred field '{label}:' near line {i + 1} appears before an 'ID:' field; structured entries must start with 'ID:'.");
+            }
+
+            // review-14-5: a duplicate field within a single entry must fail closed so an editor
+            // mistake (e.g. two Status lines disagreeing) cannot silently keep the first or last
+            // value depending on hash insertion order.
+            fields.ContainsKey(label).ShouldBeFalse($"structured deferred entry has a duplicated '{label}:' field.");
+            fields[label] = value;
         }
 
-        bool baselineRelated = entry.Contains("baseline", StringComparison.OrdinalIgnoreCase)
-            || entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase);
-        if (!baselineRelated)
-        {
-            return null;
-        }
-
-        Match testMatch = DeferredTestNameRegex().Match(firstLine);
-        testMatch.Success.ShouldBeTrue($"deferred baseline entry '{keyMatch.Groups["key"].Value}' must name the filtered test on its bullet header line.");
-
-        bool hasReleaseFilter = entry.Contains("test-release.ps1", StringComparison.OrdinalIgnoreCase)
-            || entry.Contains("release lane", StringComparison.OrdinalIgnoreCase);
-
-        return new DeferredBaseline(keyMatch.Groups["key"].Value, testMatch.Groups["test"].Value.Trim(), hasReleaseFilter);
+        FlushPendingStructuredEntry(result, fields, idLineIndex);
+        return [.. result];
     }
 
-    private static bool IsResolvedDeferredEntry(string firstLine)
-        => firstLine.Contains("[resolved", StringComparison.OrdinalIgnoreCase)
-            || firstLine.Contains("[closed", StringComparison.OrdinalIgnoreCase)
-            || firstLine.Contains("[done]", StringComparison.OrdinalIgnoreCase);
+    private static void FlushPendingStructuredEntry(
+        List<StructuredDeferredEntry> result,
+        Dictionary<string, string> fields,
+        int? idLineIndex)
+    {
+        if (idLineIndex is null || fields.Count == 0)
+        {
+            return;
+        }
+
+        fields.TryGetValue("ID", out string? id);
+        fields.TryGetValue("Status", out string? status);
+        fields.TryGetValue("Source story", out string? sourceStory);
+        fields.TryGetValue("Target artifact", out string? targetArtifact);
+        fields.TryGetValue("Re-open trigger", out string? reopenTrigger);
+        fields.TryGetValue("Evidence", out string? evidence);
+        fields.TryGetValue("Rationale", out string? rationale);
+        fields.TryGetValue("Test", out string? test);
+
+        id.ShouldNotBeNullOrWhiteSpace($"structured deferred entry near line {idLineIndex} is missing the 'ID:' value.");
+        StructuredIdShape().IsMatch(id!).ShouldBeTrue($"structured deferred entry has 'ID: {id}' which is not a single non-whitespace token of allowed characters (alphanumeric, dot, dash).");
+
+        status.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Status:' field.");
+        sourceStory.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Source story:' field.");
+        targetArtifact.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Target artifact:' field.");
+        reopenTrigger.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Re-open trigger:' field.");
+
+        AllowedDeferredStatuses.ShouldContain(status!, $"structured deferred entry '{id}' has invalid 'Status: {status}'. Allowed values: {string.Join(", ", AllowedDeferredStatuses)}.");
+
+        if (status == "resolved")
+        {
+            evidence.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' has 'Status: resolved' and must include an 'Evidence:' field.");
+        }
+        else if (status is "accepted" or "carried-forward")
+        {
+            rationale.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' has 'Status: {status}' and must include a 'Rationale:' field.");
+        }
+        else
+        {
+            bool hasEvidenceOrRationale = !string.IsNullOrWhiteSpace(evidence) || !string.IsNullOrWhiteSpace(rationale);
+            hasEvidenceOrRationale.ShouldBeTrue($"structured deferred entry '{id}' must include either 'Evidence:' or 'Rationale:' (or both).");
+        }
+
+        result.Add(new StructuredDeferredEntry(id!, status!, sourceStory!, targetArtifact!, reopenTrigger!, evidence, rationale, test));
+    }
 
     [GeneratedRegex(@"(?<key>S11-F[A-Z0-9]+)\.")]
     private static partial Regex DeferredKeyRegex();
@@ -689,12 +929,33 @@ public sealed partial class CiTestInventoryTests
     [GeneratedRegex(@"FullyQualifiedName!~(?<test>[^\s""&]+)")]
     private static partial Regex ProjectFilterRegex();
 
-    [GeneratedRegex("`(?<test>[^`]+Tests\\.[^`]+)`")]
-    private static partial Regex DeferredTestNameRegex();
-
     // review-12-4 P4: enforce exactly Class.Method shape. Identifier on each side, exactly one dot.
     [GeneratedRegex(@"^[A-Za-z_]\w*\.[A-Za-z_]\w*$")]
     private static partial Regex TestNameShape();
+
+    // Story 14.5: structured-field reader for deferred-work.md. The label group enumerates the
+    // closed schema vocabulary so a typo like 'Statu:' cannot silently start a malformed entry,
+    // and the value group stops at end-of-line so trailing prose cannot bleed into a captured
+    // value. Bullet markers ('- ', '* ') and indentation are tolerated so the schema can render
+    // as nested Markdown sub-bullets.
+    [GeneratedRegex(@"^\s*(?:[-*]\s+)?(?<label>ID|Status|Source story|Target artifact|Re-open trigger|Evidence|Rationale|Test):\s+(?<value>.+?)\s*$")]
+    private static partial Regex StructuredFieldRegex();
+
+    // Story 14.5: ID values must be a single token of alphanumerics, dot, and dash so that
+    // similar-but-different IDs (12x4-RV6, 112.4-RV6) are captured verbatim and fail an exact
+    // equality check against 12.4-RV6 instead of being absorbed by a permissive regex.
+    [GeneratedRegex(@"^[A-Za-z0-9.\-]+$")]
+    private static partial Regex StructuredIdShape();
+
+    private sealed record StructuredDeferredEntry(
+        string Id,
+        string Status,
+        string SourceStory,
+        string TargetArtifact,
+        string ReopenTrigger,
+        string? Evidence,
+        string? Rationale,
+        string? Test);
 
     private sealed record BaselineFilter(string Key, string TestName);
 

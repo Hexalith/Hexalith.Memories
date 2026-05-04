@@ -1,5 +1,117 @@
 # Deferred Work
 
+## Schema for Active Entries
+
+Story 14.5 introduces a small structured-field block that each active entry should
+carry so tools and reviewers do not have to infer status, source, or target from
+arbitrary prose. The block is intentionally minimal and Markdown-readable; legacy
+prose entries remain valid until they are explicitly migrated.
+
+Required fields (one per line, anchored at the start of the indented sub-bullet):
+
+- `ID:` — unique entry id, exactly as referenced elsewhere (e.g. `12.4-RV6`,
+  `S11-FX`, `13.6-RV1`). Tests match the field value as a verbatim token; partial
+  prose mentions and near-matches such as `12x4-RV6` or `112.4-RV6` do not count.
+- `Status:` — one of `open`, `resolved`, `accepted`, or `carried-forward`. The
+  vocabulary is closed and lowercase. Synonyms such as `done`, `closed`, `fixed`,
+  or `deferred-again` are not allowed and will fail validation.
+- `Source story:` — the story key, retro key, or review pass that produced the
+  entry (for example `12-4-baseline-failures-sweep`).
+- `Target artifact:` — the repository-relative path or planning artifact the entry
+  targets. For release-lane baseline entries, this points at the consumer that
+  owns the release filter (typically `tools/test-release.ps1` or a parser test).
+- `Re-open trigger:` — one sentence describing the event or evidence that would
+  re-open the entry. Required even for `resolved` and `accepted` so a future
+  reviewer knows when the disposition no longer applies.
+- One of `Evidence:` or `Rationale:` — `Evidence:` is required when `Status` is
+  `resolved` and names the change (story, commit, test, or doc) that closes the
+  risk; `Rationale:` is required when `Status` is `accepted` or `carried-forward`
+  and explains why the risk remains intentionally.
+
+Status semantics:
+
+- `open` — planned action is still needed.
+- `resolved` — code, test, or documentation evidence shows the risk no longer
+  applies.
+- `accepted` — the risk remains but is intentionally accepted with a written
+  rationale.
+- `carried-forward` — the risk remains and has been moved to a named future
+  artifact, story, or trigger.
+
+Optional fields (used only when relevant):
+
+- `Test:` — fully-qualified `Class.Method` name when the entry is paired with a
+  release-lane filter in `tools/test-release.ps1`. Required when `Target artifact`
+  references the release-lane test script.
+
+Historical entries that predate Story 14.5 do not carry the field block. Tooling
+treats them as historical noise: they remain readable in code review and continue
+to provide context, but the structured fields above are the source of truth for
+parsers and planning of migrated entries.
+
+## Closed by: Story 14.5 Deferred Register Governance and Sprint-Status Hygiene (2026-05-04)
+
+Story 14.5 introduces the structured field schema documented above and migrates
+the four explicitly targeted register entries onto it. The migration is scoped to
+the four IDs below plus the small fixtures the parser tests require; historical
+prose entries are intentionally left untouched.
+
+- **12.4-RV6 — resolved.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+  no longer classifies entries by substring scans for `baseline`, `test-release.ps1`,
+  or `release lane`. The new `ParseStructuredDeferredEntries` reader matches anchored
+  field labels (`ID:`, `Status:`, `Source story:`, `Target artifact:`, `Re-open
+  trigger:`, `Evidence:` / `Rationale:`, optional `Test:`), and `ReadOpenDeferredBaselines`
+  reports only entries whose `Target artifact` references the release-lane script
+  with `Status: open`.
+
+  - ID: 12.4-RV6
+  - Status: resolved
+  - Source story: 12-4-baseline-failures-sweep
+  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: any future change that reintroduces prose-substring classification of baseline-related deferred entries, or a parser regression where unrelated narrative mentions of `baseline` / `release lane` are once again counted as baseline filters.
+  - Evidence: Story 14.5 replaced the substring-driven `baselineRelated` / `HasReleaseFilter` classifier with field-aware parsing; new fixture tests prove that prose mentions of `baseline`, `release lane`, and `test-release.ps1` in non-structured entries do not trigger baseline classification.
+
+- **12.4-RV19 — resolved.** The legacy `DeferredKeyRegex` (`S11-F[A-Z0-9]+\.` with a
+  literal trailing period) is replaced by reading the structured `ID:` field
+  verbatim. The new parser accepts any ID token that the schema admits and rejects
+  near-matches such as `12x4-RV6` or `112.4-RV6` exactly because field equality is
+  enforced after extraction.
+
+  - ID: 12.4-RV19
+  - Status: resolved
+  - Source story: 12-4-baseline-failures-sweep
+  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: a future deferred-work format change that adds new ID shapes (lowercase, em-dash, alternate suffix punctuation) without exercising them in `CiTestInventoryTests` fixtures.
+  - Evidence: Story 14.5 deleted `DeferredKeyRegex` and now resolves IDs from the structured `ID:` field. Fixture tests cover `12.4-RV6`, `S11-FX`, lowercase / mixed-case rejection, and exact-ID boundaries against `12x4-RV6` and `112.4-RV6`.
+
+- **12.6-RV2 — resolved.** This entry explicitly realized 12.4-RV6 and is closed
+  by the same parser change. The unconditional `ShouldBeEmpty` assertion now
+  rests on the structured-field reader rather than substring heuristics, so a
+  prose-only edit to an unrelated entry (for example renaming "release pipeline"
+  to "release lane") cannot flip an entry's classification.
+
+  - ID: 12.6-RV2
+  - Status: resolved
+  - Source story: 12-6-embedding-input-content-kind-baseline-resolution
+  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: a parser regression that reintroduces substring-based baseline classification, or a future story that adds a new release-lane filter without a paired structured deferred-work entry.
+  - Evidence: closed alongside 12.4-RV6 by the Story 14.5 structured-field parser; new fixture test `ReadOpenDeferredBaselines_NarrativeMentionsBaseline_NotMisclassified` proves prose mentions are no longer load-bearing for classification.
+
+- **13.7-RV5 — resolved.** Sprint-status history hygiene is now a documented
+  forward-looking convention in `CONTRIBUTING.md`. Future status entries should
+  use short dated breadcrumbs that link to the relevant story artifact, deferred
+  entry, run log, or review document instead of accumulating multi-sentence
+  evidence on a single YAML line. Historical Epic 1-13 history comments are
+  intentionally not rewritten — that cleanup remains out of scope per the Story
+  14.5 dev notes.
+
+  - ID: 13.7-RV5
+  - Status: resolved
+  - Source story: 13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide
+  - Target artifact: CONTRIBUTING.md
+  - Re-open trigger: a future parser, dashboard, or auditor that fails on the long historical YAML lines and proves a targeted edit to specific entries is required, or a contributor-process change that takes ownership of bulk sprint-status history rewriting.
+  - Evidence: Story 14.5 added the "Sprint Status History Conventions" section to `CONTRIBUTING.md`; the Epic 14 bookkeeping rules in the same file require future Epic 14 stories to point at story artifacts and deferred IDs rather than appending narratives on the YAML status line.
+
 ## Closed by: Story 14.4 Migration and Integration Test Hardening (2026-05-04)
 
 - **13.6-RV4 — closed.** `EmbeddingMigrationRedactor` now masks AWS long-term/temporary access key IDs (`A[KS]IA` + 16 alphanumeric, word-boundary anchored), raw JWT-shape tokens (`eyJ...` triplet) without a `Bearer` prefix, and HTTP Basic authorization values (`Basic <base64≥8>`) in addition to existing Bearer/Google/`client_secret`/JSON-escaped redactions. Boundary-spanning truncation guard preserved (redact-then-truncate-then-redact). New theory + fact tests cover AKIA/ASIA, raw JWT, Basic auth, JSON-escaped secrets, the existing happy path, and the truncation-boundary scenario.
@@ -100,7 +212,7 @@ The Story 14.4 scope explicitly excludes `13.7-RV5` (sprint-status long-line cle
 ## Deferred from: code review of story-12.6 (2026-05-02)
 
 - **12.6-RV1 — Real-repo positive parser canary lost.** `ReadAcceptedReleaseFilters_RealRepo_HasNoAcceptedBaselineFilters` and `TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries` both now expect empty against the real repo files; only fixture-shaped tests prove `ReadOpenDeferredBaselines` parses anything. Add a smoke test that exercises the parser against a fixture mirroring the current `deferred-work.md` (or a separate non-baseline open `S11-F*` entry) so future structural drift in the file format is caught loudly. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:217-224`)
-- **12.6-RV2 — `baselineRelated` heuristic backs the unconditional `ShouldBeEmpty` assertion.** `ParseDeferredBaseline` classifies an entry as "baseline-related" via case-insensitive substring of `baseline` or `test-release.ps1`. A pure-prose deferred-work edit (e.g., S11-FD "release pipeline" → "release lane") could flip an entry's classification and break the inventory test with no functional change. Migrate to a structured classifier (e.g., explicit `Filter:` field per entry) before the surface grows. Realizes the 12.4-RV6 concern. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:372-377`)
+- **12.6-RV2 [resolved in 14.5] — `baselineRelated` heuristic backs the unconditional `ShouldBeEmpty` assertion.** `ParseDeferredBaseline` classifies an entry as "baseline-related" via case-insensitive substring of `baseline` or `test-release.ps1`. A pure-prose deferred-work edit (e.g., S11-FD "release pipeline" → "release lane") could flip an entry's classification and break the inventory test with no functional change. Migrate to a structured classifier (e.g., explicit `Filter:` field per entry) before the surface grows. Realizes the 12.4-RV6 concern. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:372-377`)
 - **12.6-RV3 — Single-item parser fixture masks over-matching.** `ReadAcceptedReleaseFilters_ValidKeyedFilter_ReturnsFilter` exercises exactly one comment + one filter line and uses `ShouldHaveSingleItem()`, which would pass even if the parser is matching on the wrong line and dedupes. Strengthen with a 2-filter fixture or one with a comment-line that resembles a filter, to verify the proximity guard and uniqueness logic. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:198-214`)
 - **12.6-RV4 — Discoverability breadcrumb removed from `tools/test-release.ps1`.** Along with the `$projectFilters` block went the only on-script reference to deferred-work bookkeeping. Consider a one-line trailing comment such as `# No per-project baseline waivers; if one becomes necessary, register it in _bmad-output/implementation-artifacts/deferred-work.md and pair it here.` so a future maintainer searching the script for "baseline" finds the policy. (`tools/test-release.ps1:25`)
 - **12.6-RV5 — Underlying S11-FA test still uses fixed tenant id `"t"` and a non-thread-safe capture list.** `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` filters captures by neither tenant nor instrument-source, while its sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` uses unique tenant id + `ShouldHaveSingleItem`. The flake mode that originally motivated S11-FA is dormant, not eliminated, and would re-trip under heavier xunit parallelism or any other test that emits on the static `MemoriesMeter.EmbeddingApiCalls` counter. Story 12.6 closed S11-FA correctly under "stale-filter" disposition; this RV item tracks the test-isolation hardening as a separate work item. Re-open trigger: any flake reappearance on `EmbeddingInputContentKindTests`, or before any future story that adds a third concurrent `EmbeddingApiCalls` test path. (`tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs:84-119`)
@@ -425,7 +537,7 @@ The Story 14.4 scope explicitly excludes `13.7-RV5` (sprint-status long-line cle
 - **12.4-RV3 [resolved in 14.1]. CI force-push fallback no-ops on first push to `main` itself.** `.github/workflows/ci.yml:36-46` — when `origin/main` after fetch equals `head_sha`, `git diff` returns empty and the validator silently passes. A direct push to main bypasses story-scope checks entirely. Branch protection should normally prevent this, but the workflow should fail loudly when the diff is empty under push-to-main.
 - **12.4-RV4 [resolved in 14.1]. CI `BRANCH_NAME` heredoc uses fixed sentinel `__STORY_SCOPE_EOF__`.** `.github/workflows/ci.yml:51-55` — predictable delimiter that a hostile branch name could contain. Defense-in-depth; replace with a randomized sentinel.
 - **12.4-RV5 [resolved in 14.1]. CI propagates empty / blank `branch_name` with unhelpful diagnostic.** `.github/workflows/ci.yml:23-27` — when both `PR_HEAD_REF` and `GITHUB_REF_NAME` are empty, downstream errors blame "no story key" instead of identifying the missing env. Hard-fail at the env-binding step.
-- **12.4-RV6. `baselineRelated` and `HasReleaseFilter` rely on substring heuristics over author-controlled prose.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:189-202` — tokens `baseline`, `test-release.ps1`, `release lane` drive classification. Schema-strengthen the deferred-work entry format (e.g., a `Filter:` line per entry) and parse structure rather than prose. Follow-up to the patches landed in this review pass.
+- **12.4-RV6 [resolved in 14.5]. `baselineRelated` and `HasReleaseFilter` rely on substring heuristics over author-controlled prose.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:189-202` — tokens `baseline`, `test-release.ps1`, `release lane` drive classification. Schema-strengthen the deferred-work entry format (e.g., a `Filter:` line per entry) and parse structure rather than prose. Follow-up to the patches landed in this review pass.
 - **12.4-RV7 [resolved in 14.1]. `--story-key` value with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:170-178` — inconsistent with trailer multi-key rejection. Story 12.3 territory; reject loudly to mirror trailer behavior.
 - **12.4-RV8 [resolved in 14.1]. Branch name with multiple keys silently picks the first match.** `tools/check-story-file-scope.py:183-185` — same asymmetry as 12.4-RV7. Story 12.3 territory.
 - **12.4-RV9 [resolved in 14.1]. `STORY_KEY_PATTERN` lacks unit assertions for boundary cases.** `tools/check-story-file-scope.py:13-16` — single-letter third segment, trailing-hyphen rejection are not directly tested. Story 12.3 territory.
@@ -438,7 +550,7 @@ The Story 14.4 scope explicitly excludes `13.7-RV5` (sprint-status long-line cle
 - **12.4-RV16 [resolved in 14.1]. `test_branch_and_trailer_agreement_passes` lacks `assertNotIn("Conflicting", ...)` negative assertion.** `tests/tooling/story_scope/story_scope_validator_test.py:1196-1199` — passes today but would silently co-exist with a future conflict-detection regression that exits 0. Test hardening.
 - **12.4-RV17 [resolved in 14.1]. `test_unparseable_explicit_story_key_fails_closed` couples to stdout sink.** `tests/tooling/story_scope/story_scope_validator_test.py:1324-1334` — `assertIn` only checks stdout; if the error path moves to stderr, the test silently breaks. Test hardening.
 - **12.4-RV18 [resolved in 14.1]. Fixture-based scope tests do not assert which story file was loaded.** `tests/tooling/story_scope/story_scope_validator_test.py:1426-1456` — a future loader-precedence bug could silently load a different file. Test hardening.
-- **12.4-RV19. `DeferredKeyRegex` format brittleness — uppercase `S11-F[A-Z0-9]+\.` with literal trailing dot only.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:1041` — em-dash, colon, or lowercase variants are silently ignored. Today all S11-F* entries use the literal-period format, so future-resilience only. Re-open trigger: first deferred-work format change.
+- **12.4-RV19 [resolved in 14.5]. `DeferredKeyRegex` format brittleness — uppercase `S11-F[A-Z0-9]+\.` with literal trailing dot only.** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:1041` — em-dash, colon, or lowercase variants are silently ignored. Today all S11-F* entries use the literal-period format, so future-resilience only. Re-open trigger: first deferred-work format change.
 - **12.4-RV20. AC #1 strict literal per-SHA replay drill.** Story 12.4 satisfied AC #1 via HEAD-replay coverage (HEAD strictly includes Epic 8.x SHA `d7495a3`, Epic 9.x SHA `bc4d5cc`, and Epic 10.x SHA `8207b54` in its ancestry, and the surviving test inventory at HEAD is a superset of those completion states — see Story 12.4 Decision Resolutions D3). A literal interpretation of AC #1 would also exercise each anchor SHA via `git checkout`, restore, build, and run both authoritative lanes against that exact tree. Re-open trigger: a release post-mortem that traces a regression to a test that existed at one of the named SHAs and was silently fixed before HEAD; or a future quality-discipline story that prefers strict literal AC #1 evidence over inheritance argumentation.
 
 ## Closed by: Story 14.1 CI Story-Scope Enforcement Hardening (2026-05-04)
@@ -589,6 +701,6 @@ remain open with their original re-open triggers.
 - **13.7-RV2. URL-escape `tenantId`/`canary` in search query interpolation.** `tests/Hexalith.Memories.IntegrationTests/Ingestion/OllamaEmbeddingEndToEndTests.cs:107` — defensive only; both values are `Guid.NewGuid().ToString("N")` hex without URL-reserved characters. Re-open trigger: generator change that introduces non-hex chars.
 - **13.7-RV3. Clean up parent temp directory in `DeleteTempDaprConfig`.** `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs:474-487` — only `config.yaml` is removed; AppHost-generated component yamls accumulate per random `daprAppId` under `%TEMP%/hexalith-memories-dapr/`. Low impact; cleanup is feasible if the AppHost-generated files are also enumerated. Re-open trigger: CI temp-space exhaustion or first complaint.
 - **13.7-RV4. Consolidate duplicate `ResolveRepositoryRoot` helpers.** `tests/.../AspireIngestionPipelineFixture.cs:489-501` and `src/Hexalith.Memories.AppHost/Program.cs` — same concept, two implementations, brittle five-`..` magic count in the fixture fallback. Cross-project shared helper would resolve drift. Re-open trigger: third copy emerges, or one drifts and produces a wrong-directory bug.
-- **13.7-RV5. Truncate or rewrite `sprint-status.yaml` history comment lines.** `_bmad-output/implementation-artifacts/sprint-status.yaml` — entries accumulate per-event comment blurbs into multi-thousand-character logical lines (existing 13-2..13-7 entries all exhibit this). Project-wide pattern; coordinated convention change required. Re-open trigger: a parser/tool that fails on the long lines, or readability complaint.
+- **13.7-RV5 [resolved in 14.5]. Truncate or rewrite `sprint-status.yaml` history comment lines.** `_bmad-output/implementation-artifacts/sprint-status.yaml` — entries accumulate per-event comment blurbs into multi-thousand-character logical lines (existing 13-2..13-7 entries all exhibit this). Project-wide pattern; coordinated convention change required. Re-open trigger: a parser/tool that fails on the long lines, or readability complaint.
 - **13.7-RV6. Add dedicated `[Fact]` cases for AC4 malformed-token-form rejection branches.** `tests/.../OllamaOidcFakeServerTests.cs` — fake rejects missing `Content-Type`, missing `grant_type`, missing `client_id`, missing `client_secret`, and malformed bodies at runtime, but no `[Theory]+[InlineData]` enumerates each branch. Coverage gap rather than behavior gap; AC4 spirit met via wrong-path test plus runtime guards. Re-open trigger: a regression where the fake's rejection logic was weakened without tests catching it.
 - **13.7-RV7. Replace `EmbedRequestCount.ShouldBeGreaterThanOrEqualTo(2)` magic number.** `tests/.../OllamaEmbeddingEndToEndTests.cs:116` — the rationale (raw + NL embeddings = 2 calls) is implicit. A named constant or comment would prevent brittleness if production legitimately changes the call count. Re-open trigger: assertion fails after a refactor and the cause is not immediately obvious.
