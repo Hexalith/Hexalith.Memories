@@ -187,6 +187,19 @@ Out of scope unless explicitly approved:
 - Malformed token tests must keep parser-boundary cases distinct: wrong or missing content type, missing grant type, missing client ID, missing client secret, duplicate form values, malformed body, wrong optional scope, empty/junk bearer-like input, malformed Basic value, and unsupported authorization scheme where those branches exist. Rejected token requests must not increment accepted-request counters or record sanitized evidence.
 - Do not implement or close `13.7-RV5`; sprint-status long-line cleanup belongs to Story 14.5. Non-targeted deferred IDs must remain unchanged.
 
+### Advanced Elicitation Clarifications - 2026-05-04
+
+- Keep the migration result-surface decision local and observable: if `ValidateOptions(...)` or `TryBuildTargetConfig(...)` stays tuple/string-based, record why this command-only surface is intentionally not converted; if either is converted, tests must prove CLI exit semantics and sanitized operator output are unchanged.
+- Separate controlled domain failures from infrastructure failures in tests and notes. Invalid options, invalid target config, missing resume marker, and predictable tenant-level failures should land in stable `EmbeddingMigrationResult` evidence; unexpected Redis/HTTP/plumbing exceptions should still fail loudly and must not be flattened into a successful migration.
+- Add query-escaping coverage for the targeted `13.7-RV2` item when touching the Ollama search/wait path. Use `Uri.EscapeDataString(...)` or structured query helpers for tenant, case, and canary values, and prove the unique canary still distinguishes fresh data from stale Redis/search residue.
+- If the Redis wait cannot use an exact semantic/vector key, bound the cursor strategy with named constants for scan count, poll interval, and timeout. Tests or code inspection evidence must show the wait path does not call `IServer.Keys(...)`, does not loop forever on duplicate cursor pages, and preserves cancellation.
+- Redaction additions must include false-positive guard cases: benign secret-name labels remain visible, AWS-shaped non-secret identifiers are not over-masked when they do not match the approved value shape, and JWT-like masking requires the compact three-segment token form rather than any dotted sentence.
+- Exercise truncation and escaping together: include samples where a secret begins before the truncation boundary and ends after it, plus JSON-escaped variants, so the implementation demonstrates redact-before-truncate and post-truncation re-redaction.
+- DAPR cleanup tests should cover missing or partially-created fixture paths as no-op/best-effort cleanup while verifying the shared `%TEMP%/hexalith-memories-dapr` parent and unrelated app-id directories survive.
+- For malformed token requests, define accepted content type intentionally: accept normal form-url-encoded requests, including an optional charset if the existing parser supports it, and reject absent or non-form content types. Duplicate-value theories should cover at least grant type, client ID, client secret, and optional scope when those names are parsed.
+- Deferred-work updates must be field-specific: each targeted ID needs one of resolved, accepted, or carried forward, with exact validation evidence or a re-open trigger. Do not bulk-close IDs because a neighboring test passed.
+- Keep validation tier boundaries explicit. Unit/fake-server tests must remain Docker-free, while the Ollama Aspire end-to-end lane may stay opt-in or environment-gated; record any skipped integration lane as skipped, not passed.
+
 ### Technical Constraints and References
 
 - Redis `SCAN` is the cursor-based keyspace iteration command; Redis documentation describes it as the production-safe alternative to blocking broad key discovery. Source: https://redis.io/docs/latest/commands/scan/
@@ -310,10 +323,32 @@ GPT-5
   - Broader migration API redesign, stricter secret-name suppression policy, AppHost changes, production ingestion-vs-migration coordination, and non-targeted deferred IDs remain out of scope.
 - Final recommendation: `ready-for-dev`
 
+### Advanced Elicitation
+
+- Date/time: `2026-05-04T16:02:18+02:00`
+- Selected story key: `14-4-migration-and-integration-test-hardening`
+- Command/skill invocation used: `/bmad-advanced-elicitation 14-4-migration-and-integration-test-hardening`
+- Batch 1 method names: Security Audit Personas, Failure Mode Analysis, Pre-mortem Analysis, Comparative Analysis Matrix, Critique and Refine
+- Reshuffled Batch 2 method names: Red Team vs Blue Team, First Principles Analysis, Self-Consistency Validation, User Persona Focus Group, Expand or Contract for Audience
+- Findings summary:
+  - Result-surface wording needed a sharper boundary between local `ValueOrError<T>` conversion, retained command-local tuple/string validation, and unexpected exception behavior.
+  - Targeted deferred ID `13.7-RV2` was present in Dev Notes but needed direct implementation guidance for query escaping when the Ollama wait/search path is touched.
+  - Redis wait replacement needed explicit bounds, cancellation, duplicate-cursor, and no-`IServer.Keys(...)` evidence so the change cannot become another broad polling variant.
+  - Redaction needed false-positive and truncation-plus-escaping guard cases, not only new positive secret shapes.
+  - DAPR cleanup and malformed-token coverage needed clearer partial-initialization, shared-parent preservation, content-type, and duplicate-field expectations.
+  - Deferred-work bookkeeping needed per-ID evidence semantics to prevent accidental bulk closure.
+- Changes applied:
+  - Added `Advanced Elicitation Clarifications - 2026-05-04` with result-surface decision boundaries, controlled-vs-infrastructure failure distinctions, query escaping for `13.7-RV2`, Redis cursor bounds, redaction false-positive/truncation cases, DAPR partial-cleanup expectations, malformed-token parser boundaries, per-ID deferred-work semantics, and validation tier wording.
+- Findings deferred:
+  - No product-scope, architecture-policy, or cross-story contract changes were applied.
+  - Production migration locking, broader secret-name suppression, real provider certification, and sprint-status long-line cleanup remain out of scope.
+- Final recommendation: `ready-for-dev`
+
 ### Change Log
 
 - 2026-05-03: Created Story 14.4 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-04: Party-mode review completed; added pre-dev clarification notes and kept status `ready-for-dev`.
+- 2026-05-04: Advanced elicitation completed; added pre-dev hardening clarifications and kept status `ready-for-dev`.
 - 2026-05-04: Dev-story implementation moved `ready-for-dev` → `in-progress` → `review`. Hardened migration result surfaces (T1), expanded redaction (T2), bounded Ollama wait via SCAN + targeted lookup (T3), fixture-owned DAPR temp cleanup (T4), eleven-case fake-token rejection theory (T5), named embedding-call constants (T6), deferred-work bookkeeping (T7). Validation: focused 25/25 + 18/18 + full Server.Tests 1746/1746 PASS, IntegrationTests build 0W/0E, `git diff --check` clean.
 - 2026-05-04: Code-review patch pass applied 10/10 original findings using temporary SDK `10.0.201` under `%TEMP%`. Focused migration tests passed 29/29 and fake-server tests passed 19/19. Story remains `in-progress` because required `OllamaEmbeddingEndToEndTests` executed but failed during Aspire topology startup: `/alive` did not become ready within 5 minutes.
 - 2026-05-04: E2E close-out fixed the `/alive` topology blocker by explicitly using the `http` launch profile for `memories-server` and `memories-mcp` in AppHost, then re-ran the required Ollama E2E with `DOTNET_HOST_PATH` pointed at the temporary SDK. `OllamaEmbeddingEndToEndTests` passed 1/1, focused migration tests passed 29/29, and fake-server tests passed 19/19. Story moved to `done`.
