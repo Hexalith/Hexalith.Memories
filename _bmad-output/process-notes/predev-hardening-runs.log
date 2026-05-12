@@ -47,3 +47,4 @@
 2026-05-12T20:14:11+02:00	create-story	15-4-token-endpoint-transport-policy	ok	created story context and promoted to ready-for-dev
 2026-05-12T21:05:49+02:00	create-story	15-5-deferred-register-triage-sweep	ok	story context created and promoted to ready-for-dev
 2026-05-12T21:43:54+02:00	party-mode-review	15-1-release-edge-case-preflight-hardening	ok	recorded party-mode review trace and story clarifications
+2026-05-12T22:23:26+02:00	party-mode-review	15-2-provider-model-dimension-registry	ok	recorded party-mode review trace and registry contract clarifications

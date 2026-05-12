@@ -22,6 +22,8 @@ so that invalid or cross-pollinated embedding configurations fail before tenant 
 
 5. Given this story touches tenant configuration validation, when it completes, then contract/server tests cover success, invalid provider, invalid model, invalid dimension, max-dimension boundary, cross-provider negative paths, rate-limit ceiling lookup, and deferred-work dispositions for all targeted IDs.
 
+6. Given tenant embedding configuration is persisted or used to create/update indexes, when provider, model, dimension, or rate-limit values are invalid for the tenant's selected provider/model pair, then validation fails before tenant config persistence and before any index creation/update path can use cross-provider or default-fallback values.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Verify current registry target and active deferred IDs (AC: 1-5)
@@ -35,11 +37,15 @@ so that invalid or cross-pollinated embedding configurations fail before tenant 
   - [ ] Model registry entries must include allowed model names, allowed dimensions per model, provider max rate limit, and the provider default config shape.
   - [ ] Add a shared maximum dimension policy for unknown or future entries. Start from the deferred recommendation of `16_384` unless code analysis proves a different explicit bound is safer; record the chosen value in XML docs or a short code comment.
   - [ ] Reject provider/model pairs that do not exist in the registry even if the model name matches the generic regex.
+  - [ ] Treat the registry as a closed allowlist for this story: custom/unregistered models are rejected unless a future story explicitly adds a validated extension point.
+  - [ ] Ensure provider/model lookup cannot fall back to another provider's defaults, dimensions, or rate-limit ceiling when input is missing, mixed case, or partially matched.
   - [ ] Keep error messages actionable and field-specific. Unsupported provider messages list supported providers; unsupported model messages list models for that provider; unsupported dimension messages list allowed dimensions and/or the upper bound.
 
 - [ ] Task 2 - Pin casing and normalization semantics (AC: 4)
   - [ ] Decide and implement whether `Validate(...)` only accepts canonical provider/model casing or accepts case-insensitive input but preserves original casing.
   - [ ] Do not lowercase Ollama model tags blindly. Ollama tags may be case-sensitive; if canonicalization is used, prove it is safe for committed models only.
+  - [ ] Make the compatibility behavior explicit for existing tenant configs that currently validate only because provider/model checks are loose: reject on the next validation/write or document any detect-only path with a clear operator remediation message.
+  - [ ] Do not add tenant-specific operator overrides for model dimensions or provider rate-limit ceilings in this story. If override support is judged necessary, record it as a deferred decision rather than adding a dynamic registry.
   - [ ] Add tests covering `Provider = "Ollama"` and mixed-case model strings. The tests must document whether this is accepted, normalized, or rejected.
   - [ ] Review `EmbeddingClient` provider/model parser behavior for `GOOGLE:Gemini-Embedding-001` and `ollama:qwen3-embedding:4b`. If parser behavior changes, keep first-colon splitting and preserve model tags with embedded colons.
   - [ ] Resolve or explicitly accept `13.1-RV10` and `13.3-RV8` with evidence/rationale in `deferred-work.md`.
@@ -147,6 +153,14 @@ The registry should make these questions answerable from one place:
 
 Prefer small helper methods such as `FindProvider(...)`, `FindModel(...)`, `GetSupportedProviderNames()`, and `GetSupportedModelNames(provider)` over broad abstractions. Keep allocations and error-message formatting simple; this path runs during config validation, not per vector element.
 
+The registry contract is closed and authoritative for this story:
+
+- Provider lookup may normalize for comparison, but must not produce ambiguous or provider-crossing matches.
+- Model lookup is scoped to the selected provider; a model valid for another provider must fail even when dimensions match.
+- Each registry entry owns the allowed dimensions, default dimension, provider rate-limit ceiling, and default `TenantEmbeddingConfig` shape.
+- Unknown providers, unknown models, unsupported dimensions, and impossible rate-limit/default lookups fail before tenant config persistence or index creation/update can consume the config.
+- Error messages should name the field and list supported providers/models or allowed dimensions, while tests should assert stable fragments rather than full prose.
+
 ### Casing and Persistence Decision
 
 Do not assume case-insensitive validation means persisted values are canonical. Today validation uses `OrdinalIgnoreCase`, while persisted strings can keep caller casing. `EmbeddingClient` lowercases the provider when parsing persisted `{provider}:{model}` strings but preserves model casing. That may be correct for Ollama tags, but it must be intentional and tested.
@@ -157,6 +171,8 @@ Acceptable outcomes:
 - **Accept:** preserve case-insensitive validation and original casing because model tags may be case-sensitive, but add tests and rationale that downstream comparisons use `OrdinalIgnoreCase` where required and first-colon parsing preserves the model verbatim.
 
 Whichever path is chosen, record the disposition for `13.1-RV10` and `13.3-RV8` in `deferred-work.md`.
+
+Compatibility behavior must also be explicit. Existing tenant configs that only worked because validation was loose should fail on the next validation/write with actionable provider/model/dimension guidance; automatic data migration or tenant repair is out of scope unless a later story owns it.
 
 ### Deferred IDs Targeted
 
@@ -194,6 +210,9 @@ Minimum focused test additions:
 - Unsupported-model messages list the selected provider's supported models.
 - Rate-limit ceiling lookup is keyed by provider and cannot silently fall back to Google's ceiling for another supported provider.
 - Casing tests document the chosen behavior for provider/model input and persisted parser output.
+- Public-boundary tests prove invalid configs fail before tenant config persistence and before index creation/update paths can use a mismatched provider/model pair.
+- Tenant-isolation-oriented tests prove one tenant's provider/model/default selection cannot inherit or reuse another provider's defaults or rate-limit ceiling.
+- Deferred-work dispositions cite automation-readable evidence: named tests, structured story sections, or tracked artifacts rather than free-text assertions alone.
 
 ## Project Structure Notes
 
@@ -228,6 +247,7 @@ GPT-5
 - Story selection chose `15-2-provider-model-dimension-registry` because `ready_count` was `1`, below the target of `5`, and this was the first backlog story in sprint-status order.
 - `/bmad-create-story 15-2-provider-model-dimension-registry` context gathering loaded Epic 15 planning, sprint status, root project context, Stories 13.1, 13.3, 13.4, 14.3, 14.5, current deferred-work entries, provider operations docs, current `EmbeddingProviderDefaults`, `TenantEmbeddingConfig`, focused tests, and recent git history.
 - No external technology research was needed for this story. The implementation surface is repository-owned validation logic, provider metadata, and test coverage.
+- Party-mode review ran on 2026-05-12 after preflight JSON timestamp `2026-05-12T20:03:09Z` passed all checks with `working tree cleanliness` reporting `0 dirty paths`.
 
 ### Completion Notes List
 
@@ -235,6 +255,7 @@ GPT-5
 - Scope is limited to central provider/model/dimension/rate-limit validation, casing/persistence decision evidence, focused tests, and targeted deferred-work dispositions.
 - Runtime dispatch, OIDC token acquisition, migration coordination, AppHost/integration topology, package metadata, CI workflows, release tooling, and submodules are forbidden by default.
 - No submodule state was touched.
+- Party-mode review hardened the story with closed-registry semantics, fail-before-persistence/index-use boundaries, casing/persistence compatibility guidance, tenant-isolation expectations, and automation-readable deferred-work evidence requirements.
 
 ### File List
 
@@ -244,6 +265,32 @@ GPT-5
 ### Change Log
 
 - 2026-05-12: Created Story 15.2 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-12: Party-mode review completed; added registry contract, casing, failure-boundary, tenant-isolation, compatibility, and evidence clarifications.
+
+### Party-Mode Review
+
+- Date/time: `2026-05-12T22:23:26+02:00`
+- Selected story key: `15-2-provider-model-dimension-registry`
+- Command/skill invocation used: `/bmad-party-mode 15-2-provider-model-dimension-registry; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - The story needed an explicit closed-registry contract for provider keys, model keys, dimension lists, default dimensions, rate-limit ceilings, and default config shape.
+  - Provider/model casing and persistence behavior needed to be testable before development, especially for mixed-case values and persisted `{provider}:{model}` parsing.
+  - Cross-provider validation had to fail by construction, not by ad hoc dimension checks or fallback defaults.
+  - Invalid provider/model/dimension/rate-limit combinations needed to fail before tenant config persistence or index creation/update paths can consume the config.
+  - Existing loose configs needed a deliberate compatibility behavior, while automatic tenant repair and data migration should stay out of scope.
+  - Deferred-work dispositions needed automation-readable evidence such as named tests, structured story sections, or tracked artifacts.
+- Changes applied:
+  - Added AC #6 to require fail-before-persistence and fail-before-index-use behavior for invalid provider/model/dimension/rate-limit combinations.
+  - Hardened registry tasks with closed-allowlist behavior, no cross-provider fallback, and no dynamic tenant-specific overrides in this story.
+  - Added registry contract guidance for scoped model lookup, entry-owned dimensions/defaults/rate limits, and stable error-message fragments.
+  - Added compatibility guidance for existing tenant configs that currently pass because validation is loose.
+  - Expanded testing requirements for public-boundary validation, tenant-isolation/default leakage prevention, and automation-readable deferred-work evidence.
+- Findings deferred:
+  - Data migration or automatic tenant repair for already-persisted invalid configs remains out of scope.
+  - Dynamic provider discovery, live provider API verification, dynamic rate-limit discovery, and tenant-specific override support remain out of scope.
+  - OIDC/token acquisition, migration/backfill, AppHost/integration topology, release tooling, broad documentation refreshes, and submodule work remain out of scope.
+- Final recommendation: `ready-for-dev`
 
 ## Story Completion Status
 
