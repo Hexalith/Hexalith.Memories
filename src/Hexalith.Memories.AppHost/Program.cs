@@ -1,6 +1,7 @@
 using Aspire.Hosting.Eventing;
 using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
+using Hexalith.Memories.AppHost;
 using System.Net.Sockets;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
@@ -207,7 +208,7 @@ builder.Build().Run();
 
 static string EnsureTestDataRoot()
 {
-    string repoRoot = ResolveRepositoryRoot();
+    string repoRoot = RepositoryRootLocator.Resolve();
     string testData = Path.Combine(repoRoot, "test-data");
     Directory.CreateDirectory(testData);
     string readme = Path.Combine(testData, "README.md");
@@ -223,7 +224,7 @@ static string EnsureTestDataRoot()
 
 static string EnsureSecretsFile()
 {
-    string repoRoot = ResolveRepositoryRoot();
+    string repoRoot = RepositoryRootLocator.Resolve();
     string secretsFile = Path.Combine(repoRoot, "secrets.json");
 
     if (!File.Exists(secretsFile))
@@ -356,7 +357,7 @@ static string ResolveDaprConfigPath()
         return configuredPath;
     }
 
-    string repoRoot = ResolveRepositoryRoot();
+    string repoRoot = RepositoryRootLocator.Resolve();
     string configPath = Path.Combine(repoRoot, "deploy", "dapr", "config.yaml");
 
     if (!File.Exists(configPath))
@@ -371,7 +372,7 @@ static string ResolveDaprConfigPath()
 
 static string ResolveRedisConfigPath()
 {
-    string repoRoot = ResolveRepositoryRoot();
+    string repoRoot = RepositoryRootLocator.Resolve();
     string configPath = Path.Combine(repoRoot, "deploy", "redis", "redis.conf");
 
     if (!File.Exists(configPath))
@@ -575,20 +576,6 @@ static async Task WaitForRedisPingAsync(
     }
 
     throw new TimeoutException($"{host}:{port} did not respond to Redis PING within {timeout}.", lastError);
-}
-
-static string ResolveRepositoryRoot()
-{
-    string currentDirectory = Directory.GetCurrentDirectory();
-    if (File.Exists(Path.Combine(currentDirectory, "Hexalith.Memories.slnx")))
-    {
-        return currentDirectory;
-    }
-
-    string candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-    return File.Exists(Path.Combine(candidate, "Hexalith.Memories.slnx"))
-        ? candidate
-        : currentDirectory;
 }
 
 internal sealed record GeneratedDaprComponentPaths(

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-04T16:40:32+02:00 # Story 14.5 code-review close-out complete; 3/3 patches applied, CiTestInventoryTests 44/44 PASS.
+last_updated: 2026-05-12T19:06:17+02:00 # Epic 15 backlog added for remaining carry-forward operational risks.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -179,10 +179,21 @@ development_status:
   # --- Phase: Post-MVP - Deferred Work Hardening ---
 
   # Epic 14: Deferred Work Hardening and Operational Readiness
-  epic-14: in-progress # 2026-05-03 added by approved Sprint Change Proposal 2026-05-03 to turn deferred review findings into tracked backlog work.
+  epic-14: done # 2026-05-12 retrospective complete; all five stories and epic-14-retrospective are done. Document: _bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md.
   14-1-ci-story-scope-enforcement-hardening: done # 2026-05-04 code review close-out applied 5/5 patch findings: fixed bash delimiter PID expansion, enabled main-push story-scope coverage and origin/main equality hard fail, added actionable non-zero `git interpret-trailers` guidance, required whitespace-only closing fences, and rejected `-and-`-joined multi-key branch names. Validation: 42/42 focused tests, actual working-tree story-scope self-check, `git diff --check` clean. # 2026-05-04 dev-story complete; in-progress â†’ review. CI `story-file-scope` job hardened (drop `|| true` on fetch, drop `git diff-tree -r HEAD` fallback, 2-dot diff against `origin/main`, direct-push and empty-diff hard fails, missing-env hard fails, randomized heredoc delimiter, named `::error::` diagnostics); validator made symmetric across `--story-key`/trailer/branch with multi-key rejection and full key enumeration; `git interpret-trailers` absence wrapped in clean `ValidationError`; `parse_allowed_scope` tracks fence marker character/length and terminates only on known labels/headings; multi-block `Allowed files for this story:` parsing exercised. Tests 39/39 PASS (was 25/25). Closed deferred IDs 12.3-RV15 and 15 of 12.4-RV* entries; 5 carried forward. CONTRIBUTING.md updated only where behavior changed. Manual probes and `git diff --check` clean. PR-head SHA validation preserved.
   14-2-release-pipeline-audit-hardening: done
   14-3-oidc-and-embedding-security-hardening: done # 2026-05-04 code-review close-out applied 8/8 review patches after 3-layer review: forced-refresh in-flight acquisitions no longer join normal stale-secret fetches; cache recheck uses captured token value; Google + Ollama embedding transport failures and response-read failures wrap in typed exceptions while caller cancellation stays raw; invalid non-blank bearer tokens fail as EmbeddingApiException; OIDC previews redact bearer-shaped text; full input text is force-redacted even below the secret length floor; already-canceled token callers do not start detached fetches. Prior dev-story work remains: IHttpClientFactory OIDC lifetime, URL validation, Ollama 401 DAPR secret eviction, deferred-work closure, and Scope-Override tool ctor fix. Validation: OidcTokenProviderTests 31/31, EmbeddingClientTests 62/62, EmbeddingProviderDefaultsTests 130/130, combined focused slice 223/223, full Server.Tests 1734/1734, git diff --check clean except LF/CRLF warnings.
   14-4-migration-and-integration-test-hardening: done # 2026-05-04 code-review close-out applied 10/10 original findings and resolved the required Ollama E2E blocker by selecting the existing http launch profile for AppHost Server/MCP resources. Temporary SDK 10.0.201 installed under %TEMP% for validation; commands used DOTNET_HOST_PATH for Aspire child projects. Focused migration tests 29/29 PASS; fake-server tests 19/19 PASS; OllamaEmbeddingEndToEndTests 1/1 PASS.
   14-5-deferred-register-governance-and-sprint-status-hygiene: done # 2026-05-04 code-review close-out complete; see story artifact Review Findings.
-  epic-14-retrospective: optional
+  epic-14-retrospective: done # 2026-05-12 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md.
+
+  # --- Phase: Post-MVP - Carry-Forward Operational Risk Closure ---
+
+  # Epic 15: Carry-Forward Operational Risk Closure
+  epic-15: backlog # 2026-05-12 added to turn remaining Epic 14 carry-forward risks into explicit backlog stories.
+  15-1-release-edge-case-preflight-hardening: backlog
+  15-2-provider-model-dimension-registry: backlog
+  15-3-live-migration-coordination-policy: backlog
+  15-4-token-endpoint-transport-policy: backlog
+  15-5-deferred-register-triage-sweep: backlog
+  epic-15-retrospective: optional

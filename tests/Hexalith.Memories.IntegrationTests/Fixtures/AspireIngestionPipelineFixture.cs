@@ -19,6 +19,7 @@ using Aspire.Hosting.Testing;
 using Dapr.Actors;
 using Dapr.Actors.Client;
 
+using Hexalith.Memories.AppHost;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
@@ -401,7 +402,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         // Snapshot existence and content BEFORE storing the path so a read failure cannot cause
         // RestoreLocalDaprSecret to delete a pre-existing user secrets.json (data loss).
-        string secretsPath = Path.Combine(ResolveRepositoryRoot(), "secrets.json");
+        string secretsPath = Path.Combine(RepositoryRootLocator.Resolve(), "secrets.json");
         bool existed = File.Exists(secretsPath);
         string? originalContent = existed ? File.ReadAllText(secretsPath) : null;
 
@@ -559,27 +560,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             // Same rationale as IOException.
         }
-    }
-
-    private static string ResolveRepositoryRoot()
-    {
-        const string Marker = "Hexalith.Memories.slnx";
-        string currentDirectory = Directory.GetCurrentDirectory();
-        if (File.Exists(Path.Combine(currentDirectory, Marker)))
-        {
-            return currentDirectory;
-        }
-
-        string candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        if (File.Exists(Path.Combine(candidate, Marker)))
-        {
-            return candidate;
-        }
-
-        // Failing closed prevents writing/restoring secrets.json in an arbitrary working directory.
-        throw new InvalidOperationException(
-            $"Could not locate '{Marker}' from CWD '{currentDirectory}' or candidate '{candidate}'. " +
-            "Run integration tests from the repository root or set the test working directory accordingly.");
     }
 
     private async Task StartTopologyAsync(CancellationToken cancellationToken)

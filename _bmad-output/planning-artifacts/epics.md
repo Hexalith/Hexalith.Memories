@@ -2404,6 +2404,137 @@ So that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 ---
 
+### Epic 15: Carry-Forward Operational Risk Closure
+
+Maintainers and operators can convert the remaining high-value carry-forward risks from Epic 14 into planned implementation, acceptance, or refreshed deferral decisions without reopening completed epics.
+
+**FRs reinforced:** FR43, FR56, FR57, FR67, FR68, FR69, FR70, FR72, FR73, FR74
+**NFRs reinforced:** NFR8, NFR9, NFR10, NFR11, NFR17, NFR18, NFR19, NFR22, NFR27, NFR28, NFR30, NFR31
+
+### Story 15.1: Release Edge-Case Preflight Hardening
+
+As a release maintainer,
+I want stale-tag and skip-CI edge cases handled before release execution,
+So that releases do not fail late, silently skip, or leave ambiguous audit evidence.
+
+**Acceptance Criteria:**
+
+**Given** stale release tags can collide with `tagFormat: "v${version}"`,
+**When** release preflight behavior is reassessed,
+**Then** deferred ID `S11-FC` is resolved with a concrete preflight, accepted with refreshed rationale, or carried forward with a new defer-by date and trigger.
+
+**Given** release workflow skip logic reads commit messages,
+**When** a PR merge or squash body contains `[skip ci]` as quoted text,
+**Then** deferred ID `12.1-RV3` is resolved by documentation, tests, or workflow guardrails, or explicitly accepted with rationale.
+
+**Given** release tooling depends on Node package restore,
+**When** release package validation is reviewed,
+**Then** deferred ID `12.1-RV4` is resolved by confirming `package-lock.json` tracking and fresh-clone behavior, or carried forward with a concrete owner and trigger.
+
+**Given** release-hardening decisions change workflow, runbook, or tooling behavior,
+**When** the story completes,
+**Then** focused validation covers the changed behavior and `deferred-work.md` records `resolved`, `accepted`, or `carried-forward` evidence for every targeted ID.
+
+### Story 15.2: Provider Model Dimension Registry
+
+As an operator,
+I want provider, model, and vector-dimension validation to use a centralized registry,
+So that invalid or cross-pollinated embedding configurations fail before tenant state or indexes drift.
+
+**Acceptance Criteria:**
+
+**Given** provider/model/dimension combinations are validated,
+**When** `EmbeddingProviderDefaults.Validate(...)` receives Google, Ollama, or future provider input,
+**Then** validation is driven by one provider-to-model registry that owns allowed models, dimensions, and provider-specific limits.
+
+**Given** dimension values can be unbounded today,
+**When** a proposed config uses `Dimensions = int.MaxValue` or another out-of-policy dimension,
+**Then** deferred ID `13.1-RV6` is resolved by a shared upper bound and tests that fail fast at config time.
+
+**Given** cross-provider model names can accidentally validate,
+**When** configurations mix provider and model families, such as Google with `qwen3-embedding:4b` or Ollama with `gemini-embedding-001`,
+**Then** deferred ID `13.1-RV11` is resolved with negative tests and no special-case downstream parser assumptions.
+
+**Given** casing and persistence can affect comparisons,
+**When** provider/model values round-trip through tenant configuration,
+**Then** deferred IDs such as `13.1-RV10` and `13.3-RV8` are either resolved by documented normalization/equality semantics or accepted with rationale.
+
+**Given** this story touches tenant configuration validation,
+**When** it completes,
+**Then** contract/server tests cover success, invalid-provider, invalid-model, invalid-dimension, and cross-provider negative paths, and `deferred-work.md` is updated for all targeted IDs.
+
+### Story 15.3: Live Migration Coordination Policy
+
+As an operator,
+I want live embedding-vector migration to coordinate with concurrent ingestion,
+So that a tenant cannot finish migration with mixed provider/model vector state.
+
+**Acceptance Criteria:**
+
+**Given** migration currently updates tenant config before enumerating syntactic units,
+**When** ingestion starts or resumes during migration,
+**Then** deferred ID `13.6-RV1` is resolved by a defined coordination policy such as tenant migration lock, ingestion pause/drain, migration-aware ingestion routing, or a deliberately accepted operational constraint.
+
+**Given** the migration service exposes operator-visible failures,
+**When** expected business failures are represented,
+**Then** deferred ID `13.6-RV3` is resolved with `ValueOrError<T>` or equivalent project-approved result semantics, or accepted with a specific architectural rationale.
+
+**Given** migration coordination changes runtime or operator behavior,
+**When** tests run,
+**Then** coverage proves no new old-provider vectors are written after the migration cutover point, or the accepted policy is enforced and documented.
+
+**Given** operator guidance is part of the safety contract,
+**When** the story completes,
+**Then** `docs/operations/embedding-providers.md` or the migration runbook documents the coordination policy, abort/resume expectations, and any ingestion downtime requirement.
+
+### Story 15.4: Token Endpoint Transport Policy
+
+As a security-conscious operator,
+I want OIDC token endpoint transport rules to distinguish local development from production,
+So that production token acquisition cannot silently use insecure transport.
+
+**Acceptance Criteria:**
+
+**Given** local Keycloak and fake-server tests may use `http://localhost`,
+**When** token endpoint validation sees loopback HTTP endpoints,
+**Then** the local/development path remains explicitly supported and covered by tests.
+
+**Given** production token endpoints carry client credentials,
+**When** a non-loopback `http://` token endpoint is configured outside an explicitly allowed local/test context,
+**Then** deferred ID `13.2-RV4` is resolved by rejecting it with a sanitized, actionable error.
+
+**Given** provider base URLs and OIDC token endpoints are operator-facing configuration,
+**When** transport policy is documented,
+**Then** docs name the allowed schemes, local exceptions, production expectations, and secret-redaction guarantees.
+
+**Given** validation errors can include endpoint text,
+**When** invalid transport is rejected,
+**Then** tests assert no embedded credentials or token-like values leak in errors, logs, or snapshots.
+
+### Story 15.5: Deferred Register Triage Sweep
+
+As a maintainer,
+I want a bounded sweep of remaining deferred entries,
+So that historical noise, consciously accepted risks, and true backlog candidates are separated before the next implementation epic.
+
+**Acceptance Criteria:**
+
+**Given** `deferred-work.md` still contains historical prose entries,
+**When** this story runs,
+**Then** entries selected for active planning are migrated to the Story 14.5 structured schema without bulk-rewriting unrelated history.
+
+**Given** some remaining items are quality hardening rather than architectural decisions,
+**When** the sweep selects candidates,
+**Then** items such as `12.4-RV20`, `12.6-RV5`, and `Story-9.3-ProjectionRegistryCrossCheck` are either promoted into named future stories, accepted with rationale, or carried forward with refreshed triggers.
+
+**Given** the Epic 14 retrospective named carry-forward risks,
+**When** the sweep completes,
+**Then** the retrospective's remaining-risk list is reconciled with the current deferred register, including the already-resolved `13.7-RV4` repository-root helper cleanup.
+
+**Given** the backlog should remain actionable,
+**When** this story closes,
+**Then** it proposes no more than five follow-up stories, each with explicit deferred IDs, target artifacts, and validation expectations.
+
 ### Epic 14: Deferred Work Hardening and Operational Readiness
 
 Developer and operator can close the highest-value deferred review findings without reopening completed epics, improving CI correctness, release integrity, OIDC/embedding security, migration reliability, and deferred-work governance.
