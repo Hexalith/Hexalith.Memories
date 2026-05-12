@@ -1,6 +1,6 @@
 # Story 15.3: Live Migration Coordination Policy
 
-Status: ready-for-dev
+Status: backlog
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -139,6 +139,19 @@ Do not treat this as a broad migration redesign. Pick one policy and make it obs
 
 The story should make the final policy obvious to both a maintainer reading code and an operator following the runbook.
 
+### Party-Mode Review Clarifications - 2026-05-12
+
+- The story is not ready for development until one primary coordination policy is chosen before implementation. Leaving AC1 as a menu of tenant lock, pause/drain, migration-aware routing, or accepted downtime would force the developer to make a product/architecture decision during `bmad-dev-story`.
+- The review-preferred narrow path is durable tenant-scoped migration marker enforcement that is visible to ingestion, likely through `GenerateEmbeddingActivity` if ingestion continues during migration. This is a recommendation, not an applied architecture decision.
+- The cutover invariant must be explicit before dev starts: once tenant migration cutover begins, no semantic vector write for that tenant may persist the old provider/model. The allowed behavior must be one of: block/retry, fail fast with an automation-readable result, drain before cutover, or route to the active migration target.
+- Stale-config ingestion is the critical race. Required acceptance evidence should include a deterministic test where ingestion reads the old config, migration reaches cutover, then the ingestion write attempts to persist; the expected result must prove no old-provider semantic vector is stored.
+- A second concurrency test should cover ingestion started after the durable migration marker is active. It must observe the selected policy rather than relying on migration-service sequencing alone.
+- Assertions should inspect persisted vector metadata/provider/model or the blocking/retry/failure evidence, not only workflow completion status.
+- Abort/resume expectations need minimum durable-state coverage: before cutover, after marker creation, after index recreation, after config write, during re-embedding, and after interruption. A richer state machine can remain deferred, but the selected policy must say how the marker is cleared, retained, resumed, or reported.
+- AC2 should stay local to migration orchestration/result boundaries touched by this story. If `ValueOrError<T>` is not adopted, the story must name the approved equivalent, such as `EmbeddingMigrationResult` plus stable exit codes and sanitized operator messages, and record why broad contract normalization is deferred.
+- Operator documentation must include a compact behavior matrix for active migration, blocked/retried/failed ingestion, abort, resume, and whether tenant-specific ingestion downtime is required.
+- Explicit non-goals remain: dual-write, search fan-out, provider-registry changes, token-transport policy, broad rollback design, global ingestion pause, integration fixture expansion, CI/release tooling, and submodule changes.
+
 ### Deferred IDs Targeted
 
 This story is the normal lifecycle home for:
@@ -210,10 +223,33 @@ GPT-5
 - `_bmad-output/implementation-artifacts/15-3-live-migration-coordination-policy.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+### Party-Mode Review
+
+- Date/time: `2026-05-12T23:04:12+02:00`
+- Selected story key: `15-3-live-migration-coordination-policy`
+- Command/skill invocation used: `/bmad-party-mode 15-3-live-migration-coordination-policy; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - AC1 is too open-ended because the selected coordination policy is still a developer-time choice.
+  - The stale-config race is the primary implementation trap: ingestion that read old config before cutover must not persist old-provider vectors after cutover.
+  - Existing durable migration markers are insufficient unless ingestion reads or is otherwise governed by them.
+  - AC2 risks broad result-contract churn unless the accepted migration-local result semantics are named.
+  - Abort/resume behavior needs testable durable-state expectations.
+- Changes applied:
+  - Added `Party-Mode Review Clarifications - 2026-05-12` with the required pre-dev policy decision, cutover invariant, stale-config race tests, result-surface boundary, operator-doc matrix, and explicit non-goals.
+  - Moved story status from `ready-for-dev` to `backlog` because the review recommendation requires a story update before implementation.
+- Findings deferred:
+  - Product/architecture decision: choose the exact live migration coordination policy before development starts.
+  - Whether future work should add richer operator pause/drain controls, migration-aware zero-downtime routing, or marker inspection/clearance commands.
+  - Whether `ValueOrError<T>` becomes a broader architectural standard beyond migration services.
+  - Whether old-provider vector cleanup/enumeration gaps require a follow-up story outside 15.3.
+- Final recommendation: `needs-story-update`
+
 ### Change Log
 
 - 2026-05-12: Created Story 15.3 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-12: Party-mode review completed; moved story back to `backlog` pending an explicit migration coordination policy decision.
 
 ## Story Completion Status
 
-Story context created and ready for implementation. Status set to `ready-for-dev`.
+Story context created, then party-mode review determined the story needs an explicit coordination policy decision before implementation. Status set back to `backlog`.

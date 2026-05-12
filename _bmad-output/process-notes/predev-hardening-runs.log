@@ -48,3 +48,4 @@
 2026-05-12T21:05:49+02:00	create-story	15-5-deferred-register-triage-sweep	ok	story context created and promoted to ready-for-dev
 2026-05-12T21:43:54+02:00	party-mode-review	15-1-release-edge-case-preflight-hardening	ok	recorded party-mode review trace and story clarifications
 2026-05-12T22:23:26+02:00	party-mode-review	15-2-provider-model-dimension-registry	ok	recorded party-mode review trace and registry contract clarifications
+2026-05-12T23:04:12+02:00	party-mode-review	15-3-live-migration-coordination-policy	ok	party-mode review completed; final recommendation needs-story-update; moved story back to backlog
