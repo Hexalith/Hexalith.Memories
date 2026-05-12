@@ -1,63 +1,42 @@
 installation:
-  version: 6.4.0
-  installDate: 2026-03-21T15:23:30.437Z
-  lastUpdated: 2026-04-25T05:23:16.741Z
+  version: 6.6.0
+  installDate: 2026-05-12T17:23:35.379Z
+  lastUpdated: 2026-05-12T17:23:35.379Z
 modules:
   - name: core
-    version: 6.4.0
-    installDate: 2026-03-21T15:23:28.163Z
-    lastUpdated: 2026-04-25T05:23:16.668Z
+    version: 6.6.0
+    installDate: 2026-05-12T17:23:34.512Z
+    lastUpdated: 2026-05-12T17:23:35.336Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
-    version: 6.4.0
-    installDate: 2026-03-21T15:23:10.082Z
-    lastUpdated: 2026-04-25T05:23:16.669Z
+    version: 6.6.0
+    installDate: 2026-05-12T17:23:34.453Z
+    lastUpdated: 2026-05-12T17:23:35.339Z
     source: built-in
     npmPackage: null
     repoUrl: null
-  - name: bmb
-    version: v1.7.0
-    installDate: 2026-03-21T15:23:12.948Z
-    lastUpdated: 2026-04-25T05:23:16.683Z
-    source: external
-    npmPackage: bmad-builder
-    repoUrl: https://github.com/bmad-code-org/bmad-builder
-    channel: stable
-    sha: 86033fc9aeae2ca6d52c7cdb675c1f4bf17fc1c1
   - name: cis
-    version: v0.2.0
-    installDate: 2026-03-21T15:23:15.674Z
-    lastUpdated: 2026-04-25T05:23:16.698Z
+    version: main
+    installDate: 2026-05-12T17:23:34.595Z
+    lastUpdated: 2026-05-12T17:23:35.359Z
     source: external
     npmPackage: bmad-creative-intelligence-suite
     repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
-    channel: stable
-    sha: 14a63b893c07173b7a6cfe0fb6a9a72ba51d3cf1
+    channel: next
+    sha: c2ad6c49b311651b0fa1d243f74d87e85167171f
   - name: tea
-    version: v1.15.1
-    installDate: 2026-03-21T15:23:18.282Z
-    lastUpdated: 2026-04-25T05:23:16.712Z
+    version: main
+    installDate: 2026-05-12T17:23:35.247Z
+    lastUpdated: 2026-05-12T17:23:35.379Z
     source: external
     npmPackage: bmad-method-test-architecture-enterprise
     repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
-    channel: stable
-    sha: 7c94bdc6e3d2c8c3cad09eb0a32a42fade0e9079
-  - name: wds
-    version: v0.1.0
-    installDate: 2026-03-21T15:23:21.381Z
-    lastUpdated: 2026-04-25T05:23:16.741Z
-    source: community
-    npmPackage: bmad-method-wds-expansion
-    repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
-    channel: stable
-    sha: 0c9ebf3769e1a20797893376318b595bfa64626b
-    registryApprovedTag: v0.1.0
+    channel: next
+    sha: 4360295a45d8cb55ae89491c8a5fb4b7ac223bf0
 ides:
   - claude-code
-  - cursor
   - codex
-  - gemini
+  - cursor
   - github-copilot
-  - antigravity
