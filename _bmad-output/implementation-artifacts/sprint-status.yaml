@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-12T19:58:56+02:00 # Story 15.2 context created and promoted to ready-for-dev.
+last_updated: 2026-05-12T20:05:45+02:00 # Story 15.3 context created and promoted to ready-for-dev.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -193,7 +193,7 @@ development_status:
   epic-15: in-progress # 2026-05-12 Story 15.1 created; Epic 15 started.
   15-1-release-edge-case-preflight-hardening: ready-for-dev # 2026-05-12 story context created.
   15-2-provider-model-dimension-registry: ready-for-dev # 2026-05-12 story context created.
-  15-3-live-migration-coordination-policy: backlog
+  15-3-live-migration-coordination-policy: ready-for-dev # 2026-05-12 story context created.
   15-4-token-endpoint-transport-policy: backlog
   15-5-deferred-register-triage-sweep: backlog
   epic-15-retrospective: optional

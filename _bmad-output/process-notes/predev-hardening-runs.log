@@ -43,3 +43,4 @@
 2026-05-04T15:03:24+02:00	party-mode-review	14-5-deferred-register-governance-and-sprint-status-hygiene	ok	party-mode review completed; final recommendation ready-for-dev
 2026-05-12T19:33:55+02:00	create-story	15-1-release-edge-case-preflight-hardening	ok	created Story 15.1 context and promoted it to ready-for-dev
 2026-05-12T19:58:56+02:00	create-story	15-2-provider-model-dimension-registry	ok	story context created and promoted to ready-for-dev
+2026-05-12T20:05:45+02:00	create-story	15-3-live-migration-coordination-policy	ok	story context created and promoted to ready-for-dev
