@@ -49,3 +49,4 @@
 2026-05-12T21:43:54+02:00	party-mode-review	15-1-release-edge-case-preflight-hardening	ok	recorded party-mode review trace and story clarifications
 2026-05-12T22:23:26+02:00	party-mode-review	15-2-provider-model-dimension-registry	ok	recorded party-mode review trace and registry contract clarifications
 2026-05-12T23:04:12+02:00	party-mode-review	15-3-live-migration-coordination-policy	ok	party-mode review completed; final recommendation needs-story-update; moved story back to backlog
+2026-05-13T00:02:25+02:00	failed	-	failed	_bmad-output/process-notes/predev-preflight-latest.json timestamp 2026-05-12T22:02:07Z failed status-artifact consistency: 1 status-artifact drift(s) found; drifts=[{"key":"15-3-live-migration-coordination-policy","status":"backlog","artifact":"present","expected":"absent"}]
