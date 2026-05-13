@@ -26,7 +26,6 @@ permissions:
 
 jobs:
   release:
-    if: "!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip actions]')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -81,6 +80,13 @@ jobs:
 
       - name: Run release package validator fixtures
         run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
+
+      - name: Run release preflight
+        shell: pwsh
+        run: ./tools/release-preflight.ps1
+        timeout-minutes: 10
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run semantic-release
         run: npx semantic-release

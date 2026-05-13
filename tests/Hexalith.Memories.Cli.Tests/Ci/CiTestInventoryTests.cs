@@ -106,6 +106,34 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_InstallReleaseTooling_UsesNpmCi()
+    {
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Install release tooling");
+
+        step.Run.ShouldBe("npm ci");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_ReleasePreflight_RunsBeforeSemanticRelease()
+    {
+        string repoRoot = GetRepoRoot();
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+
+        int preflightIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run release preflight", StringComparison.Ordinal));
+        int semanticReleaseIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+
+        preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must run the repository-owned release preflight before semantic-release can prepare or publish packages.");
+        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
+        preflightIndex.ShouldBeLessThan(semanticReleaseIndex, "release preflight must run before semantic-release starts publish-capable work.");
+
+        ReleaseWorkflowStep step = steps[preflightIndex];
+        step.Shell.ShouldBe("pwsh");
+        step.Run.ShouldBe("./tools/release-preflight.ps1");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
     public void ReleaseWorkflow_RunSemanticReleaseStep_UsesCanonicalCommand()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run semantic-release");
@@ -182,6 +210,32 @@ public sealed partial class CiTestInventoryTests
         }
 
         foundAny.ShouldBeTrue("expected release.yml to declare at least one third-party action under 'uses:'.");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_ReleaseJob_DoesNotUseHeadCommitSkipCondition()
+    {
+        string? releaseJobIf = GetReleaseWorkflowJobScalar("if");
+
+        releaseJobIf.ShouldBeNull("the release workflow should not carry a second, partial skip-token parser over github.event.head_commit.message; GitHub's native push skip handling is the documented full-message contract.");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_NoStep_UsesHeadCommitSkipCondition()
+    {
+        string repoRoot = GetRepoRoot();
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+
+        foreach (ReleaseWorkflowStep step in steps)
+        {
+            if (step.If is null)
+            {
+                continue;
+            }
+
+            step.If.Contains("github.event.head_commit.message", StringComparison.Ordinal).ShouldBeFalse(
+                $"step '{step.Name}' must not re-introduce the partial skip-token parser at the step level; GitHub's native push skip handling is the documented full-message contract for the release workflow.");
+        }
     }
 
     [Fact]
@@ -726,6 +780,44 @@ public sealed partial class CiTestInventoryTests
 
         inside.ShouldBeTrue($"release.yml does not declare a top-level '{mappingName}:' mapping.");
         return mapping;
+    }
+
+    private static string? GetReleaseWorkflowJobScalar(string scalarName)
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+        string prefix = $"    {scalarName}:";
+        bool insideReleaseJob = false;
+
+        foreach (string line in lines)
+        {
+            // TrimEnd tolerates CRLF-checkout line endings (the patch path emits a
+            // "LF will be replaced by CRLF" warning); without it the equality check would
+            // miss the job header and the helper would fall through with the wrong invariant.
+            string trimmedLine = line.TrimEnd();
+            if (!insideReleaseJob)
+            {
+                if (trimmedLine == "  release:")
+                {
+                    insideReleaseJob = true;
+                }
+
+                continue;
+            }
+
+            if (line.Length > 0 && line.StartsWith("  ", StringComparison.Ordinal) && !line.StartsWith("    ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (line.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                return StripQuotes(line[prefix.Length..].Trim());
+            }
+        }
+
+        insideReleaseJob.ShouldBeTrue("release.yml does not declare jobs.release.");
+        return null;
     }
 
     private static string StripQuotes(string value)

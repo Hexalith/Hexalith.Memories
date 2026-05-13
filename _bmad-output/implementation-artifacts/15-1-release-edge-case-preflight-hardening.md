@@ -1,6 +1,6 @@
 # Story 15.1: Release Edge-Case Preflight Hardening
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,36 +22,36 @@ so that releases do not fail late, silently skip, or leave ambiguous audit evide
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 - Reassess stale-tag collision handling (AC: 1, 4)
-  - [ ] Read `.releaserc.json`, `package.json`, `.github/workflows/release.yml`, `docs/dev/release-runbook.md`, and the current `S11-FC` entry in `deferred-work.md` before changing anything.
-  - [ ] Decide whether stale-tag protection belongs in a new preflight script, an inline workflow step before `npx semantic-release`, a release-runbook acceptance decision, or a refreshed carried-forward entry.
-  - [ ] If implementing a preflight, compare the tag that semantic-release would create against remote tags without running prepare/publish side effects. Do not invent custom version calculation unless tests prove it matches the semantic-release commit analyzer for this repository.
-  - [ ] If accepting or carrying forward the risk, record why the cost of `semantic-release --dry-run` or a custom preflight still does not justify a workflow change and set a fresh trigger/defer-by date.
+- [x] Task 1 - Reassess stale-tag collision handling (AC: 1, 4)
+  - [x] Read `.releaserc.json`, `package.json`, `.github/workflows/release.yml`, `docs/dev/release-runbook.md`, and the current `S11-FC` entry in `deferred-work.md` before changing anything.
+  - [x] Decide whether stale-tag protection belongs in a new preflight script, an inline workflow step before `npx semantic-release`, a release-runbook acceptance decision, or a refreshed carried-forward entry.
+  - [x] If implementing a preflight, compare the tag that semantic-release would create against remote tags without running prepare/publish side effects. Do not invent custom version calculation unless tests prove it matches the semantic-release commit analyzer for this repository.
+  - [x] If accepting or carrying forward the risk, record why the cost of `semantic-release --dry-run` or a custom preflight still does not justify a workflow change and set a fresh trigger/defer-by date.
 
-- [ ] Task 2 - Guard or document skip-CI release bypass behavior (AC: 2, 4)
-  - [ ] Review the current release workflow job-level condition: `!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip actions]')`.
-  - [ ] Decide whether the release job should keep this condition, narrow it, replace it with a repository-owned skip predicate, or document an accepted risk for merge/squash messages that quote skip tokens.
-  - [ ] Add focused coverage in `CiTestInventoryTests` if workflow behavior changes or if a parser/guard contract is added.
-  - [ ] Update `docs/dev/release-runbook.md` or `CONTRIBUTING.md` so maintainers know whether `[skip ci]` may appear in PR titles/bodies, squash messages, revert text, or quoted examples.
+- [x] Task 2 - Guard or document skip-CI release bypass behavior (AC: 2, 4)
+  - [x] Review the current release workflow job-level condition: `!contains(github.event.head_commit.message, '[skip ci]') && !contains(github.event.head_commit.message, '[skip actions]')`.
+  - [x] Decide whether the release job should keep this condition, narrow it, replace it with a repository-owned skip predicate, or document an accepted risk for merge/squash messages that quote skip tokens.
+  - [x] Add focused coverage in `CiTestInventoryTests` if workflow behavior changes or if a parser/guard contract is added.
+  - [x] Update `docs/dev/release-runbook.md` or `CONTRIBUTING.md` so maintainers know whether `[skip ci]` may appear in PR titles/bodies, squash messages, revert text, or quoted examples.
 
-- [ ] Task 3 - Confirm package-lock and fresh-clone release restore behavior (AC: 3, 4)
-  - [ ] Verify `package-lock.json` is tracked, matches the root `package.json`, and is used by the release workflow through `npm ci`.
-  - [ ] Run or script a fresh-clone-style package restore check that does not rely on an existing `node_modules` directory. A local `npm ci --ignore-scripts` or a temporary copy is acceptable if it proves lock/package consistency without mutating tracked files.
-  - [ ] If the current workflow already satisfies `12.1-RV4`, close it with evidence. If not, add the smallest workflow/tooling/doc change that makes the failure mode loud before semantic-release.
-  - [ ] Do not update package dependencies or rewrite `package-lock.json` unless the check proves it is stale and the story explicitly records why.
+- [x] Task 3 - Confirm package-lock and fresh-clone release restore behavior (AC: 3, 4)
+  - [x] Verify `package-lock.json` is tracked, matches the root `package.json`, and is used by the release workflow through `npm ci`.
+  - [x] Run or script a fresh-clone-style package restore check that does not rely on an existing `node_modules` directory. A local `npm ci --ignore-scripts` or a temporary copy is acceptable if it proves lock/package consistency without mutating tracked files.
+  - [x] If the current workflow already satisfies `12.1-RV4`, close it with evidence. If not, add the smallest workflow/tooling/doc change that makes the failure mode loud before semantic-release.
+  - [x] Do not update package dependencies or rewrite `package-lock.json` unless the check proves it is stale and the story explicitly records why.
 
-- [ ] Task 4 - Update deferred-work dispositions (AC: 1-4)
-  - [ ] Add a Story 15.1 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md` or update the existing structured entries for `S11-FC`, `12.1-RV3`, and `12.1-RV4`.
-  - [ ] Use the Story 14.5 schema fields exactly: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
-  - [ ] Do not remove historical context. Mark each targeted ID `resolved`, `accepted`, or `carried-forward` with concrete evidence or rationale.
-  - [ ] Do not sweep `12.1-RV5` or unrelated release/governance entries unless a touched file naturally closes them and the story records the reason.
+- [x] Task 4 - Update deferred-work dispositions (AC: 1-4)
+  - [x] Add a Story 15.1 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md` or update the existing structured entries for `S11-FC`, `12.1-RV3`, and `12.1-RV4`.
+  - [x] Use the Story 14.5 schema fields exactly: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
+  - [x] Do not remove historical context. Mark each targeted ID `resolved`, `accepted`, or `carried-forward` with concrete evidence or rationale.
+  - [x] Do not sweep `12.1-RV5` or unrelated release/governance entries unless a touched file naturally closes them and the story records the reason.
 
-- [ ] Task 5 - Validate release-edge changes (AC: 1-4)
-  - [ ] Run `pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1`.
-  - [ ] Run `npm ci --ignore-scripts` or the selected fresh-clone equivalent and record the result.
-  - [ ] If `.github/workflows/release.yml` or `CiTestInventoryTests.cs` changes, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`.
-  - [ ] If a new release preflight script is added, run its focused positive and negative tests, including a stale-tag collision fixture and a no-release/no-next-version fixture when relevant.
-  - [ ] Run `git diff --check -- .github/workflows/release.yml .releaserc.json package.json package-lock.json tools docs/dev/release-runbook.md CONTRIBUTING.md tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md`.
+- [x] Task 5 - Validate release-edge changes (AC: 1-4)
+  - [x] Run `pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1`.
+  - [x] Run `npm ci --ignore-scripts` or the selected fresh-clone equivalent and record the result.
+  - [x] If `.github/workflows/release.yml` or `CiTestInventoryTests.cs` changes, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`.
+  - [x] If a new release preflight script is added, run its focused positive and negative tests, including a stale-tag collision fixture and a no-release/no-next-version fixture when relevant.
+  - [x] Run `git diff --check -- .github/workflows/release.yml .releaserc.json package.json package-lock.json tools docs/dev/release-runbook.md CONTRIBUTING.md tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md`.
 
 ## File Scope
 
@@ -204,12 +204,24 @@ Additional probes to record when relevant:
 
 GPT-5
 
+### Implementation Plan
+
+- Add a release-only PowerShell preflight that obtains the next release version from semantic-release dry-run output, applies the configured tag format, and checks exact local and remote tag refs before publish-capable work starts.
+- Remove the release workflow's partial job-level skip parser and document GitHub's native full-message skip behavior as an accepted release-maintainer risk.
+- Preserve the existing package-lock contract by verifying `package-lock.json` tracking and `npm ci --ignore-scripts`, without changing package dependencies or lockfile content.
+- Close the targeted deferred IDs with Story 14.5 structured fields and focused tests.
+
 ### Debug Log References
 
 - Pre-dev hardening preflight passed at JSON timestamp `2026-05-12T17:30:42Z` with all checks green and `working tree cleanliness` reporting `0 dirty paths`.
 - Story selection chose `15-1-release-edge-case-preflight-hardening` because `ready_count` was `0`, below the target of `5`, and this was the first backlog story in sprint-status order.
 - `/bmad-create-story 15-1-release-edge-case-preflight-hardening` context gathering loaded Epic 15 planning, sprint status, root project context, Story 12.1, Story 14.2, Story 14.5, Epic 14 retrospective, current deferred-work entries, release workflow/config/tooling, package files, CI inventory tests, release runbook, recent git history, and current official GitHub Actions, semantic-release, and npm `ci` documentation.
 - Party-mode review ran on 2026-05-12 after preflight JSON timestamp `2026-05-12T19:37:07Z` failed only `working tree cleanliness` for planning artifacts outside BMAD story-operation paths; classified as a soft working-tree warning per the recurring-job rules.
+- 2026-05-13 red phase: `python -m unittest discover -s tests/tooling/release_preflight -p "*_test.py"` failed because `tools/release-preflight.ps1` did not exist; `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"` failed on the missing release preflight step and the existing head-commit skip condition.
+- 2026-05-13 focused validation passed: release preflight fixtures 6/6, `CiTestInventoryTests` 47/47, `pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1`, and `npm ci --ignore-scripts`.
+- 2026-05-13 `git diff --check -- .github/workflows/release.yml .releaserc.json package.json package-lock.json tools docs/dev/release-runbook.md CONTRIBUTING.md tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md` passed with only LF-to-CRLF working-copy warnings.
+- 2026-05-13 solution-level `dotnet test Hexalith.Memories.slnx --no-restore` was attempted; unit/non-Docker projects passed, but `Hexalith.Memories.IntegrationTests` failed 107 tests because the environment cannot locate the Dapr CLI.
+- 2026-05-13 release non-Docker lane passed via `pwsh -NoLogo -NoProfile -File ./tools/test-release.ps1`: Contracts 468/468, Server 1543/1543, CLI 334/334, MCP 76/76, EventStore 84/84.
 
 ### Completion Notes List
 
@@ -218,11 +230,22 @@ GPT-5
 - Runtime source, package metadata unrelated to release tooling, CI workflows other than `release.yml`, and submodules are forbidden by default.
 - No submodule state was touched.
 - Party-mode review hardened the story with exact stale-tag, skip-token, npm proof, deferred-work schema, operator-message, and file-scope validation expectations.
+- Implemented `tools/release-preflight.ps1` and wired it before `npx semantic-release`; it uses semantic-release dry-run output for the next version and checks exact local and remote tag refs.
+- Removed the release job's partial `github.event.head_commit.message` skip parser and documented GitHub-native full-message skip semantics as an accepted release-maintainer risk.
+- Verified `package-lock.json` and `package.json` are tracked, release workflow restore uses `npm ci`, and `npm ci --ignore-scripts` succeeds without lockfile changes.
+- Added structured deferred-work dispositions: `S11-FC` resolved, `12.1-RV3` accepted, and `12.1-RV4` resolved. `12.1-RV5` and unrelated entries were not swept.
+- Final file-scope check found changes only inside the story's allowed file list. `_bmad-output/process-notes/predev-preflight-*.json` snapshots (including `predev-preflight-latest.json`) are recurring-job output from `jobs/preflight-predev-hardening.py`, are not story-authored changes, and are excluded from preflight working-tree cleanliness gates via the documented `:(exclude)_bmad-output/process-notes/predev-preflight-*.json` rule. No submodule pointers were touched.
 
 ### File List
 
+- `.github/workflows/release.yml`
 - `_bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `docs/dev/release-runbook.md`
+- `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+- `tests/tooling/release_preflight/release_preflight_test.py`
+- `tools/release-preflight.ps1`
 
 ### Party-Mode Review
 
@@ -249,6 +272,62 @@ GPT-5
 
 - 2026-05-12: Created Story 15.1 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-12: Party-mode review completed; added release-edge pre-dev clarifications and validation probes.
+- 2026-05-13: Implemented release preflight, skip-token documentation/contract tests, package-lock proof, deferred-work dispositions, and focused validation; moved story to `review`.
+- 2026-05-13: Adversarial 3-layer code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) completed; findings appended below.
+- 2026-05-13: Review close-out — 12 patches applied (P1 git remote get-url exit-code allowlist; P2 ErrorRecord/stdout stream separation in `Invoke-GitCommand`; P3 step-level `timeout-minutes: 10`; P4 `-NextVersion` semver shape validation; P5 CRLF-tolerant `release:` header match; P6 positive dry-run regex + leading-`v` rejection fixtures; P7 trailing-CRLF trim on `ls-remote` ref field; P8 force `$LASTEXITCODE = 0` baseline; P9 truth-claim fix on predev-preflight working-tree files; P10 12.1-RV4 fresh-clone evidence granularity; P11 multi-distinct-version guard in `Get-NextReleaseVersionFromDryRun`; P12 new `ReleaseWorkflow_NoStep_UsesHeadCommitSkipCondition` step-level contract). 16 carry-forward review items recorded as `15.1-RV1`..`15.1-RV16` in `deferred-work.md`. Focused validation: release preflight fixtures 9/9 (was 6/6, +3 positive/multi-version/leading-v); CiTestInventoryTests 48/48 (was 47/47, +1 step-level skip guard); `tools/validate-release-packages.ps1` passed; `git diff --check` clean (LF/CRLF warnings only). Moved story to `done`.
+
+### Review Findings
+
+3-layer adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on 2026-05-13. Acceptance Auditor verdict: **READY FOR DONE WITH PATCHES** — all 4 ACs PASS; 2 minor evidence-and-bookkeeping gaps and several edge-case hardening opportunities surfaced.
+
+- [x] [Review][Decision] D1 — Resolved 2026-05-13: expanded the contract test to also assert no step under `jobs.release` re-introduces the partial skip parser. Added `ReleaseWorkflow_NoStep_UsesHeadCommitSkipCondition` at `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:223-235`. CiTestInventoryTests now 48/48 (was 47, +1).
+
+- [x] [Review][Patch] P1 — `git remote get-url` for a missing remote returns exit code `128` on current git versions (`die("No such remote: ...")`), but the script's `AllowedExitCodes @(0, 2)` will only tolerate `2`. A missing remote would throw instead of taking the documented "skip remote check" warning branch. [`tools/release-preflight.ps1:115`]
+
+- [x] [Review][Patch] P2 — `Invoke-GitCommand` merges `stderr` and `stdout` via `2>&1`; `Test-RemoteTagCollision` then iterates the merged stream as if every line were a `ls-remote` data line. `ErrorRecord` objects (e.g., HTTPS warnings emitted to stderr by `ls-remote`) get string-coerced and split, which can either spuriously match a tag ref or hide a legitimate peeled-ref line. Filter the output to plain-string `OutputType` entries (or capture stderr separately) before the field split. [`tools/release-preflight.ps1:19-42, 121-138`]
+
+- [x] [Review][Patch] P3 — The `Run release preflight` workflow step has no `timeout-minutes`; the only backstop is the job-level 30-minute timeout. A hung `npm run release:dry-run` or `ls-remote` would consume the entire job budget instead of failing loud. Add `timeout-minutes: 10` to the preflight step. [`.github/workflows/release.yml:84-88`]
+
+- [x] [Review][Patch] P4 — `-NextVersion` is taken verbatim and pasted into `tagFormat`. A caller passing `v1.2.3` (with a leading `v`) produces `refs/tags/vv1.2.3`; a non-semver value passes silently as long as it is non-whitespace. Validate against the same semver shape used in the dry-run regex before composing the tag ref. [`tools/release-preflight.ps1:141-152`]
+
+- [x] [Review][Patch] P5 — `GetReleaseWorkflowJobScalar` uses `if (line == "  release:")` to locate the job header. When `release.yml` is checked out with CRLF endings (the patch already triggers the `LF will be replaced by CRLF` warning), the line becomes `"  release:\r"` and the helper falls off the end with `insideReleaseJob = false`, failing the `ShouldBeTrue` invariant instead of returning `null`. Use `line.TrimEnd() == "  release:"` (or split on `\n` after a normalize step) so the contract test is CRLF-tolerant. [`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:767-799`]
+
+- [x] [Review][Patch] P6 — The Python fixture suite has positive tests for the `-NextVersion` and the no-release dry-run path, but the live regex-parse path (`Get-NextReleaseVersionFromDryRun` matching `The next release version is X.Y.Z`) has no fixture. Add one test that feeds a `-SemanticReleaseDryRunOutputPath` containing a positive `The next release version is 1.2.3` line and asserts the preflight resolves and reports `No stale release tag found for refs/tags/v1.2.3`. [`tests/tooling/release_preflight/release_preflight_test.py`]
+
+- [x] [Review][Patch] P7 — In `Test-RemoteTagCollision`, the line-by-line loop splits on `\s+` and compares `$fields[1]` to `$TagRef`. On a Windows runner / CRLF-emitting remote, `$fields[1]` can carry a trailing `\r`, breaking the equality check. Add a `.TrimEnd()` (or normalize line endings up front) so the comparison is robust to CRLF residue. [`tools/release-preflight.ps1:128-137`]
+
+- [x] [Review][Patch] P8 — Before the first `Invoke-GitCommand` runs, `$LASTEXITCODE` may carry a stale value from a prior step in the same pwsh session. If the very first git invocation fails to launch (PATH or permission), `$LASTEXITCODE` keeps its stale value and the wrapper's `if ($AllowedExitCodes -notcontains $exitCode)` may incorrectly accept it. Set `$global:LASTEXITCODE = 0` at the top of the `try` block. [`tools/release-preflight.ps1:141`]
+
+- [x] [Review][Patch] P9 — Completion Notes claims "Pre-existing process-note working-tree files remain unrelated and were not modified." The tracked diff modifies `_bmad-output/process-notes/predev-preflight-latest.json` (size 39760 → 39787; timestamp/dirty_path_count updated). Reword the bullet to acknowledge recurring-job output drift (not a story-authored change) so the truth-claim matches the working tree. [`_bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md:237`]
+
+- [x] [Review][Patch] P10 — `12.1-RV4` Evidence and Debug Log References say `npm ci --ignore-scripts` was run, but do not record the working directory of the isolated worktree, the no-existing-`node_modules` assumption, or the post-run "tracked files stayed clean" check the party-mode review demanded. Add a one-paragraph evidence block naming the working directory and the post-run `git status -- package-lock.json package.json` outcome. [`_bmad-output/implementation-artifacts/deferred-work.md:80-89` + Debug Log References]
+
+- [x] [Review][Patch] P11 — `Get-NextReleaseVersionFromDryRun` collects every `The next release version is X.Y.Z` match in the dry-run output and silently picks the last one. If semantic-release ever logs two different versions (e.g., a candidate then a final), the script will use whichever appears last with no diagnostic. If two distinct version values are present, throw with both candidates named so the operator can investigate. [`tools/release-preflight.ps1:86-102`]
+
+- [x] [Review][Defer] W1 — No retry/backoff on transient `ls-remote` network failures; a DNS hiccup turns the preflight into a hard abort. [`tools/release-preflight.ps1:115-138`] — deferred as `15.1-RV1`.
+- [x] [Review][Defer] W2 — Dry-run regex hard-codes the English phrase "The next release version is" — fragile to semantic-release i18n or output reformatting. [`tools/release-preflight.ps1:86-102`] — deferred as `15.1-RV2`.
+- [x] [Review][Defer] W3 — Final `catch` block uses `Write-Error -Message $_.Exception.Message`, losing inner-exception and stack-trace context for CI operators. [`tools/release-preflight.ps1:158-167`] — deferred as `15.1-RV3`.
+- [x] [Review][Defer] W4 — `CiTestInventoryTests` workflow-string assertions use exact `ShouldBe("npm ci")` / `ShouldBe("./tools/release-preflight.ps1")` / step-name equality. Cosmetic edits (e.g., `npm ci --ignore-scripts`, renamed step) would break the test without a real contract violation. [`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:108-133`] — deferred as `15.1-RV4`.
+- [x] [Review][Defer] W5 — Python `tempfile.TemporaryDirectory` cleanup can raise `PermissionError` on Windows if git keeps an index lock. Use `ignore_cleanup_errors=True` (Py 3.10+). [`tests/tooling/release_preflight/release_preflight_test.py`] — deferred as `15.1-RV5`.
+- [x] [Review][Defer] W6 — Python `Path | None` union syntax requires Python 3.10+; project minimum version is not asserted at the top of the test file. [`tests/tooling/release_preflight/release_preflight_test.py:134`] — deferred as `15.1-RV6`.
+- [x] [Review][Defer] W7 — `subprocess.run(..., text=True)` on a Windows codepage other than UTF-8 can raise `UnicodeDecodeError` when pwsh stderr contains non-ASCII. Pass `encoding='utf-8', errors='replace'`. [`tests/tooling/release_preflight/release_preflight_test.py:107-122`] — deferred as `15.1-RV7`.
+- [x] [Review][Defer] W8 — `_init_repo` calls `git init` with no `--initial-branch`; behavior depends on `init.defaultBranch` of the host environment. Pass `--initial-branch=main` explicitly. [`tests/tooling/release_preflight/release_preflight_test.py:127`] — deferred as `15.1-RV8`.
+- [x] [Review][Defer] W9 — Test runner hardcodes `pwsh`; no `skipUnless(shutil.which('pwsh'), ...)` guard for environments without PowerShell 7. [`tests/tooling/release_preflight/release_preflight_test.py:107`] — deferred as `15.1-RV9`.
+- [x] [Review][Defer] W10 — Release-day checklist in the runbook was renumbered to 17 steps (was 13). Other docs / CONTRIBUTING / story references to specific step numbers may now be stale. [`docs/dev/release-runbook.md:283-301`] — deferred as `15.1-RV10`.
+- [x] [Review][Defer] W11 — `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path. A rename or relocation makes the trigger silently invalid. [`_bmad-output/implementation-artifacts/deferred-work.md:54-65`] — deferred as `15.1-RV11`.
+- [x] [Review][Defer] W12 — `12.1-RV3` accepted with explicit defer-by date `2026-08-13`; no automated reminder that surfaces expired accepted entries. [`_bmad-output/implementation-artifacts/deferred-work.md:67-78`] — deferred as `15.1-RV12`.
+- [x] [Review][Defer] W13 — `git show-ref --verify --quiet $TagRef` allowed exit codes are `(0, 1)`. If the repository state forces git to return `128` (e.g., corrupt object store, broken ref), the wrapper throws a generic git-failed message instead of a clear "ref state probe failed" diagnostic. [`tools/release-preflight.ps1:107-110`] — deferred as `15.1-RV13`.
+- [x] [Review][Defer] W14 — Some remotes return only peeled refs (`refs/tags/v1.2.3^{}`) without an unpeeled entry; the current loop accepts either, but the contract is not test-fixtured. [`tools/release-preflight.ps1:128-137`] — deferred as `15.1-RV14`.
+- [x] [Review][Defer] W15 — `Resolve-Path -LiteralPath $RepositoryPath` throws a cryptic `Cannot find path` error when `-RepositoryPath` does not exist. Wrap with a clear pre-check. [`tools/release-preflight.ps1:141`] — deferred as `15.1-RV15`.
+- [x] [Review][Defer] W16 — `GetReleaseWorkflowJobScalar` parser depends on exactly 4-space indentation. Any future `release.yml` reformat (2-space, tabs) silently breaks the contract test. [`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:767-799`] — deferred as `15.1-RV16`.
+
+Dismissed as noise / false-positive (not written into the story or deferred register):
+- "Test bodies are stubs (`...`)" — artifact of how the review prompt summarized the diff; actual `.py` file has full implementations.
+- "GITHUB_TOKEN is set in workflow but never used by the script" — it is consumed by `npm run release:dry-run` → semantic-release for the repository push-permission check.
+- "Removing `if:` allows release on every push event including non-push triggers" — the workflow is push-only per Dev Notes; GitHub-native skip handling covers the trigger set.
+- "Multi-token `tagFormat` rejection" — semantic-release explicitly requires the `${version}` token exactly once.
+- "Stale-tag exact-ref match is just default `git show-ref` behavior, not a real design choice" — rhetorical; the contract is the protection regardless.
+- Several stylistic / framing critiques and infrastructure assumptions covered by basic CI invariants.
 
 ## Story Completion Status
 

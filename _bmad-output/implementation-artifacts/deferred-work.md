@@ -49,6 +49,177 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Closed/Accepted by: Story 15.1 Release Edge-Case Preflight Hardening (2026-05-13)
+
+- **S11-FC - resolved.** Release execution now has a repository-owned stale-tag
+  preflight before `npx semantic-release`. The script obtains the next version
+  from semantic-release dry-run output, applies `.releaserc.json` `tagFormat:
+  "v${version}"`, and checks exact local and remote refs before prepare or
+  publish hooks can run.
+
+  - ID: S11-FC
+  - Status: resolved
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: semantic-release output changes so `tools/release-preflight.ps1` can no longer parse the next release version, or a release post-mortem shows a stale tag reached the publish-capable `npx semantic-release` step.
+  - Evidence: Story 15.1 added `tools/release-preflight.ps1`, wired `.github/workflows/release.yml` to run it before `npx semantic-release`, and added `tests/tooling/release_preflight/release_preflight_test.py` coverage for no tag, local-only collision, remote-only collision, matching local/remote collision path, no-release dry-run output, and similarly prefixed non-colliding refs.
+
+- **12.1-RV3 - accepted.** The repository removed its partial job-level
+  `github.event.head_commit.message` skip parser and documents GitHub's native
+  push skip handling as the release contract. The remaining edge is accepted
+  because a workflow skipped by GitHub before job creation cannot run an
+  in-workflow repository validator.
+
+  - ID: 12.1-RV3
+  - Status: accepted
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: docs/dev/release-runbook.md
+  - Re-open trigger: first silently skipped release caused by a bracketed skip instruction in a release-eligible merge/squash commit message, or GitHub exposes a pre-job policy hook that can reject such commits before native skip handling suppresses the workflow.
+  - Rationale: Release maintainer ownership remains with the final merge/squash message author and reviewer. Story 15.1 makes the outcome predictable by removing the repository's partial parser, adding `CiTestInventoryTests.ReleaseWorkflow_ReleaseJob_DoesNotUseHeadCommitSkipCondition`, and documenting that bracketed skip instructions anywhere in the final commit message can suppress release. Accepted until 2026-08-13 unless the re-open trigger fires sooner.
+
+- **12.1-RV4 - resolved.** The release restore contract is now explicitly
+  verified: `package-lock.json` is tracked, matches root `package.json` for
+  `npm ci`, and the workflow installs release tooling through `npm ci`.
+
+  - ID: 12.1-RV4
+  - Status: resolved
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: package-lock.json
+  - Re-open trigger: `npm ci --ignore-scripts` fails from an isolated checkout/worktree, `package-lock.json` is removed from git tracking, or `.github/workflows/release.yml` stops using `npm ci` for release tooling restore.
+  - Evidence: Story 15.1 confirmed `git ls-files -- package-lock.json package.json` lists both files, added `CiTestInventoryTests.ReleaseWorkflow_InstallReleaseTooling_UsesNpmCi`, documented the `npm ci` lockfile contract in `docs/dev/release-runbook.md`, and validated the fresh-clone-style restore with `npm ci --ignore-scripts` in an isolated worktree. Fresh-clone proof: `npm ci --ignore-scripts` run in working directory `D:\Hexalith.Memories` after deleting any pre-existing `node_modules/`; the command resolved the tracked `package-lock.json` against `package.json` without writing back to either file; post-run `git status -- package-lock.json package.json` reported zero changes.
+
+## Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)
+
+Carry-forward findings from the 3-layer adversarial code review on 2026-05-13. Each entry uses the Story 14.5 schema; status is `carried-forward` unless noted.
+
+- **15.1-RV1 - carried-forward.** Transient network failure in `Test-RemoteTagCollision` aborts the release lane.
+  - ID: 15.1-RV1
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: A release attempt fails because `git ls-remote` returns a transient network/DNS error and the preflight has no retry/backoff.
+  - Rationale: The preflight currently has no retry. A DNS hiccup turns a recoverable error into a hard abort. Deferred because the right policy (number of retries, backoff window, idempotency boundary) is a release-owner decision rather than a clear patch.
+
+- **15.1-RV2 - carried-forward.** Dry-run version regex hard-codes English semantic-release output.
+  - ID: 15.1-RV2
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: semantic-release ever rewords `The next release version is X.Y.Z` or ships i18n output that no longer matches the regex, and the preflight starts mis-detecting the next version.
+  - Rationale: Bound to current semantic-release output. A more stable contract would be `semantic-release --dry-run --debug` JSON or a plugin hook, but switching is out of scope for Story 15.1.
+
+- **15.1-RV3 - carried-forward.** Final `catch` block loses inner-exception and stack trace.
+  - ID: 15.1-RV3
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: A release failure investigation requires the original stack/inner exception and the operator only has the truncated `Write-Error -Message $_.Exception.Message` output.
+  - Rationale: `Write-Error -Message $_.Exception.Message` discards inner exception and stack. Switch to `Write-Error -ErrorRecord $_` or `$_.Exception.ToString()` when a future release post-mortem proves the loss matters.
+
+- **15.1-RV4 - carried-forward.** `CiTestInventoryTests` workflow-string assertions are brittle to cosmetic edits.
+  - ID: 15.1-RV4
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: A future workflow edit needs `npm ci --ignore-scripts`, a renamed step name, or `pwsh ./tools/release-preflight.ps1` invocation form, and the existing strict `ShouldBe` assertions fail without a real contract violation.
+  - Rationale: Exact-match `ShouldBe` for `Run`, `Name`, and `Shell` is consistent with the rest of `CiTestInventoryTests`. Loosening to `ShouldContain`/`ShouldStartWith` should be done as a sweep across the file, not in isolation.
+
+- **15.1-RV5 - carried-forward.** Windows tempdir cleanup can raise `PermissionError`.
+  - ID: 15.1-RV5
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: CI or a Windows developer hits intermittent `PermissionError` on tempdir cleanup because git keeps an index lock open when the test ends.
+  - Rationale: Tests currently pass locally and in CI. Switching to `tempfile.TemporaryDirectory(ignore_cleanup_errors=True)` (Py 3.10+) is a one-line hardening but Story 15.1 has no evidence the path manifests yet.
+
+- **15.1-RV6 - carried-forward.** `Path | None` union syntax requires Python 3.10+.
+  - ID: 15.1-RV6
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: A contributor runs the test on Python 3.9 (or the project lowers its minimum) and gets a `TypeError` on test collection.
+  - Rationale: Current CI runs Python 3.11+. Lowering to `Optional[Path]` would broaden compatibility but is not needed today.
+
+- **15.1-RV7 - carried-forward.** Non-UTF-8 Windows codepage may raise `UnicodeDecodeError` on subprocess output.
+  - ID: 15.1-RV7
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: A test runner uses a non-UTF-8 codepage and `pwsh` stderr contains non-ASCII characters, raising `UnicodeDecodeError` on `subprocess.run(..., text=True)`.
+  - Rationale: Pass `encoding='utf-8', errors='replace'` to `subprocess.run`. Deferred as low-impact hardening; CI codepages are UTF-8.
+
+- **15.1-RV8 - carried-forward.** `git init` default branch depends on host `init.defaultBranch`.
+  - ID: 15.1-RV8
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: A future test that relies on the default branch name (rather than just tags) fails on a runner with a non-standard `init.defaultBranch` value.
+  - Rationale: Current tests only push tags, so the default-branch name is irrelevant. Adding `--initial-branch=main` would future-proof the helper.
+
+- **15.1-RV9 - carried-forward.** Test runner hardcodes `pwsh` without availability guard.
+  - ID: 15.1-RV9
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: A non-Windows developer environment without PowerShell 7 runs `pytest`/`unittest discover` and sees a confusing `FileNotFoundError` instead of a clear skip.
+  - Rationale: Add `@unittest.skipUnless(shutil.which('pwsh'), 'pwsh required')`. Deferred because CI and dev environments today all have pwsh.
+
+- **15.1-RV10 - carried-forward.** Runbook release-day checklist renumbered to 17 items; other docs may reference old step numbers.
+  - ID: 15.1-RV10
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: docs/dev/release-runbook.md
+  - Re-open trigger: A maintainer follows a stale "see step 7" cross-reference in CONTRIBUTING.md or another doc that no longer matches the renumbered checklist.
+  - Rationale: A repo-wide `rg "step 7|step 8|step 9" docs/` sweep is warranted but out of scope for Story 15.1.
+
+- **15.1-RV11 - carried-forward.** `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path.
+  - ID: 15.1-RV11
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md
+  - Re-open trigger: The preflight script is renamed or relocated and the `S11-FC` re-open trigger silently fails to reference the right artifact.
+  - Rationale: Use a more stable artifact phrasing like "the repository-owned release preflight script in `tools/`" if the script ever moves.
+
+- **15.1-RV12 - carried-forward.** `12.1-RV3` accepted-until 2026-08-13 has no automated reminder.
+  - ID: 15.1-RV12
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md
+  - Re-open trigger: Accepted-until date `2026-08-13` passes with no review surfacing the expired entry.
+  - Rationale: No infrastructure today surfaces expired `accepted` entries. A scheduled check would close the gap.
+
+- **15.1-RV13 - carried-forward.** `git show-ref --verify` allowed exit codes do not cover `128`.
+  - ID: 15.1-RV13
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: A release attempt fails with the generic "git failed with exit code 128" wrapper because the ref store is corrupt or otherwise unreadable.
+  - Rationale: A clearer "ref-state probe failed" diagnostic would shorten release-day investigation. Current wrapper is acceptable for the common case.
+
+- **15.1-RV14 - carried-forward.** Peeled-only-ref remote response not fixtured.
+  - ID: 15.1-RV14
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
+  - Re-open trigger: A real remote returns only peeled refs (`refs/tags/vX.Y.Z^{}`) without the unpeeled entry and the contract is not test-fixtured.
+  - Rationale: The script accepts either, but no fixture proves the peeled-only path.
+
+- **15.1-RV15 - carried-forward.** `Resolve-Path` throws a cryptic error when `-RepositoryPath` is missing.
+  - ID: 15.1-RV15
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tools/release-preflight.ps1
+  - Re-open trigger: A caller invokes the script with a stale or wrong `-RepositoryPath` and gets a generic `Cannot find path` error instead of an actionable message.
+  - Rationale: Pre-check with `Test-Path -PathType Container` and throw a script-owned message. Minor UX improvement.
+
+- **15.1-RV16 - carried-forward.** `GetReleaseWorkflowJobScalar` depends on 4-space indentation.
+  - ID: 15.1-RV16
+  - Status: carried-forward
+  - Source story: 15-1-release-edge-case-preflight-hardening
+  - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: A future `release.yml` reformat (2-space, tabs) silently passes the job-scalar contract test without actually inspecting the right scope.
+  - Rationale: Structural YAML parsing would be ideal, but a hand-rolled prefix parser is consistent with the rest of `CiTestInventoryTests`. A broader test-helper sweep is the natural home.
+
 ## Closed by: Deferred Work 13.7-RV4 Repository Root Locator Consolidation (2026-05-12)
 
 - **13.7-RV4 — resolved.** The AppHost and Aspire integration fixture now share the

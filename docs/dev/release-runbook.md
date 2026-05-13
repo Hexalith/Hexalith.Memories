@@ -10,11 +10,21 @@ a workstation.
   branch protection now enabled, those `push` events come from PR-merge commits, not direct pushes
   from a workstation.
 - The release job restores, builds, runs `tools/test-release.ps1`, installs npm tooling, validates
-  package inventory, and runs `npx semantic-release`. Semantic-release then drives the prepare,
-  publish, and post-publish phases through its plugin chain — `pack-release.ps1` and
+  package inventory, runs the release preflight, and runs `npx semantic-release`. Semantic-release
+  then drives the prepare, publish, and post-publish phases through its plugin chain —
+  `pack-release.ps1` and
   `publish-nuget.ps1` are not invoked as separate workflow steps; they are invoked by
   `@semantic-release/exec` during the corresponding semantic-release lifecycle phase.
 - Semantic-release uses `.releaserc.json`.
+- Release tooling restore uses `npm ci` from the tracked root `package-lock.json`. `npm ci` is the
+  release contract because it fails when `package.json` and the lockfile disagree and removes any
+  existing `node_modules` tree instead of reusing workstation state.
+- `tools/release-preflight.ps1` runs after package inventory validation and before `npx
+  semantic-release`. It executes the existing `release:dry-run` script to read the next version
+  from semantic-release without running prepare or publish hooks, converts that version through
+  `.releaserc.json` `tagFormat: "v${version}"`, and checks exact local and remote tag refs such as
+  `refs/tags/v1.2.3`. It intentionally does not treat similarly prefixed tags such as
+  `v1.2.30` as collisions.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
 - `tools/publish-nuget.ps1` is the `publishCmd` for `@semantic-release/exec`.
 - Semantic-release does not commit generated files back to `main`. It creates the release tag,
@@ -28,6 +38,27 @@ a workstation.
 
 The required-check names mapping to `.github/workflows/ci.yml` job IDs is documented in
 [`branch-protection.md`](./branch-protection.md).
+
+### Release Skip Instructions
+
+`.github/workflows/release.yml` does not carry its own job-level parser over
+`github.event.head_commit.message`. GitHub's native push skip handling is the release contract:
+if the merged commit message contains a bracketed skip instruction such as `[skip ci]`,
+`[ci skip]`, `[no ci]`, `[skip actions]`, or `[actions skip]`, GitHub may skip the workflow before
+the release job can run.
+
+Treat the final merged commit message as a full-message input, including the subject, body,
+quoted examples, copied changelog text, squash bodies, and revert text. Do not place a bracketed
+skip instruction anywhere in a release-eligible merge or squash commit message unless the intended
+outcome is to suppress the release workflow. Unbracketed prose such as `skip ci` is not the
+repository-owned skip contract, but maintainers should still avoid ambiguous wording in release
+PR titles and squash messages.
+
+This is an accepted GitHub Actions platform risk rather than an in-workflow guardrail: a workflow
+that GitHub skips natively cannot run a repository-owned validator. If a release is silently
+skipped because quoted text contained a bracketed skip instruction, open a normal PR that removes
+or rewrites the token from the final merge message and merge a new conventional commit to trigger
+release again.
 
 ## Prerequisites
 
@@ -253,14 +284,19 @@ those actions can move the published state away from the CI-recorded audit ancho
 4. Confirm the merge commit follows conventional-commit semantics.
 5. Confirm `tools/release-packages.json` has not drifted.
 6. Run `./tools/validate-release-packages.ps1` locally before merging if package files changed.
-7. Merge to `main`.
-8. Watch the `Release` workflow run.
-9. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
-   `Run semantic-release`, and `Upload package artifacts` all succeed.
-10. Confirm the new tag exists.
-11. Confirm the GitHub Release contains exactly the approved package assets for the new version.
-12. Confirm NuGet flat-container APIs show the new version for all approved packages.
-13. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
+7. Confirm the final merge or squash commit message does not contain bracketed skip instructions.
+8. Merge to `main`.
+9. Watch the `Release` workflow run.
+10. Confirm `Install release tooling` used `npm ci` from the tracked lockfile.
+11. Confirm `Run release preflight` succeeded before `Run semantic-release`.
+12. If the release preflight fails on a stale tag, confirm the exact blocked ref and resolve the
+    tag only after release-owner review.
+13. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
+   `Run release preflight`, `Run semantic-release`, and `Upload package artifacts` all succeed.
+14. Confirm the new tag exists.
+15. Confirm the GitHub Release contains exactly the approved package assets for the new version.
+16. Confirm NuGet flat-container APIs show the new version for all approved packages.
+17. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
     release commit back to `main`.
 
 ## Failure And Recovery Notes
@@ -272,6 +308,11 @@ those actions can move the published state away from the CI-recorded audit ancho
   validator.
 - If semantic-release fails before publishing, inspect the run logs and fix the repository state or
   release configuration through a pull request.
+- If `tools/release-preflight.ps1` reports that `refs/tags/v<version>` already exists locally or on
+  `origin`, stop before publish work starts. The message names the exact conflicting ref. Do not
+  delete the remote tag casually; confirm whether it came from an aborted/manual release, record the
+  release-owner decision, then either remove the stale tag through the approved repository process
+  or merge a new conventional commit that produces a different semantic-release version.
 - If semantic-release reports `GH013` or another protected-branch rejection for `HEAD:main`, keep
   branch protection intact. The release configuration should not use plugins that commit back to
   `main`; fix the release configuration through a pull request and rerun by merging a conventional
