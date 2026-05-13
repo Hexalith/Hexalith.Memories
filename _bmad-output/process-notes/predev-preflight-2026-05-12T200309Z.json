@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "produced_by": "jobs/preflight-predev-hardening.py",
-  "timestamp": "2026-05-13T05:08:58Z",
+  "timestamp": "2026-05-12T20:03:09Z",
   "repo": "D:\\Hexalith.Memories",
-  "result": "fail",
+  "result": "pass",
   "bootstrap_actions": [],
   "checks": [
     {
@@ -12,7 +12,7 @@
       "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
       "result": "pass",
       "details": "PARSE OK",
-      "file_size_bytes": 39760,
+      "file_size_bytes": 39620,
       "line_count": 199,
       "top_level_keys": [
         "development_status",
@@ -43,16 +43,8 @@
       "id": 4,
       "name": "status-artifact consistency",
       "story_keys_checked": 73,
-      "result": "fail",
-      "details": "1 status-artifact drift(s) found",
-      "drifts": [
-        {
-          "key": "15-3-live-migration-coordination-policy",
-          "status": "backlog",
-          "artifact": "present",
-          "expected": "absent"
-        }
-      ]
+      "result": "pass",
+      "details": "no drift across 73 story keys"
     },
     {
       "id": 5,
