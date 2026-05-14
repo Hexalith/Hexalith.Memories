@@ -31,6 +31,9 @@ public interface IEmbeddingMigrationStore
     /// <summary>Starts or resumes a durable migration marker.</summary>
     Task StartMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, bool resume, CancellationToken ct);
 
+    /// <summary>Reads the durable active migration marker for a tenant when one protects runtime writes.</summary>
+    Task<EmbeddingMigrationMarker?> GetActiveMigrationMarkerAsync(string tenantId, CancellationToken ct);
+
     /// <summary>Marks a durable migration marker complete.</summary>
     Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct);
 

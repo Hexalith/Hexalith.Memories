@@ -49,6 +49,43 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Closed/Accepted by: Story 15.3 Live Migration Coordination Policy (2026-05-14)
+
+- **13.6-RV1 - resolved.** Live migration cutover now writes a durable
+  tenant-scoped active marker before index recreation or tenant config update, and
+  runtime ingestion/indexing reads that marker to block stale provider/model
+  writes for the migrating tenant.
+
+  - ID: 13.6-RV1
+  - Status: resolved
+  - Source story: 15-3-live-migration-coordination-policy
+  - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs
+  - Re-open trigger: A production or test migration completes while raw or natural-language semantic hashes for the tenant contain a provider/model/dimensions tuple different from the active migration target after cutover.
+  - Evidence: Story 15.3 added active marker writes in `RedisEmbeddingMigrationStore.StartMigrationMarkerAsync`, read/write guards in `GenerateEmbeddingActivity`, `IndexSemanticActivity`, and `IndexNaturalLanguageSemanticActivity`, plus focused tests proving old-provider generation and raw/NL semantic writes are blocked while the marker is active.
+
+- **13.6-RV2 - resolved.** `IndexSemanticActivity.cs` now carries the standard
+  ITANEO MIT copyright header because Story 15.3 touched the file
+  substantively for the mandatory semantic write guard.
+
+  - ID: 13.6-RV2
+  - Status: resolved
+  - Source story: 15-3-live-migration-coordination-policy
+  - Target artifact: src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs
+  - Re-open trigger: A future hand-written C# source file touched by a story lacks the standard project copyright header.
+  - Evidence: Story 15.3 added the missing copyright header while updating `IndexSemanticActivity` for active migration marker enforcement.
+
+- **13.6-RV3 - accepted.** The migration command keeps its local nullable
+  string/tuple helper shape for `ValidateOptions(...)` and
+  `TryBuildTargetConfig(...)`, with `EmbeddingMigrationResult` plus stable exit
+  codes as the project-approved equivalent for this command surface.
+
+  - ID: 13.6-RV3
+  - Status: accepted
+  - Source story: 15-3-live-migration-coordination-policy
+  - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
+  - Re-open trigger: Migration errors need `ApplicationError` metadata beyond a flat operator message, or `Hexalith.Memories.Server` adopts `Hexalith.Commons.ValueOrError<T>` as an approved dependency across this boundary.
+  - Rationale: The helper results are private to `EmbeddingVectorMigrationService`, immediately converted into `EmbeddingMigrationResult`, and already produce automation-readable `Plumbing`, `DomainError`, and `Cancelled` exit codes with sanitized messages. Introducing `Hexalith.Commons.ValueOrError<T>` here would add cross-project reference churn without improving the public migration command contract.
+
 ## Closed/Accepted by: Story 15.2 Provider Model Dimension Registry (2026-05-13)
 
 - **13.1-RV6 - resolved.** Provider validation now has a shared maximum

@@ -12,6 +12,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
 
@@ -64,6 +65,15 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
         }
 
         IDatabase db = _redis.GetDatabase();
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            input.EmbeddingProvider,
+            input.EmbeddingModel,
+            input.EmbeddingDimensions);
+
         var ft = db.FT();
 
         string indexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);

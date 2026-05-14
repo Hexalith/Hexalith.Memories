@@ -1,6 +1,6 @@
 # Story 15.3: Live Migration Coordination Policy
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,52 +22,52 @@ so that a tenant cannot finish migration with mixed provider/model vector state.
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Verify migration and ingestion state before choosing policy (AC: 1-4)
-  - [ ] Read `EmbeddingVectorMigrationService.cs`, `IEmbeddingMigrationStore.cs`, `RedisEmbeddingMigrationStore.cs`, `GenerateEmbeddingActivity.cs`, `EmbeddingVectorMigrationServiceTests.cs`, `docs/operations/embedding-providers.md`, and the `13.6-RV1` / `13.6-RV3` entries in `deferred-work.md` before editing.
-  - [ ] Confirm Stories 13.6, 13.7, 14.4, and 15.2 are not actively `in-progress` or `review`; if another migration/provider story is active, stop and record the exact status.
-  - [ ] Identify the current cutover order in live migration: marker start, semantic index drop/recreate, tenant config write, raw migration, natural-language migration, marker completion.
-  - [ ] Identify all ingestion paths that can write raw or natural-language semantic vectors during that window, including DAPR workflow retries and `GenerateEmbeddingActivity` config reads.
+- [x] Task 0 - Verify migration and ingestion state before choosing policy (AC: 1-4)
+  - [x] Read `EmbeddingVectorMigrationService.cs`, `IEmbeddingMigrationStore.cs`, `RedisEmbeddingMigrationStore.cs`, `GenerateEmbeddingActivity.cs`, `EmbeddingVectorMigrationServiceTests.cs`, `docs/operations/embedding-providers.md`, and the `13.6-RV1` / `13.6-RV3` entries in `deferred-work.md` before editing.
+  - [x] Confirm Stories 13.6, 13.7, 14.4, and 15.2 are not actively `in-progress` or `review`; if another migration/provider story is active, stop and record the exact status.
+  - [x] Identify the current cutover order in live migration: marker start, semantic index drop/recreate, tenant config write, raw migration, natural-language migration, marker completion.
+  - [x] Identify all ingestion paths that can write raw or natural-language semantic vectors during that window, including DAPR workflow retries and `GenerateEmbeddingActivity` config reads.
 
-- [ ] Task 1 - Implement the selected coordination policy (AC: 1, 3, 4)
-  - [ ] Use the selected policy: durable tenant-scoped migration marker enforcement. Do not switch to operator downtime, global pause, dual-write, or search fan-out unless the story is explicitly corrected again before development.
-  - [ ] Treat cutover as beginning immediately after `StartMigrationMarkerAsync(...)` succeeds and before semantic indexes are dropped/recreated or tenant config is written.
-  - [ ] While the active marker exists for a tenant, semantic vector writes for that tenant must not persist a vector whose provider/model/dimensions do not match the marker target.
-  - [ ] In-flight ingestion work that read old config before cutover must be blocked, retried, or fail closed at the semantic write boundary; it must not silently write stale provider/model metadata.
-  - [ ] Ingestion work that starts after the marker is active must observe the marker before expensive provider calls where practical, and must also be protected at the final write boundary.
-  - [ ] Resume must keep the active marker authoritative until a clean migration completion stamps the marker complete; interrupted runs must not clear the protection early.
+- [x] Task 1 - Implement the selected coordination policy (AC: 1, 3, 4)
+  - [x] Use the selected policy: durable tenant-scoped migration marker enforcement. Do not switch to operator downtime, global pause, dual-write, or search fan-out unless the story is explicitly corrected again before development.
+  - [x] Treat cutover as beginning immediately after `StartMigrationMarkerAsync(...)` succeeds and before semantic indexes are dropped/recreated or tenant config is written.
+  - [x] While the active marker exists for a tenant, semantic vector writes for that tenant must not persist a vector whose provider/model/dimensions do not match the marker target.
+  - [x] In-flight ingestion work that read old config before cutover must be blocked, retried, or fail closed at the semantic write boundary; it must not silently write stale provider/model metadata.
+  - [x] Ingestion work that starts after the marker is active must observe the marker before expensive provider calls where practical, and must also be protected at the final write boundary.
+  - [x] Resume must keep the active marker authoritative until a clean migration completion stamps the marker complete; interrupted runs must not clear the protection early.
 
-- [ ] Task 2 - Add the durable marker read/write guard (AC: 1, 3)
-  - [ ] Extend the migration store boundary, or add a narrow read-gate service, so runtime ingestion/indexing code can read an active tenant migration marker and target config without depending on static process memory.
-  - [ ] Ensure `StartMigrationMarkerAsync(...)` records enough target data for the runtime gate: tenant ID, target provider, target model, target dimensions, and active/completed status.
-  - [ ] Guard `GenerateEmbeddingActivity` or the closest practical pre-provider-call boundary so post-marker ingestion avoids avoidable old-config provider calls.
-  - [ ] Guard both semantic write activities: `IndexSemanticActivity` for raw payload vectors and `IndexNaturalLanguageSemanticActivity` for natural-language vectors. These are mandatory because stale workflows may already hold an old `EmbeddingResult` before migration cutover.
-  - [ ] The write guard must compare the vector write input's provider, model, and dimensions against the active marker target. If they differ, fail closed with a retryable or automation-readable failure that preserves existing workflow retry/compensation semantics.
-  - [ ] Do not block unrelated tenants. Do not make the marker a global ingestion pause.
-  - [ ] Keep secret and provider error redaction behavior from Stories 14.3 and 14.4 unchanged.
+- [x] Task 2 - Add the durable marker read/write guard (AC: 1, 3)
+  - [x] Extend the migration store boundary, or add a narrow read-gate service, so runtime ingestion/indexing code can read an active tenant migration marker and target config without depending on static process memory.
+  - [x] Ensure `StartMigrationMarkerAsync(...)` records enough target data for the runtime gate: tenant ID, target provider, target model, target dimensions, and active/completed status.
+  - [x] Guard `GenerateEmbeddingActivity` or the closest practical pre-provider-call boundary so post-marker ingestion avoids avoidable old-config provider calls.
+  - [x] Guard both semantic write activities: `IndexSemanticActivity` for raw payload vectors and `IndexNaturalLanguageSemanticActivity` for natural-language vectors. These are mandatory because stale workflows may already hold an old `EmbeddingResult` before migration cutover.
+  - [x] The write guard must compare the vector write input's provider, model, and dimensions against the active marker target. If they differ, fail closed with a retryable or automation-readable failure that preserves existing workflow retry/compensation semantics.
+  - [x] Do not block unrelated tenants. Do not make the marker a global ingestion pause.
+  - [x] Keep secret and provider error redaction behavior from Stories 14.3 and 14.4 unchanged.
 
-- [ ] Task 3 - Resolve migration result-surface policy for `13.6-RV3` (AC: 2)
-  - [ ] Reassess `ValidateOptions(...)`, `TryBuildTargetConfig(...)`, tenant-level errors, and CLI exit behavior.
-  - [ ] Convert expected failures to `ValueOrError<T>` only if it can be done locally without adding broad `Hexalith.Commons` references or changing public result contracts unnecessarily.
-  - [ ] If retaining local string/tuple result helpers, document why `EmbeddingMigrationResult` plus stable exit codes is the approved equivalent for this command surface.
-  - [ ] Add focused tests for any changed result path so invalid options, invalid target config, tenant-level coordination failures, cancellation, and resume failures remain automation-readable.
-  - [ ] Mark `13.6-RV3` resolved, accepted, or carried-forward in `deferred-work.md` with the exact rationale/evidence.
+- [x] Task 3 - Resolve migration result-surface policy for `13.6-RV3` (AC: 2)
+  - [x] Reassess `ValidateOptions(...)`, `TryBuildTargetConfig(...)`, tenant-level errors, and CLI exit behavior.
+  - [x] Convert expected failures to `ValueOrError<T>` only if it can be done locally without adding broad `Hexalith.Commons` references or changing public result contracts unnecessarily.
+  - [x] If retaining local string/tuple result helpers, document why `EmbeddingMigrationResult` plus stable exit codes is the approved equivalent for this command surface.
+  - [x] Add focused tests for any changed result path so invalid options, invalid target config, tenant-level coordination failures, cancellation, and resume failures remain automation-readable.
+  - [x] Mark `13.6-RV3` resolved, accepted, or carried-forward in `deferred-work.md` with the exact rationale/evidence.
 
-- [ ] Task 4 - Update operator guidance and deferred-work dispositions (AC: 1-4)
-  - [ ] Update `docs/operations/embedding-providers.md` with the final coordination policy, required operator steps, abort/resume behavior, and whether ingestion downtime is required.
-  - [ ] Add a Story 15.3 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
-  - [ ] Mark `13.6-RV1` and `13.6-RV3` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
-  - [ ] Do not sweep adjacent migration IDs such as `13.6-RV2`, `13.6-RV4`, `13.6-RV5`, or provider-registry IDs unless implementation genuinely resolves them and the story records why they became in scope.
-  - [ ] Preserve historical context; add structured disposition blocks rather than deleting original review notes.
+- [x] Task 4 - Update operator guidance and deferred-work dispositions (AC: 1-4)
+  - [x] Update `docs/operations/embedding-providers.md` with the final coordination policy, required operator steps, abort/resume behavior, and whether ingestion downtime is required.
+  - [x] Add a Story 15.3 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
+  - [x] Mark `13.6-RV1` and `13.6-RV3` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
+  - [x] Do not sweep adjacent migration IDs such as `13.6-RV2`, `13.6-RV4`, `13.6-RV5`, or provider-registry IDs unless implementation genuinely resolves them and the story records why they became in scope.
+  - [x] Preserve historical context; add structured disposition blocks rather than deleting original review notes.
 
-- [ ] Task 5 - Validate coordination behavior (AC: 1-4)
-  - [ ] Add a deterministic stale-config race test: ingestion reads or produces an old-provider embedding result, migration marker becomes active, then the raw semantic write attempts to persist; expected result is no old-provider raw semantic hash persisted.
-  - [ ] Add the same deterministic race coverage for the natural-language semantic write path.
-  - [ ] Add a post-marker ingestion test showing new ingestion observes the active marker before or during generation and does not persist old-provider vectors.
-  - [ ] Add a resume/interruption test proving the active marker remains protective until clean completion and is not cleared by tenant-level errors, per-unit failures, or cancellation.
-  - [ ] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingVectorMigrationServiceTests"`.
-  - [ ] If ingestion activity code changes, run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~GenerateEmbeddingActivity"`.
-  - [ ] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
-  - [ ] Run `git diff --check -- src/Hexalith.Memories.Server/Migration src/Hexalith.Memories.Server/Activities/Ingestion src/Hexalith.Memories.Server/Actors tests/Hexalith.Memories.Server.Tests/Migration tests/Hexalith.Memories.Server.Tests/Activities/Ingestion docs/operations/embedding-providers.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-3-live-migration-coordination-policy.md`.
+- [x] Task 5 - Validate coordination behavior (AC: 1-4)
+  - [x] Add a deterministic stale-config race test: ingestion reads or produces an old-provider embedding result, migration marker becomes active, then the raw semantic write attempts to persist; expected result is no old-provider raw semantic hash persisted.
+  - [x] Add the same deterministic race coverage for the natural-language semantic write path.
+  - [x] Add a post-marker ingestion test showing new ingestion observes the active marker before or during generation and does not persist old-provider vectors.
+  - [x] Add a resume/interruption test proving the active marker remains protective until clean completion and is not cleared by tenant-level errors, per-unit failures, or cancellation.
+  - [x] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingVectorMigrationServiceTests"`.
+  - [x] If ingestion activity code changes, run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~GenerateEmbeddingActivity"`.
+  - [x] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
+  - [x] Run `git diff --check -- src/Hexalith.Memories.Server/Migration src/Hexalith.Memories.Server/Activities/Ingestion src/Hexalith.Memories.Server/Actors tests/Hexalith.Memories.Server.Tests/Migration tests/Hexalith.Memories.Server.Tests/Activities/Ingestion docs/operations/embedding-providers.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-3-live-migration-coordination-policy.md`.
 
 ## File Scope
 
@@ -221,6 +221,15 @@ GPT-5
 - `/bmad-create-story 15-3-live-migration-coordination-policy` context gathering loaded Epic 15 planning, sprint status, root project context, Story 15.2, Stories 13.6 and 14.4, current deferred-work entries, migration service/store/activity source, migration tests, operator docs, and recent git history.
 - No external technology research was needed for this story. The implementation surface is repository-owned migration coordination, ingestion behavior, result semantics, and operator documentation.
 - 2026-05-14 create-story update reloaded sprint status, Epic 15 planning, project-context facts, current migration service/store/activity/indexing code, migration tests, operator docs, deferred-work entries `13.6-RV1` and `13.6-RV3`, Stories 13.6/14.4/15.2, and recent git history.
+- 2026-05-14 dev-story implementation verified Stories 13.6, 13.7, 14.4, and 15.2 are `done` in sprint status before edits. No active migration/provider story blocked work.
+- Validation evidence: focused combined guard slice 66/66, `EmbeddingVectorMigrationServiceTests` 29/29, `GenerateEmbeddingActivity` 20/20, `IndexSemanticActivityTests` 10/10, `IndexNaturalLanguageSemanticActivityTests` 7/7, full `Hexalith.Memories.Server.Tests` 1770/1770, `dotnet build Hexalith.Memories.slnx` 0W/0E, and `git diff --check` clean apart from Git CRLF normalization warnings.
+
+### Implementation Plan
+
+- Use the existing Redis marker model as the durable source of truth and add a tenant-scoped active marker key so runtime ingestion/indexing can read the target without process-local state or provider/model key discovery.
+- Keep migration cutover order intact: `StartMigrationMarkerAsync(...)`, semantic index drop/recreate, target tenant config write, raw re-embedding, natural-language re-embedding, and marker completion only after a clean run.
+- Add a pre-provider-call marker check in `GenerateEmbeddingActivity` when the Redis marker dependency is available, and enforce the correctness invariant at both Redis semantic write boundaries.
+- Retain migration-local `EmbeddingMigrationResult` plus stable exit codes as the accepted equivalent for `13.6-RV3`; do not add broad `Hexalith.Commons.ValueOrError<T>` reference churn in this story.
 
 ### Completion Notes List
 
@@ -229,11 +238,30 @@ GPT-5
 - Provider registry work, token transport policy, dual-write/search fan-out, broad rollback, integration fixture expansion, CI/release tooling, and submodules are forbidden by default.
 - No submodule state was touched.
 - 2026-05-14 update selected the concrete coordination policy: durable tenant-scoped migration marker enforcement visible to ingestion and mandatory at both semantic write boundaries. Story promoted back to `ready-for-dev`.
+- Implemented durable tenant-scoped active marker reads/writes and marker-target enforcement for generation, raw semantic indexing, and natural-language semantic indexing.
+- Added deterministic tests for stale raw semantic writes, stale natural-language semantic writes, post-marker generation blocking, and marker retention on interrupted/failed live migration.
+- Updated operator guidance with coordination policy, no-global-pause/no-required-downtime behavior, abort/resume expectations, and verification guidance.
+- Added structured deferred-work dispositions: `13.6-RV1` resolved, `13.6-RV3` accepted, and `13.6-RV2` resolved because the touched `IndexSemanticActivity.cs` file now has the required copyright header.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/15-3-live-migration-coordination-policy.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `docs/operations/embedding-providers.md`
+- `src/Hexalith.Memories.Server/Activities/Indexing/IndexNaturalLanguageSemanticActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarker.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs`
+- `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationWriteBlockedException.cs`
+- `src/Hexalith.Memories.Server/Migration/IEmbeddingMigrationStore.cs`
+- `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/IndexNaturalLanguageSemanticActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/IndexSemanticActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityConfigTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs`
 
 ### Party-Mode Review
 
@@ -262,6 +290,7 @@ GPT-5
 - 2026-05-12: Created Story 15.3 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-12: Party-mode review completed; moved story back to `backlog` pending an explicit migration coordination policy decision.
 - 2026-05-14: Create-story update selected the durable tenant-scoped migration marker write-gate policy, expanded file scope/tests for raw and natural-language semantic write boundaries, and promoted status to `ready-for-dev`.
+- 2026-05-14: Implemented durable active migration marker enforcement for generation and semantic write boundaries, updated operator/deferred-work documentation, validated focused and full server test suites, and moved story to `review`.
 
 ## Story Completion Status
 

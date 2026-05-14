@@ -1,3 +1,8 @@
+// <copyright file="IndexSemanticActivity.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using System.Runtime.InteropServices;
@@ -6,6 +11,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
 
@@ -48,6 +54,15 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         }
 
         IDatabase db = _redis.GetDatabase();
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            input.EmbeddingProvider,
+            input.EmbeddingModel,
+            input.EmbeddingDimensions);
+
         var ft = db.FT();
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
 

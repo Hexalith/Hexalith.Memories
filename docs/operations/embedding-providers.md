@@ -191,6 +191,26 @@ Live Path A migration:
 dotnet run --project tools\MigrateEmbeddingVectors -- --live --tenant {TENANT_ID} --target-provider ollama --target-model qwen3-embedding:4b --target-dimensions 2560 --batch-size 100 --yes --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
 ```
 
+### Live Migration Coordination
+
+Live migration uses a durable tenant-scoped migration marker. The cutover point begins after the
+marker is written and before semantic indexes are dropped or tenant embedding configuration is changed.
+While the marker is active, ingestion for that tenant may continue only when its provider, model, and
+dimensions match the marker target. Stale in-flight work that still carries the old provider/model is
+blocked at the raw and natural-language semantic write boundaries before Redis hash persistence.
+
+The marker is tenant-scoped; unrelated tenants are not paused. Tenant-specific ingestion downtime is not
+required for the committed policy, but operators should expect stale in-flight workflows for the migrating
+tenant to retry or surface an automation-readable "blocked by active tenant migration marker" failure until
+they run with the target configuration.
+
+| State | Runtime behavior | Operator expectation |
+|-------|------------------|----------------------|
+| Marker active, new ingestion reads target config | Provider call and semantic writes proceed with target provider/model/dimensions. | Normal operation for the migrating tenant. |
+| Marker active, stale ingestion has old config or old embedding result | Generation is blocked before the provider call when observed in time; raw/NL semantic writes are always blocked before Redis persistence. | Let workflow retry after target config is visible, or rerun ingestion after migration if retries are exhausted. |
+| Live migration aborts, is cancelled, or records tenant/unit failures | Marker remains active and protective. | Fix the underlying failure and resume; do not manually clear the marker unless you have independently verified no mixed-provider vectors can be written. |
+| Resume succeeds and migration finishes cleanly | Marker is stamped completed after raw and natural-language re-embedding finish without failures. | Run dry-run verification and canary ingestion. |
+
 Resume after an interruption:
 
 ```powershell

@@ -1,3 +1,8 @@
+// <copyright file="IndexSemanticActivityTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
 using System.Runtime.InteropServices;
@@ -6,6 +11,8 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
 
@@ -88,6 +95,29 @@ public class IndexSemanticActivityTests
 
         await Should.ThrowAsync<RedisConnectionException>(
             () => activity.RunAsync(context, input));
+    }
+
+    [Fact]
+    public async Task RunAsync_ActiveMigrationMarkerWithOldProvider_ShouldFailBeforeHashWrite()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(CreateActiveMarkerEntries("test-tenant")));
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db);
+        ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
+        IndexInput input = CreateTestInput();
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IndexSemanticActivity activity = new(redis, logger);
+
+        EmbeddingMigrationWriteBlockedException ex = await Should.ThrowAsync<EmbeddingMigrationWriteBlockedException>(
+            () => activity.RunAsync(context, input));
+
+        ex.Message.ShouldContain("active tenant migration marker");
+        await db.DidNotReceive().HashSetAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -189,6 +219,15 @@ public class IndexSemanticActivityTests
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
+
+    private static HashEntry[] CreateActiveMarkerEntries(string tenantId) =>
+    [
+        new HashEntry("tenantId", tenantId),
+        new HashEntry("targetProvider", EmbeddingProviderDefaults.OllamaProviderName),
+        new HashEntry("targetModel", EmbeddingProviderDefaults.OllamaModelName),
+        new HashEntry("targetDimensions", EmbeddingProviderDefaults.Ollama().Dimensions),
+        new HashEntry("status", "started"),
+    ];
 
     private static void ConfigureExistingIndex(IDatabase db, int existingIndexDimensions, bool includeSubjectField)
     {

@@ -25,6 +25,8 @@ using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 public class GenerateEmbeddingActivityTests
 {
     private const string TenantId = "test-tenant";
@@ -67,6 +69,37 @@ public class GenerateEmbeddingActivityTests
 
         ex.TenantId.ShouldBe(TenantId);
         await rateLimiter.DidNotReceive().ReportRateLimitedAsync(Arg.Any<int>());
+        await embeddingClient.DidNotReceive().GenerateAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_ActiveMigrationMarkerWithOldConfig_ShouldNotCallProvider()
+    {
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
+        rateLimiter.TryConsumeAsync().Returns(true);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = CreateActivity(
+            embeddingClient,
+            actorProxyFactory,
+            redis: CreateRedisWithActiveMarker(TenantId));
+
+        await Should.ThrowAsync<Hexalith.Memories.Server.Migration.EmbeddingMigrationWriteBlockedException>(
+            () => activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new EmbeddingInput(TenantId, TestText)));
+
+        await embeddingClient.DidNotReceive().PrimeApiKeyAsync(
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
         await embeddingClient.DidNotReceive().GenerateAsync(
             Arg.Any<string>(),
             Arg.Any<string>(),
@@ -341,12 +374,14 @@ public class GenerateEmbeddingActivityTests
     private static GenerateEmbeddingActivity CreateActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,
-        IJitterSource? jitterSource = null)
+        IJitterSource? jitterSource = null,
+        IConnectionMultiplexer? redis = null)
         => new(
             embeddingClient,
             actorProxyFactory,
             jitterSource ?? new FixedJitterSource(0),
-            NullLogger<GenerateEmbeddingActivity>.Instance);
+            NullLogger<GenerateEmbeddingActivity>.Instance,
+            redis ?? CreateRedisWithoutMarker());
 
     private static EmbeddingClient CreateMockEmbeddingClient(float[] vectorToReturn)
     {
@@ -389,6 +424,33 @@ public class GenerateEmbeddingActivityTests
         factory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
 
         return factory;
+    }
+
+    private static IConnectionMultiplexer CreateRedisWithoutMarker()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(Array.Empty<HashEntry>()));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return redis;
+    }
+
+    private static IConnectionMultiplexer CreateRedisWithActiveMarker(string tenantId)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(new[]
+            {
+                new HashEntry("tenantId", tenantId),
+                new HashEntry("targetProvider", EmbeddingProviderDefaults.OllamaProviderName),
+                new HashEntry("targetModel", EmbeddingProviderDefaults.OllamaModelName),
+                new HashEntry("targetDimensions", EmbeddingProviderDefaults.Ollama().Dimensions),
+                new HashEntry("status", "started"),
+            }));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return redis;
     }
 
     private sealed class FixedJitterSource : IJitterSource

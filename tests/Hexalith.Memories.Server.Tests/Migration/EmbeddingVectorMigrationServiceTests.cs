@@ -548,6 +548,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
         store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
         store.MarkerStarted.ShouldBeTrue();
         store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
     }
 
     [Fact]
@@ -575,6 +576,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
         result.Message.ShouldContain("marker write failed");
         store.MarkerStarted.ShouldBeTrue();
         store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
         store.RecordedFailures.Count.ShouldBe(1);
         store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
     }
@@ -618,6 +620,8 @@ public sealed class EmbeddingVectorMigrationServiceTests
         public List<bool> ForceReindexValues { get; } = [];
 
         public Dictionary<string, bool> MigrationMarkers { get; } = [];
+
+        public Dictionary<string, EmbeddingMigrationMarker> ActiveMarkers { get; } = [];
 
         public HashSet<string> RetainedPreviousIndexes { get; } = [];
 
@@ -673,8 +677,17 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
             MarkerStarted = true;
             MigrationMarkers[tenantId] = true;
+            ActiveMarkers[tenantId] = new EmbeddingMigrationMarker(
+                tenantId,
+                targetConfig.Provider,
+                targetConfig.Model,
+                targetConfig.Dimensions,
+                resume ? "resumed" : "started");
             return Task.CompletedTask;
         }
+
+        public Task<EmbeddingMigrationMarker?> GetActiveMigrationMarkerAsync(string tenantId, CancellationToken ct)
+            => Task.FromResult(ActiveMarkers.GetValueOrDefault(tenantId));
 
         public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
         {
@@ -684,6 +697,12 @@ public sealed class EmbeddingVectorMigrationServiceTests
             }
 
             MarkerCompleted = true;
+            ActiveMarkers[tenantId] = new EmbeddingMigrationMarker(
+                tenantId,
+                targetConfig.Provider,
+                targetConfig.Model,
+                targetConfig.Dimensions,
+                "completed");
             return Task.CompletedTask;
         }
 

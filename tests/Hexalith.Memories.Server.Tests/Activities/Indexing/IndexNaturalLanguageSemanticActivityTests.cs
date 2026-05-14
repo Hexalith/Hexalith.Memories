@@ -9,6 +9,8 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
 
@@ -114,6 +116,28 @@ public class IndexNaturalLanguageSemanticActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_ActiveMigrationMarkerWithOldProvider_ShouldFailBeforeHashWrite()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(CreateActiveMarkerEntries("tenant-a")));
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db);
+        IndexNaturalLanguageSemanticActivity activity =
+            new(redis, Substitute.For<ILogger<IndexNaturalLanguageSemanticActivity>>());
+
+        EmbeddingMigrationWriteBlockedException ex = await Should.ThrowAsync<EmbeddingMigrationWriteBlockedException>(
+            () => activity.RunAsync(
+                Substitute.For<WorkflowActivityContext>(),
+                CreateInput()));
+
+        ex.Message.ShouldContain("active tenant migration marker");
+        await db.DidNotReceive().HashSetAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task RunAsync_DimensionsMismatch_Throws()
     {
         IDatabase db = Substitute.For<IDatabase>();
@@ -166,6 +190,15 @@ public class IndexNaturalLanguageSemanticActivityTests
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
+
+    private static HashEntry[] CreateActiveMarkerEntries(string tenantId) =>
+    [
+        new HashEntry("tenantId", tenantId),
+        new HashEntry("targetProvider", EmbeddingProviderDefaults.OllamaProviderName),
+        new HashEntry("targetModel", EmbeddingProviderDefaults.OllamaModelName),
+        new HashEntry("targetDimensions", EmbeddingProviderDefaults.Ollama().Dimensions),
+        new HashEntry("status", "started"),
+    ];
 
     private static NaturalLanguageIndexInput CreateInput() => new()
     {

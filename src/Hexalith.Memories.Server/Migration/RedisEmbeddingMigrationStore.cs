@@ -196,6 +196,15 @@ public sealed partial class RedisEmbeddingMigrationStore(
             new("startedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
         ];
         await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
+        await db.HashSetAsync(EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId), entries).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc/>
+    public async Task<EmbeddingMigrationMarker?> GetActiveMigrationMarkerAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        IDatabase db = redis.GetDatabase();
+        return await EmbeddingMigrationMarkerReader.ReadActiveMarkerAsync(db, tenantId, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -211,6 +220,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
             new("completedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
         ];
         await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
+        await db.HashSetAsync(EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId), entries).WaitAsync(ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>

@@ -22,6 +22,8 @@ using NSubstitute;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 public class GenerateEmbeddingActivityConfigTests
 {
     private const string TenantId = "test-tenant";
@@ -137,8 +139,19 @@ public class GenerateEmbeddingActivityConfigTests
             embeddingClient,
             actorProxyFactory,
             new ZeroJitterSource(),
-            NullLogger<GenerateEmbeddingActivity>.Instance);
+            NullLogger<GenerateEmbeddingActivity>.Instance,
+            CreateRedisWithoutMarker());
         return (activity, embeddingClient, rateLimiter);
+    }
+
+    private static IConnectionMultiplexer CreateRedisWithoutMarker()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(Array.Empty<HashEntry>()));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return redis;
     }
 
     private sealed class ZeroJitterSource : IJitterSource
