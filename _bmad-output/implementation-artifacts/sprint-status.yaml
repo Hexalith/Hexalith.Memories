@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-13T21:25:00+02:00 # Story 15.2 dev-story complete; in-progress -> review.
+last_updated: 2026-05-14T10:30:00+02:00 # Story 15.2 review close-out: 3 decisions resolved + 8 patches applied + 9 deferred (15.2-RV1..RV9); review -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -192,7 +192,7 @@ development_status:
   # Epic 15: Carry-Forward Operational Risk Closure
   epic-15: in-progress # 2026-05-12 Story 15.1 created; Epic 15 started.
   15-1-release-edge-case-preflight-hardening: done # 2026-05-13 review close-out (3-layer adversarial: Blind + Edge + Auditor): all 4 ACs PASS; 1 decision resolved (expand skip-condition guard to step level); 12 patches applied (preflight robustness, contract-test CRLF tolerance, fresh-clone evidence, completion-notes truth-claim); 16 carry-forward items recorded as 15.1-RV1..15.1-RV16. Validation: release preflight fixtures 9/9, CiTestInventoryTests 48/48, validate-release-packages.ps1 passed, git diff --check clean.
-  15-2-provider-model-dimension-registry: review # 2026-05-13 dev-story complete; provider/model/dimension registry implemented and validated.
+  15-2-provider-model-dimension-registry: done # 2026-05-14 review close-out (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 + AC6 PASS, AC5 PARTIAL (contract-tier serialization test gap recorded as 15.2-RV1). 3 decisions resolved (D1 EventStore submodule pointer — kept with Scope-Override; D2 epics.md + sprint-change-proposal — File Scope amended + Scope-Override; D3 AuthMode-after-RateLimit order — accepted and pinned with new ordering-contract tests). 8 patches applied: P1 Registry → ImmutableArray; P2 misleading "DimensionsAtSharedMaximum" test renamed to "UnknownModelAtSharedDimensionMaximum"; P3 tautological mixed-case test strengthened; P4 Ollama rate-limit no-op `with` fixed (6000→30_000); P5 isOllama uses registry-canonical provider.ProviderName; P6 unused ModelRegistryEntry.DefaultDimensions removed; P7 added 2 non-leakage assertions; P8 added 2 ordering-contract tests + remarks XML doc. Validation: EmbeddingProviderDefaultsTests 145/145 PASS (was 141, +4 new); focused slice (Defaults + Client + Actor) 237/237 PASS; full Hexalith.Memories.slnx build 0W/0E. 9 carry-forward items recorded as 15.2-RV1..15.2-RV9.
   15-3-live-migration-coordination-policy: backlog # 2026-05-12 party-mode review recommended needs-story-update pending explicit migration coordination policy decision.
   15-4-token-endpoint-transport-policy: ready-for-dev # 2026-05-12 story context created.
   15-5-deferred-register-triage-sweep: ready-for-dev # 2026-05-12 story context created.

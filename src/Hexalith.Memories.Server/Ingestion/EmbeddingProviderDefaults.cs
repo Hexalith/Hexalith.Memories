@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Ingestion;
 
+using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Contracts.V1;
@@ -34,14 +35,14 @@ public static partial class EmbeddingProviderDefaults
     // width until a story deliberately raises the storage and memory policy.
     private const int MaxSupportedDimensions = 16_384;
 
-    private static readonly ProviderRegistryEntry[] Registry =
+    private static readonly ImmutableArray<ProviderRegistryEntry> Registry =
     [
         new(
             GoogleProviderName,
             MaxRateLimitPerMinute: 3000,
             Models:
             [
-                new(GoogleModelName, [768, 1536, 3072], DefaultDimensions: 768),
+                new(GoogleModelName, [768, 1536, 3072]),
             ],
             CreateDefaultConfig: () => new TenantEmbeddingConfig
             {
@@ -57,7 +58,7 @@ public static partial class EmbeddingProviderDefaults
             MaxRateLimitPerMinute: 60_000,
             Models:
             [
-                new(OllamaModelName, [2560], DefaultDimensions: 2560),
+                new(OllamaModelName, [2560]),
             ],
             CreateDefaultConfig: () => new TenantEmbeddingConfig
             {
@@ -128,6 +129,19 @@ public static partial class EmbeddingProviderDefaults
 
     /// <summary>Validates a tenant embedding configuration.</summary>
     /// <param name="config">The configuration to validate.</param>
+    /// <remarks>
+    /// Validation order is part of the contract — callers and telemetry that pattern-match on which
+    /// <see cref="ArgumentException"/> fires first MUST rely on this order:
+    /// (1) <see cref="ArgumentNullException"/> on null config,
+    /// (2) provider non-blank, (3) model non-blank, (4) provider registry membership,
+    /// (5) model name regex shape, (6) dimensions &gt; 0, (7) dimensions &lt;= shared max,
+    /// (8) model registry membership for the resolved provider,
+    /// (9) allowed dimensions for the resolved model, (10) rate-limit &gt; 0, (11) rate-limit ceiling
+    /// for the resolved provider, (12) auth-mode in supported set, (13) URL shape on BaseUrl /
+    /// OidcTokenEndpoint, (14) auth-mode/provider compatibility, (15) Ollama BaseUrl requirement,
+    /// (16) OIDC client-credentials requirements, (17) ApiSecretKeyName regex shape. The order
+    /// is pinned by <c>EmbeddingProviderDefaultsTests.Validate_OrderingContract_*</c>.
+    /// </remarks>
     /// <exception cref="ArgumentNullException">Thrown when config is null.</exception>
     /// <exception cref="ArgumentException">Thrown when any field is invalid.</exception>
     public static void Validate(TenantEmbeddingConfig config)
@@ -197,7 +211,7 @@ public static partial class EmbeddingProviderDefaults
                 nameof(config.AuthMode));
         }
 
-        bool isOllama = string.Equals(config.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
+        bool isOllama = provider.ProviderName == OllamaProviderName;
         bool isOidcClientCredentials = string.Equals(config.AuthMode, OidcClientCredentialsAuthMode, StringComparison.OrdinalIgnoreCase);
 
         // AC9: any non-empty BaseUrl / OidcTokenEndpoint must parse as an absolute HTTP(S) URL,
@@ -329,7 +343,7 @@ public static partial class EmbeddingProviderDefaults
     private sealed record ProviderRegistryEntry(
         string ProviderName,
         int MaxRateLimitPerMinute,
-        ModelRegistryEntry[] Models,
+        ImmutableArray<ModelRegistryEntry> Models,
         Func<TenantEmbeddingConfig> CreateDefaultConfig)
     {
         public ModelRegistryEntry? FindModel(string model)
@@ -341,6 +355,5 @@ public static partial class EmbeddingProviderDefaults
 
     private sealed record ModelRegistryEntry(
         string ModelName,
-        int[] AllowedDimensions,
-        int DefaultDimensions);
+        ImmutableArray<int> AllowedDimensions);
 }

@@ -302,8 +302,11 @@ public class EmbeddingProviderDefaultsTests
     }
 
     [Fact]
-    public void Validate_DimensionsAtSharedMaximumForUnsupportedModel_ShouldThrowBeforeIndexUse()
+    public void Validate_UnknownModelAtSharedDimensionMaximum_ShouldThrowUnknownModelError()
     {
+        // The unknown-model error is expected — not the dimension-cap error — because the dimension
+        // value 16_384 is exactly at the shared maximum (inclusive) and clears the cap check, then
+        // the closed-registry model lookup rejects "future-model" before any index path can run.
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
         {
             Model = "future-model",
@@ -313,6 +316,7 @@ public class EmbeddingProviderDefaultsTests
         ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
         ex.Message.ShouldContain("future-model");
         ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleModelName);
+        ex.Message.ShouldNotContain("16384");
     }
 
     [Fact]
@@ -592,15 +596,27 @@ public class EmbeddingProviderDefaultsTests
     }
 
     [Theory]
-    [InlineData("Google", "Gemini-Embedding-001")]
-    [InlineData("Ollama", "Qwen3-Embedding:4B")]
-    public void Validate_MixedCaseProviderAndModel_ShouldUseCaseInsensitiveRegistryLookup(string provider, string model)
+    [InlineData("Google", "Gemini-Embedding-001", EmbeddingProviderDefaults.GoogleProviderName, EmbeddingProviderDefaults.GoogleModelName)]
+    [InlineData("Ollama", "Qwen3-Embedding:4B", EmbeddingProviderDefaults.OllamaProviderName, EmbeddingProviderDefaults.OllamaModelName)]
+    public void Validate_MixedCaseProviderAndModel_ShouldUseCaseInsensitiveRegistryLookup(
+        string provider,
+        string model,
+        string canonicalProvider,
+        string canonicalModel)
     {
+        // Establish that the test inputs differ from canonical casing so we are exercising the
+        // case-insensitive lookup, not a coincidental match.
+        provider.ShouldNotBe(canonicalProvider);
+        model.ShouldNotBe(canonicalModel);
+
         TenantEmbeddingConfig config = string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase)
             ? EmbeddingProviderDefaults.Google() with { Provider = provider, Model = model }
             : EmbeddingProviderDefaults.Ollama() with { Provider = provider, Model = model };
 
         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+
+        // Caller-provided casing is preserved on the config; the registry only normalizes for
+        // lookup, not for persistence.
         config.Provider.ShouldBe(provider);
         config.Model.ShouldBe(model);
     }
@@ -608,7 +624,9 @@ public class EmbeddingProviderDefaultsTests
     [Fact]
     public void Validate_OllamaRateLimitAboveGoogleCeilingButBelowOllamaCeiling_ShouldNotFallBackToGoogle()
     {
-        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 6000 };
+        // 30_000 is well above Google's 3_000 ceiling and well below Ollama's 60_000 ceiling, so the
+        // assertion would fail if the registry silently routed Ollama lookups through Google's limit.
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 30_000 };
 
         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
     }
@@ -621,6 +639,77 @@ public class EmbeddingProviderDefaultsTests
         ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
         ex.Message.ShouldContain("3000");
         ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleProviderName);
+    }
+
+    [Fact]
+    public void Validate_UnknownProviderError_ShouldNotLeakModelNames()
+    {
+        // Unsupported-provider error must list providers only; leaking model names would imply
+        // the registry could be probed via crafted provider inputs.
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = "unknown-provider" };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain("unknown-provider");
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleProviderName);
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.OllamaProviderName);
+        ex.Message.ShouldNotContain(EmbeddingProviderDefaults.GoogleModelName);
+        ex.Message.ShouldNotContain(EmbeddingProviderDefaults.OllamaModelName);
+    }
+
+    [Fact]
+    public void Validate_GoogleConfigWithOllamaModel_ShouldNotLeakOllamaModelNameInSupportedSuffix()
+    {
+        // Unsupported-model error for provider P must echo the offending input (so the operator
+        // knows what was rejected) and list only P's supported models in the "Supported models …"
+        // suffix. The Ollama model name therefore appears exactly once — as the echoed input —
+        // never inside the supported-models suffix that follows.
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
+        {
+            Model = EmbeddingProviderDefaults.OllamaModelName,
+            Dimensions = 2560,
+        };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleProviderName);
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleModelName);
+
+        const string suffixMarker = "Supported models for provider";
+        int suffixStart = ex.Message.IndexOf(suffixMarker, StringComparison.Ordinal);
+        suffixStart.ShouldBeGreaterThan(-1);
+        string supportedSuffix = ex.Message[suffixStart..];
+        supportedSuffix.ShouldNotContain(EmbeddingProviderDefaults.OllamaModelName);
+    }
+
+    [Fact]
+    public void Validate_OrderingContract_AuthModeFiresAfterRateLimitWhenBothInvalid()
+    {
+        // Pins the new validation order documented on EmbeddingProviderDefaults.Validate: when a
+        // config is invalid on both rate-limit and auth-mode, rate-limit wins. Telemetry and
+        // operator runbooks that pattern-match on error sequence depend on this contract.
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
+        {
+            RateLimitPerMinute = 999_999,
+            AuthMode = "not-a-real-mode",
+        };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.ParamName.ShouldBe(nameof(config.RateLimitPerMinute));
+        ex.Message.ShouldNotContain("AuthMode");
+    }
+
+    [Fact]
+    public void Validate_OrderingContract_ProviderRegistryFiresBeforeModelShapeRegex()
+    {
+        // Pins ordering: unsupported provider beats malformed-model-regex when both are wrong.
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
+        {
+            Provider = "unknown-provider",
+            Model = ".bad-model-starts-with-punctuation",
+        };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.ParamName.ShouldBe(nameof(config.Provider));
+        ex.Message.ShouldContain("unknown-provider");
     }
 
     [Theory]
