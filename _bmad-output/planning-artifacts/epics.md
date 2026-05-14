@@ -370,13 +370,25 @@ Every commit is automatically built, tested, and versioned via GitHub Actions. P
 Cut the first real release of Hexalith.Memories to nuget.org, apply branch protection on `main`, operationalize the Epic 11 retrospective action items, and prove the release path end-to-end before any further feature investment. Closes the gap between "CI infrastructure built" and "release path proven against a real publish event."
 **Driven by:** Epic 11 retrospective + Sprint Change Proposal 2026-04-26 (Hybrid path = Operations Epic 12 first, then Phase 2 decision)
 
+### Epic 13: Embedding Provider Pluggability + Vector Migration
+Operator can migrate the embedding pipeline from Google to a self-hosted Ollama gateway protected by Keycloak OIDC, while preserving Google as an opt-in provider and providing a Path A vector migration tool.
+**Driven by:** Sprint Change Proposal 2026-04-29
+
+### Epic 14: Deferred Work Hardening and Operational Readiness
+Maintainers and operators can close high-value deferred review findings across CI correctness, release integrity, OIDC/embedding security, migration reliability, and deferred-work governance.
+**Lifecycle label:** Operational Readiness / Release Hardening
+
+### Epic 15: Carry-Forward Operational Risk Closure
+Maintainers and operators can convert remaining carry-forward risks from Epic 14 into planned implementation, acceptance, or refreshed deferral decisions.
+**Lifecycle label:** Operational Readiness / Release Hardening
+
 ---
 
 ## Epic 1: Foundation, Ingestion & Graph Edge Indexing
 
 Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), git submodules, and the IndexGraphActivity.
 
-### Story 1.1: Project Scaffolding & Single-Command Boot
+### Story 1.1: Set Up Initial Project from Aspire Starter Template
 
 As a developer,
 I want to run a single command (`dotnet run --project Hexalith.Memories.AppHost`) and have the entire stack boot — Memories Server with DAPR sidecar, Redis Stack, FalkorDB, and Aspire Dashboard,
@@ -2139,7 +2151,7 @@ The post-Epic-12 direction will be informed by:
 
 ---
 
-### Epic 13: Embedding Provider Pluggability + Vector Migration
+## Epic 13: Embedding Provider Pluggability + Vector Migration
 
 Extend the existing `IEmbeddingProvider`-shaped abstraction (originally built into Stories 1.4 / 1.7 for exactly this kind of growth) so the embedding pipeline can target a self-hosted Ollama gateway protected by Keycloak OIDC client_credentials, retain Google as an opt-in cloud provider, and migrate existing tenants' Redis Vector Search indexes from 768-dimension Google vectors to 2560-dimension Ollama vectors. This epic delivers cost / sovereignty / latency control for the embedding workload (operator's primary motivation) and proves the multi-provider extensibility that PRD §"Embedding Provider Configuration" promised but Story 1.7 deferred.
 
@@ -2409,7 +2421,7 @@ So that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 
 ---
 
-### Epic 14: Deferred Work Hardening and Operational Readiness
+## Epic 14: Deferred Work Hardening and Operational Readiness
 
 **Lifecycle label:** Operational Readiness / Release Hardening.
 
@@ -2582,7 +2594,7 @@ So that future planning can distinguish open risk, resolved risk, accepted risk,
 **When** it is implemented,
 **Then** it avoids submodule pointer changes and follows root-level submodule discipline.
 
-### Epic 15: Carry-Forward Operational Risk Closure
+## Epic 15: Carry-Forward Operational Risk Closure
 
 **Lifecycle label:** Operational Readiness / Release Hardening.
 

@@ -30,42 +30,60 @@ public static partial class EmbeddingProviderDefaults
     /// <summary>The OIDC client credentials authentication mode.</summary>
     public const string OidcClientCredentialsAuthMode = "oidc-client-credentials";
 
-    private const int GoogleMaxRateLimitPerMinute = 3000;
+    // Shared guardrail for registry expansion: future models must stay below a bounded vector
+    // width until a story deliberately raises the storage and memory policy.
+    private const int MaxSupportedDimensions = 16_384;
 
-    /// <summary>Default dimension count emitted by qwen3-embedding:4b on a self-hosted Ollama deployment.</summary>
-    private const int OllamaDimensions = 2560;
-
-    /// <summary>Self-hosted Ollama has no provider-side quota; this ceiling protects operator backend throughput from accidental misconfiguration.</summary>
-    private const int OllamaMaxRateLimitPerMinute = 60_000;
+    private static readonly ProviderRegistryEntry[] Registry =
+    [
+        new(
+            GoogleProviderName,
+            MaxRateLimitPerMinute: 3000,
+            Models:
+            [
+                new(GoogleModelName, [768, 1536, 3072], DefaultDimensions: 768),
+            ],
+            CreateDefaultConfig: () => new TenantEmbeddingConfig
+            {
+                Provider = GoogleProviderName,
+                Model = GoogleModelName,
+                Dimensions = 768,
+                RateLimitPerMinute = 1500,
+                ApiSecretKeyName = "google-embedding-api-key",
+                ReindexRequired = false,
+            }),
+        new(
+            OllamaProviderName,
+            MaxRateLimitPerMinute: 60_000,
+            Models:
+            [
+                new(OllamaModelName, [2560], DefaultDimensions: 2560),
+            ],
+            CreateDefaultConfig: () => new TenantEmbeddingConfig
+            {
+                Provider = OllamaProviderName,
+                Model = OllamaModelName,
+                Dimensions = 2560,
+                RateLimitPerMinute = 6000,
+                ApiSecretKeyName = "memories-embedding-client-secret",
+                BaseUrl = "https://llm.tache.ai",
+                AuthMode = OidcClientCredentialsAuthMode,
+                OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
+                OidcClientId = "memories-embedding",
+                OidcScope = "openid",
+                ReindexRequired = false,
+            }),
+    ];
 
     /// <summary>Returns the default Google embedding configuration using gemini-embedding-001.</summary>
     /// <returns>A <see cref="TenantEmbeddingConfig"/> with Google defaults.</returns>
-    public static TenantEmbeddingConfig Google() => new()
-    {
-        Provider = GoogleProviderName,
-        Model = GoogleModelName,
-        Dimensions = 768,
-        RateLimitPerMinute = 1500,
-        ApiSecretKeyName = "google-embedding-api-key",
-        ReindexRequired = false,
-    };
+    public static TenantEmbeddingConfig Google()
+        => FindRequiredProvider(GoogleProviderName).CreateDefaultConfig();
 
     /// <summary>Returns the default Ollama embedding configuration using qwen3-embedding:4b (2560 dimensions, self-hosted).</summary>
     /// <returns>A <see cref="TenantEmbeddingConfig"/> with Ollama defaults.</returns>
-    public static TenantEmbeddingConfig Ollama() => new()
-    {
-        Provider = OllamaProviderName,
-        Model = OllamaModelName,
-        Dimensions = OllamaDimensions,
-        RateLimitPerMinute = 6000,
-        ApiSecretKeyName = "memories-embedding-client-secret",
-        BaseUrl = "https://llm.tache.ai",
-        AuthMode = OidcClientCredentialsAuthMode,
-        OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
-        OidcClientId = "memories-embedding",
-        OidcScope = "openid",
-        ReindexRequired = false,
-    };
+    public static TenantEmbeddingConfig Ollama()
+        => FindRequiredProvider(OllamaProviderName).CreateDefaultConfig();
 
     /// <summary>Gets the configuration fields that require a full reindex when changed.</summary>
     /// <param name="currentConfig">The currently stored configuration.</param>
@@ -118,10 +136,11 @@ public static partial class EmbeddingProviderDefaults
         ArgumentException.ThrowIfNullOrWhiteSpace(config.Provider, nameof(config.Provider));
         ArgumentException.ThrowIfNullOrWhiteSpace(config.Model, nameof(config.Model));
 
-        if (!IsSupportedProvider(config.Provider))
+        ProviderRegistryEntry? provider = FindProvider(config.Provider);
+        if (provider is null)
         {
             throw new ArgumentException(
-                $"Provider '{config.Provider}' is not supported. Supported providers: '{GoogleProviderName}', '{OllamaProviderName}'.",
+                $"Provider '{config.Provider}' is not supported. Supported providers: {FormatQuoted(GetSupportedProviderNames())}.",
                 nameof(config.Provider));
         }
 
@@ -132,31 +151,30 @@ public static partial class EmbeddingProviderDefaults
                 nameof(config.Model));
         }
 
-        if (!IsSupportedAuthMode(config.AuthMode))
-        {
-            throw new ArgumentException(
-                $"AuthMode {DescribeAuthMode(config.AuthMode)} is not supported. Supported auth modes: '{ApiKeyAuthMode}', '{OidcClientCredentialsAuthMode}'.",
-                nameof(config.AuthMode));
-        }
-
         if (config.Dimensions <= 0)
         {
             throw new ArgumentException("Dimensions must be greater than 0.", nameof(config.Dimensions));
         }
 
-        if (string.Equals(config.Model, GoogleModelName, StringComparison.OrdinalIgnoreCase) &&
-            config.Dimensions is not (768 or 1536 or 3072))
+        if (config.Dimensions > MaxSupportedDimensions)
         {
             throw new ArgumentException(
-                $"Model '{GoogleModelName}' only supports dimensions 768, 1536, or 3072.",
+                $"Dimensions must be {MaxSupportedDimensions} or less.",
                 nameof(config.Dimensions));
         }
 
-        if (string.Equals(config.Model, OllamaModelName, StringComparison.OrdinalIgnoreCase) &&
-            config.Dimensions != OllamaDimensions)
+        ModelRegistryEntry? model = provider.FindModel(config.Model);
+        if (model is null)
         {
             throw new ArgumentException(
-                $"Model '{OllamaModelName}' only supports {OllamaDimensions} dimensions.",
+                $"Model '{config.Model}' is not supported for provider '{config.Provider}'. Supported models for provider '{provider.ProviderName}': {FormatQuoted(provider.GetSupportedModelNames())}.",
+                nameof(config.Model));
+        }
+
+        if (!model.AllowedDimensions.Contains(config.Dimensions))
+        {
+            throw new ArgumentException(
+                $"Model '{model.ModelName}' for provider '{provider.ProviderName}' only supports dimensions {FormatNumbers(model.AllowedDimensions)}.",
                 nameof(config.Dimensions));
         }
 
@@ -165,15 +183,18 @@ public static partial class EmbeddingProviderDefaults
             throw new ArgumentException("RateLimitPerMinute must be greater than 0.", nameof(config.RateLimitPerMinute));
         }
 
-        int maxRateLimit = string.Equals(config.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase)
-            ? OllamaMaxRateLimitPerMinute
-            : GoogleMaxRateLimitPerMinute;
-
-        if (config.RateLimitPerMinute > maxRateLimit)
+        if (config.RateLimitPerMinute > provider.MaxRateLimitPerMinute)
         {
             throw new ArgumentException(
-                $"RateLimitPerMinute must be {maxRateLimit} or less for provider '{config.Provider}'.",
+                $"RateLimitPerMinute must be {provider.MaxRateLimitPerMinute} or less for provider '{provider.ProviderName}'.",
                 nameof(config.RateLimitPerMinute));
+        }
+
+        if (!IsSupportedAuthMode(config.AuthMode))
+        {
+            throw new ArgumentException(
+                $"AuthMode {DescribeAuthMode(config.AuthMode)} is not supported. Supported auth modes: '{ApiKeyAuthMode}', '{OidcClientCredentialsAuthMode}'.",
+                nameof(config.AuthMode));
         }
 
         bool isOllama = string.Equals(config.Provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
@@ -226,9 +247,21 @@ public static partial class EmbeddingProviderDefaults
         }
     }
 
-    private static bool IsSupportedProvider(string provider) =>
-        string.Equals(provider, GoogleProviderName, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(provider, OllamaProviderName, StringComparison.OrdinalIgnoreCase);
+    private static ProviderRegistryEntry FindRequiredProvider(string provider)
+        => FindProvider(provider)
+        ?? throw new InvalidOperationException($"Embedding provider registry does not contain required provider '{provider}'.");
+
+    private static ProviderRegistryEntry? FindProvider(string provider)
+        => Registry.FirstOrDefault(entry => string.Equals(entry.ProviderName, provider, StringComparison.OrdinalIgnoreCase));
+
+    private static IEnumerable<string> GetSupportedProviderNames()
+        => Registry.Select(static entry => entry.ProviderName);
+
+    private static string FormatQuoted(IEnumerable<string> values)
+        => string.Join(", ", values.Select(static value => $"'{value}'"));
+
+    private static string FormatNumbers(IEnumerable<int> values)
+        => string.Join(", ", values);
 
     private static bool IsSupportedAuthMode(string? authMode) =>
         string.Equals(authMode, ApiKeyAuthMode, StringComparison.OrdinalIgnoreCase) ||
@@ -292,4 +325,22 @@ public static partial class EmbeddingProviderDefaults
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9.:_-]*$")]
     private static partial Regex ModelNamePattern();
+
+    private sealed record ProviderRegistryEntry(
+        string ProviderName,
+        int MaxRateLimitPerMinute,
+        ModelRegistryEntry[] Models,
+        Func<TenantEmbeddingConfig> CreateDefaultConfig)
+    {
+        public ModelRegistryEntry? FindModel(string model)
+            => Models.FirstOrDefault(entry => string.Equals(entry.ModelName, model, StringComparison.OrdinalIgnoreCase));
+
+        public IEnumerable<string> GetSupportedModelNames()
+            => Models.Select(static entry => entry.ModelName);
+    }
+
+    private sealed record ModelRegistryEntry(
+        string ModelName,
+        int[] AllowedDimensions,
+        int DefaultDimensions);
 }

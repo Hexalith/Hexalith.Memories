@@ -49,6 +49,51 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Closed/Accepted by: Story 15.2 Provider Model Dimension Registry (2026-05-13)
+
+- **13.1-RV6 - resolved.** Provider validation now has a shared maximum
+  vector-dimension policy and rejects out-of-policy dimensions before any tenant
+  state or index path can consume them.
+
+  - ID: 13.1-RV6
+  - Status: resolved
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+  - Re-open trigger: A future registry entry accepts a vector dimension above the shared maximum without a story that explicitly raises the storage/memory policy, or a tenant config with `Dimensions = int.MaxValue` reaches persistence/index creation.
+  - Evidence: Story 15.2 added `MaxSupportedDimensions = 16_384` in `EmbeddingProviderDefaults`, validates dimensions before model-specific allowlist checks, and added `EmbeddingProviderDefaultsTests.Validate_DimensionsAboveSharedMaximum_ShouldThrowAtConfigTime`.
+
+- **13.1-RV10 - accepted.** Provider and model validation remains
+  case-insensitive for compatibility, and caller-provided casing is preserved
+  rather than normalized at validation time.
+
+  - ID: 13.1-RV10
+  - Status: accepted
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+  - Re-open trigger: A persisted mixed-case provider/model value causes runtime dispatch, reindex detection, search metadata, or migration state comparisons to diverge.
+  - Rationale: Ollama model tags may be case-sensitive outside the committed `qwen3-embedding:4b` model, so Story 15.2 keeps validation case-insensitive while preserving original values. Evidence is pinned by `EmbeddingProviderDefaultsTests.Validate_MixedCaseProviderAndModel_ShouldUseCaseInsensitiveRegistryLookup`; compatibility consumers continue to use `OrdinalIgnoreCase` where provider/model equality matters.
+
+- **13.1-RV11 - resolved.** Provider/model/dimension validation now uses a
+  closed provider-scoped registry, so cross-pollinated and unknown models fail
+  by construction.
+
+  - ID: 13.1-RV11
+  - Status: resolved
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+  - Re-open trigger: Any provider/model pair validates without being present in the local registry, or a provider falls back to another provider's defaults, dimensions, models, or rate-limit ceiling.
+  - Evidence: Story 15.2 replaced scattered provider/model/dimension/rate-limit checks with a single local registry in `EmbeddingProviderDefaults` and added `EmbeddingProviderDefaultsTests.Validate_CrossProviderModelPairs_ShouldThrow`, `Validate_UnknownModelForProvider_ShouldThrowAndListProviderModels`, `Validate_SyntacticallyValidButUnregisteredModel_ShouldThrow`, and provider-scoped rate-limit tests.
+
+- **13.3-RV8 - accepted.** The persisted provider/model parser continues to
+  lowercase the provider and preserve the model string after the first colon.
+
+  - ID: 13.3-RV8
+  - Status: accepted
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs
+  - Re-open trigger: A persisted provider/model identifier with mixed casing fails a real runtime path, migration path, or equality comparison because provider and model casing are handled asymmetrically.
+  - Rationale: Provider names are registry keys and safe to normalize for dispatch, while model tags can contain embedded colons and may be case-sensitive in provider-specific APIs. Story 15.2 pins the behavior with `EmbeddingClientTests.ParseEmbeddingProvider_NormalizesProviderAndPreservesModelAfterFirstColon` and leaves runtime parsing unchanged.
+
 ## Closed/Accepted by: Story 15.1 Release Edge-Case Preflight Hardening (2026-05-13)
 
 - **S11-FC - resolved.** Release execution now has a repository-owned stale-tag

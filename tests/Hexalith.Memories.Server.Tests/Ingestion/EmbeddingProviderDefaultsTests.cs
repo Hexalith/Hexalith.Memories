@@ -39,6 +39,12 @@ public class EmbeddingProviderDefaultsTests
     }
 
     [Fact]
+    public void Validate_NullConfig_ShouldThrowArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => EmbeddingProviderDefaults.Validate(null!));
+    }
+
+    [Fact]
     public void Validate_UnsupportedProvider_ShouldThrow()
     {
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Provider = "openai" };
@@ -254,6 +260,69 @@ public class EmbeddingProviderDefaultsTests
         ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
         ex.Message.ShouldContain("google");
         ex.Message.ShouldContain("ollama");
+    }
+
+    [Theory]
+    [InlineData("google", "qwen3-embedding:4b", 2560)]
+    [InlineData("ollama", "gemini-embedding-001", 768)]
+    public void Validate_CrossProviderModelPairs_ShouldThrow(string provider, string model, int dimensions)
+    {
+        TenantEmbeddingConfig config = provider == EmbeddingProviderDefaults.GoogleProviderName
+            ? EmbeddingProviderDefaults.Google() with { Provider = provider, Model = model, Dimensions = dimensions }
+            : EmbeddingProviderDefaults.Ollama() with { Provider = provider, Model = model, Dimensions = dimensions };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain(model);
+        ex.Message.ShouldContain(provider);
+    }
+
+    [Theory]
+    [InlineData("google", "totally-fake")]
+    [InlineData("ollama", "totally-fake")]
+    public void Validate_UnknownModelForProvider_ShouldThrowAndListProviderModels(string provider, string model)
+    {
+        TenantEmbeddingConfig config = provider == EmbeddingProviderDefaults.GoogleProviderName
+            ? EmbeddingProviderDefaults.Google() with { Model = model }
+            : EmbeddingProviderDefaults.Ollama() with { Model = model };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain(model);
+        ex.Message.ShouldContain(provider);
+
+        if (provider == EmbeddingProviderDefaults.GoogleProviderName)
+        {
+            ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleModelName);
+            ex.Message.ShouldNotContain(EmbeddingProviderDefaults.OllamaModelName);
+        }
+        else
+        {
+            ex.Message.ShouldContain(EmbeddingProviderDefaults.OllamaModelName);
+            ex.Message.ShouldNotContain(EmbeddingProviderDefaults.GoogleModelName);
+        }
+    }
+
+    [Fact]
+    public void Validate_DimensionsAtSharedMaximumForUnsupportedModel_ShouldThrowBeforeIndexUse()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with
+        {
+            Model = "future-model",
+            Dimensions = 16_384,
+        };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain("future-model");
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleModelName);
+    }
+
+    [Fact]
+    public void Validate_DimensionsAboveSharedMaximum_ShouldThrowAtConfigTime()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = int.MaxValue };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain("Dimensions");
+        ex.Message.ShouldContain("16384");
     }
 
     [Fact]
@@ -513,11 +582,45 @@ public class EmbeddingProviderDefaultsTests
     [InlineData("0a")]
     [InlineData("9-x")]
     [InlineData("text-embedding-ada-002")]
-    public void Validate_ModelNameStartsWithAlphanumeric_ShouldNotThrow(string model)
+    public void Validate_SyntacticallyValidButUnregisteredModel_ShouldThrow(string model)
     {
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Model = model };
 
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleProviderName);
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleModelName);
+    }
+
+    [Theory]
+    [InlineData("Google", "Gemini-Embedding-001")]
+    [InlineData("Ollama", "Qwen3-Embedding:4B")]
+    public void Validate_MixedCaseProviderAndModel_ShouldUseCaseInsensitiveRegistryLookup(string provider, string model)
+    {
+        TenantEmbeddingConfig config = string.Equals(provider, "Google", StringComparison.OrdinalIgnoreCase)
+            ? EmbeddingProviderDefaults.Google() with { Provider = provider, Model = model }
+            : EmbeddingProviderDefaults.Ollama() with { Provider = provider, Model = model };
+
         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+        config.Provider.ShouldBe(provider);
+        config.Model.ShouldBe(model);
+    }
+
+    [Fact]
+    public void Validate_OllamaRateLimitAboveGoogleCeilingButBelowOllamaCeiling_ShouldNotFallBackToGoogle()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { RateLimitPerMinute = 6000 };
+
+        Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Fact]
+    public void Validate_GoogleRateLimitAboveGoogleCeilingButBelowOllamaCeiling_ShouldThrow()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 6000 };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+        ex.Message.ShouldContain("3000");
+        ex.Message.ShouldContain(EmbeddingProviderDefaults.GoogleProviderName);
     }
 
     [Theory]

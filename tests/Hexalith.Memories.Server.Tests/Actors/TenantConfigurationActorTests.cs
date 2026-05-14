@@ -95,7 +95,7 @@ public class TenantConfigurationActorTests
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
         SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
 
-        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Model = "text-embedding-004" };
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Ollama();
 
         // Act & Assert
         EmbeddingConfigChangeException ex = await Should.ThrowAsync<EmbeddingConfigChangeException>(
@@ -125,7 +125,7 @@ public class TenantConfigurationActorTests
         (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
         SetupExistingState(stateManager, EmbeddingProviderDefaults.Google());
 
-        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Google() with { Model = "different-model" };
+        TenantEmbeddingConfig newConfig = EmbeddingProviderDefaults.Ollama();
 
         // Act
         await actor.SetEmbeddingConfigAsync(newConfig, forceReindex: true);
@@ -133,7 +133,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<TenantEmbeddingConfig>(c => c.ReindexRequired && c.Model == "different-model"),
+            Arg.Is<TenantEmbeddingConfig>(c => c.ReindexRequired && c.Provider == "ollama" && c.Model == "qwen3-embedding:4b"),
             Arg.Any<CancellationToken>());
     }
 

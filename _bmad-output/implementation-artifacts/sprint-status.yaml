@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-13T12:30:00+02:00 # Story 15.1 review close-out complete; review -> done with 12 patches and 16 carried-forward review items.
+last_updated: 2026-05-13T21:25:00+02:00 # Story 15.2 dev-story complete; in-progress -> review.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -192,7 +192,7 @@ development_status:
   # Epic 15: Carry-Forward Operational Risk Closure
   epic-15: in-progress # 2026-05-12 Story 15.1 created; Epic 15 started.
   15-1-release-edge-case-preflight-hardening: done # 2026-05-13 review close-out (3-layer adversarial: Blind + Edge + Auditor): all 4 ACs PASS; 1 decision resolved (expand skip-condition guard to step level); 12 patches applied (preflight robustness, contract-test CRLF tolerance, fresh-clone evidence, completion-notes truth-claim); 16 carry-forward items recorded as 15.1-RV1..15.1-RV16. Validation: release preflight fixtures 9/9, CiTestInventoryTests 48/48, validate-release-packages.ps1 passed, git diff --check clean.
-  15-2-provider-model-dimension-registry: ready-for-dev # 2026-05-12 story context created.
+  15-2-provider-model-dimension-registry: review # 2026-05-13 dev-story complete; provider/model/dimension registry implemented and validated.
   15-3-live-migration-coordination-policy: backlog # 2026-05-12 party-mode review recommended needs-story-update pending explicit migration coordination policy decision.
   15-4-token-endpoint-transport-policy: ready-for-dev # 2026-05-12 story context created.
   15-5-deferred-register-triage-sweep: ready-for-dev # 2026-05-12 story context created.

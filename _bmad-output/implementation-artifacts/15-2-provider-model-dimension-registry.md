@@ -1,6 +1,6 @@
 # Story 15.2: Provider Model Dimension Registry
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,49 +26,49 @@ so that invalid or cross-pollinated embedding configurations fail before tenant 
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Verify current registry target and active deferred IDs (AC: 1-5)
-  - [ ] Read `EmbeddingProviderDefaults.cs`, `TenantEmbeddingConfig.cs`, `EmbeddingProviderDefaultsTests.cs`, `TenantEmbeddingConfigSerializationTests.cs`, and the `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` entries in `deferred-work.md` before editing.
-  - [ ] Confirm Stories 13.1, 13.3, 13.4, 13.5, 13.6, 13.7, 14.3, and 14.5 are `done`; if any prerequisite is not done, stop and record the exact status.
-  - [ ] Preserve the committed Google and Ollama runtime behavior unless an acceptance criterion explicitly changes validation rejection timing.
+- [x] Task 0 - Verify current registry target and active deferred IDs (AC: 1-5)
+  - [x] Read `EmbeddingProviderDefaults.cs`, `TenantEmbeddingConfig.cs`, `EmbeddingProviderDefaultsTests.cs`, `TenantEmbeddingConfigSerializationTests.cs`, and the `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` entries in `deferred-work.md` before editing.
+  - [x] Confirm Stories 13.1, 13.3, 13.4, 13.5, 13.6, 13.7, 14.3, and 14.5 are `done`; if any prerequisite is not done, stop and record the exact status.
+  - [x] Preserve the committed Google and Ollama runtime behavior unless an acceptance criterion explicitly changes validation rejection timing.
 
-- [ ] Task 1 - Introduce one provider/model registry in `EmbeddingProviderDefaults` (AC: 1, 2, 3)
-  - [ ] Replace scattered provider/model/dimension/rate-limit checks with a single local registry owned by `EmbeddingProviderDefaults`.
-  - [ ] Keep the public constants `GoogleProviderName`, `OllamaProviderName`, `GoogleModelName`, `OllamaModelName`, `ApiKeyAuthMode`, and `OidcClientCredentialsAuthMode` source-compatible.
-  - [ ] Model registry entries must include allowed model names, allowed dimensions per model, provider max rate limit, and the provider default config shape.
-  - [ ] Add a shared maximum dimension policy for unknown or future entries. Start from the deferred recommendation of `16_384` unless code analysis proves a different explicit bound is safer; record the chosen value in XML docs or a short code comment.
-  - [ ] Reject provider/model pairs that do not exist in the registry even if the model name matches the generic regex.
-  - [ ] Treat the registry as a closed allowlist for this story: custom/unregistered models are rejected unless a future story explicitly adds a validated extension point.
-  - [ ] Ensure provider/model lookup cannot fall back to another provider's defaults, dimensions, or rate-limit ceiling when input is missing, mixed case, or partially matched.
-  - [ ] Keep error messages actionable and field-specific. Unsupported provider messages list supported providers; unsupported model messages list models for that provider; unsupported dimension messages list allowed dimensions and/or the upper bound.
+- [x] Task 1 - Introduce one provider/model registry in `EmbeddingProviderDefaults` (AC: 1, 2, 3)
+  - [x] Replace scattered provider/model/dimension/rate-limit checks with a single local registry owned by `EmbeddingProviderDefaults`.
+  - [x] Keep the public constants `GoogleProviderName`, `OllamaProviderName`, `GoogleModelName`, `OllamaModelName`, `ApiKeyAuthMode`, and `OidcClientCredentialsAuthMode` source-compatible.
+  - [x] Model registry entries must include allowed model names, allowed dimensions per model, provider max rate limit, and the provider default config shape.
+  - [x] Add a shared maximum dimension policy for unknown or future entries. Start from the deferred recommendation of `16_384` unless code analysis proves a different explicit bound is safer; record the chosen value in XML docs or a short code comment.
+  - [x] Reject provider/model pairs that do not exist in the registry even if the model name matches the generic regex.
+  - [x] Treat the registry as a closed allowlist for this story: custom/unregistered models are rejected unless a future story explicitly adds a validated extension point.
+  - [x] Ensure provider/model lookup cannot fall back to another provider's defaults, dimensions, or rate-limit ceiling when input is missing, mixed case, or partially matched.
+  - [x] Keep error messages actionable and field-specific. Unsupported provider messages list supported providers; unsupported model messages list models for that provider; unsupported dimension messages list allowed dimensions and/or the upper bound.
 
-- [ ] Task 2 - Pin casing and normalization semantics (AC: 4)
-  - [ ] Decide and implement whether `Validate(...)` only accepts canonical provider/model casing or accepts case-insensitive input but preserves original casing.
-  - [ ] Do not lowercase Ollama model tags blindly. Ollama tags may be case-sensitive; if canonicalization is used, prove it is safe for committed models only.
-  - [ ] Make the compatibility behavior explicit for existing tenant configs that currently validate only because provider/model checks are loose: reject on the next validation/write or document any detect-only path with a clear operator remediation message.
-  - [ ] Do not add tenant-specific operator overrides for model dimensions or provider rate-limit ceilings in this story. If override support is judged necessary, record it as a deferred decision rather than adding a dynamic registry.
-  - [ ] Add tests covering `Provider = "Ollama"` and mixed-case model strings. The tests must document whether this is accepted, normalized, or rejected.
-  - [ ] Review `EmbeddingClient` provider/model parser behavior for `GOOGLE:Gemini-Embedding-001` and `ollama:qwen3-embedding:4b`. If parser behavior changes, keep first-colon splitting and preserve model tags with embedded colons.
-  - [ ] Resolve or explicitly accept `13.1-RV10` and `13.3-RV8` with evidence/rationale in `deferred-work.md`.
+- [x] Task 2 - Pin casing and normalization semantics (AC: 4)
+  - [x] Decide and implement whether `Validate(...)` only accepts canonical provider/model casing or accepts case-insensitive input but preserves original casing.
+  - [x] Do not lowercase Ollama model tags blindly. Ollama tags may be case-sensitive; if canonicalization is used, prove it is safe for committed models only.
+  - [x] Make the compatibility behavior explicit for existing tenant configs that currently validate only because provider/model checks are loose: reject on the next validation/write or document any detect-only path with a clear operator remediation message.
+  - [x] Do not add tenant-specific operator overrides for model dimensions or provider rate-limit ceilings in this story. If override support is judged necessary, record it as a deferred decision rather than adding a dynamic registry.
+  - [x] Add tests covering `Provider = "Ollama"` and mixed-case model strings. The tests must document whether this is accepted, normalized, or rejected.
+  - [x] Review `EmbeddingClient` provider/model parser behavior for `GOOGLE:Gemini-Embedding-001` and `ollama:qwen3-embedding:4b`. If parser behavior changes, keep first-colon splitting and preserve model tags with embedded colons.
+  - [x] Resolve or explicitly accept `13.1-RV10` and `13.3-RV8` with evidence/rationale in `deferred-work.md`.
 
-- [ ] Task 3 - Update focused validation tests (AC: 1-5)
-  - [ ] Add negative tests for Google with `qwen3-embedding:4b`, Ollama with `gemini-embedding-001`, Ollama with an unknown model, Google with an unknown model, punctuation-only models, and `Dimensions = int.MaxValue`.
-  - [ ] Add positive tests for every registry-supported provider/model/dimension combination currently committed: Google `gemini-embedding-001` with `768`, `1536`, `3072`; Ollama `qwen3-embedding:4b` with `2560`.
-  - [ ] Add rate-limit tests that prove provider ceiling lookup comes from the registry and cannot silently fall back to Google's ceiling for a future provider.
-  - [ ] Add null-config and malformed provider/model tests if absent, without weakening existing Google/Ollama behavior.
-  - [ ] Add or update serialization/round-trip tests only if Task 2 changes casing or canonicalization semantics.
+- [x] Task 3 - Update focused validation tests (AC: 1-5)
+  - [x] Add negative tests for Google with `qwen3-embedding:4b`, Ollama with `gemini-embedding-001`, Ollama with an unknown model, Google with an unknown model, punctuation-only models, and `Dimensions = int.MaxValue`.
+  - [x] Add positive tests for every registry-supported provider/model/dimension combination currently committed: Google `gemini-embedding-001` with `768`, `1536`, `3072`; Ollama `qwen3-embedding:4b` with `2560`.
+  - [x] Add rate-limit tests that prove provider ceiling lookup comes from the registry and cannot silently fall back to Google's ceiling for a future provider.
+  - [x] Add null-config and malformed provider/model tests if absent, without weakening existing Google/Ollama behavior.
+  - [x] Add or update serialization/round-trip tests only if Task 2 changes casing or canonicalization semantics.
 
-- [ ] Task 4 - Update deferred-work dispositions (AC: 2-5)
-  - [ ] Add a Story 15.2 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
-  - [ ] Mark `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
-  - [ ] Do not sweep adjacent IDs such as `13.1-RV1` through `13.1-RV5`, `13.1-RV7`, `13.1-RV8`, `13.1-RV9`, `13.3-RV9`, or migration coordination entries unless implementation genuinely resolves them and the story records why they became in scope.
-  - [ ] Preserve historical context; add structured disposition blocks rather than deleting original review notes.
+- [x] Task 4 - Update deferred-work dispositions (AC: 2-5)
+  - [x] Add a Story 15.2 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
+  - [x] Mark `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
+  - [x] Do not sweep adjacent IDs such as `13.1-RV1` through `13.1-RV5`, `13.1-RV7`, `13.1-RV8`, `13.1-RV9`, `13.3-RV9`, or migration coordination entries unless implementation genuinely resolves them and the story records why they became in scope.
+  - [x] Preserve historical context; add structured disposition blocks rather than deleting original review notes.
 
-- [ ] Task 5 - Validate and record completion (AC: 1-5)
-  - [ ] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingProviderDefaultsTests"`.
-  - [ ] If serialization/casing semantics changed, run `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --filter "FullyQualifiedName~TenantEmbeddingConfigSerializationTests"`.
-  - [ ] If the `EmbeddingClient` parser changes, run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingClientTests"`.
-  - [ ] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
-  - [ ] Run `git diff --check -- src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientTests.cs _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-2-provider-model-dimension-registry.md`.
+- [x] Task 5 - Validate and record completion (AC: 1-5)
+  - [x] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingProviderDefaultsTests"`.
+  - [x] If serialization/casing semantics changed, run `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --filter "FullyQualifiedName~TenantEmbeddingConfigSerializationTests"`.
+  - [x] If the `EmbeddingClient` parser changes, run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingClientTests"`.
+  - [x] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
+  - [x] Run `git diff --check -- src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs src/Hexalith.Memories.Contracts/V1/TenantEmbeddingConfig.cs src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientTests.cs _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-2-provider-model-dimension-registry.md`.
 
 ## File Scope
 
@@ -248,6 +248,11 @@ GPT-5
 - `/bmad-create-story 15-2-provider-model-dimension-registry` context gathering loaded Epic 15 planning, sprint status, root project context, Stories 13.1, 13.3, 13.4, 14.3, 14.5, current deferred-work entries, provider operations docs, current `EmbeddingProviderDefaults`, `TenantEmbeddingConfig`, focused tests, and recent git history.
 - No external technology research was needed for this story. The implementation surface is repository-owned validation logic, provider metadata, and test coverage.
 - Party-mode review ran on 2026-05-12 after preflight JSON timestamp `2026-05-12T20:03:09Z` passed all checks with `working tree cleanliness` reporting `0 dirty paths`.
+- 2026-05-13 dev-story start: story and sprint status moved `ready-for-dev` -> `in-progress`.
+- Task 0 verification loaded the allowed implementation files plus the targeted deferred entries. Stories 13.1, 13.3, 13.4, 13.5, 13.6, 13.7, 14.3, and 14.5 are all `done` in `sprint-status.yaml`.
+- Red phase: `EmbeddingProviderDefaultsTests` failed 15 new registry assertions before implementation, covering cross-provider model pairs, unknown models, syntactically valid but unregistered models, and `Dimensions = int.MaxValue`.
+- Validation: `EmbeddingProviderDefaultsTests` 141/141 PASS; `EmbeddingClientTests` 64/64 PASS; `TenantConfigurationActorTests` 28/28 PASS; `TenantEmbeddingConfigSerializationTests` 6/6 PASS; full `Hexalith.Memories.Server.Tests` 1763/1763 PASS on rerun after one order-sensitive metric test passed in isolation.
+- Validation: `dotnet build Hexalith.Memories.slnx` PASS with 0 warnings and 0 errors; `git diff --check` PASS with only expected LF-to-CRLF notices.
 
 ### Completion Notes List
 
@@ -256,16 +261,28 @@ GPT-5
 - Runtime dispatch, OIDC token acquisition, migration coordination, AppHost/integration topology, package metadata, CI workflows, release tooling, and submodules are forbidden by default.
 - No submodule state was touched.
 - Party-mode review hardened the story with closed-registry semantics, fail-before-persistence/index-use boundaries, casing/persistence compatibility guidance, tenant-isolation expectations, and automation-readable deferred-work evidence requirements.
+- Task 0 confirmed the current validation target: provider support, model shape, model-specific dimensions, and provider rate-limit ceilings are still separate checks in `EmbeddingProviderDefaults`.
+- Implemented a closed local provider/model registry in `EmbeddingProviderDefaults` with provider-scoped models, dimensions, default config factories, and rate-limit ceilings. Google and Ollama public constants and defaults remain source-compatible.
+- Preserved compatibility casing semantics: validation is case-insensitive and preserves caller casing; persisted provider/model parsing lowercases the provider key and preserves the post-first-colon model string verbatim. `13.1-RV10` and `13.3-RV8` are accepted with explicit rationale.
+- Resolved `13.1-RV6` and `13.1-RV11` with config-time dimension upper-bound and provider-scoped closed-registry validation. Invalid provider/model/dimension/rate-limit values fail before tenant config persistence or index update paths can consume them.
+- Updated two actor tests that previously used invalid fake model names for reindex behavior; they now use the supported Google-to-Ollama transition to preserve the original behavior under the closed registry.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/15-2-provider-model-dimension-registry.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs`
+- `tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs`
 
 ### Change Log
 
 - 2026-05-12: Created Story 15.2 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-12: Party-mode review completed; added registry contract, casing, failure-boundary, tenant-isolation, compatibility, and evidence clarifications.
+- 2026-05-13: Started implementation and completed Task 0 verification.
+- 2026-05-13: Implemented provider/model/dimension registry, focused tests, deferred-work dispositions, and moved story to review.
 
 ### Party-Mode Review
 

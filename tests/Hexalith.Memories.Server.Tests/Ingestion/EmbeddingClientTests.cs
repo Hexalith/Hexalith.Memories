@@ -656,10 +656,15 @@ public class EmbeddingClientTests
 
     [Theory]
     [InlineData("google:gemini-embedding-001", "google", "gemini-embedding-001")]
+    [InlineData("GOOGLE:Gemini-Embedding-001", "google", "Gemini-Embedding-001")]
     [InlineData("ollama:nomic-embed-text", "ollama", "nomic-embed-text")]
     [InlineData("ollama:qwen3-embedding:4b", "ollama", "qwen3-embedding:4b")]
+    [InlineData("Ollama:Qwen3-Embedding:4B", "ollama", "Qwen3-Embedding:4B")]
     [InlineData("ollama:library/model:tag", "ollama", "library/model:tag")]
-    public void ParseEmbeddingProvider_PreservesModelAfterFirstColon(string value, string expectedProvider, string expectedModel)
+    public void ParseEmbeddingProvider_NormalizesProviderAndPreservesModelAfterFirstColon(
+        string value,
+        string expectedProvider,
+        string expectedModel)
     {
         // Act
         EmbeddingProviderIdentifier result = EmbeddingClient.ParseEmbeddingProviderIdentifier(value);
