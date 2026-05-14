@@ -1,6 +1,6 @@
 # Story 15.3: Live Migration Coordination Policy
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -236,7 +236,7 @@ GPT-5
 - Story context created on 2026-05-12.
 - Scope is limited to live migration coordination policy, expected-failure result semantics, targeted tests, operator guidance, and deferred-work dispositions for `13.6-RV1` and `13.6-RV3`.
 - Provider registry work, token transport policy, dual-write/search fan-out, broad rollback, integration fixture expansion, CI/release tooling, and submodules are forbidden by default.
-- No submodule state was touched.
+- Submodule pointer state was touched: commit `02111ed` bumps `Hexalith.EventStore`, `Hexalith.FrontComposer`, and `Hexalith.Tenants` pointers. This deviates from the spec's File Scope ("Any submodule pointer change" listed as forbidden by default). The 2026-05-14 code review accepted the deviation; the bumps are pre-existing integration updates that landed alongside this commit. Future story commits should keep submodule moves in a separate chore commit so that story-scope diffs stay scoped to the story's source files.
 - 2026-05-14 update selected the concrete coordination policy: durable tenant-scoped migration marker enforcement visible to ingestion and mandatory at both semantic write boundaries. Story promoted back to `ready-for-dev`.
 - Implemented durable tenant-scoped active marker reads/writes and marker-target enforcement for generation, raw semantic indexing, and natural-language semantic indexing.
 - Added deterministic tests for stale raw semantic writes, stale natural-language semantic writes, post-marker generation blocking, and marker retention on interrupted/failed live migration.
@@ -285,12 +285,60 @@ GPT-5
   - Whether old-provider vector cleanup/enumeration gaps require a follow-up story outside 15.3.
 - Final recommendation at review time: `needs-story-update`. Current disposition after 2026-05-14 create-story update: `ready-for-dev`.
 
+### Code Review Findings (2026-05-14)
+
+- Date: 2026-05-14
+- Command/skill invocation used: `/bmad-code-review`
+- Reviewers: Blind Hunter (adversarial, diff-only), Edge Case Hunter (boundary walk, diff + repo), Acceptance Auditor (spec compliance)
+- Total findings after triage: 27 (1 `decision-needed` resolved by acceptance, 11 `patch` applied, 14 `defer`, 1 dismissed)
+- AC coverage: AC1 met, AC2 met, AC3 met, AC4 met. Mandatory write-boundary guards present in both `IndexSemanticActivity` and `IndexNaturalLanguageSemanticActivity` with full provider/model/dimensions comparison.
+
+#### Decision-needed
+
+- [x] [Review][Decision] F1 — Submodule pointer changes in commit `02111ed` for `Hexalith.EventStore`, `Hexalith.FrontComposer`, and `Hexalith.Tenants`. Operator chose **Accept + amend story claim**. The Completion Notes claim "No submodule state was touched" has been amended to reflect the actual pointer bumps. Process note recorded for future story commits to keep story-scope changes isolated.
+
+#### Patch
+
+- [x] [Review][Patch] F3 — `StartMigrationMarkerAsync` and `CompleteMigrationMarkerAsync` write the per-target key and the active-marker key as two independent `HashSetAsync` calls; if the second fails the active marker is missing while the per-target marker is `started`, leaving runtime guards silently disabled. [src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs:198-199, 222-223] — fixed via `IDatabase.CreateTransaction()` MULTI/EXEC wrapping both writes.
+- [x] [Review][Patch] F4 — `EmbeddingMigrationMarker.IsActive` was true only for `started` / `resumed`. Operator doc states the marker remains protective on abort. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarker.cs:22-24] — inverted to "protective unless `completed`".
+- [x] [Review][Patch] F5 — `ReadActiveMarkerAsync` previously returned `null` (fail-open) on a partially-corrupt hash. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs:60-68] — fixed to throw structured exception when a present hash is malformed.
+- [x] [Review][Patch] F9 — Active-marker reads now pass `CommandFlags.DemandMaster`, closing the replica-lag race between cutover write and replica catch-up. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs]
+- [x] [Review][Patch] F11 — Marker status strings centralised into a new `MigrationMarkerStatus` constants class used by producer, reader, and tests; eliminates the typo-divergence risk. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarker.cs, RedisEmbeddingMigrationStore.cs, tests]
+- [x] [Review][Patch] F12 — `NormalizeProvider` now normalises both sides of the comparison and rejects leading-colon input explicitly. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs]
+- [x] [Review][Patch] F14 — `ReadActiveMarkerAsync` now throws `EmbeddingMigrationMarkerCorruptException` when the stored `tenantId` field is present and does not match the requested tenant. [src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs]
+- [x] [Review][Patch] F19 — `FakeStore.GetActiveMigrationMarkerAsync` now mirrors the real reader by returning `null` when the stored marker is no longer protective (`status == completed`). [tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs FakeStore]
+- [x] [Review][Patch] F20 — Added two new tests: `PerUnitFailureShouldLeaveActiveMarkerProtective` and `CancellationDuringLiveMigrationShouldLeaveActiveMarkerProtective`, covering the remaining marker-retention conditions in the spec. [tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs]
+- [x] [Review][Patch] F21 — `StartMigrationMarkerAsync` now throws `ArgumentOutOfRangeException` when `targetConfig.Dimensions <= 0`, preventing a zero or negative dimensions value from being durably stored. [src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs]
+- [x] [Review][Patch] F23 — Test substitutes now stub `redis.GetDatabase()` (no-arg) in addition to the legacy two-arg stub, defending against any NSubstitute / default-parameter-binding edge cases. [tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs, Activities/Indexing/IndexSemanticActivityTests.cs, IndexNaturalLanguageSemanticActivityTests.cs]
+
+#### Deferred (pre-existing, out of scope, or accepted)
+
+- [x] [Review][Defer] F2 — Active marker key built from raw `tenantId` without a global namespace prefix. Repo-wide convention: per-target marker key and semantic vector keys all use `{tenantId}:...` without a `hexalith:` prefix; upstream callers (`IndexSemanticActivity`, `IndexNaturalLanguageSemanticActivity`) validate the tenant id via `TenantIdGuard.Validate` before key construction. — deferred, consistent with repo convention; broader namespace refactor needed.
+- [x] [Review][Defer] F7 — Marker reads pass `CancellationToken.None`. DAPR's `WorkflowActivityContext` in the .NET SDK in use does not expose a `CancellationToken`; the entire activity surface uses `CancellationToken.None`. — deferred, framework-level concern.
+- [x] [Review][Defer] F6 — `GenerateEmbeddingActivity._redis is not null` silent no-op when keyed Redis service is missing. File Scope L88 wording "if the runtime marker reader can be injected cleanly" treats this guard as intentionally optional; the mandatory correctness gate is at both indexing activities. Follow-up: either make Redis required at this site or emit a startup warning when the keyed registration is absent. — deferred, intentional per spec.
+- [x] [Review][Defer] F8 — `WaitAsync(ct)` cancels the await but not the underlying Redis command. Repo-wide pattern; deeper architectural concern. — deferred, pre-existing pattern.
+- [x] [Review][Defer] F10 — `CompleteMigrationMarkerAsync` leaves stale `targetProvider/Model/Dimensions` fields on the active-marker key after `status=completed`. Reader short-circuits on `status == completed` so no functional issue today; debugging-hygiene only. — deferred.
+- [x] [Review][Defer] F13 — `OrdinalIgnoreCase` provider/model comparison vs case-sensitive downstream Redis hash keys requires a broader audit of downstream key generation. — deferred, out of story scope.
+- [x] [Review][Defer] F15 — `StartMigrationMarkerAsync` does not detect an existing active marker pointing to a different target on the same tenant. — deferred, out of story scope; carry-forward to operator-safety follow-up.
+- [x] [Review][Defer] F16 — `CompleteMigrationMarkerAsync` does not verify the active marker target matches the completing target. — deferred, same root cause as F15.
+- [x] [Review][Defer] F18 — Active-marker hash has no TTL; orphaned markers block tenant ingestion until manual cleanup. Spec explicitly says marker is retained until clean completion; operator alerting follow-up. — deferred, intentional per spec.
+- [x] [Review][Defer] F22 — `13.6-RV2` swept in based on "Story 15.3 touched the file substantively, gained copyright header" rationale; borderline-compliant with spec's "records why they became in scope" clause. — deferred, accept the disposition but log the weak rationale.
+- [x] [Review][Defer] F24 — Story status moved `ready-for-dev` → `review` without an `in-progress` step. — deferred, process-only, not code.
+- [x] [Review][Defer] F25 — Operator-docs downtime statement could be sharper about per-tenant retry disruption. — deferred, precision not correctness.
+- [x] [Review][Defer] F26 — `HashEntry` integer value culture-dependent parsing is a future-regression risk; current invariant path is correct. — deferred, theoretical.
+- [x] [Review][Defer] F27 — Stale per-target marker can resume against drifted state; overlaps F15/F16. — deferred.
+
+#### Dismissed
+
+- F17 — `EmbeddingMigrationWriteBlockedException : InvalidOperationException` retryability under DAPR workflow retry policy. Verified: DAPR `WorkflowRetryPolicy` retries all activity exceptions up to `MaxRetryCount` without type discrimination. Retry semantics preserved as the spec requires. — dismissed, not an issue.
+
 ### Change Log
 
 - 2026-05-12: Created Story 15.3 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-12: Party-mode review completed; moved story back to `backlog` pending an explicit migration coordination policy decision.
 - 2026-05-14: Create-story update selected the durable tenant-scoped migration marker write-gate policy, expanded file scope/tests for raw and natural-language semantic write boundaries, and promoted status to `ready-for-dev`.
 - 2026-05-14: Implemented durable active migration marker enforcement for generation and semantic write boundaries, updated operator/deferred-work documentation, validated focused and full server test suites, and moved story to `review`.
+- 2026-05-14: Code review (`/bmad-code-review`) completed with three parallel review layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor). 27 findings triaged: 1 decision-needed accepted, 11 patches applied, 14 deferred, 1 dismissed. Full `Hexalith.Memories.Server.Tests` 1772/1772 green; story moved to `done`.
 
 ## Story Completion Status
 

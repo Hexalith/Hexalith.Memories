@@ -187,6 +187,7 @@ public class IndexSemanticActivityTests
         ConfigureExistingIndex(db, existingIndexDimensions: 3, includeSubjectField: false);
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
 
         IndexInput input = CreateTestInput() with
@@ -216,6 +217,7 @@ public class IndexSemanticActivityTests
         ConfigureExistingIndex(db, existingIndexDimensions, includeSubjectField: true);
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }

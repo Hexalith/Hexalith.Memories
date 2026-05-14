@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-14T11:45:00+02:00 # Story 15.3 dev-story complete: in-progress -> review.
+last_updated: 2026-05-14T17:30:00+02:00 # Story 15.3 code review complete: review -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -193,7 +193,7 @@ development_status:
   epic-15: in-progress # 2026-05-12 Story 15.1 created; Epic 15 started.
   15-1-release-edge-case-preflight-hardening: done # 2026-05-13 review close-out (3-layer adversarial: Blind + Edge + Auditor): all 4 ACs PASS; 1 decision resolved (expand skip-condition guard to step level); 12 patches applied (preflight robustness, contract-test CRLF tolerance, fresh-clone evidence, completion-notes truth-claim); 16 carry-forward items recorded as 15.1-RV1..15.1-RV16. Validation: release preflight fixtures 9/9, CiTestInventoryTests 48/48, validate-release-packages.ps1 passed, git diff --check clean.
   15-2-provider-model-dimension-registry: done # 2026-05-14 review close-out (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 + AC6 PASS, AC5 PARTIAL (contract-tier serialization test gap recorded as 15.2-RV1). 3 decisions resolved (D1 EventStore submodule pointer — kept with Scope-Override; D2 epics.md + sprint-change-proposal — File Scope amended + Scope-Override; D3 AuthMode-after-RateLimit order — accepted and pinned with new ordering-contract tests). 8 patches applied: P1 Registry → ImmutableArray; P2 misleading "DimensionsAtSharedMaximum" test renamed to "UnknownModelAtSharedDimensionMaximum"; P3 tautological mixed-case test strengthened; P4 Ollama rate-limit no-op `with` fixed (6000→30_000); P5 isOllama uses registry-canonical provider.ProviderName; P6 unused ModelRegistryEntry.DefaultDimensions removed; P7 added 2 non-leakage assertions; P8 added 2 ordering-contract tests + remarks XML doc. Validation: EmbeddingProviderDefaultsTests 145/145 PASS (was 141, +4 new); focused slice (Defaults + Client + Actor) 237/237 PASS; full Hexalith.Memories.slnx build 0W/0E. 9 carry-forward items recorded as 15.2-RV1..15.2-RV9.
-  15-3-live-migration-coordination-policy: review # 2026-05-14 dev-story complete: durable active marker guard added for generation + raw/NL semantic write boundaries; focused and full Server.Tests green.
+  15-3-live-migration-coordination-policy: done # 2026-05-14 code review complete: 1 decision-needed accepted, 11 patches applied (atomic two-key marker write, IsActive default-protective, fail-closed reader, DemandMaster reads, status constants, NormalizeProvider symmetry, tenantId equality, dim validation, FakeStore IsActive parity, +2 retention tests, test substitute alignment). 14 deferred, 1 dismissed. Server.Tests 1772/1772 green.
   15-4-token-endpoint-transport-policy: ready-for-dev # 2026-05-12 story context created.
   15-5-deferred-register-triage-sweep: ready-for-dev # 2026-05-12 story context created.
   epic-15-retrospective: optional

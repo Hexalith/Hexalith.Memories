@@ -173,6 +173,17 @@ public sealed partial class RedisEmbeddingMigrationStore(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentNullException.ThrowIfNull(targetConfig);
+
+        // F21: refuse to persist a marker with non-positive dimensions; durable storage of a zero/negative
+        // dimensions value would block every subsequent semantic write for the tenant.
+        if (targetConfig.Dimensions <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(targetConfig),
+                targetConfig.Dimensions,
+                "Target embedding dimensions must be positive.");
+        }
+
         IDatabase db = redis.GetDatabase();
         string key = GetMarkerKey(tenantId, targetConfig);
 
@@ -192,11 +203,19 @@ public sealed partial class RedisEmbeddingMigrationStore(
             new("targetProvider", targetConfig.Provider),
             new("targetModel", targetConfig.Model),
             new("targetDimensions", targetConfig.Dimensions),
-            new("status", resume ? "resumed" : "started"),
+            new("status", resume ? MigrationMarkerStatus.Resumed : MigrationMarkerStatus.Started),
             new("startedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
         ];
-        await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
-        await db.HashSetAsync(EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId), entries).WaitAsync(ct).ConfigureAwait(false);
+
+        // F3: the per-target key and the active-marker key must be written atomically. A non-atomic two-key write
+        // can leave the active marker missing while the per-target marker is `started`, silently disabling the
+        // runtime guard.
+        await WriteMarkerHashesAtomicallyAsync(
+            db,
+            key,
+            EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId),
+            entries,
+            ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -216,11 +235,36 @@ public sealed partial class RedisEmbeddingMigrationStore(
         string key = GetMarkerKey(tenantId, targetConfig);
         HashEntry[] entries =
         [
-            new("status", "completed"),
+            new("status", MigrationMarkerStatus.Completed),
             new("completedAt", DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)),
         ];
-        await db.HashSetAsync(key, entries).WaitAsync(ct).ConfigureAwait(false);
-        await db.HashSetAsync(EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId), entries).WaitAsync(ct).ConfigureAwait(false);
+
+        // F3: atomic two-key write so completion cannot leave the active marker in an inconsistent state
+        // relative to the per-target marker.
+        await WriteMarkerHashesAtomicallyAsync(
+            db,
+            key,
+            EmbeddingMigrationMarkerReader.GetActiveMarkerKey(tenantId),
+            entries,
+            ct).ConfigureAwait(false);
+    }
+
+    private static async Task WriteMarkerHashesAtomicallyAsync(
+        IDatabase db,
+        RedisKey perTargetKey,
+        RedisKey activeMarkerKey,
+        HashEntry[] entries,
+        CancellationToken ct)
+    {
+        ITransaction tran = db.CreateTransaction();
+        _ = tran.HashSetAsync(perTargetKey, entries);
+        _ = tran.HashSetAsync(activeMarkerKey, entries);
+        bool committed = await tran.ExecuteAsync().WaitAsync(ct).ConfigureAwait(false);
+        if (!committed)
+        {
+            throw new InvalidOperationException(
+                "Failed to atomically write embedding migration marker hashes; transaction was discarded by Redis.");
+        }
     }
 
     /// <inheritdoc/>

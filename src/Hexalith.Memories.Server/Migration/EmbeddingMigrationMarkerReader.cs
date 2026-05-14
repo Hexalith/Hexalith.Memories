@@ -37,6 +37,7 @@ public static class EmbeddingMigrationMarkerReader
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="ct">The cancellation token.</param>
     /// <returns>The active marker, or <see langword="null"/> when no active marker protects the tenant.</returns>
+    /// <exception cref="EmbeddingMigrationMarkerCorruptException">Thrown when an active-marker hash exists but is malformed; fails closed rather than silently disabling the guard.</exception>
     public static async Task<EmbeddingMigrationMarker?> ReadActiveMarkerAsync(
         IDatabase db,
         string tenantId,
@@ -46,7 +47,8 @@ public static class EmbeddingMigrationMarkerReader
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ct.ThrowIfCancellationRequested();
 
-        HashEntry[]? entries = await db.HashGetAllAsync(GetActiveMarkerKey(tenantId)).WaitAsync(ct).ConfigureAwait(false);
+        // F9: DemandMaster avoids replica-lag fail-open between cutover write and replica catch-up.
+        HashEntry[]? entries = await db.HashGetAllAsync(GetActiveMarkerKey(tenantId), CommandFlags.DemandMaster).WaitAsync(ct).ConfigureAwait(false);
         if (entries is null || entries.Length == 0)
         {
             return null;
@@ -57,19 +59,37 @@ public static class EmbeddingMigrationMarkerReader
             e => e.Value.ToString(),
             StringComparer.OrdinalIgnoreCase);
 
-        if (!values.TryGetValue("status", out string? status)
-            || string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase)
-            || !values.TryGetValue("targetProvider", out string? provider)
-            || !values.TryGetValue("targetModel", out string? model)
-            || !values.TryGetValue("targetDimensions", out string? dimensionsText)
-            || !int.TryParse(dimensionsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dimensions))
+        // F5: fail-closed — a present-but-malformed marker hash must not silently disable the guard.
+        if (!values.TryGetValue("status", out string? status))
+        {
+            throw new EmbeddingMigrationMarkerCorruptException(tenantId, "missing status field");
+        }
+
+        if (string.Equals(status, MigrationMarkerStatus.Completed, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        string markerTenant = values.GetValueOrDefault("tenantId") ?? tenantId;
-        EmbeddingMigrationMarker marker = new(markerTenant, provider, model, dimensions, status);
-        return marker.IsActive ? marker : null;
+        if (!values.TryGetValue("targetProvider", out string? provider)
+            || !values.TryGetValue("targetModel", out string? model)
+            || !values.TryGetValue("targetDimensions", out string? dimensionsText)
+            || !int.TryParse(dimensionsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int dimensions))
+        {
+            throw new EmbeddingMigrationMarkerCorruptException(tenantId, "missing or unparseable target fields");
+        }
+
+        // F14: if the stored tenantId is present and differs from the requested tenant, refuse to construct a marker
+        // that would leak a foreign tenant id into exceptions, logs, and telemetry.
+        if (values.TryGetValue("tenantId", out string? storedTenant)
+            && !string.IsNullOrWhiteSpace(storedTenant)
+            && !string.Equals(storedTenant, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new EmbeddingMigrationMarkerCorruptException(
+                tenantId,
+                $"stored tenantId '{storedTenant}' does not match the requested tenant");
+        }
+
+        return new EmbeddingMigrationMarker(tenantId, provider, model, dimensions, status);
     }
 
     /// <summary>Throws when the attempted write does not match an active tenant migration marker.</summary>
@@ -88,8 +108,11 @@ public static class EmbeddingMigrationMarkerReader
             return;
         }
 
+        // F12: normalise both sides identically so case, colon-composite, or leading-colon variants do not silently
+        // pass the guard while producing case-distinct downstream Redis state.
         string normalizedProvider = NormalizeProvider(provider);
-        if (string.Equals(normalizedProvider, marker.TargetProvider, StringComparison.OrdinalIgnoreCase)
+        string normalizedTarget = NormalizeProvider(marker.TargetProvider);
+        if (string.Equals(normalizedProvider, normalizedTarget, StringComparison.OrdinalIgnoreCase)
             && string.Equals(model, marker.TargetModel, StringComparison.OrdinalIgnoreCase)
             && dimensions == marker.TargetDimensions)
         {
@@ -98,7 +121,7 @@ public static class EmbeddingMigrationMarkerReader
 
         throw new EmbeddingMigrationWriteBlockedException(
             marker.TenantId,
-            marker.TargetProvider,
+            normalizedTarget,
             marker.TargetModel,
             marker.TargetDimensions,
             normalizedProvider,
@@ -118,7 +141,17 @@ public static class EmbeddingMigrationMarkerReader
     private static string NormalizeProvider(string provider)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(provider);
+
+        // F12: handle leading-colon explicitly — an input like ":foo" cannot be normalised to a non-empty provider head.
         int separator = provider.IndexOf(':', StringComparison.Ordinal);
-        return separator > 0 ? provider[..separator] : provider;
+        if (separator == 0)
+        {
+            throw new ArgumentException(
+                "Provider must not start with a colon separator; expected a non-empty provider segment.",
+                nameof(provider));
+        }
+
+        string head = separator > 0 ? provider[..separator] : provider;
+        return head.Trim();
     }
 }

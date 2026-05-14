@@ -581,6 +581,76 @@ public sealed class EmbeddingVectorMigrationServiceTests
         store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
     }
 
+    [Fact]
+    public async Task PerUnitFailureShouldLeaveActiveMarkerProtective()
+    {
+        // F20: marker retention guarantee — a per-unit failure must not clear the protective marker.
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(1, 1, 0, 1, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-fail", "throw-secret", "case-1", null),
+        ];
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        store.MarkerStarted.ShouldBeTrue();
+        store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
+        store.RecordedFailures.Count.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task CancellationDuringLiveMigrationShouldLeaveActiveMarkerProtective()
+    {
+        // F20: marker retention guarantee — cancellation mid-migration must not clear the protective marker.
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(2, 2, 0, 2, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-a", "first", "case-1", null),
+            new SyntacticMigrationUnit("mu-b", "second", "case-1", null),
+        ];
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            cts.Token);
+
+        store.MarkerCompleted.ShouldBeFalse();
+        if (store.MarkerStarted)
+        {
+            store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
+        }
+
+        result.ExitCode.ShouldNotBe(EmbeddingMigrationExitCodes.Success);
+    }
+
     private sealed class FakeVectorGenerator : IEmbeddingMigrationVectorGenerator
     {
         public Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
@@ -682,12 +752,16 @@ public sealed class EmbeddingVectorMigrationServiceTests
                 targetConfig.Provider,
                 targetConfig.Model,
                 targetConfig.Dimensions,
-                resume ? "resumed" : "started");
+                resume ? MigrationMarkerStatus.Resumed : MigrationMarkerStatus.Started);
             return Task.CompletedTask;
         }
 
         public Task<EmbeddingMigrationMarker?> GetActiveMigrationMarkerAsync(string tenantId, CancellationToken ct)
-            => Task.FromResult(ActiveMarkers.GetValueOrDefault(tenantId));
+        {
+            // F19: mirror the real reader's IsActive semantics — return null when a stored marker is no longer protective.
+            EmbeddingMigrationMarker? stored = ActiveMarkers.GetValueOrDefault(tenantId);
+            return Task.FromResult(stored is null || !stored.IsActive ? null : stored);
+        }
 
         public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
         {
@@ -702,7 +776,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
                 targetConfig.Provider,
                 targetConfig.Model,
                 targetConfig.Dimensions,
-                "completed");
+                MigrationMarkerStatus.Completed);
             return Task.CompletedTask;
         }
 

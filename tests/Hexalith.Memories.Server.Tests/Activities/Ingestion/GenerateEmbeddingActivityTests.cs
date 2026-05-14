@@ -432,6 +432,10 @@ public class GenerateEmbeddingActivityTests
         db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(Task.FromResult(Array.Empty<HashEntry>()));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+
+        // F23: production calls IConnectionMultiplexer.GetDatabase() with no args; stub the no-arg overload directly
+        // so the marker-read path is actually exercised under these tests.
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
@@ -449,6 +453,10 @@ public class GenerateEmbeddingActivityTests
                 new HashEntry("status", "started"),
             }));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+
+        // F23: production calls IConnectionMultiplexer.GetDatabase() with no args; stub the no-arg overload directly
+        // so the marker-read path is actually exercised under these tests.
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }

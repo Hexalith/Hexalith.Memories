@@ -166,6 +166,7 @@ public class IndexNaturalLanguageSemanticActivityTests
             .Returns(info);
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         IndexNaturalLanguageSemanticActivity activity =
             new(redis, Substitute.For<ILogger<IndexNaturalLanguageSemanticActivity>>());
@@ -187,6 +188,7 @@ public class IndexNaturalLanguageSemanticActivityTests
             .Returns(_ => RedisResult.Create(new RedisValue("OK")));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
