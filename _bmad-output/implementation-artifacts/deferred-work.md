@@ -94,6 +94,93 @@ parsers and planning of migrated entries.
   - Re-open trigger: A persisted provider/model identifier with mixed casing fails a real runtime path, migration path, or equality comparison because provider and model casing are handled asymmetrically.
   - Rationale: Provider names are registry keys and safe to normalize for dispatch, while model tags can contain embedded colons and may be case-sensitive in provider-specific APIs. Story 15.2 pins the behavior with `EmbeddingClientTests.ParseEmbeddingProvider_NormalizesProviderAndPreservesModelAfterFirstColon` and leaves runtime parsing unchanged.
 
+## Deferred from: code review of 15-2-provider-model-dimension-registry (2026-05-14)
+
+Items below were surfaced by the 3-layer adversarial review (Blind Hunter +
+Edge Case Hunter + Acceptance Auditor) of commit `57819b4` but are outside the
+story's File Scope or out of immediate fix range.
+
+- **15.2-RV1 - open.** AC5 contract-tier serialization test not updated.
+
+  - ID: 15.2-RV1
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs
+  - Re-open trigger: A casing/canonicalization change at the contract boundary is later considered.
+  - Rationale: Task 2 chose `accepted` for casing semantics, so contract-tier serialization is intentionally unchanged. Recorded for traceability against AC5's "contract/server tests cover ... deferred-work dispositions" wording.
+
+- **15.2-RV2 - open.** Actor reindex tests lost same-Provider/different-Model isolation.
+
+  - ID: 15.2-RV2
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs
+  - Re-open trigger: Registry adds a second model under Google or Ollama, OR `GetBreakingChangeFields` regresses to flag only provider changes.
+  - Rationale: Tests now switch Provider AND Model (Google→Ollama) instead of Model-only; same-provider/model-change reindex-trigger coverage cannot be restored inside this story because the closed registry currently lists exactly one model per provider.
+
+- **15.2-RV3 - open.** Other test files still use unregistered model literals.
+
+  - ID: 15.2-RV3
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs, tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs
+  - Re-open trigger: The covered code paths add a Validate-preflight, OR a registry-wide test-fixture-hygiene sweep is scheduled.
+  - Rationale: `HybridSearchServiceTests` (line 74) and `TenantEmbeddingConfigEndpointTests` (lines 30, 39) use `"text-embedding-004"` / `"different-model"` literals that compile only because those tests do not call `Validate`. Pre-existing; out of File Scope.
+
+- **15.2-RV4 - open.** `EmbeddingClient.IsGoogle/IsOllama` dispatch is hardcoded.
+
+  - ID: 15.2-RV4
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs
+  - Re-open trigger: Registry adds a third provider, OR an operator reports a failed identifier parse for a registered provider/model pair.
+  - Rationale: Closed-allowlist behavior of `EmbeddingProviderDefaults` does not extend to `EmbeddingClient.ParseEmbeddingProviderIdentifier` or the dispatch site, which binary-check `IsGoogle || IsOllama`. Architectural follow-up; out of this story's File Scope.
+
+- **15.2-RV5 - open.** `GenerateEmbeddingActivity` may emit mixed-case provider in persisted identifier.
+
+  - ID: 15.2-RV5
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs
+  - Re-open trigger: A tenant persists `Provider = "Google"` (mixed case, now accepted by Validate) and an equality comparison or migration state diverges from the lowercased parsed form.
+  - Rationale: Tenant-persisted casing is preserved, but `ParseEmbeddingProviderIdentifier` lowercases the provider on read — write and read forms can diverge. Related to 15.2-RV4. Out of File Scope.
+
+- **15.2-RV6 - open.** Migration tool uses binary Google/Ollama coin-flip, not registry.
+
+  - ID: 15.2-RV6
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
+  - Re-open trigger: Registry adds a third provider, OR a migration plan needs to target a new provider.
+  - Rationale: `TargetProvider` defaults to `Ollama()` if not Google (lines 125-149). Related to 15.2-RV4. Out of File Scope.
+
+- **15.2-RV7 - open.** Whitespace-prefixed provider not trimmed before registry lookup.
+
+  - ID: 15.2-RV7
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+  - Re-open trigger: Operator reports an unhelpful "Provider ' google' is not supported" error and the registry path needs to suggest the whitespace cause.
+  - Rationale: `ArgumentException.ThrowIfNullOrWhiteSpace` accepts `" google"`, then `FindProvider` misses (no trim). Already family-deferred as `13.1-RV4`; surfaces again in the registry path.
+
+- **15.2-RV8 - open.** Already-persisted invalid configs not surfaced on read.
+
+  - ID: 15.2-RV8
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: src/Hexalith.Memories.Server/Actors/TenantConfigurationActor.cs
+  - Re-open trigger: Operator needs visibility into tenants whose persisted config no longer validates under the closed registry.
+  - Rationale: Closed-registry validation runs on write only — tenants whose state was valid under loose rules continue to be served. Story 15.2 documents this as intentional compatibility behavior; operator-visibility design is a follow-up.
+
+- **15.2-RV9 - open.** "Order-sensitive metric test passed in isolation" acknowledged.
+
+  - ID: 15.2-RV9
+  - Status: open
+  - Source story: 15-2-provider-model-dimension-registry
+  - Target artifact: tests/Hexalith.Memories.Server.Tests (test ordering)
+  - Re-open trigger: The order-sensitive metric test fails intermittently in CI, OR a test-isolation sweep is scheduled.
+  - Rationale: Acknowledged in the Dev Agent Record but not fixed; not caused by this story.
+
 ## Closed/Accepted by: Story 15.1 Release Edge-Case Preflight Hardening (2026-05-13)
 
 - **S11-FC - resolved.** Release execution now has a repository-owned stale-tag
