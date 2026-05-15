@@ -112,7 +112,7 @@ epic. Historical prose entries remain under their original headings for context.
   - Status: accepted
   - Source story: 15-5-deferred-register-triage-sweep
   - Target artifact: tools/check-story-file-scope.py
-  - Re-open trigger: A maintainer-visible diagnostic exposes a local Windows path in CI output, PR feedback, release evidence, or another shared channel.
+  - Re-open trigger: A PR review comment or release-evidence document cites a local Windows drive-letter path emitted by `tools/check-story-file-scope.py`, or a maintainer reports that pasting story-scope tooling output from a local Windows run into a shared review channel leaks a drive letter.
   - Rationale: The remaining issue is cosmetic and local-only; changing it now would add story-scope tooling churn without improving CI or reviewer evidence.
 
 ### Epic 14 Retrospective Reconciliation
@@ -154,6 +154,13 @@ epic. Historical prose entries remain under their original headings for context.
    Target artifacts: `src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs`, `src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs`, `tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`, and any projection-registry design note created by that story.
    Validation expectations: define the projection registry contract, prove mismatch detection compares routing declarations with actual tenant projection bindings, add negative tests for configured-but-unbound projections, and preserve existing handler mismatch CLI/API contracts.
    Scope boundary: architecture/design plus focused proof; do not retrofit broad server authentication or unrelated handler observation-window features.
+
+## Deferred from: code review of 15-5-deferred-register-triage-sweep (2026-05-15)
+
+- **15.5-RV1 — `git diff --check` validation claim is inaccurate.** Story 15.5 Dev Agent Record states `git diff --check ... passed with only expected LF-to-CRLF working-copy warnings`, but actual `git diff --check 9042c17..c2e575c` reports trailing-whitespace errors on `_15-5-review-diff.patch`. Re-open trigger: any future story's validation block reuses the same tolerance wording without verifying `--check` output is genuinely error-free.
+- **15.5-RV2 — `sprint-status.yaml:last_updated` not advanced when post-implementation commit `c2e575c` landed.** Cosmetic drift; the dev-story timestamp `2026-05-15T12:45:15+02:00` predates the 15:55 follow-on commit. Re-open trigger: a tool starts treating `last_updated` as a freshness proxy across all commits on a story.
+- **15.5-RV3 — Task 3 prose "`13.1-RV6` and related provider work" is looser than the rollup's explicit 4-ID enumeration.** `15-5-deferred-register-triage-sweep.md:79` lists one ID; `deferred-work.md:119` enumerates `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, `13.3-RV8`. Rollup is accurate; task description was provisional. Re-open trigger: a future story re-reads Task 3 prose as a complete ownership list and misses one of the four IDs.
+- **15.5-RV4 — `Target artifact:` field uses `;`-joined multi-paths in `12.4-RV20` and `Story-9.3-ProjectionRegistryCrossCheck` blocks.** `deferred-work.md:68,92` — the Story 14.5 schema describes `Target artifact:` as singular, but Story 15.4's `13.2-RV4` (line 178) and Story 15.2's HybridSearch entry (line 293) already use multi-path joined formats and the `CiTestInventoryTests` parser tolerates them (48/48 PASS). Pre-existing pattern; a Story-14.5-owned schema-cleanliness pass should either tighten the parser to require single-path values or formalize a multi-path separator. Re-open trigger: a parser regression where the joined string is treated as one literal path and a target-artifact filter misses a real consumer.
 
 ## Deferred from: code review of 15-4-token-endpoint-transport-policy (2026-05-15)
 

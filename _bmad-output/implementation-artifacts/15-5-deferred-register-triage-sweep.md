@@ -1,6 +1,6 @@
 # Story 15.5: Deferred Register Triage Sweep
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -63,6 +63,21 @@ so that historical noise, consciously accepted risks, and true backlog candidate
   - [x] Manually verify every new structured block contains exactly one `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and the required `Evidence` or `Rationale`.
   - [x] Record the final proposal list and any validation limits in this story's Dev Agent Record.
 
+### Review Findings
+
+Three-layer adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) on 2026-05-15. AC1-AC4 verdict: PASS for the governance content (rollup, schema, reconciliation, follow-ups). Cross-cutting issues below.
+
+- [x] [Review][Decision] D1 — Submodule pointer bumps violate File Scope and contradict Completion Notes — RESOLVED via Scope-Override block in File Scope (precedent: Stories 15.2 / 15.4; main has force-push protection) and amended Completion Notes. `Hexalith.EventStore` (`63af940`→`f4c3cc4`) and `Hexalith.FrontComposer` (`d36201f`→`3f707c2`) accepted in-place; both submodule pointers now listed in File List.
+- [x] [Review][Decision] D2 — `_bmad-output/implementation-artifacts/_15-5-review-diff.patch` is an unsanctioned artifact — RESOLVED via `git rm`. The 287-line scratch dump (filename leading underscore, recursive self-reference, 10+ trailing-whitespace errors flagged by `git diff --check`) is removed; review evidence for future stories should live under `_bmad-output/review-tmp/` (the convention used by Story 15.4's `15.4.diff`).
+- [x] [Review][Patch] P1 — File List now enumerates the two submodule pointers accepted via Scope-Override alongside the three artifact files.
+- [x] [Review][Patch] P2 — Change Log gained a 2026-05-15 entry summarizing the review outcome (AC verdict, D1/D2 resolution, applied patches, deferred, dismissed).
+- [x] [Review][Patch] P4 — `12.4-RV11` Re-open trigger refined to name two concrete observer channels (PR review comment citing a local Windows drive-letter path; maintainer report of leaked drive letter in shared review channel). Rationale unchanged.
+- [x] [Review][Patch] P5 — Completion Notes "No submodule state was touched" replaced with an accurate disposition referencing the Scope-Override block.
+- [x] [Review][Defer] W1 — `git diff --check` validation claim — deferred as `15.5-RV1`. Post-D2 deletion, future `git diff --check` runs no longer hit the trailing-whitespace errors; the original wording remains as a record of the tolerance-defaults anti-idiom.
+- [x] [Review][Defer] W2 — `sprint-status.yaml:last_updated` not advanced by commit `c2e575c` — deferred as `15.5-RV2`.
+- [x] [Review][Defer] W3 — Task 3 prose looser than rollup's 4-ID enumeration — deferred as `15.5-RV3`.
+- [x] [Review][Defer] P3-now-defer — `Target artifact:` semicolon-joined multi-paths — downgraded to defer as `15.5-RV4`. Story 15.4's `13.2-RV4` entry uses the same `;`-joined pattern and was approved; the `CiTestInventoryTests` parser tolerates the form (48/48 PASS). This is a pre-existing schema-cleanliness pattern that should be tightened by a Story-14.5-owned hygiene pass, not retrofitted inside this triage sweep.
+
 ## File Scope
 
 Allowed files for this story:
@@ -106,6 +121,15 @@ Forbidden by default:
 - `Hexalith.Commons/**`
 - `Hexalith.EventStore/**`
 - Any submodule pointer change
+
+### Scope-Override (added 2026-05-15)
+
+Two deviations from the original File Scope were identified by the Acceptance Auditor during code review and are formally accepted here (precedent: Stories 15.2 and 15.4; main has force-push protection so a clean rewrite of the implementation commit is not viable):
+
+1. **`Hexalith.EventStore` submodule pointer bump `63af940` → `f4c3cc4`.** Bundled into the implementation commit `0e3dcb7` from a dirty working tree predating the dev-story run; the EventStore advancement is unrelated to deferred-register triage. Accepted in-place; the prior Completion Notes claim "No submodule state was touched" was inaccurate and is corrected below.
+2. **`Hexalith.FrontComposer` submodule pointer bump `d36201f` → `3f707c2`.** Same justification as #1; bundled unrelated FrontComposer ecosystem advancement.
+
+Carries-forward: subsequent feature commits should keep submodule pointer bumps in dedicated `chore(submodules)` commits, both to preserve File Scope contracts and to make later code review and bisection cheaper.
 
 ## Dev Notes
 
@@ -224,19 +248,22 @@ GPT-5
 - Proposed three bounded follow-up stories: `Strict Release Baseline Replay Evidence`, `Telemetry Test Isolation Hardening`, and `Projection Registry Cross-Check Design`.
 - Did not add proposed stories to `epics.md` or `sprint-status.yaml`; they remain proposals in the deferred register until the project lead explicitly converts them into backlog.
 - Existing dirty planning-artifact changes were not touched.
-- No submodule state was touched.
+- `Hexalith.EventStore` and `Hexalith.FrontComposer` submodule pointer bumps were bundled into the implementation commit `0e3dcb7` and are formally accepted by the Scope-Override block in the File Scope section (added 2026-05-15 during code review). The earlier "No submodule state was touched" bullet was inaccurate and is corrected here.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md`
 - `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `Hexalith.EventStore` (submodule pointer; accepted via Scope-Override above)
+- `Hexalith.FrontComposer` (submodule pointer; accepted via Scope-Override above)
 
 ### Change Log
 
 - 2026-05-12: Created Story 15.5 and promoted it from `backlog` to `ready-for-dev`.
 - 2026-05-15: Started Story 15.5 implementation and moved status to `in-progress`.
 - 2026-05-15: Added bounded deferred-register triage rollup, reconciled Epic 14 carry-forward risks, recorded three follow-up proposals, validated governance changes, and moved status to `review`.
+- 2026-05-15: 3-layer adversarial code review (Blind + Edge + Auditor); AC1-AC4 PASS; D1 resolved via Scope-Override (Hexalith.EventStore + Hexalith.FrontComposer submodule pointer bumps); D2 resolved (deleted scratch `_15-5-review-diff.patch` artifact); 4 patches applied (File List, Change Log, 12.4-RV11 trigger refinement, Completion Notes correction); 4 deferred (15.5-RV1..15.5-RV3 plus semicolon-joined Target artifact schema cleanliness as pre-existing pattern); 6 dismissed.
 
 ## Story Completion Status
 
