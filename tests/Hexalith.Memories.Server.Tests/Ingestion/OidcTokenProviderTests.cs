@@ -601,6 +601,61 @@ public class OidcTokenProviderTests
         handler.Requests.Count.ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData("http://localhost/realms/memories/protocol/openid-connect/token")]
+    [InlineData("http://127.0.0.1:8080/realms/memories/protocol/openid-connect/token")]
+    [InlineData("http://[::1]/realms/memories/protocol/openid-connect/token")]
+    public async Task GetAccessTokenAsync_LoopbackHttpTokenEndpoint_SendsTokenRequest(string endpoint)
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("loopback-token", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        string token = await provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None);
+
+        token.ShouldBe("loopback-token");
+        handler.Requests.Count.ShouldBe(1);
+        handler.Requests[0].RequestUri!.AbsoluteUri.ShouldBe(endpoint);
+    }
+
+    [Theory]
+    [InlineData("http://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://10.0.0.5/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://172.16.0.5/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://192.168.1.20/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://169.254.169.254/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://host.docker.internal/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://localtest.me/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://keycloak.internal/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://127.0.0.2/realms/tache/protocol/openid-connect/token")]
+    public async Task GetAccessTokenAsync_NonLoopbackHttpTokenEndpoint_ThrowsBeforeSendingRequest(string endpoint)
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        AssertSanitizedTransportPolicyMessage(ex, "tokenEndpoint", endpoint);
+        handler.Requests.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetAccessTokenAsync_NonLoopbackHttpTokenEndpointWithSecretLikePath_DoesNotEchoEndpoint()
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+        const string endpoint = "http://auth.tache.ai/realms/Bearer%20abc.def.ghi/client-secret-value/token";
+
+        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
+            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
+
+        AssertSanitizedTransportPolicyMessage(ex, "tokenEndpoint", endpoint);
+        ex.Message.ShouldNotContain("Bearer");
+        ex.Message.ShouldNotContain("abc.def.ghi");
+        ex.Message.ShouldNotContain("client-secret-value");
+        handler.Requests.Count.ShouldBe(0);
+    }
+
     [Fact]
     public void Constructor_NullHttpClientFactory_ThrowsArgumentNullException()
     {
@@ -609,6 +664,20 @@ public class OidcTokenProviderTests
             null!,
             new FakeTimeProvider(),
             Substitute.For<ILogger<OidcTokenProvider>>()));
+    }
+
+    private static void AssertSanitizedTransportPolicyMessage(
+        ArgumentException ex,
+        string parameterName,
+        string endpoint)
+    {
+        ex.ParamName.ShouldBe(parameterName);
+        ex.Message.ShouldContain("HTTPS");
+        ex.Message.ShouldContain("loopback");
+        ex.Message.ShouldContain("localhost");
+        ex.Message.ShouldContain("127.0.0.1");
+        ex.Message.ShouldContain("[::1]");
+        ex.Message.ShouldNotContain(endpoint);
     }
 
     private static OidcTokenProvider CreateProvider(

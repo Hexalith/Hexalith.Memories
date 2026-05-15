@@ -503,12 +503,46 @@ public class EmbeddingProviderDefaultsTests
     [InlineData("BaseUrl", "https://llm.tache.ai/ollama")]
     [InlineData("OidcTokenEndpoint", "http://localhost/realms/tache/protocol/openid-connect/token")]
     [InlineData("OidcTokenEndpoint", "http://127.0.0.1:8080/realms/tache/protocol/openid-connect/token")]
+    [InlineData("OidcTokenEndpoint", "http://[::1]/realms/tache/protocol/openid-connect/token")]
     [InlineData("OidcTokenEndpoint", "https://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
     public void Validate_AbsoluteHttpUrls_ShouldNotThrow(string fieldName, string value)
     {
         TenantEmbeddingConfig config = SetUrlField(EmbeddingProviderDefaults.Ollama(), fieldName, value);
 
         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+    }
+
+    [Theory]
+    [InlineData("http://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://10.0.0.5/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://172.16.0.5/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://192.168.1.20/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://169.254.169.254/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://host.docker.internal/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://localtest.me/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://keycloak.internal/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://127.0.0.2/realms/tache/protocol/openid-connect/token")]
+    public void Validate_NonLoopbackHttpOidcTokenEndpoint_ShouldThrowAndNotEchoEndpoint(string endpoint)
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { OidcTokenEndpoint = endpoint };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        AssertSanitizedTransportPolicyMessage(ex, nameof(config.OidcTokenEndpoint), endpoint);
+    }
+
+    [Fact]
+    public void Validate_NonLoopbackHttpOidcTokenEndpointWithSecretLikePath_ShouldNotEchoEndpoint()
+    {
+        const string endpoint = "http://auth.tache.ai/realms/Bearer%20abc.def.ghi/client-secret-value/token";
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { OidcTokenEndpoint = endpoint };
+
+        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
+
+        AssertSanitizedTransportPolicyMessage(ex, nameof(config.OidcTokenEndpoint), endpoint);
+        ex.Message.ShouldNotContain("Bearer");
+        ex.Message.ShouldNotContain("abc.def.ghi");
+        ex.Message.ShouldNotContain("client-secret-value");
     }
 
     [Theory]
@@ -838,4 +872,18 @@ public class EmbeddingProviderDefaultsTests
             "OidcTokenEndpoint" => config with { OidcTokenEndpoint = value },
             _ => throw new ArgumentOutOfRangeException(nameof(fieldName), fieldName, "Unsupported URL field."),
         };
+
+    private static void AssertSanitizedTransportPolicyMessage(
+        ArgumentException ex,
+        string parameterName,
+        string endpoint)
+    {
+        ex.ParamName.ShouldBe(parameterName);
+        ex.Message.ShouldContain("HTTPS");
+        ex.Message.ShouldContain("loopback");
+        ex.Message.ShouldContain("localhost");
+        ex.Message.ShouldContain("127.0.0.1");
+        ex.Message.ShouldContain("[::1]");
+        ex.Message.ShouldNotContain(endpoint);
+    }
 }

@@ -321,6 +321,11 @@ public static partial class EmbeddingProviderDefaults
                 $"{propertyName} must not contain a fragment.",
                 propertyName);
         }
+
+        if (propertyName == nameof(TenantEmbeddingConfig.OidcTokenEndpoint))
+        {
+            OidcTokenProvider.ValidateTokenEndpointTransport(uri, propertyName);
+        }
     }
 
     private static string DescribeAuthMode(string? authMode) => authMode switch

@@ -137,6 +137,31 @@ The Memories token request uses `application/x-www-form-urlencoded` client crede
 `grant_type=client_credentials`, `client_id={CLIENT_ID}`, the secret value resolved from `{SECRET_NAME}`,
 and optional `scope`.
 
+## Token Endpoint Transport Policy
+
+Production OIDC token endpoints must use `https://`. Memories validates `OidcTokenEndpoint` before
+tenant configuration persistence and before direct token acquisition, so a non-loopback `http://`
+endpoint fails before any client credentials are sent.
+
+Local development and deterministic fake-server tests may use HTTP only for these literal loopback
+hosts:
+
+- `http://localhost/...`
+- `http://127.0.0.1/...`
+- `http://[::1]/...`
+
+Other HTTP token endpoints are rejected, including public hostnames, private IPv4 ranges, link-local
+metadata hosts, Docker or internal aliases such as `host.docker.internal`, DNS aliases such as
+`localtest.me`, and broader loopback literals such as `127.0.0.2`. The exception is intentionally
+literal-host based; DNS names that resolve to loopback are not treated as local.
+
+Validation errors name the field or argument and the HTTPS/local-loopback rule, but they do not echo
+the full token endpoint URL. This keeps realm paths, accidental credential-looking path segments,
+query strings, fragments, embedded credentials, bearer-shaped text, and client secrets out of
+operator-visible errors. Tenant configuration stores only secret names, token response previews are
+redacted before truncation, bearer-shaped values are redacted, and raw secret values remain in DAPR or
+the platform secret manager only.
+
 ## DAPR Secret Store
 
 Local AppHost uses `secretstores.local.file` named `secretstore` and points at repo-root `secrets.json`.

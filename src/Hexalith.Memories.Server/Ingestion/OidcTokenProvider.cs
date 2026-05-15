@@ -107,12 +107,41 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
                 nameof(tokenEndpoint));
         }
 
+        ValidateTokenEndpointTransport(uri, nameof(tokenEndpoint));
+
         string normalizedEndpoint = uri.GetComponents(
             UriComponents.SchemeAndServer | UriComponents.Path,
             UriFormat.UriEscaped);
         string normalizedScope = string.IsNullOrWhiteSpace(scope) ? string.Empty : scope.Trim();
         return new OidcTokenCacheKey(normalizedEndpoint, clientId.Trim(), normalizedScope);
     }
+
+    /// <summary>Validates the production HTTPS policy and local loopback HTTP exception for OIDC token endpoints.</summary>
+    /// <param name="uri">The absolute token endpoint URI.</param>
+    /// <param name="parameterName">The field or argument name used by the thrown exception.</param>
+    /// <exception cref="ArgumentException">Thrown when an HTTP token endpoint is not one of the literal loopback exceptions.</exception>
+    internal static void ValidateTokenEndpointTransport(Uri uri, string parameterName)
+    {
+        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameterName);
+
+        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+             IsLocalHttpTokenEndpoint(uri)))
+        {
+            return;
+        }
+
+        throw new ArgumentException(
+            "Production OIDC token endpoints require HTTPS; HTTP is allowed only for local loopback hosts (localhost, 127.0.0.1, [::1]).",
+            parameterName);
+    }
+
+    private static bool IsLocalHttpTokenEndpoint(Uri uri)
+        => string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal) ||
+           string.Equals(uri.Host, "::1", StringComparison.Ordinal) ||
+           string.Equals(uri.Host, "[::1]", StringComparison.Ordinal);
 
     private async Task<string> GetOrFetchAsync(
         OidcTokenCacheKey key,
