@@ -603,8 +603,10 @@ public class OidcTokenProviderTests
 
     [Theory]
     [InlineData("http://localhost/realms/memories/protocol/openid-connect/token")]
+    [InlineData("http://localhost:8080/realms/memories/protocol/openid-connect/token")]
     [InlineData("http://127.0.0.1:8080/realms/memories/protocol/openid-connect/token")]
     [InlineData("http://[::1]/realms/memories/protocol/openid-connect/token")]
+    [InlineData("http://[::1]:8080/realms/memories/protocol/openid-connect/token")]
     public async Task GetAccessTokenAsync_LoopbackHttpTokenEndpoint_SendsTokenRequest(string endpoint)
     {
         ScriptedTokenHandler handler = new((_, _) => TokenResponse("loopback-token", 3600));
@@ -617,6 +619,26 @@ public class OidcTokenProviderTests
         handler.Requests[0].RequestUri!.AbsoluteUri.ShouldBe(endpoint);
     }
 
+    // Story 15.4 D2 pinning: .NET `Uri` canonicalizes alternative literal forms of loopback to the
+    // allowed `127.0.0.1` / `[::1]` host values. These forms are intentionally accepted; pinning
+    // them with tests means a future refactor that introduces a stricter literal-string match will
+    // surface in CI rather than silently break local operator setups.
+    [Theory]
+    [InlineData("http://2130706433/realms/memories/protocol/openid-connect/token")] // decimal IPv4 form of 127.0.0.1
+    [InlineData("http://127.0.0.001/realms/memories/protocol/openid-connect/token")] // octal-style leading zeros for 127.0.0.1
+    [InlineData("http://[0:0:0:0:0:0:0:1]/realms/memories/protocol/openid-connect/token")] // expanded IPv6 loopback
+    [InlineData("http://[::0001]/realms/memories/protocol/openid-connect/token")] // padded compressed IPv6 loopback
+    public async Task GetAccessTokenAsync_UriCanonicalizedLoopbackForms_SendsTokenRequest(string endpoint)
+    {
+        ScriptedTokenHandler handler = new((_, _) => TokenResponse("canonicalized-loopback-token", 3600));
+        OidcTokenProvider provider = CreateProvider(handler);
+
+        string token = await provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None);
+
+        token.ShouldBe("canonicalized-loopback-token");
+        handler.Requests.Count.ShouldBe(1);
+    }
+
     [Theory]
     [InlineData("http://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
     [InlineData("http://10.0.0.5/realms/tache/protocol/openid-connect/token")]
@@ -627,6 +649,9 @@ public class OidcTokenProviderTests
     [InlineData("http://localtest.me/realms/tache/protocol/openid-connect/token")]
     [InlineData("http://keycloak.internal/realms/tache/protocol/openid-connect/token")]
     [InlineData("http://127.0.0.2/realms/tache/protocol/openid-connect/token")]
+    [InlineData("http://[::ffff:127.0.0.1]/realms/tache/protocol/openid-connect/token")] // Story 15.4 P2: IPv4-mapped IPv6 is not the literal [::1].
+    [InlineData("http://[::ffff:7f00:1]/realms/tache/protocol/openid-connect/token")] // Story 15.4 P2: compressed IPv4-mapped IPv6 form.
+    [InlineData("http://localhost./realms/tache/protocol/openid-connect/token")] // Story 15.4 P3: trailing-dot host is not the literal "localhost".
     public async Task GetAccessTokenAsync_NonLoopbackHttpTokenEndpoint_ThrowsBeforeSendingRequest(string endpoint)
     {
         ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
@@ -678,6 +703,31 @@ public class OidcTokenProviderTests
         ex.Message.ShouldContain("127.0.0.1");
         ex.Message.ShouldContain("[::1]");
         ex.Message.ShouldNotContain(endpoint);
+
+        // Story 15.4 P4: strengthen leak guard. ShouldNotContain(endpoint) only catches the full
+        // URL; a regression that echoes just the host, path, or known credential markers would
+        // still pass. Probe each segment explicitly. The literal allowlist tokens shared with the
+        // policy message (`localhost`, `127.0.0.1`, `[::1]`) are excluded from the host-leak guard
+        // because they appear in the legitimate policy text.
+        if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? parsed))
+        {
+            string host = parsed.Host;
+            if (!string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(host, "127.0.0.1", StringComparison.Ordinal) &&
+                !string.Equals(host, "[::1]", StringComparison.Ordinal))
+            {
+                ex.Message.ShouldNotContain(host);
+            }
+
+            if (!string.IsNullOrEmpty(parsed.AbsolutePath) && parsed.AbsolutePath != "/")
+            {
+                ex.Message.ShouldNotContain(parsed.AbsolutePath);
+            }
+        }
+
+        ex.Message.ShouldNotContain("Bearer");
+        ex.Message.ShouldNotContain("client_secret");
+        ex.Message.ShouldNotContain("client-secret");
     }
 
     private static OidcTokenProvider CreateProvider(

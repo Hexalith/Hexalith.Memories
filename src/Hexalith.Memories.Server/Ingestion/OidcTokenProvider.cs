@@ -140,7 +140,6 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
     private static bool IsLocalHttpTokenEndpoint(Uri uri)
         => string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
            string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal) ||
-           string.Equals(uri.Host, "::1", StringComparison.Ordinal) ||
            string.Equals(uri.Host, "[::1]", StringComparison.Ordinal);
 
     private async Task<string> GetOrFetchAsync(

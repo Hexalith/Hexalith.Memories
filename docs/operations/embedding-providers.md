@@ -155,6 +155,17 @@ metadata hosts, Docker or internal aliases such as `host.docker.internal`, DNS a
 `localtest.me`, and broader loopback literals such as `127.0.0.2`. The exception is intentionally
 literal-host based; DNS names that resolve to loopback are not treated as local.
 
+The "literal-host" check runs against `Uri.Host` after .NET URI canonicalization, not against the
+raw input string. As a side-effect, alternative textual forms of the same loopback address are also
+accepted: decimal IPv4 (`http://2130706433/...`), IPv4 with leading zeros (`http://127.0.0.001/...`),
+and expanded or padded IPv6 (`http://[0:0:0:0:0:0:0:1]/...`, `http://[::0001]/...`) all canonicalize
+to `127.0.0.1` or `[::1]` and are treated identically to the canonical forms. They remain real
+loopback addresses; operators should still prefer the canonical `localhost`, `127.0.0.1`, or `[::1]`
+forms because logs and audit records show the canonicalized value, not the originally configured
+form. The acceptance of these alternative forms is pinned by tests so future refactors that move to
+a stricter raw-string match would surface as a test break rather than silently rejecting an existing
+local development setup.
+
 Validation errors name the field or argument and the HTTPS/local-loopback rule, but they do not echo
 the full token endpoint URL. This keeps realm paths, accidental credential-looking path segments,
 query strings, fragments, embedded credentials, bearer-shaped text, and client secrets out of

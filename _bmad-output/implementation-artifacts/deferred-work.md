@@ -49,6 +49,10 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Deferred from: code review of 15-4-token-endpoint-transport-policy (2026-05-15)
+
+- **15.4-RV1 — Sanitization-message assertions are tautological.** `OidcTokenProviderTests.cs:656-669` and `EmbeddingProviderDefaultsTests.cs:876-889` — the positive `ShouldContain("HTTPS")`/`("loopback")`/`("localhost")`/`("127.0.0.1")`/`("[::1]")` assertions in `AssertSanitizedTransportPolicyMessage` re-state the constant the implementation throws and provide zero discrimination beyond confirming the exception is reached. The actual non-leak safety is enforced by `ShouldNotContain(endpoint)` and the dedicated `Bearer`/`abc.def.ghi`/`client-secret-value` checks. Re-open trigger: any test-hardening sweep that strengthens negative-content assertions across the server test suite, or a regression where the implementation changes the user-facing exception text and the test misses the divergence.
+
 ## Closed/Accepted by: Story 15.4 Token Endpoint Transport Policy (2026-05-14)
 
 - **13.2-RV4 - resolved.** OIDC token endpoint validation now enforces HTTPS for production and

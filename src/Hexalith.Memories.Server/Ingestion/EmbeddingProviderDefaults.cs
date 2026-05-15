@@ -216,8 +216,10 @@ public static partial class EmbeddingProviderDefaults
 
         // AC9: any non-empty BaseUrl / OidcTokenEndpoint must parse as an absolute HTTP(S) URL,
         // independent of provider or auth mode. Mode-specific required-presence checks follow.
-        ValidateOptionalHttpUrl(config.BaseUrl, nameof(config.BaseUrl));
-        ValidateOptionalHttpUrl(config.OidcTokenEndpoint, nameof(config.OidcTokenEndpoint));
+        // Story 15.4: OidcTokenEndpoint also runs the HTTPS-or-loopback transport policy; BaseUrl
+        // transport behavior is intentionally unchanged here.
+        ValidateOptionalHttpUrl(config.BaseUrl, nameof(config.BaseUrl), enforceTokenEndpointTransport: false);
+        ValidateOptionalHttpUrl(config.OidcTokenEndpoint, nameof(config.OidcTokenEndpoint), enforceTokenEndpointTransport: true);
 
         // AC4: OIDC client-credentials auth is only meaningful for the Ollama provider. Reject the
         // mode itself on non-Ollama providers so the configuration cannot enable token acquisition
@@ -281,7 +283,7 @@ public static partial class EmbeddingProviderDefaults
         string.Equals(authMode, ApiKeyAuthMode, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(authMode, OidcClientCredentialsAuthMode, StringComparison.OrdinalIgnoreCase);
 
-    private static void ValidateOptionalHttpUrl(string? value, string propertyName)
+    private static void ValidateOptionalHttpUrl(string? value, string propertyName, bool enforceTokenEndpointTransport)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -322,7 +324,7 @@ public static partial class EmbeddingProviderDefaults
                 propertyName);
         }
 
-        if (propertyName == nameof(TenantEmbeddingConfig.OidcTokenEndpoint))
+        if (enforceTokenEndpointTransport)
         {
             OidcTokenProvider.ValidateTokenEndpointTransport(uri, propertyName);
         }
