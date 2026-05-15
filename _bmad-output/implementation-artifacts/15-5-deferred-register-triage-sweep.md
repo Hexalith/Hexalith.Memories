@@ -1,6 +1,6 @@
 # Story 15.5: Deferred Register Triage Sweep
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -22,46 +22,46 @@ so that historical noise, consciously accepted risks, and true backlog candidate
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Establish the sweep baseline before editing (AC: 1-4)
-  - [ ] Read `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md`, `_bmad-output/planning-artifacts/epics.md`, and the current Story 15.1 through Story 15.4 artifacts before editing.
-  - [ ] Confirm Stories 15.1, 15.2, 15.3, and 15.4 are not actively `in-progress` or `review`; if one is active, do not rewrite or disposition its targeted IDs in this story.
-  - [ ] Build a short inventory of open, accepted, and carried-forward entries that remain prose-only or stale after Story 14.5. Treat the Story 14.5 structured schema as the source of truth for active entries.
-  - [ ] Explicitly mark `13.7-RV4` as already reconciled because the current deferred register has a resolved structured block dated 2026-05-12.
+- [x] Task 0 - Establish the sweep baseline before editing (AC: 1-4)
+  - [x] Read `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md`, `_bmad-output/planning-artifacts/epics.md`, and the current Story 15.1 through Story 15.4 artifacts before editing.
+  - [x] Confirm Stories 15.1, 15.2, 15.3, and 15.4 are not actively `in-progress` or `review`; if one is active, do not rewrite or disposition its targeted IDs in this story.
+  - [x] Build a short inventory of open, accepted, and carried-forward entries that remain prose-only or stale after Story 14.5. Treat the Story 14.5 structured schema as the source of truth for active entries.
+  - [x] Explicitly mark `13.7-RV4` as already reconciled because the current deferred register has a resolved structured block dated 2026-05-12.
 
-- [ ] Task 1 - Select a bounded candidate set (AC: 1, 2, 4)
-  - [ ] Select only entries that need active planning signal, stale trigger refresh, or an explicit risk decision. Do not bulk-migrate every historical prose entry.
-  - [ ] Include at least the named candidates unless analysis proves one is already resolved or owned elsewhere: `12.4-RV20`, `12.6-RV5`, and `Story-9.3-ProjectionRegistryCrossCheck`.
-  - [ ] Check whether release/provider/migration/token risks named by the Epic 14 retrospective are already owned by Story 15.1, 15.2, 15.3, or 15.4. If they are owned there, cross-reference rather than duplicating them.
-  - [ ] Keep the selected set small enough that the story can close with no more than five follow-up story proposals.
+- [x] Task 1 - Select a bounded candidate set (AC: 1, 2, 4)
+  - [x] Select only entries that need active planning signal, stale trigger refresh, or an explicit risk decision. Do not bulk-migrate every historical prose entry.
+  - [x] Include at least the named candidates unless analysis proves one is already resolved or owned elsewhere: `12.4-RV20`, `12.6-RV5`, and `Story-9.3-ProjectionRegistryCrossCheck`.
+  - [x] Check whether release/provider/migration/token risks named by the Epic 14 retrospective are already owned by Story 15.1, 15.2, 15.3, or 15.4. If they are owned there, cross-reference rather than duplicating them.
+  - [x] Keep the selected set small enough that the story can close with no more than five follow-up story proposals.
 
-- [ ] Task 2 - Apply structured deferred-work dispositions (AC: 1, 2, 3)
-  - [ ] Add a Story 15.5 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
-  - [ ] For each selected entry, add the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
-  - [ ] Use `carried-forward` only when a named future story or trigger owns the risk. Use `accepted` only when the team is intentionally keeping the risk without planned implementation.
-  - [ ] Preserve historical prose entries below their original headings. Do not delete old context unless it is duplicated by the new structured rollup and deletion is needed to prevent conflicting active status.
-  - [ ] Do not mark a risk `resolved` without repository evidence such as code, test, documentation, or a prior story record.
+- [x] Task 2 - Apply structured deferred-work dispositions (AC: 1, 2, 3)
+  - [x] Add a Story 15.5 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
+  - [x] For each selected entry, add the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
+  - [x] Use `carried-forward` only when a named future story or trigger owns the risk. Use `accepted` only when the team is intentionally keeping the risk without planned implementation.
+  - [x] Preserve historical prose entries below their original headings. Do not delete old context unless it is duplicated by the new structured rollup and deletion is needed to prevent conflicting active status.
+  - [x] Do not mark a risk `resolved` without repository evidence such as code, test, documentation, or a prior story record.
 
-- [ ] Task 3 - Reconcile Epic 14 retrospective carry-forward list (AC: 3)
-  - [ ] For `S11-FC`, `13.2-RV4`, `13.1-RV6` and related provider work, and `13.6-RV1`, record that the current Epic 15 backlog already has dedicated ready stories: 15.1, 15.4, 15.2, and 15.3 respectively.
-  - [ ] For `13.7-RV4`, point to the current resolved structured entry in `deferred-work.md` and do not recreate a new backlog item.
-  - [ ] If the retrospective's "Preparation For The Next Work" section is now stale because Epic 15 exists, record the reconciliation in this story artifact or the deferred-work rollup rather than editing the retrospective unless a maintainer explicitly wants retro history rewritten.
+- [x] Task 3 - Reconcile Epic 14 retrospective carry-forward list (AC: 3)
+  - [x] For `S11-FC`, `13.2-RV4`, `13.1-RV6` and related provider work, and `13.6-RV1`, record that the current Epic 15 backlog already has dedicated ready stories: 15.1, 15.4, 15.2, and 15.3 respectively.
+  - [x] For `13.7-RV4`, point to the current resolved structured entry in `deferred-work.md` and do not recreate a new backlog item.
+  - [x] If the retrospective's "Preparation For The Next Work" section is now stale because Epic 15 exists, record the reconciliation in this story artifact or the deferred-work rollup rather than editing the retrospective unless a maintainer explicitly wants retro history rewritten.
 
-- [ ] Task 4 - Propose no more than five follow-up stories (AC: 2, 4)
-  - [ ] Group selected entries by coherent implementation surface, not by chronology. Prefer one story per real ownership boundary.
-  - [ ] Each proposed follow-up must name explicit deferred IDs, target artifacts, and validation expectations.
-  - [ ] Suggested proposal buckets to consider:
+- [x] Task 4 - Propose no more than five follow-up stories (AC: 2, 4)
+  - [x] Group selected entries by coherent implementation surface, not by chronology. Prefer one story per real ownership boundary.
+  - [x] Each proposed follow-up must name explicit deferred IDs, target artifacts, and validation expectations.
+  - [x] Suggested proposal buckets to consider:
     - strict release-baseline replay evidence for `12.4-RV20`;
     - telemetry test isolation hardening for `12.6-RV5`;
     - projection-registry cross-check design for `Story-9.3-ProjectionRegistryCrossCheck`;
     - handler-observation fidelity and Tier-2 proof for related Story 9.3 entries, only if selected;
     - author-experience cleanup for remaining story-scope diagnostic nits, only if selected.
-  - [ ] Do not add the proposed stories directly to `epics.md` or `sprint-status.yaml` unless the project lead explicitly approves converting the proposals into backlog.
+  - [x] Do not add the proposed stories directly to `epics.md` or `sprint-status.yaml` unless the project lead explicitly approves converting the proposals into backlog.
 
-- [ ] Task 5 - Validate governance changes (AC: 1-4)
-  - [ ] Run or inspect the focused deferred-work parser coverage that Story 14.5 introduced: `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`, if the local SDK and time budget permit it.
-  - [ ] If no code parser changed, at minimum run `git diff --check -- _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md`.
-  - [ ] Manually verify every new structured block contains exactly one `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and the required `Evidence` or `Rationale`.
-  - [ ] Record the final proposal list and any validation limits in this story's Dev Agent Record.
+- [x] Task 5 - Validate governance changes (AC: 1-4)
+  - [x] Run or inspect the focused deferred-work parser coverage that Story 14.5 introduced: `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`, if the local SDK and time budget permit it.
+  - [x] If no code parser changed, at minimum run `git diff --check -- _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md`.
+  - [x] Manually verify every new structured block contains exactly one `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and the required `Evidence` or `Rationale`.
+  - [x] Record the final proposal list and any validation limits in this story's Dev Agent Record.
 
 ## File Scope
 
@@ -209,23 +209,35 @@ GPT-5
 - Story selection chose `15-5-deferred-register-triage-sweep` because `ready_count` was `4`, below the target of `5`, and this was the first backlog story in sprint-status order.
 - `/bmad-create-story 15-5-deferred-register-triage-sweep` context gathering loaded Epic 15 planning, sprint status, root project context, Story 15.1 through 15.4 artifacts, the Story 14.5 lessons/schema baseline, Epic 14 retrospective, current deferred-work entries, the May 12 implementation-readiness report, and recent git history.
 - No external technology research was needed for this story. The implementation surface is repository-owned governance, deferred-register triage, and planning hygiene.
+- Moved Story 15.5 from `ready-for-dev` to `in-progress` on 2026-05-15 before editing, then to `review` after validation.
+- Validation initially hit a stale `testhost` process (`100128`) locking CLI test binaries; stopping that process cleared the local build/test blockage.
+- `git diff --check -- _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md` passed with only expected LF-to-CRLF working-copy warnings.
+- Manual structured-block validation passed for five Story 15.5 dispositions: each block has exactly one `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and `Rationale`.
+- `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"` passed: 48 passed, 0 failed, 0 skipped.
 
 ### Completion Notes List
 
 - Story context created on 2026-05-12.
 - Scope is limited to bounded deferred-register triage, structured dispositions for selected entries, Epic 14 risk reconciliation, and no-more-than-five follow-up story proposals.
+- Added a Story 15.5 triage rollup to `deferred-work.md` for five selected entries: carried forward `12.4-RV20`, `12.6-RV5`, and `Story-9.3-ProjectionRegistryCrossCheck`; accepted `12.4-RV10` and `12.4-RV11`.
+- Reconciled Epic 14 retrospective carry-forward risks to existing Story 15.1 through 15.4 ownership and the already-resolved `13.7-RV4` deferred-register block, without rewriting retrospective history.
+- Proposed three bounded follow-up stories: `Strict Release Baseline Replay Evidence`, `Telemetry Test Isolation Hardening`, and `Projection Registry Cross-Check Design`.
+- Did not add proposed stories to `epics.md` or `sprint-status.yaml`; they remain proposals in the deferred register until the project lead explicitly converts them into backlog.
 - Existing dirty planning-artifact changes were not touched.
 - No submodule state was touched.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/15-5-deferred-register-triage-sweep.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ### Change Log
 
 - 2026-05-12: Created Story 15.5 and promoted it from `backlog` to `ready-for-dev`.
+- 2026-05-15: Started Story 15.5 implementation and moved status to `in-progress`.
+- 2026-05-15: Added bounded deferred-register triage rollup, reconciled Epic 14 carry-forward risks, recorded three follow-up proposals, validated governance changes, and moved status to `review`.
 
 ## Story Completion Status
 
-Story context created and ready for implementation. Status set to `ready-for-dev`.
+Implemented and ready for review. Story 15.5 added the deferred-register triage rollup, recorded accepted/carried-forward dispositions, reconciled Epic 14 carry-forward risks to existing ownership, proposed three follow-up stories without converting them to backlog, and passed focused validation.

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-15T12:00:00+02:00 # Story 15.4 code review complete: review -> done.
+last_updated: 2026-05-15T12:45:15+02:00 # Story 15.5 dev-story complete: in-progress -> review.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -195,5 +195,5 @@ development_status:
   15-2-provider-model-dimension-registry: done # 2026-05-14 review close-out (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 + AC6 PASS, AC5 PARTIAL (contract-tier serialization test gap recorded as 15.2-RV1). 3 decisions resolved (D1 EventStore submodule pointer — kept with Scope-Override; D2 epics.md + sprint-change-proposal — File Scope amended + Scope-Override; D3 AuthMode-after-RateLimit order — accepted and pinned with new ordering-contract tests). 8 patches applied: P1 Registry → ImmutableArray; P2 misleading "DimensionsAtSharedMaximum" test renamed to "UnknownModelAtSharedDimensionMaximum"; P3 tautological mixed-case test strengthened; P4 Ollama rate-limit no-op `with` fixed (6000→30_000); P5 isOllama uses registry-canonical provider.ProviderName; P6 unused ModelRegistryEntry.DefaultDimensions removed; P7 added 2 non-leakage assertions; P8 added 2 ordering-contract tests + remarks XML doc. Validation: EmbeddingProviderDefaultsTests 145/145 PASS (was 141, +4 new); focused slice (Defaults + Client + Actor) 237/237 PASS; full Hexalith.Memories.slnx build 0W/0E. 9 carry-forward items recorded as 15.2-RV1..15.2-RV9.
   15-3-live-migration-coordination-policy: done # 2026-05-14 code review complete: 1 decision-needed accepted, 11 patches applied (atomic two-key marker write, IsActive default-protective, fail-closed reader, DemandMaster reads, status constants, NormalizeProvider symmetry, tenantId equality, dim validation, FakeStore IsActive parity, +2 retention tests, test substitute alignment). 14 deferred, 1 dismissed. Server.Tests 1772/1772 green.
   15-4-token-endpoint-transport-policy: done # 2026-05-15 code review complete (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 PASS; 2 decisions resolved (D1 submodule pointer bumps — Scope-Override after force-push blocked by branch protection; D2 Uri-canonicalized loopback equivalents — accept + document + pin); 7 patches applied (P1 drop dead "::1" bracket-less branch; P2 IPv4-mapped IPv6 negative tests; P3 localhost. trailing-dot negative tests; P4 stronger leak guard with host + path + Bearer/client-secret substring checks; P5 rename-safe enforceTokenEndpointTransport parameter replaces propertyName==nameof string gate; P6 [::1]:PORT and localhost:PORT positive parity; P7 last_updated forward-progressing timestamp); 1 deferred (15.4-RV1 tautological sanitization assertions); 5 dismissed.
-  15-5-deferred-register-triage-sweep: ready-for-dev # 2026-05-12 story context created.
+  15-5-deferred-register-triage-sweep: review # 2026-05-15 dev-story complete: deferred register rollup added, Epic 14 risks reconciled, 3 follow-up proposals recorded, validation passed.
   epic-15-retrospective: optional

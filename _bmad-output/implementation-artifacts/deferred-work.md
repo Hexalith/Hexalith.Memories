@@ -49,6 +49,112 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Story 15.5 Triage Rollup (2026-05-15)
+
+Story 15.5 performed a bounded sweep rather than a full historical migration.
+The selected set below contains entries that need active planning signal,
+refreshed ownership, or an explicit risk decision before the next implementation
+epic. Historical prose entries remain under their original headings for context.
+
+- **12.4-RV20 - carried-forward.** Strict literal per-SHA replay evidence is a
+  release-quality proof candidate, not a runtime defect. The current HEAD
+  inheritance rationale remains acceptable for existing close-out evidence, but a
+  future quality story can run the literal replay drill if maintainers want
+  stronger historical proof.
+
+  - ID: 12.4-RV20
+  - Status: carried-forward
+  - Source story: 15-5-deferred-register-triage-sweep
+  - Target artifact: _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md; tools/test-release.ps1; tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
+  - Re-open trigger: A release post-mortem traces a regression to a test that existed at one of the named anchor SHAs but was silently fixed before HEAD, or a release-quality story explicitly requests strict literal replay evidence over ancestry-based proof.
+  - Rationale: Proposed follow-up story "Strict Release Baseline Replay Evidence" owns the optional proof drill for `12.4-RV20`; this governance sweep does not run historical checkout/build/test lanes or mutate release tooling.
+
+- **12.6-RV5 - carried-forward.** The `EmbeddingInputContentKindTests`
+  telemetry assertion still has dormant test-isolation risk because it uses a
+  fixed tenant id and a non-thread-safe capture list, even though the release
+  filter that exposed the issue was removed by Story 12.6.
+
+  - ID: 12.6-RV5
+  - Status: carried-forward
+  - Source story: 15-5-deferred-register-triage-sweep
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs
+  - Re-open trigger: `EmbeddingInputContentKindTests` flakes again, or another story adds a concurrent `MemoriesMeter.EmbeddingApiCalls` assertion path that could share static meter captures.
+  - Rationale: Proposed follow-up story "Telemetry Test Isolation Hardening" owns the focused test cleanup. Directly editing runtime or test code is outside this triage sweep.
+
+- **Story-9.3-ProjectionRegistryCrossCheck - carried-forward.** Handler
+  mismatch detection still validates observed events against routing config
+  instead of proving that tenant application projection code has a matching
+  runtime-bound projection registry.
+
+  - ID: Story-9.3-ProjectionRegistryCrossCheck
+  - Status: carried-forward
+  - Source story: 15-5-deferred-register-triage-sweep
+  - Target artifact: src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs; src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs; tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs
+  - Re-open trigger: Operator demand, a production incident, or an architecture decision requires mismatch detection to prove actual projection bindings rather than routing declarations.
+  - Rationale: Proposed follow-up story "Projection Registry Cross-Check Design" owns the architectural design and implementation proof. This story records the planning signal without patching handler detection casually.
+
+- **12.4-RV10 - accepted.** A parse-time warning for dropped bare-token bullets
+  may help story authors, but the current out-of-scope-files diagnostic already
+  catches the issue once a changed file lands outside the parsed allow-list.
+
+  - ID: 12.4-RV10
+  - Status: accepted
+  - Source story: 15-5-deferred-register-triage-sweep
+  - Target artifact: tools/check-story-file-scope.py
+  - Re-open trigger: A contributor confusion incident or story-template redesign shows that pre-commit author warnings are needed before any changed-file validation runs.
+  - Rationale: The value is low until there is evidence of author confusion, and adding parse-time stderr warnings could create noise for legitimate non-bullet prose.
+
+- **12.4-RV11 - accepted.** Local Windows absolute-path cosmetic noise remains
+  intentionally accepted because CI diagnostics use repository-relative paths and
+  do not expose maintainer-visible drive letters.
+
+  - ID: 12.4-RV11
+  - Status: accepted
+  - Source story: 15-5-deferred-register-triage-sweep
+  - Target artifact: tools/check-story-file-scope.py
+  - Re-open trigger: A maintainer-visible diagnostic exposes a local Windows path in CI output, PR feedback, release evidence, or another shared channel.
+  - Rationale: The remaining issue is cosmetic and local-only; changing it now would add story-scope tooling churn without improving CI or reviewer evidence.
+
+### Epic 14 Retrospective Reconciliation
+
+- `S11-FC`, `12.1-RV3`, and `12.1-RV4` are already reconciled by Story 15.1:
+  `S11-FC` and `12.1-RV4` are resolved, while `12.1-RV3` is accepted with a
+  documented release-maintainer risk decision.
+- `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` are already reconciled
+  by Story 15.2 through the provider/model/dimension registry work.
+- `13.6-RV1` and `13.6-RV3` are already reconciled by Story 15.3 through live
+  migration marker enforcement and accepted migration result semantics.
+- `13.2-RV4` is already reconciled by Story 15.4 through token endpoint transport
+  policy enforcement and operations documentation.
+- `13.7-RV4` is already resolved by the AppHost-owned `RepositoryRootLocator`
+  structured entry dated 2026-05-12; no new backlog item is created here.
+- The Epic 14 retrospective's "Preparation For The Next Work" note is stale
+  because Epic 15 now exists. This rollup records the reconciliation instead of
+  rewriting retrospective history.
+
+### Follow-Up Story Proposals
+
+1. **Strict Release Baseline Replay Evidence**
+
+   Deferred IDs: `12.4-RV20`.
+   Target artifacts: `_bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md`, `tools/test-release.ps1`, `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`, and run logs under the implementation artifact folder.
+   Validation expectations: restore each named anchor SHA in isolated worktrees, run the authoritative release/test lanes available at that SHA, capture pass/fail evidence, and prove no tracked files or submodule pointers drift.
+   Scope boundary: evidence-only quality proof; no release tooling behavior changes unless the replay exposes a real defect.
+
+2. **Telemetry Test Isolation Hardening**
+
+   Deferred IDs: `12.6-RV5`.
+   Target artifacts: `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs` and adjacent telemetry test helpers if needed.
+   Validation expectations: make the test use unique tenant/source filtering and thread-safe capture mechanics, run focused `EmbeddingInputContentKindTests`, run the sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` coverage, and run the relevant Server test slice.
+   Scope boundary: test-isolation hardening only; no production telemetry contract change unless the test exposes one.
+
+3. **Projection Registry Cross-Check Design**
+
+   Deferred IDs: `Story-9.3-ProjectionRegistryCrossCheck`.
+   Target artifacts: `src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs`, `src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs`, `tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`, and any projection-registry design note created by that story.
+   Validation expectations: define the projection registry contract, prove mismatch detection compares routing declarations with actual tenant projection bindings, add negative tests for configured-but-unbound projections, and preserve existing handler mismatch CLI/API contracts.
+   Scope boundary: architecture/design plus focused proof; do not retrofit broad server authentication or unrelated handler observation-window features.
+
 ## Deferred from: code review of 15-4-token-endpoint-transport-policy (2026-05-15)
 
 - **15.4-RV1 — Sanitization-message assertions are tautological.** `OidcTokenProviderTests.cs:656-669` and `EmbeddingProviderDefaultsTests.cs:876-889` — the positive `ShouldContain("HTTPS")`/`("loopback")`/`("localhost")`/`("127.0.0.1")`/`("[::1]")` assertions in `AssertSanitizedTransportPolicyMessage` re-state the constant the implementation throws and provide zero discrimination beyond confirming the exception is reached. The actual non-leak safety is enforced by `ShouldNotContain(endpoint)` and the dedicated `Bearer`/`abc.def.ghi`/`client-secret-value` checks. Re-open trigger: any test-hardening sweep that strengthens negative-content assertions across the server test suite, or a regression where the implementation changes the user-facing exception text and the test misses the divergence.
