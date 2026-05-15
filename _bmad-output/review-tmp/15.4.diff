@@ -1,0 +1,457 @@
+diff --git a/_bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md b/_bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md
+index c8f39e1..425235f 100644
+--- a/_bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md
++++ b/_bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md
+@@ -1,6 +1,6 @@
+ # Story 15.4: Token Endpoint Transport Policy
+ 
+-Status: ready-for-dev
++Status: review
+ 
+ <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+ 
+@@ -22,46 +22,46 @@ so that production token acquisition cannot silently use insecure transport.
+ 
+ ## Tasks / Subtasks
+ 
+-- [ ] Task 0 - Verify current transport validation and active deferred ID (AC: 1-4)
+-  - [ ] Read `OidcTokenProvider.cs`, `EmbeddingProviderDefaults.cs`, `OidcTokenProviderTests.cs`, `EmbeddingProviderDefaultsTests.cs`, `docs/operations/embedding-providers.md`, and the `13.2-RV4` entry in `deferred-work.md` before editing.
+-  - [ ] Confirm Stories 13.2, 13.7, 14.3, and 15.2 are not actively `in-progress` or `review`; if an adjacent OIDC/provider story is active, stop and record the exact status.
+-  - [ ] Identify every validation path that can accept `OidcTokenEndpoint`: direct `IOidcTokenProvider` calls, `EmbeddingProviderDefaults.Validate(...)`, tenant configuration actor writes, migration target config validation, and integration fake-server setup.
+-  - [ ] Preserve Story 14.3 protections: userinfo, query strings, fragments, transport failures, caller cancellation, and token/body redaction must not regress.
+-
+-- [ ] Task 1 - Define one explicit HTTP exception policy (AC: 1, 2)
+-  - [ ] Choose the committed policy shape before coding. Preferred policy: `https://` for all production token endpoints; `http://` allowed only for literal loopback hosts (`localhost`, `127.0.0.1`, `[::1]`) and only where local/test configuration intentionally needs it.
+-  - [ ] Implement the committed HTTP exception as a literal host allowlist: `localhost`, `127.0.0.1`, and `[::1]` only. Do not broaden this to the whole `127.0.0.0/8` range unless the story is explicitly corrected again before development.
+-  - [ ] Do not allow private LAN, link-local, wildcard, DNS-alias, Docker/internal aliases, or public `http://` hosts as a "local" exception. Examples that must fail include `http://auth.tache.ai/token`, `http://10.0.0.5/token`, `http://172.16.0.5/token`, `http://192.168.1.20/token`, `http://169.254.169.254/token`, `http://host.docker.internal/token`, `http://localtest.me/token`, and `http://keycloak.internal/token` unless product/architecture explicitly chooses a different named allowlist.
+-  - [ ] Keep loopback detection deterministic and testable. Prefer a small URI-host helper near the existing URL validation or reuse existing address-classification code only if it preserves literal-token-endpoint semantics. Do not use `Uri.IsLoopback` alone if it accepts broader host forms than this story allows.
+-  - [ ] Apply the policy in both `EmbeddingProviderDefaults.ValidateOptionalHttpUrl(...)` for `OidcTokenEndpoint` and `OidcTokenProvider.ValidateAndCreateKey(...)` so invalid tenant state is rejected before persistence and direct provider calls also fail closed. Keep `BaseUrl` transport behavior separate unless implementation records why it intentionally changed.
+-
+-- [ ] Task 2 - Enforce sanitized rejection for insecure token endpoints (AC: 2, 4)
+-  - [ ] Reject non-loopback `http://` token endpoints with an `ArgumentException` naming the relevant field/argument and explaining that production OIDC token endpoints require HTTPS.
+-  - [ ] Reject invalid transport before any outbound HTTP request is built or sent. Tests must prove the scripted handler/substitute saw zero requests for non-loopback HTTP token endpoints.
+-  - [ ] Do not echo the full URL in exception text. It can contain hostnames, path conventions, realm names, or accidentally embedded values even after Story 14.3 query/userinfo rejection. Error text may name the field/argument, scheme class, and sanitized policy cause, but must not include full token endpoint URLs, query strings, fragments, embedded credentials, client secrets, authorization headers, bearer-shaped strings, or JWT-like values.
+-  - [ ] Preserve existing normalization in `OidcTokenProvider`: scheme/server/path only, trimmed client ID, trimmed scope, no negative caching, no change to per-key fetch collapse.
+-  - [ ] Keep `BaseUrl` transport behavior separate from `OidcTokenEndpoint` unless the implementation explicitly records why provider base URLs should receive the same production HTTPS policy in this story.
+-
+-- [ ] Task 3 - Add focused unit coverage (AC: 1, 2, 4)
+-  - [ ] Add `OidcTokenProviderTests` cases proving `http://localhost`, `http://127.0.0.1`, and `http://[::1]` token endpoints are accepted and normalized, without sending real network traffic beyond the scripted handler.
+-  - [ ] Add `OidcTokenProviderTests` cases proving non-loopback `http://` token endpoints fail before the HTTP request is sent.
+-  - [ ] Add `EmbeddingProviderDefaultsTests` cases proving OIDC config accepts literal loopback HTTP token endpoints where local/fake servers need them and rejects non-loopback HTTP token endpoints.
+-  - [ ] Add negative tests for public hostnames, private IPv4, link-local metadata hosts, Docker/internal aliases, DNS aliases such as `localtest.me`, and `127.0.0.2` so the implementation cannot accidentally use a broader loopback/private-host helper.
+-  - [ ] Assert rejection messages contain the parameter/field name and HTTPS/local-loopback guidance, but do not contain credential-looking substrings, query-like values, bearer tokens, or the complete endpoint URL.
+-
+-- [ ] Task 4 - Update operations guidance and deferred-work disposition (AC: 2-4)
+-  - [ ] Update `docs/operations/embedding-providers.md` with the final transport policy for `OidcTokenEndpoint`: production uses HTTPS; local loopback HTTP is allowed for local Keycloak/fake-server development; non-loopback HTTP is rejected.
+-  - [ ] Name the existing secret-redaction guarantees: tenant config stores only secret names, token responses are sanitized before preview/truncation, bearer-shaped values are redacted, and validation errors must not echo full unsafe URLs.
+-  - [ ] Add a Story 15.4 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
+-  - [ ] Mark `13.2-RV4` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
+-  - [ ] Do not sweep adjacent IDs such as `13.2-RV7`, `13.2-RV8`, `13.2-RV9`, `13.4-RV2`, or provider registry IDs unless implementation genuinely resolves them and the story records why they became in scope.
+-
+-- [ ] Task 5 - Validate and record completion (AC: 1-4)
+-  - [ ] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~OidcTokenProviderTests"`.
+-  - [ ] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingProviderDefaultsTests"`.
+-  - [ ] If a shared URL helper changes or `UrlHostValidator` is reused, run its focused tests or add them under the matching server test folder.
+-  - [ ] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
+-  - [ ] Run `git diff --check -- src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs src/Hexalith.Memories.Server/Ingestion/UrlHostValidator.cs tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs docs/operations/embedding-providers.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md`.
++- [x] Task 0 - Verify current transport validation and active deferred ID (AC: 1-4)
++  - [x] Read `OidcTokenProvider.cs`, `EmbeddingProviderDefaults.cs`, `OidcTokenProviderTests.cs`, `EmbeddingProviderDefaultsTests.cs`, `docs/operations/embedding-providers.md`, and the `13.2-RV4` entry in `deferred-work.md` before editing.
++  - [x] Confirm Stories 13.2, 13.7, 14.3, and 15.2 are not actively `in-progress` or `review`; if an adjacent OIDC/provider story is active, stop and record the exact status.
++  - [x] Identify every validation path that can accept `OidcTokenEndpoint`: direct `IOidcTokenProvider` calls, `EmbeddingProviderDefaults.Validate(...)`, tenant configuration actor writes, migration target config validation, and integration fake-server setup.
++  - [x] Preserve Story 14.3 protections: userinfo, query strings, fragments, transport failures, caller cancellation, and token/body redaction must not regress.
++
++- [x] Task 1 - Define one explicit HTTP exception policy (AC: 1, 2)
++  - [x] Choose the committed policy shape before coding. Preferred policy: `https://` for all production token endpoints; `http://` allowed only for literal loopback hosts (`localhost`, `127.0.0.1`, `[::1]`) and only where local/test configuration intentionally needs it.
++  - [x] Implement the committed HTTP exception as a literal host allowlist: `localhost`, `127.0.0.1`, and `[::1]` only. Do not broaden this to the whole `127.0.0.0/8` range unless the story is explicitly corrected again before development.
++  - [x] Do not allow private LAN, link-local, wildcard, DNS-alias, Docker/internal aliases, or public `http://` hosts as a "local" exception. Examples that must fail include `http://auth.tache.ai/token`, `http://10.0.0.5/token`, `http://172.16.0.5/token`, `http://192.168.1.20/token`, `http://169.254.169.254/token`, `http://host.docker.internal/token`, `http://localtest.me/token`, and `http://keycloak.internal/token` unless product/architecture explicitly chooses a different named allowlist.
++  - [x] Keep loopback detection deterministic and testable. Prefer a small URI-host helper near the existing URL validation or reuse existing address-classification code only if it preserves literal-token-endpoint semantics. Do not use `Uri.IsLoopback` alone if it accepts broader host forms than this story allows.
++  - [x] Apply the policy in both `EmbeddingProviderDefaults.ValidateOptionalHttpUrl(...)` for `OidcTokenEndpoint` and `OidcTokenProvider.ValidateAndCreateKey(...)` so invalid tenant state is rejected before persistence and direct provider calls also fail closed. Keep `BaseUrl` transport behavior separate unless implementation records why it intentionally changed.
++
++- [x] Task 2 - Enforce sanitized rejection for insecure token endpoints (AC: 2, 4)
++  - [x] Reject non-loopback `http://` token endpoints with an `ArgumentException` naming the relevant field/argument and explaining that production OIDC token endpoints require HTTPS.
++  - [x] Reject invalid transport before any outbound HTTP request is built or sent. Tests must prove the scripted handler/substitute saw zero requests for non-loopback HTTP token endpoints.
++  - [x] Do not echo the full URL in exception text. It can contain hostnames, path conventions, realm names, or accidentally embedded values even after Story 14.3 query/userinfo rejection. Error text may name the field/argument, scheme class, and sanitized policy cause, but must not include full token endpoint URLs, query strings, fragments, embedded credentials, client secrets, authorization headers, bearer-shaped strings, or JWT-like values.
++  - [x] Preserve existing normalization in `OidcTokenProvider`: scheme/server/path only, trimmed client ID, trimmed scope, no negative caching, no change to per-key fetch collapse.
++  - [x] Keep `BaseUrl` transport behavior separate from `OidcTokenEndpoint` unless the implementation explicitly records why provider base URLs should receive the same production HTTPS policy in this story.
++
++- [x] Task 3 - Add focused unit coverage (AC: 1, 2, 4)
++  - [x] Add `OidcTokenProviderTests` cases proving `http://localhost`, `http://127.0.0.1`, and `http://[::1]` token endpoints are accepted and normalized, without sending real network traffic beyond the scripted handler.
++  - [x] Add `OidcTokenProviderTests` cases proving non-loopback `http://` token endpoints fail before the HTTP request is sent.
++  - [x] Add `EmbeddingProviderDefaultsTests` cases proving OIDC config accepts literal loopback HTTP token endpoints where local/fake servers need them and rejects non-loopback HTTP token endpoints.
++  - [x] Add negative tests for public hostnames, private IPv4, link-local metadata hosts, Docker/internal aliases, DNS aliases such as `localtest.me`, and `127.0.0.2` so the implementation cannot accidentally use a broader loopback/private-host helper.
++  - [x] Assert rejection messages contain the parameter/field name and HTTPS/local-loopback guidance, but do not contain credential-looking substrings, query-like values, bearer tokens, or the complete endpoint URL.
++
++- [x] Task 4 - Update operations guidance and deferred-work disposition (AC: 2-4)
++  - [x] Update `docs/operations/embedding-providers.md` with the final transport policy for `OidcTokenEndpoint`: production uses HTTPS; local loopback HTTP is allowed for local Keycloak/fake-server development; non-loopback HTTP is rejected.
++  - [x] Name the existing secret-redaction guarantees: tenant config stores only secret names, token responses are sanitized before preview/truncation, bearer-shaped values are redacted, and validation errors must not echo full unsafe URLs.
++  - [x] Add a Story 15.4 rollup section to `_bmad-output/implementation-artifacts/deferred-work.md`.
++  - [x] Mark `13.2-RV4` as `resolved`, `accepted`, or `carried-forward` using the Story 14.5 structured fields: `ID`, `Status`, `Source story`, `Target artifact`, `Re-open trigger`, and either `Evidence` or `Rationale`.
++  - [x] Do not sweep adjacent IDs such as `13.2-RV7`, `13.2-RV8`, `13.2-RV9`, `13.4-RV2`, or provider registry IDs unless implementation genuinely resolves them and the story records why they became in scope.
++
++- [x] Task 5 - Validate and record completion (AC: 1-4)
++  - [x] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~OidcTokenProviderTests"`.
++  - [x] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingProviderDefaultsTests"`.
++  - [x] If a shared URL helper changes or `UrlHostValidator` is reused, run its focused tests or add them under the matching server test folder.
++  - [x] Run `dotnet build Hexalith.Memories.slnx` when the local SDK permits it.
++  - [x] Run `git diff --check -- src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs src/Hexalith.Memories.Server/Ingestion/UrlHostValidator.cs tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs docs/operations/embedding-providers.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md`.
+ 
+ ## File Scope
+ 
+@@ -233,6 +233,15 @@ GPT-5
+ - Story selection chose `15-4-token-endpoint-transport-policy` because `ready_count` was `3`, below the target of `5`, and this was the first backlog story in sprint-status order.
+ - `/bmad-create-story 15-4-token-endpoint-transport-policy` context gathering loaded Epic 15 planning, sprint status, root project context, Stories 13.2, 13.7, 14.3, 15.2, and 15.3, current deferred-work entries, operations/developer embedding provider docs, current `OidcTokenProvider`, `EmbeddingProviderDefaults`, URL host validation, focused server tests, and recent git history.
+ - No external technology research was needed for this story. The implementation surface is repository-owned token endpoint validation, local fake-server compatibility, operator documentation, and deferred-work disposition.
++- Dev-story activation confirmed adjacent Stories 13.2, 13.7, 14.3, and 15.2 are all `done`; no adjacent OIDC/provider story was active.
++- Red phase: added non-loopback HTTP rejection tests first. The initial `EmbeddingProviderDefaultsTests` focused run failed 10 new cases because non-loopback HTTP token endpoints were still accepted. A parallel red-run also hit a transient source-link/build artifact file lock on the OIDC slice, so focused validation was rerun sequentially.
++- Green/refactor phase: added `OidcTokenProvider.ValidateTokenEndpointTransport(...)`, reused it from `EmbeddingProviderDefaults.ValidateOptionalHttpUrl(...)` for `OidcTokenEndpoint`, kept `BaseUrl` transport behavior unchanged, and fixed IPv6 loopback handling after the first OIDC focused run rejected `http://[::1]/...`.
++- Validation: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~OidcTokenProviderTests"` passed 44/44.
++- Validation: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~EmbeddingProviderDefaultsTests"` passed 156/156.
++- Validation: `dotnet build Hexalith.Memories.slnx` passed with 0 warnings and 0 errors.
++- Validation: `git diff --check -- ...` passed with only LF-to-CRLF working-copy warnings on touched files.
++- Regression validation: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj` passed 1796/1796.
++- Broader regression attempt: `dotnet test Hexalith.Memories.slnx --no-build` timed out after 15 minutes without usable result output; no completion claim is made for the full solution test lane.
+ 
+ ### Completion Notes List
+ 
+@@ -240,17 +249,28 @@ GPT-5
+ - Scope is limited to OIDC token endpoint transport policy, local loopback HTTP exception, production HTTPS enforcement, sanitized validation failures, focused tests, operations guidance, and deferred-work disposition for `13.2-RV4`.
+ - Provider/model registry work, tenant contract shape, migration coordination, integration fixture expansion, CI/release tooling, and submodules are forbidden by default.
+ - No submodule state was touched.
++- Implemented one explicit token endpoint transport policy: production OIDC token endpoints require HTTPS; HTTP is allowed only for literal `localhost`, `127.0.0.1`, and `[::1]`.
++- Direct `IOidcTokenProvider` calls and `EmbeddingProviderDefaults.Validate(...)` now reject non-loopback HTTP token endpoints before outbound token requests or tenant config persistence.
++- Added focused acceptance/rejection/no-leak/no-request tests for loopback HTTP, public/private/link-local/Docker/internal/DNS-alias HTTP, and `127.0.0.2`.
++- Updated operator guidance and resolved `13.2-RV4` in the structured deferred-work register without sweeping adjacent deferred IDs.
+ 
+ ### File List
+ 
+ - `_bmad-output/implementation-artifacts/15-4-token-endpoint-transport-policy.md`
++- `_bmad-output/implementation-artifacts/deferred-work.md`
+ - `_bmad-output/implementation-artifacts/sprint-status.yaml`
++- `docs/operations/embedding-providers.md`
++- `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs`
++- `src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs`
++- `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs`
++- `tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs`
+ 
+ ### Change Log
+ 
+ - 2026-05-12: Created Story 15.4 and promoted it from `backlog` to `ready-for-dev`.
+ - 2026-05-14: Party-mode review completed; tightened literal loopback HTTP policy, validation-boundary requirements, rejection timing, sanitization expectations, and test matrix while keeping status `ready-for-dev`.
++- 2026-05-14: Implemented token endpoint transport policy, focused tests, operations guidance, and `13.2-RV4` deferred-work resolution; moved story to `review`.
+ 
+ ## Story Completion Status
+ 
+-Story context reviewed and ready for implementation. Status remains `ready-for-dev` after party-mode clarifications.
++Implementation complete and ready for review. Status is `review`.
+diff --git a/_bmad-output/implementation-artifacts/deferred-work.md b/_bmad-output/implementation-artifacts/deferred-work.md
+index 8e9a72d..a4d7b36 100644
+--- a/_bmad-output/implementation-artifacts/deferred-work.md
++++ b/_bmad-output/implementation-artifacts/deferred-work.md
+@@ -49,6 +49,20 @@ treats them as historical noise: they remain readable in code review and continu
+ to provide context, but the structured fields above are the source of truth for
+ parsers and planning of migrated entries.
+ 
++## Closed/Accepted by: Story 15.4 Token Endpoint Transport Policy (2026-05-14)
++
++- **13.2-RV4 - resolved.** OIDC token endpoint validation now enforces HTTPS for production and
++  permits `http://` only for literal local loopback hosts (`localhost`, `127.0.0.1`, and `[::1]`).
++  The same policy is applied before tenant/default config persistence and before direct
++  `IOidcTokenProvider` token acquisition, with sanitized errors that do not echo full endpoint URLs.
++
++  - ID: 13.2-RV4
++  - Status: resolved
++  - Source story: 15-4-token-endpoint-transport-policy
++  - Target artifact: src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs; src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs; docs/operations/embedding-providers.md
++  - Re-open trigger: Any non-loopback `http://` OIDC token endpoint reaches tenant config persistence, direct token acquisition, an outbound token HTTP request, logs, or snapshots without being rejected by the HTTPS/local-loopback policy.
++  - Evidence: Story 15.4 added `OidcTokenProvider.ValidateTokenEndpointTransport(...)`, reused it from `EmbeddingProviderDefaults.ValidateOptionalHttpUrl(...)` for `OidcTokenEndpoint`, documented the production HTTPS/local loopback exception in `docs/operations/embedding-providers.md`, and added focused `OidcTokenProviderTests` plus `EmbeddingProviderDefaultsTests` coverage for accepted loopback HTTP, rejected public/private/link-local/Docker/DNS-alias/127.0.0.2 HTTP, no-request-before-rejection, and non-leaking error text.
++
+ ## Closed/Accepted by: Story 15.3 Live Migration Coordination Policy (2026-05-14)
+ 
+ - **13.6-RV1 - resolved.** Live migration cutover now writes a durable
+@@ -544,7 +558,7 @@ The Story 14.4 scope explicitly excludes `13.7-RV5` (sprint-status long-line cle
+ - **13.2-RV1 [resolved in 14.3] — Leader cancellation poisons shared HTTP fetch.** `OidcTokenProvider.cs:117,167` — the leader's `CancellationToken` is passed straight into `_httpClient.SendAsync`. AC6 narrow text only requires waiter cancellation isolation (current test `GetAccessTokenAsync_CancelledWaiter_DoesNotCancelSharedAcquisition` covers this). Dev Notes Implementation Guidance is stricter: "a single caller cancellation must cancel that caller's wait without cancelling the in-flight fetch for remaining waiters." If the leader cancels mid-fetch, queued waiters re-enter and refire. Fix requires TCS-based detached-fetch refactor or linked-CTS where the inner SendAsync uses `CancellationToken.None` and waiters await via `Task.WaitAsync(ct)`. Re-open trigger: Story 13.3 retry integration where leader-cancel under 401 retry becomes concrete; or a production incident where IdP traffic spikes correlate with caller cancellations.
+ - **13.2-RV2 [resolved in 14.3] — Singleton-captured HttpClient bypasses `IHttpClientFactory` handler rotation.** `Program.cs:110-118` and `OidcTokenProvider.cs:34-42` — the named HttpClient is resolved once at singleton activation and stored for the service lifetime. DNS changes, TLS session rotation, and `SocketsHttpHandler.PooledConnectionLifetime` rotation never apply. The same caveat exists for `EmbeddingClient` registration (line 108). Fix options: inject `IHttpClientFactory` and `CreateClient(name)` per call, or convert to typed-HttpClient + scoped lifetime. Re-open trigger: an ops incident traceable to stale TLS/DNS, or an ecosystem-wide pass to standardize HttpClient lifecycle across `EmbeddingClient` + `OidcTokenProvider`.
+ - **13.2-RV3 [resolved in 14.3] — Network/timeout exceptions not wrapped in `OidcTokenAcquisitionException`.** `OidcTokenProvider.cs:167` — `HttpRequestException`, `TaskCanceledException` (timeout), `IOException` from `SendAsync` propagate raw. AC7 only requires wrapping non-2xx responses, but Story 13.3's 401-retry will distinguish recoverable vs terminal failures. Re-open trigger: Story 13.3 surfaces a need for typed transport errors during retry classification.
+-- **13.2-RV4 — `http://` token endpoint scheme accepted (no TLS enforcement).** `OidcTokenProvider.cs:80` — `uri.Scheme is not "https" and not "http"` is the only scheme guard. Dev/local Keycloak needs `http://localhost`; production must be constrained at the operations/config layer. Re-open trigger: Story 13.7 operations docs / production hardening pass.
++- **13.2-RV4 [resolved in 15.4] — `http://` token endpoint scheme accepted (no TLS enforcement).** `OidcTokenProvider.cs:80` — `uri.Scheme is not "https" and not "http"` is the only scheme guard. Dev/local Keycloak needs `http://localhost`; production must be constrained at the operations/config layer. Re-open trigger: Story 13.7 operations docs / production hardening pass.
+ - **13.2-RV5 [resolved in 14.3] — Token endpoint with userinfo (`https://user:pw@host`) accepted.** `OidcTokenProvider.cs:79-89` — `Uri.TryCreate` accepts userinfo and it is preserved through `UriComponents.SchemeAndServer`. Backend-configured endpoints make this rare; defensive rejection is still cheap. Re-open trigger: any tenant config audit that finds embedded userinfo, or a security review.
+ - **13.2-RV6 [resolved in 14.3] — Concurrent `InvalidateAndRefreshAsync` callers can each fire a fetch.** `OidcTokenProvider.cs:65,116-119` — two concurrent forced-refresh callers both skip the cache double-check inside the guard and each issue a fresh HTTP fetch. AC5 is silent on concurrent forced refresh; AC6's "exactly one outbound HTTP request" applies to cache-miss collapse, not invalidation. Re-open trigger: a 401 storm during ingestion that hammers Keycloak via simultaneous retry-after-401 paths in Story 13.3.
+ - **13.2-RV7 — Unbounded `_cache` and `_guards` growth + undisposed `SemaphoreSlim`.** `OidcTokenProvider.cs:24-25` — singleton dictionary growth is bounded by unique `(endpoint, clientId, scope)` tuples but never evicted; semaphores in `_guards` are never `Dispose()`'d. Re-open trigger: a long-running tenant churn scenario or a leak diagnostic that traces growth to this provider.
+diff --git a/_bmad-output/implementation-artifacts/sprint-status.yaml b/_bmad-output/implementation-artifacts/sprint-status.yaml
+index 66ef287..0d886e8 100644
+--- a/_bmad-output/implementation-artifacts/sprint-status.yaml
++++ b/_bmad-output/implementation-artifacts/sprint-status.yaml
+@@ -35,7 +35,7 @@
+ # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+ 
+ generated: 2026-05-03T11:30:14.2956574+02:00
+-last_updated: 2026-05-14T17:30:00+02:00 # Story 15.3 code review complete: review -> done.
++last_updated: 2026-05-14T13:26:55+02:00 # Story 15.4 implementation complete: in-progress -> review.
+ project: Hexalith.Memories
+ project_key: NOKEY
+ tracking_system: file-system
+@@ -194,6 +194,6 @@ development_status:
+   15-1-release-edge-case-preflight-hardening: done # 2026-05-13 review close-out (3-layer adversarial: Blind + Edge + Auditor): all 4 ACs PASS; 1 decision resolved (expand skip-condition guard to step level); 12 patches applied (preflight robustness, contract-test CRLF tolerance, fresh-clone evidence, completion-notes truth-claim); 16 carry-forward items recorded as 15.1-RV1..15.1-RV16. Validation: release preflight fixtures 9/9, CiTestInventoryTests 48/48, validate-release-packages.ps1 passed, git diff --check clean.
+   15-2-provider-model-dimension-registry: done # 2026-05-14 review close-out (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 + AC6 PASS, AC5 PARTIAL (contract-tier serialization test gap recorded as 15.2-RV1). 3 decisions resolved (D1 EventStore submodule pointer — kept with Scope-Override; D2 epics.md + sprint-change-proposal — File Scope amended + Scope-Override; D3 AuthMode-after-RateLimit order — accepted and pinned with new ordering-contract tests). 8 patches applied: P1 Registry → ImmutableArray; P2 misleading "DimensionsAtSharedMaximum" test renamed to "UnknownModelAtSharedDimensionMaximum"; P3 tautological mixed-case test strengthened; P4 Ollama rate-limit no-op `with` fixed (6000→30_000); P5 isOllama uses registry-canonical provider.ProviderName; P6 unused ModelRegistryEntry.DefaultDimensions removed; P7 added 2 non-leakage assertions; P8 added 2 ordering-contract tests + remarks XML doc. Validation: EmbeddingProviderDefaultsTests 145/145 PASS (was 141, +4 new); focused slice (Defaults + Client + Actor) 237/237 PASS; full Hexalith.Memories.slnx build 0W/0E. 9 carry-forward items recorded as 15.2-RV1..15.2-RV9.
+   15-3-live-migration-coordination-policy: done # 2026-05-14 code review complete: 1 decision-needed accepted, 11 patches applied (atomic two-key marker write, IsActive default-protective, fail-closed reader, DemandMaster reads, status constants, NormalizeProvider symmetry, tenantId equality, dim validation, FakeStore IsActive parity, +2 retention tests, test substitute alignment). 14 deferred, 1 dismissed. Server.Tests 1772/1772 green.
+-  15-4-token-endpoint-transport-policy: ready-for-dev # 2026-05-12 story context created.
++  15-4-token-endpoint-transport-policy: review # 2026-05-14 implementation complete; ready for code review.
+   15-5-deferred-register-triage-sweep: ready-for-dev # 2026-05-12 story context created.
+   epic-15-retrospective: optional
+diff --git a/docs/operations/embedding-providers.md b/docs/operations/embedding-providers.md
+index 53ac38f..3663459 100644
+--- a/docs/operations/embedding-providers.md
++++ b/docs/operations/embedding-providers.md
+@@ -137,6 +137,31 @@ The Memories token request uses `application/x-www-form-urlencoded` client crede
+ `grant_type=client_credentials`, `client_id={CLIENT_ID}`, the secret value resolved from `{SECRET_NAME}`,
+ and optional `scope`.
+ 
++## Token Endpoint Transport Policy
++
++Production OIDC token endpoints must use `https://`. Memories validates `OidcTokenEndpoint` before
++tenant configuration persistence and before direct token acquisition, so a non-loopback `http://`
++endpoint fails before any client credentials are sent.
++
++Local development and deterministic fake-server tests may use HTTP only for these literal loopback
++hosts:
++
++- `http://localhost/...`
++- `http://127.0.0.1/...`
++- `http://[::1]/...`
++
++Other HTTP token endpoints are rejected, including public hostnames, private IPv4 ranges, link-local
++metadata hosts, Docker or internal aliases such as `host.docker.internal`, DNS aliases such as
++`localtest.me`, and broader loopback literals such as `127.0.0.2`. The exception is intentionally
++literal-host based; DNS names that resolve to loopback are not treated as local.
++
++Validation errors name the field or argument and the HTTPS/local-loopback rule, but they do not echo
++the full token endpoint URL. This keeps realm paths, accidental credential-looking path segments,
++query strings, fragments, embedded credentials, bearer-shaped text, and client secrets out of
++operator-visible errors. Tenant configuration stores only secret names, token response previews are
++redacted before truncation, bearer-shaped values are redacted, and raw secret values remain in DAPR or
++the platform secret manager only.
++
+ ## DAPR Secret Store
+ 
+ Local AppHost uses `secretstores.local.file` named `secretstore` and points at repo-root `secrets.json`.
+diff --git a/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs b/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+index 686f943..5bec365 100644
+--- a/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
++++ b/src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
+@@ -321,6 +321,11 @@ public static partial class EmbeddingProviderDefaults
+                 $"{propertyName} must not contain a fragment.",
+                 propertyName);
+         }
++
++        if (propertyName == nameof(TenantEmbeddingConfig.OidcTokenEndpoint))
++        {
++            OidcTokenProvider.ValidateTokenEndpointTransport(uri, propertyName);
++        }
+     }
+ 
+     private static string DescribeAuthMode(string? authMode) => authMode switch
+diff --git a/src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs b/src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs
+index 0b6d30a..982f53e 100644
+--- a/src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs
++++ b/src/Hexalith.Memories.Server/Ingestion/OidcTokenProvider.cs
+@@ -107,6 +107,8 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
+                 nameof(tokenEndpoint));
+         }
+ 
++        ValidateTokenEndpointTransport(uri, nameof(tokenEndpoint));
++
+         string normalizedEndpoint = uri.GetComponents(
+             UriComponents.SchemeAndServer | UriComponents.Path,
+             UriFormat.UriEscaped);
+@@ -114,6 +116,33 @@ public sealed partial class OidcTokenProvider : IOidcTokenProvider
+         return new OidcTokenCacheKey(normalizedEndpoint, clientId.Trim(), normalizedScope);
+     }
+ 
++    /// <summary>Validates the production HTTPS policy and local loopback HTTP exception for OIDC token endpoints.</summary>
++    /// <param name="uri">The absolute token endpoint URI.</param>
++    /// <param name="parameterName">The field or argument name used by the thrown exception.</param>
++    /// <exception cref="ArgumentException">Thrown when an HTTP token endpoint is not one of the literal loopback exceptions.</exception>
++    internal static void ValidateTokenEndpointTransport(Uri uri, string parameterName)
++    {
++        ArgumentNullException.ThrowIfNull(uri);
++        ArgumentException.ThrowIfNullOrWhiteSpace(parameterName);
++
++        if (string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
++            (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
++             IsLocalHttpTokenEndpoint(uri)))
++        {
++            return;
++        }
++
++        throw new ArgumentException(
++            "Production OIDC token endpoints require HTTPS; HTTP is allowed only for local loopback hosts (localhost, 127.0.0.1, [::1]).",
++            parameterName);
++    }
++
++    private static bool IsLocalHttpTokenEndpoint(Uri uri)
++        => string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
++           string.Equals(uri.Host, "127.0.0.1", StringComparison.Ordinal) ||
++           string.Equals(uri.Host, "::1", StringComparison.Ordinal) ||
++           string.Equals(uri.Host, "[::1]", StringComparison.Ordinal);
++
+     private async Task<string> GetOrFetchAsync(
+         OidcTokenCacheKey key,
+         string clientSecret,
+diff --git a/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs b/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
+index d2c7f5f..e700ff5 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingProviderDefaultsTests.cs
+@@ -503,6 +503,7 @@ public class EmbeddingProviderDefaultsTests
+     [InlineData("BaseUrl", "https://llm.tache.ai/ollama")]
+     [InlineData("OidcTokenEndpoint", "http://localhost/realms/tache/protocol/openid-connect/token")]
+     [InlineData("OidcTokenEndpoint", "http://127.0.0.1:8080/realms/tache/protocol/openid-connect/token")]
++    [InlineData("OidcTokenEndpoint", "http://[::1]/realms/tache/protocol/openid-connect/token")]
+     [InlineData("OidcTokenEndpoint", "https://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
+     public void Validate_AbsoluteHttpUrls_ShouldNotThrow(string fieldName, string value)
+     {
+@@ -511,6 +512,39 @@ public class EmbeddingProviderDefaultsTests
+         Should.NotThrow(() => EmbeddingProviderDefaults.Validate(config));
+     }
+ 
++    [Theory]
++    [InlineData("http://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://10.0.0.5/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://172.16.0.5/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://192.168.1.20/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://169.254.169.254/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://host.docker.internal/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://localtest.me/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://keycloak.internal/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://127.0.0.2/realms/tache/protocol/openid-connect/token")]
++    public void Validate_NonLoopbackHttpOidcTokenEndpoint_ShouldThrowAndNotEchoEndpoint(string endpoint)
++    {
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { OidcTokenEndpoint = endpoint };
++
++        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++
++        AssertSanitizedTransportPolicyMessage(ex, nameof(config.OidcTokenEndpoint), endpoint);
++    }
++
++    [Fact]
++    public void Validate_NonLoopbackHttpOidcTokenEndpointWithSecretLikePath_ShouldNotEchoEndpoint()
++    {
++        const string endpoint = "http://auth.tache.ai/realms/Bearer%20abc.def.ghi/client-secret-value/token";
++        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama() with { OidcTokenEndpoint = endpoint };
++
++        ArgumentException ex = Should.Throw<ArgumentException>(() => EmbeddingProviderDefaults.Validate(config));
++
++        AssertSanitizedTransportPolicyMessage(ex, nameof(config.OidcTokenEndpoint), endpoint);
++        ex.Message.ShouldNotContain("Bearer");
++        ex.Message.ShouldNotContain("abc.def.ghi");
++        ex.Message.ShouldNotContain("client-secret-value");
++    }
++
+     [Theory]
+     [InlineData("BaseUrl", "/relative")]
+     [InlineData("BaseUrl", "llm.tache.ai")]
+@@ -838,4 +872,18 @@ public class EmbeddingProviderDefaultsTests
+             "OidcTokenEndpoint" => config with { OidcTokenEndpoint = value },
+             _ => throw new ArgumentOutOfRangeException(nameof(fieldName), fieldName, "Unsupported URL field."),
+         };
++
++    private static void AssertSanitizedTransportPolicyMessage(
++        ArgumentException ex,
++        string parameterName,
++        string endpoint)
++    {
++        ex.ParamName.ShouldBe(parameterName);
++        ex.Message.ShouldContain("HTTPS");
++        ex.Message.ShouldContain("loopback");
++        ex.Message.ShouldContain("localhost");
++        ex.Message.ShouldContain("127.0.0.1");
++        ex.Message.ShouldContain("[::1]");
++        ex.Message.ShouldNotContain(endpoint);
++    }
+ }
+diff --git a/tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs b/tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs
+index fe59842..ba4dd22 100644
+--- a/tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs
++++ b/tests/Hexalith.Memories.Server.Tests/Ingestion/OidcTokenProviderTests.cs
+@@ -601,6 +601,61 @@ public class OidcTokenProviderTests
+         handler.Requests.Count.ShouldBe(0);
+     }
+ 
++    [Theory]
++    [InlineData("http://localhost/realms/memories/protocol/openid-connect/token")]
++    [InlineData("http://127.0.0.1:8080/realms/memories/protocol/openid-connect/token")]
++    [InlineData("http://[::1]/realms/memories/protocol/openid-connect/token")]
++    public async Task GetAccessTokenAsync_LoopbackHttpTokenEndpoint_SendsTokenRequest(string endpoint)
++    {
++        ScriptedTokenHandler handler = new((_, _) => TokenResponse("loopback-token", 3600));
++        OidcTokenProvider provider = CreateProvider(handler);
++
++        string token = await provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None);
++
++        token.ShouldBe("loopback-token");
++        handler.Requests.Count.ShouldBe(1);
++        handler.Requests[0].RequestUri!.AbsoluteUri.ShouldBe(endpoint);
++    }
++
++    [Theory]
++    [InlineData("http://auth.tache.ai/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://10.0.0.5/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://172.16.0.5/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://192.168.1.20/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://169.254.169.254/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://host.docker.internal/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://localtest.me/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://keycloak.internal/realms/tache/protocol/openid-connect/token")]
++    [InlineData("http://127.0.0.2/realms/tache/protocol/openid-connect/token")]
++    public async Task GetAccessTokenAsync_NonLoopbackHttpTokenEndpoint_ThrowsBeforeSendingRequest(string endpoint)
++    {
++        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
++        OidcTokenProvider provider = CreateProvider(handler);
++
++        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
++            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
++
++        AssertSanitizedTransportPolicyMessage(ex, "tokenEndpoint", endpoint);
++        handler.Requests.Count.ShouldBe(0);
++    }
++
++    [Fact]
++    public async Task GetAccessTokenAsync_NonLoopbackHttpTokenEndpointWithSecretLikePath_DoesNotEchoEndpoint()
++    {
++        ScriptedTokenHandler handler = new((_, _) => TokenResponse("never-fetched", 3600));
++        OidcTokenProvider provider = CreateProvider(handler);
++        const string endpoint = "http://auth.tache.ai/realms/Bearer%20abc.def.ghi/client-secret-value/token";
++
++        ArgumentException ex = await Should.ThrowAsync<ArgumentException>(
++            () => provider.GetAccessTokenAsync(endpoint, ClientId, ClientSecret, null, CancellationToken.None));
++
++        AssertSanitizedTransportPolicyMessage(ex, "tokenEndpoint", endpoint);
++        ex.Message.ShouldNotContain("Bearer");
++        ex.Message.ShouldNotContain("abc.def.ghi");
++        ex.Message.ShouldNotContain("client-secret-value");
++        handler.Requests.Count.ShouldBe(0);
++    }
++
+     [Fact]
+     public void Constructor_NullHttpClientFactory_ThrowsArgumentNullException()
+     {
+@@ -611,6 +666,20 @@ public class OidcTokenProviderTests
+             Substitute.For<ILogger<OidcTokenProvider>>()));
+     }
+ 
++    private static void AssertSanitizedTransportPolicyMessage(
++        ArgumentException ex,
++        string parameterName,
++        string endpoint)
++    {
++        ex.ParamName.ShouldBe(parameterName);
++        ex.Message.ShouldContain("HTTPS");
++        ex.Message.ShouldContain("loopback");
++        ex.Message.ShouldContain("localhost");
++        ex.Message.ShouldContain("127.0.0.1");
++        ex.Message.ShouldContain("[::1]");
++        ex.Message.ShouldNotContain(endpoint);
++    }
++
+     private static OidcTokenProvider CreateProvider(
+         ScriptedTokenHandler handler,
+         FakeTimeProvider? timeProvider = null,
