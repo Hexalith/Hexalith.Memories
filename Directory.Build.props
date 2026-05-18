@@ -7,13 +7,18 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
-  <!-- Detect missing git submodules -->
+  <!-- Detect missing root-level git submodules -->
+  <ItemGroup>
+    <RequiredRootSubmodule Include="Hexalith.Commons" />
+    <RequiredRootSubmodule Include="Hexalith.EventStore" />
+    <RequiredRootSubmodule Include="Hexalith.AI.Tools" />
+    <RequiredRootSubmodule Include="Hexalith.Tenants" />
+    <RequiredRootSubmodule Include="Hexalith.FrontComposer" />
+  </ItemGroup>
+
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
     <Error
-      Condition="!Exists('$(MSBuildThisFileDirectory)Hexalith.Commons/.git')"
-      Text="Git submodule 'Hexalith.Commons' is missing. Run: git submodule update --init" />
-    <Error
-      Condition="!Exists('$(MSBuildThisFileDirectory)Hexalith.EventStore/.git')"
-      Text="Git submodule 'Hexalith.EventStore' is missing. Run: git submodule update --init" />
+      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git')"
+      Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity)" />
   </Target>
 </Project>

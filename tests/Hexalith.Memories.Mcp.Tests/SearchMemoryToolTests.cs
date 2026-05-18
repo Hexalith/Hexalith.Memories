@@ -23,7 +23,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        _ = await tool.SearchAsync(tenantId: "acme", query: "needle", axes: SearchAxis.Syntactic);
+        _ = await tool.SearchAsync(tenantId: "acme", query: "needle", axes: SearchAxis.Syntactic, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests.ShouldHaveSingleItem();
         stub.HybridSearchRequests.ShouldBeEmpty();
@@ -37,7 +37,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        _ = await tool.SearchAsync(tenantId: "acme", query: "needle", axes: SearchAxis.Hybrid);
+        _ = await tool.SearchAsync(tenantId: "acme", query: "needle", axes: SearchAxis.Hybrid, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.HybridSearchRequests.ShouldHaveSingleItem();
         stub.SearchRequests.ShouldBeEmpty();
@@ -49,7 +49,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.SearchAsync(tenantId: " ", query: "needle");
+        CallToolResult result = await tool.SearchAsync(tenantId: " ", query: "needle", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests.ShouldBeEmpty();
         stub.HybridSearchRequests.ShouldBeEmpty();
@@ -67,7 +67,7 @@ public sealed class SearchMemoryToolTests
         };
         SearchMemoryTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.SearchAsync("acme", "needle");
+        CallToolResult result = await tool.SearchAsync("acme", "needle", cancellationToken: TestContext.Current.CancellationToken);
 
         AssertIsErrorWithCode(result, "TENANT_NOT_FOUND");
         ExtractText(result).ShouldStartWith("[TENANT_NOT_FOUND] (service=memories-server):");
@@ -79,7 +79,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        _ = await tool.SearchAsync("acme", "needle", explain: true);
+        _ = await tool.SearchAsync("acme", "needle", explain: true, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.HybridSearchRequests[0].Explain.ShouldBe(true);
     }
@@ -93,7 +93,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        _ = await tool.SearchAsync("acme", "needle", axes: axis);
+        _ = await tool.SearchAsync("acme", "needle", axes: axis, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests[0].Axis.ShouldBe(expected);
     }
@@ -108,7 +108,7 @@ public sealed class SearchMemoryToolTests
         var stub = new StubMemoriesClient();
         SearchMemoryTool tool = CreateTool(stub);
 
-        _ = await tool.SearchAsync("acme", "needle", axes: SearchAxis.Syntactic, maxResults: input);
+        _ = await tool.SearchAsync("acme", "needle", axes: SearchAxis.Syntactic, maxResults: input, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests[0].MaxResults.ShouldBe(expected);
     }
@@ -124,7 +124,8 @@ public sealed class SearchMemoryToolTests
             query: "needle",
             axes: SearchAxis.Syntactic,
             maxResults: 50,
-            tokenBudget: 2_000);
+            tokenBudget: 2_000,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests[0].MaxResults.ShouldBe(50);
         stub.SearchRequests[0].TokenBudget.ShouldBe(2_000);
@@ -141,7 +142,8 @@ public sealed class SearchMemoryToolTests
             query: "needle",
             axes: SearchAxis.Syntactic,
             maxResults: 3,
-            tokenBudget: 50_000);
+            tokenBudget: 50_000,
+            cancellationToken: TestContext.Current.CancellationToken);
 
         stub.SearchRequests[0].MaxResults.ShouldBe(3);
         stub.SearchRequests[0].TokenBudget.ShouldBe(50_000);

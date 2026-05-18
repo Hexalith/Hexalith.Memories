@@ -19,14 +19,13 @@ public sealed class FalkorDbFixture : IAsyncLifetime
 
     public string ConnectionString => $"localhost:{_container!.GetMappedPublicPort(6379)}";
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
-        _container = new ContainerBuilder()
-            .WithImage(FalkorDbImage)
+        _container = new ContainerBuilder(FalkorDbImage)
             .WithPortBinding(0, 6379) // FalkorDB listens on 6379 inside the container
             .WithWaitStrategy(
                 Wait.ForUnixContainer()
-                    .UntilPortIsAvailable(6379)
+                    .UntilInternalTcpPortIsAvailable(6379)
                     .UntilCommandIsCompleted("redis-cli", "PING"))
             .Build();
 
@@ -35,7 +34,7 @@ public sealed class FalkorDbFixture : IAsyncLifetime
         Connection = await ConnectionMultiplexer.ConnectAsync(ConnectionString);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (Connection is not null)
         {

@@ -34,7 +34,7 @@ public sealed class GetCaseInfoToolTests
         };
         GetCaseInfoTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.GetCaseAsync("acme", "case-1");
+        CallToolResult result = await tool.GetCaseAsync("acme", "case-1", TestContext.Current.CancellationToken);
 
         stub.GetCaseCalls.ShouldHaveSingleItem();
         result.IsError.ShouldNotBe(true);
@@ -53,7 +53,7 @@ public sealed class GetCaseInfoToolTests
         };
         GetCaseInfoTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.GetCaseAsync("acme", "missing");
+        CallToolResult result = await tool.GetCaseAsync("acme", "missing", TestContext.Current.CancellationToken);
 
         result.IsError.ShouldBe(true);
         result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("CASE_NOT_FOUND");

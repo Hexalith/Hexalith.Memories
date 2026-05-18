@@ -26,7 +26,7 @@ public sealed class IngestContentToolTests
         };
         IngestContentTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.IngestAsync("acme", "case-1", "hello world");
+        CallToolResult result = await tool.IngestAsync("acme", "case-1", "hello world", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.IngestCalls.ShouldHaveSingleItem();
         result.IsError.ShouldNotBe(true);
@@ -39,7 +39,7 @@ public sealed class IngestContentToolTests
         var stub = new StubMemoriesClient();
         IngestContentTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.IngestAsync("acme", "case-1", " ");
+        CallToolResult result = await tool.IngestAsync("acme", "case-1", " ", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.IngestCalls.ShouldBeEmpty();
         AssertIsErrorWithCode(result, "INVALID_INPUT");
@@ -56,7 +56,7 @@ public sealed class IngestContentToolTests
         };
         IngestContentTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content");
+        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content", cancellationToken: TestContext.Current.CancellationToken);
 
         AssertIsErrorWithCode(result, "TENANT_SUSPENDED");
     }
@@ -72,7 +72,7 @@ public sealed class IngestContentToolTests
         };
         IngestContentTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content");
+        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content", cancellationToken: TestContext.Current.CancellationToken);
 
         AssertIsErrorWithCode(result, "RATE_LIMITED");
     }
@@ -83,7 +83,7 @@ public sealed class IngestContentToolTests
         var stub = new StubMemoriesClient();
         IngestContentTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content", sourceType: McpSourceType.Url);
+        CallToolResult result = await tool.IngestAsync("acme", "case-1", "content", sourceType: McpSourceType.Url, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.IngestCalls.ShouldBeEmpty();
         AssertIsErrorWithCode(result, "UNSUPPORTED_SOURCE_TYPE");

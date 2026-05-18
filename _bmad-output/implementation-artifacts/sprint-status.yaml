@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-05-18T12:04:49+02:00
+# last_updated: 2026-05-18T23:09:33+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-05-18T12:04:49+02:00
+last_updated: 2026-05-18T23:09:33+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -180,5 +180,5 @@ development_status:
   15-3-live-migration-coordination-policy: done
   15-4-token-endpoint-transport-policy: done
   15-5-deferred-register-triage-sweep: done
-  15-6-scaffolding-hardening-sweep: ready-for-dev
+  15-6-scaffolding-hardening-sweep: review
   epic-15-retrospective: optional

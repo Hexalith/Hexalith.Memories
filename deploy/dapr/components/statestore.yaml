@@ -1,3 +1,5 @@
+# Production deployment template.
+# Local development uses AppHost-generated component YAML under the temp directory.
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
@@ -9,6 +11,6 @@ spec:
     - name: redisHost
       value: "redis:6379"
     - name: redisPassword
-      value: ""
+      value: "${STATESTORE_REDIS_PASSWORD:-}"
     - name: actorStateStore
       value: "true"

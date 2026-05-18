@@ -21,7 +21,7 @@ public sealed class TraverseRelationsToolTests
         var stub = new StubMemoriesClient();
         TraverseRelationsTool tool = CreateTool(stub);
 
-        _ = await tool.TraverseAsync(tenantId: "acme", from: "mu-1", depth: 2, edgeType: "causedBy,correlatedWith", tokenBudget: 900);
+        _ = await tool.TraverseAsync(tenantId: "acme", from: "mu-1", depth: 2, edgeType: "causedBy,correlatedWith", tokenBudget: 900, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.TraversalRequests.ShouldHaveSingleItem();
         TraversalRequest captured = stub.TraversalRequests[0];
@@ -41,7 +41,7 @@ public sealed class TraverseRelationsToolTests
         var stub = new StubMemoriesClient();
         TraverseRelationsTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.TraverseAsync("acme", "mu-1", edgeType: "notARealType");
+        CallToolResult result = await tool.TraverseAsync("acme", "mu-1", edgeType: "notARealType", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.TraversalRequests.ShouldBeEmpty();
         AssertIsErrorWithCode(result, "INVALID_EDGE_TYPE");
@@ -56,7 +56,7 @@ public sealed class TraverseRelationsToolTests
         var stub = new StubMemoriesClient();
         TraverseRelationsTool tool = CreateTool(stub);
 
-        _ = await tool.TraverseAsync("acme", "mu-1", depth: input);
+        _ = await tool.TraverseAsync("acme", "mu-1", depth: input, cancellationToken: TestContext.Current.CancellationToken);
 
         stub.TraversalRequests[0].Depth.ShouldBe(expected);
     }
@@ -67,7 +67,7 @@ public sealed class TraverseRelationsToolTests
         var stub = new StubMemoriesClient();
         TraverseRelationsTool tool = CreateTool(stub);
 
-        CallToolResult result = await tool.TraverseAsync("acme", " ");
+        CallToolResult result = await tool.TraverseAsync("acme", " ", cancellationToken: TestContext.Current.CancellationToken);
 
         stub.TraversalRequests.ShouldBeEmpty();
         AssertIsErrorWithCode(result, "INVALID_INPUT");

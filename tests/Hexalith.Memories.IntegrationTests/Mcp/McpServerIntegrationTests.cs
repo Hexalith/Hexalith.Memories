@@ -13,7 +13,7 @@ using ModelContextProtocol.Client;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Story 10.1 — Tier-3 Aspire end-to-end tests for the MCP server. Verifies the registered tools

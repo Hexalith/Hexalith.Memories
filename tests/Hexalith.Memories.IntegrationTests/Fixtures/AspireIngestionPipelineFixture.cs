@@ -199,7 +199,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     }
 
     /// <inheritdoc/>
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
@@ -374,7 +374,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             cancellationToken);
 
     /// <inheritdoc/>
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
         DisposeEnvVarScopes();

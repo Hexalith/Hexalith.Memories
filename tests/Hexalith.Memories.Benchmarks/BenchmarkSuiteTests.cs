@@ -22,7 +22,7 @@ using Shouldly;
 
 using StackExchange.Redis;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Integration tests that run the benchmark suite against real Redis Stack + FalkorDB backends
@@ -311,7 +311,7 @@ public class BenchmarkSuiteTests
         }
 
         List<(string NodeId, int HopDistance)> traversedNodes = [];
-        foreach (Record record in resultSet)
+        foreach (NFalkorDB.Record record in resultSet)
         {
             string nodeId = record.GetValue<string>("nodeId");
             long hopDistance = record.GetValue<long>("hopDistance");

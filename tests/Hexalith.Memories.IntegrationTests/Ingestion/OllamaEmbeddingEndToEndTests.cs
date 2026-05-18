@@ -43,7 +43,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
     private AspireIngestionPipelineFixture? _fixture;
     private OllamaOidcFakeServer? _fakeServer;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _fakeServer = await OllamaOidcFakeServer.StartAsync(_clientSecret);
         try
@@ -64,7 +64,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_fixture is not null)
         {

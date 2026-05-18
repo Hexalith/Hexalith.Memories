@@ -21,25 +21,23 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
 
     public IConnectionMultiplexer RedisConnection { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
-            _falkorDbContainer = new ContainerBuilder()
-                .WithImage(FalkorDbImage)
+            _falkorDbContainer = new ContainerBuilder(FalkorDbImage)
                 .WithPortBinding(0, 6379)
                 .WithWaitStrategy(
                     Wait.ForUnixContainer()
-                        .UntilPortIsAvailable(6379)
+                        .UntilInternalTcpPortIsAvailable(6379)
                         .UntilCommandIsCompleted("redis-cli", "PING"))
                 .Build();
 
-            _redisStackContainer = new ContainerBuilder()
-                .WithImage(RedisStackImage)
+            _redisStackContainer = new ContainerBuilder(RedisStackImage)
                 .WithPortBinding(0, 6379)
                 .WithWaitStrategy(
                     Wait.ForUnixContainer()
-                        .UntilPortIsAvailable(6379)
+                        .UntilInternalTcpPortIsAvailable(6379)
                         .UntilCommandIsCompleted("redis-cli", "PING"))
                 .Build();
 
@@ -59,7 +57,7 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (FalkorDbConnection is not null)
         {

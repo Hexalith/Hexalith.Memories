@@ -19,7 +19,7 @@ using Hexalith.Memories.IntegrationTests.Fixtures;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 using MemoriesCase = Hexalith.Memories.Contracts.V1.Case;
 

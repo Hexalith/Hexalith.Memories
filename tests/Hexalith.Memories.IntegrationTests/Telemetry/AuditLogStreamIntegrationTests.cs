@@ -26,7 +26,7 @@ using Microsoft.Extensions.Options;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Story 8.4 Task 3 — Tier-3 audit log stream integration tests. Closes Story 7.5 Task 11.4.

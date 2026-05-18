@@ -16,7 +16,7 @@ using ModelContextProtocol.Protocol;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Story 10.2 Task 14.1 — Tier-3 Aspire integration coverage for the MCP ingress JWT bearer auth and

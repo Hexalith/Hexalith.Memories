@@ -15,7 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Story 7.5 Task 10.3 — CLI telemetry startup-latency benchmark. Gated behind

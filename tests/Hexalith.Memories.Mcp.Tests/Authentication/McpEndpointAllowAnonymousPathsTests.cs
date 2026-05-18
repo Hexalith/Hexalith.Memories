@@ -33,7 +33,7 @@ public sealed class McpEndpointAllowAnonymousPathsTests
             AllowAutoRedirect = false,
         });
 
-        using HttpResponseMessage response = await client.GetAsync(path);
+        using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldNotBe(HttpStatusCode.Unauthorized);
     }
@@ -51,7 +51,7 @@ public sealed class McpEndpointAllowAnonymousPathsTests
             Encoding.UTF8,
             "application/json");
 
-        using HttpResponseMessage response = await client.PostAsync("/mcp", content);
+        using HttpResponseMessage response = await client.PostAsync("/mcp", content, TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");

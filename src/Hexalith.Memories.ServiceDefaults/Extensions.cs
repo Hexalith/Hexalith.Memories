@@ -54,7 +54,7 @@ public static class Extensions
         where TBuilder : IHostApplicationBuilder
     {
         _ = builder.ConfigureOpenTelemetry(configureRedisInstrumentation);
-        _ = builder.AddDefaultHealthChecks();
+        _ = builder.AddDefaultHealthChecks(configureRedisReadyCheck: configureRedisInstrumentation);
         _ = builder.Services.AddServiceDiscovery();
 
         _ = builder.Services.ConfigureHttpClientDefaults(http =>
@@ -258,6 +258,10 @@ public static class Extensions
         if (useOtlpExporter)
         {
             _ = builder.Services.AddOpenTelemetry().UseOtlpExporter();
+        }
+        else if (builder.Environment.IsProduction())
+        {
+            _ = builder.Services.AddHostedService<OtlpExporterWarningHostedService>();
         }
 
         // Story 8.4 Task 1.1 — env-var-triggered integration-only activity capture for Tier-3 tests.
@@ -486,11 +490,72 @@ public static class Extensions
             => $"RedisKeyedConnectionGuard({ServiceKey})";
     }
 
-    public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder)
+    private sealed class RedisReadyHealthCheck(IServiceProvider services) : IHealthCheck
+    {
+        public async Task<HealthCheckResult> CheckHealthAsync(
+            HealthCheckContext context,
+            CancellationToken cancellationToken = default)
+        {
+            IConnectionMultiplexer? multiplexer = services.GetKeyedService<IConnectionMultiplexer>(RedisConnectionKey);
+            if (multiplexer is null)
+            {
+                return HealthCheckResult.Unhealthy(
+                    $"Keyed IConnectionMultiplexer '{RedisConnectionKey}' is not registered.");
+            }
+
+            try
+            {
+                IDatabase database = multiplexer.GetDatabase();
+                TimeSpan latency = await database.PingAsync(CommandFlags.DemandMaster).ConfigureAwait(false);
+                return HealthCheckResult.Healthy($"Redis PING succeeded in {latency.TotalMilliseconds:n0} ms.");
+            }
+            catch (Exception ex) when (ex is RedisException or TimeoutException or InvalidOperationException)
+            {
+                return HealthCheckResult.Unhealthy("Redis PING failed.", ex);
+            }
+        }
+    }
+
+    private sealed class OtlpExporterWarningHostedService(
+        ILogger<OtlpExporterWarningHostedService> logger) : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken)
+        {
+            logger.LogWarning(
+                "OTEL_EXPORTER_OTLP_ENDPOINT is empty in Production; telemetry will be collected in-process but not exported.");
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Registers the default liveness and readiness checks used by Hexalith services.
+    /// </summary>
+    /// <remarks>
+    /// Story 15.6 closes the Story 1.1 re-review gap where <c>/ready</c> could be green even when Redis
+    /// was unreachable. Redis-backed services keep this check enabled by default; hosts without a Redis
+    /// dependency can opt out explicitly.
+    /// </remarks>
+    public static TBuilder AddDefaultHealthChecks<TBuilder>(
+        this TBuilder builder,
+        bool configureRedisReadyCheck = true)
         where TBuilder : IHostApplicationBuilder
     {
-        _ = builder.Services.AddHealthChecks()
+        IHealthChecksBuilder healthChecks = builder.Services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+
+        if (configureRedisReadyCheck)
+        {
+            // ADR-15.6-001: Redis is the minimum viable readiness dependency for Memories services.
+            // Keep the default fail-closed so orchestrators stop routing traffic when the keyed
+            // multiplexer is absent or cannot answer PING.
+            _ = healthChecks.AddCheck<RedisReadyHealthCheck>(
+                "redis-ping",
+                failureStatus: HealthStatus.Unhealthy,
+                tags: ["ready"],
+                timeout: TimeSpan.FromSeconds(3));
+        }
 
         return builder;
     }

@@ -36,6 +36,7 @@ public class ProgramHealthCheckRegistrationTests
         string[] registeredNames = [.. options.Registrations.Select(r => r.Name)];
 
         registeredNames.ShouldContain("self");
+        registeredNames.ShouldContain("redis-ping");
         registeredNames.ShouldContain("dapr-sidecar");
         registeredNames.ShouldContain("dapr-statestore");
         registeredNames.ShouldContain("redisearch");

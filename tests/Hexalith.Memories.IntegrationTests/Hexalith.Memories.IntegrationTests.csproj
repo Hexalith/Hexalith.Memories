@@ -9,16 +9,11 @@
       <IsAspireProjectResource>false</IsAspireProjectResource>
     </ProjectReference>
     <ProjectReference Include="..\..\src\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
-    <ProjectReference
-      Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
-    <ProjectReference
-      Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
-    <ProjectReference
-      Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />
-    <ProjectReference
-      Include="..\..\src\Hexalith.Memories.Mcp\Hexalith.Memories.Mcp.csproj" />
-    <ProjectReference
-      Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Client.Rest\Hexalith.Memories.Client.Rest.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Cli\Hexalith.Memories.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.Mcp\Hexalith.Memories.Mcp.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,12 +24,18 @@
     <PackageReference Include="Aspire.Hosting.Testing" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Shouldly" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Testcontainers" />
-    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>

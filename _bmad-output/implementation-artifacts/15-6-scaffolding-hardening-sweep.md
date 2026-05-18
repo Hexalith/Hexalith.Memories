@@ -1,6 +1,6 @@
 # Story 15.6: Scaffolding Hardening Sweep
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,53 +30,53 @@ The re-review uncovered issues spanning code originally added by Stories 1.1, 5.
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 — Establish the implementation baseline (AC: 1)
-  - [ ] Read `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` Review Findings (Re-Review 2026-05-16) section end-to-end.
-  - [ ] Read the seven `1.1-RR*` entries in `_bmad-output/implementation-artifacts/deferred-work.md` to understand which findings were already accepted/deferred and do NOT need code change.
-  - [ ] Build a small inventory mapping each patch finding to (file:line, change shape, test impact). Record in this story's Dev Agent Record.
+- [x] Task 0 — Establish the implementation baseline (AC: 1)
+  - [x] Read `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` Review Findings (Re-Review 2026-05-16) section end-to-end.
+  - [x] Read the seven `1.1-RR*` entries in `_bmad-output/implementation-artifacts/deferred-work.md` to understand which findings were already accepted/deferred and do NOT need code change.
+  - [x] Build a small inventory mapping each patch finding to (file:line, change shape, test impact). Record in this story's Dev Agent Record.
 
-- [ ] Task 1 — AppHost component-file ordering and isolation (AC: 1, 2, 7)
-  - [ ] In `src/Hexalith.Memories.AppHost/Program.cs`, introduce a `TaskCompletionSource` set by `OnResourceReady` after `WriteDaprRedisComponentFiles` completes; have the `BeforeResourceStartedEvent` handler await it (in addition to `WaitForRedisPingAsync`) before allowing any of the four matched sidecar resources to start.
-  - [ ] Replace `Path.GetTempPath()/hexalith-memories-dapr/{daprAppId}/` with a per-invocation directory that includes the AppHost process ID (e.g., `{daprAppId}-{Process.GetCurrentProcess().Id}`); ensure cleanup on AppHost shutdown via a `Disposed` callback or `AppDomain.CurrentDomain.ProcessExit`.
-  - [ ] Add YAML-safe escaping for `secretsFile` path interpolation: handle `"`, `\n`, and other YAML-special characters or switch to a YAML serializer / single-quoted-scalar form.
-  - [ ] Fix `WaitForRedisPingAsync` to loop on `ReadAsync` until `\r\n` is observed (use `ReadExactlyAsync` or accumulate until the terminator) instead of relying on a single read of `>= 5` bytes.
-  - [ ] Add `.WaitFor(secretStore).WaitFor(conversationLlm)` to the `memories-server` project resource.
-  - [ ] On Linux/macOS, call `File.SetUnixFileMode(secretsFile, OwnerRead | OwnerWrite)` after creating `secrets.json` so the file is not world-readable.
-  - [ ] Replace `Contains("appendonly yes", OrdinalIgnoreCase)` in `ResolveRedisConfigPath` with a line-by-line parser that skips lines beginning with `#`.
+- [x] Task 1 — AppHost component-file ordering and isolation (AC: 1, 2, 7)
+  - [x] In `src/Hexalith.Memories.AppHost/Program.cs`, introduce a `TaskCompletionSource` set by `OnResourceReady` after `WriteDaprRedisComponentFiles` completes; have the `BeforeResourceStartedEvent` handler await it (in addition to `WaitForRedisPingAsync`) before allowing any of the four matched sidecar resources to start.
+  - [x] Replace `Path.GetTempPath()/hexalith-memories-dapr/{daprAppId}/` with a per-invocation directory that includes the AppHost process ID (e.g., `{daprAppId}-{Process.GetCurrentProcess().Id}`); ensure cleanup on AppHost shutdown via a `Disposed` callback or `AppDomain.CurrentDomain.ProcessExit`.
+  - [x] Add YAML-safe escaping for `secretsFile` path interpolation: handle `"`, `\n`, and other YAML-special characters or switch to a YAML serializer / single-quoted-scalar form.
+  - [x] Fix `WaitForRedisPingAsync` to loop on `ReadAsync` until `\r\n` is observed (use `ReadExactlyAsync` or accumulate until the terminator) instead of relying on a single read of `>= 5` bytes.
+  - [x] Add `.WaitFor(secretStore).WaitFor(conversationLlm)` to the `memories-server` project resource.
+  - [x] On Linux/macOS, call `File.SetUnixFileMode(secretsFile, OwnerRead | OwnerWrite)` after creating `secrets.json` so the file is not world-readable.
+  - [x] Replace `Contains("appendonly yes", OrdinalIgnoreCase)` in `ResolveRedisConfigPath` with a line-by-line parser that skips lines beginning with `#`.
 
-- [ ] Task 2 — Submodule guard expansion (AC: 1, 3, 7)
-  - [ ] Extend `Directory.Build.props` `CheckSubmodules` MSBuild target to validate all five entries currently in `.gitmodules` (Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, Hexalith.FrontComposer). Prefer an `ItemGroup`-driven iteration so future additions to `.gitmodules` only require one line in the target rather than another `<Error>` element.
-  - [ ] Verify the new errors fire by temporarily renaming a submodule `.git` directory and running `dotnet build`; capture the error text in this story's Dev Agent Record.
+- [x] Task 2 — Submodule guard expansion (AC: 1, 3, 7)
+  - [x] Extend `Directory.Build.props` `CheckSubmodules` MSBuild target to validate all five entries currently in `.gitmodules` (Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, Hexalith.FrontComposer). Prefer an `ItemGroup`-driven iteration so future additions to `.gitmodules` only require one line in the target rather than another `<Error>` element.
+  - [x] Verify the new errors fire by temporarily renaming a submodule `.git` directory and running `dotnet build`; capture the error text in this story's Dev Agent Record.
 
-- [ ] Task 3 — ServiceDefaults `/ready` becomes a real readiness gate (AC: 1, 4, 7)
-  - [ ] Extend `AddDefaultHealthChecks` in `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` to register a `redis-ping` check tagged `ready` that resolves the keyed `IConnectionMultiplexer` (`Extensions.RedisConnectionKey`) and pings it. The check must return `Unhealthy` when the keyed service is not registered (callers without Redis can opt out via a bool parameter mirroring `configureRedisInstrumentation`).
-  - [ ] Add an XML doc remark and an ADR-style comment explaining why the default check exists (closes the gap surfaced by the Story 1.1 re-review).
-  - [ ] In `ConfigureOpenTelemetry` exporter wiring, emit a `Warning` log when `Environment.EnvironmentName == "Production"` and `OTEL_EXPORTER_OTLP_ENDPOINT` is empty.
+- [x] Task 3 — ServiceDefaults `/ready` becomes a real readiness gate (AC: 1, 4, 7)
+  - [x] Extend `AddDefaultHealthChecks` in `src/Hexalith.Memories.ServiceDefaults/Extensions.cs` to register a `redis-ping` check tagged `ready` that resolves the keyed `IConnectionMultiplexer` (`Extensions.RedisConnectionKey`) and pings it. The check must return `Unhealthy` when the keyed service is not registered (callers without Redis can opt out via a bool parameter mirroring `configureRedisInstrumentation`).
+  - [x] Add an XML doc remark and an ADR-style comment explaining why the default check exists (closes the gap surfaced by the Story 1.1 re-review).
+  - [x] In `ConfigureOpenTelemetry` exporter wiring, emit a `Warning` log when `Environment.EnvironmentName == "Production"` and `OTEL_EXPORTER_OTLP_ENDPOINT` is empty.
 
-- [ ] Task 4 — Production DAPR component templates (AC: 1, 5)
-  - [ ] In `deploy/dapr/components/statestore.yaml`, replace the hardcoded `redisPassword: ""` with an env-var interpolation pattern matching the existing `pubsub.yaml` (`${STATESTORE_REDIS_PASSWORD:-}` or equivalent). Add a 2-line file header clarifying that this YAML is a production deployment template and local dev uses AppHost-generated YAML.
-  - [ ] In `deploy/dapr/components/secretstore.yaml`, replace `./secrets.json` with an absolute path (suggested: `/etc/dapr/secrets/secrets.json`) and add a comment documenting the expected volume mount.
-  - [ ] In `deploy/dapr/components/conversation-llm.yaml`, verify the metadata key name against the DAPR 1.17 Conversation API schema. If `responseCacheTTL` is wrong, rename to the documented key (`cacheTTL`). Cite the DAPR docs URL in the file.
+- [x] Task 4 — Production DAPR component templates (AC: 1, 5)
+  - [x] In `deploy/dapr/components/statestore.yaml`, replace the hardcoded `redisPassword: ""` with an env-var interpolation pattern matching the existing `pubsub.yaml` (`${STATESTORE_REDIS_PASSWORD:-}` or equivalent). Add a 2-line file header clarifying that this YAML is a production deployment template and local dev uses AppHost-generated YAML.
+  - [x] In `deploy/dapr/components/secretstore.yaml`, replace `./secrets.json` with an absolute path (suggested: `/etc/dapr/secrets/secrets.json`) and add a comment documenting the expected volume mount.
+  - [x] In `deploy/dapr/components/conversation-llm.yaml`, verify the metadata key name against the DAPR 1.17 Conversation API schema. If `responseCacheTTL` is wrong, rename to the documented key (`cacheTTL`). Cite the DAPR docs URL in the file.
 
-- [ ] Task 5 — Story 1.1 Scope-Override for AppPort omission (AC: 1, 6)
-  - [ ] Amend `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` File Scope section with a `### Scope-Override (added 2026-05-XX)` block (precedent: Stories 15.2/15.4) recording that `WithDaprSidecar()` intentionally omits `AppPort=5000` so Aspire Testing can auto-detect the randomized project port. Cite the in-code comment at `src/Hexalith.Memories.AppHost/Program.cs:103-115`.
-  - [ ] Update Story 1.1 Completion Notes to reference the Scope-Override block and clarify that AC #1's "DAPR sidecar (app port 5000, ...)" requirement is satisfied operationally (sidecar reaches the app on the project-allocated port) even though the literal `AppPort` config is auto-detected rather than pinned.
-  - [ ] Check the relevant unresolved Decision items in the Story 1.1 Re-Review Findings section as resolved by this story.
+- [x] Task 5 — Story 1.1 Scope-Override for AppPort omission (AC: 1, 6)
+  - [x] Amend `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` File Scope section with a `### Scope-Override (added 2026-05-XX)` block (precedent: Stories 15.2/15.4) recording that `WithDaprSidecar()` intentionally omits `AppPort=5000` so Aspire Testing can auto-detect the randomized project port. Cite the in-code comment at `src/Hexalith.Memories.AppHost/Program.cs:103-115`.
+  - [x] Update Story 1.1 Completion Notes to reference the Scope-Override block and clarify that AC #1's "DAPR sidecar (app port 5000, ...)" requirement is satisfied operationally (sidecar reaches the app on the project-allocated port) even though the literal `AppPort` config is auto-detected rather than pinned.
+  - [x] Check the relevant unresolved Decision items in the Story 1.1 Re-Review Findings section as resolved by this story.
 
-- [ ] Task 6 — Regression coverage (AC: 7)
-  - [ ] Add a unit test asserting the new ready-tagged Redis health check returns Unhealthy when the keyed multiplexer is absent and Healthy when a stub connects (mirror existing `Tier-2` test patterns in `tests/Hexalith.Memories.Server.Tests/Telemetry`).
-  - [ ] Add an AppHost integration test (or extend the existing Aspire-Testing fixture) asserting the sidecar does not start until the component-file rewrite has produced a non-`127.0.0.1` host in `statestore.yaml`.
-  - [ ] Add (or extend) the existing submodule-detection test/fixture so renaming a tracked submodule `.git` directory produces the expected MSBuild error referencing the missing module by name.
+- [x] Task 6 — Regression coverage (AC: 7)
+  - [x] Add a unit test asserting the new ready-tagged Redis health check returns Unhealthy when the keyed multiplexer is absent and Healthy when a stub connects (mirror existing `Tier-2` test patterns in `tests/Hexalith.Memories.Server.Tests/Telemetry`).
+  - [x] Add an AppHost integration test (or extend the existing Aspire-Testing fixture) asserting the sidecar does not start until the component-file rewrite has produced a non-`127.0.0.1` host in `statestore.yaml`.
+  - [x] Add (or extend) the existing submodule-detection test/fixture so renaming a tracked submodule `.git` directory produces the expected MSBuild error referencing the missing module by name.
 
-- [ ] Task 7 — Update story-1.1 Re-Review Findings checkmarks (AC: 1)
-  - [ ] For each patch finding addressed by Tasks 1-5, check the `- [ ]` to `- [x]` in `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` Re-Review section and append a one-line note pointing to this story (e.g., "applied by Story 15.6").
-  - [ ] For any finding downgraded to defer during implementation, move it to `deferred-work.md` under the existing `## Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)` heading with structured fields (new `1.1-RR*` ID).
+- [x] Task 7 — Update story-1.1 Re-Review Findings checkmarks (AC: 1)
+  - [x] For each patch finding addressed by Tasks 1-5, check the `- [ ]` to `- [x]` in `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` Re-Review section and append a one-line note pointing to this story (e.g., "applied by Story 15.6").
+  - [x] For any finding downgraded to defer during implementation, move it to `deferred-work.md` under the existing `## Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)` heading with structured fields (new `1.1-RR*` ID).
 
-- [ ] Task 8 — Validation (AC: 1, 7)
-  - [ ] `dotnet build` over the full solution — zero warnings, zero errors.
-  - [ ] `dotnet test` for the focused slice: `tests/Hexalith.Memories.Server.Tests`, `tests/Hexalith.Memories.IntegrationTests` (AppHost-touching subset only), `tests/Hexalith.Memories.Contracts.Tests`. Record pass/fail counts.
-  - [ ] Run `dotnet run --project src/Hexalith.Memories.AppHost` from a clean checkout, confirm the dashboard reports Redis + FalkorDB + memories-server + memories-mcp + DAPR sidecars healthy, and that `/ready` returns 200 when Redis is up and 503 when Redis is stopped.
-  - [ ] Record commands, outputs, and any deviations in the Dev Agent Record.
+- [x] Task 8 — Validation (AC: 1, 7)
+  - [x] `dotnet build` over the full solution — zero warnings, zero errors.
+  - [x] `dotnet test` for the focused slice: `tests/Hexalith.Memories.Server.Tests`, `tests/Hexalith.Memories.IntegrationTests` (AppHost-touching subset only), `tests/Hexalith.Memories.Contracts.Tests`. Record pass/fail counts.
+  - [x] Run `dotnet run --project src/Hexalith.Memories.AppHost` from a clean checkout, confirm the dashboard reports Redis + FalkorDB + memories-server + memories-mcp + DAPR sidecars healthy, and that `/ready` returns 200 when Redis is up and 503 when Redis is stopped.
+  - [x] Record commands, outputs, and any deviations in the Dev Agent Record.
 
 ## File Scope
 
@@ -94,11 +94,13 @@ Allowed files for this story:
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — UPDATE only through BMad workflow/status transitions.
 - `tests/Hexalith.Memories.Server.Tests/**` — UPDATE for the ready-tagged health-check regression test (Task 6).
 - `tests/Hexalith.Memories.IntegrationTests/**` — UPDATE for the AppHost component-file ordering regression test (Task 6).
+- `src/Hexalith.Memories.Server/Ingestion/ContentExtractionClient.cs` — UPDATE (post-Docker validation fix requested by user). Preserve raw Markdown content after the restored package set exposed Kreuzberg normalization in the broad server test pass.
 
 Possible files only if analysis proves they are necessary:
 
 - `tests/Hexalith.Memories.TestHelpers/**` — UPDATE only if a shared fixture is required by Task 6 tests; otherwise inline the helper in the test class.
 - `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj` — UPDATE only if a new dependency is required for the per-invocation temp dir cleanup (unlikely).
+- `src/Hexalith.Memories.Redis/FalkorDbCompatibilityExtensions.cs` — ADD (post-Docker validation fix requested by user). Preserve the pre-1.0.6 graph-id `QueryAsync` call shape used by server code after restored packages resolve `NFalkorDB` 1.0.6.
 
 Read/verify only:
 
@@ -167,21 +169,55 @@ Forbidden by default:
 ## Change Log
 
 - 2026-05-16: Story drafted from the 2026-05-16 Re-Review of Story 1.1. Captures 13 direct patches plus 2 resolved decisions (D1 → spec Scope-Override; D2 → default ready-tagged Redis ping in ServiceDefaults).
+- 2026-05-18: Applied scaffolding hardening sweep; Docker/AppHost runtime checks pass, `/ready` gates Redis reachability, and story is ready for review.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-_To be filled by dev-story agent._
+GPT-5 Codex
 
 ### Debug Log References
 
-_To be filled by dev-story agent._
+- Task 0 inventory: 15 active re-review findings were triaged. Applied by code/docs: D1 AppPort Scope-Override, D2 default Redis `/ready`, submodule guard expansion, AppHost rewrite ordering, per-process DAPR temp directory, YAML scalar escaping, Unix `secrets.json` mode, Redis PING framing, Redis AOF config parser, statestore password env interpolation, secretstore absolute path, production OTLP warning, server waits for `secretstore`/`llm`, statestore production-template header. Explicitly dismissed: `conversation-llm.yaml` cache key rename because DAPR 1.17 docs use `responseCacheTTL`; `cacheTTL` appears only as a legacy alias in component metadata parsing.
+- Accepted deferred items read and left unchanged: `1.1-RR1` through `1.1-RR7` in `deferred-work.md`.
+- Submodule guard proof: temporarily moved `Hexalith.Tenants/.git`, ran `dotnet build .\src\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj --no-restore`, restored the `.git` marker in `finally`. Expected error captured: `Git submodule 'Hexalith.Tenants' is missing. Run: git submodule update --init Hexalith.Tenants`.
+- DAPR docs verification: `https://docs.dapr.io/reference/components-reference/supported-conversation/openai/` documents `responseCacheTTL`; no production-template rename to `cacheTTL` was made.
+- Validation: `dotnet build .\Hexalith.Memories.slnx --no-restore` passed with 0 warnings, 0 errors.
+- Validation: `dotnet test .\tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --no-build` passed 1822/1822.
+- Validation: `dotnet test .\tests\Hexalith.Memories.Contracts.Tests\Hexalith.Memories.Contracts.Tests.csproj --no-build` passed 470/470.
+- Validation: `dotnet test .\tests\Hexalith.Memories.IntegrationTests\Hexalith.Memories.IntegrationTests.csproj --no-build --filter "FullyQualifiedName~AppHostComponentFileOrderingTests"` passed 1/1.
+- Docker/AppHost validation after Docker recovered: `aspire doctor` passed Docker (`Docker v29.4.3: running`). Restored AppHost build initially exposed the `NFalkorDB` 1.0.6 graph-bound `QueryAsync` API; `src/Hexalith.Memories.Redis/FalkorDbCompatibilityExtensions.cs` preserves the previous graph-id query call shape and the AppHost build passed.
+- AppHost runtime validation: `dotnet run --project .\src\Hexalith.Memories.AppHost\Hexalith.Memories.AppHost.csproj --no-build` produced a healthy Aspire resource graph (Redis, FalkorDB, memories-server, memories-mcp, and both DAPR sidecars). Redis and FalkorDB endpoints were dynamically allocated (`tcp://localhost:54878`, `tcp://localhost:54876`) while existing `dapr_redis` continued to own host port 6379.
+- `/ready` runtime validation: `curl http://localhost:54967/ready` returned 200 with `redis-ping` Healthy; stopping Aspire resource `redis-vnuanhcf` made `/ready` return 503 with `redis-ping` Unhealthy; restarting Redis restored `/ready` to 200.
+- Validation follow-up: broad `dotnet test .\tests\Hexalith.Memories.Server.Tests\Hexalith.Memories.Server.Tests.csproj --no-build` surfaced a Markdown extraction regression from the restored Kreuzberg package set. `ContentExtractionClient` now preserves raw Markdown content for Markdown MIME types/extensions. Re-run passed 1822/1822.
 
 ### Completion Notes List
 
-_To be filled by dev-story agent._
+- AppHost now waits for the Redis component-file rewrite task before DAPR sidecars start, uses a process-suffixed generated component directory, cleans it on shutdown/process exit, escapes YAML double-quoted scalar paths, restricts newly created `secrets.json` permissions on Unix, reads Redis PING responses until CRLF, parses `appendonly yes` only from uncommented Redis config lines, and lets Aspire dynamically allocate Redis/FalkorDB host ports so existing local DAPR Redis on 6379 cannot poison component rewrites.
+- `memories-server` now waits for `secretstore` and `llm` DAPR components in addition to Redis and FalkorDB.
+- `ServiceDefaults.AddDefaultHealthChecks` now registers a default `redis-ping` readiness check that fails closed when the keyed Redis multiplexer is absent/unreachable, with an opt-out parameter for hosts without Redis; production hosts with no OTLP endpoint now register a warning log at startup.
+- Root submodule validation now covers all five `.gitmodules` entries through `RequiredRootSubmodule` items.
+- Production DAPR templates now avoid passwordless statestore defaults, use an absolute secretstore path with a documented volume mount, and cite DAPR docs for the retained `responseCacheTTL` key.
+- Story 1.1 now records the AppPort Scope-Override and all 15 active re-review findings have an explicit disposition.
+- Docker/AppHost runtime verification is complete; `/ready` returns 200 when Redis is running and 503 when Redis is intentionally stopped.
+- Markdown extraction now preserves raw Markdown for `text/markdown`, `text/x-markdown`, `.md`, and `.markdown` inputs, fixing the broad server test failure surfaced during validation.
 
 ### File List
 
-_To be filled by dev-story agent._
+- `Directory.Build.props`
+- `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md`
+- `_bmad-output/implementation-artifacts/15-6-scaffolding-hardening-sweep.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `deploy/dapr/components/conversation-llm.yaml`
+- `deploy/dapr/components/secretstore.yaml`
+- `deploy/dapr/components/statestore.yaml`
+- `src/Hexalith.Memories.AppHost/Program.cs`
+- `src/Hexalith.Memories.Redis/FalkorDbCompatibilityExtensions.cs`
+- `src/Hexalith.Memories.Server/Ingestion/ContentExtractionClient.cs`
+- `src/Hexalith.Memories.ServiceDefaults/Extensions.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/DefaultRedisReadyHealthCheckTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/HealthChecks/ProgramHealthCheckRegistrationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/DaprComponentTemplateTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/SubmoduleGuardTests.cs`

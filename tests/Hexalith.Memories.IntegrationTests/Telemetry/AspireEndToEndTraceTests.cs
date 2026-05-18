@@ -31,7 +31,7 @@ using NSubstitute;
 
 using Shouldly;
 
-using Xunit.Abstractions;
+using Xunit;
 
 /// <summary>
 /// Story 8.4 Task 2 — Tier-3 Aspire end-to-end trace propagation tests. Closes Story 7.5 Task 11.3.

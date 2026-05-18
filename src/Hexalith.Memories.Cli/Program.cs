@@ -59,7 +59,7 @@ public static class Program
         {
             try
             {
-                return await parseResult.InvokeAsync(cts.Token).ConfigureAwait(false);
+                return await parseResult.InvokeAsync(new InvocationConfiguration(), cts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cts.IsCancellationRequested)
             {

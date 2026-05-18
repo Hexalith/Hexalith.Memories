@@ -22,7 +22,7 @@
 #              secretKeyRef: { name: OPENAI_API_KEY, key: OPENAI_API_KEY }
 #            - name: model
 #              value: "gpt-4o-mini"
-#            - name: cacheTTL
+#            - name: responseCacheTTL
 #              value: "0s"                   # see "Response cache policy" below
 #            - name: scrubPII
 #              value: "false"                # see "PII scrubbing posture" below
@@ -30,6 +30,8 @@
 #   3. DAPR hot-reloads components on file change — no Memories Server restart required.
 #
 # Response cache policy (Risk #16 — cross-tenant leakage):
+#   DAPR 1.17 documents this metadata key as responseCacheTTL:
+#   https://docs.dapr.io/reference/components-reference/supported-conversation/openai/
 #   responseCacheTTL MUST remain 0s (caching DISABLED) as the MVP default. The DAPR Conversation sidecar's
 #   response cache is shared ACROSS tenants — two tenants ingesting payloads that hash identically would
 #   share the cached LLM summary, a privacy-incident blast radius. Operators who explicitly accept cross-

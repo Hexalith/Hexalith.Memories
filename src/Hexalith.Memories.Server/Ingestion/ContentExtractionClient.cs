@@ -24,12 +24,20 @@ public sealed class ContentExtractionClient : IContentExtractionClient
             ? "application/octet-stream"
             : input.ContentType;
 
-        Kreuzberg.ExtractionConfig config = new();
-        Kreuzberg.ExtractionResult kreuzbergResult = await Kreuzberg.KreuzbergClient
-            .ExtractBytesAsync(input.ContentBytes, contentType, config, cancellationToken)
-            .ConfigureAwait(false);
+        string extractedContent;
+        if (IsMarkdownContent(contentType, input.SourceUri))
+        {
+            extractedContent = Encoding.UTF8.GetString(input.ContentBytes);
+        }
+        else
+        {
+            Kreuzberg.ExtractionConfig config = new();
+            Kreuzberg.ExtractionResult kreuzbergResult = await Kreuzberg.KreuzbergClient
+                .ExtractBytesAsync(input.ContentBytes, contentType, config, cancellationToken)
+                .ConfigureAwait(false);
 
-        string extractedContent = kreuzbergResult.Content;
+            extractedContent = kreuzbergResult.Content;
+        }
 
         if (string.IsNullOrWhiteSpace(extractedContent))
         {
@@ -53,4 +61,10 @@ public sealed class ContentExtractionClient : IContentExtractionClient
         byte[] hash = SHA256.HashData(bytes);
         return Convert.ToHexStringLower(hash);
     }
+
+    private static bool IsMarkdownContent(string contentType, string sourceUri)
+        => contentType.Equals("text/markdown", StringComparison.OrdinalIgnoreCase) ||
+           contentType.Equals("text/x-markdown", StringComparison.OrdinalIgnoreCase) ||
+           sourceUri.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+           sourceUri.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase);
 }

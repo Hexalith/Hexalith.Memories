@@ -2,7 +2,10 @@ using Aspire.Hosting.Eventing;
 using Aspire.Hosting.ApplicationModel;
 using CommunityToolkit.Aspire.Hosting.Dapr;
 using Hexalith.Memories.AppHost;
+using System.Diagnostics;
+using System.Globalization;
 using System.Net.Sockets;
+using System.Text;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 string secretsFile = EnsureSecretsFile();
@@ -11,6 +14,7 @@ string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
 GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
+TaskCompletionSource redisComponentRewrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
 string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
 string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
@@ -36,13 +40,22 @@ IResourceBuilder<ContainerResource> redis = builder
     .AddContainer("redis", "redis/redis-stack")
     .WithBindMount(redisConfigPath, "/redis-stack.conf", isReadOnly: true)
     .WithVolume(redisVolumeName, "/data")
-    .WithEndpoint(port: 6379, targetPort: 6379, name: "redis");
+    .WithEndpoint(targetPort: 6379, name: "redis");
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
 redis.OnResourceReady((resource, _, _) =>
 {
-    (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
-    WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
-    return Task.CompletedTask;
+    try
+    {
+        (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
+        WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
+        redisComponentRewrite.TrySetResult();
+        return Task.CompletedTask;
+    }
+    catch (Exception ex)
+    {
+        redisComponentRewrite.TrySetException(ex);
+        throw;
+    }
 });
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
@@ -50,6 +63,8 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
         "memories-mcp-dapr" or "memories-mcp-dapr-cli")
     {
         (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
+        await WaitForRedisComponentRewriteAsync(redisComponentRewrite.Task, TimeSpan.FromMinutes(2), cancellationToken)
+            .ConfigureAwait(false);
         await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
     }
@@ -95,7 +110,7 @@ IResourceBuilder<IDaprComponentResource> conversationLlm = builder
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
     .AddContainer("falkordb", "falkordb/falkordb")
-    .WithEndpoint(port: 6380, targetPort: 6379, name: "falkordb");
+    .WithEndpoint(targetPort: 6379, name: "falkordb");
 EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
 // Memories Server with DAPR sidecar
@@ -125,7 +140,9 @@ IResourceBuilder<ProjectResource> server = builder
         "ConnectionStrings__falkordb",
         ReferenceExpression.Create($"{falkordbEndpoint.Property(EndpointProperty.HostAndPort)}"))
     .WaitFor(redis)
-    .WaitFor(falkordb);
+    .WaitFor(falkordb)
+    .WaitFor(secretStore)
+    .WaitFor(conversationLlm);
 
 #pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
 server = server
@@ -204,7 +221,15 @@ mcp = PropagateJwtBearerAuthenticationEnvironment(mcp);
 
 _ = mcp;
 
-builder.Build().Run();
+DistributedApplication app = builder.Build();
+try
+{
+    app.Run();
+}
+finally
+{
+    DeleteDaprComponentDirectory(daprComponentPaths.ComponentsDirectory);
+}
 
 static string EnsureTestDataRoot()
 {
@@ -230,6 +255,7 @@ static string EnsureSecretsFile()
     if (!File.Exists(secretsFile))
     {
         File.WriteAllText(secretsFile, "{}" + Environment.NewLine);
+        TryRestrictSecretFilePermissions(secretsFile);
     }
 
     return secretsFile;
@@ -237,8 +263,12 @@ static string EnsureSecretsFile()
 
 static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
 {
-    string componentsDirectory = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", daprAppId);
+    string componentsDirectory = Path.Combine(
+        Path.GetTempPath(),
+        "hexalith-memories-dapr",
+        $"{daprAppId}-{Process.GetCurrentProcess().Id}");
     Directory.CreateDirectory(componentsDirectory);
+    RegisterDaprComponentDirectoryCleanup(componentsDirectory);
 
     string stateStorePath = Path.Combine(componentsDirectory, "statestore.yaml");
     string pubSubPath = Path.Combine(componentsDirectory, "pubsub.yaml");
@@ -261,7 +291,7 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
           version: v1
           metadata:
             - name: secretsFile
-              value: "{secretsFile.Replace("\\", "\\\\", StringComparison.Ordinal)}"
+              value: "{EscapeYamlDoubleQuotedScalar(secretsFile)}"
             - name: nestedSeparator
               value: ":"
         """);
@@ -284,10 +314,70 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
         """);
 
     return new GeneratedDaprComponentPaths(
+        componentsDirectory,
         stateStorePath,
         pubSubPath,
         secretStorePath,
         conversationLlmPath);
+}
+
+static void TryRestrictSecretFilePermissions(string secretsFile)
+{
+    if (OperatingSystem.IsWindows())
+    {
+        return;
+    }
+
+    File.SetUnixFileMode(secretsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+}
+
+static void RegisterDaprComponentDirectoryCleanup(string componentsDirectory)
+{
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => DeleteDaprComponentDirectory(componentsDirectory);
+}
+
+static void DeleteDaprComponentDirectory(string componentsDirectory)
+{
+    try
+    {
+        if (Directory.Exists(componentsDirectory))
+        {
+            Directory.Delete(componentsDirectory, recursive: true);
+        }
+    }
+    catch (IOException)
+    {
+    }
+    catch (UnauthorizedAccessException)
+    {
+    }
+}
+
+static string EscapeYamlDoubleQuotedScalar(string value)
+{
+    ArgumentNullException.ThrowIfNull(value);
+
+    var builder = new StringBuilder(value.Length);
+    foreach (char ch in value)
+    {
+        _ = ch switch
+        {
+            '\\' => builder.Append(@"\\"),
+            '"' => builder.Append("\\\""),
+            '\0' => builder.Append(@"\0"),
+            '\a' => builder.Append(@"\a"),
+            '\b' => builder.Append(@"\b"),
+            '\t' => builder.Append(@"\t"),
+            '\n' => builder.Append(@"\n"),
+            '\v' => builder.Append(@"\v"),
+            '\f' => builder.Append(@"\f"),
+            '\r' => builder.Append(@"\r"),
+            _ when char.IsControl(ch) => builder.Append("\\x").Append(((int)ch).ToString("X2", CultureInfo.InvariantCulture)),
+            _ => builder.Append(ch),
+        };
+    }
+
+    return builder.ToString();
 }
 
 static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPath, string redisHost)
@@ -385,8 +475,15 @@ static string ResolveRedisConfigPath()
     // Story 6.4: the redis/redis-stack image silently falls back to in-memory defaults if the bind-mounted
     // config is present but empty or missing the AOF directive — which would make "restart durability"
     // green while actually losing data. Reject that up front so AppHost fails loudly instead.
-    string content = File.ReadAllText(configPath);
-    if (!content.Contains("appendonly yes", StringComparison.OrdinalIgnoreCase))
+    bool hasAppendOnly = File.ReadLines(configPath)
+        .Select(line => line.Trim())
+        .Where(line => line.Length > 0 && !line.StartsWith('#'))
+        .Select(line => line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries))
+        .Any(parts => parts.Length >= 2
+            && string.Equals(parts[0], "appendonly", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(parts[1], "yes", StringComparison.OrdinalIgnoreCase));
+
+    if (!hasAppendOnly)
     {
         throw new InvalidOperationException(
             $"Redis persistence configuration at '{configPath}' must set 'appendonly yes' to enable AOF durability.");
@@ -527,6 +624,21 @@ static (string Host, int Port) ResolveAllocatedEndpoint(IResource resource, stri
     return (host, allocated.Port);
 }
 
+static async Task WaitForRedisComponentRewriteAsync(
+    Task rewriteTask,
+    TimeSpan timeout,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        await rewriteTask.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+    }
+    catch (TimeoutException ex)
+    {
+        throw new TimeoutException($"DAPR Redis component files were not rewritten within {timeout}.", ex);
+    }
+}
+
 static async Task WaitForRedisPingAsync(
     string host,
     int port,
@@ -536,7 +648,7 @@ static async Task WaitForRedisPingAsync(
     DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
     Exception? lastError = null;
     byte[] ping = "*1\r\n$4\r\nPING\r\n"u8.ToArray();
-    byte[] response = new byte[64];
+    byte[] responseChunk = new byte[16];
 
     while (DateTimeOffset.UtcNow < deadline)
     {
@@ -552,15 +664,21 @@ static async Task WaitForRedisPingAsync(
 
             await using NetworkStream stream = client.GetStream();
             await stream.WriteAsync(ping, attemptCts.Token).ConfigureAwait(false);
-            int bytesRead = await stream.ReadAsync(response.AsMemory(0, response.Length), attemptCts.Token)
-                .ConfigureAwait(false);
 
-            if (bytesRead >= 5 &&
-                response[0] == (byte)'+' &&
-                response[1] == (byte)'P' &&
-                response[2] == (byte)'O' &&
-                response[3] == (byte)'N' &&
-                response[4] == (byte)'G')
+            List<byte> response = [];
+            while (!EndsWithCrlf(response))
+            {
+                int bytesRead = await stream.ReadAsync(responseChunk.AsMemory(), attemptCts.Token)
+                    .ConfigureAwait(false);
+                if (bytesRead == 0)
+                {
+                    throw new InvalidOperationException("Redis closed the connection before returning PONG.");
+                }
+
+                response.AddRange(responseChunk.Take(bytesRead));
+            }
+
+            if (IsRedisPong(response))
             {
                 return;
             }
@@ -578,7 +696,30 @@ static async Task WaitForRedisPingAsync(
     throw new TimeoutException($"{host}:{port} did not respond to Redis PING within {timeout}.", lastError);
 }
 
+static bool EndsWithCrlf(IReadOnlyList<byte> bytes)
+    => bytes.Count >= 2 && bytes[^2] == (byte)'\r' && bytes[^1] == (byte)'\n';
+
+static bool IsRedisPong(IReadOnlyList<byte> bytes)
+{
+    ReadOnlySpan<byte> expected = "+PONG\r\n"u8;
+    if (bytes.Count != expected.Length)
+    {
+        return false;
+    }
+
+    for (int i = 0; i < expected.Length; i++)
+    {
+        if (bytes[i] != expected[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 internal sealed record GeneratedDaprComponentPaths(
+    string ComponentsDirectory,
     string StateStore,
     string PubSub,
     string SecretStore,
