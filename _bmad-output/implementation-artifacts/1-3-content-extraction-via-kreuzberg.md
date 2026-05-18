@@ -90,6 +90,18 @@ So that any supported file format can be processed into searchable content.
 - [x] [Review][Defer] Large byte[] in ExtractionInput persisted to workflow state store — deferred, accepted per D13 (≤1MB for MVP)
 - [x] [Review][Defer] byte[] mutable on immutable record — deferred, known .NET limitation with no practical alternative
 
+## Implementation Readiness Addendum (2026-05-18)
+
+This story is historical completed scope and may remain closed. If it is reopened, reimplemented, or used as a template for a future technical story, completion must include observable proof that extraction advances the developer ingestion journey.
+
+Required future-rework evidence:
+
+1. Text, markdown, and PDF fixture extraction results captured outside the `ContentExtractionClient` unit boundary.
+2. Activity, API, CLI, trace, or integration-harness evidence showing extracted content and content hash.
+3. Failure evidence for empty or unsupported extraction that shows the structured recovery path expected by the ingestion workflow.
+
+Pure internal client tests alone are not sufficient evidence for future work.
+
 ## Definition of Done
 
 1. Kreuzberg NuGet package installed and extracting text from plain text, PDF, and markdown files

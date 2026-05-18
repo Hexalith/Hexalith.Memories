@@ -513,6 +513,20 @@ Contracts.V1 (IndexInput, IndexResult, MemoryUnit, GraphEdge, EdgeType) ← Serv
 - [Source: prd.md#FR6] — Memory unit fully searchable across all axes after ingestion
 - [Source: prd.md#NFR8] — Zero cross-tenant data leakage (hard gate)
 
+## Implementation Readiness Addendum (2026-05-18)
+
+This story is historical completed scope and may remain closed. If it is reopened, reimplemented, or used as a template for a future technical story, completion must include observable proof that one tenant-scoped memory unit is discoverable from all relevant retrieval backends.
+
+Required future-rework evidence:
+
+1. RediSearch proof that the memory unit is searchable by tenant-scoped full-text query.
+2. Redis Vector proof that the same memory unit is retrievable by tenant-scoped vector lookup.
+3. FalkorDB proof that the same memory unit appears in the tenant graph with the expected case and optional causation/correlation edges.
+4. Negative tenant-isolation evidence showing another tenant cannot see the indexed unit.
+5. If a backend is unavailable in the proof environment, an explicit degraded-state explanation and follow-up owner.
+
+Activity unit tests and graph query builder tests alone are not sufficient evidence for future work.
+
 ## Definition of Done
 
 1. `IndexSyntacticActivity` creates tenant-namespaced RediSearch index and stores memory unit as HASH with full-text searchable content

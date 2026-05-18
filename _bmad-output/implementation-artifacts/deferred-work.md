@@ -1207,3 +1207,70 @@ remain open with their original re-open triggers.
 - **15.3-RV25. Operator-docs downtime statement could be sharper about per-tenant retry disruption.** `docs/operations/embedding-providers.md` — "Tenant-specific ingestion downtime is not required" is correct but some readers will interpret operator-visible per-tenant retry as "effective downtime"; phrasing could be tightened. Re-open trigger: operator confusion or escalation citing the downtime statement.
 - **15.3-RV26. `HashEntry` integer value culture-dependent parsing is a future-regression risk.** `src/Hexalith.Memories.Server/Migration/EmbeddingMigrationMarkerReader.cs:64-65` — current path stores `int` via `HashEntry(string, int)` overload which is invariant; a future refactor to a string overload could silently regress to locale-sensitive parsing → fail-open. Re-open trigger: any refactor of the marker write path away from the `int`-typed `HashEntry` overload.
 - **15.3-RV27. Stale per-target marker can resume against drifted state.** `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs:179-187` — `--resume` only checks per-target key existence; does not verify active marker still references same target. Overlaps 15.3-RV15/16. Re-open trigger: same as 15.3-RV15.
+
+## Deferred from: code review of 1-1-project-scaffolding-and-single-command-boot (2026-05-16)
+
+Fresh re-review of Story 1.1 scaffolding files at HEAD `76aa84c` surfaced seven items deferred as pre-existing, intentional, or low-value. Two decision-needed items and thirteen unresolved patches remain in the story file for action.
+
+- **1.1-RR1. Process-wide environment mutation when wiring DAPR API tokens.** `ApplyProcessEnvironmentTokens` sets `APP_API_TOKEN`/`DAPR_API_TOKEN` on the AppHost process so spawned daprd sidecars inherit them, but the variables persist for every child process the AppHost spawns afterwards.
+
+  - ID: 1.1-RR1
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: A child-process leak surfaces in audit (token visible in unrelated process env), or CommunityToolkit.Aspire.Hosting.Dapr exposes a per-sidecar env API that replaces the global mutation.
+  - Rationale: CommunityToolkit.Aspire.Hosting.Dapr 9.7 has no sidecar-specific env-builder API; the documented workaround is process env inheritance, and the AppHost only runs in development/CI/staging where the surface area is tightly scoped.
+
+- **1.1-RR2. `DAPR_API_TOKEN_MODE` default silently disables token authentication.** A missing or typo'd `DAPR_API_TOKEN_MODE` value yields `(null, null)` from `ResolveDaprApiTokens` and skips both sidecar and application token wiring with no log entry.
+
+  - ID: 1.1-RR2
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: A production incident traces a missing-token deployment back to a `DAPR_API_TOKEN_MODE` typo or omission, or Story D8 (TenantAuthorizationMiddleware) lands and assumes token mode is always announced at startup.
+  - Rationale: Default-disabled is the intentional posture for local dev and the Aspire integration-test fixture; production runs ship `DAPR_API_TOKEN_MODE=enabled` via secret manifest and never go through this branch silently.
+
+- **1.1-RR3. Obsolete `WithReference` (CS0618) suppression hides upstream Aspire migration.** `#pragma warning disable CS0618` wraps the project-level component references; Aspire 14.x will remove the API.
+
+  - ID: 1.1-RR3
+  - Status: carried-forward
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs; Directory.Packages.props
+  - Re-open trigger: Aspire 14.x package bump turns the warning into an error, or CommunityToolkit.Aspire.Hosting.Dapr releases a non-obsolete component-binding API.
+  - Rationale: CommunityToolkit.Aspire.Hosting.Dapr 9.7 still reads project-level component references; removing the suppression now would break sidecar wiring with no upstream replacement.
+
+- **1.1-RR4. `RepositoryRootLocator.Resolve()` failure is unhandled in AppHost helpers.** `EnsureTestDataRoot`, `EnsureSecretsFile`, `ResolveDaprConfigPath`, and `ResolveRedisConfigPath` propagate raw `InvalidOperationException` if the AppHost runs from outside a recognizable repo layout.
+
+  - ID: 1.1-RR4
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: A user runs the AppHost from a packaged distribution or detached workspace and files an issue about the cryptic "repository root not found" error.
+  - Rationale: AppHost is dev/CI-side only and always launched from within the repo today; the locator's own exception message names the lookup keys and is debuggable.
+
+- **1.1-RR5. `test-data/README.md` write race between parallel AppHosts.** `EnsureTestDataRoot` uses non-atomic `File.Exists` then `File.WriteAllText`; two simultaneous AppHost runs can collide on the README.
+
+  - ID: 1.1-RR5
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: A developer reports a transient `IOException: file in use` on AppHost startup, or CI begins running multiple parallel AppHosts in a single sandbox.
+  - Rationale: The README is created once per workspace lifetime; subsequent AppHost runs short-circuit on `File.Exists`. Collision window is sub-millisecond and only on the first ever run.
+
+- **1.1-RR6. `AddJsonConsole` plus OTEL logger create dual log sinks.** ServiceDefaults registers OpenTelemetry logging (with scopes + formatted message) and `AddJsonConsole` simultaneously, producing two log records per emission when the OTLP exporter is also active.
+
+  - ID: 1.1-RR6
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.ServiceDefaults/Extensions.cs
+  - Re-open trigger: A log-volume budget overrun in production is traced to dual-sink output, or downstream log shipping fails because of duplicated records.
+  - Rationale: AC #3 explicitly calls for structured JSON logging via ServiceDefaults; the JSON console is the local-dev/Aspire dashboard surface, the OTEL exporter is the production sink. Both running side-by-side is the intended design for visibility parity.
+
+- **1.1-RR7. `ResolveAllocatedEndpoint` `Single()` failure lacks context.** A missing or duplicated endpoint name surfaces as a bare `InvalidOperationException` with no message naming the resource or endpoint.
+
+  - ID: 1.1-RR7
+  - Status: accepted
+  - Source story: 1-1-project-scaffolding-and-single-command-boot
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: An Aspire upgrade renames endpoint keys and the unmatched lookup produces a triage ticket that costs more than the wrapping cost would have saved.
+  - Rationale: AppHost-internal helper used for two known endpoint names (`redis`, `falkordb`); the surrounding `OnResourceReady`/`BeforeResourceStartedEvent` callbacks would themselves fail in a debuggable way if the endpoint contract drifts.

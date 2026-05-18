@@ -223,7 +223,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 
 ### UX Design Requirements
 
-No UX Design document — this project is a Developer Tool / API Backend with no UI component. Developer experience is addressed via CLI (Epic 7) and MCP (Epic 10).
+UX guidance is captured in `ux-design-specification.md`. For MVP and Phase 1.5, the UX requirements apply primarily to CLI, MCP, structured errors, Evidence Packet semantics, tenant/case scope visibility, degraded-state handling, omitted-detail expansion, and recovery actions. Future Fluent UI / FrontComposer web UI guidance remains future-phase design guidance unless a later sprint change explicitly pulls web UI work into scope.
 
 ### FR Coverage Map
 
@@ -249,10 +249,10 @@ No UX Design document — this project is a Developer Tool / API Backend with no
 - FR20: Epic 3 — Filter search by case
 - FR21: Epic 3 — Filter search by metadata
 - FR22: Epic 2 — Pagination (search concern)
-- FR23: Epic 10 — Token budget (MCP)
+- FR23: Epic 10 — Token budget (MCP), including deterministic omitted-detail expansion handles
 - FR24: Epic 2 — Origin identifier in results
 - FR25: Epic 2 — Benchmark comparisons
-- FR26: Epic 3 — Create case
+- FR26: Epic 0 + Epic 3 — Minimal case bootstrap, then full case management
 - FR27: Epic 3 — Delete case
 - FR28: Epic 3 — Add case members
 - FR29: Epic 3 — Remove case members
@@ -264,13 +264,13 @@ No UX Design document — this project is a Developer Tool / API Backend with no
 - FR35: Epic 3 — Delete memory unit
 - FR36: Epic 3 — Case activity
 - FR37: Epic 3 — Annotations/corrections
-- FR38: Epic 5 — Create tenant
+- FR38: Epic 0 + Epic 5 — Tenant creation and isolated infrastructure provisioning
 - FR39: Epic 5 — Delete tenant
 - FR40: Epic 5 — Verify tenant isolation
 - FR41: Epic 5 — List tenants
 - FR42: Epic 5 — Update tenant config
 - FR43: Epic 5 — Prevent inconsistent config changes
-- FR44: Epic 5 — Tenant context enforcement
+- FR44: Epic 0 + Epic 5 — Tenant context validation and enforcement
 - FR45: Epic 5 — View tenant configuration
 - FR46: Epic 1 — Index CausationId/CorrelationId as graph edges (creation during ingestion)
 - FR47: Epic 4 — Traverse causal chains
@@ -289,29 +289,66 @@ No UX Design document — this project is a Developer Tool / API Backend with no
 - FR60: Epic 9 — Dual embeddings for events
 - FR61: Epic 9 — Auto-index CausationId/CorrelationId
 - FR62: Epic 9 — Handler registration management
-- FR63: Epic 2 — Composite confidence scores
+- FR63: Epic 2 — Composite confidence scores and Evidence Packet contract mapping
 - FR64: Epic 7 — Metadata origin tracking display
 - FR65: Epic 1 — `ingested_by` field
 - FR66: Epic 5 — Partial results on backend failure
 - FR67: Epic 7 — Search/access telemetry
-- FR68: Epic 1 — Configure embedding provider
+- FR68: Epic 1 — Configure Google embedding provider for MVP with an extensible provider/model/dimensions/rate-limit shape. OpenAI, Mistral, Ollama, and custom runtime providers are post-MVP provider expansion work unless explicitly pulled forward by sprint change.
 - FR69: Epic 5 — Per-tenant rate limits
 - FR70: Epic 5 — Track embedding model per unit
-- FR71: Epic 8 — Export data
+- FR71: Deferred to Phase 2 — Portable case/tenant export
 - FR72: Epic 8 — Health checks
 - FR73: Epic 8 — Consistency check
 - FR74: Epic 8 — Consistency repair
 
+## Selected Implementation Scope
+
+**Selected scope as of 2026-05-17:** planning correction for implementation readiness. No product requirement reset is approved. The clean executable foundation path is:
+
+1. Story 0.0: Project Scaffolding & Single-Command Boot (historical alias: Story 1.1)
+2. Story 0.1: Tenant Provisioning Minimum Viable Workflow
+3. Story 0.2: Minimal Case Bootstrap
+4. Story 0.3: Tenant and Case Validation Guard
+5. Epic 1 data-writing ingestion/search stories
+
+Minimum build/test CI is an early enabling prerequisite for any greenfield or restarted implementation sequence. The historical CI story remains Story 11.1, but implementation handoff must treat the minimum build/test gate as active before broad product work begins. Semantic release, NuGet publishing, branch protection hardening, and release operations remain in the Engineering/Operational Readiness track.
+
+## Implementation Readiness Boundary
+
+MVP implementation readiness covers Epic 0 through Epic 8:
+
+- Epic 0: Foundation path, including scaffold, tenant provisioning, minimal case bootstrap, and validation guard
+- Epic 1-8: MVP thesis, tenant isolation, CLI developer experience, and operations gates
+
+Phase 1.5 fast-follow covers Epic 9 and Epic 10.
+
+Epics 11-15 are Engineering/Operational Readiness work. They may remain in this file for lifecycle continuity, but they require explicit sprint selection before implementation and are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence.
+
+Future web UI, FrontComposer, and Fluent UI implementation remain out of MVP unless a later approved sprint change pulls them forward.
+
+### Story Key Policy
+
+New story keys must use numeric `Epic.Story` format. Alphabetic suffixes are allowed only as historical aliases during migration and must not be introduced for new work unless story tooling explicitly supports them and a sprint change approves the exception.
+
 ## Epic List
+
+### Phase: MVP — Foundation Gate
+
+### Epic 0: Tenant and Case Safety Foundation
+Before any ingestion, indexing, search, or graph story writes data, the system must have a buildable scaffold, an active tenant with physically isolated backend infrastructure, and an active case within that tenant. `TenantProvisioningWorkflow` is the sole owner of tenant index/database creation. Ingestion and indexing require an active tenant and case and fail clearly before backend writes when either is missing.
+**Sequencing:** Epic 0 is the complete foundation path: Story 0.0 scaffold first, then tenant provisioning, minimal case bootstrap, and validation guard. Epic 1 starts only after Epic 0 is complete.
+**FRs covered:** FR26, FR38, FR44
+**NFRs covered:** NFR8
 
 ### Phase: MVP — Gate 1 (Three-Axis Validation)
 
-### Epic 1: Foundation, Ingestion & Graph Edge Indexing
-Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), git submodules, and the IndexGraphActivity.
+### Epic 1: First Tenant-Scoped Memory Ingestion and Search
+Developer can use the completed Epic 0 foundation to ingest local content and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and typed graph edges. Implementation delivered by this epic includes `IngestionWorkflow` with saga/compensation, Contracts V1 ingestion/search contracts, Redis (RediSearch + Vector), FalkorDB graph indexing activities, Kreuzberg (NuGet, in-process), embedding provider configuration, provenance, and causal metadata indexing.
 **FRs covered:** FR1, FR4, FR5, FR6, FR7, FR13, FR46, FR65, FR68
 
 ### Epic 2: Three-Axis Search, Fusion & Benchmark Validation
-Developer can search memory units across syntactic, semantic, and graph axes independently and as a fused hybrid query, with explainable per-axis score breakdowns and paginated results. Benchmark suite validates the three-axis thesis with automated NDCG@10 scoring against a synthetic dataset with known ground truth.
+Developer can search memory units across syntactic, semantic, and graph axes independently and as a fused hybrid query, with explainable per-axis score breakdowns, Evidence Packet contract mapping, and paginated results. Benchmark suite validates the three-axis thesis with automated NDCG@10 scoring against a synthetic dataset with known ground truth.
 **FRs covered:** FR14, FR15, FR16, FR17, FR18, FR19, FR22, FR24, FR25, FR63
 
 **--- Gate 1 Validation Checkpoint: if hybrid doesn't outperform single-axis on 80%+ of benchmarks, re-evaluate graph axis investment ---**
@@ -339,14 +376,16 @@ Developer can ingest from URLs and directories, monitor pipeline status per case
 **FRs covered:** FR2, FR3, FR8, FR9, FR10, FR11, FR12
 
 ### Epic 7: CLI & Developer Experience
-Developer can accomplish all operational tasks via a polished CLI tool with actionable error messages including recovery suggestions, multiple output formats (human-readable, JSON, table), discoverable actions from any state (including empty and error states), metadata origin tracking display, and a guided quickstart — achieving <30 min onboarding on a clean machine.
+Developer can accomplish MVP thesis-validation tasks via a CLI tool with actionable error messages, multiple output formats, scope visibility, explain output, and a README quickstart path that proves the under-30-minute first-search gate. MVP CLI essentials are `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, benchmark support, and README quickstart validation. Full CLI polish (`explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, richer diagnostics) remains Phase 1.5 unless explicitly pulled forward.
 **FRs covered:** FR53, FR55, FR56, FR57, FR64, FR67
 
 ### Phase: MVP — Operations
 
 ### Epic 8: Observability & System Health
-Operator can verify consistency across all three backends, detect and repair index/graph divergence, export memory units/metadata/graph edges in a portable format, and observe the system via readiness/liveness health checks, structured logging, distributed traces, and custom metrics.
-**FRs covered:** FR71, FR72, FR73, FR74
+Operator can verify consistency across all three backends, detect and repair index/graph divergence, and observe the system via readiness/liveness health checks, structured logging, distributed traces, and custom metrics.
+**FRs covered:** FR72, FR73, FR74
+
+FR coverage is 100% traceable. MVP implementation scope is not 100% of FR1-FR74 because FR71 portable export is explicitly deferred to Phase 2 unless a later approved sprint change pulls it forward.
 
 ### Phase 1.5 (Fast-Follow — within 4 weeks of thesis validation)
 
@@ -358,10 +397,16 @@ Any event-sourced system publishing to DAPR pub/sub topics gets automatic memory
 LLM agents can search, ingest, traverse, and query case info via MCP tools with typed parameter schemas, token-budget-aware responses, and structured error handling conforming to MCP protocol specification.
 **FRs covered:** FR23, FR54, FR58
 
-### Infrastructure (Cross-Cutting)
+### Engineering/Operational Readiness Track
+
+Epics in this track are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence. They are not product capability epics, but they protect implementation and release quality.
+
+Operational-readiness stories are accepted only when they produce maintainer/operator decisions and concrete evidence such as CI check names, release run results, package inventory proof, deferred-ID resolution records, runbook updates, or explicit accepted-risk entries. Before implementing Epics 14 or 15, verify every referenced deferred ID, retrospective item, review finding, and sprint-change proposal path still exists. If a reference is stale, update the story before implementation begins.
+
+Acceptance criteria that allow "implemented, documented, accepted, or carried forward" are allowed only in Engineering/Operational Readiness stories. MVP product capability stories must deliver working behavior or explicit testable validation, not documentation-only completion, unless a separate sprint change approves a deferral.
 
 ### Epic 11: CI/CD & Automated Quality Pipeline
-Every commit is automatically built, tested, and versioned via GitHub Actions. PRs get build + test checks. Releases publish NuGet packages with semantic versioning from conventional commits. Branch protection on main.
+Minimum build/test CI is an enabling prerequisite for any greenfield or restarted implementation sequence. Semantic release, NuGet publishing, branch protection, and release-hardening behavior remain in this operational-readiness epic.
 **Driven by:** Architecture Decision D17
 
 ### Phase: Post-MVP — Operations & First Release
@@ -384,11 +429,34 @@ Maintainers and operators can convert remaining carry-forward risks from Epic 14
 
 ---
 
-## Epic 1: Foundation, Ingestion & Graph Edge Indexing
+## Epic 0: Tenant and Case Safety Foundation
 
-Developer can boot the full stack with a single command, ingest content from local files, and see it persisted and searchable across all three backends — including typed graph edges created during ingestion. This epic establishes the entire infrastructure spine: Aspire AppHost, DAPR Workflows (IngestionWorkflow with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), git submodules, and the IndexGraphActivity.
+Before any ingestion, indexing, search, or graph story writes data, the system must have a buildable scaffold, an active tenant with physically isolated backend infrastructure, and an active case within that tenant. `TenantProvisioningWorkflow` is the sole owner of tenant index/database creation. Ingestion and indexing require an active tenant and case and fail clearly before backend writes when either is missing.
 
-### Story 1.1: Set Up Initial Project from Aspire Starter Template
+Implementation sequence note: Epic 0 is the clean foundation path. Execute Story 0.0 first, then Story 0.1, Story 0.2, and Story 0.3 before any Epic 1 data-writing ingestion/search story.
+
+**Epic 0 Definition of Done / Readiness Gate:**
+
+**Given** a new tenant ID and display name
+**When** `TenantProvisioningWorkflow` completes
+**Then** RediSearch, Redis Vector, and FalkorDB tenant infrastructure exists before any ingestion or search activity writes tenant data
+**And** the tenant is marked active in the tenant registry
+
+**Given** an active tenant
+**When** a minimal case is created
+**Then** the case is associated with that tenant and can be selected by ingestion workflows
+**And** a case node exists in the tenant's dedicated FalkorDB database before ingestion creates `contains` edges
+
+**Given** a missing, inactive, or mismatched tenant/case context
+**When** ingestion, indexing, search, or graph traversal is requested
+**Then** the operation fails before backend writes or reads that could cross tenant boundaries
+**And** the response includes a structured error with a recovery suggestion
+
+### Story 0.0: Project Scaffolding & Single-Command Boot
+
+Historical alias: Story 1.1. Existing completed story files and sprint status may retain the `1-1-project-scaffolding-and-single-command-boot` key for traceability, but future implementation sequencing treats this as the first Epic 0 foundation story.
+
+Implementation sequence note: Story 0.0 is the first executable story. It creates the solution scaffold, AppHost, ServiceDefaults, contracts/test structure, and composition root required by every later workflow, guard, storage, and CLI story.
 
 As a developer,
 I want to run a single command (`dotnet run --project Hexalith.Memories.AppHost`) and have the entire stack boot — Memories Server with DAPR sidecar, Redis Stack, FalkorDB, and Aspire Dashboard,
@@ -396,12 +464,13 @@ So that I have a working development environment without manual container orches
 
 **Acceptance Criteria:**
 
-**Given** the repository is cloned with git submodules initialized (Hexalith.Commons, Hexalith.EventStore)
+**Given** the repository is cloned with root-level git submodules initialized (`Hexalith.Commons`, `Hexalith.EventStore`, `Hexalith.AI.Tools`, `Hexalith.Tenants`, `Hexalith.FrontComposer`)
 **When** I run `dotnet run --project Hexalith.Memories.AppHost`
 **Then** Redis Stack container starts on port 6379
 **And** FalkorDB container starts on port 6380
 **And** Memories Server starts with DAPR sidecar (app port 5000, DAPR HTTP 3500, DAPR gRPC 50001)
 **And** Aspire Dashboard is accessible showing all services healthy
+**And** nested submodules are not initialized or updated unless explicitly requested
 
 **Given** the solution is opened for the first time
 **When** I run `dotnet build`
@@ -412,6 +481,75 @@ So that I have a working development environment without manual container orches
 **When** I check the Aspire Dashboard
 **Then** I see health status for Memories Server, Redis Stack, and FalkorDB
 **And** OpenTelemetry traces, metrics, and structured JSON logging are configured via ServiceDefaults
+
+### Story 0.1: Tenant Provisioning Minimum Viable Workflow
+
+As an operator,
+I want the minimum tenant provisioning workflow to create isolated infrastructure before any data-writing story runs,
+So that ingestion, indexing, search, and graph work never create tenant resources implicitly or out of sequence.
+
+**Acceptance Criteria:**
+
+**Given** a new tenant ID and display name
+**When** `TenantProvisioningWorkflow` completes
+**Then** RediSearch, Redis Vector, and FalkorDB tenant infrastructure exists
+**And** the tenant is marked active only after all required backend checks pass
+**And** failed provisioning rolls back any partial backend resources
+
+**Given** any ingestion, search, graph, CLI, or MCP path receives a missing or inactive tenant
+**When** the path validates scope
+**Then** it fails before backend writes or reads
+**And** it does not create tenant infrastructure on demand
+
+**Ownership Boundary:** Story 0.1 is the minimum executable prerequisite proving an active tenant exists before Epic 1 data-writing work. It must use the same `TenantProvisioningWorkflow` ownership model as Story 5.1 and must not introduce a separate tenant infrastructure creation path.
+
+**Traceability:** FR38, FR44, NFR8. Story 5.1 deepens this into the full tenant lifecycle story; this slice is the executable prerequisite before Epic 1 data-writing work.
+
+### Story 0.2: Minimal Case Bootstrap
+
+As a developer,
+I want to create and list a minimal case inside an active tenant before ingestion begins,
+So that every memory unit has a valid single-case owner from its first write.
+
+**Acceptance Criteria:**
+
+**Given** an active tenant
+**When** I create a case with the minimum required fields
+**Then** the case is stored under that tenant
+**And** the case can be listed and selected by ingestion workflows
+**And** the tenant's graph database contains the case node required for later `contains` edges
+
+**Given** a missing, inactive, or cross-tenant case
+**When** ingestion or search requests use that case
+**Then** validation fails with a structured error and recovery suggestion before backend mutation.
+
+**Traceability:** FR26, FR32, FR44. Story 3.1 deepens case management after the MVP foundation is executable.
+
+### Story 0.3: Tenant and Case Validation Guard
+
+As a developer,
+I want one shared validation guard for tenant and case scope,
+So that ingestion, indexing, search, graph traversal, CLI, and later MCP behavior enforce the same isolation rule.
+
+**Acceptance Criteria:**
+
+**Given** any operation that reads or writes memory data
+**When** tenant or case context is absent, inactive, mismatched, or malformed
+**Then** the shared guard rejects the request before backend access
+**And** the error includes a stable code, human-readable message, and recovery suggestion
+
+**Given** tests exercise two tenants with similarly named cases or memory units
+**When** the guard validates scope
+**Then** no cross-tenant read or write succeeds
+**And** tenant/case identifiers remain explicit in logs and telemetry without leaking secrets.
+
+**Traceability:** FR44, NFR8. Story 5.4 deepens this guard across all access layers after the minimum prerequisite is in place.
+
+## Epic 1: First Tenant-Scoped Memory Ingestion and Search
+
+Developer can boot the stack, provision or select an active tenant and case, ingest local content, and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and typed graph edges. Implementation foundation delivered by this epic includes Aspire AppHost, DAPR Workflows (`TenantProvisioningWorkflow` as tenant infrastructure owner, `IngestionWorkflow` with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), root-level submodule validation, and graph indexing activities.
+
+**Implementation Readiness Amendment (2026-05-18):** Stories 1.2 through 1.5 are accepted as historical technical slices, but they must not be used as a pattern for future work without an observable proof gate. Any reopened, reimplemented, or analogous technical slice in Epic 1 must close with at least one developer-visible, contract-visible, CLI/API-visible, trace-visible, or integration-harness proof that demonstrates how the slice advances the tenant-scoped ingestion/search journey. Internal classes, mocks, or green unit tests alone are not sufficient completion evidence.
 
 ### Story 1.2: Memory Unit Domain Model & Contracts
 
@@ -439,6 +577,10 @@ So that all services share a consistent, versioned type system with serializatio
 **Given** any Contracts.V1 type
 **When** I serialize it to JSON and deserialize it back
 **Then** the round-trip produces an identical object (contract tests pass)
+
+**Validation Evidence Required:** Contract serialization tests and schema-compatible JSON examples must be captured with the story completion evidence.
+
+**Observable Proof Gate:** Future rework of this story must include a contract-visible proof package: representative JSON payloads for `MemoryUnit`, `GraphEdge`, `MetadataField`, `FailureDetails`, and `ErrorResponse`; serialization round-trip results; and at least one downstream consumer fixture or API/CLI example that proves the contract is usable outside the contracts assembly.
 
 ### Story 1.3: Content Extraction via Kreuzberg
 
@@ -468,6 +610,10 @@ So that any supported file format can be processed into searchable content.
 **When** extraction completes
 **Then** the Aspire Dashboard shows a trace span for the extraction activity with duration and status
 
+**Validation Evidence Required:** Completion evidence must include extraction fixture results for text, markdown, and PDF plus externally observable trace evidence. Pure internal implementation completion is not sufficient.
+
+**Observable Proof Gate:** Future rework of this story must show extracted content through an activity, API, CLI, trace, or integration-harness boundary using text, markdown, and PDF fixtures. Completion cannot rely only on `ContentExtractionClient` unit tests.
+
 ### Story 1.4: Embedding Generation
 
 As a developer,
@@ -496,25 +642,32 @@ So that memory units can be searched by semantic similarity.
 **Then** it reads from DAPR Secrets API (deployed) or .NET User Secrets (local dev)
 **And** the key is never stored in config files or environment variables
 
+**Validation Evidence Required:** Completion evidence must include embedding contract output with provider/model/dimension metadata and secret-redaction verification. Pure internal implementation completion is not sufficient.
+
+**Observable Proof Gate:** Future rework of this story must show a developer-observable embedding result with provider, model, dimensions, and redacted secret behavior through an activity, API, CLI, trace, or integration-harness boundary. Completion cannot rely only on mocked `EmbeddingClient` or rate-limiter unit tests.
+
 ### Story 1.5: Three-Backend Indexing
 
 As a developer,
-I want ingested content to be indexed across RediSearch (syntactic), Redis Vector (semantic), and FalkorDB (graph) with tenant-namespaced indexes,
+I want ingested content to be indexed across RediSearch (syntactic), Redis Vector (semantic), and FalkorDB (graph) using tenant infrastructure already provisioned by `TenantProvisioningWorkflow`,
 So that memory units are searchable across all three axes after ingestion.
 
 **Acceptance Criteria:**
 
-**Given** a memory unit with extracted content and generated embedding
+**Given** an active tenant provisioned by `TenantProvisioningWorkflow`
+**And** a memory unit with extracted content and generated embedding
 **When** `IndexSyntacticActivity` executes
 **Then** the memory unit is indexed in RediSearch with tenant-namespaced index (`{tenantId}:syntactic`)
 **And** the content, metadata, and source information are searchable via full-text query
 
-**Given** a memory unit with a generated embedding vector
+**Given** an active tenant provisioned by `TenantProvisioningWorkflow`
+**And** a memory unit with a generated embedding vector
 **When** `IndexSemanticActivity` executes
 **Then** the vector is stored in Redis Vector Search with tenant-namespaced index (`{tenantId}:semantic`)
 **And** the vector is retrievable via KNN similarity search
 
-**Given** a memory unit with source information
+**Given** an active tenant provisioned by `TenantProvisioningWorkflow`
+**And** a memory unit with source information
 **When** `IndexGraphActivity` executes
 **Then** a node is created in FalkorDB in the tenant's dedicated database (physical isolation at database level)
 **And** if the source contains CausationId, a `caused_by` edge is created (confidence 1.0, origin: explicit)
@@ -526,9 +679,18 @@ So that memory units are searchable across all three axes after ingestion.
 **Then** only parameterized Cypher queries are used — no raw Cypher string construction
 **And** this is enforced structurally by the interface design
 
-**Given** indexes are created for a tenant
-**When** I inspect the index naming
-**Then** the naming scheme supports concurrent versions (`{tenantId}:{model-version}:syntactic`) for future model migration
+**Given** tenant infrastructure is missing or inactive
+**When** any indexing activity is invoked
+**Then** the activity fails before writing data with a structured `TENANT_NOT_PROVISIONED` error and recovery suggestion
+
+**Given** indexing activities execute for an active tenant
+**When** they write to RediSearch, Redis Vector, or FalkorDB
+**Then** they use only tenant infrastructure created by `TenantProvisioningWorkflow`
+**And** they do not create or mutate tenant index/database lifecycle state
+
+**Validation Evidence Required:** Completion evidence must include tenant-scoped indexing proof across RediSearch, Redis Vector, and FalkorDB using contract, CLI-visible, or integration-harness output. Pure internal implementation completion is not sufficient.
+
+**Observable Proof Gate:** Future rework of this story must show the same memory unit discoverable from all three tenant-scoped backends, or must explicitly document which backend is unavailable and why. Completion cannot rely only on activity unit tests or graph query builder tests.
 
 ### Story 1.6: Ingestion Workflow Orchestration
 
@@ -536,12 +698,22 @@ As a developer,
 I want to ingest a local file and have it automatically processed through the full pipeline (validate → extract → embed → index across all backends → verify consistency),
 So that a single API call results in a fully searchable memory unit with provenance tracking.
 
+**Sizing note:** Story 1.6 is historical completed scope. Future reimplementation or major rework must split it into smaller vertical stories: happy-path local file ingestion orchestration; failure, compensation, and failed-unit visibility; restart recovery, idempotency, and duplicate detection hardening.
+
+**Historical Scope Guard:** Do not reopen Story 1.6 as a single implementation unit. If orchestration work resumes, create separate numeric stories for the documented slices before implementation starts, keep each slice independently testable, and require observable API/CLI/integration proof for each slice.
+
 **Acceptance Criteria:**
 
-**Given** a valid file and a tenant/case context
+**Given** a valid file, an active tenant, and an active case
 **When** `IngestionWorkflow` is started
-**Then** it orchestrates: `ValidateContentActivity` → `ExtractContentActivity` → `GenerateEmbeddingActivity` → fan-out (`IndexSyntacticActivity` + `IndexSemanticActivity` + `IndexGraphActivity`) → `VerifyConsistencyActivity`
+**Then** it validates tenant and case existence before extraction, embedding, or backend writes
+**And** it orchestrates: `ValidateContentActivity` → `ExtractContentActivity` → `GenerateEmbeddingActivity` → fan-out (`IndexSyntacticActivity` + `IndexSemanticActivity` + `IndexGraphActivity`) → `VerifyConsistencyActivity`
 **And** the memory unit status transitions: queued → extracting → embedding → indexing → indexed
+
+**Given** the tenant or case is missing, inactive, or mismatched
+**When** `IngestionWorkflow` is started
+**Then** it fails before extraction, embedding, or indexing
+**And** it returns a structured error (`TENANT_NOT_FOUND`, `TENANT_NOT_ACTIVE`, `CASE_NOT_FOUND`, or `CASE_TENANT_MISMATCH`) with a recovery suggestion
 
 **Given** `VerifyConsistencyActivity` runs after all indexing activities complete
 **When** it queries all three backends for the memory unit
@@ -573,7 +745,7 @@ So that a single API call results in a fully searchable memory unit with provena
 
 As a developer,
 I want to configure the embedding provider and model per tenant,
-So that different tenants can use different embedding providers and the system is ready for multi-provider support.
+So that MVP tenants can configure Google embedding settings consistently and the system is ready for multi-provider support in later provider expansion stories.
 
 **Acceptance Criteria:**
 
@@ -590,7 +762,7 @@ So that different tenants can use different embedding providers and the system i
 **Given** MVP supports Google only
 **When** I inspect the configuration structure
 **Then** the provider field accepts an enum/string that can be extended to openai, mistral, custom in future phases
-**And** the `IEmbeddingProvider` pattern (concrete class, not interface) supports addition of new providers without refactoring
+**And** the embedding provider strategy/factory shape supports addition of new concrete providers without refactoring the ingestion workflow
 
 **Given** switching embedding providers requires full reindex
 **When** a tenant's provider configuration is changed
@@ -630,6 +802,8 @@ So that I can find memory units that contain specific keywords or phrases.
 **When** a syntactic search is executed
 **Then** an empty result set is returned with a clear indication that no memory units exist
 
+**Validation Evidence Required:** Completion evidence must include CLI or API search output showing tenant-scoped BM25 results and empty-state behavior. Pure internal implementation completion is not sufficient.
+
 ### Story 2.2: Semantic Search (Vector via Redis Vector)
 
 As a developer,
@@ -652,6 +826,8 @@ So that I can find memory units that are conceptually related to my query even w
 **Given** a query like "payment rejection" against memory units containing "claim denied"
 **When** semantic search is executed
 **Then** semantically similar results appear even without keyword overlap
+
+**Validation Evidence Required:** Completion evidence must include semantic search output showing vector result ordering, source attribution, and provider/model metadata. Pure internal implementation completion is not sufficient.
 
 ### Story 2.3: Graph-Scoped Search
 
@@ -714,6 +890,8 @@ So that scores from different axes are comparable and the fusion algorithm produ
 **When** each normalization function is executed
 **Then** outputs match expected values exactly (NFR24)
 
+**Validation Evidence Required:** Deterministic normalization tests must cover BM25 saturation, cosine pass-through, graph proximity decay, and repeated-query stability.
+
 ### Story 2.5: Fusion Algorithm & Hybrid Search
 
 As a developer,
@@ -773,7 +951,35 @@ So that I understand why each result appeared and can debug relevance issues.
 **When** I inspect the origin information
 **Then** it includes SourceUri (file path, URL, or event ID) and SourceType (FR24)
 
-### Story 2.7: Benchmark Suite & Thesis Validation
+### Story 2.7: Evidence Packet Contract Mapping
+
+**Historical alias:** This story was previously tracked as `2.6A`. Existing implementation artifacts and sprint-status history may keep the old key as an alias, but new story tooling and future references should use `2.7`.
+
+As a developer and LLM-agent integrator,
+I want search and diagnostic responses to share an Evidence Packet contract,
+So that CLI, MCP, and future web UI expose the same trust semantics.
+
+**Acceptance Criteria:**
+
+**Given** `Contracts.V1` defines or maps the Evidence Packet response shape
+**When** search, explain, empty-result, degraded-result, or diagnostic responses are produced
+**Then** the response can expose tenant/case scope, result summary, sources, evidence strength, confidence caveat, retrieval axes used, graph summary, state, omitted details, and recovery actions
+
+**Given** CLI JSON search output is requested
+**When** an Evidence Packet is emitted
+**Then** it uses the same field semantics as MCP responses and future UI composition descriptors
+**And** no surface invents a conflicting definition of confidence, degraded state, omitted details, or recovery action
+
+**Given** a response is compressed by token budget or output density
+**When** details are omitted
+**Then** omitted fields are named explicitly
+**And** deterministic expansion handles identify how to retrieve the omitted detail groups
+
+**Given** Evidence Packet contract tests run
+**When** complete, degraded, empty, unauthorized, and token-budget-compressed packets are serialized
+**Then** JSON round-trips preserve the contract shape and required fields
+
+### Story 2.8: Benchmark Suite & Thesis Validation
 
 As a developer,
 I want to run automated benchmark comparisons of hybrid vs single-axis search results,
@@ -818,7 +1024,7 @@ So that I can organize memory units into meaningful groups with strict ownership
 
 **Acceptance Criteria:**
 
-**Given** a valid tenant context
+**Given** an active tenant provisioned by Epic 0
 **When** I create a case with a name and optional description
 **Then** a case is created with a unique ID (ULID), tenant association, creation timestamp, and status "active"
 **And** a case node is created in FalkorDB within the tenant's database
@@ -932,7 +1138,8 @@ So that I can manage knowledge lifecycle and clean up outdated content.
 **Then** all memory units in the case are deleted from all three backends
 **And** the case node and all case-scoped edges are removed from FalkorDB
 **And** the case is removed from the case list
-**And** the operation completes atomically — partial deletion is not acceptable (use DAPR Workflow for orchestration)
+**And** the operation is orchestrated by DAPR Workflow as a durable saga with retry and compensation steps for each backend
+**And** if a backend deletion step fails after retries, the workflow records the failed stage, keeps the case in `deleting` or `delete_failed` state, and exposes a retry or repair path instead of silently leaving partial state
 
 **Given** a case deletion is in progress
 **When** a new ingestion request targets the case
@@ -1081,7 +1288,7 @@ So that I can trust the completeness of causal chains and contribute human verif
 
 ## Epic 5: Tenant Isolation & Multi-Tenancy
 
-Operator can provision tenants with physically separate indexes across all three backends, delete tenants with full cleanup, verify zero cross-tenant leakage via automated checks, manage tenant configuration (rate limits, embedding providers), and enforce tenant context at all access layers. System returns partial results when backends are unavailable rather than failing completely. This is the Gate 2 critical path — zero cross-tenant data leakage is a hard gate.
+Operator can provision tenants with physically separate indexes across all three backends, delete tenants with full cleanup, verify zero cross-tenant leakage via automated checks, manage tenant configuration (rate limits, embedding providers), and enforce tenant context at all access layers. System returns partial results when backends are unavailable rather than failing completely. Tenant provisioning is also consumed by Epic 0 before ingestion/indexing/search begin; the remaining Epic 5 stories deepen the full tenant lifecycle. Zero cross-tenant data leakage is a hard gate.
 
 ### Story 5.1: Tenant Provisioning Workflow
 
@@ -1097,6 +1304,8 @@ So that each tenant has isolated infrastructure with rollback protection if prov
 **And** RediSearch creates tenant-namespaced indexes (`{tenantId}:syntactic`)
 **And** Redis Vector creates tenant-namespaced indexes (`{tenantId}:semantic`)
 **And** FalkorDB creates a dedicated database for the tenant (physical isolation at database level, not label level)
+**And** `TenantProvisioningWorkflow` is the sole owner of RediSearch, Redis Vector, and FalkorDB tenant infrastructure creation
+**And** ingestion, search, graph, CLI, and MCP paths treat missing or inactive tenant infrastructure as a validation failure rather than creating indexes on demand
 
 **Given** `ProvisionFalkorDbActivity` fails after RediSearch and Redis Vector indexes are created
 **When** the workflow handles the failure
@@ -1112,6 +1321,8 @@ So that each tenant has isolated infrastructure with rollback protection if prov
 **Given** a tenant is successfully provisioned
 **When** I inspect the provisioning time
 **Then** it completes in <5 minutes (single CLI command, per Kenji's journey)
+
+**Ownership Boundary:** Story 5.1 is the canonical full tenant lifecycle story for provisioning semantics, rollback behavior, verification, and lifecycle ownership. If Story 0.1 has already implemented the complete workflow, Story 5.1 should verify, extend, or mark the full lifecycle criteria as satisfied rather than duplicating divergent provisioning logic.
 
 ### Story 5.2: Tenant Deletion Workflow
 
@@ -1152,7 +1363,7 @@ So that I can verify zero cross-tenant data leakage with confidence.
 
 **Given** two tenants (A and B) each with indexed memory units
 **When** I run `tenant verify` on tenant A (FR40)
-**Then** automated checks confirm:
+**Then** the verification report includes passing checks for search, ingestion visibility, and graph traversal isolation
 **And** search from tenant A context returns zero results from tenant B across all axes (syntactic, semantic, graph)
 **And** ingestion into tenant A is not visible from tenant B's context
 **And** graph traversal from tenant A returns zero nodes from tenant B
@@ -1398,7 +1609,7 @@ So that I can trust the system's reliability in production.
 
 ## Epic 7: CLI & Developer Experience
 
-Developer can accomplish all operational tasks via a polished CLI tool with actionable error messages including recovery suggestions, multiple output formats (human-readable, JSON, table), discoverable actions from any state (including empty and error states), metadata origin tracking display, and a guided quickstart — achieving <30 min onboarding on a clean machine. This is the Gate 3 critical path.
+Developer can accomplish MVP thesis-validation tasks via a CLI tool with actionable error messages including recovery suggestions, multiple output formats (human-readable, JSON, table), tenant/case scope visibility, metadata origin tracking display, explain output, and a README quickstart path that proves the under-30-minute first-search gate. MVP CLI essentials are `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, benchmark support, and README quickstart validation. Full CLI polish (`explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, richer diagnostics) is Phase 1.5 unless explicitly pulled forward. This is the Gate 3 critical path.
 
 ### Story 7.1: CLI Foundation & Command Structure
 
@@ -1414,8 +1625,9 @@ So that I have a single tool for all Memories operations across any environment.
 
 **Given** the CLI is installed
 **When** I run `memories`
-**Then** I see top-level command groups: `ingest`, `search`, `traverse`, `case`, `tenant`, `status`, `explore`, `handlers`, `quickstart` (FR53)
+**Then** I see the MVP command groups required for thesis validation: `ingest`, `search`, `case`, `tenant`, and benchmark commands (FR53)
 **And** each group shows a brief description
+**And** Phase 1.5 command groups (`explore`, `status`, `handlers`, `quickstart`, batch directory ingestion) are tracked separately and do not block MVP thesis validation unless explicitly pulled forward
 
 **Given** the CLI needs to connect to the Memories Server
 **When** I configure the endpoint
@@ -1425,10 +1637,15 @@ So that I have a single tool for all Memories operations across any environment.
 **When** I target localhost (local dev), docker service name (container), or remote URL (ingress)
 **Then** the CLI connects successfully to each environment type
 
-**Given** any CLI command
+**Given** any MVP CLI command
 **When** it communicates with the Memories Server
-**Then** it uses the REST API via infrastructure ingress (Client.Rest package)
-**And** authentication uses the configured DAPR API token or ingress auth
+**Then** it uses the minimal direct HTTP/ingress adapter owned by the CLI for the thesis-validation command set
+**And** it does not depend on the Phase 1.5 `Client.Rest` package to satisfy MVP Gate 3
+**And** authentication uses the configured DAPR API token or ingress auth where that environment requires it
+
+**Given** Phase 1.5 client package work begins
+**When** `Hexalith.Memories.Client.Rest` is introduced or extracted
+**Then** the MVP CLI adapter can be replaced by the reusable client without changing CLI command semantics or output contracts
 
 ### Story 7.2: Output Formats & Explain Display
 
@@ -1473,7 +1690,7 @@ So that I never feel stuck or confused when using the system.
 
 **Given** a search returns zero results in an empty tenant
 **When** the response is displayed
-**Then** the message says: "No results. This tenant has no memory units yet. Get started: `memories ingest <file>` to add your first document, or configure a DAPR subscription to auto-index events. Run `memories quickstart` for a guided setup." (FR57)
+**Then** the message says: "No results. This tenant has no memory units yet. Get started: `memories ingest <file>` to add your first document, or configure a DAPR subscription to auto-index events. Follow the README quickstart for a guided setup. If the Phase 1.5 quickstart command is installed, run `memories quickstart`." (FR57)
 
 **Given** a tenant-related error (not found, mismatch)
 **When** the error is displayed
@@ -1498,12 +1715,14 @@ So that I can go from zero to first search result in under 30 minutes.
 
 **Given** a developer with Docker installed on a clean machine
 **When** they follow the README quickstart
-**Then** they complete `dotnet add package` through to first successful search result in <30 minutes (NFR31)
+**Then** they can boot the stack, create or select a tenant and case, ingest a sample document, and complete a first successful search in <30 minutes (NFR31)
+**And** the steps use only MVP CLI essentials
 
 **Given** the `memories quickstart` command
-**When** executed
+**When** CLI Phase 1.5 polish is in scope
 **Then** it provides an interactive guided setup: verify prerequisites (Docker, DAPR), boot the stack, create a tenant, create a case, ingest a sample document, run a search (FR57)
 **And** each step provides clear instructions and validates success before proceeding
+**And** it is not required to satisfy MVP Gate 3 unless explicitly pulled forward by a later sprint change
 
 **Given** any CLI command
 **When** I run it with `--help`
@@ -1538,13 +1757,15 @@ So that I can monitor, debug, and audit Memories in production.
 **Given** a search or access operation occurs
 **When** it completes
 **Then** a telemetry event is logged per tenant for audit purposes (FR67)
-**And** the event includes: timestamp, tenant ID, operation type (search/ingest/traverse), case ID, user identity, query parameters (for search)
+**And** the event includes only sanitized, bounded, low-cardinality fields: timestamp, tenant ID, operation type (search/ingest/traverse), case ID, user identity or stable internal subject identifier, operation state/error code, duration bucket, result count bucket, axis selection, and query length bucket
+**And** search query text, raw query parameters, metadata filter values, source payloads, secrets, and access tokens are never written to normal logs, traces, metrics, or audit telemetry
+**And** if protected raw query capture is ever introduced for diagnostics, it must be opt-in, access-controlled, time-limited, separately documented, and excluded from the default audit telemetry path
 
 ---
 
 ## Epic 8: Observability & System Health
 
-Operator can verify consistency across all three backends, detect and repair index/graph divergence, export memory units/metadata/graph edges in a portable format, and observe the system via readiness/liveness health checks. This epic delivers the operational confidence layer.
+Operator can verify consistency across all three backends, detect and repair index/graph divergence, and observe the system via readiness/liveness health checks. This epic delivers the operational confidence layer. FR71 portable data export is Phase 2 and is excluded from MVP readiness unless a later sprint change explicitly pulls it forward.
 
 ### Story 8.1: Health Checks & Readiness
 
@@ -1613,42 +1834,13 @@ So that I can ensure data integrity and resolve divergence caused by partial fai
 **Then** it processes units in batches to avoid overwhelming any backend
 **And** progress is visible via workflow status
 
-### Story 8.3: Data Export
-
-As a developer,
-I want to export all memory units, metadata, and graph edges for a case or tenant,
-So that I can back up knowledge, migrate data, or analyze it externally.
-
-**Acceptance Criteria:**
-
-**Given** a case with memory units and graph edges
-**When** I export the case (FR71)
-**Then** the export produces a portable JSON file containing: all memory units with full metadata, all graph edges (type, confidence, origin, source/target), case metadata (name, members, creation date)
-
-**Given** a tenant with multiple cases
-**When** I export the entire tenant (FR71)
-**Then** the export includes all cases and their memory units, graph edges, and tenant configuration
-**And** the export preserves the case structure and relationships
-
-**Given** an export file
-**When** I inspect its format
-**Then** it is valid JSON with a documented schema
-**And** memory unit IDs, edge IDs, and case IDs are preserved for potential re-import
-
-**Given** a large case or tenant
-**When** export is executed
-**Then** it streams output progressively (not buffered entirely in memory)
-**And** progress is indicated (units exported / total)
-
-**Given** an export in progress
-**When** new ingestion occurs simultaneously
-**Then** the export captures a consistent snapshot — units added during export are either all included or all excluded (snapshot isolation)
-
 ### Story 8.4: End-to-End Telemetry Integration Tests (Tier-3 / Aspire)
 
 As the Memories release manager,
 I want end-to-end Tier-3 integration tests that verify distributed traces propagate across CLI → Server → backends AND audit events reach the deployed stack's stdout log stream,
 So that I can ship releases with confidence that NFR28 and FR67 hold on real infrastructure — not just on the Tier-2 in-process approximation.
+
+**Outcome summary:** The release manager can prove distributed trace and audit-event behavior on real infrastructure before release promotion.
 
 **Acceptance Criteria:**
 
@@ -1682,6 +1874,8 @@ As the Memories release manager,
 I want Redis client calls (RediSearch, Redis Vector, and FalkorDB) to emit OpenTelemetry spans inside the same distributed trace as the originating request,
 So that operators can attribute search and traversal latency to the correct backend, and Story 8.4's Redis-span check is a hard assertion rather than a soft skip.
 
+**Outcome summary:** Operators can attribute Redis-backed search and traversal latency inside the same distributed trace as the originating request.
+
 **Acceptance Criteria:**
 
 **Given** the Memories Server is running via Aspire or `dotnet run`
@@ -1705,6 +1899,41 @@ So that operators can attribute search and traversal latency to the correct back
 **When** an operator or developer reviews the end-to-end trace verification guidance
 **Then** Redis spans are documented in the signal inventory
 **And** the previous Story 8.4 AC #2 deferral language is replaced with the shipped hard-assertion behavior.
+
+## Phase 2 Backlog Placeholders
+
+### Data Export (FR71 / Non-MVP Gate)
+
+As a developer,
+I want to export all memory units, metadata, and graph edges for a case or tenant,
+So that I can back up knowledge, migrate data, or analyze it externally.
+
+**Phase Note:** FR71 export is deferred to Phase 2 for readiness accounting and is not part of Epic 8's MVP Operations story sequence. If export exists as completed historical work, it remains non-blocking and must not be counted as MVP readiness unless a later sprint change explicitly pulls export forward. Story key `8.3` is reserved for this Phase 2 export history; the detailed MVP Epic 8 sequence intentionally continues with `8.4` and `8.5`. Story-status and story-file-scope tooling must treat `8.3` as `reserved-non-mvp` or explicitly map it as non-MVP historical work so it is not reported as a missing MVP story.
+
+**Acceptance Criteria:**
+
+**Given** a case with memory units and graph edges
+**When** I export the case (FR71)
+**Then** the export produces a portable JSON file containing: all memory units with full metadata, all graph edges (type, confidence, origin, source/target), case metadata (name, members, creation date)
+
+**Given** a tenant with multiple cases
+**When** I export the entire tenant (FR71)
+**Then** the export includes all cases and their memory units, graph edges, and tenant configuration
+**And** the export preserves the case structure and relationships
+
+**Given** an export file
+**When** I inspect its format
+**Then** it is valid JSON with a documented schema
+**And** memory unit IDs, edge IDs, and case IDs are preserved for potential re-import
+
+**Given** a large case or tenant
+**When** export is executed
+**Then** it streams output progressively (not buffered entirely in memory)
+**And** progress is indicated (units exported / total)
+
+**Given** an export in progress
+**When** new ingestion occurs simultaneously
+**Then** the export captures a consistent snapshot — units added during export are either all included or all excluded (snapshot isolation)
 
 
 ## Epic 9: EventStore Integration & Zero-Code Memory
@@ -1856,7 +2085,10 @@ So that memory responses fit within context windows and access is properly secur
 **Given** a `search_memory` call with `token_budget=2000` (FR23)
 **When** results exceed the token budget
 **Then** results are truncated by relevance rank — highest-scoring results included first
-**And** the response includes `omitted_count` indicating how many results were omitted
+**And** the response includes `omitted_count` indicating how many results or fields were omitted
+**And** the response includes deterministic expansion handles for omitted detail groups
+**And** a follow-up expansion request can retrieve omitted details without changing the original result identity, tenant scope, case scope, or ranking context
+**And** omitted fields are named explicitly so agents can decide whether to expand, refine, request ingestion, or escalate
 **And** the total response stays within the specified token budget
 
 **Given** a `traverse_relations` call with `token_budget` set
@@ -1897,6 +2129,8 @@ As a contributor,
 I want every PR to be automatically built and tested,
 So that I can trust the codebase quality and get fast feedback on my changes.
 
+**Sequencing note:** The minimum build/test gate represented by this story is an early enabling prerequisite for greenfield implementation. Semantic release, NuGet publish automation, release preflight, and branch-protection hardening remain later Epic 11/12 operational-readiness work.
+
 **Acceptance Criteria:**
 
 **Given** a pull request is opened against `main`
@@ -1922,6 +2156,8 @@ So that I can trust the codebase quality and get fast feedback on my changes.
 **Then** both succeed without Docker installed
 **And** integration tests are skipped with a clear message: "Requires Docker — see CONTRIBUTING.md"
 
+**Validation Evidence Required:** Story completion must name the CI check evidence path for build, unit/contract tests, and integration-fast behavior.
+
 ### Story 11.2: Semantic Release & NuGet Publishing
 
 As a maintainer,
@@ -1937,13 +2173,16 @@ So that releases are predictable, traceable, and publishing is zero-friction.
 
 **Given** a version tag is pushed (e.g., `v1.2.0`)
 **When** the release pipeline triggers
-**Then** all 8 published NuGet packages are built and published: Contracts, Client, Client.Rest, Server, Redis, Cli, Mcp, EventStore
-**And** the 2 internal Aspire projects (AppHost, ServiceDefaults) are NOT published
+**Then** all packages listed in `tools/release-packages.json` are built and published
+**And** as of 2026-05-17 the published package set is Contracts, Client.Rest, Redis, Cli, Mcp, EventStore, and Telemetry
+**And** Server, AppHost, and ServiceDefaults are explicitly non-packable
 **And** all packages share the same version number
 
 **Given** the release completes
 **When** I check NuGet
 **Then** all published packages are available with correct version, descriptions, and dependencies
+
+**Validation Evidence Required:** Story completion must include release dry-run or publish evidence tied to the authoritative package inventory in `tools/release-packages.json`.
 
 **Given** CONTRIBUTING.md
 **When** a new contributor reads it
@@ -2221,6 +2460,14 @@ As a backend developer,
 I want a thread-safe in-process OIDC token provider that performs `client_credentials` grants against Keycloak, caches the access token until 30 s before expiry, and invalidates + refreshes once on 401,
 So that the embedding client can attach `Authorization: Bearer <jwt>` to every Ollama request without flooding Keycloak, leaking tokens, or breaking on routine expiry.
 
+**Implementation Checkpoints:**
+
+- Checkpoint A - token acquisition and cache core: first fetch, response parsing, cache keying, cache hit, refresh-before-expiry, typed acquisition exception, and no negative caching.
+- Checkpoint B - invalidation and concurrency: 401 invalidation, forced refresh, per-key concurrency collapse, and deterministic cancellation behavior.
+- Checkpoint C - transport, DI, and redaction hardening: singleton registration with typed `HttpClient`, retry/timeout policy, correlation ID propagation, and proof that `client_secret` and `access_token` never appear in logs or test snapshots.
+
+This story may remain one tracked story for Epic 13 sequencing, but implementation and review must close each checkpoint independently before the story is accepted.
+
 **Acceptance Criteria:**
 
 **Given** a fresh `OidcTokenProvider` instance,
@@ -2366,6 +2613,15 @@ As an operator,
 I want a console tool (or extension to `Hexalith.Memories.Cli`) that drops `{tenantId}:semantic` indexes and replays ingestion at the new dimension count, with a dry-run mode that lists affected tenants and content counts,
 So that I can migrate existing Google tenants to Ollama without ad-hoc Redis CLI operations.
 
+**Implementation Checkpoints:**
+
+- Checkpoint A - dry-run and preflight: affected tenant discovery, current/target dimension reporting, content counts, backend reachability checks, and zero state mutation.
+- Checkpoint B - live migration execution: tenant configuration mutation, semantic index drop/recreate, replay/re-embedding, per-batch progress, and final summary.
+- Checkpoint C - interruption, resume, and rollback safety: idempotent resume by per-unit `EmbeddingProvider:Model`, partial-state detection, rollback behavior for retained versioned indexes, and failed-unit reporting.
+- Checkpoint D - operator evidence: runbook command sequence, expected output, abort/resume semantics, and validation evidence from a controlled migration run or equivalent test fixture.
+
+This story may remain one tracked story for Epic 13 sequencing, but implementation and review must close each checkpoint independently before the story is accepted.
+
 **Acceptance Criteria:**
 
 **Given** the migration tool,
@@ -2426,6 +2682,8 @@ So that a new operator can stand up the Ollama gateway, wire Keycloak, configure
 **Lifecycle label:** Operational Readiness / Release Hardening.
 
 Developer and operator can close the highest-value deferred review findings without reopening completed epics, improving CI correctness, release integrity, OIDC/embedding security, migration reliability, and deferred-work governance.
+
+**Preflight required:** Before implementation starts, verify every referenced deferred ID, retrospective item, review finding, and sprint-change proposal path still exists. If a reference is stale, update the story before implementation begins.
 
 **FRs reinforced:** FR43, FR56, FR57, FR67, FR68, FR69, FR70, FR72, FR73, FR74
 **NFRs reinforced:** NFR8, NFR9, NFR10, NFR11, NFR17, NFR18, NFR19, NFR22, NFR27, NFR28, NFR30, NFR31
@@ -2600,6 +2858,8 @@ So that future planning can distinguish open risk, resolved risk, accepted risk,
 
 Maintainers and operators can convert the remaining high-value carry-forward risks from Epic 14 into planned implementation, acceptance, or refreshed deferral decisions without reopening completed epics.
 
+**Preflight required:** Before implementation starts, verify every referenced deferred ID, retrospective item, review finding, and sprint-change proposal path still exists. If a reference is stale, update the story before implementation begins.
+
 **FRs reinforced:** FR43, FR56, FR57, FR67, FR68, FR69, FR70, FR72, FR73, FR74
 **NFRs reinforced:** NFR8, NFR9, NFR10, NFR11, NFR17, NFR18, NFR19, NFR22, NFR27, NFR28, NFR30, NFR31
 
@@ -2726,6 +2986,46 @@ So that historical noise, consciously accepted risks, and true backlog candidate
 **Given** the backlog should remain actionable,
 **When** this story closes,
 **Then** it proposes no more than five follow-up stories, each with explicit deferred IDs, target artifacts, and validation expectations.
+
+### Story 15.6: Scaffolding Hardening Sweep
+
+As a maintainer,
+I want the 15 patch findings from the 2026-05-16 fresh re-review of Story 1.1's scaffolding to be triaged and applied with proper file scope,
+So that the AppHost boot orchestration, ServiceDefaults health/telemetry surface, and DAPR component templates are hardened without retroactively flipping the released Story 1.1 to `in-progress`.
+
+**Acceptance Criteria:**
+
+**Given** the 15 patch findings recorded in `_bmad-output/implementation-artifacts/1-1-project-scaffolding-and-single-command-boot.md` under `### Review Findings (Re-Review 2026-05-16)`,
+**When** this story runs,
+**Then** each finding is either applied, downgraded to defer with rationale captured in `deferred-work.md`, or explicitly dismissed in this story's Review Findings section.
+**And** no finding is silently dropped.
+
+**Given** the AppHost generates DAPR component YAML at runtime,
+**When** the implementation lands,
+**Then** the sidecar start-event awaits the `OnResourceReady` rewrite, not just the Redis PING,
+**And** concurrent AppHost runs use a per-invocation temp directory so two `dotnet run` invocations cannot corrupt each other's `statestore.yaml` or `pubsub.yaml`.
+
+**Given** `Directory.Build.props` is the build gate for missing submodules,
+**When** the implementation lands,
+**Then** the `CheckSubmodules` MSBuild target validates every entry in `.gitmodules`: Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, and Hexalith.FrontComposer.
+
+**Given** `ServiceDefaults.AddDefaultHealthChecks` is the canonical health-check entry point,
+**When** the implementation lands,
+**Then** `/ready` returns 503 when Redis is unreachable,
+**And** the AppHost `memories-server` resource waits for the `secretstore` and `llm` DAPR components in addition to `redis` and `falkordb`.
+
+**Given** the production `deploy/dapr/components/statestore.yaml`, `secretstore.yaml`, and `conversation-llm.yaml` templates ship to Kubernetes deployments,
+**When** the implementation lands,
+**Then** the statestore template uses env-var interpolation for `redisPassword`, the secretstore template uses an absolute path with a documented volume mount, and the conversation component uses the DAPR Conversation API's documented `cacheTTL` metadata key.
+
+**Given** Story 1.1's spec calls for `AppPort=5000` in `WithDaprSidecar()` but the current code intentionally omits it for Aspire-Testing port randomization,
+**When** this story runs,
+**Then** Story 1.1's spec receives a Scope-Override block recording the testability decision and amends the Completion Notes accordingly.
+**And** no code change to AppPort handling is required by this story.
+
+**Given** safety regressions are easy to introduce in boot orchestration,
+**When** the implementation lands,
+**Then** targeted regression coverage exercises the expanded submodule guard, the ready-tagged Redis health check, and the component-file rewrite ordering invariant.
 
 
 ---

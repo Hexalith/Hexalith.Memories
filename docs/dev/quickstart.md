@@ -14,9 +14,9 @@ The `memories quickstart` command walks a developer through six steps that isola
 
 Mirrors the README prerequisites but with OS-specific install guides.
 
-### .NET 9 SDK
+### .NET SDK 10.0.300
 
-- **Windows**: download from [dotnet.microsoft.com/download/dotnet/9.0](https://dotnet.microsoft.com/download/dotnet/9.0). Verify with `dotnet --list-sdks`.
+- **Windows**: download from [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0). Verify with `dotnet --list-sdks`.
 - **macOS**: `brew install --cask dotnet-sdk` or download from the link above. On Apple Silicon, ensure the arm64 build is installed (not x64 under Rosetta).
 - **Linux**: follow the [Microsoft package guide](https://learn.microsoft.com/dotnet/core/install/linux) for your distribution. Verify with `dotnet --list-sdks`.
 
@@ -34,13 +34,13 @@ Aspire manages the DAPR sidecar for local development, so a DAPR CLI is not requ
 
 ### [1/6] Verifying prerequisites
 
-Runs five sub-checks: Docker daemon (`docker ps`), .NET 9 SDK (`dotnet --list-sdks` — asserts at least one major-version 9+), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
+Runs five sub-checks: Docker daemon (`docker ps`), .NET SDK (`dotnet --list-sdks` — asserts at least one SDK version 10.0.300 or newer), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
 
 **Common failures and remediation:**
 
 - `Docker command not found` → install Docker Desktop or ensure `docker` is on PATH.
 - `Docker daemon not reachable` → start Docker Desktop; if already running, restart it.
-- `No .NET 9+ SDK` → install the latest .NET 9 SDK from the link above.
+- `No .NET SDK 10.0.300 or newer` → install the latest .NET 10 SDK from the link above.
 - `Port <N> in use` → find the owner with `lsof -i :<N>` (macOS/Linux) or `netstat -ano | findstr :<N>` (Windows) and stop the conflicting process.
 
 Skip the step with `--skip-prereq-check` when you know the environment is fine (e.g., CI with a pre-bootstrapped stack).
@@ -93,7 +93,7 @@ Runs a hybrid search for a sample-specific validation token embedded in the curr
 
 ### macOS
 
-- **Rosetta on Apple Silicon**: the .NET 9 SDK has native arm64 builds. Installing the x64 SDK under Rosetta works but the embedded-image path may slow down Redis Stack boot.
+- **Rosetta on Apple Silicon**: the .NET 10 SDK has native arm64 builds. Installing the x64 SDK under Rosetta works but the embedded-image path may slow down Redis Stack boot.
 - **Docker Desktop resources**: increase CPU/RAM allocation under Settings → Resources if the stack is slow to boot.
 
 ### Linux

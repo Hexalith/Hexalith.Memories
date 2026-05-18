@@ -131,7 +131,7 @@ public static class ErrorMessageCatalog
                 ExitCode: 2),
             ["DOTNET_VERSION_INSUFFICIENT"] = new(
                 CliMessage: null,
-                CliSuggestion: "Install a .NET 9 SDK (or newer) and retry.",
+                CliSuggestion: "Install .NET SDK 10.0.300 or newer and retry.",
                 ExitCode: 2),
             ["PORT_IN_USE"] = new(
                 CliMessage: null,

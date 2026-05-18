@@ -127,7 +127,7 @@ All 3 hard gates must pass. At least 2 of 3 soft gates must pass. If a hard gate
 
 **Resource Requirements:** Solo developer. Estimated 22-32 stories across 7 features (DAPR scaffolding absorbed into feature work, CLI trimmed to benchmark essentials).
 
-**Implementation Sequencing:** Build each search axis independently and get it working before tackling fusion. The fusion algorithm (BM25 normalization + cosine + graph proximity weighting) is research-grade R&D — treat it as a dedicated spike, not interleaved with infrastructure plumbing.
+**Implementation Sequencing:** Establish the complete foundation path before any ingestion, indexing, search, or graph story writes data: buildable scaffold/AppHost/ServiceDefaults first, minimum build/test feedback second for any greenfield or restarted implementation sequence, then tenant provisioning, minimal case bootstrap, and tenant/case validation guards. `TenantProvisioningWorkflow` owns physically isolated tenant infrastructure creation, minimal case bootstrap happens inside an active tenant, and ingestion/indexing fail before backend writes if tenant or case context is missing or mismatched. After that foundation exists, build each search axis independently and get it working before tackling fusion. The fusion algorithm (BM25 normalization + cosine + graph proximity weighting) is research-grade R&D — treat it as a dedicated spike, not interleaved with infrastructure plumbing.
 
 ### MVP Feature Set (Phase 1 — "Proof of Thesis")
 
@@ -324,7 +324,7 @@ This journey maps the system interaction pattern rather than a human narrative.
 5. Agent composes response grounded in sourced memory, citing specific documents and events
 
 **Edge Cases and Graceful Degradation:**
-- **Token budget exceeded:** Server truncates results by relevance rank, includes "X additional results omitted" count
+- **Token budget exceeded:** Server truncates results by relevance rank, includes "X additional results omitted" count, names omitted detail groups, and provides deterministic expansion handles
 - **No results:** Response includes suggested alternative queries and case status
 - **Ambiguous case:** Server returns case disambiguation options
 - **Stale context:** Confidence scores flag memory units not updated in >90 days
@@ -361,7 +361,7 @@ Priya asks: "Why was partial coverage approved instead of full?" The causal chai
 
 Alex has the stack running. Redis is up, FalkorDB is up, the DAPR service is healthy. But there's nothing in it yet.
 
-**Opening Scene:** `memories search "anything"` returns: `No results. This tenant has no memory units yet. Get started: 'memories ingest <file>' to add your first document, or configure a DAPR subscription to auto-index events. Run 'memories quickstart' for a guided setup.`
+**Opening Scene:** `memories search "anything"` returns: `No results. This tenant has no memory units yet. Get started: 'memories ingest <file>' to add your first document, or configure a DAPR subscription to auto-index events. Follow the README quickstart for a guided setup. If the Phase 1.5 quickstart command is installed, run 'memories quickstart'.`
 
 **Rising Action:** Alex creates the first case: `memories case create --id claims-pilot --display-name "Claims Pilot"`. The CLI responds: `Case 'claims-pilot' created. 0 memory units. Start building knowledge: ingest documents, subscribe to event topics, or add files from a directory.` Not an error, not a blank screen — a clear next step.
 
@@ -369,9 +369,9 @@ Alex runs `memories ingest ./sample-claims/ --case claims-pilot`. The CLI shows 
 
 **Climax:** First search on real data: `memories search "water damage" --case claims-pilot`. Three results, ranked by hybrid score. The system works. Alex publishes a test event to the DAPR topic — it appears in the case within seconds. The empty state is gone, and Alex never felt lost getting here.
 
-**Resolution:** Alex shares the quickstart experience in the team channel. Two other developers set up their own cases by end of day.
+**Resolution:** Alex shares the README quickstart experience in the team channel. Two other developers set up their own cases by end of day.
 
-**Capabilities revealed:** Helpful empty state messages, guided quickstart, batch ingestion from directory, clear progress feedback, case creation, first-search experience.
+**Capabilities revealed:** Helpful empty state messages, README quickstart, optional interactive quickstart polish, batch ingestion from directory, clear progress feedback, case creation, first-search experience.
 
 ---
 
@@ -588,25 +588,25 @@ Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet pa
 | Aspect | MVP | Future |
 |---|---|---|
 | Server runtime | .NET 10 / C# 13 | .NET only (DAPR handles polyglot) |
-| Client libraries | .NET (`Client` for DAPR consumers, `Client.Rest` for external consumers) | Python, TypeScript clients targeting ingress REST API |
+| Client libraries | MVP CLI uses a minimal direct HTTP/ingress adapter inside the CLI; reusable `.NET` client packages are not MVP blockers | `.NET` (`Client` for DAPR consumers, `Client.Rest` for external consumers), Python, TypeScript clients targeting ingress REST API |
 | CLI | .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`) | Same |
 | Cross-language access | Via ingress REST API (any HTTP client) or DAPR service invocation (any DAPR SDK) | Dedicated language-specific client packages |
 | IDE tooling | None | VS/Rider templates, analyzers (deferred) |
 
 **Package Distribution:**
 
-10 packages — 8 published NuGet + 2 internal Aspire projects:
+Current release inventory: 7 published NuGet packages + 3 non-packable service/orchestration projects. `tools/release-packages.json` is the authoritative package source of truth for release tooling.
 
 | Package | Purpose | Dependencies |
 |---|---|---|
 | `Hexalith.Memories.Contracts` | Domain types, memory unit model, envelopes | Hexalith.Commons |
-| `Hexalith.Memories.Client` | DAPR service invocation wrapper for internal consumers (MCP Server, future services) | Contracts, DAPR SDK |
-| `Hexalith.Memories.Client.Rest` | Typed HTTP client for external consumers via ingress REST API, with resilience (retry, circuit breaker) | Contracts, HttpClient, `Microsoft.Extensions.Http.Resilience` |
-| `Hexalith.Memories.Server` | DAPR service, actors, ingestion pipeline, REST controllers for ingress | Contracts only (backend registered at composition root) |
+| `Hexalith.Memories.Client.Rest` | Phase 1.5 typed HTTP client for external consumers via ingress REST API, with resilience (retry, circuit breaker) | Contracts, HttpClient, `Microsoft.Extensions.Http.Resilience` |
+| `Hexalith.Memories.Server` | DAPR service, actors, ingestion pipeline, REST controllers for ingress (non-packable) | Contracts only (backend registered at composition root) |
 | `Hexalith.Memories.Redis` | Redis/RediSearch/Vector/FalkorDB implementation | Contracts |
-| `Hexalith.Memories.Cli` | CLI tool (dotnet global tool) | Client.Rest |
-| `Hexalith.Memories.Mcp` | MCP server (DAPR service with sidecar) | Client |
-| `Hexalith.Memories.EventStore` | Auto-registration, dual embedding, causal chain indexing | Client, Hexalith.EventStore |
+| `Hexalith.Memories.Cli` | CLI tool (dotnet global tool). MVP readiness did not require the reusable REST client, but the current package may use `Client.Rest` after Phase 1.5 extraction. | Client.Rest, Contracts, Telemetry |
+| `Hexalith.Memories.Mcp` | MCP server (DAPR service with sidecar) | Client.Rest, Contracts, ServiceDefaults, Telemetry |
+| `Hexalith.Memories.EventStore` | Auto-registration, dual embedding, causal chain indexing | Contracts, DAPR, Hexalith.EventStore |
+| `Hexalith.Memories.Telemetry` | Shared telemetry constants, collectors, and test-support abstractions | OpenTelemetry |
 | `Hexalith.Memories.AppHost` | .NET Aspire orchestration (internal project, not published) | Server, Redis, Aspire |
 | `Hexalith.Memories.ServiceDefaults` | Aspire service defaults — telemetry, health checks (internal project, not published) | Aspire |
 
@@ -670,21 +670,27 @@ Aligned with Hexalith.EventStore conventions (via git submodule):
 
 ### Embedding Provider Configuration
 
-All major providers supported from MVP. Configuration is per-tenant — different tenants can use different providers/models.
+MVP supports Google embedding generation at runtime. Configuration is per-tenant and deliberately shaped for provider expansion — different tenants can carry provider/model/rate-limit configuration, but non-Google runtime providers are post-MVP unless a later sprint change explicitly pulls them forward.
 
 **Supported Providers (MVP):**
 
 | Provider | Model (default) | Dimensions | Rate Limit (default) |
 |---|---|---|---|
 | Google | `text-embedding-004` | 768 | 1500 req/min |
-| OpenAI | `text-embedding-3-small` | 1536 | 3000 req/min |
-| Mistral | `mistral-embed` | 1024 | Varies |
+
+**Post-MVP provider expansion candidates:**
+
+| Provider | Model (default) | Dimensions | Notes |
+|---|---|---|---|
+| OpenAI | `text-embedding-3-small` | 1536 | Deferred provider implementation |
+| Mistral | `mistral-embed` | 1024 | Deferred provider implementation |
+| Ollama | `qwen3-embedding:4b` | 2560 | Covered by Epic 13 provider migration work |
 
 **Configuration per tenant:**
 
 | Field | Purpose | Source |
 |---|---|---|
-| `provider` | google / openai / mistral / custom | Tenant config |
+| `provider` | MVP: google. Post-MVP: openai / mistral / ollama / custom via provider expansion stories | Tenant config |
 | `model` | Specific model ID | Tenant config |
 | `dimensions` | Vector dimensions (determines Redis Vector index schema) | Derived from provider/model |
 | `apiKey` | Provider API key | .NET User Secrets (local dev), DAPR Secrets API (deployed) |
@@ -721,7 +727,7 @@ Ingestion uses a **per-tenant pipeline actor** managing a bounded queue. The pip
 
 ### Interface Capability Parity Matrix
 
-Not all capabilities map to all interfaces. CLI is the superset for operational and diagnostic work.
+Not all capabilities map to all interfaces. CLI is the superset for operational and diagnostic work, but implementation is split by phase: MVP CLI essentials are `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, and benchmark support; Phase 1.5 expands CLI polish with `explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, and richer diagnostics.
 
 | Capability | CLI | MCP | DAPR Service Invocation |
 |---|---|---|---|
@@ -735,7 +741,7 @@ Not all capabilities map to all interfaces. CLI is the superset for operational 
 | Ingestion status & failed units | `memories status` | -- | -- |
 | Interactive exploration | `memories explore` | -- | -- |
 | Handler management | `memories handlers` | -- | -- |
-| Guided quickstart | `memories quickstart` | -- | -- |
+| Guided quickstart | README quickstart in MVP; `memories quickstart` in Phase 1.5 | -- | -- |
 | Batch directory ingestion | `memories ingest <dir>` | -- | -- |
 
 **Design rationale:** MCP exposes what LLM agents need (search, ingest, traverse, case info). Tenant management, diagnostics, and interactive features are operational concerns handled via CLI. DAPR service invocation is the internal programmatic API.
@@ -743,6 +749,10 @@ Not all capabilities map to all interfaces. CLI is the superset for operational 
 ### CLI Specification
 
 **Distribution:** .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`)
+
+**MVP command scope:** `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, and benchmark support.
+
+**Phase 1.5 expansion scope:** `explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, and richer diagnostics.
 
 **Command Structure:**
 
@@ -756,7 +766,7 @@ Not all capabilities map to all interfaces. CLI is the superset for operational 
 | `memories tenant` | `create`, `delete`, `verify`, `switch`, `list` |
 | `memories status` | `--case`, `--tenant`, `--failed`, `--ingestion` |
 | `memories handlers` | `--list`, `--register` |
-| `memories quickstart` | Guided interactive setup |
+| `memories quickstart` | Guided interactive setup (Phase 1.5 unless explicitly pulled forward) |
 
 **Output Formats:**
 
@@ -926,7 +936,7 @@ Non-.NET external consumers can integrate today via ingress REST API (JSON paylo
 
 ### Data Portability & System Health
 
-- **FR71:** Developer can export all memory units, metadata, and graph edges for a case or tenant in a portable format
+- **FR71:** Developer can export all memory units, metadata, and graph edges for a case or tenant in a portable format. **Phase:** Phase 2 unless a later sprint change explicitly pulls export into MVP.
 - **FR72:** System exposes readiness and liveness health checks verifying all backends
 - **FR73:** Operator can detect index/graph divergence via consistency check
 - **FR74:** Operator can repair detected index/graph inconsistencies via consistency repair operation

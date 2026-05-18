@@ -52,7 +52,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 - Primary domain: API Backend / AI Infrastructure
 - Complexity level: High
-- Estimated architectural components: 10 NuGet packages (8 published + 2 internal Aspire), 3 backend systems (RediSearch, Redis Vector, FalkorDB), 4 interface layers (CLI, MCP, REST, DAPR), per-tenant pipeline actors
+- Estimated architectural components: 7 published NuGet packages plus 3 non-packable service/orchestration projects, 3 backend systems (RediSearch, Redis Vector, FalkorDB), 4 interface layers (CLI, MCP, REST, DAPR), per-tenant pipeline actors. `tools/release-packages.json` is the release package source of truth.
 
 ### Technical Constraints & Dependencies
 
@@ -135,12 +135,28 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 ### Interface Philosophy
 
 **Capability alignment, not feature parity.** The four interfaces serve different consumers:
-- **CLI** — reference implementation, superset of capabilities, operational and diagnostic tools
-- **MCP** — LLM agent surface, search/ingest/traverse/case-info only, token-budget-aware. Token-budget truncation includes `omitted_count` in MVP; score range metadata for omitted results (min/max) added in Phase 1.5.
+- **CLI** — reference implementation. MVP CLI essentials are `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, benchmark support, and the README quickstart path used to validate NFR31. Phase 1.5 expands CLI polish with `explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, and richer diagnostics.
+- **MCP** — LLM agent surface, search/ingest/traverse/case-info only, token-budget-aware. Token-budget truncation includes `omitted_count`, explicit omitted fields, and deterministic expansion handles; score range metadata for omitted results (min/max) is Phase 1.5.
 - **REST** (via ingress) — MVP: minimal ingress routing for CLI connectivity. Full REST API (pagination, facets, drill-down for application UIs) is Phase 2.
 - **DAPR service invocation** — internal programmatic API
 
-**Decision rule:** A capability goes to MCP if an LLM agent needs it to complete a user-facing task (search, ingest, traverse, case info). A capability stays CLI-only if it's operational, diagnostic, or administrative (tenant management, status, handlers, explore, quickstart). DAPR service invocation mirrors MCP scope for internal programmatic access.
+**Decision rule:** A capability goes to MCP if an LLM agent needs it to complete a user-facing task (search, ingest, traverse, case info). A capability stays CLI-only if it is operational, diagnostic, or administrative (tenant management, tenant verification, status, handlers, explore, quickstart). MVP CLI essentials are thesis-validation scope; full CLI polish is Phase 1.5. DAPR service invocation mirrors MCP scope for internal programmatic access.
+
+### Evidence Packet Contract
+
+`Contracts.V1` owns the shared Evidence Packet grammar used by CLI JSON output, MCP tool responses, and future web UI composition.
+
+Minimum fields:
+- `scope`: tenant ID, case ID, scope status, isolation status
+- `result`: answer summary or ranked result summary
+- `sources`: source references, origin identifiers, source type, freshness
+- `evidence`: evidence strength, confidence caveat, retrieval axes used, per-axis score summary
+- `graph`: graph relationship summary and gap markers when applicable
+- `state`: complete, partial, weak, empty, stale, degraded, unauthorized, pending expansion
+- `omittedDetails`: omitted count, omitted field names, deterministic expansion handles
+- `recoveryActions`: next safe action plus optional secondary actions
+
+`SearchResult` and `ScoredResult` remain lower-level retrieval contracts. Evidence Packet is the cross-surface response envelope that composes retrieval output, scope, state, omitted details, and recovery guidance.
 
 **Graph traversal response shape:** `traverse_relations` returns full node context (memory unit summary + edge metadata), not just IDs. This enables single-call causal chain composition without a second search round-trip. The response is token-budget-aware when called via MCP.
 
@@ -266,7 +282,7 @@ Where the architecture overrides or clarifies PRD language, documented here for 
 | PRD Statement | Architecture Position | Rationale |
 |---|---|---|
 | "Atomic write across all three backends" (pipeline stage) | Eventual consistency + compensation + reconciliation | No distributed transaction across Redis + FalkorDB. FR6 intent preserved: unit fully searchable after ingestion completes. |
-| "All major [embedding] providers supported from MVP" | Google first in MVP. OpenAI/Mistral in Phase 1.5/2. | Solo developer scope. IEmbeddingProvider abstraction makes additions trivial. |
+| "All major [embedding] providers supported from MVP" | Google runtime embedding provider only in MVP. OpenAI/Mistral are post-MVP provider expansion candidates; Ollama is covered by Epic 13 provider migration work. | Solo developer scope. The provider configuration shape and embedding provider pattern preserve extensibility without making every provider an MVP blocker. |
 | REST API in Server (deployment topology) vs REST API Phase 2 (scope) | MVP REST is minimal ingress routing for CLI. Full REST API (pagination, facets) is Phase 2. | PRD contradicts itself; architecture clarifies. |
 
 ### Open Decision: Index Rebuild Strategy
@@ -309,7 +325,7 @@ When embedding model changes (e.g., `text-embedding-004` → `text-embedding-005
 | Workflow | Purpose | Activities |
 |---|---|---|
 | `IngestionWorkflow` | Orchestrates full ingestion pipeline with retry/compensation | `ValidateContentActivity` → `ExtractContentActivity` → `GenerateEmbeddingActivity` → `IndexSyntacticActivity` + `IndexSemanticActivity` + `IndexGraphActivity` (fan-out) → `VerifyConsistencyActivity` |
-| `TenantProvisioningWorkflow` | Creates indexes across all backends with saga rollback | `ProvisionRediSearchActivity` → `ProvisionRedisVectorActivity` → `ProvisionFalkorDbActivity` → `VerifyTenantActivity`. On failure: compensation activities delete created indexes. |
+| `TenantProvisioningWorkflow` | Sole owner of tenant index/database creation across all backends with saga rollback | `ProvisionRediSearchActivity` → `ProvisionRedisVectorActivity` → `ProvisionFalkorDbActivity` → `VerifyTenantActivity`. On failure: compensation activities delete created indexes. Ingestion, search, graph, CLI, and MCP paths validate active tenant infrastructure and never create tenant indexes on demand. |
 | `TenantDeletionWorkflow` | Batched async deletion across backends | `DeleteRediSearchActivity` → `DeleteRedisVectorActivity` → `DeleteFalkorDbActivity` (batched, N nodes per activity invocation) |
 | `ConsistencyVerificationWorkflow` | On-demand or scheduled consistency check | Queries all 3 backends per memory unit, reports discrepancies |
 | `AiEnrichmentWorkflow` | AI-powered ingestion enrichment (Phase 1.5, optional in MVP) | `CallAiAgentActivity` — invokes the Python Dapr Agents service via DAPR service invocation. The Python service runs a `DurableAgent` with tools for metadata extraction, content classification, and causal relationship inference. Runs as child workflow from `IngestionWorkflow` when AI enrichment is enabled. |
@@ -420,13 +436,19 @@ dotnet sln add Hexalith.Memories.Server
 dotnet sln add Hexalith.Memories.Redis
 ```
 
+**MVP CLI project (added before thesis validation for benchmark and onboarding gates):**
+```bash
+dotnet new console -n Hexalith.Memories.Cli
+```
+
+The MVP CLI owns a small direct HTTP/ingress adapter for the thesis-validation command set. That adapter is intentionally local to the CLI so Gate 3 does not depend on the Phase 1.5 `Hexalith.Memories.Client.Rest` package.
+
 **Phase 1.5 projects (added after thesis validation):**
 ```bash
 dotnet new classlib -n Hexalith.Memories.Client
 dotnet new classlib -n Hexalith.Memories.Client.Rest
 dotnet new webapi -n Hexalith.Memories.Mcp
 dotnet new classlib -n Hexalith.Memories.EventStore
-dotnet new console -n Hexalith.Memories.Cli
 ```
 
 ### Current Verified Versions (March 2026)
@@ -468,7 +490,7 @@ dotnet new console -n Hexalith.Memories.Cli
 - `IActorProxyFactory` — actor proxy creation for service-to-actor calls
 
 **Not provided by scaffolding (must be built):**
-- Multi-project solution structure (10 packages)
+- Multi-project solution structure (7 published packages plus 3 non-packable service/orchestration projects)
 - Workflow definitions (ingestion, tenant provisioning/deletion, consistency verification)
 - Activity implementations (extraction, embedding, indexing, verification)
 - Actor implementations (rate limiter, corpus statistics)
@@ -486,12 +508,13 @@ dotnet new console -n Hexalith.Memories.Cli
 | 3 | `Hexalith.Memories.Server` | Ingestion pipeline, search engine (Gate 1) |
 | 4 | `Hexalith.Memories.AppHost` | Orchestration, Docker Compose equiv (Gate 3) |
 | 5 | `Hexalith.Memories.ServiceDefaults` | Health checks, telemetry (Gate 2 verification) |
+| 6 | `Hexalith.Memories.Cli` | MVP CLI essentials: `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, benchmark support |
 | — | *Thesis validation checkpoint* | — |
-| 6 | `Hexalith.Memories.Cli` | Developer interface (Gate 3 polish) |
-| 7 | `Hexalith.Memories.Client` | Internal consumers (Phase 1.5) |
-| 8 | `Hexalith.Memories.Client.Rest` | External consumers (Phase 1.5) |
-| 9 | `Hexalith.Memories.Mcp` | LLM agent interface (Phase 1.5) |
-| 10 | `Hexalith.Memories.EventStore` | Zero-code integration (Phase 1.5) |
+| 7 | `Hexalith.Memories.Cli` expansion | Phase 1.5 CLI polish: `explore`, `status`, `handlers`, `quickstart`, batch directory ingestion, richer diagnostics |
+| 8 | `Hexalith.Memories.Client` | Internal consumers (Phase 1.5) |
+| 9 | `Hexalith.Memories.Client.Rest` | External consumers (Phase 1.5) |
+| 10 | `Hexalith.Memories.Mcp` | LLM agent interface (Phase 1.5) |
+| 11 | `Hexalith.Memories.EventStore` | Zero-code integration (Phase 1.5) |
 
 **Note:** Project initialization is the first implementation story. Git submodules (`Hexalith.Commons`, `Hexalith.EventStore`) must be configured in the same story.
 
@@ -528,7 +551,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | # | Decision | Choice | Rationale | Affects |
 |---|---|---|---|---|
 | D16 | Test framework | xUnit + FluentAssertions | Aspire `DistributedApplicationTestingBuilder` aligned. Readable assertions. | All test projects |
-| D17 | CI/CD pipeline | GitHub Actions full + semantic release | Automated versioning from conventional commits. NuGet publish on tag. PR checks: build + test. Branch protection on `main`. | Git workflow, commit conventions, NuGet publishing, CONTRIBUTING.md |
+| D17 | CI/CD pipeline | GitHub Actions minimum build/test gate first, then full semantic release | The minimum build/test feedback gate is an early foundation prerequisite for any greenfield or restarted implementation sequence. Automated versioning from conventional commits, NuGet publish on tag, branch protection on `main`, and release hardening remain Engineering/Operational Readiness work. | Git workflow, commit conventions, NuGet publishing, CONTRIBUTING.md |
 
 ### Updated Deployment Topology
 
@@ -1299,7 +1322,7 @@ Hexalith.Memories/
 │   │
 │   ├── Hexalith.Memories.Client/              # Phase 1.5
 │   ├── Hexalith.Memories.Client.Rest/         # Phase 1.5
-│   ├── Hexalith.Memories.Cli/                 # Phase 1.5 (Gate 3 polish)
+│   ├── Hexalith.Memories.Cli/                 # MVP essentials; Phase 1.5 polish expansion
 │   ├── Hexalith.Memories.Mcp/                 # Phase 1.5
 │   ├── Hexalith.Memories.EventStore/          # Phase 1.5
 │   │
@@ -1413,7 +1436,7 @@ Hexalith.Memories/
 | Memories Server | C# | Domain logic, workflows, actors, search, tenants | Redis, FalkorDB, Embedding API, AI Agent Service | DAPR workflows/actors/state/service-invocation, HTTP |
 | AI Agent Service | Python | AI enrichment agents, NLP tools, causal inference | LLM providers (via DAPR Conversation API), Memories Server (callbacks) | DAPR service invocation, DAPR Conversation API |
 | MCP Server (Phase 1.5) | C# | MCP tool definitions, token-budget shaping | Memories Server | DAPR service invocation |
-| CLI (Phase 1.5) | C# | Terminal UX, output formatting | Memories Server | REST via ingress |
+| CLI (MVP essentials; Phase 1.5 expansion) | C# | Terminal UX, output formatting, benchmark/onboarding command surface | Memories Server | MVP: minimal direct HTTP/ingress adapter inside CLI. Phase 1.5: reusable `Client.Rest`. |
 
 **Data Boundaries:**
 
@@ -1433,11 +1456,12 @@ Hexalith.Memories/
 | Memory Organization (FR26-37) | `Server/Cases/` | `CaseService.cs`, `CaseValidator.cs` |
 | Tenant Management (FR38-45) | `Server/Workflows/` + `Server/Activities/Tenants/` + `Server/Tenants/` | `TenantProvisioningWorkflow.cs`, `TenantDeletionWorkflow.cs`, `ProvisionRediSearchActivity.cs`, `ProvisionRedisVectorActivity.cs`, `ProvisionFalkorDbActivity.cs`, `TenantProvisioningService.cs`, `TenantIsolationVerifier.cs`, `TenantDeletionService.cs` |
 | Causal Intelligence (FR46-52) | `Server/Graph/` | `GraphTraversalService.cs`, `GraphQueryBuilder.cs`, `GapFiller.cs` |
-| Developer Interfaces (FR53-58) | `Controllers/`, `Cli/`, `Mcp/` | Controllers (MVP), CLI + MCP (Phase 1.5) |
+| Developer Interfaces (FR53-58) | `Controllers/`, `Cli/`, `Mcp/` | Controllers + MVP CLI essentials, MCP and full CLI expansion in Phase 1.5 |
 | EventStore Integration (FR59-62) | `EventStore/` | Phase 1.5 |
-| Trust & Transparency (FR63-67) | `Contracts/V1/` | `MetadataField.cs`, `ScoredResult.cs`, `SearchResult.cs` |
+| Trust & Transparency (FR63-67) | `Contracts/V1/` | `MetadataField.cs`, `ScoredResult.cs`, `SearchResult.cs`, Evidence Packet contracts (`EvidencePacket`, scope, source, state, omitted details, recovery actions) |
 | Embedding Provider (FR68-70) | `Server/Ingestion/` | `EmbeddingClient.cs`, tenant config |
-| Data Portability (FR71-74) | `Server/Tenants/` | `TenantIsolationVerifier.cs`, health checks |
+| Data Portability (FR71) | `Server/Tenants/` | Phase 2 `TenantExportService.cs` |
+| System Health & Consistency (FR72-74) | `Server/Tenants/`, health checks, workflows | `TenantIsolationVerifier.cs`, readiness/liveness health checks, `ConsistencyVerificationWorkflow.cs`, repair activities |
 
 ### Data Flow
 
@@ -1474,7 +1498,7 @@ Traverse: CLI/MCP → Controller → GraphTraversalService
   → Ordered nodes + edges + gap markers
 
 Tenant Ops: Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(...)
-  TenantProvisioningWorkflow: provision 3 backends sequentially, rollback on failure
+  TenantProvisioningWorkflow: sole tenant infrastructure lifecycle owner; provision 3 backends sequentially, rollback on failure
   TenantDeletionWorkflow: batched deletion across 3 backends
   ConsistencyVerificationWorkflow: audit all memory units across backends
 ```

@@ -17,7 +17,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ## Technology Stack & Versions
 
-- **.NET 10 / C# 14** - all projects target `net10.0`; SDK pinned by `global.json` to `10.0.201` with `rollForward=latestFeature`.
+- **.NET 10 / C# 14** - all projects target `net10.0`; SDK pinned by `global.json` to `10.0.300` with `rollForward=latestFeature`.
 - **Central package management is mandatory** - package versions live in `Directory.Packages.props`; project files use versionless `PackageReference` entries.
 - **Warnings are build failures** - `Nullable=enable`, `ImplicitUsings=enable`, and `TreatWarningsAsErrors=true` are set at repo root.
 - **DAPR 1.17.6 is load-bearing** - use DAPR Workflow for durable multi-step orchestration, Actors for per-tenant state, service invocation for internal calls, and DAPR AI/Conversation only where already scoped.

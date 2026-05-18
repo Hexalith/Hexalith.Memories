@@ -8,6 +8,18 @@ As a developer,
 I want to ingest a local file and have it automatically processed through the full pipeline (validate → extract → embed → index across all backends → verify consistency),
 so that a single API call results in a fully searchable memory unit with provenance tracking.
 
+## Historical Scope and Future Rework Guard (2026-05-18)
+
+Story 1.6 is historical completed scope and must not be reopened as one implementation unit. Any future reimplementation, major refactor, or behavioral expansion of this area must first split the work into smaller numeric stories before development starts.
+
+Required future split:
+
+1. Happy-path local file ingestion orchestration from validated tenant/case context through indexed result.
+2. Failure, retry exhaustion, compensation, and failed-unit visibility.
+3. Restart recovery, idempotency, and duplicate detection hardening.
+
+Each future slice must include observable API, CLI, trace, or integration-harness proof. Internal workflow tests alone are not sufficient evidence for future work.
+
 ## Acceptance Criteria
 
 1. **Given** a valid file and a tenant/case context **When** `IngestionWorkflow` is started **Then** it orchestrates: `ValidateContentActivity` → `ExtractContentActivity` → `GenerateEmbeddingActivity` → fan-out (`IndexSyntacticActivity` + `IndexSemanticActivity` + `IndexGraphActivity`) → `VerifyConsistencyActivity` **And** the memory unit status transitions: queued → extracting → embedding → indexing → indexed

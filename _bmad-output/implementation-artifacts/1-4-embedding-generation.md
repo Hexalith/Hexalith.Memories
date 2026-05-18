@@ -359,6 +359,19 @@ Contracts.V1 (MemoryUnit, MemoryUnitStatus) ← Server (this story adds to Serve
 - [Source: epics.md#Story 1.7] — Embedding provider configuration (future story, informs but does not block this story)
 - [Source: prd.md#Embedding Provider Configuration] — Provider table, per-tenant configuration fields, critical constraints
 
+## Implementation Readiness Addendum (2026-05-18)
+
+This story is historical completed scope and may remain closed. If it is reopened, reimplemented, or used as a template for a future technical story, completion must include observable proof that embedding generation advances the developer ingestion/search journey.
+
+Required future-rework evidence:
+
+1. A developer-observable embedding result containing provider, model, dimensions, and memory-unit metadata mapping.
+2. Activity, API, CLI, trace, or integration-harness evidence showing the embedding result crosses the ingestion boundary.
+3. Secret-redaction evidence proving embedding credentials are not emitted in logs, CLI output, API responses, or test snapshots.
+4. Rate-limit or retry evidence showing 429 behavior reaches the workflow recovery path.
+
+Mocked `EmbeddingClient`, rate-limiter, and exception unit tests alone are not sufficient evidence for future work.
+
 ## Definition of Done
 
 1. `EmbeddingClient` calls Google text-embedding-004 API and returns 768-dim float[] with dimension validation

@@ -1,5 +1,5 @@
-﻿# generated: 2026-05-03T11:30:14.2956574+02:00
-# last_updated: 2026-05-03T12:04:28.8664870+02:00
+# generated: 2026-05-17T08:56:54+02:00
+# last_updated: 2026-05-18T12:04:49+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -13,14 +13,14 @@
 #   - done: All stories in epic completed
 #
 # Epic Status Transitions:
-#   - backlog â†’ in-progress: Automatically when first story is created (via create-story)
-#   - in-progress â†’ done: Manually when all stories reach 'done' status
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach done status
 #
 # Story Status:
 #   - backlog: Story only exists in epic file
 #   - ready-for-dev: Story file created in stories folder
 #   - in-progress: Developer actively working on implementation
-#   - review: Ready for code review (via Dev's code-review workflow)
+#   - review: Ready for code review (via Dev code-review workflow)
 #   - done: Story completed
 #
 # Retrospective Status:
@@ -29,83 +29,83 @@
 #
 # WORKFLOW NOTES:
 # ===============
-# - Epic transitions to 'in-progress' automatically when first story is created
+# - Epic transitions to in-progress automatically when first story is created
 # - Stories can be worked in parallel if team capacity allows
-# - SM typically creates next story after previous one is 'done' to incorporate learnings
-# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Developer typically creates next story after previous one is done to incorporate learnings
+# - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-05-03T11:30:14.2956574+02:00
-last_updated: 2026-05-15T16:30:00+02:00 # Story 15.5 code review complete: review -> done.
+generated: 2026-05-17T08:56:54+02:00
+last_updated: 2026-05-18T12:04:49+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
-  # --- Phase: MVP â€” Gate 1 (Three-Axis Validation) ---
+  # Epic 0: Tenant and Case Safety Foundation
+  epic-0: done
+  0-0-project-scaffolding-and-single-command-boot: done
+  0-1-tenant-provisioning-minimum-viable-workflow: done
+  0-2-minimal-case-bootstrap: done
+  0-3-tenant-and-case-validation-guard: done
+  epic-0-retrospective: optional
 
-  # Epic 1: Foundation, Ingestion & Graph Edge Indexing
-  epic-1: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26 (course correction): all 7 stories `done` since Phase 1 â€” manual epic-status flip required by sprint-status.yaml workflow notes lines 32-39.
-  1-1-project-scaffolding-and-single-command-boot: done
+  # Epic 1: First Tenant-Scoped Memory Ingestion and Search
+  epic-1: done
   1-2-memory-unit-domain-model-and-contracts: done
   1-3-content-extraction-via-kreuzberg: done
   1-4-embedding-generation: done
   1-5-three-backend-indexing: done
   1-6-ingestion-workflow-orchestration: done
   1-7-embedding-provider-configuration: done
-  epic-1-retrospective: done # 2026-04-27 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-1-retro-2026-04-27.md.
+  epic-1-retrospective: done
 
   # Epic 2: Three-Axis Search, Fusion & Benchmark Validation
-  epic-2: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 7 stories `done` since Phase 1.
+  epic-2: done
   2-1-syntactic-search-bm25-via-redisearch: done
   2-2-semantic-search-vector-via-redis-vector: done
   2-3-graph-scoped-search: done
   2-4-score-normalization: done
   2-5-fusion-algorithm-and-hybrid-search: done
   2-6-explain-mode-and-confidence-scores: done
-  2-7-benchmark-suite-and-thesis-validation: done
-  epic-2-retrospective: done # 2026-04-27 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-2-retro-2026-04-27.md.
-
-  # --- Phase: MVP â€” Core Domain (post Gate 1 validation) ---
+  2-7-evidence-packet-contract-mapping: backlog
+  2-8-benchmark-suite-and-thesis-validation: done
+  epic-2-retrospective: done
 
   # Epic 3: Case Management & Memory Organization
-  epic-3: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 6 stories `done` since Phase 1.
+  epic-3: done
   3-1-create-and-list-cases: done
   3-2-case-status-and-activity: done
   3-3-case-member-management: done
   3-4-case-scoped-and-cross-case-search: done
   3-5-memory-unit-deletion-and-case-deletion: done
   3-6-annotations-and-corrections: done
-  epic-3-retrospective: done # 2026-04-28 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-3-retro-2026-04-28.md.
+  epic-3-retrospective: done
 
   # Epic 4: Causal Intelligence & Graph Traversal
-  epic-4: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 3 stories `done` since Phase 1.
+  epic-4: done
   4-1-causal-chain-traversal: done
   4-2-edge-type-filtering-and-taxonomy: done
   4-3-gap-detection-and-confidence-promotion: done
-  epic-4-retrospective: done # 2026-04-28 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-4-retro-2026-04-28.md.
-
-  # --- Phase: MVP â€” Gate 2 (Tenant Isolation) ---
+  epic-4-retrospective: done
 
   # Epic 5: Tenant Isolation & Multi-Tenancy
-  epic-5: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 6 stories `done` since Phase 1.
+  epic-5: done
   5-1-tenant-provisioning-workflow: done
   5-2-tenant-deletion-workflow: done
   5-3-tenant-isolation-verification: done
   5-4-tenant-context-enforcement: done
   5-5-tenant-configuration-and-listing: done
   5-6-graceful-degradation-on-backend-failure: done
-  epic-5-retrospective: done # 2026-04-29 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-5-retro-2026-04-29.md.
-
-  # --- Phase: MVP â€” Gate 3 (Developer Experience) ---
+  epic-5-retrospective: done
 
   # Epic 6: Ingestion Pipeline Resilience & Operations
-  epic-6: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 4 stories `done` since Phase 1.
+  epic-6: done
   6-1-url-and-directory-ingestion: done
   6-2-per-tenant-load-management-and-rate-limiting: done
   6-3-retry-failure-visibility-and-re-ingestion: done
   6-4-pipeline-state-persistence-and-zero-data-loss: done
-  epic-6-retrospective: done # 2026-04-29 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-6-retro-2026-04-29.md.
+  epic-6-retrospective: done
 
   # Epic 7: CLI & Developer Experience
   epic-7: done
@@ -113,87 +113,72 @@ development_status:
   7-2-output-formats-and-explain-display: done
   7-3-actionable-error-messages-and-discoverable-actions: done
   7-4-quickstart-and-documentation: done
-  7-5-search-and-access-telemetry: done # Rev 1.6 review close-out: accepted Story 8.4's HTTP-hop Tier-3 proof, aligned Story 7.5 AC/DoD wording with the actual gate, and revalidated the 2026-04-21 server-runtime follow-ups (full Server.Tests 1297/1297).
-  epic-7-retrospective: done # 2026-04-29 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-7-retro-2026-04-29.md.
-
-  # --- Phase: MVP â€” Operations ---
+  7-5-search-and-access-telemetry: done
+  epic-7-retrospective: done
 
   # Epic 8: Observability & System Health
-  epic-8: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 5 stories `done` (last: Story 8.5 on 2026-04-23).
+  epic-8: done
   8-1-health-checks-and-readiness: done
   8-2-consistency-verification-and-repair: done
-  8-3-data-export: done
-  8-4-end-to-end-telemetry-integration-tests: done # Review close-out 2026-04-23: resolved the last 2 review patch findings by aligning Rev 1.0 notes with the intentional Hexalith.EventStore gitlink 24971df1c62a1a53c5b217a99cb3cc473e3038ba and correcting the status summary to [x] / [Defer] / [N/A]. Final regression validation unchanged: Server.Tests Tier-2 telemetry 128/128 green, IntegrationTests Ac2 unit-tier 4/4 green. AC #2 / Task 2.3 remains deferred to Story 8.5 + GitHub issue #9.
-  8-5-redis-otel-instrumentation: done # Moved ready-for-dev â†’ in-progress â†’ review â†’ done on 2026-04-23. Story 8.4 AC #2 follow-up is implemented: OpenTelemetry.Instrumentation.StackExchangeRedis 1.15.1-beta.1 is registered in ServiceDefaults for both keyed IConnectionMultiplexer ('redis' + 'falkordb') via the official AddRedisInstrumentation + ConfigureRedisInstrumentation pattern, DI-guard (AddRedisKeyedConnectionGuard) fails eagerly on missing keys, CliSearch_EndToEnd_SingleTraceIdAcrossAllHops hard-asserts Redis spans, Ac2RedisSkipReviewBy.cs + Ac2SkipReviewByTests.cs are deleted, FalkorDbSemanticAttributeProcessor ships via ADR-8.5-001 (h) Path A, and the focused telemetry suite is green. GitHub issue #9 is already closed; the only remaining noise is non-blocking markdownlint indentation warnings in the BMAD artifact.
-  epic-8-retrospective: done # 2026-04-30 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-8-retro-2026-04-30.md.
-
-  # --- Phase 1.5 (Fast-Follow) ---
+  8-4-end-to-end-telemetry-integration-tests: done
+  8-5-redis-otel-instrumentation: done
+  epic-8-retrospective: done
 
   # Epic 9: EventStore Integration & Zero-Code Memory
-  epic-9: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 3 stories `done` (last: Story 9.3 close-out on 2026-04-25).
-  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: done # Review close-out 2026-04-23 restored canonical MapSubscribeHandler() discovery via EnvironmentTopicAttribute, added release-failure retry-path coverage, and revalidated focused EventStore (71/71) + Server EventStoreIntegration (12/12).
-  9-2-dual-embedding-and-causal-chain-indexing: done # 2026-04-25 review close-out applied final focused re-review patches: WorkflowReplaySafetyHostedService startup probe now checks both _metadata and WorkflowMetadata.Name accessor before reporting drained, MemoryUnit.cs has the required copyright header, and focused validation is green (Contracts 39/39, Server 58/58, CLI 9/9). Remaining larger follow-ups stay tracked in deferred-work.md.
-  9-3-handler-registration-and-mismatch-detection: done # 2026-04-25 review close-out resolved the final two review findings and transitioned review â†’ done. (1) `RedisObservedEventTypeStore.RecordObservationAsync` now restores the original 1024 hard-cap contract via one atomic Lua script (`SCARD` + `SISMEMBER` + conditional `SADD`/aggregates-key `EXPIRE` + `ZADD` + `HINCRBY` + 2Ã— `EXPIRE`) in a single round-trip: once the aggregates-index set is full, brand-new aggregate types are skipped until the key naturally expires, while existing aggregate types still refresh the aggregates-key TTL and per-aggregate observation data keeps flowing. 9142 warning semantics now match the story/log contract again. (2) Added one-shot `EventStoreObservationStartupActivator : IHostedService` so `IEventIngestionTelemetry` is eagerly resolved during real host startup; this makes the adapter's constructor-time `9143 ObservationWritesConfigChanged(enabled:false)` emission genuinely happen at startup when the kill switch is disabled instead of waiting for first ingestion traffic. Added focused tests for the atomic-script path, cap-warning branches, and the startup activator/registration path. Targeted regression slice 20/20 green (`RedisObservedEventTypeStoreTests`, `EventIngestionTelemetryAdapterTests`, `EventStoreObservationStartupActivatorTests`). Deferred review items remain unchanged: source-prefix observation granularity + true rolling 24h counts.
-  epic-9-retrospective: done # 2026-04-30 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-9-retro-2026-04-30.md.
+  epic-9: done
+  9-1-event-auto-discovery-and-dapr-pub-sub-subscription: done
+  9-2-dual-embedding-and-causal-chain-indexing: done
+  9-3-handler-registration-and-mismatch-detection: done
+  epic-9-retrospective: done
 
   # Epic 10: MCP Server & LLM Agent Interface
-  epic-10: done # 2026-04-26 bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: all 2 stories `done` (Story 10.2 closed today).
-  10-1-mcp-server-and-tool-registration: done # 2026-04-25 review close-out resolved all findings: search_memory schema now exposes syntactic/semantic/hybrid only (graph traversal remains on traverse_relations), tool methods return protocol-level CallToolResult for success/error, and MemoriesServerUpstreamHealthCheck resolves scoped MemoriesClient per probe. 63 new tests (61 unit/contract + 2 Tier-3 Docker-gated). Focused validation green: Mcp.Tests 55/55, MemoriesClientTraverseTests 6/6, IntegrationTests build 0W/0E. OTel stack bumped 1.15.1 â†’ 1.15.3 (Exporter.OTLP NU1902 sweep). Registers 4 LLM tools per FR54 (search_memory / ingest_content / traverse_relations / get_case_info) with typed JSON-schema parameters + LLM descriptions per FR58. Runs as separate DAPR service under Aspire AppHost (app-id memories-mcp, DaprHttpPort=3600). Delegates to Memories Server via DAPR service invocation only â€” no direct Redis/FalkorDB/secret-store access (NFR11 + ADR D6 isolation). Reuses MemoriesClient; Task 2 adds [Experimental("HXL003")] TraverseAsync + GetCaseAsync methods to MemoriesClient. Out of scope (deferred to 10.2): token_budget forwarding to server, ingress auth (NFR11 JWT + AddMcp), degraded-state response annotations, MCP-specific trace-hop assertion in AspireEndToEndTraceTests.
-  10-2-token-budget-responses-and-authentication: done # 2026-04-26 review close-out resolved 3 patch findings: hybrid AxesUsed now reflects score-field contribution, MintDevBearer supports explicit expired-token minting for follow-up auth tests, and the audit credential-key guard rejects token-like credential names without flagging tokenBudget/continuationToken. Focused validation green: Server focused review slice 24/24; IntegrationTests project build 0W/0E. AC #12 trace-hop stays deferred to `Story-10.x-McpTraceHopAspire`.
-  epic-10-retrospective: done # 2026-04-30 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-10-retro-2026-04-30.md.
-
-  # --- Infrastructure (Cross-Cutting) ---
+  epic-10: done
+  10-1-mcp-server-and-tool-registration: done
+  10-2-token-budget-responses-and-authentication: done
+  epic-10-retrospective: done
 
   # Epic 11: CI/CD & Automated Quality Pipeline
-  epic-11: done # 2026-04-26 closed alongside the bulk MVP-epic closeout per Sprint Change Proposal 2026-04-26: both stories 11.1 + 11.2 `done` today; retrospective also `done`. MVP roadmap now fully closed at the planning level.
+  epic-11: done
   11-1-github-actions-build-and-test-pipeline: done
   11-2-semantic-release-and-nuget-publishing: done
-  epic-11-retrospective: done # 2026-04-26 first formal retrospective for the project. Original document: _bmad-output/implementation-artifacts/epic-11-retro-2026-04-26.md. Refreshed 2026-04-30 with current Epic 12 forward path: _bmad-output/implementation-artifacts/epic-11-retro-2026-04-30.md.
+  epic-11-retrospective: done
 
-  # --- Phase: Post-MVP â€” Operations & First Release ---
-
-  # Epic 12: First Release & Operations Foundation (per Sprint Change Proposal 2026-04-26 Option C â€” Hybrid)
-  epic-12: done # 2026-05-02 retrospective complete; all six planned stories and epic-12-retrospective are done. Epic 12 closed operations / first-release follow-through without requiring an Epic 13 plan update.
-  12-1-first-release-path-validation: done # 2026-04-30 code-review close-out: 8/8 AC PASS via three-layer adversarial review. 15 documentation-precision patches applied (Required Main Settings now records strict: true + enforce_admins.enabled: true; required-check â†’ ci.yml job-ID mapping table added; v1.2.0 confirmed as published before branch protection; observed-release sequence corrected to plugin-driven; literal `gh api` 404 body replaces paraphrase; HTTP-409 vs non-409 partial-publish recovery distinguished; workflow log named as partial-publish source of truth). 5 follow-ups deferred (12.1-RV1..12.1-RV5 in deferred-work.md). External maintainer actions A1 (branch protection on main) and A2 (NUGET_API_KEY secret) are now both satisfied â€” A1 applied by this story; A2 was already satisfied because v1.2.0 published successfully via secrets.NUGET_API_KEY.
-  12-2-forbidden-default-tolerances-checklist: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 6/6 AC PASS. Resolved 2 decision-needed (submodule pointer leak in c4d5217 accepted via Dev Agent Record amendment with Story 12.3 owning prevention; "operator-visible" defined inline pending Story 12.5 canonical mechanism) and applied 10 doc-precision patches: mapfile pipefail caveat, PowerShell SilentlyContinue/Ignore/$ErrorActionPreference under silent-error-suppression bullet, default-empty-array example broadened to PROJECTS=()/("")/${PATTERN:-*}, named `|| true` equivalents, per-row zero-count gained zero-input fail-loudly clause, "forbidden by default" softened to "suspect by default", retro-file precedence (2026-04-30 canonical), `Tolerance Justification:` PR-description convention, explicit Bash-only labeling. Cross-references feedback_tolerance_idioms.md memory.
-  12-3-story-file-scope-enforcement: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 4/4 AC PASS (AC2 from PARTIAL via documented allow-list-wins behavior plus deferred 12.3-RV12 override-vagueness relaxation). 3 decision-needed resolved: D1 â€” implementation commit `0b065b8` File-Scope leaks (Hexalith.EventStore submodule pointer + 13-3 story doc + two predev-preflight JSONs) accepted via Dev Agent Record Scope-Justification with the bare-submodule-path matcher fix as the durable prevention; D2 â€” story allow-list intersecting forbidden-default treated as the deliberate decision spec line 213 calls for, documented in CONTRIBUTING.md; D3 â€” hook tempfiles moved preemptively to `$git_dir/` to avoid Windows MSYS path-translation risk. 22 patches applied (proper recursive `**` glob semantics; bare submodule path now resolves as forbidden-default via `<submodule>/**`; D5-no-override branch reports a distinct diagnostic; STORY_KEY regex tightened; duplicate-consistent Story/Story-Key trailers permitted while multi-key-in-single-trailer rejected; unparseable `--story-key` fails closed; .githooks executable bit set; CI force-push fallback compares against origin/main; CI BRANCH_NAME heredoc-written to GITHUB_ENV; tests use NamedTemporaryFile and a frozen inline fixture; new regressions for D5-no-override, fenced code blocks, indented sub-bullets, bare-token rejection, glob segment crossing, and bare submodule pointer). 15 follow-ups deferred (12.3-RV1..12.3-RV15 in deferred-work.md).
-  12-4-baseline-failures-sweep: done # 2026-05-01 code-review close-out (Blind + Edge + Auditor): 8/8 AC PASS or formally resolved (AC #8 Scope-Override accepted for the pre-existing Hexalith.EventStore submodule pointer bump and the bundled Story 12.3 close-out work; AC #1 satisfied via HEAD-replay coverage proof against anchors d7495a3/bc4d5cc/8207b54 â€” strict per-SHA replay deferred as 12.4-RV20). 8 patches applied to tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs covering the headline TestReleaseBaselineFilters guardrail: ReadDeferredEntries flushes on '## ' headers and sibling bullets so the last S11-F* entry no longer absorbs trailing content to EOF; entries inside '## Closed by â€¦' sections are skipped; IsResolvedDeferredEntry anchors to the bullet header line only and accepts [resolved/[closed/[done] markers; ReadAcceptedReleaseFilters enforces a 3-line proximity guard between S11-F* comment and matching filter and resets currentKey after consumption; TestNameShape regex enforces strict Class.Method shape (rejects namespaces and multi-segment names); DeferredTestNameRegex matches the entry's first line only; ProjectFilterRegex terminator widened to also stop at whitespace plus a Matches.Count==1 single-directive assertion; probe assertion baselines.ShouldContain(b => b.Key == 'S11-FA') prevents vacuous pass on parser regression. 6 new negative-path tests added (EntriesUnderClosedBySection, InlineResolvedMarker, NoOpenBaselines, StaleKeyTooFarFromFilter, NamespaceShape, RealRepoFilter_DetectsKnownS11FA). Validation: Cli.Tests 333/333 green (+6 new tests over baseline 327). 19 follow-ups deferred (12.4-RV1..12.4-RV20 in deferred-work.md): CI workflow hardening (RV1..RV5), schema-strengthening (RV6/RV19), Story 12.3 territory (RV7..RV14), test hardening (RV15..RV18), strict per-SHA replay drill (RV20).
-  12-5-partial-publish-alerting: done # 2026-05-02 code review complete (3-layer adversarial). 1 blocker patch (Hexalith.EventStore submodule pointer revert), 2 concern patches (Forbidden Default Tolerance temp-file cleanup + missing publish-failed branch test) applied; 8 follow-ups deferred (12.5-RV1..12.5-RV8). Tooling tests 8/8 green. Submodule pointer revert is uncommitted in working tree and requires a follow-up commit on main to land.
-  12-6-embedding-input-content-kind-baseline-resolution: done # 2026-05-02 code-review close-out (Blind + Edge + Auditor): 7/8 AC PASS, AC #6 PARTIAL resolved by 2 patches removing 4 over-restrictive assertions in CiTestInventoryTests (2 ShouldNotContain substring guards on tools/test-release.ps1 lines 83-84; 2 unconditional ShouldBeEmpty assertions in TestReleaseBaselineFilters_ShouldMatchOpenDeferredWorkEntries lines 104-105). Existing conditional guard (lines 112-115) and pairing logic (lines 107-110) continue to enforce the AC #6 invariant. CiTestInventoryTests 12/12 green. 5 follow-ups deferred (12.6-RV1..12.6-RV5).
-  epic-12-retrospective: done # 2026-05-02 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-12-retro-2026-05-02.md. Captures all 6 Epic 12 stories done, Epic 11 action follow-through (A1-A5 plus S11-FA/S11-FD), zero accepted release-lane baseline filters, file-scope/tolerance/partial-publish guardrails, deferred review-hardening items, and no Epic 13 plan update required.
-
-  # --- Phase: Post-MVP â€” Embedding Provider Migration (per Sprint Change Proposal 2026-04-29) ---
+  # Epic 12: First Release & Operations Foundation
+  epic-12: done
+  12-1-first-release-path-validation: done
+  12-2-forbidden-default-tolerances-checklist: done
+  12-3-story-file-scope-enforcement: done
+  12-4-baseline-failures-sweep: done
+  12-5-partial-publish-alerting: done
+  12-6-embedding-input-content-kind-baseline-resolution: done
+  epic-12-retrospective: done
 
   # Epic 13: Embedding Provider Pluggability + Vector Migration
-  epic-13: done # 2026-05-03 sprint-planning closeout: all seven Epic 13 stories and epic-13-retrospective are done. # 2026-04-29 added per Sprint Change Proposal 2026-04-29: extend the existing IEmbeddingProvider abstraction to dispatch to a self-hosted Ollama gateway (qwen3-embedding:4b, 2560-dim) protected by Keycloak OIDC client_credentials, retain Google as opt-in cloud provider, migrate existing tenants' Redis Vector Search indexes from 768-dim to 2560-dim. Triggered by 2026-04-29 operational architecture review. Independent of Epic 12 (parallel-safe).
-  13-1-extend-embedding-provider-defaults-to-accept-ollama: done # 2026-05-02 transitioned review â†’ done. Code review (3-layer adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor) complete; Auditor verdict: PASS on all 11 ACs. 24 raw findings â†’ 16 unique â†’ 1 decision-needed (HIGH, "tolerant defaults pattern in Validate(...)" bundled per feedback_tolerance_idioms.md), 0 patches required, 10 deferred (13.1-RV1..RV10), 5 dismissed. D1 resolved by Jerome (`do best` autonomy) â†’ defer to Story 13.4 as 13.1-RV11 (TenantEmbeddingConfig OIDC re-pass is the natural home for providerâ†’{modelâ†’dim-allowlist} registry, regex tightening to require â‰¥1 alphanumeric, and cross-pollination negative tests). Stories 13.2/13.3/13.4 now unblocked. # 2026-04-30 transitioned in-progress â†’ review. Implementation complete in 2 files (AC11 preserved): EmbeddingProviderDefaults.cs gains OllamaProviderName/OllamaModelName public constants, OllamaDimensions/OllamaMaxRateLimitPerMinute private constants, Ollama() factory mirroring Google() shape, IsSupportedProvider private helper, ModelNamePattern regex extended `^[A-Za-z0-9._-]+$` â†’ `^[A-Za-z0-9.:_-]+$` (admits the `:` in qwen3-embedding:4b), Ollama-specific dimension assertion (qwen3-embedding:4b â‡” 2560), per-provider rate-limit ceiling (Google 3000, Ollama 60_000) with generalized error wording. EmbeddingProviderDefaultsTests.cs gains 12 new test methods (22 cases incl. theory expansion). Validation: focused 48/48, full Server.Tests 1542/1542 (substantially better than the 1378/1382 baseline cited by Story 9.2 Session 2; intermediate stories cleared the prior 4 known failures), Contracts.Tests 468/468, dotnet build solution-wide 0W/0E.
-  13-2-implement-oidc-token-provider: done # 2026-05-02 moved review -> done. 3-layer adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) PASS on all 12 ACs after 5 patches applied: removed _guards cleanup race that broke AC6 same-key collapse for late arrivals; extended sensitive-property regex to include refresh_token and id_token per Dev Notes redaction guidance; reordered SanitizePreview to redact-then-truncate so secrets straddling the 1024-char boundary cannot leak; trimmed token_type before Bearer comparison for lenient IdPs; removed _cache.TryRemove from the read-only fast path so a concurrent writer's freshly-stored token is not dropped. Two architectural items deferred (13-2-RV1 leader-cancellation poisoning shared HTTP fetch â€” Dev Notes guidance; 13-2-RV2 IHttpClientFactory handler-rotation bypass on singleton-captured HttpClient) plus seven defer-to-ops items (network-exception wrapping, http:// scheme, userinfo URL, concurrent forceRefresh stampede, unbounded cache/guards growth, JsonDocument.Parse DoS, ScriptedTokenHandler test-infra). Validation: OidcTokenProviderTests 17/17 PASS post-patches.
-  # 2026-05-02 moved in-progress -> review. Implemented singleton OIDC client_credentials provider, scope-aware in-memory cache, per-key concurrency collapse, forced invalidation, sanitized typed exception, DI registration, and focused tests. Validation: OidcTokenProviderTests 17/17, Server.Tests 1560/1560, solution build 0W/0E. Docker/Aspire integration lane timed out locally without a completed failure assertion.
-  13-3-extend-embedding-client-to-support-ollama: done # 2026-05-02 moved review -> done. 3-layer adversarial code review: Acceptance Auditor verified all 11 ACs Met; 5 patches applied (RV1 nameof param fix; RV2 per-case malformed-response sub-message assertions; RV3 redaction test now exercises refreshed-token redaction; RV4 invalid-BaseUrl Theory; RV5 missing-IOidcTokenProvider actionable-exception test); 10 items deferred (RV6â€“RV15) with re-open triggers in deferred-work.md. Validation: EmbeddingClientTests 46/46 (was 40, +6), dotnet build Hexalith.Memories.slnx 0W/0E. # 2026-05-02 moved in-progress -> review. Implemented scoped EmbeddingClient Ollama dispatch, OIDC bearer-token consumption from Story 13.2, one-shot 401/403 invalidate-and-retry, Ollama response parsing, colon-preserving provider/model parser contract, API-key-mode fail-fast, sensitive-value redaction, and focused EmbeddingClient tests.
-  13-4-extend-tenant-embedding-config-with-additive-oidc-fields: done # 2026-05-02 transitioned review -> done. 3-layer adversarial code review (Blind + Edge + Auditor) closed 3 decisions + 3 patches: ModelNamePattern tightened to alnum-start regex with positive/negative tests (partial 13.1-RV11; allowlist registry deferred); cross-provider OIDC `oidc-client-credentials` explicitly rejected on non-Ollama providers (AC4); non-empty BaseUrl/OidcTokenEndpoint shape validated unconditionally (AC9 strict); JSON-ctor `string? authMode!` type lie removed in favor of non-nullable `string authMode = "api-key"`; AuthMode error message now distinguishes blank-class inputs via `<null>`/`<empty>`/`<whitespace>` markers; endpoint secret-non-exposure assertions tightened to exact JSON key shape. 5 deferred (13.4-RV1..RV5), 9 dismissed. Contracts 6/6, server defaults+endpoints 136/136 (30 new tests), full solution build 0W/0E. Story 13.3 (EmbeddingClient Ollama dispatch) and 13.5 (TenantConfigurationActor surface) dependency satisfied. # 2026-05-02 moved in-progress -> review. Added additive OIDC config fields, legacy JSON auth-mode defaults, conditional Ollama/OIDC validation, OIDC-ready Ollama defaults, secret-name exposure tests, and Ollama BaseUrl breaking-change detection.
-  13-5-surface-new-fields-via-tenant-configuration-actor: done # 2026-05-02 moved review -> done. 3-layer adversarial code review (Blind + Edge + Auditor) returned 1 decision-needed (resolved autonomously per feedback_review_autonomy.md) + 5 patches applied + 6 deferred (13.5-RV1..RV6) + 5 dismissed. Patches: AC5 BaseUrl normalization split into 3 isolated rules (whitespace/trailing-slash/casing), AC5 OidcMetadataChanged split into 5 per-field non-reindex tests with persisted-form predicates, missing positive Ollama BaseUrl forceReindex=true save path added, AC7 substring assertions converted to JsonDocument structural checks, raw-secret negative assertions extended to oidcClientSecret/oidc_client_secret leak shapes. Decision (13.5-RV1): Hexalith.EventStore submodule pointer bump bundled in feat commit 8afea97 (f812bfb -> f8e8f14) is outside declared file scope and conflicts with submodule discipline; drift content verified innocuous (5 doc/story commits authored by Jerome) -> accepted in-place with process note for future feat commits. Deferred: AC6 PUT/Conflict end-to-end HttpJsonOptions parity (Story 13.7), Ollama-flavored Provider/Model/Dimensions breaking-change tests, legacy provider="ollama" payload, whitespace BaseUrl legacy state, FirstOllamaWrite signal isolation. Validation: focused 48/48 PASS. # 2026-05-02 moved in-progress -> review. Added focused actor and endpoint/listing serialization tests for legacy defaults, non-destructive fallback, Ollama OIDC metadata round-trip, baseUrl reindex semantics, direct TenantEmbeddingConfig projection, and raw-secret non-exposure. Validation: actor 21/21, embedding-config endpoint 6/6, tenant configuration endpoint 14/14, TenantEmbeddingConfig serialization 6/6, Contracts 470/470, Server 1676/1676, EventStore 84/84, MCP 76/76, solution build 0W/0E; full solution and CLI test commands timed out locally.
-  13-6-vector-migration-tool: done # 2026-05-03 moved review -> done. 3-layer adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) returned 8 decision-needed + 23 patches + 5 deferred. All 8 decisions resolved autonomously per feedback_review_autonomy.md and applied: confirmation gate inversion fixed (--yes always required, prompt promotes only on explicit y/yes); live-migration ordering changed to drop+recreate first then SetEmbeddingConfigAsync, wrapped in tenant-level try/catch with Tenant-kind failure path; FT.DROPINDEX kept without DD but per-unit Redis transactions KeyDelete then HSET (no stale fields, atomic); rollback Task 5.3 struck from spec (Path A retains nothing); drop-then-create wraps the pair in try/catch that re-drops the partial index on failure; NL field preservation no longer fabricates "ai"/"unknown"/""; AC5 syntactic enumeration field set amended to content/caseId/cloudeventSubject only; cloudevent.subject sourcing verified against IndexSyntacticActivity persisted shape. Patches: streamed syntactic enumeration (no buffering), little-endian vector byte conversion, cancellation tokens propagated, int.TryParse for parser, ReadValue rejects-`--` removed, single shared HttpClient in tool, JSON serialization options, NL Missing counter distinct from Skipped, NormalizeErrorCategory taxonomy hides exception types, progress predicate fix (one final per content kind), marker-key sanitization regex + lowercase, RedisValue.IsNull for nil-vs-empty distinction, Provider+Model OrdinalIgnoreCase symmetric, BatchSize cap (10000), TargetConfig validation Try-pattern, --resume requires prior marker, Failure list 30-day TTL, Redactor truncation order + JSON-escaped pattern, ArgumentNullException at boundaries. Test coverage expanded to 13 tests (was 4): batch-size cap, invalid target dimensions, NL missing-as-missing, stale-metadata-only resume detection, batch-size boundary progress, cancellation, rollback with retained indexes, tenant-level error path. Validation: migration tests 13/13 PASS, Server.Tests 1696/1696 PASS, solution build 0W/0E. Deferred (5): concurrent-ingestion races, pre-existing IndexSemanticActivity copyright header, ValueOrError refactor, redactor AWS/JWT/basic-auth shapes, redactor name-only references â€” all logged in deferred-work.md with re-open triggers. # 2026-05-03 moved blocked -> review after hard prerequisites 13.2, 13.3, 13.4, and 13.5 were verified done. Implemented dedicated Path A migration tooling with dry-run inventory, explicit live tenant migration, actor-based config update, raw/NL semantic index recreation and re-embedding, resume metadata/markers, guarded rollback fail-closed behavior, secret discipline, and focused tests. Validation: migration focused 4/4 PASS, Server.Tests 1687/1687 PASS, solution build 0W/0E; full solution test command timed out after 10 minutes in the integration lane. # 2026-05-02 moved ready-for-dev -> blocked after party-mode review. Implementation must wait for hard prerequisites 13.2, 13.3, 13.4, and 13.5 to be done; 13.3 and 13.5 remain ready-for-dev. Deferred hardening decisions: migration marker vs raw semantic metadata, checkpoint shape, retry/failure bounds, command/output contract, tenant config update recovery path, and SemanticIndexer reuse vs migration-local path. # 2026-05-02 promoted from backlog when the story artifact was created. Scope is limited to Path A Redis Vector migration tooling with dry-run, explicit live tenant migration, actor-based config update, raw/NL semantic index rebuild, resume-safe re-embedding, guarded rollback only when retained previous-version indexes exist, secret discipline, and tests. Implementation is gated on Stories 13.2, 13.3, 13.4, and 13.5 reaching done and explicitly does not add Story 13.7 AppHost, integration fixture, or operator-guide work.
-  13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide: done # 2026-05-03 moved review -> done. 3-layer adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) returned 15 patches + 7 deferred (13.7-RV1..RV7) + 5 dismissed. Patches applied: fake-server null-race fix in StartAsync, secrets.json snapshot ordering + non-object root guard, EmbeddingProviderSecret regex validation (YAML injection), restored typed TenantProvisioningInput JSON serialization, bearer/secret redaction asserts actual token values (not coincidental substrings), operator doc Ollama local/no-auth annotated config-schema-only, ResolveRepositoryRoot fails closed when slnx is absent, HandleEmbedAsync JSON-parse + ValueKind guards, _fakeServer disposed on fixture init failure, workflow-failed distinguished from wait-expired in timeout, WorkflowReachedTerminalStatus returns enum + JSON-parse guard, secret/token scrubbed from timeout exception payload/logs, HandleTokenAsync rejects duplicate form values. Validation: full solution build 0W/0E, Story13_7 4/4 Pass, OllamaOidcFakeServerTests 3/3 Pass, default Google/fake IngestionPipelineTests.PostIngest_ShouldIndexMemoryUnitAcrossAllBackends 1/1 Pass. # 2026-05-03 moved in-progress -> review. Implemented provider-aware Aspire fixture mode, deterministic Ollama/OIDC fakes, Ollama end-to-end provider path, operator guide, and developer cross-reference. Validation: Story13_7 4/4, existing default fake-provider ingestion regression 1/1, docs links/redaction checks passed, solution build 0W/0E. # 2026-05-03 prerequisite recheck passed after Story 13.6 reached done; implementation resumed. # 2026-05-03 dev-story prerequisite check halted implementation: Story 13.6 remains blocked in both sprint-status.yaml and its story artifact, so AC11 migration-runbook evidence and dependent integration/docs validation cannot start. # 2026-05-02 promoted from backlog when the story artifact was created. Scope is limited to provider-parameterized integration coverage, deterministic Ollama/Keycloak fakes, Aspire fixture boundaries, operator deployment guide, developer cross-reference docs, Story 13.6 migration runbook handoff, and redaction constraints. Implementation is gated on Stories 13.2, 13.3, 13.4, 13.5, and 13.6 reaching done.
-  epic-13-retrospective: done # 2026-05-03 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-13-retro-2026-05-03.md. Captures multi-provider abstraction experience, OIDC client_credentials footprint, Path A migration trade-offs, integration test parameterization, bearer/dimension anti-patterns, Epic 12 follow-through, and action items for future provider/migration work.
-
-  # --- Phase: Post-MVP - Deferred Work Hardening ---
+  epic-13: done
+  13-1-extend-embedding-provider-defaults-to-accept-ollama: done
+  13-2-implement-oidc-token-provider: done
+  13-3-extend-embedding-client-to-support-ollama: done
+  13-4-extend-tenant-embedding-config-with-additive-oidc-fields: done
+  13-5-surface-new-fields-via-tenant-configuration-actor: done
+  13-6-vector-migration-tool: done
+  13-7-integration-tests-aspire-fixtures-and-operator-deployment-guide: done
+  epic-13-retrospective: done
 
   # Epic 14: Deferred Work Hardening and Operational Readiness
-  epic-14: done # 2026-05-12 retrospective complete; all five stories and epic-14-retrospective are done. Document: _bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md.
-  14-1-ci-story-scope-enforcement-hardening: done # 2026-05-04 code review close-out applied 5/5 patch findings: fixed bash delimiter PID expansion, enabled main-push story-scope coverage and origin/main equality hard fail, added actionable non-zero `git interpret-trailers` guidance, required whitespace-only closing fences, and rejected `-and-`-joined multi-key branch names. Validation: 42/42 focused tests, actual working-tree story-scope self-check, `git diff --check` clean. # 2026-05-04 dev-story complete; in-progress â†’ review. CI `story-file-scope` job hardened (drop `|| true` on fetch, drop `git diff-tree -r HEAD` fallback, 2-dot diff against `origin/main`, direct-push and empty-diff hard fails, missing-env hard fails, randomized heredoc delimiter, named `::error::` diagnostics); validator made symmetric across `--story-key`/trailer/branch with multi-key rejection and full key enumeration; `git interpret-trailers` absence wrapped in clean `ValidationError`; `parse_allowed_scope` tracks fence marker character/length and terminates only on known labels/headings; multi-block `Allowed files for this story:` parsing exercised. Tests 39/39 PASS (was 25/25). Closed deferred IDs 12.3-RV15 and 15 of 12.4-RV* entries; 5 carried forward. CONTRIBUTING.md updated only where behavior changed. Manual probes and `git diff --check` clean. PR-head SHA validation preserved.
+  epic-14: done
+  14-1-ci-story-scope-enforcement-hardening: done
   14-2-release-pipeline-audit-hardening: done
-  14-3-oidc-and-embedding-security-hardening: done # 2026-05-04 code-review close-out applied 8/8 review patches after 3-layer review: forced-refresh in-flight acquisitions no longer join normal stale-secret fetches; cache recheck uses captured token value; Google + Ollama embedding transport failures and response-read failures wrap in typed exceptions while caller cancellation stays raw; invalid non-blank bearer tokens fail as EmbeddingApiException; OIDC previews redact bearer-shaped text; full input text is force-redacted even below the secret length floor; already-canceled token callers do not start detached fetches. Prior dev-story work remains: IHttpClientFactory OIDC lifetime, URL validation, Ollama 401 DAPR secret eviction, deferred-work closure, and Scope-Override tool ctor fix. Validation: OidcTokenProviderTests 31/31, EmbeddingClientTests 62/62, EmbeddingProviderDefaultsTests 130/130, combined focused slice 223/223, full Server.Tests 1734/1734, git diff --check clean except LF/CRLF warnings.
-  14-4-migration-and-integration-test-hardening: done # 2026-05-04 code-review close-out applied 10/10 original findings and resolved the required Ollama E2E blocker by selecting the existing http launch profile for AppHost Server/MCP resources. Temporary SDK 10.0.201 installed under %TEMP% for validation; commands used DOTNET_HOST_PATH for Aspire child projects. Focused migration tests 29/29 PASS; fake-server tests 19/19 PASS; OllamaEmbeddingEndToEndTests 1/1 PASS.
-  14-5-deferred-register-governance-and-sprint-status-hygiene: done # 2026-05-04 code-review close-out complete; see story artifact Review Findings.
-  epic-14-retrospective: done # 2026-05-12 retrospective complete. Document: _bmad-output/implementation-artifacts/epic-14-retro-2026-05-12.md.
-
-  # --- Phase: Post-MVP - Carry-Forward Operational Risk Closure ---
+  14-3-oidc-and-embedding-security-hardening: done
+  14-4-migration-and-integration-test-hardening: done
+  14-5-deferred-register-governance-and-sprint-status-hygiene: done
+  epic-14-retrospective: done
 
   # Epic 15: Carry-Forward Operational Risk Closure
-  epic-15: in-progress # 2026-05-12 Story 15.1 created; Epic 15 started.
-  15-1-release-edge-case-preflight-hardening: done # 2026-05-13 review close-out (3-layer adversarial: Blind + Edge + Auditor): all 4 ACs PASS; 1 decision resolved (expand skip-condition guard to step level); 12 patches applied (preflight robustness, contract-test CRLF tolerance, fresh-clone evidence, completion-notes truth-claim); 16 carry-forward items recorded as 15.1-RV1..15.1-RV16. Validation: release preflight fixtures 9/9, CiTestInventoryTests 48/48, validate-release-packages.ps1 passed, git diff --check clean.
-  15-2-provider-model-dimension-registry: done # 2026-05-14 review close-out (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 + AC6 PASS, AC5 PARTIAL (contract-tier serialization test gap recorded as 15.2-RV1). 3 decisions resolved (D1 EventStore submodule pointer — kept with Scope-Override; D2 epics.md + sprint-change-proposal — File Scope amended + Scope-Override; D3 AuthMode-after-RateLimit order — accepted and pinned with new ordering-contract tests). 8 patches applied: P1 Registry → ImmutableArray; P2 misleading "DimensionsAtSharedMaximum" test renamed to "UnknownModelAtSharedDimensionMaximum"; P3 tautological mixed-case test strengthened; P4 Ollama rate-limit no-op `with` fixed (6000→30_000); P5 isOllama uses registry-canonical provider.ProviderName; P6 unused ModelRegistryEntry.DefaultDimensions removed; P7 added 2 non-leakage assertions; P8 added 2 ordering-contract tests + remarks XML doc. Validation: EmbeddingProviderDefaultsTests 145/145 PASS (was 141, +4 new); focused slice (Defaults + Client + Actor) 237/237 PASS; full Hexalith.Memories.slnx build 0W/0E. 9 carry-forward items recorded as 15.2-RV1..15.2-RV9.
-  15-3-live-migration-coordination-policy: done # 2026-05-14 code review complete: 1 decision-needed accepted, 11 patches applied (atomic two-key marker write, IsActive default-protective, fail-closed reader, DemandMaster reads, status constants, NormalizeProvider symmetry, tenantId equality, dim validation, FakeStore IsActive parity, +2 retention tests, test substitute alignment). 14 deferred, 1 dismissed. Server.Tests 1772/1772 green.
-  15-4-token-endpoint-transport-policy: done # 2026-05-15 code review complete (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 PASS; 2 decisions resolved (D1 submodule pointer bumps — Scope-Override after force-push blocked by branch protection; D2 Uri-canonicalized loopback equivalents — accept + document + pin); 7 patches applied (P1 drop dead "::1" bracket-less branch; P2 IPv4-mapped IPv6 negative tests; P3 localhost. trailing-dot negative tests; P4 stronger leak guard with host + path + Bearer/client-secret substring checks; P5 rename-safe enforceTokenEndpointTransport parameter replaces propertyName==nameof string gate; P6 [::1]:PORT and localhost:PORT positive parity; P7 last_updated forward-progressing timestamp); 1 deferred (15.4-RV1 tautological sanitization assertions); 5 dismissed.
-  15-5-deferred-register-triage-sweep: done # 2026-05-15 code review complete (3-layer adversarial: Blind + Edge + Auditor): AC1-AC4 PASS; 2 decisions resolved (D1 Hexalith.EventStore + Hexalith.FrontComposer submodule pointer bumps — Scope-Override after force-push blocked by branch protection; D2 deleted scratch _15-5-review-diff.patch artifact); 4 patches applied (File List, Change Log, 12.4-RV11 trigger refinement, Completion Notes correction); 4 deferred (15.5-RV1..15.5-RV4); 6 dismissed.
+  epic-15: in-progress
+  15-1-release-edge-case-preflight-hardening: done
+  15-2-provider-model-dimension-registry: done
+  15-3-live-migration-coordination-policy: done
+  15-4-token-endpoint-transport-policy: done
+  15-5-deferred-register-triage-sweep: done
+  15-6-scaffolding-hardening-sweep: ready-for-dev
   epic-15-retrospective: optional

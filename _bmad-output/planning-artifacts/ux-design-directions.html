@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hexalith.Memories UX Design Directions</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --neutral-0: #ffffff;
+      --neutral-2: #f8f8f8;
+      --neutral-4: #f3f2f1;
+      --neutral-8: #edebe9;
+      --neutral-20: #c8c6c4;
+      --neutral-70: #3b3a39;
+      --neutral-90: #201f1e;
+      --brand: #2563eb;
+      --brand-strong: #174ea6;
+      --success: #107c10;
+      --warning: #8a6100;
+      --danger: #c50f1f;
+      --info: #0078d4;
+      --graph: #5c2d91;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      --radius: 6px;
+      --space: 8px;
+      --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: "Cascadia Mono", "Consolas", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--neutral-4);
+      color: var(--neutral-90);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 288px minmax(0, 1fr);
+    }
+
+    .rail {
+      background: var(--neutral-0);
+      border-right: 1px solid var(--neutral-8);
+      padding: 20px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    .brand {
+      display: grid;
+      gap: 4px;
+      margin-bottom: 20px;
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--neutral-70);
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--neutral-70);
+      padding: 9px 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .nav button:hover {
+      background: var(--neutral-4);
+      color: var(--neutral-90);
+    }
+
+    .nav button[aria-selected="true"] {
+      background: #eaf2ff;
+      border-color: #b9d6ff;
+      color: var(--brand-strong);
+      font-weight: 600;
+    }
+
+    .meta {
+      border-top: 1px solid var(--neutral-8);
+      margin-top: 20px;
+      padding-top: 16px;
+      color: var(--neutral-70);
+      font-size: 12px;
+    }
+
+    main {
+      min-width: 0;
+      padding: 24px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .toolbar h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      border: 1px solid var(--neutral-20);
+      border-radius: var(--radius);
+      background: var(--neutral-0);
+      color: var(--neutral-90);
+      padding: 7px 12px;
+      cursor: pointer;
+    }
+
+    .button.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: white;
+    }
+
+    .direction {
+      display: none;
+      gap: 16px;
+    }
+
+    .direction.active {
+      display: grid;
+    }
+
+    .summary {
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-8);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .summary h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .summary p {
+      margin: 0;
+      color: var(--neutral-70);
+      max-width: 980px;
+    }
+
+    .screen {
+      background: var(--neutral-0);
+      border: 1px solid var(--neutral-8);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .screen-head {
+      min-height: 52px;
+      border-bottom: 1px solid var(--neutral-8);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--neutral-2);
+    }
+
+    .scope {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--neutral-20);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: var(--neutral-0);
+      color: var(--neutral-70);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.success {
+      border-color: #9fd89f;
+      color: var(--success);
+      background: #f1faf1;
+    }
+
+    .pill.warn {
+      border-color: #f4d48a;
+      color: var(--warning);
+      background: #fff8e5;
+    }
+
+    .pill.error {
+      border-color: #f3b0b7;
+      color: var(--danger);
+      background: #fff1f3;
+    }
+
+    .query {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: min(560px, 100%);
+    }
+
+    .query input {
+      width: 100%;
+      border: 1px solid var(--neutral-20);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      color: var(--neutral-90);
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+      gap: 16px;
+    }
+
+    .three {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr) 300px;
+      gap: 16px;
+    }
+
+    .panel {
+      border: 1px solid var(--neutral-8);
+      border-radius: var(--radius);
+      background: var(--neutral-0);
+      min-width: 0;
+    }
+
+    .panel h4 {
+      margin: 0;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--neutral-8);
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .evidence {
+      border: 1px solid var(--neutral-8);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      background: #fff;
+    }
+
+    .evidence.selected {
+      border-color: #8ab4f8;
+      box-shadow: 0 0 0 2px #dbeafe;
+    }
+
+    .evidence h5 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .evidence p {
+      margin: 0;
+      color: var(--neutral-70);
+    }
+
+    .score-row {
+      display: grid;
+      gap: 6px;
+    }
+
+    .score {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr) 42px;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .bar {
+      height: 6px;
+      border-radius: 99px;
+      background: var(--neutral-8);
+      overflow: hidden;
+    }
+
+    .bar span {
+      display: block;
+      height: 100%;
+      background: var(--brand);
+    }
+
+    .bar.graph span {
+      background: var(--graph);
+    }
+
+    .bar.success span {
+      background: var(--success);
+    }
+
+    .timeline {
+      display: grid;
+      gap: 8px;
+    }
+
+    .event {
+      border-left: 3px solid var(--brand);
+      padding: 4px 0 4px 10px;
+      color: var(--neutral-70);
+      font-size: 13px;
+    }
+
+    .event strong {
+      color: var(--neutral-90);
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .grid {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .grid th,
+    .grid td {
+      border-bottom: 1px solid var(--neutral-8);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .grid th {
+      color: var(--neutral-70);
+      font-weight: 600;
+      background: var(--neutral-2);
+    }
+
+    .mono {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .graph-view {
+      min-height: 300px;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(37, 99, 235, 0.10), transparent 22%),
+        radial-gradient(circle at 65% 58%, rgba(92, 45, 145, 0.12), transparent 25%),
+        linear-gradient(135deg, #fbfbfb, #f3f6fb);
+      border: 1px solid var(--neutral-8);
+      border-radius: var(--radius);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .node {
+      position: absolute;
+      width: 132px;
+      border: 1px solid var(--neutral-20);
+      background: var(--neutral-0);
+      border-radius: var(--radius);
+      padding: 8px;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+    }
+
+    .node.primary {
+      border-color: #8ab4f8;
+      box-shadow: 0 0 0 2px #dbeafe;
+    }
+
+    .node.n1 { left: 8%; top: 14%; }
+    .node.n2 { left: 40%; top: 34%; }
+    .node.n3 { left: 68%; top: 18%; }
+    .node.n4 { left: 58%; top: 68%; }
+
+    .mobile-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .footer-note {
+      color: var(--neutral-70);
+      font-size: 12px;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .rail {
+        position: static;
+        height: auto;
+      }
+
+      .two,
+      .three {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-head,
+      .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand">
+        <h1>Hexalith.Memories</h1>
+        <p>UX design direction showcase</p>
+      </div>
+      <nav class="nav" aria-label="Design directions">
+        <button type="button" aria-selected="true" data-target="cockpit">1. Evidence Cockpit</button>
+        <button type="button" aria-selected="false" data-target="activity">2. Case Activity Trail</button>
+        <button type="button" aria-selected="false" data-target="briefing">3. Case Briefing Workspace</button>
+        <button type="button" aria-selected="false" data-target="operator">4. Operator Console</button>
+        <button type="button" aria-selected="false" data-target="command">5. Command First</button>
+        <button type="button" aria-selected="false" data-target="graph">6. Graph Evidence Studio</button>
+        <button type="button" aria-selected="false" data-target="agent">7. Agent Packet Inspector</button>
+        <button type="button" aria-selected="false" data-target="onboarding">8. Onboarding Proof Path</button>
+      </nav>
+      <div class="meta">
+        <strong>Evaluation lens</strong><br>
+        Inspectability, density, tenant safety, recovery states, Fluent UI Blazor fit.
+      </div>
+    </aside>
+
+    <main>
+      <div class="toolbar">
+        <h2 id="pageTitle">Evidence Cockpit</h2>
+        <div class="actions">
+          <button class="button" type="button">Compare</button>
+          <button class="button" type="button">Export Notes</button>
+          <button class="button primary" type="button">Use Direction</button>
+        </div>
+      </div>
+
+      <section class="direction active" id="cockpit" data-title="Evidence Cockpit">
+        <div class="summary">
+          <h3>Direction 1: Evidence Cockpit</h3>
+          <p>Best default direction. A scope-first workspace with a compact query, evidence packet results, source inspection, retrieval axes, and recovery actions visible in one place.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope">
+              <span class="pill success">Tenant verified: contoso</span>
+              <span class="pill">Case: claims-q1</span>
+              <span class="pill warn">Graph partial</span>
+            </div>
+            <div class="query">
+              <input value="Why was claim 4821 denied?" aria-label="Search query">
+              <button class="button primary" type="button">Search</button>
+            </div>
+          </div>
+          <div class="content two">
+            <section class="panel">
+              <h4>Evidence packets</h4>
+              <div class="panel-body">
+                <article class="evidence selected">
+                  <h5>Claim 4821 was denied after duplicate-provider validation failed.</h5>
+                  <p>Strong evidence from event stream, policy document, and causal graph path. Source freshness: 18 hours.</p>
+                  <div class="scope">
+                    <span class="pill success">Evidence 0.91</span>
+                    <span class="pill">3 sources</span>
+                    <span class="pill">4 graph hops</span>
+                  </div>
+                </article>
+                <article class="evidence">
+                  <h5>Related policy update changed the duplicate-provider threshold.</h5>
+                  <p>Medium evidence. Strong semantic match, weaker graph support.</p>
+                  <div class="scope">
+                    <span class="pill warn">Evidence 0.68</span>
+                    <span class="pill">2 sources</span>
+                  </div>
+                </article>
+              </div>
+            </section>
+            <aside class="panel">
+              <h4>Inspect result</h4>
+              <div class="panel-body">
+                <div class="score-row">
+                  <div class="score"><span>Syntactic</span><div class="bar"><span style="width:82%"></span></div><span>0.82</span></div>
+                  <div class="score"><span>Semantic</span><div class="bar success"><span style="width:91%"></span></div><span>0.91</span></div>
+                  <div class="score"><span>Graph</span><div class="bar graph"><span style="width:76%"></span></div><span>0.76</span></div>
+                </div>
+                <div class="evidence">
+                  <h5>Next action</h5>
+                  <p>Inspect the policy source or expand the graph path from <span class="mono">DenyClaim</span>.</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="activity" data-title="Case Activity Trail">
+        <div class="summary">
+          <h3>Direction 2: Case Activity Trail</h3>
+          <p>A GitHub-inspired case history. Best for Marcus and team continuity: memory is navigated through activity, changes, sources, annotations, and searches.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope"><span class="pill success">Case healthy</span><span class="pill">12,847 memory units</span><span class="pill">Last activity: 8 min</span></div>
+            <button class="button primary" type="button">Brief this case</button>
+          </div>
+          <div class="content two">
+            <section class="panel">
+              <h4>Activity</h4>
+              <div class="panel-body timeline">
+                <div class="event"><strong>Search completed</strong>Alex asked why claim 4821 was denied. Evidence strength 0.91.</div>
+                <div class="event"><strong>Source updated</strong>Policy document v3 ingested and linked to claims-q1.</div>
+                <div class="event"><strong>Graph edge inferred</strong><span class="mono">ValidateProvider</span> caused <span class="mono">DenyClaim</span>.</div>
+                <div class="event"><strong>Annotation added</strong>Marcus confirmed threshold change rationale.</div>
+              </div>
+            </section>
+            <aside class="panel">
+              <h4>Case status</h4>
+              <div class="panel-body">
+                <span class="pill success">Tenant isolation verified</span>
+                <span class="pill success">Indexes consistent</span>
+                <span class="pill warn">2 stale sources</span>
+                <span class="pill">Next: refresh policy folder</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="briefing" data-title="Case Briefing Workspace">
+        <div class="summary">
+          <h3>Direction 3: Case Briefing Workspace</h3>
+          <p>Narrative-first, but still evidence-backed. Best for onboarding and team leads who need a sourced case story rather than raw search results.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope"><span class="pill">Briefing: claims-q1</span><span class="pill success">Sources attached</span></div>
+            <div class="actions"><button class="button" type="button">Regenerate</button><button class="button primary" type="button">Share</button></div>
+          </div>
+          <div class="content two">
+            <section class="panel">
+              <h4>Briefing</h4>
+              <div class="panel-body">
+                <article class="evidence selected">
+                  <h5>Claims Q1 centers on duplicate-provider enforcement.</h5>
+                  <p>The case shifted after the March policy update. Most denials connect to validation events introduced after the deployment.</p>
+                </article>
+                <article class="evidence">
+                  <h5>Open questions</h5>
+                  <p>Two stale sources should be refreshed before using this briefing for external reporting.</p>
+                </article>
+              </div>
+            </section>
+            <aside class="panel">
+              <h4>Evidence stack</h4>
+              <div class="panel-body">
+                <span class="pill success">12 primary sources</span>
+                <span class="pill">32 related events</span>
+                <span class="pill warn">2 stale sources</span>
+                <span class="pill">4 verified annotations</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="operator" data-title="Operator Console">
+        <div class="summary">
+          <h3>Direction 4: Operator Console</h3>
+          <p>Health and isolation first. Best for Kenji: tenant verification, backend degradation, ingestion queues, and consistency repair are the first-class objects.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope"><span class="pill success">All tenants isolated</span><span class="pill warn">Vector latency elevated</span></div>
+            <button class="button primary" type="button">Run verification</button>
+          </div>
+          <div class="content">
+            <table class="grid">
+              <thead><tr><th>Tenant</th><th>Isolation</th><th>Indexes</th><th>Graph</th><th>Queue</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>contoso</td><td><span class="pill success">verified</span></td><td>healthy</td><td>partial</td><td>18 pending</td><td><button class="button">Inspect</button></td></tr>
+                <tr><td>fabrikam</td><td><span class="pill success">verified</span></td><td>healthy</td><td>healthy</td><td>0 pending</td><td><button class="button">Inspect</button></td></tr>
+                <tr><td>northwind</td><td><span class="pill warn">verify due</span></td><td>stale</td><td>healthy</td><td>214 pending</td><td><button class="button">Repair</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="command" data-title="Command First">
+        <div class="summary">
+          <h3>Direction 5: Command First</h3>
+          <p>A Raycast-like expert workflow. Best for Alex once experienced: command palette, compact result stream, keyboard-first inspection, and low navigation overhead.</p>
+        </div>
+        <div class="screen">
+          <div class="content mobile-stack">
+            <div class="query">
+              <input value="search claims-q1: why was claim 4821 denied? --explain" aria-label="Command">
+              <button class="button primary" type="button">Run</button>
+            </div>
+            <div class="two">
+              <section class="panel">
+                <h4>Command output</h4>
+                <div class="panel-body">
+                  <article class="evidence selected"><h5>Evidence packet returned</h5><p><span class="mono">scope=contoso/claims-q1 evidence=0.91 freshness=18h</span></p></article>
+                  <article class="evidence"><h5>Available actions</h5><p>Open source, expand graph, export JSON, check ingestion.</p></article>
+                </div>
+              </section>
+              <aside class="panel">
+                <h4>Shortcuts</h4>
+                <div class="panel-body">
+                  <span class="pill">Enter: inspect</span>
+                  <span class="pill">G: graph</span>
+                  <span class="pill">S: sources</span>
+                  <span class="pill">J: JSON</span>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="graph" data-title="Graph Evidence Studio">
+        <div class="summary">
+          <h3>Direction 6: Graph Evidence Studio</h3>
+          <p>Relationship-first exploration. Best when causal intelligence is the star: graph paths, source cards, and edge confidence are visible side by side.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope"><span class="pill">Path: SubmitClaim to DenyClaim</span><span class="pill success">4 hops complete</span></div>
+            <button class="button primary" type="button">Expand path</button>
+          </div>
+          <div class="content two">
+            <div class="graph-view">
+              <div class="node n1">SubmitClaim<br><span class="mono">event</span></div>
+              <div class="node n2 primary">ValidateProvider<br><span class="mono">command</span></div>
+              <div class="node n3">Policy v3<br><span class="mono">source</span></div>
+              <div class="node n4">DenyClaim<br><span class="mono">event</span></div>
+            </div>
+            <aside class="panel">
+              <h4>Selected edge</h4>
+              <div class="panel-body">
+                <span class="pill success">Confidence 0.87</span>
+                <span class="pill">caused_by</span>
+                <p>Inferred from causation ID and confirmed by policy source.</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="agent" data-title="Agent Packet Inspector">
+        <div class="summary">
+          <h3>Direction 7: Agent Packet Inspector</h3>
+          <p>Schema-first design. Best for MCP validation: users inspect exactly what an agent receives, including omitted fields, token budget, and structured recovery actions.</p>
+        </div>
+        <div class="screen">
+          <div class="screen-head">
+            <div class="scope"><span class="pill">Tool: search_memory</span><span class="pill warn">Budget: 1200 tokens</span></div>
+            <button class="button primary" type="button">Validate schema</button>
+          </div>
+          <div class="content two">
+            <section class="panel">
+              <h4>Payload preview</h4>
+              <div class="panel-body">
+                <pre class="mono">{
+  "tenant": "contoso",
+  "case": "claims-q1",
+  "evidenceStrength": 0.91,
+  "sources": 3,
+  "omitted": ["candidateScores"],
+  "nextAction": "inspect_source"
+}</pre>
+              </div>
+            </section>
+            <aside class="panel">
+              <h4>Agent safety</h4>
+              <div class="panel-body">
+                <span class="pill success">typed response</span>
+                <span class="pill success">source-backed</span>
+                <span class="pill warn">scores omitted</span>
+                <span class="pill">expand handle available</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="direction" id="onboarding" data-title="Onboarding Proof Path">
+        <div class="summary">
+          <h3>Direction 8: Onboarding Proof Path</h3>
+          <p>First-30-minutes focus. Best for adoption: setup steps, ingestion progress, first evidence packet, and recovery guidance are staged as a proof path.</p>
+        </div>
+        <div class="screen">
+          <div class="content three">
+            <aside class="panel">
+              <h4>Proof path</h4>
+              <div class="panel-body">
+                <span class="pill success">1. Install</span>
+                <span class="pill success">2. Create tenant</span>
+                <span class="pill success">3. Ingest sample</span>
+                <span class="pill warn">4. First search</span>
+                <span class="pill">5. Inspect evidence</span>
+              </div>
+            </aside>
+            <section class="panel">
+              <h4>First search</h4>
+              <div class="panel-body">
+                <article class="evidence selected"><h5>Your first evidence packet is ready.</h5><p>Search returned 4 sources with tenant-safe scope and an explain summary.</p></article>
+              </div>
+            </section>
+            <aside class="panel">
+              <h4>Recovery</h4>
+              <div class="panel-body">
+                <p>No graph context yet because sample ingestion is still indexing.</p>
+                <button class="button primary" type="button">Check ingestion</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <p class="footer-note">This showcase is a planning artifact. It intentionally uses static HTML/CSS approximations of Microsoft Fluent UI Blazor patterns rather than production component code.</p>
+    </main>
+  </div>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll(".nav button"));
+    const sections = Array.from(document.querySelectorAll(".direction"));
+    const title = document.getElementById("pageTitle");
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.target;
+        buttons.forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+        sections.forEach((section) => {
+          const active = section.id === target;
+          section.classList.toggle("active", active);
+          if (active) {
+            title.textContent = section.dataset.title;
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

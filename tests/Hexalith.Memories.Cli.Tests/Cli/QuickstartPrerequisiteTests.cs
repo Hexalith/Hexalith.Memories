@@ -67,29 +67,29 @@ public sealed class QuickstartPrerequisiteTests
     }
 
     [Fact]
-    public async Task CheckDotnetSdk_Passes_WhenNet9Present()
+    public async Task CheckDotnetSdk_Passes_WhenDotnet10FeatureBandPresent()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.100\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.300\n", string.Empty, TimeSpan.FromMilliseconds(30)));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
-        result.Diagnostic.ShouldContain("10.0.100");
+        result.Diagnostic.ShouldContain("10.0.300");
     }
 
     [Fact]
-    public async Task CheckDotnetSdk_Fails_WhenOnlyOlderSdks()
+    public async Task CheckDotnetSdk_Fails_WhenOnlyOlderFeatureBands()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "6.0.100\n8.0.100\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("No .NET 9+ SDK");
+        result.Diagnostic.ShouldContain("No .NET SDK 10.0.300 or newer");
     }
 
     [Fact]

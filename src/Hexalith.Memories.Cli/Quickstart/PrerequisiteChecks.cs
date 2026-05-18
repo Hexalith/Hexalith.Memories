@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 /// <summary>
-/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 9 SDK, and port
+/// Sub-checks for wizard step 1 (prerequisite verification). Docker, .NET 10 SDK, and port
 /// availability are hard-fail signals; OS platform is informational; DAPR CLI is soft-fail
 /// (its absence is expected for local Aspire-managed dev).
 /// </summary>
@@ -24,6 +24,7 @@ internal sealed partial class PrerequisiteChecks
     private static readonly TimeSpan DockerTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DotnetTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DaprTimeout = TimeSpan.FromSeconds(3);
+    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 300);
 
     private readonly IProcessRunner _processRunner;
 
@@ -72,7 +73,7 @@ internal sealed partial class PrerequisiteChecks
             RecoverySuggestion: null);
     }
 
-    /// <summary>Checks that at least one .NET 9+ SDK is installed via <c>dotnet --list-sdks</c>.</summary>
+    /// <summary>Checks that at least one compatible .NET 10 SDK is installed via <c>dotnet --list-sdks</c>.</summary>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The sub-check result.</returns>
     public async Task<PrerequisiteCheckResult> CheckDotnetSdkAsync(CancellationToken ct)
@@ -84,7 +85,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: ".NET SDK (dotnet) not found on PATH.",
-                RecoverySuggestion: "Install .NET 9 SDK from https://dotnet.microsoft.com/download/dotnet/9.0, then retry.");
+                RecoverySuggestion: "Install .NET SDK 10.0.300 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
         }
 
         if (result.TimedOut)
@@ -100,7 +101,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"'dotnet --list-sdks' failed (exit {result.ExitCode}).",
-                RecoverySuggestion: "Verify .NET 9 SDK is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/9.0 if missing.");
+                RecoverySuggestion: "Verify .NET SDK 10.0.300 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/10.0 if missing.");
         }
 
         string sdkListing = result.StdOut.Trim();
@@ -112,7 +113,7 @@ internal sealed partial class PrerequisiteChecks
                 return new PrerequisiteCheckResult(
                     Passed: false,
                     Diagnostic: "No .NET SDKs were reported by 'dotnet --list-sdks'.",
-                    RecoverySuggestion: "Install .NET 9 SDK from https://dotnet.microsoft.com/download/dotnet/9.0, then retry.");
+                    RecoverySuggestion: "Install .NET SDK 10.0.300 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
             }
 
             // Parse-fail advisory per Risk #4 — unusual locales or formats. Pass with advisory rather
@@ -124,31 +125,40 @@ internal sealed partial class PrerequisiteChecks
                 IsSkipped: true);
         }
 
-        int highestMajor = 0;
+        Version? highestCompatibleVersion = null;
+        Version? highestParsedVersion = null;
         string highestVersion = string.Empty;
         int olderCount = 0;
-        int parsedMajorCount = 0;
+        int parsedVersionCount = 0;
         foreach (Match match in matches)
         {
-            if (!int.TryParse(match.Groups[1].ValueSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int major))
+            if (!int.TryParse(match.Groups[1].ValueSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int major)
+                || !int.TryParse(match.Groups[2].ValueSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int minor)
+                || !int.TryParse(match.Groups[3].ValueSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int patch))
             {
                 continue;
             }
 
-            parsedMajorCount++;
-
-            if (major >= 9 && major > highestMajor)
+            parsedVersionCount++;
+            var version = new Version(major, minor, patch);
+            if (highestParsedVersion is null || version.CompareTo(highestParsedVersion) > 0)
             {
-                highestMajor = major;
+                highestParsedVersion = version;
+            }
+
+            if (version.CompareTo(MinimumDotnetSdkVersion) >= 0
+                && (highestCompatibleVersion is null || version.CompareTo(highestCompatibleVersion) > 0))
+            {
+                highestCompatibleVersion = version;
                 highestVersion = match.Value;
             }
-            else if (major < 9)
+            else if (version.CompareTo(MinimumDotnetSdkVersion) < 0)
             {
                 olderCount++;
             }
         }
 
-        if (parsedMajorCount == 0)
+        if (parsedVersionCount == 0)
         {
             return new PrerequisiteCheckResult(
                 Passed: true,
@@ -157,12 +167,12 @@ internal sealed partial class PrerequisiteChecks
                 IsSkipped: true);
         }
 
-        if (highestMajor < 9)
+        if (highestCompatibleVersion is null)
         {
             return new PrerequisiteCheckResult(
                 Passed: false,
-                Diagnostic: "No .NET 9+ SDK found.",
-                RecoverySuggestion: "Install .NET 9 SDK from https://dotnet.microsoft.com/download/dotnet/9.0, then retry.");
+                Diagnostic: $"No .NET SDK {MinimumDotnetSdkVersion} or newer found. Highest installed SDK: {highestParsedVersion}.",
+                RecoverySuggestion: "Install .NET SDK 10.0.300 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
         }
 
         string suffix = olderCount == 0
@@ -272,6 +282,6 @@ internal sealed partial class PrerequisiteChecks
         return match.Success ? match.Value : string.Empty;
     }
 
-    [GeneratedRegex(@"^(\d+)\.(\d+)\.\d+", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^(\d+)\.(\d+)\.(\d+)", RegexOptions.Multiline)]
     private static partial Regex SdkVersionPattern();
 }

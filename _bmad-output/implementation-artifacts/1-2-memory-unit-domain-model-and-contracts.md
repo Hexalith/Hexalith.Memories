@@ -80,6 +80,18 @@ So that all services share a consistent, versioned type system with serializatio
 - [x] \[Review]\[Patch] Use a collision-free, type-agnostic state-store probe in `DaprStateStoreHealthCheck` [src/Hexalith.Memories.Server/HealthChecks/DaprStateStoreHealthCheck.cs:20]
 - [x] \[Review]\[Patch] Validate public `ContentExtractionClient.Extract` inputs at the boundary [src/Hexalith.Memories.Server/Ingestion/ContentExtractionClient.cs:14]
 
+## Implementation Readiness Addendum (2026-05-18)
+
+This story is historical completed scope and may remain closed. If it is reopened, reimplemented, or used as a template for a future technical story, completion must include observable proof beyond internal type creation.
+
+Required future-rework evidence:
+
+1. Representative schema-compatible JSON payloads for `MemoryUnit`, `GraphEdge`, `MetadataField`, `FailureDetails`, and `ErrorResponse`.
+2. Contract serialization round-trip output for the representative payloads.
+3. At least one downstream consumer fixture, API response, CLI JSON example, or integration-harness assertion proving the contracts are usable outside the contracts assembly.
+
+Pure internal class creation and contract unit tests alone are not sufficient evidence for future work.
+
 ## Definition of Done
 
 1. All V1 types compile with zero warnings under `TreatWarningsAsErrors`
