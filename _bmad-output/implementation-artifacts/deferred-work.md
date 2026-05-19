@@ -1274,3 +1274,43 @@ Fresh re-review of Story 1.1 scaffolding files at HEAD `76aa84c` surfaced seven 
   - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
   - Re-open trigger: An Aspire upgrade renames endpoint keys and the unmatched lookup produces a triage ticket that costs more than the wrapping cost would have saved.
   - Rationale: AppHost-internal helper used for two known endpoint names (`redis`, `falkordb`); the surrounding `OnResourceReady`/`BeforeResourceStartedEvent` callbacks would themselves fail in a debuggable way if the endpoint contract drifts.
+
+## Deferred from: code review of 15-6-scaffolding-hardening-sweep (2026-05-18)
+
+Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced four items deferred as pre-existing, low-risk, or needing runtime verification rather than a blind patch.
+
+- **15.6-CR1. Tight Redis PING reconnect loop without exponential backoff.** `WaitForRedisPingAsync` reconnects every 500 ms for up to 2 minutes against a Redis that may already be struggling; no backoff, no jitter.
+
+  - ID: 15.6-CR1
+  - Status: accepted
+  - Source story: 15-6-scaffolding-hardening-sweep
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: A developer reports AppHost log spam or a Redis backpressure incident traces back to the readiness probe loop.
+  - Rationale: Cosmetic vs functional under current single-developer / CI load profile; the 500 ms cadence is below SE.Redis's own retry intervals and never has more than one in-flight connection.
+
+- **15.6-CR2. Submodule guard `.git`-existence check does not detect partially-cloned submodules.** `Exists('{path}/.git')` passes as long as a `.git` file or directory is present at that path; it does not verify `HEAD` validity or that `git submodule update --init` actually populated content.
+
+  - ID: 15.6-CR2
+  - Status: accepted
+  - Source story: 15-6-scaffolding-hardening-sweep
+  - Target artifact: Directory.Build.props
+  - Re-open trigger: A developer reports a fresh clone that "passes the submodule guard" but actually has missing content, traced to a network failure mid `git submodule update`.
+  - Rationale: Story 15.6 only expanded the *count* of checked submodules (Story 1.1's pre-existing guard pattern); tightening the predicate to verify `HEAD` validity is a separate, broader scope and would require shelling out to git.
+
+- **15.6-CR3. `File.WriteAllText` on DAPR component files is not atomic.** AppHost writes component YAMLs via `File.WriteAllText` which truncates-then-writes; a hot-reload watcher could read a partial file.
+
+  - ID: 15.6-CR3
+  - Status: accepted
+  - Source story: 15-6-scaffolding-hardening-sweep
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: `DAPR_COMPONENT_RELOAD_INTERVAL` gets enabled for local dev, or a developer reports a transient "invalid YAML" sidecar error during AppHost restart.
+  - Rationale: Per-PID directory isolation means no other daprd process watches the same path; the local daprd does not have hot-reload enabled by default. Switching to write-temp-then-rename is a standalone hardening, not a Story 15.6 regression.
+
+- **15.6-CR4. `ResolveAllocatedEndpoint` is called before awaiting the rewrite TCS in `BeforeResourceStartedEvent`.** The endpoint is resolved at the top of the event handler, before the `WaitForRedisComponentRewriteAsync` await. If the event fires before allocation, the resolve throws and the new ordering guard never runs.
+
+  - ID: 15.6-CR4
+  - Status: needs-verification
+  - Source story: 15-6-scaffolding-hardening-sweep
+  - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
+  - Re-open trigger: An Aspire upgrade changes the `BeforeResourceStartedEvent`-vs-allocation contract, or an integration test reproduces the InvalidOperationException ordering.
+  - Rationale: Aspire's `.WaitFor(redis)` chain should prevent the sidecar's `BeforeResourceStartedEvent` from firing until Redis is allocated, but the event lifecycle ordering vs allocation is not contractually documented. Better to confirm with an Aspire-Testing integration test than to reorder code blindly and risk a deadlock.

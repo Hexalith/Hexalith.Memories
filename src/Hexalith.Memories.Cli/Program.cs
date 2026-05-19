@@ -48,11 +48,11 @@ public static class Program
         }
 
         using var cts = new CancellationTokenSource();
-        ConsoleCancelEventHandler cancelHandler = (_, e) =>
+        void cancelHandler(object? _, ConsoleCancelEventArgs e)
         {
             e.Cancel = true;
             cts.Cancel();
-        };
+        }
         Console.CancelKeyPress += cancelHandler;
 
         try

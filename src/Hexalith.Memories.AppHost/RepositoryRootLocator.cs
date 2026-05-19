@@ -10,7 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 /// <summary>Locates the Hexalith.Memories repository root for AppHost-owned local infrastructure.</summary>
 public static class RepositoryRootLocator
 {
-    private const string MarkerFileName = "Hexalith.Memories.slnx";
+    private const string _markerFileName = "Hexalith.Memories.slnx";
 
     /// <summary>Resolves the repository root by walking up from the current directory and AppContext base directory.</summary>
     /// <param name="currentDirectory">Optional current directory override, used by tests.</param>
@@ -33,7 +33,7 @@ public static class RepositoryRootLocator
         }
 
         throw new InvalidOperationException(
-            $"Could not locate '{MarkerFileName}' from CWD '{resolvedCurrentDirectory}' or base directory '{resolvedBaseDirectory}'. " +
+            $"Could not locate '{_markerFileName}' from CWD '{resolvedCurrentDirectory}' or base directory '{resolvedBaseDirectory}'. " +
             "Run AppHost or integration tests from the repository root, or set the test working directory accordingly.");
     }
 
@@ -42,7 +42,7 @@ public static class RepositoryRootLocator
         string candidate = Path.GetFullPath(startDirectory);
         while (!string.IsNullOrWhiteSpace(candidate))
         {
-            if (File.Exists(Path.Combine(candidate, MarkerFileName)))
+            if (File.Exists(Path.Combine(candidate, _markerFileName)))
             {
                 root = candidate;
                 return true;

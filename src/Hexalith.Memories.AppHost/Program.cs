@@ -14,7 +14,14 @@ string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
 GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
+
+// Story 15.6 code review: the rewrite signal is refreshable so a transient OnResourceReady fault
+// does not poison every subsequent sidecar start in the same AppHost session. The first
+// OnResourceReady cycle observes the initial signal; once that signal completes (success OR fault),
+// the next OnResourceReady installs a fresh signal before doing work. A lock guards the snapshot
+// vs. replacement race between BeforeResourceStartedEvent and OnResourceReady when Redis restarts.
 TaskCompletionSource redisComponentRewrite = new(TaskCreationOptions.RunContinuationsAsynchronously);
+object redisComponentRewriteGate = new();
 string? daprPlacementHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS");
 string? daprSchedulerHostAddress = ResolveOptionalEnvironmentValue("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS");
 
@@ -44,16 +51,29 @@ IResourceBuilder<ContainerResource> redis = builder
 EndpointReference redisEndpoint = redis.GetEndpoint("redis");
 redis.OnResourceReady((resource, _, _) =>
 {
+    TaskCompletionSource cycleTcs;
+    lock (redisComponentRewriteGate)
+    {
+        if (redisComponentRewrite.Task.IsCompleted)
+        {
+            // Previous cycle terminated (success or fault). Install a fresh signal so a transient
+            // earlier failure does not permanently poison subsequent sidecar starts.
+            redisComponentRewrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        cycleTcs = redisComponentRewrite;
+    }
+
     try
     {
         (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
         WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
-        redisComponentRewrite.TrySetResult();
+        cycleTcs.TrySetResult();
         return Task.CompletedTask;
     }
     catch (Exception ex)
     {
-        redisComponentRewrite.TrySetException(ex);
+        cycleTcs.TrySetException(ex);
         throw;
     }
 });
@@ -62,9 +82,19 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
     if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
         "memories-mcp-dapr" or "memories-mcp-dapr-cli")
     {
-        (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
-        await WaitForRedisComponentRewriteAsync(redisComponentRewrite.Task, TimeSpan.FromMinutes(2), cancellationToken)
+        Task rewriteSignal;
+        lock (redisComponentRewriteGate)
+        {
+            rewriteSignal = redisComponentRewrite.Task;
+        }
+
+        await WaitForRedisComponentRewriteAsync(rewriteSignal, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
+
+        // Resolve the endpoint AFTER awaiting the rewrite signal — if BeforeResourceStartedEvent
+        // ever races allocation, the rewrite-signal wait gives Redis a chance to finish allocating
+        // before the endpoint lookup throws InvalidOperationException.
+        (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
         await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
     }
@@ -255,14 +285,24 @@ static string EnsureSecretsFile()
     if (!File.Exists(secretsFile))
     {
         File.WriteAllText(secretsFile, "{}" + Environment.NewLine);
-        TryRestrictSecretFilePermissions(secretsFile);
     }
+
+    // Story 15.6 code review: tighten permissions every time the file is observed (idempotent chmod
+    // on Linux/macOS) so a pre-existing secrets.json from a previous AppHost run, or from a release
+    // pre-dating this hardening, does not remain world-readable.
+    TryRestrictSecretFilePermissions(secretsFile);
 
     return secretsFile;
 }
 
 static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
 {
+    // Story 15.6 code review: sweep stale per-PID directories before creating ours. ProcessExit
+    // handlers do not fire on SIGKILL / FailFast / BSOD, so crashed prior sessions leak component
+    // YAMLs (each containing a `secretsFile` path) under %TEMP%. The sweep deletes only directories
+    // whose PID is no longer alive — never touches a running AppHost's directory.
+    SweepStaleDaprComponentDirectories(daprAppId);
+
     string componentsDirectory = Path.Combine(
         Path.GetTempPath(),
         "hexalith-memories-dapr",
@@ -328,7 +368,28 @@ static void TryRestrictSecretFilePermissions(string secretsFile)
         return;
     }
 
-    File.SetUnixFileMode(secretsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    // Story 15.6 code review: the method name promises best-effort, so do not crash AppHost startup
+    // when the filesystem cannot honor POSIX permissions (FAT32/exFAT, SMB without unix-mode
+    // mapping, sandboxed mounts). Wrap and continue.
+    try
+    {
+        File.SetUnixFileMode(secretsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+    catch (IOException ex)
+    {
+        Console.Error.WriteLine(
+            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' skipped ({ex.GetType().Name}: {ex.Message}).");
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        Console.Error.WriteLine(
+            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' denied ({ex.GetType().Name}: {ex.Message}).");
+    }
+    catch (PlatformNotSupportedException ex)
+    {
+        Console.Error.WriteLine(
+            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' unsupported on this runtime ({ex.GetType().Name}).");
+    }
 }
 
 static void RegisterDaprComponentDirectoryCleanup(string componentsDirectory)
@@ -345,11 +406,88 @@ static void DeleteDaprComponentDirectory(string componentsDirectory)
             Directory.Delete(componentsDirectory, recursive: true);
         }
     }
+    catch (IOException ex)
+    {
+        // Story 15.6 code review: surface the failure on stderr instead of swallowing silently.
+        // On Windows shutdown the daprd sidecar typically dies later than AppHost, so files in the
+        // dir may still be locked at the moment cleanup runs — operators previously had no way to
+        // tell why temp directories accumulated.
+        Console.Error.WriteLine(
+            $"Hexalith.Memories AppHost: failed to delete DAPR component directory '{componentsDirectory}': {ex.GetType().Name}: {ex.Message}");
+    }
+    catch (UnauthorizedAccessException ex)
+    {
+        Console.Error.WriteLine(
+            $"Hexalith.Memories AppHost: cleanup denied on DAPR component directory '{componentsDirectory}': {ex.GetType().Name}: {ex.Message}");
+    }
+}
+
+static void SweepStaleDaprComponentDirectories(string daprAppId)
+{
+    string root = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr");
+    if (!Directory.Exists(root))
+    {
+        return;
+    }
+
+    int currentPid = Process.GetCurrentProcess().Id;
+
+    IEnumerable<string> candidates;
+    try
+    {
+        candidates = Directory.EnumerateDirectories(root, $"{daprAppId}-*");
+    }
     catch (IOException)
     {
+        return;
     }
     catch (UnauthorizedAccessException)
     {
+        return;
+    }
+
+    foreach (string dir in candidates)
+    {
+        string name = Path.GetFileName(dir);
+        int dashIndex = name.LastIndexOf('-');
+        if (dashIndex < 0 || dashIndex == name.Length - 1)
+        {
+            continue;
+        }
+
+        ReadOnlySpan<char> pidSpan = name.AsSpan(dashIndex + 1);
+        if (!int.TryParse(pidSpan, NumberStyles.Integer, CultureInfo.InvariantCulture, out int pid))
+        {
+            continue;
+        }
+
+        if (pid == currentPid)
+        {
+            continue;
+        }
+
+        bool processAlive = true;
+        try
+        {
+            using Process existing = Process.GetProcessById(pid);
+            // Cannot fully verify the process is the SAME AppHost (PID reuse is possible), but the
+            // safe default is to leave any directory tied to a live PID alone.
+            processAlive = !existing.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            processAlive = false;
+        }
+        catch (InvalidOperationException)
+        {
+            // Process exited but the handle has not been released — safe to clean.
+            processAlive = false;
+        }
+
+        if (!processAlive)
+        {
+            DeleteDaprComponentDirectory(dir);
+        }
     }
 }
 
@@ -372,6 +510,12 @@ static string EscapeYamlDoubleQuotedScalar(string value)
             '\v' => builder.Append(@"\v"),
             '\f' => builder.Append(@"\f"),
             '\r' => builder.Append(@"\r"),
+            // Story 15.6 code review: YAML 1.2 §5.7 treats U+2028 (Line Separator) and U+2029
+            // (Paragraph Separator) as line breaks inside double-quoted scalars; char.IsControl is
+            // false for both, so the unconditional `Append(ch)` fall-through previously emitted
+            // them verbatim, which a daprd YAML parser would split across logical lines.
+            '\u2028' => builder.Append(@"\L"),
+            '\u2029' => builder.Append(@"\P"),
             _ when char.IsControl(ch) => builder.Append("\\x").Append(((int)ch).ToString("X2", CultureInfo.InvariantCulture)),
             _ => builder.Append(ch),
         };
@@ -475,13 +619,24 @@ static string ResolveRedisConfigPath()
     // Story 6.4: the redis/redis-stack image silently falls back to in-memory defaults if the bind-mounted
     // config is present but empty or missing the AOF directive — which would make "restart durability"
     // green while actually losing data. Reject that up front so AppHost fails loudly instead.
+    //
+    // Story 15.6 code review: also tolerate inline comments without a leading space ("appendonly yes#comment")
+    // and a leading UTF-8 BOM on the first line, which previously produced false negatives that crashed
+    // AppHost startup against valid (if unusual) Redis config files.
     bool hasAppendOnly = File.ReadLines(configPath)
-        .Select(line => line.Trim())
+        .Select(StripBomAndInlineCommentForRedisConf)
         .Where(line => line.Length > 0 && !line.StartsWith('#'))
         .Select(line => line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries))
         .Any(parts => parts.Length >= 2
             && string.Equals(parts[0], "appendonly", StringComparison.OrdinalIgnoreCase)
             && string.Equals(parts[1], "yes", StringComparison.OrdinalIgnoreCase));
+
+    static string StripBomAndInlineCommentForRedisConf(string line)
+    {
+        string trimmed = line.TrimStart('﻿').Trim();
+        int hashIndex = trimmed.IndexOf('#');
+        return (hashIndex >= 0 ? trimmed[..hashIndex] : trimmed).Trim();
+    }
 
     if (!hasAppendOnly)
     {
@@ -495,9 +650,45 @@ static string ResolveRedisConfigPath()
 static string ResolveDaprAppId()
 {
     string? configured = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
-    return string.IsNullOrWhiteSpace(configured)
-        ? "memories-server"
-        : configured.Trim();
+    if (string.IsNullOrWhiteSpace(configured))
+    {
+        return "memories-server";
+    }
+
+    string trimmed = configured.Trim();
+
+    // Story 15.6 code review: the daprAppId is interpolated into a temp directory path and used by
+    // recursive Directory.Delete on shutdown and by the stale-PID-sweep on startup. A hostile env
+    // var containing path-traversal segments ('..'), path separators, or Windows-illegal characters
+    // (':', '<', '>', '|', etc.) could redirect cleanup to operator-chosen directories or fail
+    // unexpectedly at CreateDirectory. Reject anything outside an allow-listed safe charset.
+    if (!IsSafeDaprAppId(trimmed))
+    {
+        throw new InvalidOperationException(
+            $"MEMORIES_DAPR_APP_ID='{trimmed}' is invalid. Allowed characters: ASCII letters, digits, '.', '_', '-'. Length: 1-64.");
+    }
+
+    return trimmed;
+
+    static bool IsSafeDaprAppId(string value)
+    {
+        if (value.Length is 0 or > 64)
+        {
+            return false;
+        }
+
+        foreach (char ch in value)
+        {
+            bool valid = ch is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9')
+                or '.' or '_' or '-';
+            if (!valid)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 static DaprSidecarOptions CreateDaprSidecarOptions(
@@ -683,7 +874,27 @@ static async Task WaitForRedisPingAsync(
                 return;
             }
 
-            throw new InvalidOperationException("Redis did not return PONG to the readiness probe.");
+            // Story 15.6 code review: parse RESP error replies (response starts with '-'). A
+            // -LOADING reply is transient (Redis is restoring its dataset) — keep retrying. Anything
+            // else (-NOAUTH, -ERR, -WRONGPASS, -MASTERDOWN) is misconfiguration that will not
+            // resolve by waiting; throw a non-retryable exception so the operator sees the actual
+            // cause instead of a generic TimeoutException 2 minutes later.
+            string preview = Encoding.UTF8.GetString([.. response]).TrimEnd('\r', '\n');
+            if (response.Count > 0 && response[0] == (byte)'-')
+            {
+                string errorTag = ExtractRedisErrorTag(preview);
+                if (string.Equals(errorTag, "LOADING", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"Redis is still loading its dataset: {preview}");
+                }
+
+                throw new RedisProbeNonRetryableException(
+                    $"{host}:{port} returned a non-retryable Redis error reply to PING: {preview}");
+            }
+
+            throw new InvalidOperationException(
+                $"Redis did not return PONG to the readiness probe (got: '{preview}').");
         }
         catch (Exception ex) when (ex is SocketException or TimeoutException or System.IO.IOException or InvalidOperationException ||
                                    (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
@@ -691,9 +902,24 @@ static async Task WaitForRedisPingAsync(
             lastError = ex;
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
+
+        // RedisProbeNonRetryableException is intentionally NOT in the catch filter above — it
+        // escapes the retry loop and propagates the real Redis error text to the caller.
     }
 
     throw new TimeoutException($"{host}:{port} did not respond to Redis PING within {timeout}.", lastError);
+}
+
+static string ExtractRedisErrorTag(string preview)
+{
+    // RESP error: "-<TAG> <message>". The tag is the first whitespace-delimited token after '-'.
+    if (preview.Length < 2 || preview[0] != '-')
+    {
+        return string.Empty;
+    }
+
+    int spaceIndex = preview.IndexOf(' ', 1);
+    return spaceIndex < 0 ? preview[1..] : preview[1..spaceIndex];
 }
 
 static bool EndsWithCrlf(IReadOnlyList<byte> bytes)
@@ -724,3 +950,17 @@ internal sealed record GeneratedDaprComponentPaths(
     string PubSub,
     string SecretStore,
     string ConversationLlm);
+
+/// <summary>
+/// Story 15.6 code review: signals a Redis readiness probe failure that should NOT be retried —
+/// e.g., authentication misconfiguration or wrong master. Deliberately does NOT inherit from any
+/// type in <see cref="WaitForRedisPingAsync"/>'s catch filter, so the exception escapes the retry
+/// loop and surfaces the real Redis error text to the caller instead of being lost to a generic
+/// <see cref="TimeoutException"/> two minutes later.
+/// </summary>
+internal sealed class RedisProbeNonRetryableException : Exception
+{
+    public RedisProbeNonRetryableException(string message) : base(message)
+    {
+    }
+}

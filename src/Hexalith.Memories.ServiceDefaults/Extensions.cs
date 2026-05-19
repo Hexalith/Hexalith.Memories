@@ -506,23 +506,58 @@ public static class Extensions
             try
             {
                 IDatabase database = multiplexer.GetDatabase();
-                TimeSpan latency = await database.PingAsync(CommandFlags.DemandMaster).ConfigureAwait(false);
+
+                // Story 15.6 code review:
+                //   - CommandFlags.None (not DemandMaster) so the check stays accurate against a
+                //     replica-only client, a Sentinel topology without an elected master, and a
+                //     single-node Redis whose multiplexer never promotes a master view.
+                //   - PingAsync ignores CancellationToken parameters in SE.Redis 2.x, so race the
+                //     ping against the health-check token with WaitAsync — when the framework
+                //     timeout fires we fail-Unhealthy promptly instead of hanging until SE.Redis's
+                //     own command timeout (5 s default) or further.
+                TimeSpan latency = await database
+                    .PingAsync(CommandFlags.None)
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 return HealthCheckResult.Healthy($"Redis PING succeeded in {latency.TotalMilliseconds:n0} ms.");
             }
-            catch (Exception ex) when (ex is RedisException or TimeoutException or InvalidOperationException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                // Honor cooperative cancellation from the framework health-check timeout.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Story 15.6 code review: previous filter only caught RedisException/TimeoutException/
+                // InvalidOperationException, letting ObjectDisposedException and SocketException leak
+                // out as the framework's generic "An unhandled exception was thrown". A readiness
+                // probe should fail closed on ANY exception from the connection check, not propagate.
                 return HealthCheckResult.Unhealthy("Redis PING failed.", ex);
             }
         }
     }
 
-    private sealed class OtlpExporterWarningHostedService(
-        ILogger<OtlpExporterWarningHostedService> logger) : IHostedService
+    private sealed class OtlpExporterWarningHostedService(IServiceProvider services) : IHostedService
     {
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            logger.LogWarning(
-                "OTEL_EXPORTER_OTLP_ENDPOINT is empty in Production; telemetry will be collected in-process but not exported.");
+            // Story 15.6 code review: resolve the logger lazily via IServiceProvider so hosts that
+            // opt out of default logging (minimal test fixtures, headless console hosts) do not crash
+            // at hosted-service activation time. When logging IS missing — which is precisely the
+            // misconfigured-Production scenario this warning was added to surface — fall back to
+            // stderr so the warning still reaches operators rather than being silently swallowed.
+            const string Message = "OTEL_EXPORTER_OTLP_ENDPOINT is empty in Production; telemetry will be collected in-process but not exported.";
+            ILogger<OtlpExporterWarningHostedService>? logger = services
+                .GetService<ILogger<OtlpExporterWarningHostedService>>();
+            if (logger is not null)
+            {
+                logger.LogWarning(Message);
+            }
+            else
+            {
+                Console.Error.WriteLine($"WARN: {Message}");
+            }
+
             return Task.CompletedTask;
         }
 
