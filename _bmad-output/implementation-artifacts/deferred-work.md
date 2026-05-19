@@ -69,17 +69,17 @@ epic. Historical prose entries remain under their original headings for context.
   - Re-open trigger: A release post-mortem traces a regression to a test that existed at one of the named anchor SHAs but was silently fixed before HEAD, or a release-quality story explicitly requests strict literal replay evidence over ancestry-based proof.
   - Rationale: Proposed follow-up story "Strict Release Baseline Replay Evidence" owns the optional proof drill for `12.4-RV20`; this governance sweep does not run historical checkout/build/test lanes or mutate release tooling.
 
-- **12.6-RV5 - carried-forward.** The `EmbeddingInputContentKindTests`
-  telemetry assertion still has dormant test-isolation risk because it uses a
-  fixed tenant id and a non-thread-safe capture list, even though the release
-  filter that exposed the issue was removed by Story 12.6.
+- **12.6-RV5 - resolved.** The `EmbeddingInputContentKindTests` telemetry
+  assertions now use per-test unique tenant ids, tenant-filtered captures, and a
+  thread-safe capture queue, removing the dormant static-meter contamination risk
+  that originally motivated the S11-FA release-lane baseline.
 
   - ID: 12.6-RV5
-  - Status: carried-forward
-  - Source story: 15-5-deferred-register-triage-sweep
+  - Status: resolved
+  - Source story: deferred-work-implementation-2026-05-19
   - Target artifact: tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs
   - Re-open trigger: `EmbeddingInputContentKindTests` flakes again, or another story adds a concurrent `MemoriesMeter.EmbeddingApiCalls` assertion path that could share static meter captures.
-  - Rationale: Proposed follow-up story "Telemetry Test Isolation Hardening" owns the focused test cleanup. Directly editing runtime or test code is outside this triage sweep.
+  - Evidence: The focused telemetry tests now call `UniqueTenantId(...)`, capture only matching `tenant_id` measurements from `MemoriesMeter.EmbeddingApiCalls`, store observations in `ConcurrentQueue<(TenantId, ContentKind, Delta)>`, and assert a single matching metric event per test case.
 
 - **Story-9.3-ProjectionRegistryCrossCheck - carried-forward.** Handler
   mismatch detection still validates observed events against routing config
@@ -141,12 +141,12 @@ epic. Historical prose entries remain under their original headings for context.
    Validation expectations: restore each named anchor SHA in isolated worktrees, run the authoritative release/test lanes available at that SHA, capture pass/fail evidence, and prove no tracked files or submodule pointers drift.
    Scope boundary: evidence-only quality proof; no release tooling behavior changes unless the replay exposes a real defect.
 
-2. **Telemetry Test Isolation Hardening**
+2. **Telemetry Test Isolation Hardening** — completed 2026-05-19.
 
    Deferred IDs: `12.6-RV5`.
    Target artifacts: `tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs` and adjacent telemetry test helpers if needed.
    Validation expectations: make the test use unique tenant/source filtering and thread-safe capture mechanics, run focused `EmbeddingInputContentKindTests`, run the sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` coverage, and run the relevant Server test slice.
-   Scope boundary: test-isolation hardening only; no production telemetry contract change unless the test exposes one.
+   Resolution: implemented as a test-only cleanup in `EmbeddingInputContentKindTests`; no production telemetry contract change was needed.
 
 3. **Projection Registry Cross-Check Design**
 
@@ -702,7 +702,7 @@ The Story 14.4 scope explicitly excludes `13.7-RV5` (sprint-status long-line cle
 - **12.6-RV2 [resolved in 14.5] — `baselineRelated` heuristic backs the unconditional `ShouldBeEmpty` assertion.** `ParseDeferredBaseline` classifies an entry as "baseline-related" via case-insensitive substring of `baseline` or `test-release.ps1`. A pure-prose deferred-work edit (e.g., S11-FD "release pipeline" → "release lane") could flip an entry's classification and break the inventory test with no functional change. Migrate to a structured classifier (e.g., explicit `Filter:` field per entry) before the surface grows. Realizes the 12.4-RV6 concern. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:372-377`)
 - **12.6-RV3 — Single-item parser fixture masks over-matching.** `ReadAcceptedReleaseFilters_ValidKeyedFilter_ReturnsFilter` exercises exactly one comment + one filter line and uses `ShouldHaveSingleItem()`, which would pass even if the parser is matching on the wrong line and dedupes. Strengthen with a 2-filter fixture or one with a comment-line that resembles a filter, to verify the proximity guard and uniqueness logic. (`tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:198-214`)
 - **12.6-RV4 — Discoverability breadcrumb removed from `tools/test-release.ps1`.** Along with the `$projectFilters` block went the only on-script reference to deferred-work bookkeeping. Consider a one-line trailing comment such as `# No per-project baseline waivers; if one becomes necessary, register it in _bmad-output/implementation-artifacts/deferred-work.md and pair it here.` so a future maintainer searching the script for "baseline" finds the policy. (`tools/test-release.ps1:25`)
-- **12.6-RV5 — Underlying S11-FA test still uses fixed tenant id `"t"` and a non-thread-safe capture list.** `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` filters captures by neither tenant nor instrument-source, while its sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` uses unique tenant id + `ShouldHaveSingleItem`. The flake mode that originally motivated S11-FA is dormant, not eliminated, and would re-trip under heavier xunit parallelism or any other test that emits on the static `MemoriesMeter.EmbeddingApiCalls` counter. Story 12.6 closed S11-FA correctly under "stale-filter" disposition; this RV item tracks the test-isolation hardening as a separate work item. Re-open trigger: any flake reappearance on `EmbeddingInputContentKindTests`, or before any future story that adds a third concurrent `EmbeddingApiCalls` test path. (`tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs:84-119`)
+- **12.6-RV5 [resolved 2026-05-19] — Underlying S11-FA test still used fixed tenant id `"t"` and a non-thread-safe capture list.** `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag` filtered captures by neither tenant nor instrument-source, while its sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` used unique tenant id + `ShouldHaveSingleItem`. The flake mode that originally motivated S11-FA was dormant, not eliminated, and could re-trip under heavier xunit parallelism or any other test that emits on the static `MemoriesMeter.EmbeddingApiCalls` counter. Resolved by the 2026-05-19 deferred-work implementation: the affected telemetry tests now use unique tenant ids, tenant-filtered metric capture, `ConcurrentQueue`, and single-event assertions. Re-open trigger: any flake reappearance on `EmbeddingInputContentKindTests`, or before any future story that adds a third concurrent `EmbeddingApiCalls` test path. (`tests/Hexalith.Memories.Server.Tests/NaturalLanguage/EmbeddingInputContentKindTests.cs`)
 
 ## Deferred from: code review of story-12.5 (2026-05-02)
 
@@ -1306,11 +1306,11 @@ Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced 
   - Re-open trigger: `DAPR_COMPONENT_RELOAD_INTERVAL` gets enabled for local dev, or a developer reports a transient "invalid YAML" sidecar error during AppHost restart.
   - Rationale: Per-PID directory isolation means no other daprd process watches the same path; the local daprd does not have hot-reload enabled by default. Switching to write-temp-then-rename is a standalone hardening, not a Story 15.6 regression.
 
-- **15.6-CR4. `ResolveAllocatedEndpoint` is called before awaiting the rewrite TCS in `BeforeResourceStartedEvent`.** The endpoint is resolved at the top of the event handler, before the `WaitForRedisComponentRewriteAsync` await. If the event fires before allocation, the resolve throws and the new ordering guard never runs.
+- **15.6-CR4 - resolved.** `ResolveAllocatedEndpoint` is no longer called before awaiting the rewrite TCS in `BeforeResourceStartedEvent`. The endpoint lookup now occurs after `WaitForRedisComponentRewriteAsync`, so an early sidecar-start event gives Redis allocation and component-file rewrite a chance to complete before the lookup runs.
 
   - ID: 15.6-CR4
-  - Status: needs-verification
-  - Source story: 15-6-scaffolding-hardening-sweep
+  - Status: resolved
+  - Source story: deferred-work-implementation-2026-05-19
   - Target artifact: src/Hexalith.Memories.AppHost/Program.cs
-  - Re-open trigger: An Aspire upgrade changes the `BeforeResourceStartedEvent`-vs-allocation contract, or an integration test reproduces the InvalidOperationException ordering.
-  - Rationale: Aspire's `.WaitFor(redis)` chain should prevent the sidecar's `BeforeResourceStartedEvent` from firing until Redis is allocated, but the event lifecycle ordering vs allocation is not contractually documented. Better to confirm with an Aspire-Testing integration test than to reorder code blindly and risk a deadlock.
+  - Re-open trigger: `ResolveAllocatedEndpoint(redis.Resource, "redis")` moves back above the rewrite wait, an Aspire upgrade changes the `BeforeResourceStartedEvent`-vs-allocation contract, or the `AppHostComponentFileOrderingTests` behavioral guard reproduces an early InvalidOperationException.
+  - Evidence: `src/Hexalith.Memories.AppHost/Program.cs` snapshots the rewrite task, awaits `WaitForRedisComponentRewriteAsync(...)`, then resolves the Redis endpoint before `WaitForRedisPingAsync(...)`; `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs` carries the Docker/Aspire behavioral guard for the ordering invariant.

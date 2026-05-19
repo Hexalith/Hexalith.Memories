@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tests.NaturalLanguage;
 
+using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
 using System.Text.Json;
 
@@ -83,39 +84,21 @@ public sealed class EmbeddingInputContentKindTests
     [Fact]
     public async Task ContentKind_PropagatesToEmbeddingApiCallsMetricTag()
     {
-        List<KeyValuePair<string, object?>> captured = [];
-        using MeterListener listener = new()
-        {
-            InstrumentPublished = (instrument, l) =>
-            {
-                if (instrument.Meter.Name == MemoriesMeter.Name
-                    && instrument.Name == MemoriesMeter.EmbeddingApiCallsName)
-                {
-                    l.EnableMeasurementEvents(instrument);
-                }
-            },
-        };
-        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
-        {
-            foreach (KeyValuePair<string, object?> tag in tags)
-            {
-                captured.Add(tag);
-            }
-        });
-        listener.Start();
-
+        string tenantId = UniqueTenantId("content-kind");
+        ConcurrentQueue<(string TenantId, string ContentKind, long Delta)> captured = [];
+        using MeterListener listener = StartEmbeddingApiCallsCapture(tenantId, captured);
         EmbeddingClient client = CreateMockEmbeddingClient(new float[768]);
         IActorProxyFactory factory = CreateMockActorProxyFactory(allowed: true);
         GenerateEmbeddingActivity activity = CreateActivity(client, factory);
 
         await activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
-            new EmbeddingInput("t", "content", EmbeddingContentKind.NaturalLanguageDescription));
+            new EmbeddingInput(tenantId, "content", EmbeddingContentKind.NaturalLanguageDescription));
 
-        captured.ShouldContain(t =>
-            t.Key == "content_kind"
-            && (string)t.Value! == "naturalLanguageDescription");
-        captured.ShouldContain(t => t.Key == "tenant_id" && (string)t.Value! == "t");
+        (string actualTenantId, string contentKind, long delta) = captured.ShouldHaveSingleItem();
+        actualTenantId.ShouldBe(tenantId);
+        contentKind.ShouldBe("naturalLanguageDescription");
+        delta.ShouldBe(1);
     }
 
     [Fact]
@@ -131,35 +114,15 @@ public sealed class EmbeddingInputContentKindTests
         // A deterministic-replay violation would surface as a deserialization exception or a
         // divergent activity result. The unit variant validates all four invariants without
         // requiring a real durable-task state snapshot.
-        string historicalJson = "{\"TenantId\":\"t-historical\",\"ContentText\":\"pre-9.2 event payload\"}";
+        string tenantId = UniqueTenantId("historical");
+        string historicalJson = $$"""{"TenantId":"{{tenantId}}","ContentText":"pre-9.2 event payload"}""";
 
         EmbeddingInput replayed = JsonSerializer.Deserialize<EmbeddingInput>(historicalJson)!;
-        replayed.TenantId.ShouldBe("t-historical");
+        replayed.TenantId.ShouldBe(tenantId);
         replayed.ContentKind.ShouldBe(EmbeddingContentKind.Payload);
 
-        List<string> capturedKinds = [];
-        using MeterListener listener = new()
-        {
-            InstrumentPublished = (instrument, l) =>
-            {
-                if (instrument.Meter.Name == MemoriesMeter.Name
-                    && instrument.Name == MemoriesMeter.EmbeddingApiCallsName)
-                {
-                    l.EnableMeasurementEvents(instrument);
-                }
-            },
-        };
-        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
-        {
-            foreach (KeyValuePair<string, object?> tag in tags)
-            {
-                if (tag.Key == "content_kind" && tag.Value is string s)
-                {
-                    capturedKinds.Add(s);
-                }
-            }
-        });
-        listener.Start();
+        ConcurrentQueue<(string TenantId, string ContentKind, long Delta)> captured = [];
+        using MeterListener listener = StartEmbeddingApiCallsCapture(tenantId, captured);
 
         float[] vector = new float[768];
         EmbeddingClient client = CreateMockEmbeddingClient(vector);
@@ -171,48 +134,33 @@ public sealed class EmbeddingInputContentKindTests
             replayed);
 
         result.Vector.ShouldBe(vector);
-        capturedKinds.ShouldContain(
+        (string actualTenantId, string contentKind, long delta) = captured.ShouldHaveSingleItem();
+        actualTenantId.ShouldBe(tenantId);
+        contentKind.ShouldBe(
             "payload",
             customMessage: "Replay of a 9.1-shape EmbeddingInput MUST route through the payload tag — "
                 + "divergence here would indicate a workflow-replay determinism hazard.");
+        delta.ShouldBe(1);
     }
 
     [Fact]
     public async Task PayloadKind_EmitsPayloadContentKindTag()
     {
-        List<string> capturedKinds = [];
-        using MeterListener listener = new()
-        {
-            InstrumentPublished = (instrument, l) =>
-            {
-                if (instrument.Meter.Name == MemoriesMeter.Name
-                    && instrument.Name == MemoriesMeter.EmbeddingApiCallsName)
-                {
-                    l.EnableMeasurementEvents(instrument);
-                }
-            },
-        };
-        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
-        {
-            foreach (KeyValuePair<string, object?> tag in tags)
-            {
-                if (tag.Key == "content_kind" && tag.Value is string s)
-                {
-                    capturedKinds.Add(s);
-                }
-            }
-        });
-        listener.Start();
-
+        string tenantId = UniqueTenantId("payload-kind");
+        ConcurrentQueue<(string TenantId, string ContentKind, long Delta)> captured = [];
+        using MeterListener listener = StartEmbeddingApiCallsCapture(tenantId, captured);
         EmbeddingClient client = CreateMockEmbeddingClient(new float[768]);
         IActorProxyFactory factory = CreateMockActorProxyFactory(allowed: true);
         GenerateEmbeddingActivity activity = CreateActivity(client, factory);
 
         await activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
-            new EmbeddingInput("t", "content"));
+            new EmbeddingInput(tenantId, "content"));
 
-        capturedKinds.ShouldContain("payload");
+        (string actualTenantId, string contentKind, long delta) = captured.ShouldHaveSingleItem();
+        actualTenantId.ShouldBe(tenantId);
+        contentKind.ShouldBe("payload");
+        delta.ShouldBe(1);
     }
 
     private static GenerateEmbeddingActivity CreateActivity(
@@ -256,6 +204,48 @@ public sealed class EmbeddingInputContentKindTests
         hostEnvironment.EnvironmentName.Returns("Development");
         return hostEnvironment;
     }
+
+    private static MeterListener StartEmbeddingApiCallsCapture(
+        string tenantId,
+        ConcurrentQueue<(string TenantId, string ContentKind, long Delta)> captured)
+    {
+        MeterListener listener = new()
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Name == MemoriesMeter.Name
+                    && instrument.Name == MemoriesMeter.EmbeddingApiCallsName)
+                {
+                    l.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, measurement, tags, _) =>
+        {
+            string observedTenantId = string.Empty;
+            string observedContentKind = string.Empty;
+            foreach (KeyValuePair<string, object?> tag in tags)
+            {
+                if (tag.Key == "tenant_id")
+                {
+                    observedTenantId = tag.Value?.ToString() ?? string.Empty;
+                }
+                else if (tag.Key == "content_kind")
+                {
+                    observedContentKind = tag.Value?.ToString() ?? string.Empty;
+                }
+            }
+
+            if (string.Equals(observedTenantId, tenantId, StringComparison.Ordinal))
+            {
+                captured.Enqueue((observedTenantId, observedContentKind, measurement));
+            }
+        });
+        listener.Start();
+        return listener;
+    }
+
+    private static string UniqueTenantId(string scenario) => $"{scenario}-{Guid.NewGuid():N}";
 
     private sealed class FixedJitterSource(int fixedMilliseconds) : IJitterSource
     {

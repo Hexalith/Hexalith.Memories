@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-05-19T10:30:00+02:00
+# last_updated: 2026-05-19T12:00:00+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-05-19T10:30:00+02:00
+last_updated: 2026-05-19T12:00:00+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -174,11 +174,11 @@ development_status:
   epic-14-retrospective: done
 
   # Epic 15: Carry-Forward Operational Risk Closure
-  epic-15: in-progress
+  epic-15: done
   15-1-release-edge-case-preflight-hardening: done
   15-2-provider-model-dimension-registry: done
   15-3-live-migration-coordination-policy: done
   15-4-token-endpoint-transport-policy: done
   15-5-deferred-register-triage-sweep: done
   15-6-scaffolding-hardening-sweep: done
-  epic-15-retrospective: optional
+  epic-15-retrospective: done
