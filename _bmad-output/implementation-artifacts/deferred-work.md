@@ -91,7 +91,7 @@ epic. Historical prose entries remain under their original headings for context.
   - Source story: 15-5-deferred-register-triage-sweep
   - Target artifact: src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs; src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs; tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs
   - Re-open trigger: Operator demand, a production incident, or an architecture decision requires mismatch detection to prove actual projection bindings rather than routing declarations.
-  - Rationale: Proposed follow-up story "Projection Registry Cross-Check Design" owns the architectural design and implementation proof. This story records the planning signal without patching handler detection casually.
+  - Rationale: Story 16.1 "Projection Registry Cross-Check Design" owns the architectural design and implementation proof. This story records the planning signal without patching handler detection casually.
 
 - **12.4-RV10 - accepted.** A parse-time warning for dropped bare-token bullets
   may help story authors, but the current out-of-scope-files diagnostic already
@@ -148,7 +148,7 @@ epic. Historical prose entries remain under their original headings for context.
    Validation expectations: make the test use unique tenant/source filtering and thread-safe capture mechanics, run focused `EmbeddingInputContentKindTests`, run the sibling `GenerateEmbeddingActivityTests.ContentKind_PropagatesToTelemetryTag` coverage, and run the relevant Server test slice.
    Resolution: implemented as a test-only cleanup in `EmbeddingInputContentKindTests`; no production telemetry contract change was needed.
 
-3. **Projection Registry Cross-Check Design**
+3. **Projection Registry Cross-Check Design** — promoted to Story 16.1 on 2026-05-19.
 
    Deferred IDs: `Story-9.3-ProjectionRegistryCrossCheck`.
    Target artifacts: `src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs`, `src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs`, `tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`, and any projection-registry design note created by that story.

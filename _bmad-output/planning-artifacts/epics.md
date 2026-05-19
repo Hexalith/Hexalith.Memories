@@ -3027,5 +3027,52 @@ So that the AppHost boot orchestration, ServiceDefaults health/telemetry surface
 **When** the implementation lands,
 **Then** targeted regression coverage exercises the expanded submodule guard, the ready-tagged Redis health check, and the component-file rewrite ordering invariant.
 
+## Epic 16: Projection Registry Cross-Check Hardening
+
+**Lifecycle label:** Operational Readiness / EventStore Integration Hardening.
+
+Maintainers and operators can close the Story 9.3 projection-registry gap by comparing EventStore routing declarations with the projection bindings that tenant application code actually exposes at runtime.
+
+**Preflight required:** Before implementation starts, verify `Story-9.3-ProjectionRegistryCrossCheck` still exists in `_bmad-output/implementation-artifacts/deferred-work.md`, confirm Story 15.5 still carries it forward, and inspect the current `HandlerMismatchDetector`, `HandlerRegistryService`, handler CLI/REST clients, and EventStore projection discovery APIs before designing the patch.
+
+**FRs reinforced:** FR62
+**NFRs reinforced:** NFR8, NFR17, NFR19, NFR27, NFR31
+
+### Story 16.1: Projection Registry Cross-Check Design
+
+As an operator,
+I want handler mismatch detection to compare routing declarations with runtime-bound projection bindings,
+So that events can no longer look "handled" from routing configuration while silently lacking a projection consumer.
+
+**Acceptance Criteria:**
+
+**Given** handler mismatch detection currently treats `EventStoreIntegration:Routing:SourceToTenantMap` as the registration source of truth,
+**When** this story designs and implements the projection cross-check,
+**Then** the implementation defines an explicit repository-owned projection binding contract that can represent tenant, source prefix or aggregate, projection type/name, and supported event/aggregate patterns without mutating the `Hexalith.EventStore` submodule.
+
+**Given** EventStore client discovery already exposes projection metadata through `DiscoveryResult.Projections`,
+**When** the implementation chooses a projection registry shape,
+**Then** it reuses existing EventStore discovery concepts where compatible or records a clear rationale for a Memories-owned adapter, and it does not add a broad new dependency or reflection scanner without tests proving the need.
+
+**Given** a tenant has a `SourceToTenantMap` entry but the runtime projection registry has no matching projection binding,
+**When** `HandlerMismatchDetector.DetectAsync` runs,
+**Then** the report includes an actionable warning for the configured-but-unbound projection path without regressing existing `UnhandledEventType`, `StaleHandler`, or `VersionMismatch` behavior.
+
+**Given** a tenant has both routing and matching projection bindings,
+**When** observed event types match the configured aggregate/source prefix,
+**Then** mismatch detection remains healthy and does not emit the new projection-binding warning.
+
+**Given** this story may extend the experimental HXL002 API shape,
+**When** it changes `HandlerMismatchCategory`, `HandlerMismatchReport`, `HandlerRegistration`, CLI formatting, or REST client behavior,
+**Then** the change is additive, serialized through `MemoriesJsonContext`, covered by contract/CLI/server tests, and preserves existing JSON property names and CLI filtering semantics.
+
+**Given** projection registry data may be absent in deployments that have not opted into the new contract,
+**When** the registry has no bindings,
+**Then** the failure posture is explicit: either report projection bindings as unknown/disabled without false warnings, or emit warnings only when the operator has configured the registry as authoritative.
+
+**Given** the deferred work entry is the source of this story,
+**When** the story completes,
+**Then** `_bmad-output/implementation-artifacts/deferred-work.md` marks `Story-9.3-ProjectionRegistryCrossCheck` as `resolved`, `accepted`, or `carried-forward` with evidence or rationale, and focused validation covers the selected disposition.
+
 
 ---
