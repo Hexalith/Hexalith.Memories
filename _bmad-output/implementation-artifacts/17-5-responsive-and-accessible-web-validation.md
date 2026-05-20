@@ -28,6 +28,15 @@ so that evidence inspection is accessible and reliable rather than visual polish
 - Accessibility evidence is a release artifact and a security surface. Axe summaries, screenshots, traces, copied text, exported snippets, diagnostics, and manual evidence must be bounded, sanitized, relative-path-safe, and covered by a redaction scan or manifest.
 - Manual accessibility evidence must name the workflow, viewport, browser, OS, screen reader or checklist method, tester/date, pass/fail result, defects, severity, owner, waiver state, and release disposition.
 
+## Advanced Elicitation Hardening Clarifications
+
+- Validation must fail closed. A surface cannot be counted as covered unless the inventory names an implementation source, a runnable route/specimen/fixture, selectors or role/label anchors, the validation level, and the evidence row proving each required trust signal was reached.
+- Responsive evidence must prove information parity, not just page rendering. Compact, disclosed, tabbed, drawer, or stacked views must expose the same canonical trust fields and recovery actions through visible text, accessible names, keyboard/touch paths, and sanitized copy/export behavior.
+- Artifact redaction must use seeded canary values for bearer tokens, tenant identifiers, restricted source labels, raw payload fragments, local absolute paths, stack traces, provider internals, and cross-tenant hints. The scan must fail when a canary appears in screenshots, traces, axe summaries, snapshots, copied/exported text, diagnostics, or manual evidence.
+- Tooling gaps are not product passes. Unsupported WCAG 2.2 rules, forced-colors gaps, reduced-motion gaps, browser limitations, or unavailable assistive-technology combinations must be recorded with owner, severity, waiver state, release disposition, and whether product validation remains blocked.
+- Each workflow-level evidence row must include the starting state, state transition, expected focus owner, expected announcement or label, trust-critical field checked, recovery or dismissal outcome, and return-to-origin behavior so settled-state snapshots cannot mask inaccessible transitions.
+- Keep the implementation decision budget small: do not resolve release-blocking thresholds, artifact retention policy, mobile grid transformation, unsupported browser/assistive-technology support, or new component semantics inside this story unless upstream product or architecture artifacts already decide them.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Confirm validation scope, dependencies, and runnable surfaces (AC: 1-6)
@@ -37,6 +46,7 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Identify every runnable Memories/FrontComposer web surface, specimen, or fixture host that represents Evidence Cockpit, Evidence Packet, Source Citation Stack, Retrieval Axis Breakdown, Recovery Action Panel, Case Activity Trail, Agent Packet Inspector, and Operator Console behavior.
   - [ ] Produce a surface inventory table with `surface`, `upstream story/source`, `implementation source`, `runnable route/specimen`, `fixture family`, `selector/testid anchors`, `validation level`, and `blocked/deferred reason` before adding tests.
   - [ ] If a surface is not runnable yet, create the smallest fixture/specimen hook needed to validate existing component behavior. Do not implement new product workflows just to make the validation pass.
+  - [ ] Define the validation claim for each surface as one of `product-route`, `component-specimen`, `contract-fixture`, `blocked`, or `deferred`; require matching evidence before marking the claim complete.
   - [ ] Read `Hexalith.FrontComposer/_bmad-output/project-context.md`, `Hexalith.FrontComposer/tests/README.md`, and `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Testing/README.md` before adding bUnit or Playwright coverage.
   - [ ] Verify the local Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
 
@@ -45,6 +55,8 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Assert that scope, confidence, freshness, source count, evidence health, affected capability, and safest recovery action remain visible or keyboard/touch reachable at every viewport.
   - [ ] Assert trust-critical content does not require horizontal-scroll-only access. Overflow may use drawers, tabs, row details, disclosure regions, stacked layouts, or command menus when keyboard and touch reachable.
   - [ ] Validate compact behavior for data-heavy regions: source citations, axis breakdowns, graph summaries, activity trails, ingestion stages, health matrices, benchmark results, and MCP schema/JSON views.
+  - [ ] Verify sticky headers, sticky actions, drawers, dialogs, command menus, toasts, and status banners do not obscure the focused element or hide scope, confidence, freshness, evidence health, or recovery controls at the tested viewport sizes.
+  - [ ] For any compact transformation, prove the canonical fields remain available through the same contract-backed values rather than duplicated display-only strings that can drift from accessible names, copy/export text, or diagnostics.
   - [ ] Use FrontComposer viewport and density conventions where available, including tablet/phone comfortable density behavior and existing layout breakpoint state.
   - [ ] Do not introduce a separate responsive breakpoint taxonomy unless FrontComposer lacks a needed concept; record any gap as a deferred design decision.
 
@@ -54,6 +66,7 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Use required selector/testid anchors for each scanned surface and fail on zero target nodes so axe scans cannot pass against unrelated shell chrome or empty fixture roots.
   - [ ] Include WCAG 2.2 AA tags where the local axe/tooling stack supports them. If the helper is limited to WCAG 2.0/2.1 tags, record the documented WCAG 2.2 gap and cover it with manual evidence.
   - [ ] Use `data-testid`, accessible role, or label selectors. Do not use CSS class selectors, arbitrary text selectors for framework behavior, committed sleeps, or previous-test state.
+  - [ ] For every automated scan, record the target selector, matched node count, route/specimen identity, fixture family, and scan tags in bounded evidence so an empty or wrong-root scan is diagnosable.
   - [ ] Add bUnit coverage with `Hexalith.FrontComposer.Testing`, `FrontComposerTestBase`, or `BunitContext` plus `AddFluentUIComponents()` for component-level labels, roles, live-region attributes, focus sentinels, and sanitized markup.
   - [ ] Keep axe findings bounded and reviewable. Store only sanitized, relative-path-safe artifacts; do not publish raw payloads, tenant identifiers, local absolute paths, secrets, stack traces, or unrestricted page dumps.
   - [ ] Validate localized visible text, accessible names, tooltip text, live announcements, copied/exported text, and diagnostics through the supported resource path. Include long-string wrapping, pseudo-localized, or French-language expansion evidence where available.
@@ -64,6 +77,7 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Validate drawers, dialogs, source previews, graph detail panels, MCP inspectors, benchmark detail panels, health detail panels, and confirmations move focus inside on open and return focus to the invoking control on close.
   - [ ] For overlays, assert focus trap, background inertness, Escape/cancel behavior, nested overlay behavior where applicable, scroll preservation, and focus return to the invoking control.
   - [ ] Ensure source preview, graph detail, recovery action, tooltip-critical command, status explanation, copy action, export action, and row action behavior works by keyboard and touch. Hover may enhance but must not be required.
+  - [ ] Include transition checks for loading-to-content, loading-to-error, degraded-to-recovered, stale-to-refreshed, compressed-to-expanded, unauthorized/forbidden-to-safe-message, and confirmation-open-to-dismissed states when the upstream fixtures expose those states.
   - [ ] Use appropriate live-region behavior: `polite` for non-blocking updates, assertive or alert semantics only for blocking or safety-critical trust states.
 
 - [ ] Task 4 - Validate reduced-motion, forced-colors, and screen-reader readability (AC: 3)
@@ -71,6 +85,7 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Prove confidence, freshness, evidence health, scope, degraded backend, destructive action, selected row, active filter, and recovery state comprehension does not depend on color, animation, icon shape, chart position, or timeline position alone.
   - [ ] Validate text equivalents for charts, matrices, timelines, score bars, graph summaries, JSON/schema views, and status badges.
   - [ ] Validate 44x44px touch targets at phone/tablet widths and zoom or reflow behavior for trust-critical content where local FrontComposer/Playwright tooling supports it.
+  - [ ] When browser/tooling support is absent for forced-colors, reduced-motion, zoom, reflow, or screen-reader automation, record the exact unsupported check as a gap and pair it with manual evidence or a deferred release decision; do not mark it as passed by omission.
   - [ ] Include at least one documented screen-reader pass or equivalent manual accessibility checklist for the trust workflow selected by the implementation team. The record must include screen reader or checklist method, browser, OS, tester/date, workflow script, result, defects, severity, owner, waiver state, and release disposition.
   - [ ] Track any unresolved human accessibility defects before release; do not mark validation complete on automated axe pass alone when manual checks fail.
 
@@ -80,11 +95,14 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Include tenant-isolation cases proving accessible labels and copy/export payloads do not disclose whether evidence exists outside the current authorization scope.
   - [ ] Treat accessibility labels and diagnostics as security surfaces equal to visible UI. Do not build them from raw JSON, exception text, local paths, DOM text reconstruction, or backend diagnostic dumps.
   - [ ] Require a sanitization manifest or redaction scan for committed or archived axe summaries, screenshots, traces, copied/exported text, diagnostics, and manual accessibility evidence.
+  - [ ] Seed redaction canaries for bearer tokens, tenant identifiers, restricted source labels, raw packet fragments, local absolute paths, provider internals, stack traces, and cross-tenant hints; fail validation if any canary appears in a user-visible, accessibility, copy/export, diagnostic, or artifact surface.
 
 - [ ] Task 6 - Produce validation evidence and release guardrails (AC: 1-6)
   - [ ] Add an AC-to-evidence matrix listing each surface, viewport width/height, browser/project, state fixture, automated check, keyboard path, focus contract, reduced-motion/forced-colors result, screen-reader/manual result, artifact path, sanitization scan result, and defect disposition.
   - [ ] Distinguish bUnit/unit evidence from Playwright evidence and do not count fixture-only validation as product-surface validation.
   - [ ] Include at least one workflow-level evidence row per role/lens, such as inspect packet, open source/axis/graph detail, understand degraded or recovery state, act or dismiss, and return to origin.
+  - [ ] Include reproducibility metadata for each evidence row: command, relative working directory, browser/project, fixture family, viewport, culture/localization setting, media emulation, and sanitized artifact location.
+  - [ ] Treat any uncovered trust-critical surface, missing selector, zero-node scan, unsanitized artifact, unsupported tooling gap without manual evidence, or unresolved release-blocking manual defect as `blocked` or `deferred` in the matrix rather than silently passing the story.
   - [ ] Store validation artifacts under existing test artifact or Playwright output conventions. Keep artifacts bounded, sanitized, relative-path-safe, and excluded from commits unless the repo already tracks that class of fixture evidence.
   - [ ] Bound Playwright/E2E to smoke paths per runnable surface and required viewport. Keep state matrices, negative permutations, and redaction cases in bUnit/unit tests unless a browser-specific interaction is being verified.
   - [ ] Run focused bUnit/unit tests for changed Memories web or FrontComposer component/test projects.
@@ -181,6 +199,7 @@ GPT-5
 
 - 2026-05-20: Created ready-for-dev story artifact for Responsive and Accessible Web Validation.
 - 2026-05-20: Party-mode review applied story hardening for dependency gates, runnable-surface inventory, WCAG/tooling gaps, selector and axe scan boundaries, manual accessibility evidence, localization, overlay focus behavior, artifact sanitization, and bounded validation evidence.
+- 2026-05-20: Advanced elicitation applied story hardening for fail-closed coverage claims, responsive information parity, redaction canaries, tooling-gap disposition, transition evidence, and reproducibility metadata.
 
 ## Party-Mode Review
 
@@ -205,6 +224,32 @@ GPT-5
   - Final artifact retention policy for accessibility evidence remains a product, QA, or governance decision.
   - Mobile grid-to-card transformation strategy remains a UX and implementation decision unless already defined upstream.
   - Unsupported browser and assistive-technology matrix beyond the initial validation set remains a product/QA decision.
+- Final recommendation: ready-for-dev
+
+## Advanced Elicitation
+
+- Date: 2026-05-20T18:40:55.2815771+02:00
+- Selected story key: `17-5-responsive-and-accessible-web-validation`
+- Command/skill invocation used: `/bmad-advanced-elicitation 17-5-responsive-and-accessible-web-validation`
+- Batch 1 method names: Red Team vs Blue Team; Security Audit Personas; Failure Mode Analysis; Self-Consistency Validation; Tree of Thoughts
+- Reshuffled Batch 2 method names: First Principles Analysis; Pre-mortem Analysis; Architecture Decision Records; Challenge from Critical Perspective; Comparative Analysis Matrix
+- Findings summary:
+  - Story 17.5 already had strong validation scope controls, but it still needed a fail-closed definition of what counts as coverage so empty scans, missing selectors, and fixture-only evidence cannot become implicit product passes.
+  - Responsive validation needed information-parity language so compact layouts preserve canonical trust fields across visible text, accessible names, keyboard/touch paths, and copy/export behavior.
+  - Artifact sanitization needed seeded canary checks to prove screenshots, traces, axe summaries, diagnostics, manual notes, and copied/exported text cannot leak tenant-sensitive or machine-local content.
+  - Tooling and assistive-technology gaps needed explicit disposition so unsupported checks are tracked as manual evidence, deferred decisions, or blockers rather than silently treated as passed.
+  - Evidence rows needed reproducibility and transition semantics so settled-state screenshots cannot hide inaccessible focus, announcement, loading, degraded, stale, unauthorized, or dismissed states.
+- Changes applied:
+  - Added `## Advanced Elicitation Hardening Clarifications`.
+  - Tightened Task 0 with explicit validation claim states.
+  - Tightened Tasks 1 through 5 with information-parity, obscured-focus, target-node evidence, state-transition, tooling-gap, and redaction-canary requirements.
+  - Tightened Task 6 with reproducibility metadata and fail-closed blocked/deferred matrix behavior.
+- Findings deferred:
+  - Release-blocking thresholds for manual accessibility defects remain a product or release decision.
+  - Accessibility artifact retention policy remains a product, QA, or governance decision.
+  - Mobile grid transformation strategy remains a UX and implementation decision unless already decided upstream.
+  - Unsupported browser and assistive-technology support beyond the initial validation set remains a product/QA decision.
+  - New component semantics or FrontComposer framework behavior remain out of scope unless upstream architecture or product artifacts define them.
 - Final recommendation: ready-for-dev
 
 ## Story Completion Status
