@@ -17,6 +17,15 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
 5. Given advanced users need fast access, when the command palette or command surface is opened, then search, ingest, inspect source, verify tenant, open graph, retry ingestion, export packet, and inspect MCP payload actions are discoverable with accessible labels.
 6. Given memory units, sources, ingestion jobs, case activity, tenant checks, backend health, or benchmark results are listed, when data grids render, then they support sorting, filtering, status badges, row actions, and keyboard navigation without hiding trust-critical fields.
 
+## Advanced Elicitation Hardening Clarifications
+
+- Story 17.3 must bind every interaction family to an upstream contract, FrontComposer primitive, or explicit unavailable fallback before behavior is added. Forms, filters, navigation, overlays, confirmations, commands, and grids may adapt presentation shape, but they must not invent parallel state, scope, filter, recovery, command, or trust semantics.
+- Interaction state must be captured as a tenant/case/search-scoped snapshot and revalidated before execution. Scope changes, authorization changes, stale route context, missing packet fields, and contract-version mismatch must disable or degrade affected commands, confirmations, overlays, and grid selections with localized reasons instead of reusing stale targets.
+- Filter and grid behavior must preserve evidence meaning under transition and compact states. Unknown or future filter operators, confidence values, evidence states, graph depths, source types, and row action targets must render as unavailable or disabled contract-boundary states rather than being coerced into known labels.
+- Confirmation, copy, export, diagnostics, command preview, MCP payload inspection, and accessibility labels must share the same sanitization and redaction path as visible UI. Do not build secondary outputs from raw packet dumps, DOM text, local paths, exception text, browser storage, or diagnostic panels.
+- Keyboard, touch, and assistive-technology flows must cover state transitions as well as settled controls: filter changes, tenant/case changes, stale navigation restore, command rejection, confirmation cancel/accept, overlay close, grid row expansion, and focus return all need deterministic evidence.
+- If implementation discovers that the current contract cannot express a required interaction consequence, return path, filter effect, command target, or recovery expectation, record the contract gap for Story 2.7 or a follow-up. Do not patch upstream contract, CLI, MCP, retrieval, or FrontComposer framework policy from this story.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Confirm contract, scope, and web foundation before implementation (AC: 1-6)
@@ -26,6 +35,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] Read `Hexalith.FrontComposer/_bmad-output/project-context.md`, `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Shell/Infrastructure/Tenancy`, `State/Navigation`, `State/CommandPalette`, `State/DataGridNavigation`, `Components/DataGrid`, `Components/Forms`, and `Components/Layout` before adding new interaction behavior.
   - [ ] Treat this story as a consume-only interaction story. Do not introduce new Evidence Packet grammar, evidence states, filter semantics, confidence labels, recovery codes, expansion-handle meanings, command taxonomy, or trust visual grammar outside definitions owned by Stories 2.7, 17.1, and 17.2.
   - [ ] Map each implemented interaction family (forms, filters, navigation, overlays, confirmations, commands, and grids) to the specific upstream contract or component source it consumes before adding behavior.
+  - [ ] Define a traceability table in code, tests, or developer documentation that names the contract fields, FrontComposer state source, authorization source, localized resource keys, and unavailable fallback for every implemented interaction family.
   - [ ] Identify the authoritative existing FrontComposer components, state objects, route helpers, command policies, and test utilities to extend before creating Memories-specific wrappers. Create parallel primitives only when no suitable local API exists and record the reason.
   - [ ] Verify the local Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
 
@@ -42,6 +52,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] Reuse existing FrontComposer data-grid filter components such as `FcFilterSummary`, `FcStatusFilterChips`, `FcColumnFilterCell`, `FcFilterResetButton`, and data-grid navigation state before adding Memories-specific wrappers.
   - [ ] Preserve trust-critical fields in compact grids: tenant, case, confidence, freshness, evidence health, source count, recovery state, and scope status must stay visible or reachable without horizontal-scroll-only access.
   - [ ] Empty filtered states must distinguish no match from filtered-out evidence, inaccessible scope, missing source, stale memory, degraded backend, or insufficient evidence where the Evidence Packet allows.
+  - [ ] Treat unknown or future filter operators, confidence values, evidence states, graph depths, source types, and malformed filter metadata as unavailable contract-boundary states with visible and accessible explanations, not as successful empty results.
 
 - [ ] Task 3 - Preserve context through navigation and overlays (AC: 3, 4)
   - [ ] Use FrontComposer navigation state, bounded context parsing, route helpers, and shell conventions to preserve tenant/case/search context when opening sources, graph paths, activity items, operator checks, or MCP packets.
@@ -49,6 +60,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] Inspection overlays for source, graph, reasoning, MCP payload, export, and repair flows must preserve underlying packet context and use predictable focus entry/return behavior.
   - [ ] Preserve repeated-work context through the existing FrontComposer navigation/state mechanisms where available: active filters, selected packet or source, grid page and sort, expanded evidence, and return location. Do not add new browser-refresh persistence unless an existing tenant-scoped mechanism already supports it.
   - [ ] Do not put tenant/case/search context in singleton/static UI services or unscoped browser storage. Respect Blazor Auto, prerender, Server circuit, WASM lifetime, reconnect, and state handoff constraints.
+  - [ ] Revalidate restored route, overlay, command, and grid-row targets against the current tenant, case, authorization decision, packet identity, and contract version before rendering action surfaces.
   - [ ] If the contract cannot preserve a specific return target, render a safe generic return path and record the missing contract field as a deferred follow-up rather than inventing hidden state.
 
 - [ ] Task 4 - Add safe confirmation and command access (AC: 4, 5)
@@ -57,6 +69,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] Surface command actions for search, ingest, inspect source, verify tenant, open graph, retry ingestion, export packet, and inspect MCP payload only when the current packet, context, and authorization decision make the action safe.
   - [ ] Use command palette and command-surface patterns from `FcCommandPalette`, `PaletteResult`, `CommandPaletteEffects`, command policy lookup, and authorization services instead of free-form action dispatch.
   - [ ] Ensure confirmation and command payloads expose bounded contract/evidence identifiers, tenant and case context, and recovery affordance grammar from Story 17.2 without exposing raw payloads or restricted details.
+  - [ ] Re-check command and confirmation targets at activation time so stale palette results, changed tenant/case scope, permission changes, or packet reloads cannot execute against an old evidence context.
   - [ ] Advanced commands must have accessible labels, keyboard operation, disabled reasons where unavailable, and bounded diagnostics when rejected.
 
 - [ ] Task 5 - Add focused component, state, and accessibility tests (AC: 1-6)
@@ -68,6 +81,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] Test command palette/action availability, accessible labels, disabled reasons, and tenant/user scope reset on scope changes.
   - [ ] Test data-grid sorting, filtering, status badges, row actions, keyboard navigation, compact column priority, and reachable trust-critical fields.
   - [ ] Add tenant-isolation interaction tests proving tenant changes reset or partition active filters, saved navigation state, command targets, confirmation payloads, grid selection, and row expansion state.
+  - [ ] Add stale-context and version-mismatch tests proving restored routes, cached command results, overlay targets, selected rows, and confirmation payloads are revalidated or disabled before action dispatch.
   - [ ] Add contract-boundary negative tests proving unknown Evidence Packet states, filter operators, confidence values, recovery codes, expansion handles, malformed packet fragments, missing tenant context, stale navigation context, and cross-tenant leakage attempts are rejected, safely ignored, or rendered as upstream-defined degraded/recovery states.
   - [ ] Verify localized resource usage for user-visible validation, confirmation, empty-state, recovery, command, and filter-inspection text added by this story.
   - [ ] Limit snapshot or golden-fixture tests to contract-boundary behavior and sanitized evidence; do not use broad visual snapshots as the primary acceptance proof.
@@ -79,6 +93,7 @@ so that web interactions remain safe, predictable, and efficient for repeated wo
   - [ ] At phone and tablet widths, verify filters, grids, command palette results, overlays, and confirmations remain keyboard/touch reachable without hiding tenant, case, trust, confidence, recovery, or source context.
   - [ ] Run automated accessibility checks where the repo already supports them. For FrontComposer E2E, use the existing `tests/e2e` axe helper pattern and role/label or `data-testid` selectors, not CSS class selectors or sleeps.
   - [ ] Verify one focus contract per interactive surface: initial focus target, tab order, escape/cancel behavior, confirmation behavior, focus return, and screen-reader announcement for filters, commands, confirmations, overlays, and grid row actions.
+  - [ ] Include transition-state checks for filter apply/reset, tenant or case switch, stale navigation restore, command rejection, confirmation cancel/accept, overlay close, and grid row expand/collapse.
   - [ ] Run `git diff --check`.
 
 ## Dev Notes
@@ -198,6 +213,7 @@ GPT-5
 
 - 2026-05-20: Created ready-for-dev story artifact for Contract-Aware Web Interaction Patterns.
 - 2026-05-20: Party-mode review hardening applied for consume-only contract boundaries, tenant-isolation evidence, canonical fixtures, accessibility, responsive behavior, localization, and deferred decision guardrails.
+- 2026-05-20: Advanced elicitation hardening applied for interaction traceability, stale-context revalidation, transition accessibility, command activation safety, and redaction parity.
 
 ## Party-Mode Review
 
@@ -223,6 +239,31 @@ GPT-5
   - Global versus page-scoped versus role-scoped command palette behavior.
   - Invalid upstream contract rendering policy.
   - Any new trust/confidence visual hierarchy or upstream contract grammar.
+- Final recommendation: ready-for-dev
+
+## Advanced Elicitation
+
+- Date/time: 2026-05-20T18:06:25+02:00
+- Selected story key: `17-3-contract-aware-web-interaction-patterns`
+- Command/skill invocation used: `/bmad-advanced-elicitation 17-3-contract-aware-web-interaction-patterns`
+- Batch 1 method names: Red Team vs Blue Team, Security Audit Personas, Failure Mode Analysis, Self-Consistency Validation, Tree of Thoughts
+- Reshuffled Batch 2 method names: First Principles Analysis, Pre-mortem Analysis, Architecture Decision Records, Challenge from Critical Perspective, Comparative Analysis Matrix
+- Findings summary:
+  - The story was strong on consume-only boundaries, but interaction implementation still needed sharper traceability from each form, filter, navigation, overlay, confirmation, command, and grid behavior to an upstream contract or FrontComposer source.
+  - Stale command targets, restored navigation context, selected grid rows, overlays, and confirmation payloads were the highest implementation risks because they could execute against an old tenant/case/search context.
+  - Secondary surfaces such as copy, export, diagnostics, MCP inspection, command preview, accessible labels, and snapshots needed explicit redaction parity with visible UI.
+  - Test guidance needed transition-state coverage, not only settled component rendering.
+- Changes applied:
+  - Added `## Advanced Elicitation Hardening Clarifications`.
+  - Added traceability-table guidance for contract, FrontComposer, authorization, localization, and unavailable fallback sources.
+  - Added unknown/future filter and metadata handling as unavailable contract-boundary states.
+  - Added route, overlay, command, grid-row, and confirmation target revalidation requirements.
+  - Added stale-context, version-mismatch, activation-time, transition-state, and redaction-parity test requirements.
+- Findings deferred:
+  - Browser-refresh persistence for interaction state remains a product/architecture decision unless an existing tenant-scoped mechanism already supports it.
+  - Mobile grid/card transformation remains deferred to the responsive validation story or approved UX design.
+  - New upstream contract fields for interaction consequences, return paths, filter effects, command targets, or recovery expectations remain Story 2.7 or follow-up work.
+  - Global versus page-scoped versus role-scoped command palette policy remains deferred unless already implemented locally.
 - Final recommendation: ready-for-dev
 
 ## Story Completion Status
