@@ -73,3 +73,4 @@
 2026-05-20T11:45:58.2547115+02:00	party-mode-review	17-3-contract-aware-web-interaction-patterns	ok	applied party-mode hardening for consume-only contracts tenant isolation accessibility responsive and test evidence
 2026-05-20T11:53:09.7603767+02:00	advanced-elicitation	2-7-evidence-packet-contract-mapping	ok	applied advanced elicitation hardening for mapping precedence expansion sanitization and fixture parity
 2026-05-20T11:58:56.2860774+02:00	advanced-elicitation	16-1-projection-registry-cross-check-design	ok	applied advanced elicitation hardening for tenant boundaries deterministic matching provider failure and liveness boundaries
+2026-05-20T12:03:43+02:00	create-story	17-4-role-specific-web-inspection-lenses	ok	active-dev-story soft warning from preflight 2026-05-20T10:02:05Z stdout:  M _bmad-output/implementation-artifacts/2-7-evidence-packet-contract-mapping.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n; created ready-for-dev story
