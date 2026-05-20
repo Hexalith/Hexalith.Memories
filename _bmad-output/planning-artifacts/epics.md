@@ -3,13 +3,14 @@ stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
+  - '_bmad-output/planning-artifacts/ux-design-specification.md'
 ---
 
 # Hexalith.Memories - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD and Architecture requirements into implementable stories.
+This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD, UX Design Specification, and Architecture requirements into implementable stories.
 
 ## Requirements Inventory
 
@@ -223,7 +224,89 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 
 ### UX Design Requirements
 
-UX guidance is captured in `ux-design-specification.md`. For MVP and Phase 1.5, the UX requirements apply primarily to CLI, MCP, structured errors, Evidence Packet semantics, tenant/case scope visibility, degraded-state handling, omitted-detail expansion, and recovery actions. Future Fluent UI / FrontComposer web UI guidance remains future-phase design guidance unless a later sprint change explicitly pulls web UI work into scope.
+- UX-DR1: Define the Evidence Packet as the shared response object across CLI, MCP, and future web UI, including scope, result, sources, evidence, graph, state, omitted details, and recovery actions.
+- UX-DR2: Every evidence packet must identify tenant and case scope, top source references, evidence strength, freshness status, retrieval axes used, explain summary, graph relationship summary when relevant, and the next recovery action when evidence is weak, incomplete, absent, or out of scope.
+- UX-DR3: If details are omitted for compactness or token budget, the response must say what was omitted and provide deterministic expansion handles or equivalent expansion guidance.
+- UX-DR4: Search must be scope-first; tenant and case context must be visible before query submission, preserved through result inspection, and treated as trust-blocking when ambiguous, unavailable, unauthorized, or inconsistent.
+- UX-DR5: Implement a Trust Strip for Evidence Packet and briefing surfaces with tenant, case, confidence state, freshness state, source count, evidence health, and optional token-budget indicator.
+- UX-DR6: Implement a Scope Header for search, ingestion, briefing, tenant verification, operator workflows, and compact/mobile contexts so tenant, case, permissions, and isolation state remain visible.
+- UX-DR7: Search responses must begin the full trust loop in one query by including source lookup, evidence strength scoring, explain breakdown, relevant graph context, and a safe next action.
+- UX-DR8: Deeper inspection must use progressive disclosure: detailed source snippets, scoring math, graph paths, token-budget behavior, backend diagnostics, and candidate details are available but secondary to the evidence summary.
+- UX-DR9: Empty, weak, stale, degraded, unauthorized, and compressed states must be first-class states with a clear state title, short explanation, diagnostic clue, and recovery action.
+- UX-DR10: No-result states must distinguish no match, not ingested yet, wrong case, inaccessible tenant/case, stale memory, degraded backend, graph gap, and insufficient evidence.
+- UX-DR11: Implement a Recovery Action Panel or Recovery Footer for incomplete Evidence Packets, no-result states, operator warnings, and MCP structured errors, with one safest next action and optional secondary actions.
+- UX-DR12: Conflicting evidence must be exposed rather than smoothed away, including competing sources, stale versus fresh memory, high lexical match with weak graph support, strong graph context with weak source confidence, and backend disagreement.
+- UX-DR13: CLI UX must be keyboard-driven and developer/operator focused, with compact explain output, actionable diagnostics, tenant/case visibility, and scriptable output formats.
+- UX-DR14: MCP UX must be schema-first, typed, bounded, source-attributed, confidence-aware, token-budget-aware, and structured so agents can act without parsing prose-only explanations.
+- UX-DR15: Future web UI composition must use Hexalith.FrontComposer patterns and Microsoft Fluent UI Blazor primitives for controls, navigation, forms, grids, dialogs, drawers, tabs, menus, status feedback, layout, and focus behavior.
+- UX-DR16: Future web surfaces must provide an Evidence Cockpit lens centered on scoped search, Evidence Packets, source inspection, retrieval axes, graph context, and recovery actions.
+- UX-DR17: Implement a Retrieval Axis Breakdown component or response section for explain mode and benchmark inspection, showing raw score, normalized score, fusion contribution, ranking reason, omitted/degraded axis state, and detail expansion.
+- UX-DR18: Implement a Source Citation Stack for cited sources, including source type, origin identifier, freshness, snippet or summary, confidence/metadata origin, and keyboard-openable preview behavior where UI exists.
+- UX-DR19: Implement a Graph Path Summary for causal and why-oriented workflows, showing relationship path, edge type, confidence, gap markers, and chronological ordering.
+- UX-DR20: Implement an Agent Packet Inspector pattern for MCP debugging, including request summary, response schema, token budget, omitted fields, expansion handles, structured errors, copy controls, and accessible schema/JSON views.
+- UX-DR21: Implement Case Activity Trail patterns for Marcus-style continuity, showing ingestion events, searches, membership changes, annotations, health states, source links, and briefing context.
+- UX-DR22: Implement Ingestion Lifecycle Tracker patterns for pending, queued, extracting, embedding, indexing, indexed, failed, retried, and re-ingested states.
+- UX-DR23: Implement Operator Health Matrix patterns for tenant verification, backend health, isolation status, ingestion health, consistency repair, degradation, and alert states.
+- UX-DR24: Implement Benchmark Result Comparator patterns for three-axis validation, hybrid-vs-single-axis comparison, NDCG@10 evidence, and thesis review.
+- UX-DR25: Use a consistent evidence state grammar across CLI, MCP, and web UI: confidence (`supported`, `partial`, `disputed`, `insufficient`), freshness (`current`, `aging`, `stale`, `unknown`), evidence health (`complete`, `degraded`, `missing source`, `schema mismatch`), and scope (`verified`, `inferred`, `cross-case`, `unauthorized`, `out-of-scope`).
+- UX-DR26: Feedback patterns must answer what happened, what it affects, how serious it is, and what to do next; trust-critical feedback appears close to the affected Evidence Packet or object rather than only in global notifications.
+- UX-DR27: Form patterns must be contract-aware and validation-first, with tenant and case scope near the top and actionable validation for tenant, case, source, permissions, and dangerous scope changes.
+- UX-DR28: Search and filtering patterns must expose active filters for axis, source type, freshness, confidence, time range, metadata, graph depth, and evidence state, and must show when filters narrow scope, broaden scope, exclude axes, or affect confidence.
+- UX-DR29: Navigation patterns must preserve tenant/case/search context and provide clear return paths from Evidence Packets to sources, graph paths, activity items, and agent packets.
+- UX-DR30: Modal and overlay patterns must use inspection drawers or panels for source, graph, reasoning, MCP payload, export, and repair flows; destructive or scope-sensitive confirmations must name the tenant, case, object, and consequence.
+- UX-DR31: Command palette patterns should expose search, ingest, inspect source, verify tenant, open graph, retry ingestion, export packet, and inspect MCP payload actions for advanced users.
+- UX-DR32: Data grid patterns should support memory units, sources, ingestion jobs, case activity, tenant checks, backend health, and benchmark results with sorting, filtering, status badges, row actions, and keyboard navigation.
+- UX-DR33: Responsive behavior must preserve trust fundamentals on every viewport; scope, confidence, freshness, source count, evidence health, and recovery remain reachable on mobile, tablet, desktop, and wide desktop.
+- UX-DR34: Responsive breakpoint coverage must include mobile 320-767px, tablet 768-1023px, desktop 1024px+, and wide desktop 1440px+, with test viewports at minimum 360px, 768px, 1024px, and 1440px.
+- UX-DR35: Accessibility must target WCAG 2.2 AA for web surfaces and preserve keyboard access, visible focus, labels, contrast, screen-reader semantics, live-region behavior for meaningful async transitions, reduced-motion support, and forced-colors/high-contrast support.
+- UX-DR36: Trust states must not rely on color alone; status indicators require text labels, accessible names, and consistent state grammar.
+- UX-DR37: Focus management must move into drawers, dialogs, source previews, graph detail panels, MCP inspectors, and confirmations, then return focus to the invoking control when closed.
+- UX-DR38: Hover-only interactions are forbidden for trust-critical source preview, graph detail, recovery action, tooltip, and command behavior; all must be accessible by keyboard and touch.
+- UX-DR39: Automated and human UX validation must cover color contrast, accessible names, form labels, ARIA validity, heading order, focusable controls, keyboard-only navigation, focus order, no-color-only state comprehension, reduced motion, and high-contrast behavior.
+- UX-DR40: Accessible text, tooltips, labels, announcements, copied text, and diagnostics must not expose secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, or restricted source details.
+
+### UX Design Requirements Coverage Map
+
+- UX-DR1: Story 2.7 and future Story 17.1 — Evidence Packet contract and visual composition.
+- UX-DR2: Stories 2.6 and 2.7 — evidence packet trust fields and explain/confidence semantics.
+- UX-DR3: Stories 2.7 and 10.2 — omitted detail naming and deterministic expansion handles.
+- UX-DR4: Stories 0.3, 5.4, 7.3, and 17.1 — scope-first validation and visible tenant/case context.
+- UX-DR5: Story 17.1 — Trust Strip web composition.
+- UX-DR6: Stories 0.3 and 17.1 — shared scope guard and Scope Header web composition.
+- UX-DR7: Stories 2.6, 2.7, and 7.2 — one-query trust loop with explain and source evidence.
+- UX-DR8: Stories 2.7, 10.2, 17.1, and 17.2 — progressive disclosure and expansion semantics.
+- UX-DR9: Stories 2.7, 5.6, 7.3, 10.2, and 17.2 — empty, weak, stale, degraded, unauthorized, and compressed states.
+- UX-DR10: Stories 2.1, 7.3, and 17.2 — no-result state distinctions and recovery.
+- UX-DR11: Stories 2.7, 7.3, 10.2, and 17.2 — Recovery Action Panel/Footer behavior.
+- UX-DR12: Stories 2.6, 2.7, 8.2, and 17.2 — conflicting evidence and backend discrepancy visibility.
+- UX-DR13: Stories 7.1, 7.2, 7.3, and 7.4 — CLI interaction, formatting, errors, and quickstart.
+- UX-DR14: Stories 10.1 and 10.2 — MCP schema-first bounded responses and structured errors.
+- UX-DR15: Stories 17.1, 17.3, and 17.5 — FrontComposer and Fluent UI Blazor web implementation foundation.
+- UX-DR16: Story 17.1 — Evidence Cockpit future web surface.
+- UX-DR17: Stories 2.6, 2.8, and 17.1 — Retrieval Axis Breakdown for explain and benchmark inspection.
+- UX-DR18: Stories 2.6, 2.7, 7.2, and 17.1 — Source Citation Stack semantics and presentation.
+- UX-DR19: Stories 4.1, 4.3, and 17.1 — Graph Path Summary and gap visibility.
+- UX-DR20: Stories 10.1, 10.2, and 17.4 — Agent Packet Inspector and MCP response inspection.
+- UX-DR21: Stories 3.2 and 17.4 — Case Activity Trail.
+- UX-DR22: Stories 6.3, 6.4, and 17.4 — Ingestion Lifecycle Tracker.
+- UX-DR23: Stories 5.3, 8.1, 8.2, and 17.4 — Operator Health Matrix.
+- UX-DR24: Stories 2.8 and 17.4 — Benchmark Result Comparator.
+- UX-DR25: Stories 2.7, 7.2, 10.2, and 17.2 — consistent evidence state grammar.
+- UX-DR26: Stories 7.3, 8.1, and 17.2 — feedback that explains cause, impact, severity, and next action.
+- UX-DR27: Stories 5.5, 13.4, and 17.3 — contract-aware forms and validation-first configuration UX.
+- UX-DR28: Stories 2.5, 3.4, 4.2, and 17.3 — search/filtering behavior and scope/axis impact.
+- UX-DR29: Story 17.3 — context-preserving web navigation and return paths.
+- UX-DR30: Stories 3.5, 5.5, and 17.3 — confirmation and inspection overlay behavior.
+- UX-DR31: Stories 7.1 and 17.3 — command access through CLI and future command palette.
+- UX-DR32: Stories 3.2, 5.5, 8.2, and 17.3 — data grid behavior for operational records.
+- UX-DR33: Story 17.5 — responsive trust fundamentals.
+- UX-DR34: Story 17.5 — breakpoint and viewport validation.
+- UX-DR35: Story 17.5 — WCAG 2.2 AA accessibility validation.
+- UX-DR36: Stories 2.7, 7.2, 17.2, and 17.5 — status labels beyond color.
+- UX-DR37: Story 17.5 — overlay and dialog focus management.
+- UX-DR38: Story 17.5 — no hover-only trust-critical interactions.
+- UX-DR39: Story 17.5 — automated and human accessibility/responsive validation.
+- UX-DR40: Stories 7.5, 10.1, 13.2, 13.3, 14.3, and 17.5 — privacy-safe accessible text and diagnostics.
 
 ### FR Coverage Map
 
@@ -316,16 +399,22 @@ Minimum build/test CI is an early enabling prerequisite for any greenfield or re
 
 ## Implementation Readiness Boundary
 
-MVP implementation readiness covers Epic 0 through Epic 8:
+**Active MVP scope:** Epic 0 through Epic 8 are the only epics in active MVP implementation readiness. Any work outside this set must be explicitly sprint-selected and must not be pulled into MVP completion accounting by accident.
 
 - Epic 0: Foundation path, including scaffold, tenant provisioning, minimal case bootstrap, and validation guard
 - Epic 1-8: MVP thesis, tenant isolation, CLI developer experience, and operations gates
 
-Phase 1.5 fast-follow covers Epic 9 and Epic 10.
+**Phase 1.5 fast-follow:** Epic 9 and Epic 10. Not active MVP readiness; pulled forward only by explicit sprint change.
 
-Epics 11-15 are Engineering/Operational Readiness work. They may remain in this file for lifecycle continuity, but they require explicit sprint selection before implementation and are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence.
+**Engineering/Operational Readiness Track:** Epics 11-16. They remain in this file for lifecycle continuity, require explicit sprint selection before implementation, and are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence. They must never be counted toward MVP product readiness.
 
-Future web UI, FrontComposer, and Fluent UI implementation remain out of MVP unless a later approved sprint change pulls them forward.
+**Future web UI** (Epic 17, FrontComposer, Fluent UI implementation) remains out of MVP unless a later approved sprint change pulls it forward.
+
+### Pre-Implementation CI Preflight Gate (2026-05-19)
+
+Before any Epic 1.x product-capability story writes data, the minimum build/test CI subset declared in Story 11.1 must be in place — specifically: pull-request build, restore + `dotnet build` with `TreatWarningsAsErrors=true`, and the test-tier execution that covers Tier-1 unit tests. This is the implementation reader's preflight; the rest of Story 11.1 (semantic release hardening, branch protection, release run integrity) remains in the Engineering/Operational Readiness Track.
+
+If the preflight subset is not in place, do not start Story 1.2 onward. Either land the preflight subset of Story 11.1 first, or open a sprint change to defer the preflight requirement explicitly.
 
 ### Story Key Policy
 
@@ -427,6 +516,14 @@ Maintainers and operators can close high-value deferred review findings across C
 Maintainers and operators can convert remaining carry-forward risks from Epic 14 into planned implementation, acceptance, or refreshed deferral decisions.
 **Lifecycle label:** Operational Readiness / Release Hardening
 
+### Epic 16: Projection Registry Cross-Check Hardening
+Maintainers and operators can close the Story 9.3 projection-registry gap by comparing EventStore routing declarations with the projection bindings that tenant application code exposes at runtime.
+**Lifecycle label:** Operational Readiness / EventStore Integration Hardening
+
+### Epic 17: Future Web UX Composition & Accessibility
+Future web users can inspect evidence, scope, sources, graph context, case activity, operator health, benchmark results, and MCP packets through FrontComposer/Fluent UI compositions with responsive and accessible behavior. This is deferred future web UI work and is not part of MVP unless a later sprint change explicitly pulls web UI implementation forward.
+**UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
+
 ---
 
 ## Epic 0: Tenant and Case Safety Foundation
@@ -484,7 +581,7 @@ So that I have a working development environment without manual container orches
 
 ### Story 0.1: Tenant Provisioning Minimum Viable Workflow
 
-As an operator,
+As a system operator,
 I want the minimum tenant provisioning workflow to create isolated infrastructure before any data-writing story runs,
 So that ingestion, indexing, search, and graph work never create tenant resources implicitly or out of sequence.
 
@@ -522,6 +619,8 @@ So that every memory unit has a valid single-case owner from its first write.
 **Given** a missing, inactive, or cross-tenant case
 **When** ingestion or search requests use that case
 **Then** validation fails with a structured error and recovery suggestion before backend mutation.
+
+**Ownership Boundary:** Story 0.2 is the minimum executable prerequisite proving an active case exists before Epic 1 data-writing work. It delivers only minimal case creation, listing, and the case-node-in-graph requirement. It must not absorb case status, activity history, member management, single-case ownership enforcement, case-scoped graph edges, cross-case search, deletion, or annotation work — those belong in Epic 3 (Stories 3.1-3.6) and Story 5.4.
 
 **Traceability:** FR26, FR32, FR44. Story 3.1 deepens case management after the MVP foundation is executable.
 
@@ -647,6 +746,10 @@ So that memory units can be searched by semantic similarity.
 **Observable Proof Gate:** Future rework of this story must show a developer-observable embedding result with provider, model, dimensions, and redacted secret behavior through an activity, API, CLI, trace, or integration-harness boundary. Completion cannot rely only on mocked `EmbeddingClient` or rate-limiter unit tests.
 
 ### Story 1.5: Three-Backend Indexing
+
+**Sizing note:** Story 1.5 is historical completed scope. Future reimplementation or major rework must split it into smaller vertical stories: (a) syntactic indexing on RediSearch with tenant-namespaced index and tenant-validation failure mode; (b) semantic indexing on Redis Vector with tenant-namespaced KNN index; (c) graph indexing on FalkorDB including node creation, `caused_by`/`correlated_with`/`contains` edge writes, parameterized-query enforcement via `IGraphQueryBuilder`, and the tenant lifecycle separation rule that activities never create or mutate tenant index/database state.
+
+**Historical Scope Guard:** Do not reopen Story 1.5 as a single implementation unit. If indexing rework resumes, create separate numeric stories for the documented slices before implementation starts, keep each slice independently testable against tenant-scoped infrastructure, and require observable proof per slice (CLI-visible, contract-visible, or integration-harness output) — internal unit tests alone are not sufficient completion evidence.
 
 As a developer,
 I want ingested content to be indexed across RediSearch (syntactic), Redis Vector (semantic), and FalkorDB (graph) using tenant infrastructure already provisioned by `TenantProvisioningWorkflow`,
@@ -1292,7 +1395,7 @@ Operator can provision tenants with physically separate indexes across all three
 
 ### Story 5.1: Tenant Provisioning Workflow
 
-As an operator,
+As a system operator,
 I want to create a tenant with physically separate indexes across all three backends in a single command,
 So that each tenant has isolated infrastructure with rollback protection if provisioning fails.
 
@@ -1326,7 +1429,7 @@ So that each tenant has isolated infrastructure with rollback protection if prov
 
 ### Story 5.2: Tenant Deletion Workflow
 
-As an operator,
+As a system operator,
 I want to delete a tenant and all its data across all backends,
 So that I can fulfill erasure requirements and reclaim resources.
 
@@ -1355,7 +1458,7 @@ So that I can fulfill erasure requirements and reclaim resources.
 
 ### Story 5.3: Tenant Isolation Verification
 
-As an operator,
+As a system operator,
 I want to run automated tenant isolation checks,
 So that I can verify zero cross-tenant data leakage with confidence.
 
@@ -1382,7 +1485,7 @@ So that I can verify zero cross-tenant data leakage with confidence.
 
 ### Story 5.4: Tenant Context Enforcement
 
-As an operator,
+As a system operator,
 I want tenant context enforced at all access layers,
 So that cross-tenant requests are structurally impossible, not just policy-prohibited.
 
@@ -1409,7 +1512,7 @@ So that cross-tenant requests are structurally impossible, not just policy-prohi
 
 ### Story 5.5: Tenant Configuration & Listing
 
-As an operator,
+As a system operator,
 I want to list tenants, view and update their configuration,
 So that I can manage the multi-tenant environment effectively.
 
@@ -1734,7 +1837,7 @@ So that I can go from zero to first search result in under 30 minutes.
 
 ### Story 7.5: Search & Access Telemetry
 
-As an operator,
+As a system operator,
 I want structured logging, distributed traces, and custom metrics for the entire system,
 So that I can monitor, debug, and audit Memories in production.
 
@@ -1769,7 +1872,7 @@ Operator can verify consistency across all three backends, detect and repair ind
 
 ### Story 8.1: Health Checks & Readiness
 
-As an operator,
+As a system operator,
 I want readiness and liveness health checks that verify all backends,
 So that I can detect infrastructure issues before they impact users and integrate with orchestrator health probes.
 
@@ -1802,7 +1905,7 @@ So that I can detect infrastructure issues before they impact users and integrat
 
 ### Story 8.2: Consistency Verification & Repair
 
-As an operator,
+As a system operator,
 I want to detect and repair inconsistencies across the three backends,
 So that I can ensure data integrity and resolve divergence caused by partial failures.
 
@@ -1836,7 +1939,7 @@ So that I can ensure data integrity and resolve divergence caused by partial fai
 
 ### Story 8.4: End-to-End Telemetry Integration Tests (Tier-3 / Aspire)
 
-As the Memories release manager,
+As a Memories release manager,
 I want end-to-end Tier-3 integration tests that verify distributed traces propagate across CLI → Server → backends AND audit events reach the deployed stack's stdout log stream,
 So that I can ship releases with confidence that NFR28 and FR67 hold on real infrastructure — not just on the Tier-2 in-process approximation.
 
@@ -1870,7 +1973,11 @@ So that I can ship releases with confidence that NFR28 and FR67 hold on real inf
 
 ### Story 8.5: Redis OTEL Instrumentation
 
-As the Memories release manager,
+**Sizing note:** Story 8.5 covers four distinct deliverables that can be implemented and reviewed independently: (a) production Redis/FalkorDB instrumentation registration with keyed `IConnectionMultiplexer` resolution; (b) Tier-3 end-to-end trace assertion replacing the previous soft-skip helper; (c) Tier-2 registration tests asserting tracer subscription without Docker or Aspire; (d) telemetry documentation update in `docs/dev/telemetry.md`. If future implementation work resumes, prefer landing each deliverable as a separately reviewable slice with explicit completion evidence rather than a single bundled change.
+
+**Historical Scope Guard:** Do not reopen Story 8.5 as a single implementation unit. If trace-instrumentation work resumes, the four slices above must be independently testable and each must close with the corresponding proof: instrumentation activity present in trace, Tier-3 hard assertion green, Tier-2 registration tests green, and updated documentation merged.
+
+As a Memories release manager,
 I want Redis client calls (RediSearch, Redis Vector, and FalkorDB) to emit OpenTelemetry spans inside the same distributed trace as the originating request,
 So that operators can attribute search and traversal latency to the correct backend, and Story 8.4's Redis-span check is a hard assertion rather than a soft skip.
 
@@ -2076,7 +2183,7 @@ So that AI assistants can search, ingest, traverse, and query case information p
 
 ### Story 10.2: Token-Budget Responses & Authentication
 
-As an LLM agent developer,
+As a developer building LLM agents,
 I want to constrain response sizes by token budget and ensure authenticated access,
 So that memory responses fit within context windows and access is properly secured.
 
@@ -2315,7 +2422,7 @@ So that the "baseline failures hiding under script-only execution" pattern from 
 
 ### Story 12.5: Partial-Publish Alerting (S11-FD)
 
-As an operations owner,
+As a release operations owner,
 I want the half-published-then-network-failure scenario in `tools/publish-nuget.ps1` to produce an audible signal,
 So that the `--skip-duplicate` self-healing model can be retained without it becoming an undetected silent-failure path.
 
@@ -2609,7 +2716,7 @@ So that Ollama tenants can be provisioned, listed, and configured end-to-end thr
 
 ### Story 13.6: Vector Migration Tool
 
-As an operator,
+As a system operator,
 I want a console tool (or extension to `Hexalith.Memories.Cli`) that drops `{tenantId}:semantic` indexes and replays ingestion at the new dimension count, with a dry-run mode that lists affected tenants and content counts,
 So that I can migrate existing Google tenants to Ollama without ad-hoc Redis CLI operations.
 
@@ -2647,7 +2754,7 @@ This story may remain one tracked story for Epic 13 sequencing, but implementati
 
 ### Story 13.7: Integration Tests, Aspire Fixtures & Operator Deployment Guide
 
-As an operator and a developer,
+As a developer and operator,
 I want the Aspire test fixtures + integration tests to exercise both provider paths (Google + Ollama) and a written deployment guide that documents the gateway contract end-to-end,
 So that a new operator can stand up the Ollama gateway, wire Keycloak, configure a tenant, and verify the result against a documented expectation.
 
@@ -2757,7 +2864,7 @@ So that package publication, stale tags, release evidence, and package inventory
 
 ### Story 14.3: OIDC and Embedding Security Hardening
 
-As an operator,
+As a system operator,
 I want OIDC token acquisition and embedding-client error handling hardened,
 So that cancellation, credential rotation, malformed URLs, token refresh storms, and transport errors do not leak secrets or produce avoidable outages.
 
@@ -2794,7 +2901,7 @@ So that cancellation, credential rotation, malformed URLs, token refresh storms,
 
 ### Story 14.4: Migration and Integration Test Hardening
 
-As an operator and maintainer,
+As a maintainer and operator,
 I want migration and Aspire integration tests hardened,
 So that provider migration evidence remains stable under CI pressure and malformed fake-server input cannot weaken coverage silently.
 
@@ -2889,7 +2996,7 @@ So that releases do not fail late, silently skip, or leave ambiguous audit evide
 
 ### Story 15.2: Provider Model Dimension Registry
 
-As an operator,
+As a system operator,
 I want provider, model, and vector-dimension validation to use a centralized registry,
 So that invalid or cross-pollinated embedding configurations fail before tenant state or indexes drift.
 
@@ -2917,7 +3024,7 @@ So that invalid or cross-pollinated embedding configurations fail before tenant 
 
 ### Story 15.3: Live Migration Coordination Policy
 
-As an operator,
+As a system operator,
 I want live embedding-vector migration to coordinate with concurrent ingestion,
 So that a tenant cannot finish migration with mixed provider/model vector state.
 
@@ -2989,6 +3096,15 @@ So that historical noise, consciously accepted risks, and true backlog candidate
 
 ### Story 15.6: Scaffolding Hardening Sweep
 
+**Implementation Checkpoints:**
+
+- Checkpoint A — AppHost boot orchestration: `OnResourceReady` rewrite for the DAPR sidecar start-event, per-invocation temp directory for component YAML generation, and concurrent-AppHost-run isolation for `statestore.yaml` and `pubsub.yaml`.
+- Checkpoint B — Submodule guard expansion: `Directory.Build.props` `CheckSubmodules` MSBuild target validates every `.gitmodules` entry (Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, Hexalith.FrontComposer).
+- Checkpoint C — Health-check and DAPR-template hardening: `ServiceDefaults.AddDefaultHealthChecks` returns 503 from `/ready` when Redis is unreachable, `memories-server` waits for `secretstore` and `llm` components, and the production DAPR templates (`statestore.yaml`, `secretstore.yaml`, `conversation-llm.yaml`) ship with correct env-var interpolation, volume mounts, and Conversation API metadata keys.
+- Checkpoint D — Story 1.1 Scope-Override and regression coverage: AppPort=5000 spec receives the Scope-Override block recording the Aspire-Testing port-randomization decision, Completion Notes amended, and targeted regression coverage exercises the expanded submodule guard, the ready-tagged Redis health check, and the component-file rewrite ordering invariant.
+
+This story may remain one tracked story for Epic 15 sequencing, but implementation and review must close each checkpoint independently before the story is accepted. Per the Engineering/Operational Readiness Track preamble, individual checkpoints that cannot be applied may be deferred or accepted with rationale recorded in `deferred-work.md`.
+
 As a maintainer,
 I want the 15 patch findings from the 2026-05-16 fresh re-review of Story 1.1's scaffolding to be triaged and applied with proper file scope,
 So that the AppHost boot orchestration, ServiceDefaults health/telemetry surface, and DAPR component templates are hardened without retroactively flipping the released Story 1.1 to `in-progress`.
@@ -3040,7 +3156,7 @@ Maintainers and operators can close the Story 9.3 projection-registry gap by com
 
 ### Story 16.1: Projection Registry Cross-Check Design
 
-As an operator,
+As a system operator,
 I want handler mismatch detection to compare routing declarations with runtime-bound projection bindings,
 So that events can no longer look "handled" from routing configuration while silently lacking a projection consumer.
 
@@ -3073,6 +3189,162 @@ So that events can no longer look "handled" from routing configuration while sil
 **Given** the deferred work entry is the source of this story,
 **When** the story completes,
 **Then** `_bmad-output/implementation-artifacts/deferred-work.md` marks `Story-9.3-ProjectionRegistryCrossCheck` as `resolved`, `accepted`, or `carried-forward` with evidence or rationale, and focused validation covers the selected disposition.
+
+## Epic 17: Future Web UX Composition & Accessibility
+
+**Lifecycle label:** Future Web UI / UX Accessibility.
+
+Future web users can inspect evidence, scope, sources, graph context, case activity, operator health, benchmark results, and MCP packets through FrontComposer/Fluent UI compositions with responsive and accessible behavior.
+
+**Scope note:** This epic records story coverage for UX Design Specification requirements that are explicitly future web UI work. It is not part of MVP readiness unless a later approved sprint change pulls web UI implementation forward.
+
+**UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
+
+### Story 17.1: Evidence Cockpit and Trust Components
+
+As a developer or team lead,
+I want a FrontComposer/Fluent UI Evidence Cockpit with Evidence Packet, Trust Strip, Scope Header, source, axis, and graph summaries,
+So that I can verify answers, sources, retrieval reasons, scope, and graph context in one inspectable web workflow.
+
+**Acceptance Criteria:**
+
+**Given** the web Evidence Cockpit is opened for a tenant and case
+**When** a search or briefing response is displayed
+**Then** the page composes the shared Evidence Packet contract without inventing new confidence, state, omitted-detail, source, graph, or recovery semantics
+**And** tenant and case scope are visible before the query or briefing content.
+
+**Given** an Evidence Packet is displayed
+**When** the Trust Strip renders
+**Then** it shows tenant, case, confidence state, freshness state, source count, evidence health, and token-budget indicator when applicable
+**And** each state has a text label and accessible name, not color alone.
+
+**Given** a result has sources, axis scores, or graph context
+**When** the user expands evidence details
+**Then** Source Citation Stack, Retrieval Axis Breakdown, and Graph Path Summary components expose source type, origin identifier, freshness, score normalization, ranking reason, edge type, confidence, gap markers, and chronological ordering as available from the contract.
+
+**Given** the UI uses FrontComposer and Fluent UI Blazor
+**When** controls, panels, tabs, grids, or menus are needed
+**Then** existing primitives are used before custom controls
+**And** custom Memories components remain contract-aware and tenant-aware.
+
+### Story 17.2: Recovery and Feedback State Grammar
+
+As a developer or operator,
+I want weak, empty, stale, degraded, unauthorized, compressed, and conflicting evidence states to show clear recovery guidance,
+So that I can decide the next safe action without leaving the current workflow.
+
+**Acceptance Criteria:**
+
+**Given** an Evidence Packet is empty, weak, stale, degraded, unauthorized, compressed, or disputed
+**When** the state is displayed
+**Then** the UI shows a clear state title, explanation, diagnostic clue, severity, affected capability, and one safest recovery action
+**And** optional secondary actions are available without hiding the primary recovery path.
+
+**Given** no-result or low-evidence states occur
+**When** the Recovery Action Panel renders
+**Then** it distinguishes no match, not ingested yet, wrong case, inaccessible tenant/case, stale memory, degraded backend, graph gap, and insufficient evidence where the response data allows.
+
+**Given** sources, freshness, scores, graph context, or backend health disagree
+**When** evidence is presented
+**Then** the conflict is visible using the shared evidence state grammar rather than converted into a confident-looking answer.
+
+**Given** feedback appears in the web UI
+**When** users inspect it with keyboard or assistive technology
+**Then** status labels are readable, focusable recovery actions are reachable, and color is never the only signal.
+
+### Story 17.3: Contract-Aware Web Interaction Patterns
+
+As a developer or operator,
+I want forms, filters, navigation, confirmations, command access, overlays, and data grids to preserve tenant scope and evidence context,
+So that web interactions remain safe, predictable, and efficient for repeated work.
+
+**Acceptance Criteria:**
+
+**Given** a form changes tenant, case, ingestion, source filter, graph, token budget, repair, or benchmark configuration
+**When** the user submits it
+**Then** validation is contract-aware, tenant and case scope appear near the top, and dangerous or inconsistent changes require explicit acknowledgement.
+
+**Given** search or filtering controls are displayed
+**When** filters are changed
+**Then** active filters for axis, source type, freshness, confidence, time range, metadata, graph depth, and evidence state remain inspectable
+**And** the UI indicates when filters narrow scope, broaden scope, exclude axes, or affect confidence.
+
+**Given** the user navigates from an Evidence Packet to a source, graph path, activity item, operator check, or MCP packet
+**When** navigation completes
+**Then** tenant/case/search context is preserved and a clear return path remains available.
+
+**Given** an action is destructive, scope-expanding, repair-oriented, or diagnostic-exporting
+**When** confirmation is required
+**Then** the dialog or panel names the tenant, case, object, consequence, and recovery or undo expectation before allowing the action.
+
+**Given** advanced users need fast access
+**When** the command palette or command surface is opened
+**Then** search, ingest, inspect source, verify tenant, open graph, retry ingestion, export packet, and inspect MCP payload actions are discoverable with accessible labels.
+
+**Given** memory units, sources, ingestion jobs, case activity, tenant checks, backend health, or benchmark results are listed
+**When** data grids render
+**Then** they support sorting, filtering, status badges, row actions, and keyboard navigation without hiding trust-critical fields.
+
+### Story 17.4: Role-Specific Web Inspection Lenses
+
+As a developer, operator, team lead, or LLM-agent integrator,
+I want dedicated inspection lenses for case activity, ingestion lifecycle, operator health, benchmark results, and MCP packets,
+So that each audience can inspect the same evidence model at the right density.
+
+**Acceptance Criteria:**
+
+**Given** a case has ingestion, search, membership, annotation, health, or source-link activity
+**When** the Case Activity Trail renders
+**Then** activity is chronological, source-linked where possible, status-labelled, and scoped to the selected tenant and case.
+
+**Given** ingestion jobs are queued, extracting, embedding, indexing, indexed, failed, retried, or re-ingested
+**When** the Ingestion Lifecycle Tracker renders
+**Then** each unit shows its stage, outcome, retry state, failure details when present, and recovery action when safe.
+
+**Given** tenant verification, backend health, consistency repair, degradation, or ingestion health is inspected
+**When** the Operator Health Matrix renders
+**Then** it shows per-check status, affected capabilities, evidence, and next action without exposing secrets or restricted diagnostics.
+
+**Given** benchmark validation has run
+**When** the Benchmark Result Comparator renders
+**Then** it shows hybrid-vs-single-axis NDCG@10 results, the 80% thesis threshold status, per-query breakdowns, and links to reproducible evidence.
+
+**Given** MCP requests or responses are inspected
+**When** the Agent Packet Inspector renders
+**Then** it shows request summary, response schema, token budget, omitted fields, expansion handles, structured errors, copy controls, and readable schema/JSON views.
+
+### Story 17.5: Responsive and Accessible Web Validation
+
+As a user of the future web surface,
+I want trust-critical workflows to remain usable across screen sizes, keyboard, screen reader, reduced-motion, and forced-colors contexts,
+So that evidence inspection is accessible and reliable rather than visual polish only.
+
+**Acceptance Criteria:**
+
+**Given** the web UI is tested at 360px, 768px, 1024px, and 1440px
+**When** Evidence Cockpit, Evidence Packet, Source Citation Stack, Retrieval Axis Breakdown, Recovery Action Panel, Case Activity Trail, Agent Packet Inspector, and Operator Console surfaces are rendered
+**Then** scope, confidence, freshness, source count, evidence health, and recovery remain reachable
+**And** trust-critical content does not require horizontal scrolling.
+
+**Given** automated accessibility checks run
+**When** the surfaces are validated
+**Then** checks cover color contrast, accessible names, form labels, ARIA validity, heading order, and focusable controls.
+
+**Given** human accessibility checks run
+**When** keyboard-only navigation, focus order, no-color-only state comprehension, reduced motion, high contrast, and at least one screen reader pass are tested
+**Then** critical trust workflows remain usable and defects are tracked before release.
+
+**Given** overlays, dialogs, drawers, source previews, graph detail panels, MCP inspectors, and confirmations are opened
+**When** focus moves
+**Then** focus enters the overlay predictably and returns to the invoking control when closed.
+
+**Given** source preview, graph detail, recovery action, tooltip, command, or status behavior is trust-critical
+**When** the UI is used by keyboard or touch
+**Then** no behavior depends on hover-only interaction.
+
+**Given** accessible labels, tooltips, announcements, copied text, diagnostics, or error payloads are emitted
+**When** they contain tenant or source context
+**Then** secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, and restricted source details are not exposed.
 
 
 ---

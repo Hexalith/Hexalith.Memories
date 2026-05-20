@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1.0",
+  "evaluated_at": "2026-05-19T00:00:00Z",
+  "corrected_at": "2026-05-19T00:00:00Z",
+  "repo": "Hexalith.Memories",
+  "target": {
+    "type": "release",
+    "id": "hexalith-memories-first-release",
+    "label": "Hexalith.Memories First Release (Epic 12 gate)"
+  },
+  "collection_status": "COLLECTED",
+  "gate_basis": "priority_thresholds",
+  "gate_status": "PASS",
+  "prior_gate_status": "FAIL",
+  "prior_gate_invalidated_reason": "Step 3 used grep patterns that missed actual test methods. Self-correction during follow-on TA workflow found 3 P0 false positives (G-P0-01..03) and 2 P1 false positives (G-P1-03, G-P1-04). Corrected stats lift P0 to 100%, P1 to 91%, overall to 85% — clearing all thresholds.",
+  "rationale": "Deterministic gate criteria are all met after self-correction: P0 FULL = 100% (24/24), P1 FULL = 91% (49/54), overall FULL = 85% (80/94). 0 P0 capabilities uncovered. Remaining items are real but P1-or-lower, non-gate-blocking: G-P1-01 (ack flow), G-P1-02 (cross-case search depth), G-P1-05 (DAPR token deny-path), G-P1-06 (CI submodule guard), NFR1-4 perf SLA gating, NFR7/31 documentation NFRs.",
+  "p0_status": "MET",
+  "p1_status": "MET",
+  "overall_status": "MET",
+  "critical_open": 0,
+  "p0_partial_open": 0,
+  "remaining_followups": [
+    "G-P1-01: verify/add explicit ack-flow assertion on inconsistent embedding config change",
+    "G-P1-02: add multi-case attribution fixture for cross-case keyword search",
+    "G-P1-05: add DAPR app-token deny-path test if app-token enforcement is required",
+    "G-P1-06: add CI guard against `git submodule update --init --recursive`",
+    "NFR1-4: convert performance scenarios to SLA-gating fail-on-exceed tests",
+    "NFR7: optional cold-start latency assertion",
+    "NFR31: manual README quickstart verification before release tag"
+  ],
+  "external_blockers_unchanged": [
+    "A1: main branch protection (per docs/dev/branch-protection.md)",
+    "A2: NUGET_API_KEY repository secret"
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix.md",
+    "coverage_matrix_path": "_bmad-output/test-artifacts/traceability/coverage-matrix.json",
+    "summary_path": "_bmad-output/test-artifacts/traceability/e2e-trace-summary.json"
+  }
+}

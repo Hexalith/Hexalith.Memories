@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-05-19T00:00:00Z",
+  "repo": "Hexalith.Memories",
+  "collection_mode": "static_analysis",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria_and_nfrs",
+  "gate_basis": "priority_thresholds",
+  "source_sha": "",
+  "target": {
+    "type": "release",
+    "id": "hexalith-memories-first-release",
+    "label": "Hexalith.Memories First Release (Epic 12 gate)"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Jerome (Murat / TEA Agent)",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/prd.md",
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad-output/planning-artifacts/architecture.md",
+      "_bmad-output/project-context.md"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "coverage": {
+    "inventory": {
+      "covered": 80,
+      "total": 94,
+      "pct": 85,
+      "_note": "Corrected 2026-05-19. Prior: 74/94=79% — invalidated by false-positive correction in Step 6."
+    },
+    "priority_breakdown": {
+      "P0": { "total": 24, "covered": 24, "pct": 100, "_prior": "21/24=88% — invalidated" },
+      "P1": { "total": 54, "covered": 49, "pct": 91, "_prior": "46/54=85% — invalidated" },
+      "P2": { "total": 13, "covered": 6, "pct": 46 },
+      "P3": { "total": 3, "covered": 1, "pct": 33 }
+    },
+    "by_level": {
+      "e2e": { "tests": 0, "criteria_covered": 0, "note": "No browser E2E tier; integration layer plays this role" },
+      "api": { "tests": 0, "criteria_covered": 0, "note": "API tests live in IntegrationTests and Server.Tests endpoint tests" },
+      "component": { "tests": 0, "criteria_covered": 0 },
+      "unit": { "tests": 2117, "criteria_covered": 90, "note": "All unit + service-layer projects" },
+      "integration": { "tests": 186, "criteria_covered": 60, "note": "IntegrationTests project (Testcontainers/Aspire)" },
+      "specialized": { "tests": 17, "criteria_covered": 4, "note": "Benchmarks (NDCG, seed determinism)" }
+    }
+  },
+  "tests": {
+    "files": 434,
+    "cases": 2320,
+    "skipped_cases": 0,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "p0_partial_open": 0,
+    "high_open": 4,
+    "medium_open": 3,
+    "low_open": 2,
+    "_prior_p0_partial_open": 3,
+    "_prior_high_open": 6,
+    "_correction_note": "P0 partials closed by Step 6 self-correction: G-P0-01..03 already covered by existing tests. P1 gaps reduced by closing G-P1-03 (ErrorCatalogTests) and G-P1-04 (TokenRedactionTests)."
+  },
+  "heuristics": {
+    "endpoint_gaps": 0,
+    "auth_negative_path_status": "present",
+    "error_path_status": "partial",
+    "ui_journey_status": "not_applicable",
+    "ui_state_status": "not_applicable"
+  },
+  "blockers": [],
+  "recommendations": [
+    {
+      "priority": "URGENT",
+      "action": "Close 3 P0 partials before release tag",
+      "requirements": ["G-P0-01 (NFR16)", "G-P0-02 (DMR-6)", "G-P0-03 (NFR30)"]
+    },
+    {
+      "priority": "HIGH",
+      "action": "Close 6 P1 gaps in Epic 12 sprint",
+      "requirements": ["G-P1-01..06"]
+    },
+    {
+      "priority": "HIGH",
+      "action": "Convert performance scenarios to SLA-gating tests",
+      "requirements": ["NFR1", "NFR2", "NFR3", "NFR4"]
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Run /bmad:tea:automate (TA) to scaffold the missing tests",
+      "requirements": []
+    },
+    {
+      "priority": "MEDIUM",
+      "action": "Run /bmad:tea:nfr-assess (NR) for dedicated NFR sweep",
+      "requirements": []
+    },
+    {
+      "priority": "LOW",
+      "action": "Run /bmad:tea:test-review (RV) for test-quality assessment",
+      "requirements": []
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability/traceability-matrix.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "gate_status": "PASS",
+  "prior_gate_status": "FAIL",
+  "gate_correction_reason": "Step 6 self-correction during follow-on TA workflow uncovered 3 P0 + 2 P1 false-positive gaps in Step 3 mapping",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_status": "MET",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "91%",
+    "p1_status": "MET",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "85%",
+    "overall_status": "MET"
+  }
+}
