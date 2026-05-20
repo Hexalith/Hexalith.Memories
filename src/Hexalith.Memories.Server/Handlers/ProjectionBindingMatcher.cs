@@ -68,12 +68,14 @@ internal static class ProjectionBindingMatcher
         ArgumentNullException.ThrowIfNull(expectation);
         ArgumentNullException.ThrowIfNull(bindings);
 
-        return bindings.Any(binding => Covers(tenantId, expectation, binding));
+        // Defensive: an adopter implementation may pass null entries inside the list even though
+        // the contract declares non-nullable; a null entry must never silently fail the cross-check.
+        return bindings.Any(binding => binding is not null && Covers(tenantId, expectation, binding));
     }
 
     private static bool Covers(string tenantId, ProjectionBindingExpectation expectation, ProjectionBinding binding)
     {
-        if (!string.Equals(binding.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(binding.TenantId?.Trim(), tenantId, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -90,7 +92,10 @@ internal static class ProjectionBindingMatcher
             return false;
         }
 
-        IReadOnlyList<string> patterns = binding.SupportedEventTypePatterns.Count == 0
+        // F8: an adopter may pass a null SupportedEventTypePatterns even though the contract declares
+        // IReadOnlyList<string> as non-nullable; a null collection must not NRE the matcher and bubble
+        // up into the detector's catch-all (which would silently swallow the cross-check).
+        IReadOnlyList<string> patterns = binding.SupportedEventTypePatterns is null || binding.SupportedEventTypePatterns.Count == 0
             ? ["*"]
             : binding.SupportedEventTypePatterns;
 
@@ -123,7 +128,11 @@ internal static class ProjectionBindingMatcher
             return string.Empty;
         }
 
-        string normalized = value.Trim().Replace('\\', '/').Trim('/');
+        // F5: treat '.' as equivalent to '/' so dot-style routes (`enterprise.claims`) and slash-style
+        // bindings (`enterprise/claims`) canonicalize to the same source key. Without this, the matcher
+        // depended on aggregate-fallback to OR-cover mismatched-notation routes, which silently passed
+        // bindings registered against unrelated sources that happened to share an aggregate token.
+        string normalized = value.Trim().Replace('\\', '/').Replace('.', '/').Trim('/');
         while (normalized.Contains("//", StringComparison.Ordinal))
         {
             normalized = normalized.Replace("//", "/", StringComparison.Ordinal);

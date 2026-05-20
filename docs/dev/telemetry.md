@@ -751,7 +751,12 @@ Three new instruments:
   on every metric export (no Redis round-trip).
 - `memories.handlers.mismatches` — counter; tags: `tenant_id`, `severity`. Emitted by
   `HandlerMismatchDetector.DetectAsync` per detected mismatch. Low-cardinality by design:
-  2 severities × 3 categories × tenant count.
+  2 severities × 4 categories × tenant count. Story 16.1 adds the
+  `ProjectionBindingMissing` category alongside `StaleHandler`, `UnhandledEventType`, and
+  `VersionMismatch`; the metric tag remains `severity` only — the category is not added as a
+  tag to keep cardinality stable. Story 16.1 also reserves log-event bank 9150–9159 for
+  provider-failure (`9150`), snapshot tenant-mismatch (`9151`), and null-bindings (`9152`)
+  Warnings.
 - `memories.handlers.observations.dropped` — counter; tags: `reason` ∈
   `{backpressure, timeout, redis_error}`. Emitted by the bounded fire-and-forget observation write
   path when in-flight cap / timeout / Redis error drops an observation. **No `tenant_id` tag** — it

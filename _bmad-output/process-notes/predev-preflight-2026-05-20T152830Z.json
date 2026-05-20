@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "produced_by": "jobs/preflight-predev-hardening.py",
-  "timestamp": "2026-05-20T16:01:36Z",
+  "timestamp": "2026-05-20T15:28:30Z",
   "repo": "D:\\Hexalith.Memories",
-  "result": "fail",
+  "result": "pass",
   "bootstrap_actions": [],
   "checks": [
     {
@@ -12,7 +12,7 @@
       "path": "D:\\Hexalith.Memories\\_bmad-output\\implementation-artifacts\\sprint-status.yaml",
       "result": "pass",
       "details": "PARSE OK",
-      "file_size_bytes": 7687,
+      "file_size_bytes": 7689,
       "line_count": 200,
       "top_level_keys": [
         "development_status",
@@ -63,11 +63,11 @@
         ":(exclude)_bmad-output/process-notes/preflight-latest.json"
       ],
       "exit_code": 0,
-      "stdout": " M _bmad-output/implementation-artifacts/16-1-projection-registry-cross-check-design.md\n M _bmad-output/implementation-artifacts/deferred-work.md\n M _bmad-output/implementation-artifacts/sprint-status.yaml\n M docs/dev/eventstore-integration.md\n M docs/dev/telemetry.md\n M src/Hexalith.Memories.EventStore/EventStoreIntegrationLog.cs\n M src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs\n M src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs\n M tests/Hexalith.Memories.Cli.Tests/Cli/HandlersMismatchesCommandTests.cs\n M tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs\n?? tests/Hexalith.Memories.EventStore.Tests/DefaultProjectionBindingProviderTests.cs\n",
+      "stdout": "",
       "stderr": "",
-      "dirty_path_count": 11,
-      "result": "fail",
-      "details": "11 dirty path(s)"
+      "dirty_path_count": 0,
+      "result": "pass",
+      "details": "0 dirty paths"
     }
   ],
   "note_to_llm": "This file was produced by jobs/preflight-predev-hardening.py. The recurring pre-dev hardening job MUST quote the contents of this file verbatim when reporting pre-flight results; do NOT re-run the checks yourself, paraphrase them, or summarize them in your own words."

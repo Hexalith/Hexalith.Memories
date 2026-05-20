@@ -7,7 +7,7 @@ namespace Hexalith.Memories.EventStore;
 
 using Microsoft.Extensions.Logging;
 
-/// <summary>Source-generated <see cref="LoggerMessage"/> emitters for Story 9.1 + 9.3. EventId bank <c>9100-9199</c>
+/// <summary>Source-generated <see cref="LoggerMessage"/> emitters for Story 9.1 + 9.3 + 16.1. EventId bank <c>9100-9199</c>
 /// is pinned for this sub-system. Ranges:
 /// <list type="bullet">
 ///   <item><description>9100-9109 — Information / startup (Story 9.1)</description></item>
@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging;
 ///   <item><description>9120-9129 — Error (workflow scheduling failures, envelope parse) (Story 9.1)</description></item>
 ///   <item><description>9130-9139 — Story 9.3 happy-path information (observations recorded, snapshots served)</description></item>
 ///   <item><description>9140-9149 — Story 9.3 Warning / Debug (observation-store write failures, regex bypass, config change, drops)</description></item>
+///   <item><description>9150-9159 — Story 16.1 Warning (projection-binding provider failure, snapshot tenant mismatch, null bindings)</description></item>
 /// </list>
 /// </summary>
 internal static partial class EventStoreIntegrationLog
@@ -136,4 +137,26 @@ internal static partial class EventStoreIntegrationLog
         Level = LogLevel.Warning,
         Message = "Per-tenant observation read failed for tenant {TenantId} ({ExceptionType}) — partial snapshot returned.")]
     public static partial void TenantObservationReadFailed(ILogger logger, string tenantId, string exceptionType);
+
+    // ------------------------------------------------------------------------------------------------
+    // Story 16.1 — Projection-binding cross-check (bank 9150-9159).
+    // ------------------------------------------------------------------------------------------------
+
+    [LoggerMessage(
+        EventId = 9150,
+        Level = LogLevel.Warning,
+        Message = "Projection binding provider failed for tenant {TenantId} ({ExceptionType}) — projection-binding cross-check skipped; existing handler-mismatch diagnostics preserved.")]
+    public static partial void ProjectionBindingProviderFailed(ILogger logger, string tenantId, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9151,
+        Level = LogLevel.Warning,
+        Message = "Projection binding snapshot tenant mismatch: requested {RequestedTenantId} but provider returned {SnapshotTenantId}; projection-binding cross-check skipped.")]
+    public static partial void ProjectionBindingSnapshotTenantMismatched(ILogger logger, string requestedTenantId, string snapshotTenantId);
+
+    [LoggerMessage(
+        EventId = 9152,
+        Level = LogLevel.Warning,
+        Message = "Projection binding snapshot for tenant {TenantId} reported Authoritative posture but returned null Bindings list — treating as Unavailable; projection-binding cross-check skipped.")]
+    public static partial void ProjectionBindingSnapshotNullBindings(ILogger logger, string tenantId);
 }

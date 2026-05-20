@@ -107,7 +107,7 @@ public sealed class HandlersMismatchesCommandTests
                 Severity = HandlerMismatchSeverity.Warning,
                 Subject = "acme/enterprise/claims/claimsubmitted",
                 Context = "ctx",
-                Suggestion = "register an authoritative projection binding",
+                Suggestion = "register an authoritative projection binding. See: https://docs.hexalith.dev/memories/runbooks/handler-projection-binding-missing.",
             },
         ]);
 
@@ -118,6 +118,41 @@ public sealed class HandlersMismatchesCommandTests
         exit.ShouldBe(CliExitCodes.Success);
         stdout.ToString().ShouldContain("projectionBindingMissing");
         stdout.ToString().ShouldContain("register an authoritative projection binding");
+        // Story 16.1 review F15 — assert the exact kebab-cased runbook URL survives the human renderer.
+        stdout.ToString().ShouldContain("handler-projection-binding-missing");
+    }
+
+    [Fact]
+    public async Task Human_Format_ExcludeStaleDoesNotSuppressProjectionBindingMissing()
+    {
+        // Story 16.1 review F14 — `--exclude-stale` must filter only `StaleHandler`, never `ProjectionBindingMissing`.
+        HandlerMismatchReport report = BuildReport(
+        [
+            new HandlerMismatch
+            {
+                Category = HandlerMismatchCategory.StaleHandler,
+                Severity = HandlerMismatchSeverity.Info,
+                Subject = "acme.events",
+                Context = "ctx",
+                Suggestion = "check publisher",
+            },
+            new HandlerMismatch
+            {
+                Category = HandlerMismatchCategory.ProjectionBindingMissing,
+                Severity = HandlerMismatchSeverity.Warning,
+                Subject = "acme/enterprise/claims/claimsubmitted",
+                Context = "ctx",
+                Suggestion = "register an authoritative projection binding",
+            },
+        ]);
+
+        (IServiceProvider services, StringWriter stdout, _) = BuildServices(OutputFormat.Human, report);
+
+        int exit = await InvokeAsync(services, "acme", "--exclude-stale");
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stdout.ToString().ShouldContain("projectionBindingMissing");
+        stdout.ToString().ShouldNotContain("acme.events");
     }
 
     private static async Task<int> InvokeAsync(IServiceProvider services, params string[] args)

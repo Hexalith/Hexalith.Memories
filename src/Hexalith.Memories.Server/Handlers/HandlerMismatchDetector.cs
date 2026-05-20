@@ -164,18 +164,36 @@ public sealed class HandlerMismatchDetector
             snapshot = await _projectionBindingProvider.GetBindingsAsync(tenantId, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
         {
+            // Any exception type during cancellation re-throws so callers see cancellation, never a silent empty result.
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
+        {
+            EventStoreIntegrationLog.ProjectionBindingProviderFailed(_logger, tenantId, ex.GetType().FullName ?? ex.GetType().Name);
+            return Array.Empty<HandlerMismatch>();
+        }
+
+        if (snapshot.Authority != ProjectionBindingRegistryAuthority.Authoritative)
         {
             return Array.Empty<HandlerMismatch>();
         }
 
-        if (snapshot.Authority != ProjectionBindingRegistryAuthority.Authoritative ||
-            !string.Equals(snapshot.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        // Tenant mismatch on an Authoritative snapshot suggests an adopter bug — never silent.
+        if (!string.Equals(snapshot.TenantId?.Trim(), tenantId, StringComparison.OrdinalIgnoreCase))
         {
+            EventStoreIntegrationLog.ProjectionBindingSnapshotTenantMismatched(
+                _logger,
+                tenantId,
+                snapshot.TenantId ?? "<null>");
+            return Array.Empty<HandlerMismatch>();
+        }
+
+        // An Authoritative snapshot that returns null Bindings is a contract violation; downgrade to Unavailable behavior and log.
+        if (snapshot.Bindings is null)
+        {
+            EventStoreIntegrationLog.ProjectionBindingSnapshotNullBindings(_logger, tenantId);
             return Array.Empty<HandlerMismatch>();
         }
 

@@ -1,6 +1,6 @@
 # Story 16.1: Projection Registry Cross-Check Design
 
-Status: review
+Status: done
 
 ## Story
 
@@ -184,8 +184,10 @@ GPT-5
 - `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `docs/dev/eventstore-integration.md`
+- `docs/dev/telemetry.md` (added by review patch)
 - `src/Hexalith.Memories.Contracts/V1/HandlerMismatchReport.cs`
 - `src/Hexalith.Memories.EventStore/DefaultProjectionBindingProvider.cs`
+- `src/Hexalith.Memories.EventStore/EventStoreIntegrationLog.cs` (added by review patch — new events 9150-9152)
 - `src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs`
 - `src/Hexalith.Memories.EventStore/IProjectionBindingProvider.cs`
 - `src/Hexalith.Memories.EventStore/ProjectionBinding.cs`
@@ -195,6 +197,7 @@ GPT-5
 - `src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs`
 - `tests/Hexalith.Memories.Cli.Tests/Cli/HandlersMismatchesCommandTests.cs`
 - `tests/Hexalith.Memories.Cli.Tests/Cli/MemoriesClientHandlersContractTests.cs`
+- `tests/Hexalith.Memories.EventStore.Tests/DefaultProjectionBindingProviderTests.cs` (new — added by review patch)
 - `tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`
 
 ## Change Log
@@ -203,6 +206,7 @@ GPT-5
 - 2026-05-20: Party-mode review applied story hardening for projection-binding authority, canonical comparison keys, additive HXL002 compatibility, non-warning registry states, operator diagnostics, and regression test coverage.
 - 2026-05-20: Advanced elicitation applied story hardening for tenant-boundary safety, deterministic matching, provider failure posture, duplicate binding behavior, and liveness non-goals.
 - 2026-05-20: Implemented projection registry cross-check and marked story ready for review.
+- 2026-05-20: Code review (bmad-code-review) — Acceptance Auditor 12/12 ACs satisfied. Triage produced 2 decisions (resolved), 14 patches (applied), 8 defers (recorded in `deferred-work.md` as 16.1-CR1..CR8), 5 dismissed. Focused validation: 25 detector + 8 CLI + 4 EventStore tests pass. Broader validation: 1839 Server.Tests pass (1 skipped, intentional submodule guard); 88 EventStore.Tests pass. Status → done.
 
 ## Party-Mode Review
 
@@ -265,3 +269,50 @@ GPT-5
 ## Story Completion Status
 
 Story context created and ready for development. The developer has the active deferred ID, source targets, design guardrails, expected tests, and scope boundaries needed to implement the projection registry cross-check without reopening unrelated Story 9.3 work.
+
+### Review Findings
+
+Code review run: 2026-05-20, against commit `b7d3a2a` (`feat: Add projection binding provider and related classes`). Reviewers: Blind Hunter (diff-only), Edge Case Hunter (diff + repo), Acceptance Auditor (diff + spec + docs). Acceptance Auditor: **12/12 acceptance criteria satisfied**.
+
+Decision-needed (resolved 2026-05-20 — "follow best practices"):
+
+- [x] [Review][Decision] Aggregate-only OR-match — **Resolved**: keep OR-match between source prefix and aggregate token when only one is declared, AND added `.`→`/` source normalization so the most common false-cover case (notation difference between dot-style routes and slash-style bindings) is eliminated upstream. Documented breadth in `docs/dev/eventstore-integration.md` §11.4.1.
+- [x] [Review][Decision] Binding-side `V<digits>` suffix stripped — **Resolved**: keep current version-agnostic matching; `VersionMismatch` is the dedicated diagnostic for concurrent-version drift. Documented the trade-off explicitly in §11.4.1 with a follow-up trigger for version-pinned binding semantics if operators report surprise.
+
+Patch (applied 2026-05-20):
+
+- [x] [Review][Patch] Provider failure swallowed silently → emits log event 9150 with exception type name [`HandlerMismatchDetector.cs`]
+- [x] [Review][Patch] Null `snapshot.Bindings` guard → emits log event 9152 (treated as Unavailable) [`HandlerMismatchDetector.cs`]
+- [x] [Review][Patch] Snapshot `TenantId` mismatch → emits log event 9151 [`HandlerMismatchDetector.cs`]
+- [x] [Review][Patch] Generalized cancellation re-throw to `catch (Exception) when (cancellationToken.IsCancellationRequested)` (handles `AggregateException(OCE)`, `ObjectDisposedException`, `TaskCanceledException`) [`HandlerMismatchDetector.cs`]
+- [x] [Review][Patch] `binding.TenantId` trim before compare [`ProjectionBindingMatcher.cs`]
+- [x] [Review][Patch] `SupportedEventTypePatterns` null-coalesce before `.Count` [`ProjectionBindingMatcher.cs`]
+- [x] [Review][Patch] Null entries in `snapshot.Bindings` filtered out in `IsCovered` [`ProjectionBindingMatcher.cs`]
+- [x] [Review][Patch] F5: `NormalizeSource` now converts `.` and `\` to `/` so dot-style and slash-style routes canonicalize identically [`ProjectionBindingMatcher.cs`]
+- [x] [Review][Patch] Non-trailing wildcards documented as unsupported in `docs/dev/eventstore-integration.md` §11.4.1
+- [x] [Review][Patch] `docs/dev/telemetry.md` updated to list `ProjectionBindingMissing` as the 4th mismatch category, with log-event bank 9150-9159 reserved for Story 16.1 Warnings
+- [x] [Review][Patch] `docs/dev/eventstore-integration.md` §11.4.1 documents the "no observations yet" `DefaultIfEmpty("*")` semantics and the behavioral-cliff guidance
+- [x] [Review][Patch] CLI test `Human_Format_ExcludeStaleDoesNotSuppressProjectionBindingMissing` added [`HandlersMismatchesCommandTests.cs`]
+- [x] [Review][Patch] CLI test asserts the kebab-cased runbook URL `handler-projection-binding-missing` in human output [`HandlersMismatchesCommandTests.cs`]
+- [x] [Review][Patch] Detector test `ProjectionBindingMissing_MultipleRoutes_AreEmittedInDeterministicOrder` added [`HandlerMismatchDetectorTests.cs`]
+- [x] [Review][Patch] New test class `DefaultProjectionBindingProviderTests` (4 tests) [`tests/Hexalith.Memories.EventStore.Tests/`]
+- [x] [Review][Patch] New tests for provider failure / tenant mismatch / null Bindings / null entry / cancellation re-throw / dot-vs-slash source equivalence (6 added) [`HandlerMismatchDetectorTests.cs`]
+
+Defer (real but post-MVP / not caused by this change / low risk):
+
+- [x] [Review][Defer] Whitespace-only entry in `SupportedEventTypePatterns` silently promoted to wildcard `*` — operator-error edge; document or sweep later [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:137-140]
+- [x] [Review][Defer] Trailing `.` or `/` in event names/source prefixes not trimmed before terminal-segment split [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:155-159, :183-187]
+- [x] [Review][Defer] Embedded `\` in event names not normalized to `.` or `/` [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:135]
+- [x] [Review][Defer] Turkish-I / Unicode invariant casing produces non-byte-equal forms across tenants/routes [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:132,167]
+- [x] [Review][Defer] Bare `V2` input yields empty event key → `tenant/source//` double-slash comparison key (cosmetic) [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:161]
+- [x] [Review][Defer] Tenant-leakage telemetry/log payload assertion (currently only asserts Context/Suggestion text) [tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs]
+- [x] [Review][Defer] Multi-slash collapse (`while (... "//")`) has no direct test [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:127-130]
+- [x] [Review][Defer] Wildcard suffix matching test depth — current tests pass via exact-match coincidence, not via `*` honoring [src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs:108-111]
+
+Dismissed (5):
+
+- `SourceToTenantMap` not filtered by tenant (Blind Hunter): disproven — `HandlerMismatchDetector.cs:88-90` already filters before passing to matcher.
+- O(routes × bindings) matcher perf: premature optimization; not a correctness bug.
+- Inconsistent `Ordinal` / `OrdinalIgnoreCase` comparer mix: works correctly because all sides pass through `ToLowerInvariant`; refactor risk only.
+- `DefaultProjectionBindingProvider` synchronous-throw on null tenant: standard .NET argument-validation contract.
+- `ConfigureAwait(false)` SC test: project-wide rule already enforces.

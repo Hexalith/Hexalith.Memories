@@ -727,12 +727,47 @@ Normalization is deterministic:
 
 - tenant ids, source prefixes, aggregate tokens, and event terminal segments compare
   case-insensitively by lower-casing with invariant culture;
-- source prefixes trim whitespace, convert `\` to `/`, collapse repeated `/`, and trim leading or
-  trailing `/`;
+- source prefixes trim whitespace, convert `\` and `.` to `/`, collapse repeated `/`, and trim
+  leading or trailing `/`. As a result, dot-style routes (`acme.events`) and slash-style bindings
+  (`acme/events`) canonicalize to the same source key;
 - aggregate tokens are derived from the final `/` segment and then final `.` segment of the route;
-- event names compare on the terminal `.` segment and strip a trailing `V<digits>` version suffix;
-- `*` covers all events for the matched route/aggregate, and suffix `*` acts as a prefix pattern;
+- event names compare on the terminal `.` segment and strip a trailing `V<digits>` version suffix.
+  The strip is applied on both the binding pattern and the observed event side, so
+  `["ClaimSubmittedV2"]` covers V2, V3, V99, etc. Version drift is reported separately by the
+  `VersionMismatch` diagnostic when concurrent versions are observed; operators who need version-pinned
+  binding semantics should request that follow-up via deferred work;
+- `*` covers all events for the matched route/aggregate, and suffix `*` acts as a prefix pattern.
+  Leading or embedded wildcards (`*Submitted`, `Claim*Submitted`) are not supported and will be
+  treated as literal characters that never match — declare the wildcard at the end of the pattern;
+- when no events have yet been observed for a route's aggregate, the expectation event key collapses
+  to `*` and any matching binding satisfies coverage. Once real events are observed, the expectation
+  becomes specific; this can produce a behavioral cliff where a route covered by an over-broad
+  binding starts emitting `ProjectionBindingMissing` warnings as events arrive — declare narrow
+  patterns to avoid the cliff;
 - duplicate configured keys are reported once in deterministic order.
+
+When a binding declares both `SourcePrefix` and `AggregateType`, either field's match satisfies
+coverage (OR semantics). This is intentional: hosts may declare bindings using whichever field
+maps cleanest to their projection registry. The dot-to-slash source normalization above closes the
+most common false-cover case (notation difference). If a binding declares only one of the two
+fields, that field must match the route or aggregate token respectively.
+
+Provider failure posture (Authority semantics):
+
+- `Unknown` — no authoritative provider available; never emit `ProjectionBindingMissing` warnings.
+- `NonAuthoritative` — advisory metadata only; never emit `ProjectionBindingMissing` warnings.
+- `Authoritative` — the snapshot is trusted to enumerate every runtime-bound projection for the
+  tenant; missing bindings produce `ProjectionBindingMissing` warnings.
+- `Unavailable` — the provider attempted a snapshot but cannot guarantee completeness; never emit
+  warnings.
+
+If the provider throws (any exception not tied to cancellation), the detector logs event 9150
+(`Projection binding provider failed`) at Warning level with the exception type, skips the
+projection-binding cross-check for that report, and preserves all other handler-mismatch diagnostics.
+If the provider returns a snapshot whose `TenantId` does not equal the requested tenant, the detector
+logs event 9151 and skips the cross-check. If the provider returns an `Authoritative` snapshot whose
+`Bindings` collection is null, the detector logs event 9152 and skips the cross-check (treated as
+Unavailable). Cancellation always re-throws regardless of the wrapping exception type.
 
 `DiscoveryResult.Projections` in `Hexalith.EventStore` remains reference material, not the default
 source of truth. It describes discovered projection types but does not by itself prove tenant-scoped

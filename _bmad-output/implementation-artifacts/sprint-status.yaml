@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-05-20T17:22:19+02:00
+# last_updated: 2026-05-20T18:30:00+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-05-20T17:22:19+02:00
+last_updated: 2026-05-20T18:30:00+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -186,7 +186,7 @@ development_status:
 
   # Epic 16: Projection Registry Cross-Check Hardening
   epic-16: in-progress
-  16-1-projection-registry-cross-check-design: review
+  16-1-projection-registry-cross-check-design: done
   epic-16-retrospective: optional
 
   # Epic 17: Future Web UX Composition & Accessibility

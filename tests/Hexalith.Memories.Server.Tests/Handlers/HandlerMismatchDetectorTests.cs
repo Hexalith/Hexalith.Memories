@@ -15,6 +15,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Handlers;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -456,6 +457,226 @@ public sealed class HandlerMismatchDetectorTests
     }
 
     [Fact]
+    public async Task ProjectionBindingMissing_MultipleRoutes_AreEmittedInDeterministicOrder()
+    {
+        // Story 16.1 review F16 — operator-facing diagnostics must be stable so test/CLI consumers can rely on order.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap =
+            {
+                { "enterprise/policies", "acme" },
+                { "enterprise/claims", "acme" },
+                { "enterprise/audits", "acme" },
+            },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [])));
+
+        HandlerMismatchReport report1 = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+        HandlerMismatchReport report2 = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        List<string> subjects1 = report1.Mismatches
+            .Where(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing)
+            .Select(m => m.Subject)
+            .ToList();
+        List<string> subjects2 = report2.Mismatches
+            .Where(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing)
+            .Select(m => m.Subject)
+            .ToList();
+
+        subjects1.Count.ShouldBe(3);
+        subjects1.ShouldBe(subjects2);
+        // The matcher orders routes case-insensitively before building expectations.
+        subjects1.ShouldBe(subjects1.OrderBy(s => s, StringComparer.Ordinal).ToList());
+    }
+
+    [Fact]
+    public async Task ProjectionBindingProviderFailure_LogsWarningWithExceptionTypeAndDoesNotEmitProjectionBindingMissing()
+    {
+        // Story 16.1 review F1 — a thrown provider was previously silently swallowed; operators need a structured signal.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+        CapturingLogger<HandlerMismatchDetector> logger = new();
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new ThrowingProjectionBindingProvider(),
+            logger);
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+        logger.Entries.Any(e => e.Level == LogLevel.Warning && e.Message.Contains("Projection binding provider failed", StringComparison.Ordinal)).ShouldBeTrue();
+        logger.Entries.Any(e => e.Message.Contains("InvalidOperationException", StringComparison.Ordinal)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingSnapshotTenantMismatch_LogsWarningAndDoesNotEmitProjectionBindingMissing()
+    {
+        // Story 16.1 review F3 — an adopter returning the wrong tenant's snapshot was previously silent.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+        CapturingLogger<HandlerMismatchDetector> logger = new();
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "wrong-tenant",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [])),
+            logger);
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+        logger.Entries.Any(e => e.Level == LogLevel.Warning && e.Message.Contains("tenant mismatch", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingSnapshotWithNullBindings_LogsWarningAndDoesNotEmitProjectionBindingMissing()
+    {
+        // Story 16.1 review F2 — an Authoritative snapshot with null Bindings was previously indistinguishable from a clean report.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+        CapturingLogger<HandlerMismatchDetector> logger = new();
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: null!)),
+            logger);
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+        logger.Entries.Any(e => e.Level == LogLevel.Warning && e.Message.Contains("null Bindings", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingBindingWithNullEntryInList_DoesNotNREAndDoesNotEmitProjectionBindingMissing()
+    {
+        // Story 16.1 review F9 — a null entry inside Bindings used to NRE inside the matcher and silently downgrade to "no warning".
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "ClaimSubmittedV2", Count: 1, now),
+        ]);
+        ProjectionBinding validBinding = new(
+            TenantId: "acme",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: "claims",
+            ProjectionName: "ClaimsReadModel",
+            ProjectionType: "Acme.ClaimsProjection",
+            SupportedEventTypePatterns: ["claimsubmitted"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [null!, validBinding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingProviderCancellation_RethrowsRegardlessOfExceptionType()
+    {
+        // Story 16.1 review F4 — cancellation must never be swallowed regardless of the wrapping exception type.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+        using CancellationTokenSource cts = new();
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new CancellationAwareThrowingProvider(cts));
+
+        await Should.ThrowAsync<Exception>(
+            () => detector.DetectAsync("acme", TimeSpan.FromHours(24), cts.Token));
+    }
+
+    [Fact]
+    public async Task ProjectionBindingWithDotStyleRouteAndSlashStyleBinding_AreTreatedAsEquivalentSources()
+    {
+        // Story 16.1 review F5 — dot-style routes (`acme.events`) and slash-style bindings (`acme/events`)
+        // must canonicalize to the same source key; previously the OR-aggregate fallback masked the gap.
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise.claims", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("claims", "ClaimSubmittedV2", Count: 1, now),
+        ]);
+        ProjectionBinding binding = new(
+            TenantId: "acme",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: null,
+            ProjectionName: "ClaimsReadModel",
+            ProjectionType: "Acme.ClaimsProjection",
+            SupportedEventTypePatterns: ["claimsubmitted"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [binding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Where(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task ProjectionBindingMatcher_NormalizesSlashCasingDuplicatesWildcardAndEventVersionSuffixes()
     {
         TenantEventRoutingOptions routing = new()
@@ -497,7 +718,8 @@ public sealed class HandlerMismatchDetectorTests
     private static HandlerMismatchDetector BuildDetector(
         TenantEventRoutingOptions routing,
         IObservedEventTypeStore store,
-        IProjectionBindingProvider? projectionBindingProvider = null)
+        IProjectionBindingProvider? projectionBindingProvider = null,
+        ILogger<HandlerMismatchDetector>? logger = null)
     {
         IOptionsMonitor<TenantEventRoutingOptions> monitor = Substitute.For<IOptionsMonitor<TenantEventRoutingOptions>>();
         monitor.CurrentValue.Returns(routing);
@@ -506,7 +728,7 @@ public sealed class HandlerMismatchDetectorTests
             store,
             projectionBindingProvider ?? new DefaultProjectionBindingProvider(),
             TimeProvider.System,
-            NullLogger<HandlerMismatchDetector>.Instance);
+            logger ?? NullLogger<HandlerMismatchDetector>.Instance);
     }
 
     private static IObservedEventTypeStore BuildObservedStore(IReadOnlyList<ObservedEventType> observedTypes)
@@ -527,5 +749,35 @@ public sealed class HandlerMismatchDetectorTests
     {
         public ValueTask<ProjectionBindingSnapshot> GetBindingsAsync(string tenantId, CancellationToken cancellationToken)
             => throw new InvalidOperationException("projection discovery unavailable");
+    }
+
+    private sealed class CancellationAwareThrowingProvider : IProjectionBindingProvider
+    {
+        private readonly CancellationTokenSource _trigger;
+
+        public CancellationAwareThrowingProvider(CancellationTokenSource trigger) => _trigger = trigger;
+
+        public ValueTask<ProjectionBindingSnapshot> GetBindingsAsync(string tenantId, CancellationToken cancellationToken)
+        {
+            _trigger.Cancel();
+            throw new AggregateException(new OperationCanceledException(cancellationToken));
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message);
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            ArgumentNullException.ThrowIfNull(formatter);
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+        }
     }
 }
