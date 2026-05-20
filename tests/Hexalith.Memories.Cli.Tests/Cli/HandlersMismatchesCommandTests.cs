@@ -96,6 +96,30 @@ public sealed class HandlersMismatchesCommandTests
         stdout.ToString().ShouldContain("routes configured");
     }
 
+    [Fact]
+    public async Task Human_Format_RendersProjectionBindingMissingCategory()
+    {
+        HandlerMismatchReport report = BuildReport(
+        [
+            new HandlerMismatch
+            {
+                Category = HandlerMismatchCategory.ProjectionBindingMissing,
+                Severity = HandlerMismatchSeverity.Warning,
+                Subject = "acme/enterprise/claims/claimsubmitted",
+                Context = "ctx",
+                Suggestion = "register an authoritative projection binding",
+            },
+        ]);
+
+        (IServiceProvider services, StringWriter stdout, _) = BuildServices(OutputFormat.Human, report);
+
+        int exit = await InvokeAsync(services, "acme", "--severity", "warning", "--exclude-stale");
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stdout.ToString().ShouldContain("projectionBindingMissing");
+        stdout.ToString().ShouldContain("register an authoritative projection binding");
+    }
+
     private static async Task<int> InvokeAsync(IServiceProvider services, params string[] args)
     {
         var root = new System.CommandLine.Command("handlers");

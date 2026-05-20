@@ -1,6 +1,6 @@
 # Story 16.1: Projection Registry Cross-Check Design
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -45,62 +45,62 @@ so that events can no longer look "handled" from routing configuration while sil
 
 ## Tasks / Subtasks
 
-- [ ] Task 0 - Preflight the deferred entry and current implementation (AC: 1-12)
-  - [ ] Confirm `Story-9.3-ProjectionRegistryCrossCheck` exists in `_bmad-output/implementation-artifacts/deferred-work.md` and is still carried-forward from Story 15.5.
-  - [ ] Read `HandlerMismatchDetector.cs`, `HandlerRegistryService.cs`, `HandlerMismatchDetectorTests.cs`, `HandlerRegistryServiceTests.cs`, `HandlerMismatchReport.cs`, `HandlerRegistrationSnapshot.cs`, `HandlersMismatchesCommand.cs`, `MemoriesClient.cs`, and `docs/dev/eventstore-integration.md` before editing.
-  - [ ] Inspect EventStore client discovery in the submodule (`DiscoveryResult`, `DiscoveredDomain`, `EventStoreServiceCollectionExtensions`, `IEventStoreProjection`) as reference only; do not modify submodule files unless the maintainer explicitly expands scope.
+- [x] Task 0 - Preflight the deferred entry and current implementation (AC: 1-12)
+  - [x] Confirm `Story-9.3-ProjectionRegistryCrossCheck` exists in `_bmad-output/implementation-artifacts/deferred-work.md` and is still carried-forward from Story 15.5.
+  - [x] Read `HandlerMismatchDetector.cs`, `HandlerRegistryService.cs`, `HandlerMismatchDetectorTests.cs`, `HandlerRegistryServiceTests.cs`, `HandlerMismatchReport.cs`, `HandlerRegistrationSnapshot.cs`, `HandlersMismatchesCommand.cs`, `MemoriesClient.cs`, and `docs/dev/eventstore-integration.md` before editing.
+  - [x] Inspect EventStore client discovery in the submodule (`DiscoveryResult`, `DiscoveredDomain`, `EventStoreServiceCollectionExtensions`, `IEventStoreProjection`) as reference only; do not modify submodule files unless the maintainer explicitly expands scope.
 
-- [ ] Task 1 - Define the projection binding contract (AC: 1, 2, 6, 8, 9, 11, 12)
-  - [ ] Add a small repository-owned contract for runtime projection bindings, likely under `src/Hexalith.Memories.EventStore` if the boundary belongs to EventStore integration, or under `src/Hexalith.Memories.Server/Handlers` if the binding source is intentionally server-local.
-  - [ ] Include enough shape for the detector to answer: tenant id, normalized source prefix or aggregate type, projection type/name or id, supported event/aggregate patterns, and whether the provider is authoritative for the returned tenant/application boundary.
-  - [ ] Define the canonical comparison key and normalization rules for route source prefix, aggregate token, event pattern, casing, slash trimming, wildcard/prefix matching, and event-version suffix handling before adding detector logic.
-  - [ ] Provide a default implementation with an explicit unknown or non-authoritative posture so deployments without projection bindings do not receive false warnings by default.
-  - [ ] Add at least one concrete adopter-facing example showing a `SourceToTenantMap` entry and the matching projection binding shape.
-  - [ ] If reusing EventStore `DiscoveryResult.Projections` is viable without new dependency churn, add an adapter. If not, document the reason in dev notes or operations docs.
-  - [ ] Define sanitized projection identity fields and explicitly exclude secrets, raw endpoints, DI container internals, and cross-tenant binding inventories from serialized diagnostics.
+- [x] Task 1 - Define the projection binding contract (AC: 1, 2, 6, 8, 9, 11, 12)
+  - [x] Add a small repository-owned contract for runtime projection bindings, likely under `src/Hexalith.Memories.EventStore` if the boundary belongs to EventStore integration, or under `src/Hexalith.Memories.Server/Handlers` if the binding source is intentionally server-local.
+  - [x] Include enough shape for the detector to answer: tenant id, normalized source prefix or aggregate type, projection type/name or id, supported event/aggregate patterns, and whether the provider is authoritative for the returned tenant/application boundary.
+  - [x] Define the canonical comparison key and normalization rules for route source prefix, aggregate token, event pattern, casing, slash trimming, wildcard/prefix matching, and event-version suffix handling before adding detector logic.
+  - [x] Provide a default implementation with an explicit unknown or non-authoritative posture so deployments without projection bindings do not receive false warnings by default.
+  - [x] Add at least one concrete adopter-facing example showing a `SourceToTenantMap` entry and the matching projection binding shape.
+  - [x] If reusing EventStore `DiscoveryResult.Projections` is viable without new dependency churn, add an adapter. If not, document the reason in dev notes or operations docs.
+  - [x] Define sanitized projection identity fields and explicitly exclude secrets, raw endpoints, DI container internals, and cross-tenant binding inventories from serialized diagnostics.
 
-- [ ] Task 2 - Wire the registry into handler mismatch detection (AC: 3, 4, 6, 8-12)
-  - [ ] Inject the projection binding provider into `HandlerMismatchDetector` without breaking existing constructor validation and tests.
-  - [ ] Update `Program.cs` service registration and every affected test builder when constructor dependencies change; use `ArgumentNullException.ThrowIfNull` and default-safe test fakes so warnings-as-errors catches missing setup.
-  - [ ] Add the configured-but-unbound projection check after routing entries are resolved and before telemetry emission, preserving existing stale, unhandled, and version-mismatch behavior.
-  - [ ] Emit configured-but-unbound warnings only when the projection binding provider reports an authoritative registry for the relevant tenant/application boundary.
-  - [ ] Treat provider exceptions, unavailable discovery, and partial results as unavailable/unknown posture unless the implementation adds a separately tested additive diagnostic for provider failure.
-  - [ ] Decide whether the new mismatch is a new `HandlerMismatchCategory` value or a clearly documented use of an existing category. If a new category is added, update JSON serialization, CLI formatting, tests, and docs in the same story.
-  - [ ] State the behavior for the reverse direction, runtime projection binding exists but no route is configured. Either leave it as no new mismatch in this story or add a separate additive diagnostic with severity and tests.
-  - [ ] State the behavior for duplicate, overlapping, or ambiguous projection bindings and keep output ordering deterministic for CLI, JSON, and tests.
-  - [ ] Ensure the detector's summary remains useful and does not count projection registry absence as observed event data.
+- [x] Task 2 - Wire the registry into handler mismatch detection (AC: 3, 4, 6, 8-12)
+  - [x] Inject the projection binding provider into `HandlerMismatchDetector` without breaking existing constructor validation and tests.
+  - [x] Update `Program.cs` service registration and every affected test builder when constructor dependencies change; use `ArgumentNullException.ThrowIfNull` and default-safe test fakes so warnings-as-errors catches missing setup.
+  - [x] Add the configured-but-unbound projection check after routing entries are resolved and before telemetry emission, preserving existing stale, unhandled, and version-mismatch behavior.
+  - [x] Emit configured-but-unbound warnings only when the projection binding provider reports an authoritative registry for the relevant tenant/application boundary.
+  - [x] Treat provider exceptions, unavailable discovery, and partial results as unavailable/unknown posture unless the implementation adds a separately tested additive diagnostic for provider failure.
+  - [x] Decide whether the new mismatch is a new `HandlerMismatchCategory` value or a clearly documented use of an existing category. If a new category is added, update JSON serialization, CLI formatting, tests, and docs in the same story.
+  - [x] State the behavior for the reverse direction, runtime projection binding exists but no route is configured. Either leave it as no new mismatch in this story or add a separate additive diagnostic with severity and tests.
+  - [x] State the behavior for duplicate, overlapping, or ambiguous projection bindings and keep output ordering deterministic for CLI, JSON, and tests.
+  - [x] Ensure the detector's summary remains useful and does not count projection registry absence as observed event data.
 
-- [ ] Task 3 - Update registry/listing surfaces only where needed (AC: 5, 6)
-  - [ ] Update `HandlerRegistryService` only if the handler list needs to expose projection-binding status; otherwise leave list output unchanged and keep the story scoped to mismatches.
-  - [ ] If the REST contract changes, update `MemoriesJsonContext`, `MemoriesClient`, and consumer-driven contract tests with nullable/defaultable additive members; do not rename existing JSON fields.
-  - [ ] Preserve CLI behavior: JSON output remains unfiltered, `--severity` still filters by severity only, `--exclude-stale` suppresses only `StaleHandler`, and no new required top-level JSON field is introduced.
-  - [ ] If warning text changes, keep it stable enough for tests to assert the route/event key, projection binding key, affected tenant scope, and remediation text without depending on incidental prose.
+- [x] Task 3 - Update registry/listing surfaces only where needed (AC: 5, 6)
+  - [x] Update `HandlerRegistryService` only if the handler list needs to expose projection-binding status; otherwise leave list output unchanged and keep the story scoped to mismatches.
+  - [x] If the REST contract changes, update `MemoriesJsonContext`, `MemoriesClient`, and consumer-driven contract tests with nullable/defaultable additive members; do not rename existing JSON fields.
+  - [x] Preserve CLI behavior: JSON output remains unfiltered, `--severity` still filters by severity only, `--exclude-stale` suppresses only `StaleHandler`, and no new required top-level JSON field is introduced.
+  - [x] If warning text changes, keep it stable enough for tests to assert the route/event key, projection binding key, affected tenant scope, and remediation text without depending on incidental prose.
 
-- [ ] Task 4 - Add focused tests (AC: 3-6, 8-12)
-  - [ ] Add `HandlerMismatchDetectorTests` coverage for route configured + no projection binding -> warning mismatch.
-  - [ ] Add `HandlerMismatchDetectorTests` coverage for route configured + matching projection binding -> no projection-binding mismatch.
-  - [ ] Add `HandlerMismatchDetectorTests` coverage for route configured + binding in another tenant -> warning mismatch for the requested tenant.
-  - [ ] Add `HandlerMismatchDetectorTests` coverage for no configured route + projection binding -> no projection-binding warning unless a separate additive reverse-direction diagnostic is explicitly added.
-  - [ ] Add absence-posture tests proving an empty/default registry does not create noisy warnings unless explicitly configured as authoritative.
-  - [ ] Add provider-failure and partial-discovery tests proving unavailable/unknown registry state does not emit configured-but-unbound warnings or suppress existing diagnostics.
-  - [ ] Add tenant-boundary tests proving cross-tenant binding data is not leaked into snapshots, logs, CLI output, or JSON beyond the selected diagnostic's sanitized tenant key.
-  - [ ] Add regression tests proving existing `UnhandledEventType`, `StaleHandler`, and `VersionMismatch` diagnostics still emit under current fixtures and still coexist with the new projection-binding warning when both conditions apply.
-  - [ ] Add normalization tests for casing, slash trimming, route prefixes, duplicate and overlapping bindings, wildcard/pattern coverage, deterministic ordering, and event-version suffix handling according to the comparison-key rules.
-  - [ ] Add contract/CLI tests if any HXL002 enum or serialized shape changes, including camelCase enum round trips, human/table rendering, severity filtering, and REST client contract coverage.
+- [x] Task 4 - Add focused tests (AC: 3-6, 8-12)
+  - [x] Add `HandlerMismatchDetectorTests` coverage for route configured + no projection binding -> warning mismatch.
+  - [x] Add `HandlerMismatchDetectorTests` coverage for route configured + matching projection binding -> no projection-binding mismatch.
+  - [x] Add `HandlerMismatchDetectorTests` coverage for route configured + binding in another tenant -> warning mismatch for the requested tenant.
+  - [x] Add `HandlerMismatchDetectorTests` coverage for no configured route + projection binding -> no projection-binding warning unless a separate additive reverse-direction diagnostic is explicitly added.
+  - [x] Add absence-posture tests proving an empty/default registry does not create noisy warnings unless explicitly configured as authoritative.
+  - [x] Add provider-failure and partial-discovery tests proving unavailable/unknown registry state does not emit configured-but-unbound warnings or suppress existing diagnostics.
+  - [x] Add tenant-boundary tests proving cross-tenant binding data is not leaked into snapshots, logs, CLI output, or JSON beyond the selected diagnostic's sanitized tenant key.
+  - [x] Add regression tests proving existing `UnhandledEventType`, `StaleHandler`, and `VersionMismatch` diagnostics still emit under current fixtures and still coexist with the new projection-binding warning when both conditions apply.
+  - [x] Add normalization tests for casing, slash trimming, route prefixes, duplicate and overlapping bindings, wildcard/pattern coverage, deterministic ordering, and event-version suffix handling according to the comparison-key rules.
+  - [x] Add contract/CLI tests if any HXL002 enum or serialized shape changes, including camelCase enum round trips, human/table rendering, severity filtering, and REST client contract coverage.
 
-- [ ] Task 5 - Update documentation and deferred-work disposition (AC: 2, 5, 7)
-  - [ ] Update `docs/dev/eventstore-integration.md` section 11 to explain the projection-registry cross-check and operator next steps for configured-and-bound, configured-but-unbound, registry-absent/unknown, and tenant-mismatched binding states.
-  - [ ] Document that a matching registry binding proves declared binding coverage only and is not a projection liveness, lag, replay, or health signal.
-  - [ ] Update `docs/dev/telemetry.md` only if new metrics or categories affect telemetry guidance.
-  - [ ] Update `_bmad-output/implementation-artifacts/deferred-work.md` for `Story-9.3-ProjectionRegistryCrossCheck` with the final disposition and evidence.
-  - [ ] If the deferred entry is not fully resolved, carry it forward with the precise remaining gap, such as auto-discovery enrichment, authoritative registry detection outside the host boundary, or projection metadata breadth.
-  - [ ] Add completion notes and file list to this story.
+- [x] Task 5 - Update documentation and deferred-work disposition (AC: 2, 5, 7)
+  - [x] Update `docs/dev/eventstore-integration.md` section 11 to explain the projection-registry cross-check and operator next steps for configured-and-bound, configured-but-unbound, registry-absent/unknown, and tenant-mismatched binding states.
+  - [x] Document that a matching registry binding proves declared binding coverage only and is not a projection liveness, lag, replay, or health signal.
+  - [x] Update `docs/dev/telemetry.md` only if new metrics or categories affect telemetry guidance.
+  - [x] Update `_bmad-output/implementation-artifacts/deferred-work.md` for `Story-9.3-ProjectionRegistryCrossCheck` with the final disposition and evidence.
+  - [x] If the deferred entry is not fully resolved, carry it forward with the precise remaining gap, such as auto-discovery enrichment, authoritative registry detection outside the host boundary, or projection metadata breadth.
+  - [x] Add completion notes and file list to this story.
 
-- [ ] Task 6 - Validate (AC: 3-10)
-  - [ ] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~HandlerMismatchDetectorTests|FullyQualifiedName~HandlerRegistryServiceTests"`.
-  - [ ] If contracts or CLI output changed, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~HandlersMismatchesCommandTests|FullyQualifiedName~MemoriesClientHandlersContractTests"`.
-  - [ ] If deferred-work structured fields changed, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`.
-  - [ ] Run `git diff --check`.
+- [x] Task 6 - Validate (AC: 3-10)
+  - [x] Run `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~HandlerMismatchDetectorTests|FullyQualifiedName~HandlerRegistryServiceTests"`.
+  - [x] If contracts or CLI output changed, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~HandlersMismatchesCommandTests|FullyQualifiedName~MemoriesClientHandlersContractTests"`.
+  - [x] If deferred-work structured fields changed, run `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~CiTestInventoryTests"`.
+  - [x] Run `git diff --check`.
 
 ## Dev Notes
 
@@ -163,24 +163,46 @@ GPT-5
 - Story created from the Story 15.5 follow-up proposal "Projection Registry Cross-Check Design" after Epic 15 closure.
 - Source context loaded from `deferred-work.md`, Story 15.5, Story 9.3, `epics.md`, handler services/tests/contracts, CLI mismatch command, docs, and EventStore discovery reference files.
 - No web research was needed; the implementation surface is repository-owned .NET code and local submodule reference material.
+- 2026-05-20: Red phase added failing `HandlerMismatchDetectorTests` for authoritative missing bindings, matching bindings, tenant-boundary safety, registry posture, provider failures, diagnostic coexistence, and normalization.
+- 2026-05-20: Green phase added a Memories-owned `IProjectionBindingProvider` contract, default `Unknown` provider, deterministic route/projection matcher, additive `ProjectionBindingMissing` category, CLI/contract tests, docs, and deferred-work resolution.
+- 2026-05-20: Broad `dotnet test .\Hexalith.Memories.slnx` reached unit projects cleanly but failed Docker/Aspire-dependent integration and benchmark fixtures because the local Docker runtime was unhealthy; non-container solution verification passed.
 
 ### Completion Notes List
 
 - Ready-for-dev story created on 2026-05-19.
 - Scope is limited to projection-binding registry design, detector proof, focused HXL002/CLI/server tests, docs, and deferred-work disposition.
 - Do not mutate submodules or import the entire deferred-work backlog into Epic 16.
+- Implemented a repository-owned projection binding registry contract in `Hexalith.Memories.EventStore` with explicit `Unknown`, `NonAuthoritative`, `Authoritative`, and `Unavailable` postures.
+- Wired `HandlerMismatchDetector` to emit `ProjectionBindingMissing` only for authoritative tenant-scoped snapshots and to degrade provider errors without suppressing existing `UnhandledEventType`, `StaleHandler`, or `VersionMismatch` diagnostics.
+- Centralized deterministic matching for tenant/source/event keys, including casing, slash normalization, aggregate token extraction, duplicate collapse, wildcard/prefix coverage, and event-version suffix stripping.
+- Updated HXL002 enum serialization/CLI coverage, operator docs, and deferred-work disposition for `Story-9.3-ProjectionRegistryCrossCheck`.
+- Validation passed for focused server/CLI lanes, deferred-work parser, `git diff --check`, and non-container solution tests. Full solution tests are blocked by local Docker runtime health for integration/benchmark fixtures.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/16-1-projection-registry-cross-check-design.md`
-- `_bmad-output/planning-artifacts/epics.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `docs/dev/eventstore-integration.md`
+- `src/Hexalith.Memories.Contracts/V1/HandlerMismatchReport.cs`
+- `src/Hexalith.Memories.EventStore/DefaultProjectionBindingProvider.cs`
+- `src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs`
+- `src/Hexalith.Memories.EventStore/IProjectionBindingProvider.cs`
+- `src/Hexalith.Memories.EventStore/ProjectionBinding.cs`
+- `src/Hexalith.Memories.EventStore/ProjectionBindingRegistryAuthority.cs`
+- `src/Hexalith.Memories.EventStore/ProjectionBindingSnapshot.cs`
+- `src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs`
+- `src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs`
+- `tests/Hexalith.Memories.Cli.Tests/Cli/HandlersMismatchesCommandTests.cs`
+- `tests/Hexalith.Memories.Cli.Tests/Cli/MemoriesClientHandlersContractTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs`
 
 ## Change Log
 
 - 2026-05-19: Created ready-for-dev story artifact for Projection Registry Cross-Check Design.
 - 2026-05-20: Party-mode review applied story hardening for projection-binding authority, canonical comparison keys, additive HXL002 compatibility, non-warning registry states, operator diagnostics, and regression test coverage.
 - 2026-05-20: Advanced elicitation applied story hardening for tenant-boundary safety, deterministic matching, provider failure posture, duplicate binding behavior, and liveness non-goals.
+- 2026-05-20: Implemented projection registry cross-check and marked story ready for review.
 
 ## Party-Mode Review
 

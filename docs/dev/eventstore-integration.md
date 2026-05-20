@@ -599,7 +599,7 @@ confirm traffic is landing.
 
 ### §11.2 Mismatch categories
 
-`GET /api/tenants/{tenantId}/handlers/mismatches` returns three categories with severity +
+`GET /api/tenants/{tenantId}/handlers/mismatches` returns four categories with severity +
 actionable suggestion. Each `Suggestion` ends with a runbook URL of the form
 `https://docs.hexalith.dev/memories/runbooks/handler-{category-kebab-case}`.
 
@@ -618,6 +618,14 @@ actionable suggestion. Each `Suggestion` ends with a runbook URL of the form
    concurrently. Example: `MyApp.Claims.ClaimSubmittedV2` AND `MyApp.Claims.ClaimSubmittedV3` both
    seen — the stem `ClaimSubmitted` (from the terminal segment, NOT the full FQN) is reported at
    Warning with version counts in the Context.
+
+4. **`ProjectionBindingMissing` (Warning)** — a `SourceToTenantMap` route exists for the selected
+   tenant and an authoritative projection registry is available, but no runtime projection binding
+   covers the normalized route/event key. Example: route `enterprise/claims -> acme` exists, events
+   like `MyApp.Claims.ClaimSubmittedV2` are observed, and the authoritative registry returns no
+   `acme/enterprise/claims/claimsubmitted` binding. The Context identifies the configured source,
+   selected tenant, expected projection-binding key, and the remediation stays additive to the
+   existing report shape.
 
 Stem-extraction regex: `^(.+?)(V\d+)$` compiled with `MatchTimeout = 100ms` and `CultureInvariant`,
 operating on the TERMINAL `.`-separated segment of the event type. Inputs over 256 chars are
@@ -661,6 +669,75 @@ appsettings or env-var and restart the server.
 signal of an in-progress migration. Action: either (a) ensure the consumer is schema-tolerant of
 both versions, OR (b) after the publisher has fully migrated and V2 traffic has dropped to zero,
 the mismatch self-resolves.
+
+**Scenario C: route configured, projection unbound.** Operator sees `ProjectionBindingMissing`.
+Action: register an authoritative projection binding for the same tenant/source/event key, or update
+`EventStoreIntegration:Routing:SourceToTenantMap` if the route no longer maps to a runtime-bound
+projection. A matching binding proves declared route-to-binding coverage only. It does not prove the
+projection is live, healthy, caught up, or consuming successfully.
+
+**Scenario D: registry absent or unknown.** The detector preserves the existing mismatch output and
+does not emit `ProjectionBindingMissing` when the provider reports `Unknown`, `NonAuthoritative`, or
+`Unavailable`. This is the default posture for deployments that have not opted into authoritative
+projection binding metadata.
+
+**Scenario E: binding belongs to another tenant.** A binding for tenant `other` never satisfies a
+route for tenant `acme`. The warning is still scoped to the selected tenant and expected key, and
+does not enumerate the other tenant's projection inventory or expose projection implementation
+details, endpoints, credentials, or DI internals.
+
+### §11.4.1 Projection binding registry contract
+
+Story 16.1 adds a small repository-owned projection registry contract in
+`Hexalith.Memories.EventStore`: `IProjectionBindingProvider`, `ProjectionBindingSnapshot`,
+`ProjectionBinding`, and `ProjectionBindingRegistryAuthority`.
+
+The default provider returns:
+
+```json
+{
+  "tenantId": "acme",
+  "authority": "unknown",
+  "bindings": []
+}
+```
+
+Hosts that can prove runtime-bound projection consumers may replace the provider with an
+authoritative implementation. Adopter-facing shape:
+
+```json
+{
+  "tenantId": "acme",
+  "authority": "authoritative",
+  "bindings": [
+    {
+      "tenantId": "acme",
+      "sourcePrefix": "enterprise/claims",
+      "aggregateType": "Claims",
+      "projectionName": "ClaimsReadModel",
+      "projectionType": "Acme.ClaimsProjection",
+      "supportedEventTypePatterns": ["ClaimSubmitted*"]
+    }
+  ]
+}
+```
+
+Canonical comparison key: tenant id + normalized route source prefix + normalized event pattern.
+Normalization is deterministic:
+
+- tenant ids, source prefixes, aggregate tokens, and event terminal segments compare
+  case-insensitively by lower-casing with invariant culture;
+- source prefixes trim whitespace, convert `\` to `/`, collapse repeated `/`, and trim leading or
+  trailing `/`;
+- aggregate tokens are derived from the final `/` segment and then final `.` segment of the route;
+- event names compare on the terminal `.` segment and strip a trailing `V<digits>` version suffix;
+- `*` covers all events for the matched route/aggregate, and suffix `*` acts as a prefix pattern;
+- duplicate configured keys are reported once in deterministic order.
+
+`DiscoveryResult.Projections` in `Hexalith.EventStore` remains reference material, not the default
+source of truth. It describes discovered projection types but does not by itself prove tenant-scoped
+runtime binding authority in `Hexalith.Memories`; a host may adapt it only through the narrow
+`IProjectionBindingProvider` contract when it can supply the required authority posture.
 
 ### §11.5 Telemetry substrate separation (ADR-9.3-002)
 

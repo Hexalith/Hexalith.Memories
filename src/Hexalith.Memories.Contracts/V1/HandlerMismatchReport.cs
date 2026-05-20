@@ -84,6 +84,9 @@ public enum HandlerMismatchCategory
 
     /// <summary>Two or more versions of the same event-name stem are observed concurrently.</summary>
     VersionMismatch,
+
+    /// <summary>A configured route lacks an authoritative runtime projection binding.</summary>
+    ProjectionBindingMissing,
 }
 
 /// <summary>Story 9.3 — mismatch severity; 2-valued (ADR-9.3-004 enum minimalism).</summary>

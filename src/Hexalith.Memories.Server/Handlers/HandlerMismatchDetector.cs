@@ -24,7 +24,8 @@ using Microsoft.Extensions.Options;
 /// <summary>Story 9.3 — pure read-side detector that analyses the observation store for three mismatch
 /// categories: <see cref="HandlerMismatchCategory.UnhandledEventType"/>,
 /// <see cref="HandlerMismatchCategory.StaleHandler"/>, and
-/// <see cref="HandlerMismatchCategory.VersionMismatch"/>.</summary>
+/// <see cref="HandlerMismatchCategory.VersionMismatch"/>. Story 16.1 adds an authoritative
+/// projection-binding cross-check without changing the existing categories' semantics.</summary>
 public sealed class HandlerMismatchDetector
 {
     /// <summary>Hard cap on event-type string length before the regex engages — Risk #5 defense-in-depth
@@ -41,22 +42,26 @@ public sealed class HandlerMismatchDetector
 
     private readonly IOptionsMonitor<TenantEventRoutingOptions> _routingOptions;
     private readonly IObservedEventTypeStore _observedEventTypeStore;
+    private readonly IProjectionBindingProvider _projectionBindingProvider;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HandlerMismatchDetector> _logger;
 
     public HandlerMismatchDetector(
         IOptionsMonitor<TenantEventRoutingOptions> routingOptions,
         IObservedEventTypeStore observedEventTypeStore,
+        IProjectionBindingProvider projectionBindingProvider,
         TimeProvider timeProvider,
         ILogger<HandlerMismatchDetector> logger)
     {
         ArgumentNullException.ThrowIfNull(routingOptions);
         ArgumentNullException.ThrowIfNull(observedEventTypeStore);
+        ArgumentNullException.ThrowIfNull(projectionBindingProvider);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _routingOptions = routingOptions;
         _observedEventTypeStore = observedEventTypeStore;
+        _projectionBindingProvider = projectionBindingProvider;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -111,6 +116,12 @@ public sealed class HandlerMismatchDetector
         // VersionMismatch — group by stem on terminal segment.
         mismatches.AddRange(DetectVersionMismatches(observedTypes, windowHours));
 
+        mismatches.AddRange(await DetectProjectionBindingMismatchesAsync(
+            tenantId,
+            routedEntries,
+            observedTypes,
+            cancellationToken).ConfigureAwait(false));
+
         // Telemetry + logs per mismatch.
         foreach (HandlerMismatch m in mismatches)
         {
@@ -134,6 +145,45 @@ public sealed class HandlerMismatchDetector
                 ObservationsChecked = observedTypes.Count,
             },
         };
+    }
+
+    private async Task<IReadOnlyList<HandlerMismatch>> DetectProjectionBindingMismatchesAsync(
+        string tenantId,
+        IReadOnlyList<KeyValuePair<string, string>> routedEntries,
+        IReadOnlyList<ObservedEventType> observedTypes,
+        CancellationToken cancellationToken)
+    {
+        if (routedEntries.Count == 0)
+        {
+            return Array.Empty<HandlerMismatch>();
+        }
+
+        ProjectionBindingSnapshot snapshot;
+        try
+        {
+            snapshot = await _projectionBindingProvider.GetBindingsAsync(tenantId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            return Array.Empty<HandlerMismatch>();
+        }
+
+        if (snapshot.Authority != ProjectionBindingRegistryAuthority.Authoritative ||
+            !string.Equals(snapshot.TenantId, tenantId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<HandlerMismatch>();
+        }
+
+        return ProjectionBindingMatcher
+            .BuildExpectations(tenantId, routedEntries, observedTypes)
+            .Where(expectation => !ProjectionBindingMatcher.IsCovered(tenantId, expectation, snapshot.Bindings))
+            .Select(expectation => BuildProjectionBindingMissingMismatch(tenantId, expectation))
+            .ToList();
     }
 
     private List<HandlerMismatch> DetectVersionMismatches(
@@ -294,6 +344,21 @@ public sealed class HandlerMismatchDetector
             Suggestion = string.Create(
             CultureInfo.InvariantCulture,
             $"Add an EventStoreIntegration:Routing:SourceToTenantMap entry for source starting with '{observed.AggregateType}' OR verify publisher is targeting the configured topic '{topic}'. See: https://docs.hexalith.dev/memories/runbooks/handler-unhandled-event-type."),
+        };
+
+    private static HandlerMismatch BuildProjectionBindingMissingMismatch(
+        string tenantId,
+        ProjectionBindingExpectation expectation) => new()
+        {
+            Category = HandlerMismatchCategory.ProjectionBindingMissing,
+            Severity = HandlerMismatchSeverity.Warning,
+            Subject = expectation.ComparisonKey,
+            Context = string.Create(
+                CultureInfo.InvariantCulture,
+                $"SourceToTenantMap configured source '{expectation.SourcePrefix}' for tenant '{tenantId}', but the authoritative projection registry returned no binding for expected projection binding key '{expectation.ComparisonKey}'."),
+            Suggestion = string.Create(
+                CultureInfo.InvariantCulture,
+                $"Register an authoritative projection binding for source '{expectation.SourcePrefix}' and event key '{expectation.EventKey}', or update EventStoreIntegration:Routing:SourceToTenantMap so it matches a runtime-bound projection. This check proves declared binding coverage only, not projection liveness or lag. See: https://docs.hexalith.dev/memories/runbooks/handler-projection-binding-missing."),
         };
 
     private static string ExtractAggregateFromSourcePrefix(string sourcePrefix)

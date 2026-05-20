@@ -81,17 +81,17 @@ epic. Historical prose entries remain under their original headings for context.
   - Re-open trigger: `EmbeddingInputContentKindTests` flakes again, or another story adds a concurrent `MemoriesMeter.EmbeddingApiCalls` assertion path that could share static meter captures.
   - Evidence: The focused telemetry tests now call `UniqueTenantId(...)`, capture only matching `tenant_id` measurements from `MemoriesMeter.EmbeddingApiCalls`, store observations in `ConcurrentQueue<(TenantId, ContentKind, Delta)>`, and assert a single matching metric event per test case.
 
-- **Story-9.3-ProjectionRegistryCrossCheck - carried-forward.** Handler
-  mismatch detection still validates observed events against routing config
-  instead of proving that tenant application projection code has a matching
-  runtime-bound projection registry.
+- **Story-9.3-ProjectionRegistryCrossCheck - resolved.** Handler mismatch
+  detection now has a repository-owned projection binding provider contract and
+  emits `ProjectionBindingMissing` only when an authoritative tenant-scoped
+  registry proves a configured route lacks a runtime projection binding.
 
   - ID: Story-9.3-ProjectionRegistryCrossCheck
-  - Status: carried-forward
-  - Source story: 15-5-deferred-register-triage-sweep
-  - Target artifact: src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs; src/Hexalith.Memories.Server/Handlers/HandlerRegistryService.cs; tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs
-  - Re-open trigger: Operator demand, a production incident, or an architecture decision requires mismatch detection to prove actual projection bindings rather than routing declarations.
-  - Rationale: Story 16.1 "Projection Registry Cross-Check Design" owns the architectural design and implementation proof. This story records the planning signal without patching handler detection casually.
+  - Status: resolved
+  - Source story: 16-1-projection-registry-cross-check-design
+  - Target artifact: src/Hexalith.Memories.EventStore/IProjectionBindingProvider.cs; src/Hexalith.Memories.EventStore/ProjectionBinding.cs; src/Hexalith.Memories.EventStore/ProjectionBindingSnapshot.cs; src/Hexalith.Memories.Server/Handlers/HandlerMismatchDetector.cs; src/Hexalith.Memories.Server/Handlers/ProjectionBindingMatcher.cs; tests/Hexalith.Memories.Server.Tests/Handlers/HandlerMismatchDetectorTests.cs
+  - Re-open trigger: A host needs automatic EventStore discovery adaptation, projection liveness or lag evidence, or authoritative registry detection beyond the host-provided tenant boundary.
+  - Evidence: Story 16.1 adds `IProjectionBindingProvider`, default `Unknown` posture, authoritative-only `ProjectionBindingMissing` diagnostics, tenant-scoped deterministic matching, CLI/contract coverage, and operator documentation.
 
 - **12.4-RV10 - accepted.** A parse-time warning for dropped bare-token bullets
   may help story authors, but the current out-of-scope-files diagnostic already
@@ -1344,4 +1344,3 @@ Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced 
 - **2.7-CR25. `McpErrorMapper.MapAuthorization` forbidden message echoes `requestedTenantId`.** Rationale: caller-supplied input echoed back, not a confirmation of alternate tenant existence.
 - **2.7-CR26. CLI test substring match for `"evidencePacket"` and serialization-test camelCase spot-check are brittle.** Rationale: paired with 2.7-CR1/CR2 coverage expansion.
 - **2.7-CR27. `EvidencePacketCliOutputTests` stub `MemoriesClient` only overrides `HybridSearchAsync`.** Rationale: paired with 2.7-CR2 single-axis CLI coverage.
-  - Evidence: `src/Hexalith.Memories.AppHost/Program.cs` snapshots the rewrite task, awaits `WaitForRedisComponentRewriteAsync(...)`, then resolves the Redis endpoint before `WaitForRedisPingAsync(...)`; `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs` carries the Docker/Aspire behavioral guard for the ordering invariant.

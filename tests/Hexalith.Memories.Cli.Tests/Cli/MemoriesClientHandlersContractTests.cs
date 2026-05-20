@@ -94,17 +94,17 @@ public sealed class MemoriesClientHandlersContractTests
             {
                 new()
                 {
-                    Category = HandlerMismatchCategory.VersionMismatch,
+                    Category = HandlerMismatchCategory.ProjectionBindingMissing,
                     Severity = HandlerMismatchSeverity.Warning,
-                    Subject = "ClaimSubmitted",
-                    Context = "two versions in flight",
-                    Suggestion = "review whether both are intentional",
+                    Subject = "acme/enterprise/claims/claimsubmitted",
+                    Context = "projection binding missing",
+                    Suggestion = "register an authoritative projection binding",
                 },
             },
         };
 
         string json = JsonSerializer.Serialize(serverInstance, MemoriesJsonContext.Options);
-        json.ShouldContain("\"category\":\"versionMismatch\"");
+        json.ShouldContain("\"category\":\"projectionBindingMissing\"");
         json.ShouldContain("\"severity\":\"warning\"");
 
         using HttpClient httpClient = CreateClient(json);
@@ -118,7 +118,7 @@ public sealed class MemoriesClientHandlersContractTests
 #pragma warning restore HXL002
 
         received.Mismatches.Count.ShouldBe(1);
-        received.Mismatches[0].Category.ShouldBe(HandlerMismatchCategory.VersionMismatch);
+        received.Mismatches[0].Category.ShouldBe(HandlerMismatchCategory.ProjectionBindingMissing);
         received.Mismatches[0].Severity.ShouldBe(HandlerMismatchSeverity.Warning);
         received.Summary.RoutesConfigured.ShouldBe(1);
         received.HasWarnings.ShouldBeTrue();

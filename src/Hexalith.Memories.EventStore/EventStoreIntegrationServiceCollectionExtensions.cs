@@ -88,6 +88,7 @@ public static class EventStoreIntegrationServiceCollectionExtensions
 
         // Story 9.3 — observation store + kill-switch options.
         services.TryAddSingleton<IObservedEventTypeStore, RedisObservedEventTypeStore>();
+        services.TryAddSingleton<IProjectionBindingProvider, DefaultProjectionBindingProvider>();
         services.AddOptions<EventStoreObservationOptions>()
             .Bind(configuration.GetSection("EventStoreIntegration:Observation"));
 

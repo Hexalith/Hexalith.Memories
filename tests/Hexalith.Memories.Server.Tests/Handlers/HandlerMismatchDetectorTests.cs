@@ -234,16 +234,298 @@ public sealed class HandlerMismatchDetectorTests
         report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.VersionMismatch).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task RoutedEntryWithoutProjectionBinding_WhenRegistryAuthoritative_EmitsProjectionBindingMissingWarning()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "Enterprise/Claims/", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "MyApp.Claims.ClaimSubmittedV2", Count: 1, now),
+        ]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        HandlerMismatch mismatch = report.Mismatches.Single(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing);
+        mismatch.Severity.ShouldBe(HandlerMismatchSeverity.Warning);
+        mismatch.Subject.ShouldBe("acme/enterprise/claims/claimsubmitted");
+        mismatch.Context.ShouldContain("configured source 'Enterprise/Claims/'");
+        mismatch.Context.ShouldContain("expected projection binding key 'acme/enterprise/claims/claimsubmitted'");
+        mismatch.Suggestion.ShouldContain("register an authoritative projection binding");
+        mismatch.Suggestion.ShouldContain("handler-projection-binding-missing");
+    }
+
+    [Fact]
+    public async Task RoutedEntryWithMatchingProjectionBinding_WhenRegistryAuthoritative_EmitsNoProjectionBindingWarning()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "/enterprise/CLAIMS/", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "MyApp.Claims.ClaimSubmittedV2", Count: 1, now),
+        ]);
+        ProjectionBinding binding = new(
+            TenantId: "acme",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: "claims",
+            ProjectionName: "ClaimsReadModel",
+            ProjectionType: "Acme.ClaimsProjection",
+            SupportedEventTypePatterns: ["claimsubmitted*"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [binding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task BindingForAnotherTenant_DoesNotSatisfySelectedTenant_AndDoesNotLeakProjectionIdentity()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "ClaimSubmittedV2", Count: 1, now),
+        ]);
+        ProjectionBinding foreignBinding = new(
+            TenantId: "other",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: "Claims",
+            ProjectionName: "OtherTenantSecretProjection",
+            ProjectionType: "Other.SecretProjection",
+            SupportedEventTypePatterns: ["ClaimSubmittedV2"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [foreignBinding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        HandlerMismatch mismatch = report.Mismatches.Single(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing);
+        mismatch.Context.ShouldContain("tenant 'acme'");
+        mismatch.Context.ShouldNotContain("OtherTenantSecretProjection");
+        mismatch.Context.ShouldNotContain("Other.SecretProjection");
+        mismatch.Suggestion.ShouldNotContain("OtherTenantSecretProjection");
+    }
+
+    [Fact]
+    public async Task ProjectionBindingWithoutConfiguredRoute_EmitsNoProjectionBindingWarning()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+        ProjectionBinding binding = new(
+            TenantId: "acme",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: "Claims",
+            ProjectionName: "ClaimsReadModel",
+            ProjectionType: "Acme.ClaimsProjection",
+            SupportedEventTypePatterns: ["*"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [binding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(ProjectionBindingRegistryAuthority.Unknown)]
+    [InlineData(ProjectionBindingRegistryAuthority.NonAuthoritative)]
+    [InlineData(ProjectionBindingRegistryAuthority.Unavailable)]
+    public async Task NonAuthoritativeProjectionRegistryPosture_DoesNotEmitProjectionBindingWarning(
+        ProjectionBindingRegistryAuthority authority)
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        IObservedEventTypeStore store = BuildObservedStore([]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: authority,
+                Bindings: [])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingProviderFailure_DoesNotSuppressExistingDiagnostics()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/policies", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "ClaimSubmittedV2", Count: 1, now),
+        ]);
+
+        HandlerMismatchDetector detector = BuildDetector(routing, store, new ThrowingProjectionBindingProvider());
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeFalse();
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.UnhandledEventType).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingMissing_CoexistsWithVersionMismatchAndUnhandledEventType()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap = { { "enterprise/claims", "acme" } },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("Claims", "ClaimSubmittedV2", Count: 1, now),
+            new ObservedEventType("Claims", "ClaimSubmittedV3", Count: 1, now),
+            new ObservedEventType("Policies", "PolicyCreatedV1", Count: 1, now),
+        ]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeTrue();
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.VersionMismatch).ShouldBeTrue();
+        report.Mismatches.Any(m => m.Category == HandlerMismatchCategory.UnhandledEventType).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ProjectionBindingMatcher_NormalizesSlashCasingDuplicatesWildcardAndEventVersionSuffixes()
+    {
+        TenantEventRoutingOptions routing = new()
+        {
+            PubSubName = "pubsub",
+            Topic = "events",
+            SourceToTenantMap =
+            {
+                { "/Enterprise/Claims/", "acme" },
+                { "enterprise.claims", "acme" },
+            },
+        };
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        IObservedEventTypeStore store = BuildObservedStore(
+        [
+            new ObservedEventType("CLAIMS", "MyApp.Claims.ClaimSubmittedV2", Count: 1, now),
+        ]);
+        ProjectionBinding binding = new(
+            TenantId: "ACME",
+            SourcePrefix: "enterprise/claims",
+            AggregateType: "claims",
+            ProjectionName: "ClaimsReadModel",
+            ProjectionType: "Acme.ClaimsProjection",
+            SupportedEventTypePatterns: ["claimsubmitted"]);
+
+        HandlerMismatchDetector detector = BuildDetector(
+            routing,
+            store,
+            new StaticProjectionBindingProvider(new ProjectionBindingSnapshot(
+                TenantId: "acme",
+                Authority: ProjectionBindingRegistryAuthority.Authoritative,
+                Bindings: [binding])));
+
+        HandlerMismatchReport report = await detector.DetectAsync("acme", TimeSpan.FromHours(24), CancellationToken.None);
+
+        report.Mismatches.Where(m => m.Category == HandlerMismatchCategory.ProjectionBindingMissing).ShouldBeEmpty();
+    }
+
     private static HandlerMismatchDetector BuildDetector(
         TenantEventRoutingOptions routing,
-        IObservedEventTypeStore store)
+        IObservedEventTypeStore store,
+        IProjectionBindingProvider? projectionBindingProvider = null)
     {
         IOptionsMonitor<TenantEventRoutingOptions> monitor = Substitute.For<IOptionsMonitor<TenantEventRoutingOptions>>();
         monitor.CurrentValue.Returns(routing);
         return new HandlerMismatchDetector(
             monitor,
             store,
+            projectionBindingProvider ?? new DefaultProjectionBindingProvider(),
             TimeProvider.System,
             NullLogger<HandlerMismatchDetector>.Instance);
+    }
+
+    private static IObservedEventTypeStore BuildObservedStore(IReadOnlyList<ObservedEventType> observedTypes)
+    {
+        IObservedEventTypeStore store = Substitute.For<IObservedEventTypeStore>();
+        store.GetAllObservedTypesAsync("acme", Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(observedTypes));
+        return store;
+    }
+
+    private sealed class StaticProjectionBindingProvider(ProjectionBindingSnapshot snapshot) : IProjectionBindingProvider
+    {
+        public ValueTask<ProjectionBindingSnapshot> GetBindingsAsync(string tenantId, CancellationToken cancellationToken)
+            => ValueTask.FromResult(snapshot);
+    }
+
+    private sealed class ThrowingProjectionBindingProvider : IProjectionBindingProvider
+    {
+        public ValueTask<ProjectionBindingSnapshot> GetBindingsAsync(string tenantId, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("projection discovery unavailable");
     }
 }
