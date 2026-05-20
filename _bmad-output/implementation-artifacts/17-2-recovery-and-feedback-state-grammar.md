@@ -15,6 +15,19 @@ so that I can decide the next safe action without leaving the current workflow.
 3. Given sources, freshness, scores, graph context, or backend health disagree, when evidence is presented, then the conflict is visible using the shared evidence state grammar rather than converted into a confident-looking answer.
 4. Given feedback appears in the web UI, when users inspect it with keyboard or assistive technology, then status labels are readable, focusable recovery actions are reachable, and color is never the only signal.
 
+## Party-Mode Hardening Clarifications
+
+- Recovery grammar is a presentation mapping over canonical Story 2.7 `Contracts.V1` Evidence Packet fields and diagnostic codes. Do not add, rename, reinterpret, or persist a web-only recovery taxonomy, state vocabulary, confidence model, or omitted-detail meaning.
+- The recovery mapping must be pure and typed. Prefer an adapter shape equivalent to `EvidencePacket -> RecoveryStateViewModel` containing state key, localized title key, explanation key, diagnostic clue key, severity, affected capability, primary recovery action intent, optional secondary action intents, and safe metadata needed for rendering.
+- Components render mapped state and emit command/navigation/recovery intents only. They must not directly retry ingestion, mutate authorization, refresh tenant scope, repair consistency, alter Evidence Packet state, execute retrieval, or launch backend recovery workflows.
+- State precedence must be explicit for overlapping packet conditions. Unauthorized or forbidden scope outranks empty/no-result rendering; conflicting or disputed evidence outranks confident answer framing; degraded, stale, and compressed states may decorate the primary state but must not hide the highest-risk state or safest action.
+- When the contract cannot safely distinguish weak, empty, stale, degraded, unauthorized, compressed, conflicting, or no-result causes, render a safe unknown or insufficient-evidence state. Do not infer causes from UI state, local environment, paths, exception text, raw payloads, secrets, or unavailable diagnostics.
+- No-result distinctions are required only when the canonical packet safely exposes enough data without leaking tenant/case existence, authorization boundaries, restricted source details, backend internals, local paths, raw payloads, or secrets.
+- Each mapped state must keep the decision budget small: one primary safest recovery action, with secondary actions limited to supporting inspection or explanation where the packet provides enough data. Do not make users choose among multiple technical remediations.
+- User-facing state strings, severity labels, affected-capability labels, diagnostic headings, action labels, and assistive labels must come from localization resources or established FrontComposer localization patterns. Avoid component-side string concatenation except safe localized placeholders.
+- Diagnostic clues must use whitelisted codes, redacted labels, or safe summarized metadata only. Visible text, accessible names, copied text, logs, diagnostics, and snapshots must not expose secrets, bearer tokens, raw payloads, serialized packets, connection strings, stack traces, provider internals, local absolute paths, or tenant-sensitive identifiers beyond approved display forms.
+- CLI and MCP Evidence Packet behavior must remain unchanged by this story. If implementation finds a contract gap, record it against Story 2.7 or a follow-up instead of changing cross-surface semantics here.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Confirm dependency and local UI foundation (AC: 1-4)
@@ -25,13 +38,17 @@ so that I can decide the next safe action without leaving the current workflow.
 
 - [ ] Task 1 - Define the recovery state mapping boundary (AC: 1-3)
   - [ ] Add or extend the smallest Memories web adapter/view-model that maps Evidence Packet state and recovery fields to display state. Keep the mapping pure and testable.
+  - [ ] Define the typed mapping output with state key, localized title key, explanation key, diagnostic clue key, severity, affected capability, primary recovery action intent, optional secondary action intents, and sanitized rendering metadata.
   - [ ] Preserve the shared state grammar: confidence (`supported`, `partial`, `disputed`, `insufficient`), freshness (`current`, `aging`, `stale`, `unknown`), evidence health (`complete`, `degraded`, `missing source`, `schema mismatch`), and scope (`verified`, `inferred`, `cross-case`, `unauthorized`, `out-of-scope`).
   - [ ] Represent the state dimensions required by this story: empty, weak, stale, degraded, unauthorized, compressed, disputed/conflicting, no match, not ingested yet, wrong case, inaccessible tenant/case, graph gap, and insufficient evidence.
+  - [ ] Encode and test state precedence for overlapping packet conditions: unauthorized/forbidden over empty/no-result, conflicting/disputed over confident answer framing, and degraded/stale/compressed as secondary risk markers unless they are the highest-risk state.
   - [ ] Do not infer precision the contract does not provide. If the packet cannot distinguish two causes, render an explicit unknown or insufficient-evidence state with a safe recovery action instead of guessing.
+  - [ ] Do not change CLI or MCP Evidence Packet output. Missing contract data must become unknown/insufficient web presentation or a deferred Story 2.7/follow-up gap.
 
 - [ ] Task 2 - Implement Recovery Action Panel/Footer behavior (AC: 1, 2, 4)
   - [ ] Render a Recovery Action Panel or packet footer close to the affected Evidence Packet, not only in a global toast or notification region.
   - [ ] Show state title, short explanation, diagnostic clue, severity, affected capability, and one safest primary action before secondary actions.
+  - [ ] Limit each state to one primary safest action; secondary actions must be inspection/explanation support and must not obscure the primary recovery path.
   - [ ] Use FrontComposer and Fluent UI primitives first: `FluentMessageBar`, `FluentBadge`, buttons, menus, panels/drawers, dialogs, tooltips, inline messages, and existing shell feedback components where they fit.
   - [ ] Ensure recovery commands name their tenant, case, target object, and consequence when they can broaden scope, retry ingestion, request permission, repair consistency, or expose diagnostics.
   - [ ] Do not execute unsafe recovery work directly from the component. Route through existing command, navigation, or handler conventions so lifecycle, authorization, diagnostics, and tenant context remain visible.
@@ -47,14 +64,19 @@ so that I can decide the next safe action without leaving the current workflow.
   - [ ] Recovery actions must be reachable by keyboard and touch, have deterministic focus order, and return focus to the invoking control after dialogs, drawers, or panels close.
   - [ ] Use `role="status"` / `aria-live="polite"` for non-blocking updates and `role="alert"` / assertive announcement only for blocking or safety-critical states.
   - [ ] Keep strings localizable through existing FrontComposer resource patterns when the component is added to FrontComposer shell code.
+  - [ ] Add localization resource coverage for every title, explanation, diagnostic clue, severity label, affected capability label, recovery action label, and assistive label.
   - [ ] Do not render secrets, bearer tokens, raw payloads, tenant-sensitive diagnostics, local absolute paths, restricted source details, or unsanitized exception text in visible labels, accessible labels, copied text, diagnostics, logs, or snapshots.
+  - [ ] Diagnostic clues must be built from whitelisted codes, redacted labels, or sanitized summaries, not serialized packets, stack traces, provider internals, or unreviewed backend messages.
 
 - [ ] Task 5 - Add focused component, mapping, and accessibility tests (AC: 1-4)
   - [ ] Add bUnit coverage using `Hexalith.FrontComposer.Testing`, `FrontComposerTestBase`, or the existing `BunitContext` pattern as appropriate.
-  - [ ] Test recovery mapping for empty, no match, not ingested yet, wrong case, inaccessible tenant/case, stale, degraded backend, graph gap, insufficient evidence, unauthorized, compressed, and disputed/conflicting packets.
-  - [ ] Test that each state renders title, explanation, diagnostic clue, severity, affected capability, primary recovery action, and optional secondary actions in the intended order.
+  - [ ] Test recovery mapping for empty, weak, no match, not ingested yet, wrong case, inaccessible tenant/case, stale, degraded backend, graph gap, insufficient evidence, unauthorized, compressed, and disputed/conflicting packets.
+  - [ ] Add an exhaustive state and precedence matrix over known Evidence Packet state/diagnostic combinations, including unknown/future enum values, missing optional fields, malformed-but-safe packets, mixed severity packets, and stale/compressed/conflict combinations.
+  - [ ] Test that each state renders title, explanation, diagnostic clue, severity, affected capability, primary recovery action, disabled or unavailable action behavior, and optional secondary actions in the intended order.
   - [ ] Test keyboard-reachable primary and secondary actions, panel/dialog focus return, visible labels, and accessible names.
   - [ ] Add negative tests proving restricted details, local paths, raw payloads, bearer tokens, tenant-sensitive diagnostics, and unsanitized exception text do not render in markup, accessible labels, copied text, logs, or snapshots.
+  - [ ] Add assertions that conflicting/disputed evidence blocks confident answer framing and that compressed or omitted evidence is announced as unavailable in the current packet, not proven absent.
+  - [ ] Reuse canonical Story 2.7-aligned Evidence Packet fixtures, including minimal valid packets, sanitized degraded packets, unauthorized packets, compressed packets, conflicting packets, and fallback unknown/insufficient packets.
 
 - [ ] Task 6 - Validate responsive and visual behavior (AC: 1-4)
   - [ ] Run focused unit/bUnit tests for changed Memories web or FrontComposer component projects.
@@ -76,7 +98,8 @@ so that I can decide the next safe action without leaving the current workflow.
 
 - The panel/footer answers four questions: what happened, what it affects, how serious it is, and what to do next.
 - The primary recovery action must be the safest available action from the packet. Examples include refine query, inspect source, compare versions, open graph neighborhood, refresh ingestion, verify tenant, request permission, retry agent/tool call, repair consistency, export packet, or escalate.
-- Optional secondary actions are allowed, but they must not obscure the primary recovery path. Use menus or secondary button grouping when space is constrained.
+- Optional secondary actions are allowed, but they must not obscure the primary recovery path. Use menus or secondary button grouping when space is constrained, and keep secondary actions to inspection/explanation unless an existing command path safely supports more.
+- Overlapping states must preserve the highest-risk condition. Unauthorized/forbidden scope must not be softened into empty results; conflicts must not be smoothed into confident answers; stale, degraded, and compressed markers should remain visible even when another primary state owns the recovery action.
 - No-result states must distinguish:
   - no match: the search completed but found no supported candidate;
   - not ingested yet: matching knowledge may be pending ingestion/indexing;
@@ -93,6 +116,7 @@ so that I can decide the next safe action without leaving the current workflow.
 
 - Recovery Action Panel/Footer is part of the Evidence Packet workflow. It belongs near the affected packet or state, not as a detached notification-only feature.
 - The component should consume a typed packet or adapter result, not arbitrary JSON or stringly typed diagnostics.
+- Mapping logic belongs in a pure adapter/view-model layer. Razor components should avoid branching over raw packet business semantics beyond rendering the typed state model.
 - Use existing FrontComposer tenant/user render context, command lifecycle, navigation, feedback, diagnostics, and shell composition conventions.
 - Confirmation or scope-expanding actions must name tenant, case, target object, and consequence before proceeding.
 - Keep the interface dense and operational. Avoid dashboard sprawl, marketing-style panels, decorative cards, or empty states that hide the recovery action.
@@ -161,6 +185,32 @@ GPT-5
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Recovery and Feedback State Grammar.
+- 2026-05-20: Party-mode review applied story hardening for state precedence, typed recovery mapping, guidance-only actions, localization, sanitization, and measurable accessibility/test coverage.
+
+## Party-Mode Review
+
+- Date: 2026-05-20T11:39:30.7269257+02:00
+- Selected story key: `17-2-recovery-and-feedback-state-grammar`
+- Command/skill invocation used: `/bmad-party-mode 17-2-recovery-and-feedback-state-grammar; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - Story 17.2 was directionally valid but needed sharper state-precedence and contract-consumption rules so web recovery grammar cannot drift into a parallel taxonomy over Story 2.7 `Contracts.V1` Evidence Packet semantics.
+  - Recovery rendering needed a pure typed mapping boundary with localized state labels, sanitized diagnostic clues, affected capability, severity, and recovery action intents instead of component-side business logic or direct workflow execution.
+  - No-result, unauthorized, stale, degraded, compressed, weak, and conflicting evidence needed explicit fallback behavior for cases where the packet lacks safe detail, plus a prohibition against inferring from UI state, diagnostics, local paths, secrets, or raw payloads.
+  - Accessibility, localization, and sanitization requirements needed measurable coverage for screen-reader labels, keyboard reachability, focus behavior, conflict/compression announcements, resource keys, and non-leakage.
+  - Test strategy needed canonical Story 2.7-aligned fixture families and an exhaustive state/precedence matrix, including unknown/future values, missing optional fields, malformed-but-safe packets, mixed severity packets, unauthorized packets, compressed packets, and conflict combinations.
+- Changes applied:
+  - Added `## Party-Mode Hardening Clarifications`.
+  - Tightened Task 1 with typed mapping output, state precedence, and CLI/MCP non-change guardrails.
+  - Tightened Task 2 with guidance-only recovery action and one-primary-action decision-budget constraints.
+  - Tightened Task 4 with localization resource coverage and sanitized diagnostic clue requirements.
+  - Tightened Task 5 with explicit state matrix, precedence, fixture-family, accessibility, non-leakage, and confident-answer negative tests.
+  - Tightened Dev Notes for overlapping-state semantics and pure adapter/component boundaries.
+- Findings deferred:
+  - Rich recovery workflows, one-click remediation, retrieval repair, ingestion repair, tenant authorization changes, new retrieval/ranking/conflict-resolution algorithms, and CLI/MCP Evidence Packet behavior changes remain out of scope.
+  - Final visual treatment and copy polish remain implementation decisions within FrontComposer/Fluent UI patterns and localization guardrails.
+  - Advanced elicitation remains a separate future operation; per L08, this party-mode recommendation is not completed elicitation evidence.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 

@@ -69,3 +69,4 @@
 2026-05-20T11:04:18.8962091+02:00	party-mode-review	2-7-evidence-packet-contract-mapping	ok	Applied party-mode story hardening and recorded canonical trace.
 2026-05-20T11:25:32.1932091+02:00	party-mode-review	16-1-projection-registry-cross-check-design	ok	Applied party-mode story hardening and recorded canonical trace.
 2026-05-20T11:31:23.1043511+02:00	party-mode-review	17-1-evidence-cockpit-and-trust-components	ok	party-mode review applied story hardening; final recommendation ready-for-dev
+2026-05-20T11:39:30.7269257+02:00	party-mode-review	17-2-recovery-and-feedback-state-grammar	ok	applied party-mode hardening for state precedence typed recovery mapping localization sanitization and measurable tests
