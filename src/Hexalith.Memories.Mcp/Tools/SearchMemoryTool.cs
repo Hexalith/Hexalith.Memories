@@ -128,6 +128,12 @@ internal sealed class SearchMemoryTool
 
                 HybridSearchResult hybrid = await _client.HybridSearchAsync(hybridRequest, cancellationToken)
                     .ConfigureAwait(false);
+                hybrid = hybrid with
+                {
+                    EvidencePacket = EvidencePacketMapper.FromHybridSearchResult(
+                        hybrid,
+                        CreateEvidenceScope(authorizedTenant, @case)),
+                };
                 return McpToolResultSerializer.Success(hybrid);
             }
 
@@ -141,6 +147,12 @@ internal sealed class SearchMemoryTool
                 TokenBudget: effectiveTokenBudget);
 
             SearchResult result = await _client.SearchAsync(request, cancellationToken).ConfigureAwait(false);
+            result = result with
+            {
+                EvidencePacket = EvidencePacketMapper.FromSearchResult(
+                    result,
+                    CreateEvidenceScope(authorizedTenant, @case)),
+            };
             return McpToolResultSerializer.Success(result);
         }
         catch (OperationCanceledException)
@@ -164,4 +176,7 @@ internal sealed class SearchMemoryTool
         SearchAxis.Hybrid => "hybrid",
         _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, "Unsupported search axis."),
     };
+
+    private static EvidencePacketScope CreateEvidenceScope(string tenantId, string? caseId)
+        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, string.IsNullOrWhiteSpace(caseId) ? "tenant" : "tenant-case");
 }

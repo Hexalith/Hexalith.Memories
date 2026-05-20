@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Mcp.Tests;
 
 using System.Net;
+using System.Text.Json;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Mcp;
@@ -147,6 +148,52 @@ public sealed class SearchMemoryToolTests
 
         stub.SearchRequests[0].MaxResults.ShouldBe(3);
         stub.SearchRequests[0].TokenBudget.ShouldBe(50_000);
+    }
+
+    [Fact]
+    public async Task HybridResult_StructuredContent_IncludesEvidencePacket()
+    {
+        var stub = new StubMemoriesClient
+        {
+            OnHybridSearch = (request, _) => Task.FromResult(new HybridSearchResult
+            {
+                Results =
+                [
+                    new FusedScoredResult
+                    {
+                        MemoryUnitId = "mu-001",
+                        CompositeScore = 0.88,
+                        ContentSnippet = "Claim denial language",
+                        SourceUri = "mem://acme/case-a/mu-001",
+                        SourceType = SourceType.File,
+                        SemanticScore = 0.88,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 1,
+                Degraded = false,
+                UnavailableAxes = [],
+                Query = request.Query,
+                AxesUsed = ["semantic"],
+            }),
+        };
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync(
+            tenantId: "acme",
+            query: "needle",
+            @case: "case-a",
+            axes: SearchAxis.Hybrid,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBe(false);
+        JsonElement packet = result.StructuredContent!.Value.GetProperty("evidencePacket");
+        packet.GetProperty("scope").GetProperty("tenantId").GetString().ShouldBe("acme");
+        packet.GetProperty("scope").GetProperty("caseId").GetString().ShouldBe("case-a");
+        packet.GetProperty("state").GetString().ShouldBe("complete");
+        packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-001");
+        ExtractText(result).ShouldContain("\"evidencePacket\"");
     }
 
     private static void AssertIsErrorWithCode(CallToolResult result, string expectedCode)

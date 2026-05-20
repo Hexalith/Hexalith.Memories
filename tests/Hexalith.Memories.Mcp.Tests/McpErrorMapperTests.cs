@@ -198,6 +198,18 @@ public sealed class McpErrorMapperTests
         structured.ShouldNotContain("groups=");
     }
 
+    [Fact]
+    public void MapAuthorization_IncludesUnauthorizedEvidencePacketWithoutExpansionHandles()
+    {
+        CallToolResult result = _mapper.MapAuthorization("tenant-a", "search_memory", McpErrorMapper.TenantForbiddenCode);
+
+        JsonElement packet = result.StructuredContent!.Value.GetProperty("evidencePacket");
+        packet.GetProperty("state").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("scope").GetProperty("isolationStatus").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("omittedDetails").GetProperty("expansionHandles").GetArrayLength().ShouldBe(0);
+        packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("checkAuthorization");
+    }
+
     private static Exception CreateExceptionWithStack()
     {
         try

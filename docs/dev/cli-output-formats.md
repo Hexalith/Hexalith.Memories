@@ -163,10 +163,34 @@ Confidence scores measure query-result relevance, NOT factual accuracy or data c
                     "description": "cosine similarity"
                 }
             }
+        },
+        "evidencePacket": {
+            "scope": {
+                "tenantId": "acme",
+                "isolationStatus": "authorized",
+                "permissionsContext": "tenant"
+            },
+            "state": "complete",
+            "evidence": {
+                "evidenceStrength": "strong",
+                "caveat": "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.",
+                "axesUsed": [
+                    "semantic",
+                    "syntactic"
+                ],
+                "unavailableAxes": [],
+                "degraded": false,
+                "axisEvidence": []
+            }
         }
     }
 }
 ```
+
+`data.evidencePacket` is additive in Story 2.7 and shares the same semantics used by MCP
+structured results and future UI composition descriptors. Existing `data.results`,
+`data.degraded`, `data.unavailableAxes`, `data.query`, and `data.explanation` fields stay stable.
+See [`evidence-packet.md`](evidence-packet.md) for the field mapping and confidence caveat rules.
 
 > ⚠ **Combined-flag reminder:** `data.explanation` is populated only when **both**
 > `--explain` **and** `--format json` are set. `--format json` alone returns the envelope
@@ -374,4 +398,3 @@ surfaces the CLI exit code (`1`) as if it were a parse failure. Use patterns 1 o
 
 Cross-reference: [`CliExitCodes.cs`](../../src/Hexalith.Memories.Cli/Execution/CliExitCodes.cs)
 and [`ErrorMessageCatalog.cs`](../../src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs).
-

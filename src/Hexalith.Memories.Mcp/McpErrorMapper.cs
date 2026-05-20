@@ -5,8 +5,9 @@
 
 namespace Hexalith.Memories.Mcp;
 
-using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
@@ -57,7 +58,7 @@ internal sealed partial class McpErrorMapper
             "The server returned an error without a structured envelope.",
             "Check server logs for details.");
 
-        return BuildErrorResult(error, service, toolName);
+        return BuildErrorResult(error, service, toolName, EvidencePacketMapper.FromError(error, UnknownScope()));
     }
 
     /// <summary>
@@ -82,7 +83,7 @@ internal sealed partial class McpErrorMapper
             SanitizedFailureMessage,
             "Inspect the MCP server logs for diagnostic context. The original message is intentionally not echoed to the LLM.");
 
-        return BuildErrorResult(sanitized, DefaultFailedService, toolName);
+        return BuildErrorResult(sanitized, DefaultFailedService, toolName, EvidencePacketMapper.FromError(sanitized, UnknownScope()));
     }
 
     /// <summary>
@@ -100,7 +101,8 @@ internal sealed partial class McpErrorMapper
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
 
-        return BuildErrorResult(new ErrorResponse(code, message, suggestion ?? string.Empty), toolName, toolName);
+        ErrorResponse error = new(code, message, suggestion ?? string.Empty);
+        return BuildErrorResult(error, toolName, toolName, EvidencePacketMapper.FromError(error, UnknownScope()));
     }
 
     /// <summary>
@@ -116,24 +118,30 @@ internal sealed partial class McpErrorMapper
         ArgumentException.ThrowIfNullOrWhiteSpace(toolName);
         ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
 
-        if (!TenantIdRegex().IsMatch(tenantId ?? string.Empty) || string.Equals(reasonCode, TenantMalformedCode, StringComparison.Ordinal))
+        string requestedTenantId = tenantId ?? string.Empty;
+        if (!TenantIdRegex().IsMatch(requestedTenantId) || string.Equals(reasonCode, TenantMalformedCode, StringComparison.Ordinal))
         {
-            return BuildErrorResult(
-                new ErrorResponse(
+            ErrorResponse malformed = new(
                     TenantMalformedCode,
                     "The requested tenant identifier is malformed.",
-                    "Use a tenant identifier containing only letters, digits, underscores, or dashes."),
+                    "Use a tenant identifier containing only letters, digits, underscores, or dashes.");
+            return BuildErrorResult(
+                malformed,
                 "mcp-auth",
-                toolName);
+                toolName,
+                EvidencePacketMapper.FromError(malformed, UnknownScope()));
         }
 
+        ErrorResponse forbidden = new(
+            TenantForbiddenCode,
+            $"The bearer token is not authorized for tenant '{requestedTenantId}'.",
+            "Use a bearer token with a matching tenant claim, or request a tenant that is present in the token.");
+        EvidencePacketScope scope = new(requestedTenantId, null, EvidencePacketIsolationStatus.Authorized, "mcp-auth");
         return BuildErrorResult(
-            new ErrorResponse(
-                TenantForbiddenCode,
-                $"The bearer token is not authorized for tenant '{tenantId}'.",
-                "Use a bearer token with a matching tenant claim, or request a tenant that is present in the token."),
+            forbidden,
             "mcp-auth",
-            toolName);
+            toolName,
+            EvidencePacketMapper.FromError(forbidden, scope));
     }
 
     /// <summary>Formats an <see cref="ErrorResponse"/> as the LLM-facing prose line.</summary>
@@ -149,18 +157,17 @@ internal sealed partial class McpErrorMapper
         return $"[{error.Code}] (service={failedService}): {error.Message} {suggestion}".TrimEnd();
     }
 
-    private static CallToolResult BuildErrorResult(ErrorResponse error, string service, string toolName)
+    private static CallToolResult BuildErrorResult(ErrorResponse error, string service, string toolName, EvidencePacket? evidencePacket = null)
     {
-        var structured = new
-        {
-            code = error.Code,
+        var structured = new McpErrorPayload(
+            error.Code,
             service,
-            tool = toolName,
-            message = error.Message,
-            suggestion = error.Suggestion ?? string.Empty,
-        };
+            toolName,
+            error.Message,
+            error.Suggestion ?? string.Empty,
+            evidencePacket);
 
-        JsonElement structuredElement = JsonSerializer.SerializeToElement(structured);
+        JsonElement structuredElement = JsonSerializer.SerializeToElement(structured, MemoriesJsonContext.Options);
 
         return new CallToolResult
         {
@@ -172,6 +179,17 @@ internal sealed partial class McpErrorMapper
 
     private static string NormalizeService(string? value)
         => string.IsNullOrWhiteSpace(value) ? DefaultFailedService : value;
+
+    private static EvidencePacketScope UnknownScope()
+        => new("unknown", null, EvidencePacketIsolationStatus.Unknown, "mcp-error");
+
+    private sealed record McpErrorPayload(
+        string Code,
+        string Service,
+        string Tool,
+        string Message,
+        string Suggestion,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EvidencePacket? EvidencePacket);
 
     [GeneratedRegex("^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant)]
     private static partial Regex TenantIdRegex();

@@ -1,0 +1,531 @@
+// <copyright file="EvidencePacketMapper.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Contracts.V1;
+
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+
+/// <summary>Pure mapper from lower-level retrieval and diagnostic contracts to the canonical evidence packet.</summary>
+public static partial class EvidencePacketMapper
+{
+    private const string DefaultCaveat = "Scores measure query-result relevance, not factual accuracy or data completeness.";
+
+    /// <summary>Maps a single-axis search result into an evidence packet.</summary>
+    /// <param name="result">The lower-level search result.</param>
+    /// <param name="scope">The explicit tenant and case scope for the request.</param>
+    /// <returns>The mapped evidence packet.</returns>
+    public static EvidencePacket FromSearchResult(SearchResult result, EvidencePacketScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        IReadOnlyList<EvidencePacketSource> sources = result.Results
+            .Select((source, index) => new EvidencePacketSource(
+                index + 1,
+                source.MemoryUnitId,
+                source.SourceUri,
+                source.SourceType,
+                source.ContentSnippet,
+                source.Score,
+                source.CaseId,
+                source.CaseName,
+                source.AnnotationsCount))
+            .ToArray();
+        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed ?? result.Results.Select(static source => source.Axis));
+        IReadOnlyList<string> unavailableAxes = NormalizeAxes(result.UnavailableAxes ?? []);
+        EvidencePacketEvidenceStrength strength = DetermineEvidenceStrength(sources.Select(static source => source.Score));
+        EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, result.Degraded);
+        EvidencePacketState state = DetermineState(
+            scope,
+            result.TotalCount,
+            sources.Count,
+            result.Degraded,
+            result.OmittedCount,
+            strength);
+
+        EvidencePacketOmittedDetails omitted = BuildOmittedDetails(
+            scope,
+            result.Query,
+            result.OmittedCount,
+            result.EstimatedTokensTotal,
+            omissionReason,
+            unavailableAxes,
+            state);
+
+        return new EvidencePacket(
+            scope,
+            new EvidencePacketResultSummary(result.Query, result.TotalCount, sources.Count, result.HasIndexedMemoryUnits, null),
+            sources,
+            new EvidencePacketEvidence(
+                strength,
+                result.Explanation?.Caveat ?? DefaultCaveat,
+                axesUsed,
+                unavailableAxes,
+                result.Degraded,
+                null,
+                BuildAxisEvidence(result.Explanation, axesUsed, result.Results)),
+            new EvidencePacketGraphSummary(false, [], [], []),
+            state,
+            omitted,
+            BuildRecovery(state, omitted));
+    }
+
+    /// <summary>Maps a hybrid search result into an evidence packet.</summary>
+    /// <param name="result">The lower-level hybrid search result.</param>
+    /// <param name="scope">The explicit tenant and case scope for the request.</param>
+    /// <returns>The mapped evidence packet.</returns>
+    public static EvidencePacket FromHybridSearchResult(HybridSearchResult result, EvidencePacketScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        IReadOnlyList<EvidencePacketSource> sources = result.Results
+            .Select((source, index) => new EvidencePacketSource(
+                index + 1,
+                source.MemoryUnitId,
+                source.SourceUri,
+                source.SourceType,
+                source.ContentSnippet,
+                source.CompositeScore,
+                source.CaseId,
+                source.CaseName,
+                source.AnnotationsCount))
+            .ToArray();
+        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed ?? InferHybridAxes(result.Results));
+        IReadOnlyList<string> unavailableAxes = NormalizeAxes(result.UnavailableAxes ?? []);
+        EvidencePacketEvidenceStrength strength = DetermineEvidenceStrength(sources.Select(static source => source.Score));
+        EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, result.Degraded);
+        EvidencePacketState state = DetermineState(
+            scope,
+            result.TotalCount,
+            sources.Count,
+            result.Degraded || result.AllEnabledAxesUnavailable == true,
+            result.OmittedCount,
+            strength);
+
+        EvidencePacketOmittedDetails omitted = BuildOmittedDetails(
+            scope,
+            result.Query,
+            result.OmittedCount,
+            result.EstimatedTokensTotal,
+            omissionReason,
+            unavailableAxes,
+            state);
+
+        return new EvidencePacket(
+            scope,
+            new EvidencePacketResultSummary(result.Query, result.TotalCount, sources.Count, null, null),
+            sources,
+            new EvidencePacketEvidence(
+                strength,
+                result.Explanation?.Caveat ?? DefaultCaveat,
+                axesUsed,
+                unavailableAxes,
+                result.Degraded,
+                result.AllEnabledAxesUnavailable,
+                BuildHybridAxisEvidence(result.Explanation, axesUsed, result.Results)),
+            new EvidencePacketGraphSummary(false, [], [], []),
+            state,
+            omitted,
+            BuildRecovery(state, omitted));
+    }
+
+    /// <summary>Maps a sanitized diagnostic error into an evidence packet.</summary>
+    /// <param name="error">The structured error response.</param>
+    /// <param name="scope">The explicit tenant and case scope for the request.</param>
+    /// <param name="query">The original query, or an empty string when no query applies.</param>
+    /// <returns>The mapped evidence packet.</returns>
+    public static EvidencePacket FromError(ErrorResponse error, EvidencePacketScope scope, string query = "")
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        ArgumentNullException.ThrowIfNull(scope);
+
+        bool unauthorized = IsUnauthorized(error.Code);
+        EvidencePacketScope effectiveScope = unauthorized
+            ? scope with { IsolationStatus = EvidencePacketIsolationStatus.Unauthorized }
+            : scope;
+        EvidencePacketState state = unauthorized ? EvidencePacketState.Unauthorized : EvidencePacketState.Degraded;
+        EvidencePacketOmissionReason reason = unauthorized
+            ? EvidencePacketOmissionReason.Authorization
+            : EvidencePacketOmissionReason.BackendUnavailable;
+        var omitted = new EvidencePacketOmittedDetails(
+            0,
+            0,
+            reason,
+            unauthorized ? ["sources", "evidence"] : ["evidence"],
+            unauthorized ? ["authorization"] : ["diagnostics"],
+            []);
+
+        IReadOnlyList<EvidencePacketRecoveryAction> recovery = unauthorized
+            ?
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.CheckAuthorization,
+                    "checkAuthorization",
+                    "Use an authorized tenant and case scope.",
+                    "auth"),
+            ]
+            :
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.Retry,
+                    "retry",
+                    SanitizeGuidance(error.Suggestion, "Retry the authorized request or inspect service health."),
+                    "diagnostics"),
+            ];
+
+        return new EvidencePacket(
+            effectiveScope,
+            new EvidencePacketResultSummary(query, 0, 0, null, null),
+            [],
+            new EvidencePacketEvidence(
+                EvidencePacketEvidenceStrength.None,
+                DefaultCaveat,
+                [],
+                [],
+                !unauthorized,
+                null,
+                []),
+            new EvidencePacketGraphSummary(false, [], [], []),
+            state,
+            omitted,
+            recovery);
+    }
+
+    private static EvidencePacketState DetermineState(
+        EvidencePacketScope scope,
+        long totalCount,
+        int returnedCount,
+        bool degraded,
+        int omittedCount,
+        EvidencePacketEvidenceStrength strength)
+    {
+        if (scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
+        {
+            return EvidencePacketState.Unauthorized;
+        }
+
+        if (degraded)
+        {
+            return EvidencePacketState.Degraded;
+        }
+
+        if (omittedCount > 0)
+        {
+            return EvidencePacketState.PendingExpansion;
+        }
+
+        if (totalCount == 0 || returnedCount == 0)
+        {
+            return EvidencePacketState.Empty;
+        }
+
+        return strength == EvidencePacketEvidenceStrength.Weak
+            ? EvidencePacketState.Weak
+            : EvidencePacketState.Complete;
+    }
+
+    private static EvidencePacketEvidenceStrength DetermineEvidenceStrength(IEnumerable<double?> scores)
+    {
+        double? best = scores
+            .Where(static score => score.HasValue)
+            .Select(static score => score!.Value)
+            .DefaultIfEmpty(double.NaN)
+            .Max();
+
+        if (!best.HasValue || double.IsNaN(best.Value))
+        {
+            return EvidencePacketEvidenceStrength.None;
+        }
+
+        if (best.Value <= 0d)
+        {
+            return EvidencePacketEvidenceStrength.None;
+        }
+
+        if (best.Value < 0.4d)
+        {
+            return EvidencePacketEvidenceStrength.Weak;
+        }
+
+        if (best.Value < 0.75d)
+        {
+            return EvidencePacketEvidenceStrength.Moderate;
+        }
+
+        return EvidencePacketEvidenceStrength.Strong;
+    }
+
+    private static EvidencePacketOmissionReason MapOmittedReason(OmittedReason reason, bool degraded)
+        => (reason, degraded) switch
+        {
+            (OmittedReason.Combined, _) => EvidencePacketOmissionReason.Combined,
+            (OmittedReason.TokenBudget, true) => EvidencePacketOmissionReason.Combined,
+            (OmittedReason.TokenBudget, false) => EvidencePacketOmissionReason.TokenBudget,
+            (OmittedReason.BackendDegraded, _) => EvidencePacketOmissionReason.BackendUnavailable,
+            (OmittedReason.None, true) => EvidencePacketOmissionReason.BackendUnavailable,
+            _ => EvidencePacketOmissionReason.None,
+        };
+
+    private static EvidencePacketOmittedDetails BuildOmittedDetails(
+        EvidencePacketScope scope,
+        string query,
+        int omittedCount,
+        long estimatedTokensTotal,
+        EvidencePacketOmissionReason reason,
+        IReadOnlyList<string> unavailableAxes,
+        EvidencePacketState state)
+    {
+        if (state == EvidencePacketState.Unauthorized)
+        {
+            return new EvidencePacketOmittedDetails(
+                0,
+                0,
+                EvidencePacketOmissionReason.Authorization,
+                ["sources", "evidence"],
+                ["authorization"],
+                []);
+        }
+
+        List<string> fieldNames = [];
+        List<string> detailGroups = [];
+        List<EvidencePacketExpansionHandle> handles = [];
+
+        if (omittedCount > 0)
+        {
+            fieldNames.Add("sources");
+            detailGroups.Add("rankedResults");
+            handles.Add(new EvidencePacketExpansionHandle(
+                BuildHandle(scope, query, "rankedResults"),
+                EvidencePacketRecoveryKind.IncreaseTokenBudget,
+                "rankedResults",
+                scope.TenantId,
+                scope.CaseId,
+                "Re-run the authorized search with a larger tokenBudget or maxResults."));
+        }
+
+        if (unavailableAxes.Count > 0 || reason == EvidencePacketOmissionReason.BackendUnavailable)
+        {
+            fieldNames.Add("evidence.unavailableAxes");
+            detailGroups.Add("backendDiagnostics");
+        }
+
+        EvidencePacketOmissionReason effectiveReason = reason;
+        if (effectiveReason == EvidencePacketOmissionReason.None && omittedCount == 0 && unavailableAxes.Count == 0)
+        {
+            effectiveReason = EvidencePacketOmissionReason.None;
+        }
+
+        return new EvidencePacketOmittedDetails(
+            omittedCount,
+            estimatedTokensTotal,
+            effectiveReason,
+            DistinctOrdinal(fieldNames),
+            DistinctOrdinal(detailGroups),
+            handles);
+    }
+
+    private static IReadOnlyList<EvidencePacketRecoveryAction> BuildRecovery(
+        EvidencePacketState state,
+        EvidencePacketOmittedDetails omitted)
+    {
+        return state switch
+        {
+            EvidencePacketState.Unauthorized =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.CheckAuthorization,
+                    "checkAuthorization",
+                    "Use an authorized tenant and case scope.",
+                    "auth"),
+            ],
+            EvidencePacketState.Degraded =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.Retry,
+                    "retry",
+                    "Retry after the unavailable axis recovers.",
+                    "search"),
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.InspectBackendHealth,
+                    "inspectBackendHealth",
+                    "Inspect backend health before relying on unavailable axes.",
+                    "backendDiagnostics"),
+            ],
+            EvidencePacketState.PendingExpansion when omitted.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.IncreaseTokenBudget,
+                    "increaseTokenBudget",
+                    "Re-run the authorized search with a larger tokenBudget.",
+                    "rankedResults"),
+            ],
+            EvidencePacketState.Empty =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.BroadenScope,
+                    "broadenScope",
+                    "Retry with broader query terms or a broader authorized case scope.",
+                    "search"),
+            ],
+            EvidencePacketState.Weak =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.BroadenScope,
+                    "broadenScope",
+                    "Retry with broader query terms or inspect the top memory units.",
+                    "search"),
+            ],
+            _ => [],
+        };
+    }
+
+    private static IReadOnlyList<EvidencePacketAxisEvidence> BuildAxisEvidence(
+        SearchExplanation? explanation,
+        IReadOnlyList<string> axesUsed,
+        IReadOnlyList<ScoredResult> results)
+    {
+        Dictionary<string, double?> bestScores = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ScoredResult result in results)
+        {
+            if (string.IsNullOrWhiteSpace(result.Axis))
+            {
+                continue;
+            }
+
+            if (!bestScores.TryGetValue(result.Axis, out double? current) || result.Score > current.GetValueOrDefault(double.MinValue))
+            {
+                bestScores[result.Axis] = result.Score;
+            }
+        }
+
+        return BuildAxisEvidence(explanation, axesUsed, bestScores);
+    }
+
+    private static IReadOnlyList<EvidencePacketAxisEvidence> BuildHybridAxisEvidence(
+        SearchExplanation? explanation,
+        IReadOnlyList<string> axesUsed,
+        IReadOnlyList<FusedScoredResult> results)
+    {
+        Dictionary<string, double?> bestScores = new(StringComparer.OrdinalIgnoreCase);
+        foreach (FusedScoredResult result in results)
+        {
+            SetBest(bestScores, "syntactic", result.SyntacticScore);
+            SetBest(bestScores, "semantic", result.SemanticScore);
+            SetBest(bestScores, "graph", result.GraphScore);
+        }
+
+        return BuildAxisEvidence(explanation, axesUsed, bestScores);
+    }
+
+    private static IReadOnlyList<EvidencePacketAxisEvidence> BuildAxisEvidence(
+        SearchExplanation? explanation,
+        IReadOnlyList<string> axesUsed,
+        IReadOnlyDictionary<string, double?> bestScores)
+    {
+        SortedSet<string> axisNames = new(StringComparer.Ordinal);
+        foreach (string axis in axesUsed)
+        {
+            axisNames.Add(axis);
+        }
+
+        if (explanation?.AxisDetails is not null)
+        {
+            foreach (string axis in explanation.AxisDetails.Keys)
+            {
+                axisNames.Add(axis);
+            }
+        }
+
+        List<EvidencePacketAxisEvidence> evidence = [];
+        foreach (string axis in axisNames)
+        {
+            AxisExplanation? details = null;
+            _ = explanation?.AxisDetails?.TryGetValue(axis, out details);
+            _ = bestScores.TryGetValue(axis, out double? score);
+            evidence.Add(new EvidencePacketAxisEvidence(
+                axis,
+                score,
+                details?.NormalizationMethod,
+                details?.Description));
+        }
+
+        return evidence;
+    }
+
+    private static IReadOnlyList<string> InferHybridAxes(IReadOnlyList<FusedScoredResult> results)
+    {
+        SortedSet<string> axes = new(StringComparer.Ordinal);
+        foreach (FusedScoredResult result in results)
+        {
+            if (result.GraphScore.HasValue)
+            {
+                axes.Add("graph");
+            }
+
+            if (result.SemanticScore.HasValue)
+            {
+                axes.Add("semantic");
+            }
+
+            if (result.SyntacticScore.HasValue)
+            {
+                axes.Add("syntactic");
+            }
+        }
+
+        return axes.ToArray();
+    }
+
+    private static IReadOnlyList<string> NormalizeAxes(IEnumerable<string?> axes)
+        => axes
+            .Where(static axis => !string.IsNullOrWhiteSpace(axis))
+            .Select(static axis => axis!.Trim().ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+    private static IReadOnlyList<string> DistinctOrdinal(IEnumerable<string> values)
+        => values.Distinct(StringComparer.Ordinal).ToArray();
+
+    private static void SetBest(IDictionary<string, double?> scores, string axis, double? score)
+    {
+        if (!score.HasValue)
+        {
+            return;
+        }
+
+        if (!scores.TryGetValue(axis, out double? current) || score.Value > current.GetValueOrDefault(double.MinValue))
+        {
+            scores[axis] = score.Value;
+        }
+    }
+
+    private static string BuildHandle(EvidencePacketScope scope, string query, string detailGroup)
+    {
+        string material = string.Join('|', scope.TenantId, scope.CaseId ?? string.Empty, query, detailGroup);
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(material));
+        return $"ep:v1:{Convert.ToHexString(hash)[..16].ToLowerInvariant()}:{detailGroup}";
+    }
+
+    private static bool IsUnauthorized(string code)
+        => code.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase)
+            || code.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase);
+
+    private static string SanitizeGuidance(string? value, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return fallback;
+        }
+
+        return SensitiveTextRegex().IsMatch(value) ? fallback : value;
+    }
+
+    [GeneratedRegex("(bearer\\s+\\S+|redis://\\S+|falkor\\S*|[A-Za-z]:\\\\|/home/|/users/|stack\\s*trace|\\bat\\s+\\w+\\.|token|prompt|embedding)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SensitiveTextRegex();
+}

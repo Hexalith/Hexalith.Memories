@@ -222,8 +222,10 @@ tenantCrossReference, etc.), the MCP schema expands at that point.
 
 Tool methods return protocol-level `CallToolResult` instances. Successful results carry the
 JSON-serialized Memories contract in `content[0].text` and the same object in
-`structuredContent`; error results set `isError=true` and carry the mapper's structured error
-payload. Rationale:
+`structuredContent`; search results add the canonical `evidencePacket` member so MCP agents read
+the same trust semantics as CLI JSON and future UI consumers. Error results set `isError=true`
+and carry the mapper's structured error payload, optionally with packet-style state and recovery
+fields. See [`evidence-packet.md`](evidence-packet.md). Rationale:
 
 1. **Explicit serialization control** — every tool routes through
     `McpToolResultSerializer.Serialize<T>` which uses `MemoriesJsonContext.Options` (camelCase,

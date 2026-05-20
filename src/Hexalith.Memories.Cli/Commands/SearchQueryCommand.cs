@@ -188,6 +188,12 @@ Examples:
                     MaxResults: maxResults,
                     Explain: explain);
                 HybridSearchResult result = await client.HybridSearchAsync(request, innerCt).ConfigureAwait(false);
+                result = result with
+                {
+                    EvidencePacket = EvidencePacketMapper.FromHybridSearchResult(
+                        result,
+                        CreateEvidenceScope(tenantId!, caseId)),
+                };
 
                 // Task 4 (empty-state) and Task 5 (degradation) both live here — Task 4 runs first, Task 5
                 // second. Both modify the same method; ordering matters for review diff clarity.
@@ -211,6 +217,12 @@ Examples:
                 MaxResults: maxResults,
                 Explain: explain);
             SearchResult single = await client.SearchAsync(singleRequest, innerCt).ConfigureAwait(false);
+            single = single with
+            {
+                EvidencePacket = EvidencePacketMapper.FromSearchResult(
+                    single,
+                    CreateEvidenceScope(tenantId!, caseId)),
+            };
             WriteResultAndEmptyStateNudge(
                 router,
                 console,
@@ -222,6 +234,9 @@ Examples:
             return CliExitCodes.Success;
         }, ct).ConfigureAwait(false);
     }
+
+    private static EvidencePacketScope CreateEvidenceScope(string tenantId, string? caseId)
+        => new(tenantId, caseId, EvidencePacketIsolationStatus.Authorized, string.IsNullOrWhiteSpace(caseId) ? "tenant" : "tenant-case");
 
     private static int WriteValidationError(CliConsole console, string code, string message, string suggestion)
     {

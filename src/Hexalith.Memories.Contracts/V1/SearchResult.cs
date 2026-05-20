@@ -63,4 +63,8 @@ public sealed record SearchResult
     /// <summary>Gets the axes that contributed to the response.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? AxesUsed { get; init; }
+
+    /// <summary>Gets the canonical evidence packet projection, when a surface attaches one.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EvidencePacket? EvidencePacket { get; init; }
 }

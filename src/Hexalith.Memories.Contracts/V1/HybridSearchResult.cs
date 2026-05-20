@@ -58,6 +58,10 @@ public sealed record HybridSearchResult
     /// <summary>Gets the axes that contributed to the response.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? AxesUsed { get; init; }
+
+    /// <summary>Gets the canonical evidence packet projection, when a surface attaches one.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EvidencePacket? EvidencePacket { get; init; }
 }
 
 /// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>
