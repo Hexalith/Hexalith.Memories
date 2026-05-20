@@ -67,3 +67,4 @@
 2026-05-20T10:53:02+02:00	create-story	17-2-recovery-and-feedback-state-grammar	ok	created ready-for-dev story context for recovery and feedback state grammar
 2026-05-20T10:58:16+02:00	create-story	17-3-contract-aware-web-interaction-patterns	ok	created ready-for-dev story context for contract-aware web interaction patterns
 2026-05-20T11:04:18.8962091+02:00	party-mode-review	2-7-evidence-packet-contract-mapping	ok	Applied party-mode story hardening and recorded canonical trace.
+2026-05-20T11:25:32.1932091+02:00	party-mode-review	16-1-projection-registry-cross-check-design	ok	Applied party-mode story hardening and recorded canonical trace.
