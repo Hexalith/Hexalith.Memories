@@ -16,19 +16,32 @@ so that each audience can inspect the same evidence model at the right density.
 4. Given benchmark validation has run, when the Benchmark Result Comparator renders, then it shows hybrid-vs-single-axis NDCG@10 results, the 80% thesis threshold status, per-query breakdowns, and links to reproducible evidence.
 5. Given MCP requests or responses are inspected, when the Agent Packet Inspector renders, then it shows request summary, response schema, token budget, omitted fields, expansion handles, structured errors, copy controls, and readable schema/JSON views.
 
+## Party-Mode Hardening Clarifications
+
+- Story 17.4 remains a consume-only web slice. Until Story 2.7 is `done` and exposes canonical `Contracts.V1` Evidence Packet fixtures or approved snapshots, implementation may add only typed adapter seams, reusable test host setup, and fixture-backed component tests that do not define new evidence, state, recovery, benchmark, activity, MCP schema, confidence, or expansion-handle semantics.
+- All lens semantics must come from the canonical `Hexalith.Memories.Contracts.V1` Evidence Packet, Story 17.1 trust components, Story 17.2 recovery/state grammar, Story 17.3 interaction patterns, or existing FrontComposer primitives. Do not create web-local DTO forks, role-specific packet projections, browser-state-derived evidence, direct backend calls, or infrastructure-specific health semantics.
+- Each lens must include a field trace before UI behavior is added: displayed field or state, upstream contract/component source, absent/redacted/degraded/unauthorized behavior, test level, and evidence artifact. When an upstream field is unavailable, render `unknown`, `unavailable`, `redacted`, or `insufficient evidence`; do not infer from raw payloads, logs, local paths, exception text, diagnostics, or provider internals.
+- Use a shared lens shell rule across all five lenses: tenant, case, active lens, trust/state/freshness/confidence where available, and return path to the originating Evidence Packet or surface remain visible or reachable through keyboard and compact layouts. Overflow belongs in row details, drawers, tabs, or disclosure patterns rather than horizontal-scroll-only access.
+- Default ordering must be deterministic and role-appropriate unless upstream patterns already override it: activity chronological, ingestion by stage/time, health by severity and affected capability, benchmarks by threshold delta and run time, and MCP packets by request time and error state.
+- The canonical fixture inventory for this story is bounded to Story 2.7/17.1/17.2/17.3 examples: happy packet, degraded packet, unauthorized packet, redacted packet, omitted/compressed packet, stale packet, invalid/schema-mismatch packet, cross-tenant packet, and missing-source packet. No live Redis, FalkorDB, DAPR, MCP transport, benchmark runner, or backend service is required for lens unit/component coverage.
+- Copy, export, diagnostics, logs, accessibility labels, and snapshots are security surfaces. Tests must assert that bearer tokens, secrets, raw payloads, tenant-sensitive diagnostics, local absolute paths, restricted source details, provider internals, serialized packets, and unsanitized exception text are absent from visible text, accessible names, copied text, diagnostics, logs, and snapshots.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Confirm contract, scope, and prior web foundations before implementation (AC: 1-5)
   - [ ] Confirm Story 2.7 has landed the canonical `Contracts.V1` Evidence Packet record set. If it has not, pause implementation or use fixtures only; do not create web-only evidence, state, recovery, or schema semantics.
+  - [ ] Confirm Story 2.7 status before coding. If Story 2.7 is not `done`, limit work to typed adapter interfaces, approved contract snapshots, reusable lens test host setup, and fixture-backed tests that preserve upstream semantics.
   - [ ] Read `_bmad-output/implementation-artifacts/2-7-evidence-packet-contract-mapping.md`, Story 17.1, Story 17.2, and Story 17.3 before implementing any lens.
   - [ ] Treat all role-specific lenses as different densities over the same evidence model: scope, source, reasoning, state, recovery, freshness, confidence, omitted details, and degraded behavior.
   - [ ] Map each implemented lens to the upstream contract or component source it consumes before adding UI behavior.
+  - [ ] For each lens, record the field trace table covering displayed fields/states, upstream source, absent/redacted/degraded/unauthorized rendering, test level, and evidence artifact.
   - [ ] Read `Hexalith.FrontComposer/_bmad-output/project-context.md` and reuse FrontComposer tenant/user context, command lifecycle, data grid, diagnostics, forms, navigation, and layout primitives before creating Memories-specific wrappers.
   - [ ] Verify the local Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
 
 - [ ] Task 1 - Implement Case Activity Trail lens (AC: 1)
   - [ ] Render ingestion, search, membership, annotation, source-link, health, repair, refresh, stale, and deletion activity in chronological order.
   - [ ] Keep tenant and case scope visible before the activity list and preserve scope through filters, details, and row actions.
+  - [ ] Preserve return navigation to the originating Evidence Packet, case surface, or source-linked activity context.
   - [ ] Link activity rows to source, memory unit, Evidence Packet, graph path, or case object when the contract exposes a safe identifier.
   - [ ] Label every activity status with visible text and an accessible name. Do not rely on color, icon, timeline position, or badge appearance alone.
   - [ ] Render missing, redacted, unauthorized, stale, or deleted source links as explicit states rather than broken links or silent omissions.
@@ -39,6 +52,7 @@ so that each audience can inspect the same evidence model at the right density.
   - [ ] Show outcome, retry count/state, failure category, safe failure summary, affected capability, and recovery action when available.
   - [ ] Distinguish pending ingestion, failed extraction, embedding provider failure, syntactic/vector/graph indexing degradation, consistency verification failure, and compensation state without exposing raw payloads or secrets.
   - [ ] Route retry, inspect source, inspect failed stage, verify consistency, and repair actions through existing command/navigation conventions with tenant and case context.
+  - [ ] Keep the current tenant, case, unit, stage, safe recovery action, and return path visible or keyboard-reachable in compact layouts.
   - [ ] Use live-region behavior only for meaningful stage transitions such as failure, retry scheduled, verification complete, or indexed; avoid noisy updates for every progress tick.
 
 - [ ] Task 3 - Implement Operator Health Matrix lens (AC: 3)
@@ -47,10 +61,12 @@ so that each audience can inspect the same evidence model at the right density.
   - [ ] Treat tenant isolation failure, unauthorized scope, backend unavailable, schema mismatch, and cross-tenant ambiguity as trust-blocking states, not decorative warnings.
   - [ ] Do not expose connection strings, bearer tokens, embedding keys, local absolute paths, raw stack traces, tenant-sensitive diagnostics, provider internals, or serialized packets in visible text, accessible labels, copied text, logs, or snapshots.
   - [ ] Use FrontComposer diagnostics, status, command, and data-grid patterns; do not add direct Redis, FalkorDB, DAPR, or infrastructure coupling to web components.
+  - [ ] Treat operator health as contract/state display only; do not add live infrastructure probes or provider-specific health categories in this story.
 
 - [ ] Task 4 - Implement Benchmark Result Comparator lens (AC: 4)
   - [ ] Show hybrid-vs-single-axis NDCG@10 results, the 80% thesis threshold status, per-query breakdowns, corpus or fixture identifier, run metadata, and links to reproducible evidence when available.
   - [ ] Preserve benchmark semantics from the contract or existing benchmark output. Do not invent a web-only benchmark score, axis taxonomy, confidence grammar, or threshold.
+  - [ ] Display supplied evidence only. Benchmark scoring semantics, threshold changes, fixture generation, and benchmark-runner execution are outside this story unless already present in canonical fixtures.
   - [ ] Render regression, inconclusive, missing baseline, stale benchmark, degraded axis, and unreproducible evidence states explicitly.
   - [ ] Keep charts and score bars paired with text equivalents, table values, accessible labels, and keyboard-reachable detail rows.
   - [ ] Route export, compare run, inspect query, inspect source, and open evidence actions through existing command/navigation conventions.
@@ -58,13 +74,17 @@ so that each audience can inspect the same evidence model at the right density.
 - [ ] Task 5 - Implement Agent Packet Inspector lens (AC: 5)
   - [ ] Render MCP request summary, tool/resource name, tenant/case scope, response schema, token budget, omitted fields, expansion handles, structured errors, source references, and recovery guidance from the shared Evidence Packet/MCP contracts.
   - [ ] Provide readable schema and JSON views with keyboard navigation, copy controls, redaction, line wrapping, and deterministic expansion-handle display.
+  - [ ] Keep readable sections as the primary inspection path; raw JSON, when available, is a secondary view and must preserve the same redaction, keyboard, line-wrap, and copy-safety rules.
   - [ ] Show compressed, omitted, schema mismatch, tool error, unauthorized, degraded backend, pending expansion, and invalid-response states using the shared state grammar.
   - [ ] Do not require users to inspect raw JSON to understand whether the packet is valid, compressed, failed, or expandable.
   - [ ] Copy controls must sanitize bearer tokens, secrets, raw payloads, tenant-sensitive diagnostics, local paths, and restricted source details.
 
 - [ ] Task 6 - Add focused lens, state, accessibility, and sanitization tests (AC: 1-5)
   - [ ] Add bUnit coverage using `Hexalith.FrontComposer.Testing`, `FrontComposerTestBase`, or existing `BunitContext` + `AddFluentUIComponents()` patterns as appropriate.
+  - [ ] Prefer one reusable lens test host/helper over per-lens bespoke setup.
   - [ ] Build canonical fixtures from Story 2.7 Evidence Packet examples plus Stories 17.1, 17.2, and 17.3 UI/recovery/interaction examples.
+  - [ ] Cover the bounded fixture inventory: happy, degraded, unauthorized, redacted, omitted/compressed, stale, invalid/schema-mismatch, cross-tenant, and missing-source packets.
+  - [ ] For every lens, cover populated, empty, redacted, degraded, unauthorized, and missing/insufficient-evidence states in bUnit or unit tests.
   - [ ] Test Case Activity Trail chronological order, source links, scope labelling, status labels, keyboard row actions, redacted links, and missing-source states.
   - [ ] Test Ingestion Lifecycle Tracker stage rendering, retry state, failure summary, safe recovery actions, live-region updates, and degraded backend distinctions.
   - [ ] Test Operator Health Matrix trust-blocking states, affected capabilities, safe diagnostics, recovery actions, and non-leakage.
@@ -73,10 +93,12 @@ so that each audience can inspect the same evidence model at the right density.
   - [ ] Add tenant-isolation tests proving tenant changes reset or partition lens filters, selected rows, detail panels, copy payloads, command targets, and return paths.
   - [ ] Add negative tests proving secrets, bearer tokens, raw payloads, tenant-sensitive diagnostics, local absolute paths, restricted source details, provider internals, and unsanitized exception text do not render in visible text, accessible labels, copied text, diagnostics, logs, or snapshots.
   - [ ] Verify localized resource usage for user-visible lens titles, status labels, empty states, recovery actions, copy controls, schema errors, benchmark labels, and assistive text added by this story.
+  - [ ] Add an AC-to-test map for each lens, including role navigation, keyboard path, accessible names, focus return, text equivalents, live-region expectations, localization evidence, and non-leakage assertions.
 
 - [ ] Task 7 - Validate responsive and integration behavior (AC: 1-5)
   - [ ] Run focused unit/bUnit tests for changed Memories web or FrontComposer component/state projects.
   - [ ] If a runnable web surface is added, run Playwright or equivalent browser checks at 360px, 768px, 1024px, and 1440px for every implemented lens.
+  - [ ] Limit Playwright/E2E scope to one smoke path per lens per required viewport when a runnable surface exists; keep state branching in bUnit/unit tests unless the story explicitly adds cross-surface behavior.
   - [ ] At phone and tablet widths, verify each lens keeps tenant, case, trust state, source/evidence, affected capability, and recovery reachable without horizontal-scroll-only access.
   - [ ] Run automated accessibility checks where the repo already supports them. For FrontComposer E2E, use the existing `tests/e2e` axe helper pattern and role/label or `data-testid` selectors, not CSS class selectors or sleeps.
   - [ ] Verify keyboard-only use, focus order, focus return from details/drawers/dialogs, screen-reader names, touch target sizing, forced-colors/high-contrast behavior, reduced-motion parity, and no text overlap.
@@ -196,6 +218,27 @@ GPT-5
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Role-Specific Web Inspection Lenses.
+- 2026-05-20: Party-mode review applied story hardening for Story 2.7 dependency gating, consume-only Evidence Packet semantics, fixture/test boundaries, role lens shell behavior, navigation continuity, accessibility, localization, and copy/redaction security surfaces.
+
+## Party-Mode Review
+
+- Date: 2026-05-20T12:16:05.8058742+02:00
+- Selected story key: `17-4-role-specific-web-inspection-lenses`
+- Command/skill invocation used: `/bmad-party-mode 17-4-role-specific-web-inspection-lenses; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), Sally (UX Designer)
+- Findings summary:
+  - Story 17.4 was directionally valid, but Story 2.7 is still active, so the web lenses needed an explicit consume-only gate that prevents web-local Evidence Packet DTO forks, role-specific packet projections, backend calls, or invented evidence/state/recovery semantics.
+  - The story breadth across five lenses could hide implementation and test-platform scope unless bounded to typed adapters, canonical fixtures, reusable test host setup, and representative E2E smoke coverage.
+  - Role-specific density, deterministic ordering, navigation return paths, compact-layout behavior, and visible tenant/case trust context needed clearer shared shell expectations before implementation.
+  - Copy/export, diagnostics, logs, accessibility labels, and snapshots needed to be treated as security surfaces with explicit non-leakage assertions, not as UI polish.
+- Changes applied:
+  - Added `## Party-Mode Hardening Clarifications` covering Story 2.7 fixture-only gating, consume-only contract semantics, field trace requirements, shared lens shell behavior, deterministic ordering, bounded fixture inventory, and copy/redaction security surfaces.
+  - Tightened Task 0 with Story 2.7 status gating, typed adapter/test-only fallback work, and per-lens field trace mapping before UI behavior.
+  - Tightened Tasks 1-5 with return-path, compact-layout, operator-health non-probing, benchmark display-only, and Agent Packet Inspector raw-JSON secondary-view constraints.
+  - Tightened Tasks 6-7 with reusable test host guidance, canonical fixture inventory, populated/empty/redacted/degraded/unauthorized state coverage, AC-to-test mapping, localization/accessibility evidence, and bounded E2E smoke scope.
+- Findings deferred:
+  - Final lens navigation IA, role-specific default landing views, mobile timeline-vs-table strategy, health matrix grouping, benchmark visualization style, JSON/schema side-by-side layout, exact final Story 2.7 field names, benchmark scoring semantics, role labels/permissions, and raw-vs-summarized packet detail remain product or architecture decisions unless already defined upstream.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 
