@@ -26,10 +26,20 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
 - Validation must use stable roles, accessible labels, or `data-testid` selectors. Do not rely on CSS class selectors, hover-only behavior, brittle visual text, or arbitrary sleeps for Playwright or accessibility checks.
 - Public evidence UI, copied text, diagnostic panels, accessibility labels, test snapshots, and trace artifacts must not expose secrets, bearer tokens, local absolute paths, raw payloads, tenant-sensitive diagnostics, or machine-specific filesystem references.
 
+## Advanced Elicitation Hardening Clarifications
+
+- Treat Story 2.7 as the single contract authority. If its Evidence Packet implementation is not complete at dev time, Story 17.1 may use canonical fixtures only for component work and must not edit active Story 2.7 contract, CLI, MCP, or mapper files to unblock the web slice.
+- Evidence Packet binding must be field-by-field and explicit. Adapters may normalize presentation shape for FrontComposer, but each displayed trust, scope, source, axis, graph, omitted-detail, recovery, and token-budget value must trace back to a named contract field or render as unavailable.
+- When multiple safety or state signals are present, the UI must surface the most restrictive scope/safety condition first in display order without mutating packet values: unauthorized/out-of-scope, schema mismatch or missing source, redacted or compressed detail, degraded or partial evidence, then supported/current/complete evidence.
+- Source, axis, and graph inspectors must preserve contract ordering unless the packet exposes an explicit chronological or ranking order. If no ordering signal exists, display the packet order and mark the order basis as unavailable instead of sorting by UI-local heuristics.
+- Copy, export, source preview, graph context, and MCP payload inspection must share the same redaction and tenant/case scope checks as the visible UI. Do not reconstruct those outputs from DOM text, diagnostics, browser state, local paths, or raw payload dumps.
+- Accessibility and responsive validation must cover transition states as well as settled states: loading to complete, complete to degraded, unauthorized, redacted, compressed, no-source, and graph-backend-unavailable paths all need stable focus, labels, and no hidden trust state.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Preflight contract and submodule readiness (AC: 1-4)
   - [ ] Confirm Story 2.7 has landed the canonical `Contracts.V1` Evidence Packet record set or explicitly gate this story until it does. Do not invent a parallel web-only packet shape.
+  - [ ] Treat any in-progress Story 2.7 changes as prerequisite context only. Do not patch the active contract story, its source files, or its tests as part of this web story unless Story 17.1 is explicitly re-scoped.
   - [ ] Read `_bmad-output/implementation-artifacts/2-7-evidence-packet-contract-mapping.md`, `src/Hexalith.Memories.Contracts/V1/SearchResult.cs`, `HybridSearchResult.cs`, `SearchExplanation.cs`, `TraversalResult.cs`, and `OmittedReason.cs` before designing UI bindings.
   - [ ] Read `Hexalith.FrontComposer/_bmad-output/project-context.md`, `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Contracts`, `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Shell`, and `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Testing` before adding components.
   - [ ] Verify the current Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before using examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation was for `5.0.0.26098`, so local code/tests are the stronger source when signatures disagree.
@@ -38,6 +48,8 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
   - [ ] Add the smallest FrontComposer-aligned web surface that can render an Evidence Packet for a selected tenant and case. Prefer a contract-driven composition or view model adapter over page-specific JSON parsing.
   - [ ] Keep tenant and case scope before the query/result content in the visual and DOM order.
   - [ ] Preserve the shared Evidence Packet state grammar: confidence (`supported`, `partial`, `disputed`, `insufficient`), freshness (`current`, `aging`, `stale`, `unknown`), evidence health (`complete`, `degraded`, `missing source`, `schema mismatch`), and scope (`verified`, `inferred`, `cross-case`, `unauthorized`, `out-of-scope`).
+  - [ ] Define an explicit packet-to-view mapping table in code or tests so every rendered trust and evidence value has a named contract source, including the unavailable fallback when the source field is absent.
+  - [ ] Apply restrictive-state display precedence without changing packet semantics: scope/safety failures first, then schema/source degradation, then redaction/compression, then partial evidence, then supported evidence.
   - [ ] Do not add a new search backend, MCP tool, CLI output shape, or contract semantics in this story. If the existing contract is insufficient, record the gap as a dependency on Story 2.7 or a deferred decision.
   - [ ] Keep the cockpit shell presentation-only. Filtering, ranking, evidence mutation, export payload design, and drill-down workflows beyond safely opening already-present packet details are deferred unless the packet already exposes enough data and FrontComposer already has the command primitive.
 
@@ -54,20 +66,25 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
   - [ ] Graph Path Summary exposes relationship path, edge type, confidence, gap markers, chronological ordering, depth, and graph-backend degraded state when available.
   - [ ] Keep first view compact: trust essentials first, then expandable source/detail panels. Avoid dashboard sprawl and decorative cards that hide the evidence workflow.
   - [ ] Render absent sources, absent axes, absent graph paths, unknown freshness, unavailable backend detail, and redacted source content as explicit unavailable/degraded/redacted states, not empty certainty.
+  - [ ] Preserve source, axis, and graph ordering from the packet unless the contract provides an explicit ranking or chronological field. Do not introduce UI-local sorting that can change evidence meaning.
 
 - [ ] Task 4 - Wire FrontComposer command/navigation behavior (AC: 1, 4)
   - [ ] Use FrontComposer tenant/user render context and shell conventions for scope-aware rendering; do not store tenant/case state in singleton/static UI services.
   - [ ] Preserve context when navigating from the Evidence Packet to a source, graph path, activity item, or agent packet.
   - [ ] Provide command actions for inspect source, open graph context, export packet, retry/refine query, and inspect MCP payload only when the packet exposes enough data to perform the action safely.
+  - [ ] Apply the same redaction, unavailable-state, tenant, and case checks to copy/export/inspect commands as to visible components. Do not build command payloads from rendered DOM text or diagnostic dumps.
   - [ ] Confirmation or scope-expanding actions must name the tenant, case, target object, and consequence before proceeding.
 
 - [ ] Task 5 - Add component and accessibility tests (AC: 1-4)
   - [ ] Add bUnit coverage using `Hexalith.FrontComposer.Testing` or the existing `BunitContext` + `AddFluentUIComponents()` pattern.
   - [ ] Render canonical Story 2.7-aligned Evidence Packet fixtures in component tests, including complete, empty, partial, degraded, multi-source, tenant/case mismatch, unauthorized, redacted, and token-budget-compressed packets.
+  - [ ] Add mapping tests that fail when a rendered field has no named Evidence Packet source or when a contract field used by the Trust Strip, Scope Header, Source Citation Stack, Retrieval Axis Breakdown, or Graph Path Summary is silently dropped.
   - [ ] Test Trust Strip state labels and accessible names for supported, partial/degraded, unauthorized, and token-budget-compressed packets.
+  - [ ] Test restrictive-state precedence, packet ordering preservation, and unavailable-order messaging for source, axis, and graph summaries.
   - [ ] Test source/axis/graph expansion keeps keyboard-reachable controls and does not depend on hover-only behavior.
   - [ ] Test tenant/case scope appears before result content in markup order.
   - [ ] Add negative tests that restricted source details, raw payloads, bearer tokens, tenant-sensitive diagnostics, and local absolute paths do not render in accessible labels, copied text, logs, or diagnostic panels.
+  - [ ] If copy, export, graph context, or MCP inspection commands are visible, add negative tests that their payloads follow the same redaction and scope rules as the visible Evidence Cockpit.
   - [ ] Use role, accessible-label, and `data-testid` selectors for UI tests. Do not use CSS class selectors, arbitrary sleeps, or selectors coupled only to visual text.
 
 - [ ] Task 6 - Validate responsive and visual behavior (AC: 1-4)
@@ -181,6 +198,31 @@ GPT-5
 - Findings deferred:
   - Final visual density and information hierarchy remain implementation decisions within the clarified component boundaries.
   - New trust scoring, retrieval weighting, graph summarization, backend behavior, MCP behavior, CLI behavior, and contract semantics remain out of scope for Story 17.1.
+- Final recommendation: ready-for-dev
+
+## Advanced Elicitation
+
+- Date: 2026-05-20T12:20:27.1576382+02:00
+- Selected story key: `17-1-evidence-cockpit-and-trust-components`
+- Command/skill invocation used: `/bmad-advanced-elicitation 17-1-evidence-cockpit-and-trust-components`
+- Batch 1 method names: Red Team vs Blue Team, Security Audit Personas, Failure Mode Analysis, Self-Consistency Validation, Tree of Thoughts
+- Reshuffled Batch 2 method names: First Principles Analysis, Pre-mortem Analysis, Architecture Decision Records, Challenge from Critical Perspective, Comparative Analysis Matrix
+- Findings summary:
+  - Story 17.1 needed a clearer guardrail for the active Story 2.7 dependency so future web work does not mutate contract, CLI, MCP, mapper, or test files owned by the in-progress Evidence Packet story.
+  - The web adapter boundary needed field-level traceability so trust, scope, source, axis, graph, omitted-detail, recovery, and token-budget values are either mapped from named contract fields or explicitly unavailable.
+  - Multi-signal packet states needed deterministic display precedence that surfaces restrictive safety and scope conditions first without creating new contract semantics.
+  - Source, axis, graph, copy, export, and inspector paths needed stronger non-leakage and ordering constraints to prevent UI-local sorting, DOM reconstruction, or diagnostics from changing or exposing evidence.
+  - Accessibility and responsive validation needed to include transition and degraded states, not only settled successful packet rendering.
+- Changes applied:
+  - Added `## Advanced Elicitation Hardening Clarifications`.
+  - Tightened Task 0 with the Story 2.7 active-contract ownership boundary.
+  - Tightened Task 1 with explicit packet-to-view mapping and restrictive-state display precedence.
+  - Tightened Task 3 with packet ordering preservation for source, axis, and graph summaries.
+  - Tightened Task 4 with redaction and scope parity for copy/export/inspect command payloads.
+  - Tightened Task 5 with mapping, precedence, ordering, and command-payload negative tests.
+- Findings deferred:
+  - Exact component names, adapter type names, and visual layout remain implementation decisions inside FrontComposer conventions.
+  - Contract changes, new Evidence Packet fields, new retrieval ranking, graph summarization, CLI/MCP output changes, and Story 2.7 source/test edits remain out of scope for Story 17.1.
 - Final recommendation: ready-for-dev
 
 ## Story Completion Status
