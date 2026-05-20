@@ -210,6 +210,22 @@ public sealed class McpErrorMapperTests
         packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("checkAuthorization");
     }
 
+    [Fact]
+    public void MapAuthorization_MalformedTenant_ProducesUnauthorizedEvidencePacket()
+    {
+        // Regression: a malformed tenant id must route to state: unauthorized + checkAuthorization,
+        // not state: degraded + retry. The packet must not echo the unsafe input.
+        string poisoned = "tenant-a\u202E";
+
+        CallToolResult result = _mapper.MapAuthorization(poisoned, "search_memory", McpErrorMapper.TenantMalformedCode);
+
+        JsonElement packet = result.StructuredContent!.Value.GetProperty("evidencePacket");
+        packet.GetProperty("state").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("scope").GetProperty("isolationStatus").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("checkAuthorization");
+        packet.GetProperty("scope").GetProperty("tenantId").GetString()!.ShouldNotContain(poisoned);
+    }
+
     private static Exception CreateExceptionWithStack()
     {
         try

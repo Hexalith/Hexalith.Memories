@@ -125,11 +125,19 @@ internal sealed partial class McpErrorMapper
                     TenantMalformedCode,
                     "The requested tenant identifier is malformed.",
                     "Use a tenant identifier containing only letters, digits, underscores, or dashes.");
+            // Pre-mark the scope as Unauthorized so the packet maps to state: unauthorized + checkAuthorization
+            // recovery rather than the generic degraded/retry path. Tenant id is suppressed to avoid echoing
+            // the unsafe input through the packet scope.
+            EvidencePacketScope malformedScope = new(
+                string.Empty,
+                null,
+                EvidencePacketIsolationStatus.Unauthorized,
+                "mcp-auth");
             return BuildErrorResult(
                 malformed,
                 "mcp-auth",
                 toolName,
-                EvidencePacketMapper.FromError(malformed, UnknownScope()));
+                EvidencePacketMapper.FromError(malformed, malformedScope));
         }
 
         ErrorResponse forbidden = new(

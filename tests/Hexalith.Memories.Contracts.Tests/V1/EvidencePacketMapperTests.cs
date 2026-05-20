@@ -104,8 +104,11 @@ public sealed class EvidencePacketMapperTests
     }
 
     [Fact]
-    public void FromError_Unauthorized_ShouldSuppressExpansionGuidanceAndSanitizeRecoveryText()
+    public void FromError_Unauthorized_ShouldUseHardcodedRecoveryWithoutCopyingErrorFields()
     {
+        // Sensitive fragments live in error.Message and error.Suggestion. The unauthorized branch must not
+        // copy either field into the packet — recovery is hardcoded and the scope echo is the caller's,
+        // not the error's. The assertion proves the bypass invariant, not that SanitizeGuidance ran.
         var error = new ErrorResponse(
             "TENANT_FORBIDDEN",
             "Denied for tenant-b at C:\\secret\\trace.txt with Bearer abc.",
@@ -118,16 +121,60 @@ public sealed class EvidencePacketMapperTests
 
         packet.State.ShouldBe(EvidencePacketState.Unauthorized);
         packet.Scope.IsolationStatus.ShouldBe(EvidencePacketIsolationStatus.Unauthorized);
+        packet.Scope.TenantId.ShouldBe("tenant-a");
         packet.Sources.ShouldBeEmpty();
         packet.OmittedDetails.ExpansionHandles.ShouldBeEmpty();
         packet.Recovery.ShouldHaveSingleItem();
         packet.Recovery[0].Kind.ShouldBe(EvidencePacketRecoveryKind.CheckAuthorization);
+        packet.Recovery[0].Guidance.ShouldBe("Use an authorized tenant and case scope.");
 
         string json = JsonSerializer.Serialize(packet, MemoriesJsonContext.Options);
+        json.ShouldNotContain("tenant-b", Shouldly.Case.Sensitive);
         json.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
         json.ShouldNotContain("Bearer abc", Shouldly.Case.Sensitive);
         json.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
-        json.ShouldNotContain("tenant-b", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
+    public void FromError_NonUnauthorized_ShouldReplaceSensitiveSuggestionWithFallback()
+    {
+        // BACKEND_DEGRADED routes to the Retry branch where SanitizeGuidance actually runs against
+        // error.Suggestion. Sensitive payload in the suggestion must be replaced with the fallback string.
+        var error = new ErrorResponse(
+            "BACKEND_DEGRADED",
+            "Backend is degraded.",
+            "Retry after Bearer abc123def456ghi789jkl012mno345pqr678 reconnects to redis://backend-key/0.");
+
+        EvidencePacket packet = EvidencePacketMapper.FromError(
+            error,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"),
+            query: "claim denied");
+
+        packet.State.ShouldBe(EvidencePacketState.Degraded);
+        packet.Recovery.ShouldHaveSingleItem();
+        packet.Recovery[0].Kind.ShouldBe(EvidencePacketRecoveryKind.Retry);
+        packet.Recovery[0].Guidance.ShouldBe("Retry the authorized request or inspect service health.");
+
+        string json = JsonSerializer.Serialize(packet, MemoriesJsonContext.Options);
+        json.ShouldNotContain("Bearer abc123def456ghi789jkl012mno345pqr678", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
+    public void FromError_NonUnauthorized_ShouldPreserveBenignTokenBudgetGuidance()
+    {
+        // Regression for the over-broad sanitization regex: prose like "token budget" must survive.
+        var error = new ErrorResponse(
+            "BACKEND_DEGRADED",
+            "Backend is degraded.",
+            "Increase the token budget and retry.");
+
+        EvidencePacket packet = EvidencePacketMapper.FromError(
+            error,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"),
+            query: "claim denied");
+
+        packet.Recovery[0].Guidance.ShouldBe("Increase the token budget and retry.");
     }
 
     private static SearchExplanation BuildExplanation() => new()

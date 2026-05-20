@@ -99,11 +99,12 @@ public static partial class EvidencePacketMapper
         IReadOnlyList<string> unavailableAxes = NormalizeAxes(result.UnavailableAxes ?? []);
         EvidencePacketEvidenceStrength strength = DetermineEvidenceStrength(sources.Select(static source => source.Score));
         EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, result.Degraded);
+        bool effectiveDegraded = result.Degraded || result.AllEnabledAxesUnavailable == true;
         EvidencePacketState state = DetermineState(
             scope,
             result.TotalCount,
             sources.Count,
-            result.Degraded || result.AllEnabledAxesUnavailable == true,
+            effectiveDegraded,
             result.OmittedCount,
             strength);
 
@@ -125,7 +126,7 @@ public static partial class EvidencePacketMapper
                 result.Explanation?.Caveat ?? DefaultCaveat,
                 axesUsed,
                 unavailableAxes,
-                result.Degraded,
+                effectiveDegraded,
                 result.AllEnabledAxesUnavailable,
                 BuildHybridAxisEvidence(result.Explanation, axesUsed, result.Results)),
             new EvidencePacketGraphSummary(false, [], [], []),
@@ -144,7 +145,8 @@ public static partial class EvidencePacketMapper
         ArgumentNullException.ThrowIfNull(error);
         ArgumentNullException.ThrowIfNull(scope);
 
-        bool unauthorized = IsUnauthorized(error.Code);
+        bool unauthorized = IsUnauthorized(error.Code)
+            || scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized;
         EvidencePacketScope effectiveScope = unauthorized
             ? scope with { IsolationStatus = EvidencePacketIsolationStatus.Unauthorized }
             : scope;
@@ -314,16 +316,10 @@ public static partial class EvidencePacketMapper
             detailGroups.Add("backendDiagnostics");
         }
 
-        EvidencePacketOmissionReason effectiveReason = reason;
-        if (effectiveReason == EvidencePacketOmissionReason.None && omittedCount == 0 && unavailableAxes.Count == 0)
-        {
-            effectiveReason = EvidencePacketOmissionReason.None;
-        }
-
         return new EvidencePacketOmittedDetails(
             omittedCount,
             estimatedTokensTotal,
-            effectiveReason,
+            reason,
             DistinctOrdinal(fieldNames),
             DistinctOrdinal(detailGroups),
             handles);
@@ -362,6 +358,14 @@ public static partial class EvidencePacketMapper
                     EvidencePacketRecoveryKind.IncreaseTokenBudget,
                     "increaseTokenBudget",
                     "Re-run the authorized search with a larger tokenBudget.",
+                    "rankedResults"),
+            ],
+            EvidencePacketState.PendingExpansion =>
+            [
+                new EvidencePacketRecoveryAction(
+                    EvidencePacketRecoveryKind.IncreaseMaxResults,
+                    "increaseMaxResults",
+                    "Re-run the authorized request with a larger maxResults to retrieve omitted detail groups.",
                     "rankedResults"),
             ],
             EvidencePacketState.Empty =>
@@ -433,19 +437,26 @@ public static partial class EvidencePacketMapper
             axisNames.Add(axis);
         }
 
+        Dictionary<string, AxisExplanation> normalizedAxisDetails = new(StringComparer.OrdinalIgnoreCase);
         if (explanation?.AxisDetails is not null)
         {
-            foreach (string axis in explanation.AxisDetails.Keys)
+            foreach (KeyValuePair<string, AxisExplanation> entry in explanation.AxisDetails)
             {
-                axisNames.Add(axis);
+                if (string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    continue;
+                }
+
+                string normalized = entry.Key.Trim().ToLowerInvariant();
+                normalizedAxisDetails[normalized] = entry.Value;
+                axisNames.Add(normalized);
             }
         }
 
         List<EvidencePacketAxisEvidence> evidence = [];
         foreach (string axis in axisNames)
         {
-            AxisExplanation? details = null;
-            _ = explanation?.AxisDetails?.TryGetValue(axis, out details);
+            _ = normalizedAxisDetails.TryGetValue(axis, out AxisExplanation? details);
             _ = bestScores.TryGetValue(axis, out double? score);
             evidence.Add(new EvidencePacketAxisEvidence(
                 axis,
@@ -526,6 +537,6 @@ public static partial class EvidencePacketMapper
         return SensitiveTextRegex().IsMatch(value) ? fallback : value;
     }
 
-    [GeneratedRegex("(bearer\\s+\\S+|redis://\\S+|falkor\\S*|[A-Za-z]:\\\\|/home/|/users/|stack\\s*trace|\\bat\\s+\\w+\\.|token|prompt|embedding)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex("(bearer\\s+\\S+|redis://\\S+|falkor\\S*|[A-Za-z]:\\\\|/home/|/users/|stack\\s*trace|\\bat\\s+\\w+\\.|eyJ[A-Za-z0-9_/+=-]+\\.|\\b[a-f0-9]{32,}\\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SensitiveTextRegex();
 }
