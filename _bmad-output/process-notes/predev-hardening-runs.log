@@ -71,3 +71,4 @@
 2026-05-20T11:31:23.1043511+02:00	party-mode-review	17-1-evidence-cockpit-and-trust-components	ok	party-mode review applied story hardening; final recommendation ready-for-dev
 2026-05-20T11:39:30.7269257+02:00	party-mode-review	17-2-recovery-and-feedback-state-grammar	ok	applied party-mode hardening for state precedence typed recovery mapping localization sanitization and measurable tests
 2026-05-20T11:45:58.2547115+02:00	party-mode-review	17-3-contract-aware-web-interaction-patterns	ok	applied party-mode hardening for consume-only contracts tenant isolation accessibility responsive and test evidence
+2026-05-20T11:53:09.7603767+02:00	advanced-elicitation	2-7-evidence-packet-contract-mapping	ok	applied advanced elicitation hardening for mapping precedence expansion sanitization and fixture parity

@@ -33,6 +33,15 @@ so that CLI, MCP, and future web UI expose the same trust semantics.
 - Mapping must be pure and reusable: do not couple the mapper to CLI formatting, MCP transport, logging, DAPR/Aspire infrastructure, token-budget implementation internals, or web UI rendering.
 - Server diagnostics and token-budget code may be touched only to map existing trust, degradation, and truncation semantics into the packet. Do not add new ranking, scoring, explanation, retrieval, storage, DAPR, Aspire, Redis, FalkorDB, web UI, or Fluent UI behavior in this story.
 
+## Advanced Elicitation Hardening Clarifications
+
+- Before implementation, define an explicit packet field mapping table in code comments, tests, or developer docs. Each required packet field should name its lower-level source member, transformation rule, absence behavior, redaction rule, and recovery guidance so CLI, MCP, diagnostics, and future web consumers cannot diverge silently.
+- Establish deterministic state precedence for competing signals. Unauthorized or policy-denied scope must dominate recovery and omitted-detail guidance; redacted details must not be reclassified as empty; unavailable backends and token-budget compression must remain distinguishable when both occur.
+- Treat expansion handles as scoped retrieval guidance, not authority bypasses. Handles must be deterministic, tenant/case scoped, safe to serialize, and usable only through existing authorized commands or APIs; they must not embed raw backend keys, local paths, tokens, prompts, or connection details.
+- Packet composition must accept sanitized diagnostic inputs or sanitize before serialization. Tests should prove raw exceptions, stack traces, backend identifiers, source paths, bearer tokens, embeddings, prompts, and cross-tenant identifiers cannot flow into packet state, omitted details, recovery text, MCP text fallback, or CLI JSON.
+- Canonical packet fixtures should be the comparison point for cross-surface parity. Contract, CLI, MCP, and mapper tests should either reuse the same fixtures or assert semantic equivalence against them so future web UI stories consume the same packet grammar.
+- If a lower-level response cannot justify a required packet section, emit an explicit unknown, unavailable, omitted, or pending-expansion value rather than inventing evidence. Record any genuine contract gap as a deferred decision instead of filling it with web, CLI, or MCP-specific semantics.
+
 ## Tasks / Subtasks
 
 - [ ] Task 1: Add the canonical Evidence Packet grammar in `Contracts.V1` (AC: 1, 4)
@@ -44,11 +53,13 @@ so that CLI, MCP, and future web UI expose the same trust semantics.
 
 - [ ] Task 2: Map existing search and diagnostic outputs into Evidence Packet semantics (AC: 1, 3)
   - [ ] Build a pure mapper or factory that composes an Evidence Packet from existing `SearchResult`, `HybridSearchResult`, `SearchExplanation`, `ErrorResponse`, and request scope data.
+  - [ ] Define the field-by-field source mapping before wiring surfaces: source member, transformation, absence/default behavior, redaction, and recovery guidance for every required packet section.
   - [ ] Keep the mapper independent from CLI formatters, MCP transport types, server endpoint transport, logging, DAPR/Aspire infrastructure, token-budget truncation internals, and UI code.
   - [ ] Pass request scope into the mapper explicitly because current lower-level results carry `Query` but do not carry `TenantId` or `CaseId`.
   - [ ] Map single-axis and hybrid result sources from `SourceUri`, `SourceType`, `MemoryUnitId`, snippets, case metadata, and score metadata.
   - [ ] Map evidence from `SearchExplanation.Caveat`, per-axis `AxisDetails`, `AxesUsed`, normalized axis scores, composite score, `Degraded`, and `UnavailableAxes`.
   - [ ] Map states consistently: complete, partial, weak, empty, stale, degraded, unauthorized, and pending expansion. Use only states the current response can justify; do not claim factual accuracy or data completeness from relevance scores.
+  - [ ] Apply deterministic state precedence when multiple signals are present, especially unauthorized, policy/redaction, backend degradation, token-budget compression, empty results, and weak evidence.
   - [ ] Keep diagnostics sanitized and intentional about redaction. Do not include secrets, tokens, raw embeddings, full prompts, local absolute paths, connection strings, backend identifiers, cross-tenant identifiers, or unsanitized exception text in Evidence Packet diagnostics.
 
 - [ ] Task 3: Apply the shared contract to CLI JSON and MCP search results (AC: 2)
@@ -64,6 +75,7 @@ so that CLI, MCP, and future web UI expose the same trust semantics.
   - [ ] Reuse the existing `OmittedCount`, `EstimatedTokensTotal`, `OmittedReason`, `AxesUsed`, and `UnavailableAxes` metadata produced by search response metadata application.
   - [ ] Add explicit omitted field names or omitted detail groups for token-budget and density-compressed packets, including why details were omitted, how much was omitted when known, and whether the omission was caused by budget, density, redaction, policy, authorization, backend unavailability, or true absence.
   - [ ] Add deterministic expansion handles or equivalent retrieval guidance with machine-readable action kind and target detail group. If no expansion endpoint exists, use guidance backed by current capabilities, such as re-running with a larger `tokenBudget` or `maxResults`, fetching a memory unit by id, or using traversal/search commands that already exist.
+  - [ ] Keep expansion handles tenant/case scoped and non-sensitive. Do not serialize backend storage keys, local filesystem paths, connection details, prompts, tokens, or identifiers that would let a caller bypass normal authorization.
   - [ ] Ensure empty, degraded, unauthorized, and compressed results still include recovery actions that are safe, specific, and non-leaking.
 
 - [ ] Task 5: Add focused serialization, surface, and regression tests (AC: 1, 2, 3, 4)
@@ -189,6 +201,7 @@ GPT-5
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Packet Contract Mapping.
 - 2026-05-20: Party-mode review applied story hardening for contract ownership, additive compatibility, trust semantics, recovery safety, omitted-detail invariants, and cross-surface test coverage.
+- 2026-05-20: Advanced elicitation applied story hardening for field mapping, state precedence, scoped expansion handles, sanitization, and canonical fixture parity.
 
 ## Party-Mode Review
 
@@ -211,6 +224,29 @@ GPT-5
   - Tightened Task 5 with semantic contract assertions, public member coverage, tenant/case negative fixtures, table-driven sanitization, and shared canonical fixture expectations.
 - Findings deferred:
   - None. The review findings were resolved as story-scope clarifications without changing product scope, architecture policy, or cross-story contracts.
+- Final recommendation: ready-for-dev
+
+## Advanced Elicitation
+
+- Date: 2026-05-20T11:53:09.7603767+02:00
+- Selected story key: `2-7-evidence-packet-contract-mapping`
+- Command/skill invocation used: `/bmad-advanced-elicitation 2-7-evidence-packet-contract-mapping`
+- Batch 1 method names: Red Team vs Blue Team; Security Audit Personas; Failure Mode Analysis; Self-Consistency Validation; Tree of Thoughts
+- Reshuffled Batch 2 method names: First Principles Analysis; Pre-mortem Analysis; Architecture Decision Records; Challenge from Critical Perspective; Comparative Analysis Matrix
+- Findings summary:
+  - The story needed a field-by-field mapping requirement so shared packet semantics do not drift between contract records, CLI JSON, MCP structured content, diagnostics, and future web consumers.
+  - Competing state signals needed deterministic precedence, especially unauthorized, redacted, degraded, compressed, empty, and weak-evidence cases.
+  - Expansion handles needed sharper tenant/case scoping and non-sensitive serialization rules so recovery guidance cannot become an authorization or data-leak bypass.
+  - Sanitization needed to be asserted before packet serialization and across every surface that emits packet-equivalent content.
+  - Canonical fixtures needed to become the cross-surface parity anchor for contract, CLI, MCP, mapper, and future UI validation.
+- Changes applied:
+  - Added `## Advanced Elicitation Hardening Clarifications`.
+  - Tightened Task 2 with explicit field mapping and deterministic state precedence requirements.
+  - Tightened Task 4 with tenant/case-scoped, non-sensitive expansion-handle constraints.
+  - Added a change-log entry for the elicitation pass.
+- Findings deferred:
+  - Exact field names, enum values, fixture file names, mapper location, and expansion-handle shape remain implementation decisions within the clarified Story 2.7 contract boundary.
+  - Any Evidence Packet gap that cannot be justified from existing lower-level response data must be recorded as a deferred decision rather than filled with surface-specific semantics.
 - Final recommendation: ready-for-dev
 
 ## Story Completion Status
