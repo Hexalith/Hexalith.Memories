@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-05-20T18:31:00+02:00
+# last_updated: 2026-05-20T18:32:04+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-05-20T18:31:00+02:00
+last_updated: 2026-05-20T18:32:04+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -192,7 +192,7 @@ development_status:
   # Epic 17: Future Web UX Composition & Accessibility
   # Scope note: Future web UI work; not part of MVP readiness unless a later approved sprint change pulls web UI implementation forward.
   epic-17: in-progress
-  17-1-evidence-cockpit-and-trust-components: ready-for-dev
+  17-1-evidence-cockpit-and-trust-components: review
   17-2-recovery-and-feedback-state-grammar: ready-for-dev
   17-3-contract-aware-web-interaction-patterns: ready-for-dev
   17-4-role-specific-web-inspection-lenses: ready-for-dev

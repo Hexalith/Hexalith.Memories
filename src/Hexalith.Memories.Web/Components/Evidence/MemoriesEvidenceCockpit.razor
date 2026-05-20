@@ -1,0 +1,104 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<article class="mem-evidence-cockpit"
+         data-testid="mem-evidence-cockpit"
+         aria-label="Evidence cockpit">
+    <MemoriesScopeHeader Packet="EffectivePacket" />
+    <MemoriesTrustStrip Packet="EffectivePacket" />
+
+    @if (EffectivePacket.State == EvidencePacketState.Unauthorized || EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
+    {
+        <section role="alert"
+                 class="mem-evidence-restrictive"
+                 data-testid="mem-evidence-restrictive-state">
+            Authorization required for this tenant and case scope.
+        </section>
+    }
+
+    <section class="mem-evidence-result"
+             data-testid="mem-evidence-result"
+             aria-label="Evidence result">
+        @if (IsLoading)
+        {
+            <h2>Loading evidence</h2>
+            <p role="status">Evidence packet details are not available yet.</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <h2>Evidence unavailable</h2>
+            <p role="alert">@EvidenceDisplay.SafeText(ErrorMessage, "Evidence unavailable")</p>
+        }
+        else
+        {
+            <h2>@EvidenceDisplay.SafeText(EffectivePacket.Result.Query, "no query")</h2>
+            <p>@EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, "summary unavailable")</p>
+        }
+    </section>
+
+    <nav class="mem-evidence-actions" aria-label="Evidence commands">
+        @if (CanExport)
+        {
+            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Export evidence packet">
+                Export packet
+            </FluentButton>
+        }
+        @if (EffectivePacket.Recovery.Count > 0)
+        {
+            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Retry or refine query">
+                Retry/refine
+            </FluentButton>
+        }
+        @if (CanInspectMcpPayload)
+        {
+            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Inspect MCP payload">
+                Inspect MCP payload
+            </FluentButton>
+        }
+    </nav>
+
+    <MemoriesSourceCitationStack Packet="EffectivePacket" />
+    <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
+    <MemoriesGraphPathSummary Packet="EffectivePacket" />
+</article>
+
+@code {
+    [Parameter]
+    public EvidencePacket? Packet { get; set; }
+
+    [Parameter]
+    public string TenantId { get; set; } = "unknown tenant";
+
+    [Parameter]
+    public string? CaseId { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    private EvidencePacket EffectivePacket => Packet ?? UnavailablePacket;
+
+    private bool CanExport => !IsLoading
+        && string.IsNullOrWhiteSpace(ErrorMessage)
+        && EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized;
+
+    private bool CanInspectMcpPayload => CanExport && EffectivePacket.Sources.Count > 0;
+
+    private EvidencePacket UnavailablePacket => new(
+        new EvidencePacketScope(TenantId, CaseId, EvidencePacketIsolationStatus.Unknown, string.IsNullOrWhiteSpace(CaseId) ? "tenant" : "tenant-case"),
+        new EvidencePacketResultSummary(string.Empty, 0, 0, null, null),
+        [],
+        new EvidencePacketEvidence(
+            EvidencePacketEvidenceStrength.None,
+            "Scores measure query-result relevance, not factual accuracy or data completeness.",
+            [],
+            [],
+            !string.IsNullOrWhiteSpace(ErrorMessage),
+            null,
+            []),
+        new EvidencePacketGraphSummary(false, [], [], []),
+        string.IsNullOrWhiteSpace(ErrorMessage) ? EvidencePacketState.PendingExpansion : EvidencePacketState.Degraded,
+        new EvidencePacketOmittedDetails(0, 0, EvidencePacketOmissionReason.None, [], [], []),
+        []);
+}

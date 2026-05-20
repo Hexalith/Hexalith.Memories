@@ -1,0 +1,41 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<section class="mem-evidence-section"
+         data-testid="mem-axis-breakdown"
+         aria-label="Retrieval axis breakdown">
+    <h3>Retrieval axes</h3>
+    @if (Packet.Evidence.AxisEvidence.Count == 0)
+    {
+        <p role="status">Axis evidence unavailable</p>
+    }
+    else
+    {
+        <ol>
+            @foreach (EvidencePacketAxisEvidence axis in Packet.Evidence.AxisEvidence)
+            {
+                <li data-testid="mem-axis-item" data-axis="@axis.Axis">
+                    <strong>@axis.Axis</strong>
+                    <dl>
+                        <dt>Normalized score</dt>
+                        <dd>@EvidenceDisplay.ScoreLabel(axis.Score)</dd>
+                        <dt>Ranking reason</dt>
+                        <dd>@EvidenceDisplay.SafeText(axis.Description, "ranking reason unavailable")</dd>
+                        <dt>Normalization</dt>
+                        <dd>@EvidenceDisplay.SafeText(axis.NormalizationMethod, "normalization unavailable")</dd>
+                    </dl>
+                </li>
+            }
+        </ol>
+    }
+    @if (Packet.Evidence.UnavailableAxes.Count > 0)
+    {
+        <p role="status">Unavailable axes: @string.Join(", ", Packet.Evidence.UnavailableAxes)</p>
+    }
+    <p>@Packet.Evidence.Caveat</p>
+</section>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+}

@@ -1,0 +1,51 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<section class="mem-evidence-section"
+         data-testid="mem-source-stack"
+         aria-label="Source citation stack">
+    <h3>Sources</h3>
+    <p data-testid="mem-source-order-basis">Order basis: packet order</p>
+    @if (Sources.Count == 0)
+    {
+        <p role="status">Sources unavailable</p>
+    }
+    else
+    {
+        <ol>
+            @foreach (EvidencePacketSource source in Sources)
+            {
+                <li data-testid="mem-source-item" data-source-rank="@source.Rank">
+                    <div>
+                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, "redacted source")</strong>
+                        <span>@source.SourceType</span>
+                    </div>
+                    <p>@EvidenceDisplay.SafeText(source.Snippet, "redacted source")</p>
+                    <dl>
+                        <dt>Freshness</dt>
+                        <dd>@EvidenceDisplay.FreshnessLabel()</dd>
+                        <dt>Score</dt>
+                        <dd>@EvidenceDisplay.ScoreLabel(source.Score)</dd>
+                        <dt>Memory unit</dt>
+                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, "source unavailable")</dd>
+                    </dl>
+                    <FluentButton Appearance="ButtonAppearance.Default"
+                                  Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
+                                  aria-label="@InspectSourceAriaLabel(source)">
+                        Inspect source
+                    </FluentButton>
+                </li>
+            }
+        </ol>
+    }
+</section>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    private IReadOnlyList<EvidencePacketSource> Sources => Packet.Sources;
+
+    private static string InspectSourceAriaLabel(EvidencePacketSource source)
+        => $"Inspect source {source.Rank}";
+}

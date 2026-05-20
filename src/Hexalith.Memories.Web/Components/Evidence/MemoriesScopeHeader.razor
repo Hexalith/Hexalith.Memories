@@ -1,0 +1,23 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<header class="mem-evidence-scope"
+        data-testid="mem-evidence-scope"
+        aria-label="Evidence scope">
+    <div>
+        <span class="mem-evidence-label">Tenant</span>
+        <strong>@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
+    </div>
+    <div>
+        <span class="mem-evidence-label">Case</span>
+        <strong>@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
+    </div>
+    <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
+                   Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
+                   ColumnHeader="Scope" />
+</header>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+}

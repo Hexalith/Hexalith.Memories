@@ -10,6 +10,7 @@
     <Project Path="src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj" />
     <Project Path="src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj" />
     <Project Path="src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj" />
+    <Project Path="src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj" />
@@ -23,5 +24,6 @@
     <Project Path="tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj" />
     <Project Path="tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj" />
+    <Project Path="tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj" />
   </Folder>
 </Solution>

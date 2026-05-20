@@ -1,0 +1,33 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<section class="mem-evidence-section"
+         data-testid="mem-graph-summary"
+         aria-label="Graph path summary">
+    <h3>Graph context</h3>
+    @if (!Packet.Graph.Available)
+    {
+        <p role="status">Graph context unavailable</p>
+    }
+    else
+    {
+        <dl>
+            <dt>Path</dt>
+            <dd>@string.Join(" -> ", Packet.Graph.RelatedPath.Select(static x => EvidenceDisplay.SafeText(x, "node unavailable")))</dd>
+            <dt>Edge types</dt>
+            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? "edge type unavailable" : string.Join(", ", Packet.Graph.EdgeTypes))</dd>
+            <dt>Gap markers</dt>
+            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? "no gap markers" : string.Join(", ", Packet.Graph.GapMarkers))</dd>
+        </dl>
+        <FluentButton Appearance="ButtonAppearance.Default"
+                      Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
+                      aria-label="Open graph context">
+            Open graph context
+        </FluentButton>
+    }
+</section>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+}

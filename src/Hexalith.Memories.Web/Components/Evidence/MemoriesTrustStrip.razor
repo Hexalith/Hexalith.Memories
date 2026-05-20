@@ -1,0 +1,28 @@
+@namespace Hexalith.Memories.Web.Components.Evidence
+
+<section class="mem-trust-strip"
+         data-testid="mem-trust-strip"
+         aria-label="Evidence trust summary">
+    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
+                   Label="@EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength)"
+                   ColumnHeader="Confidence" />
+    <FcStatusBadge Slot="BadgeSlot.Neutral"
+                   Label="@EvidenceDisplay.FreshnessLabel()"
+                   ColumnHeader="Freshness" />
+    <span data-testid="mem-trust-source-count"
+          aria-label="Source count: @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)">
+        @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)
+    </span>
+    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
+                   Label="@EvidenceDisplay.Label(Packet.State)"
+                   ColumnHeader="Evidence health" />
+    <FcStatusBadge Slot="@(EvidenceDisplay.TokenBudgetLabel(Packet) == "compressed" ? BadgeSlot.Warning : BadgeSlot.Neutral)"
+                   Label="@EvidenceDisplay.TokenBudgetLabel(Packet)"
+                   ColumnHeader="Token budget" />
+</section>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+}
