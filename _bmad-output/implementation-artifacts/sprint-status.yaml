@@ -61,14 +61,14 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Three-Axis Search, Fusion & Benchmark Validation
-  epic-2: done
+  epic-2: in-progress
   2-1-syntactic-search-bm25-via-redisearch: done
   2-2-semantic-search-vector-via-redis-vector: done
   2-3-graph-scoped-search: done
   2-4-score-normalization: done
   2-5-fusion-algorithm-and-hybrid-search: done
   2-6-explain-mode-and-confidence-scores: done
-  2-7-evidence-packet-contract-mapping: backlog
+  2-7-evidence-packet-contract-mapping: ready-for-dev
   2-8-benchmark-suite-and-thesis-validation: done
   epic-2-retrospective: done
 
