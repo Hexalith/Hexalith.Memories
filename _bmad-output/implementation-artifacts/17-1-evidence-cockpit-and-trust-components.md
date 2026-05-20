@@ -15,6 +15,17 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
 3. Given a result has sources, axis scores, or graph context, when the user expands evidence details, then Source Citation Stack, Retrieval Axis Breakdown, and Graph Path Summary components expose source type, origin identifier, freshness, score normalization, ranking reason, edge type, confidence, gap markers, and chronological ordering as available from the contract.
 4. Given the UI uses FrontComposer and Fluent UI Blazor, when controls, panels, tabs, grids, or menus are needed, then existing primitives are used before custom controls, and custom Memories components remain contract-aware and tenant-aware.
 
+## Party-Mode Hardening Clarifications
+
+- Contract consumption is read-only: Story 17.1 consumes the canonical `Contracts.V1` Evidence Packet from Story 2.7 and may not add, rename, derive, or reinterpret web-only confidence, freshness, evidence-health, source, retrieval-axis, graph, omitted-detail, scope, or recovery semantics.
+- Evidence Cockpit is a presentation/composition slice. Do not add or change backend calls, retrieval orchestration, ranking/scoring rules, graph summarization, MCP behavior, CLI semantics, contract records, or submodule behavior in this story.
+- All Trust Strip, Scope Header, Source Citation Stack, Retrieval Axis Breakdown, and Graph Path Summary data must come from canonical Story 2.7-aligned packet fixtures or a named adapter that preserves packet semantics without changing meaning.
+- Missing, empty, unknown, unavailable, degraded, unauthorized, redacted, and token-budget-compressed packet values must render as explicit unavailable/degraded/redacted states. Do not infer tenant, case, confidence, citation, retrieval, or graph values from local paths, environment data, secrets, diagnostics, or UI state.
+- Tenant and case scope must render before result/evidence content in visual order and DOM order for complete, empty, loading, error, partial, degraded, unauthorized, and compressed states.
+- User-facing labels for trust, scope, retrieval axis, graph path, freshness, evidence health, and empty/unavailable states should follow existing FrontComposer localization/resource patterns where available instead of embedding display copy in component logic.
+- Validation must use stable roles, accessible labels, or `data-testid` selectors. Do not rely on CSS class selectors, hover-only behavior, brittle visual text, or arbitrary sleeps for Playwright or accessibility checks.
+- Public evidence UI, copied text, diagnostic panels, accessibility labels, test snapshots, and trace artifacts must not expose secrets, bearer tokens, local absolute paths, raw payloads, tenant-sensitive diagnostics, or machine-specific filesystem references.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Preflight contract and submodule readiness (AC: 1-4)
@@ -28,18 +39,21 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
   - [ ] Keep tenant and case scope before the query/result content in the visual and DOM order.
   - [ ] Preserve the shared Evidence Packet state grammar: confidence (`supported`, `partial`, `disputed`, `insufficient`), freshness (`current`, `aging`, `stale`, `unknown`), evidence health (`complete`, `degraded`, `missing source`, `schema mismatch`), and scope (`verified`, `inferred`, `cross-case`, `unauthorized`, `out-of-scope`).
   - [ ] Do not add a new search backend, MCP tool, CLI output shape, or contract semantics in this story. If the existing contract is insufficient, record the gap as a dependency on Story 2.7 or a deferred decision.
+  - [ ] Keep the cockpit shell presentation-only. Filtering, ranking, evidence mutation, export payload design, and drill-down workflows beyond safely opening already-present packet details are deferred unless the packet already exposes enough data and FrontComposer already has the command primitive.
 
 - [ ] Task 2 - Implement Trust Strip and Scope Header components (AC: 1, 2)
   - [ ] Render tenant id/name, case id/name, scope status, confidence state, freshness state, source count, evidence health, and token-budget indicator from the Evidence Packet contract.
   - [ ] Use Fluent UI/FrontComposer status primitives such as badges, inline messages, layout stacks, menus, or command surfaces before creating custom controls.
   - [ ] Ensure every state has visible text and an accessible name. Color, icon, or badge appearance alone is not sufficient.
   - [ ] Add compact wrapping behavior so the strip remains before the answer at mobile widths instead of disappearing into an overflow-only control.
+  - [ ] Cover complete, empty, loading, error, partial, degraded, unauthorized, redacted, and token-budget-compressed state rendering without moving scope below result content.
 
 - [ ] Task 3 - Implement source, axis, and graph inspection summaries (AC: 3, 4)
   - [ ] Source Citation Stack exposes source type, origin identifier, snippet or summary, freshness, confidence/metadata origin when available, and keyboard-openable preview behavior.
   - [ ] Retrieval Axis Breakdown exposes retrieval axes used, normalized score or contribution, ranking reason, unavailable/degraded markers, and the `SearchExplanation.Caveat` meaning where present.
   - [ ] Graph Path Summary exposes relationship path, edge type, confidence, gap markers, chronological ordering, depth, and graph-backend degraded state when available.
   - [ ] Keep first view compact: trust essentials first, then expandable source/detail panels. Avoid dashboard sprawl and decorative cards that hide the evidence workflow.
+  - [ ] Render absent sources, absent axes, absent graph paths, unknown freshness, unavailable backend detail, and redacted source content as explicit unavailable/degraded/redacted states, not empty certainty.
 
 - [ ] Task 4 - Wire FrontComposer command/navigation behavior (AC: 1, 4)
   - [ ] Use FrontComposer tenant/user render context and shell conventions for scope-aware rendering; do not store tenant/case state in singleton/static UI services.
@@ -49,15 +63,18 @@ so that I can verify answers, sources, retrieval reasons, scope, and graph conte
 
 - [ ] Task 5 - Add component and accessibility tests (AC: 1-4)
   - [ ] Add bUnit coverage using `Hexalith.FrontComposer.Testing` or the existing `BunitContext` + `AddFluentUIComponents()` pattern.
+  - [ ] Render canonical Story 2.7-aligned Evidence Packet fixtures in component tests, including complete, empty, partial, degraded, multi-source, tenant/case mismatch, unauthorized, redacted, and token-budget-compressed packets.
   - [ ] Test Trust Strip state labels and accessible names for supported, partial/degraded, unauthorized, and token-budget-compressed packets.
   - [ ] Test source/axis/graph expansion keeps keyboard-reachable controls and does not depend on hover-only behavior.
   - [ ] Test tenant/case scope appears before result content in markup order.
   - [ ] Add negative tests that restricted source details, raw payloads, bearer tokens, tenant-sensitive diagnostics, and local absolute paths do not render in accessible labels, copied text, logs, or diagnostic panels.
+  - [ ] Use role, accessible-label, and `data-testid` selectors for UI tests. Do not use CSS class selectors, arbitrary sleeps, or selectors coupled only to visual text.
 
 - [ ] Task 6 - Validate responsive and visual behavior (AC: 1-4)
   - [ ] Run focused unit/bUnit tests for any Memories web project and changed FrontComposer component tests.
   - [ ] If a runnable web surface is added, run Playwright or equivalent browser checks at 360px, 768px, 1024px, and 1440px. Capture evidence that scope, confidence, freshness, source count, evidence health, and recovery remain reachable.
   - [ ] Run automated accessibility checks where the repo already supports them. For FrontComposer E2E, use the existing `tests/e2e` axe helper pattern.
+  - [ ] Validate keyboard-only operation, focus order, focus visibility, focus return from dialogs/drawers, screen-reader names, touch target sizing, forced-colors/high-contrast behavior, and no text overlap at narrow mobile, tablet, desktop, and wide desktop widths.
   - [ ] Run `git diff --check`.
 
 ## Dev Notes
@@ -141,6 +158,30 @@ GPT-5
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Cockpit and Trust Components.
+- 2026-05-20: Party-mode review applied story hardening for contract consumption boundaries, explicit unavailable/redacted states, accessibility validation, stable selectors, and scope-limited web composition.
+
+## Party-Mode Review
+
+- Date: 2026-05-20T11:31:23.1043511+02:00
+- Selected story key: `17-1-evidence-cockpit-and-trust-components`
+- Command/skill invocation used: `/bmad-party-mode 17-1-evidence-cockpit-and-trust-components; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - Story 17.1 was directionally valid but needed sharper boundaries so the future web Evidence Cockpit consumes Story 2.7 `Contracts.V1` Evidence Packet semantics without inventing web-only trust, citation, retrieval-axis, graph, omitted-detail, scope, or recovery meanings.
+  - The Evidence Cockpit scope risk was UI expansion beyond reusable presentation/composition components into filtering, ranking, export, mutation, backend, MCP, CLI, or contract changes.
+  - Trust Strip, Scope Header, Source Citation Stack, Retrieval Axis Breakdown, and Graph Path Summary needed explicit behavior for empty, missing, unknown, unavailable, degraded, unauthorized, redacted, and compressed packet values.
+  - Accessibility and responsive requirements needed executable validation language for keyboard order, focus behavior, touch targets, screen-reader names, forced-colors/high-contrast, stable selectors, and no text overlap.
+  - Tests needed canonical Story 2.7-aligned fixtures and negative assertions for secrets, local paths, raw payloads, tenant-sensitive diagnostics, and brittle UI selectors.
+- Changes applied:
+  - Added `## Party-Mode Hardening Clarifications`.
+  - Tightened Task 1 with presentation-only cockpit boundaries and deferred filtering/ranking/mutation/export semantics.
+  - Tightened Task 2 and Task 3 with explicit complete, empty, loading, error, partial, degraded, unauthorized, redacted, compressed, absent-source, absent-axis, absent-graph, and unknown-value rendering expectations.
+  - Tightened Task 5 with canonical Evidence Packet fixture coverage, selector stability, and non-leakage test expectations.
+  - Tightened Task 6 with keyboard, focus, screen-reader, touch target, forced-colors/high-contrast, responsive, and no-text-overlap validation.
+- Findings deferred:
+  - Final visual density and information hierarchy remain implementation decisions within the clarified component boundaries.
+  - New trust scoring, retrieval weighting, graph summarization, backend behavior, MCP behavior, CLI behavior, and contract semantics remain out of scope for Story 17.1.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 
