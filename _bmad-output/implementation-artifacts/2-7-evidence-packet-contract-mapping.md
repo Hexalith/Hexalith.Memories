@@ -22,43 +22,59 @@ so that CLI, MCP, and future web UI expose the same trust semantics.
 3. Given a response is compressed by token budget or density; when details are omitted; then omitted fields are named explicitly and deterministic expansion handles or equivalent retrieval guidance identify how to retrieve omitted detail groups.
 4. Given Evidence Packet contract tests run; when complete, degraded, empty, unauthorized, and token-budget-compressed packets are serialized; then JSON round trips preserve contract shape and required fields.
 
+## Party-Mode Hardening Clarifications
+
+- Contract ownership is explicit: the canonical Evidence Packet contract lives in `Hexalith.Memories.Contracts.V1` and is the shared surface for CLI JSON, MCP structured results, diagnostics, and future web UI consumers. Do not create CLI-specific, MCP-specific, or web-specific packet DTOs.
+- Contract additions are source-compatible and additive. Existing lower-level retrieval contracts and existing CLI/MCP JSON members must remain compatible unless a versioned breaking change is explicitly approved outside this story.
+- Evidence Packet confidence language must stay neutral: use evidence strength, caveat, state, and retrieval-axis semantics. Do not describe packet confidence as factual truth, source truthfulness, or completeness.
+- Packet state and omitted-detail semantics must distinguish absence, budget compression, redaction, policy omission, unauthorized access, and unavailable backends where current data supports the distinction. Missing diagnostic detail must not be silently treated as empty diagnostic evidence.
+- Recovery actions must be safe, specific, and non-leaking. Unauthorized packets must not reveal whether another tenant/case exists and must not offer expansion guidance that could bypass authorization.
+- Token-budget compression must preserve trust semantics: omitted evidence is unavailable in the current response budget, not proven absent. Required scope, state, caveat, and recovery fields remain present after compression.
+- Mapping must be pure and reusable: do not couple the mapper to CLI formatting, MCP transport, logging, DAPR/Aspire infrastructure, token-budget implementation internals, or web UI rendering.
+- Server diagnostics and token-budget code may be touched only to map existing trust, degradation, and truncation semantics into the packet. Do not add new ranking, scoring, explanation, retrieval, storage, DAPR, Aspire, Redis, FalkorDB, web UI, or Fluent UI behavior in this story.
+
 ## Tasks / Subtasks
 
 - [ ] Task 1: Add the canonical Evidence Packet grammar in `Contracts.V1` (AC: 1, 4)
   - [ ] Add a small additive record set under `src/Hexalith.Memories.Contracts/V1/` for the shared envelope. Use clear public names such as `EvidencePacket`, `EvidencePacketScope`, `EvidencePacketResultSummary`, `EvidencePacketSource`, `EvidencePacketEvidence`, `EvidencePacketGraphSummary`, `EvidencePacketState`, `EvidencePacketOmittedDetails`, `EvidencePacketExpansionHandle`, and `EvidencePacketRecoveryAction` unless an existing local naming pattern makes a tighter split obvious.
   - [ ] Include fields that map directly to the architecture grammar: `scope`, `result`, `sources`, `evidence`, `graph`, `state`, `omittedDetails`, and `recovery`.
+  - [ ] Define required vs. optional members, stable camelCase JSON names, null-vs-empty behavior, deterministic ordering where collections are contract-observable, and enum/string semantics for state, omission reason, recovery kind, and evidence strength.
   - [ ] Keep `SearchResult`, `HybridSearchResult`, `ScoredResult`, `FusedScoredResult`, and `SearchExplanation` as lower-level retrieval contracts. Do not rename or remove existing JSON fields.
-  - [ ] Add all new public contract types to `MemoriesJsonContext` source-generation metadata.
+  - [ ] Add XML documentation and `MemoriesJsonContext` source-generation metadata for every new public contract type, including nested and collection payload types.
 
 - [ ] Task 2: Map existing search and diagnostic outputs into Evidence Packet semantics (AC: 1, 3)
   - [ ] Build a pure mapper or factory that composes an Evidence Packet from existing `SearchResult`, `HybridSearchResult`, `SearchExplanation`, `ErrorResponse`, and request scope data.
+  - [ ] Keep the mapper independent from CLI formatters, MCP transport types, server endpoint transport, logging, DAPR/Aspire infrastructure, token-budget truncation internals, and UI code.
   - [ ] Pass request scope into the mapper explicitly because current lower-level results carry `Query` but do not carry `TenantId` or `CaseId`.
   - [ ] Map single-axis and hybrid result sources from `SourceUri`, `SourceType`, `MemoryUnitId`, snippets, case metadata, and score metadata.
   - [ ] Map evidence from `SearchExplanation.Caveat`, per-axis `AxisDetails`, `AxesUsed`, normalized axis scores, composite score, `Degraded`, and `UnavailableAxes`.
   - [ ] Map states consistently: complete, partial, weak, empty, stale, degraded, unauthorized, and pending expansion. Use only states the current response can justify; do not claim factual accuracy or data completeness from relevance scores.
-  - [ ] Keep diagnostics sanitized. Do not include secrets, tokens, raw embeddings, full prompts, local absolute paths, or unsanitized exception text in Evidence Packet diagnostics.
+  - [ ] Keep diagnostics sanitized and intentional about redaction. Do not include secrets, tokens, raw embeddings, full prompts, local absolute paths, connection strings, backend identifiers, cross-tenant identifiers, or unsanitized exception text in Evidence Packet diagnostics.
 
 - [ ] Task 3: Apply the shared contract to CLI JSON and MCP search results (AC: 2)
   - [ ] Update CLI JSON search output so consumers can read the Evidence Packet semantics without a separate CLI-specific vocabulary. Either emit `CliOutputEnvelope<EvidencePacket>` or include a clearly named `evidencePacket` member in the existing JSON envelope; choose the option that best preserves existing CLI compatibility.
   - [ ] Update `CliJsonContext` and any payload registry entries required by the chosen CLI JSON shape.
+  - [ ] Prove existing CLI JSON property names remain stable and packet exposure is additive or envelope-safe.
   - [ ] Preserve existing human and table search output behavior unless a small addition is necessary for the evidence semantics.
   - [ ] Update `search_memory` MCP structured results to expose the same Evidence Packet semantics for single-axis and hybrid search.
   - [ ] Preserve `McpToolResultSerializer.Success` behavior that returns both serialized JSON text content and `StructuredContent`.
-  - [ ] Preserve MCP error behavior, including `IsError = true`, structured error code/service/tool fields, and sanitized messages. Error responses may include packet-style state and recovery fields, but must not lose protocol-level error semantics.
+  - [ ] Preserve MCP error behavior, including `IsError = true`, structured error code/service/tool fields, and sanitized messages. Error responses may include packet-style state and recovery fields, but must not lose protocol-level error semantics or leak unauthorized tenant/case existence.
 
 - [ ] Task 4: Make omitted-detail and expansion semantics explicit (AC: 3)
   - [ ] Reuse the existing `OmittedCount`, `EstimatedTokensTotal`, `OmittedReason`, `AxesUsed`, and `UnavailableAxes` metadata produced by search response metadata application.
-  - [ ] Add explicit omitted field names or omitted detail groups for token-budget and density-compressed packets.
-  - [ ] Add deterministic expansion handles or equivalent retrieval guidance. If no expansion endpoint exists, use guidance backed by current capabilities, such as re-running with a larger `tokenBudget` or `maxResults`, fetching a memory unit by id, or using traversal/search commands that already exist.
-  - [ ] Ensure empty and degraded results still include recovery actions that are safe and specific.
+  - [ ] Add explicit omitted field names or omitted detail groups for token-budget and density-compressed packets, including why details were omitted, how much was omitted when known, and whether the omission was caused by budget, density, redaction, policy, authorization, backend unavailability, or true absence.
+  - [ ] Add deterministic expansion handles or equivalent retrieval guidance with machine-readable action kind and target detail group. If no expansion endpoint exists, use guidance backed by current capabilities, such as re-running with a larger `tokenBudget` or `maxResults`, fetching a memory unit by id, or using traversal/search commands that already exist.
+  - [ ] Ensure empty, degraded, unauthorized, and compressed results still include recovery actions that are safe, specific, and non-leaking.
 
 - [ ] Task 5: Add focused serialization, surface, and regression tests (AC: 1, 2, 3, 4)
-  - [ ] Add contract tests for complete, degraded, empty, unauthorized, and token-budget-compressed Evidence Packets.
-  - [ ] Update `PublicContractSerializationCoverageTests` or equivalent coverage so every new public contract type is source-generation covered.
-  - [ ] Add CLI JSON formatter or command tests proving the CLI uses the same confidence, degraded, omitted, and recovery semantics as the shared contract.
-  - [ ] Add MCP `SearchMemoryToolTests` proving `StructuredContent` contains the Evidence Packet shape and text content remains a serialized fallback.
+  - [ ] Add contract tests for complete, degraded, empty, unauthorized, and token-budget-compressed Evidence Packets, asserting semantic fields, required/optional behavior, stable JSON names, deterministic ordering, and null-vs-empty behavior in addition to round trips.
+  - [ ] Update `PublicContractSerializationCoverageTests` or equivalent coverage so every new public contract type and source-generated member is intentionally covered, including degraded and omitted metadata fields.
+  - [ ] Add CLI JSON formatter or command tests proving the CLI uses the same evidence strength, caveat, state, degraded, omitted, scope, source, and recovery semantics as the shared contract while preserving existing JSON shape.
+  - [ ] Add MCP `SearchMemoryToolTests` proving `StructuredContent` contains the Evidence Packet shape and text content remains a serialized fallback with equivalent packet semantics.
   - [ ] Add server or mapper tests proving tenant/case scope, empty results, partial backend degradation, all-backend/unauthorized diagnostics, and token-budget omitted metadata map correctly.
-  - [ ] Add at least one negative/sanitization assertion for diagnostic packets so internal exception details and secrets are not leaked.
+  - [ ] Add tenant/case negative fixtures where evidence exists for tenant A/case A but requests use tenant B, case B, missing case, or mixed route/body/context values. Expected packets must be unauthorized or empty as appropriate and must not leak evidence metadata or backend hints from another scope.
+  - [ ] Add table-driven sanitization assertions across unauthorized, all-backend failure, partial degradation, token-budget compression, server diagnostics, and MCP error mapping so secrets, connection strings, raw Redis/FalkorDB identifiers, tokens, cross-tenant identifiers, stack traces, local absolute paths, and unsanitized exception text are not leaked.
+  - [ ] Reuse a shared canonical Evidence Packet fixture set across contract, CLI, MCP, and server mapper tests where practical, or compare each surface against shared canonical JSON to prevent semantic drift.
 
 - [ ] Task 6: Documentation and validation (AC: 1, 2, 3, 4)
   - [ ] Update developer-facing CLI/MCP/API documentation if this repo already documents search JSON output or tool schemas.
@@ -172,6 +188,30 @@ GPT-5
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Packet Contract Mapping.
+- 2026-05-20: Party-mode review applied story hardening for contract ownership, additive compatibility, trust semantics, recovery safety, omitted-detail invariants, and cross-surface test coverage.
+
+## Party-Mode Review
+
+- Date: 2026-05-20T11:04:18.8962091+02:00
+- Selected story key: `2-7-evidence-packet-contract-mapping`
+- Command/skill invocation used: `/bmad-party-mode 2-7-evidence-packet-contract-mapping; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), John (Product Manager)
+- Findings summary:
+  - Contract ownership and mapping boundaries needed to be explicit so implementation does not fragment the Evidence Packet across CLI, MCP, diagnostics, and future web consumers.
+  - Existing retrieval, CLI JSON, and MCP result shapes needed additive compatibility guardrails.
+  - Trust semantics needed clearer evidence-strength/caveat/state language and a stronger prohibition against treating confidence as factual truth or completeness.
+  - Omitted-detail, redaction, unauthorized, and recovery semantics needed machine-readable and non-leaking constraints.
+  - Test criteria needed semantic parity, tenant/case negative isolation fixtures, table-driven sanitization coverage, token-budget compression invariants, and shared canonical fixtures across contract, CLI, MCP, and server mapper tests.
+- Changes applied:
+  - Added `## Party-Mode Hardening Clarifications`.
+  - Tightened Task 1 with required/optional member, JSON name, null-vs-empty, deterministic-order, XML-doc, and source-generation metadata requirements.
+  - Tightened Task 2 with pure mapper boundaries and diagnostic redaction requirements.
+  - Tightened Task 3 with additive CLI/MCP compatibility and unauthorized non-leakage requirements.
+  - Tightened Task 4 with omitted-detail cause, amount, recovery action kind, and safe expansion guidance requirements.
+  - Tightened Task 5 with semantic contract assertions, public member coverage, tenant/case negative fixtures, table-driven sanitization, and shared canonical fixture expectations.
+- Findings deferred:
+  - None. The review findings were resolved as story-scope clarifications without changing product scope, architecture policy, or cross-story contracts.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 
