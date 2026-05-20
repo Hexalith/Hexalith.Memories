@@ -10,19 +10,32 @@ so that evidence inspection is accessible and reliable rather than visual polish
 
 ## Acceptance Criteria
 
-1. Given the web UI is tested at 360px, 768px, 1024px, and 1440px, when Evidence Cockpit, Evidence Packet, Source Citation Stack, Retrieval Axis Breakdown, Recovery Action Panel, Case Activity Trail, Agent Packet Inspector, and Operator Console surfaces are rendered, then scope, confidence, freshness, source count, evidence health, and recovery remain reachable, and trust-critical content does not require horizontal scrolling.
+1. Given the web UI is tested at 360px, 768px, 1024px, and 1440px, when Evidence Cockpit, Evidence Packet, Source Citation Stack, Retrieval Axis Breakdown, Recovery Action Panel, Case Activity Trail, Ingestion Lifecycle Tracker, Operator Health Matrix, Benchmark Result Comparator, Agent Packet Inspector, and any existing operator-health surfaces are rendered, then scope, confidence, freshness, source count, evidence health, and recovery remain reachable, and trust-critical content does not require horizontal scrolling.
 2. Given automated accessibility checks run, when the surfaces are validated, then checks cover color contrast, accessible names, form labels, ARIA validity, heading order, and focusable controls.
 3. Given human accessibility checks run, when keyboard-only navigation, focus order, no-color-only state comprehension, reduced motion, high contrast, and at least one screen reader pass are tested, then critical trust workflows remain usable and defects are tracked before release.
 4. Given overlays, dialogs, drawers, source previews, graph detail panels, MCP inspectors, and confirmations are opened, when focus moves, then focus enters the overlay predictably and returns to the invoking control when closed.
 5. Given source preview, graph detail, recovery action, tooltip, command, or status behavior is trust-critical, when the UI is used by keyboard or touch, then no behavior depends on hover-only interaction.
 6. Given accessible labels, tooltips, announcements, copied text, diagnostics, or error payloads are emitted, when they contain tenant or source context, then secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, and restricted source details are not exposed.
 
+## Party-Mode Hardening Clarifications
+
+- Story 17.5 is a validation story, not permission to build missing Epic 17 product workflows. If Story 2.7 or Stories 17.1 through 17.4 are not `done` at implementation time, validate only already-implemented surfaces, approved fixtures, or specimen hosts and record missing product surfaces as `fixture-only`, `blocked`, or `deferred`.
+- Fixture/specimen validation must not be reported as full product-surface validation. The evidence matrix must distinguish runnable product routes from fixture-only component/specimen coverage.
+- Before adding tests, produce a surface inventory with `surface`, `upstream story/source`, `implementation source`, `runnable route or specimen`, `fixture family`, `selector/testid anchors`, `validation level`, and `blocked/deferred reason`.
+- FrontComposer changes must stay validation-focused and backwards-compatible. Do not add or change public APIs, source generators, package versions, framework primitives, product workflows, Evidence Packet semantics, recovery semantics, or operator-console shell behavior unless this story is explicitly re-scoped.
+- Browser validation should be bounded to smoke paths per runnable surface and required viewport. State matrices, negative permutations, redaction cases, and contract-edge fixtures belong primarily in bUnit/unit tests unless cross-surface behavior requires Playwright.
+- The accessibility target is WCAG 2.2 AA where supported. Existing axe helpers that cover only WCAG 2.0/2.1 tags must either add supported WCAG 2.2 checks or emit a documented gap covered by manual evidence.
+- Accessibility evidence is a release artifact and a security surface. Axe summaries, screenshots, traces, copied text, exported snippets, diagnostics, and manual evidence must be bounded, sanitized, relative-path-safe, and covered by a redaction scan or manifest.
+- Manual accessibility evidence must name the workflow, viewport, browser, OS, screen reader or checklist method, tester/date, pass/fail result, defects, severity, owner, waiver state, and release disposition.
+
 ## Tasks / Subtasks
 
 - [ ] Task 0 - Confirm validation scope, dependencies, and runnable surfaces (AC: 1-6)
   - [ ] Confirm Story 2.7 has landed the canonical `Contracts.V1` Evidence Packet contract and fixture semantics. If it is not `done`, use approved contract fixtures only and do not patch Story 2.7 source, tests, CLI, MCP, or mapper files from this story.
   - [ ] Read Stories 17.1 through 17.4 before implementation. Story 17.5 validates those surfaces; it must not invent new Evidence Packet, recovery, filter, lens, benchmark, operator-health, or MCP schema semantics.
+  - [ ] If Stories 17.1 through 17.4 are not `done`, record each missing product surface as `fixture-only`, `blocked`, or `deferred`; do not claim product-surface validation complete from specimens alone.
   - [ ] Identify every runnable Memories/FrontComposer web surface, specimen, or fixture host that represents Evidence Cockpit, Evidence Packet, Source Citation Stack, Retrieval Axis Breakdown, Recovery Action Panel, Case Activity Trail, Agent Packet Inspector, and Operator Console behavior.
+  - [ ] Produce a surface inventory table with `surface`, `upstream story/source`, `implementation source`, `runnable route/specimen`, `fixture family`, `selector/testid anchors`, `validation level`, and `blocked/deferred reason` before adding tests.
   - [ ] If a surface is not runnable yet, create the smallest fixture/specimen hook needed to validate existing component behavior. Do not implement new product workflows just to make the validation pass.
   - [ ] Read `Hexalith.FrontComposer/_bmad-output/project-context.md`, `Hexalith.FrontComposer/tests/README.md`, and `Hexalith.FrontComposer/src/Hexalith.FrontComposer.Testing/README.md` before adding bUnit or Playwright coverage.
   - [ ] Verify the local Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
@@ -38,14 +51,18 @@ so that evidence inspection is accessible and reliable rather than visual polish
 - [ ] Task 2 - Add automated accessibility gates (AC: 2, 4, 5, 6)
   - [ ] Reuse `Hexalith.FrontComposer/tests/e2e/helpers/a11y.ts` and the Playwright `data-testid` contract where browser coverage exists.
   - [ ] Cover color contrast, accessible names, form labels, ARIA validity, heading order, focusable controls, and zero target-node failures in automated checks.
+  - [ ] Use required selector/testid anchors for each scanned surface and fail on zero target nodes so axe scans cannot pass against unrelated shell chrome or empty fixture roots.
+  - [ ] Include WCAG 2.2 AA tags where the local axe/tooling stack supports them. If the helper is limited to WCAG 2.0/2.1 tags, record the documented WCAG 2.2 gap and cover it with manual evidence.
   - [ ] Use `data-testid`, accessible role, or label selectors. Do not use CSS class selectors, arbitrary text selectors for framework behavior, committed sleeps, or previous-test state.
   - [ ] Add bUnit coverage with `Hexalith.FrontComposer.Testing`, `FrontComposerTestBase`, or `BunitContext` plus `AddFluentUIComponents()` for component-level labels, roles, live-region attributes, focus sentinels, and sanitized markup.
   - [ ] Keep axe findings bounded and reviewable. Store only sanitized, relative-path-safe artifacts; do not publish raw payloads, tenant identifiers, local absolute paths, secrets, stack traces, or unrestricted page dumps.
+  - [ ] Validate localized visible text, accessible names, tooltip text, live announcements, copied/exported text, and diagnostics through the supported resource path. Include long-string wrapping, pseudo-localized, or French-language expansion evidence where available.
 
 - [ ] Task 3 - Validate keyboard, focus, touch, and no-hover behavior (AC: 3, 4, 5)
   - [ ] Define one focus contract per interactive surface: initial focus target, tab order, escape/cancel behavior, activation behavior, focus return, and screen-reader announcement.
   - [ ] Test keyboard-only paths through scope selection, query or command entry, filter updates, grid sorting/filtering, source preview, axis details, graph detail, recovery action, command palette, confirmation, and return navigation.
   - [ ] Validate drawers, dialogs, source previews, graph detail panels, MCP inspectors, benchmark detail panels, health detail panels, and confirmations move focus inside on open and return focus to the invoking control on close.
+  - [ ] For overlays, assert focus trap, background inertness, Escape/cancel behavior, nested overlay behavior where applicable, scroll preservation, and focus return to the invoking control.
   - [ ] Ensure source preview, graph detail, recovery action, tooltip-critical command, status explanation, copy action, export action, and row action behavior works by keyboard and touch. Hover may enhance but must not be required.
   - [ ] Use appropriate live-region behavior: `polite` for non-blocking updates, assertive or alert semantics only for blocking or safety-critical trust states.
 
@@ -53,7 +70,8 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Reuse existing FrontComposer reduced-motion and forced-colors E2E patterns, including `page.emulateMedia({ reducedMotion: 'reduce' })` and forced-colors browser context checks where supported.
   - [ ] Prove confidence, freshness, evidence health, scope, degraded backend, destructive action, selected row, active filter, and recovery state comprehension does not depend on color, animation, icon shape, chart position, or timeline position alone.
   - [ ] Validate text equivalents for charts, matrices, timelines, score bars, graph summaries, JSON/schema views, and status badges.
-  - [ ] Include at least one documented screen-reader pass or equivalent manual accessibility checklist for the trust workflow selected by the implementation team.
+  - [ ] Validate 44x44px touch targets at phone/tablet widths and zoom or reflow behavior for trust-critical content where local FrontComposer/Playwright tooling supports it.
+  - [ ] Include at least one documented screen-reader pass or equivalent manual accessibility checklist for the trust workflow selected by the implementation team. The record must include screen reader or checklist method, browser, OS, tester/date, workflow script, result, defects, severity, owner, waiver state, and release disposition.
   - [ ] Track any unresolved human accessibility defects before release; do not mark validation complete on automated axe pass alone when manual checks fail.
 
 - [ ] Task 5 - Add sanitization and privacy assertions for accessibility surfaces (AC: 6)
@@ -61,10 +79,14 @@ so that evidence inspection is accessible and reliable rather than visual polish
   - [ ] Reuse Story 2.7 and Epic 17 canonical fixtures for happy, degraded, unauthorized, redacted, omitted/compressed, stale, invalid/schema-mismatch, cross-tenant, and missing-source packets.
   - [ ] Include tenant-isolation cases proving accessible labels and copy/export payloads do not disclose whether evidence exists outside the current authorization scope.
   - [ ] Treat accessibility labels and diagnostics as security surfaces equal to visible UI. Do not build them from raw JSON, exception text, local paths, DOM text reconstruction, or backend diagnostic dumps.
+  - [ ] Require a sanitization manifest or redaction scan for committed or archived axe summaries, screenshots, traces, copied/exported text, diagnostics, and manual accessibility evidence.
 
 - [ ] Task 6 - Produce validation evidence and release guardrails (AC: 1-6)
-  - [ ] Add an AC-to-evidence matrix listing each surface, viewport, automated check, keyboard path, focus contract, reduced-motion/forced-colors result, screen-reader/manual result, sanitization assertion, and defect disposition.
+  - [ ] Add an AC-to-evidence matrix listing each surface, viewport width/height, browser/project, state fixture, automated check, keyboard path, focus contract, reduced-motion/forced-colors result, screen-reader/manual result, artifact path, sanitization scan result, and defect disposition.
+  - [ ] Distinguish bUnit/unit evidence from Playwright evidence and do not count fixture-only validation as product-surface validation.
+  - [ ] Include at least one workflow-level evidence row per role/lens, such as inspect packet, open source/axis/graph detail, understand degraded or recovery state, act or dismiss, and return to origin.
   - [ ] Store validation artifacts under existing test artifact or Playwright output conventions. Keep artifacts bounded, sanitized, relative-path-safe, and excluded from commits unless the repo already tracks that class of fixture evidence.
+  - [ ] Bound Playwright/E2E to smoke paths per runnable surface and required viewport. Keep state matrices, negative permutations, and redaction cases in bUnit/unit tests unless a browser-specific interaction is being verified.
   - [ ] Run focused bUnit/unit tests for changed Memories web or FrontComposer component/test projects.
   - [ ] Run focused Playwright/E2E validation when a runnable surface exists. If no runnable web surface exists for a required pattern, record the missing fixture as a blocking or deferred evidence item instead of inventing a product flow.
   - [ ] Run `git diff --check`.
@@ -105,6 +127,7 @@ so that evidence inspection is accessible and reliable rather than visual polish
 - Non-goal: no new Evidence Packet contract semantics, retrieval algorithm, recovery action semantics, web product workflow, benchmark algorithm, MCP schema grammar, operator health taxonomy, or FrontComposer framework redesign.
 - Non-goal: no broad Fluent UI package upgrade, no new assertion/test framework, no nested submodule initialization, and no recursive submodule update.
 - Deferred decisions: exact release-blocking threshold for manual screen-reader defects, final artifact retention policy for accessibility evidence, mobile grid-to-card transformation strategy, and any unsupported browser/assistive-technology matrix beyond the initial validation set require product or architecture approval unless already defined upstream.
+- Deferred decisions must not block fixture/specimen validation, but they must be named in the AC-to-evidence matrix when they prevent a full product-surface validation claim.
 
 ### Suggested Validation Commands
 
@@ -157,6 +180,32 @@ GPT-5
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Responsive and Accessible Web Validation.
+- 2026-05-20: Party-mode review applied story hardening for dependency gates, runnable-surface inventory, WCAG/tooling gaps, selector and axe scan boundaries, manual accessibility evidence, localization, overlay focus behavior, artifact sanitization, and bounded validation evidence.
+
+## Party-Mode Review
+
+- Date: 2026-05-20T17:34:00+02:00
+- Selected story key: `17-5-responsive-and-accessible-web-validation`
+- Command/skill invocation used: `/bmad-party-mode 17-5-responsive-and-accessible-web-validation; review;`
+- Participating BMAD agents: Winston (System Architect), Amelia (Senior Software Engineer), Murat (Master Test Architect and Quality Advisor), Sally (UX Designer)
+- Findings summary:
+  - Story 17.5 was directionally valid but too easy to misread as permission to build missing Epic 17 product surfaces because Story 2.7 is still active and Stories 17.1 through 17.4 are not yet `done`.
+  - Runnable surface, fixture-only, blocked, and deferred validation states needed to be separated so specimens cannot be counted as full product-surface validation.
+  - Automated accessibility scope needed selector/testid anchors, zero-target-node failures, and explicit WCAG 2.2 AA gap handling where local axe helpers cover only earlier WCAG tags.
+  - Manual accessibility evidence needed a concrete record shape for workflow, viewport, AT/browser/OS or checklist method, tester/date, defects, severity, owner, waiver state, and release disposition.
+  - Responsive and accessibility validation needed stronger coverage for the Story 17.4 lenses, localization and long-string behavior, overlay focus trapping/background inertness/Escape behavior, touch target sizing, zoom/reflow, workflow-level evidence, and sanitized artifact manifests.
+- Changes applied:
+  - Expanded AC1 to name the Story 17.4 validation surfaces explicitly and avoid introducing a new generic operator console shell.
+  - Added `## Party-Mode Hardening Clarifications` covering validation-only scope, dependency gates, surface inventory, fixture-only reporting, FrontComposer boundaries, bounded Playwright scope, WCAG/tooling gaps, and sanitized evidence requirements.
+  - Tightened Task 0 with Story 17.1 through 17.4 completion gating and a required surface inventory table.
+  - Tightened Tasks 2 through 5 with selector/testid anchors, zero-node axe guards, WCAG 2.2 gap handling, localization expansion checks, overlay focus contracts, touch/zoom validation, manual evidence record shape, and artifact redaction scans.
+  - Tightened Task 6 with evidence-matrix dimensions, bUnit-vs-Playwright separation, fixture-only vs product validation separation, workflow-level evidence rows, and bounded E2E scope.
+- Findings deferred:
+  - Exact release-blocking threshold for manual screen-reader defects remains a product or release decision.
+  - Final artifact retention policy for accessibility evidence remains a product, QA, or governance decision.
+  - Mobile grid-to-card transformation strategy remains a UX and implementation decision unless already defined upstream.
+  - Unsupported browser and assistive-technology matrix beyond the initial validation set remains a product/QA decision.
+- Final recommendation: ready-for-dev
 
 ## Story Completion Status
 
