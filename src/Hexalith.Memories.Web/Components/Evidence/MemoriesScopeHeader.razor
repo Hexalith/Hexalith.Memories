@@ -5,15 +5,17 @@
         aria-label="Evidence scope">
     <div>
         <span class="mem-evidence-label">Tenant</span>
-        <strong>@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
+        <strong data-testid="mem-scope-tenant">@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
     </div>
     <div>
         <span class="mem-evidence-label">Case</span>
-        <strong>@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
+        <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
     </div>
-    <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
-                   Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
-                   ColumnHeader="Scope" />
+    <div data-testid="mem-scope-isolation">
+        <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
+                       Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
+                       ColumnHeader="Scope" />
+    </div>
 </header>
 
 @code {

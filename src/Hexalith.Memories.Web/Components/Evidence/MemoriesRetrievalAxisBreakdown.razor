@@ -4,7 +4,12 @@
          data-testid="mem-axis-breakdown"
          aria-label="Retrieval axis breakdown">
     <h3>Retrieval axes</h3>
-    @if (Packet.Evidence.AxisEvidence.Count == 0)
+    <p data-testid="mem-axis-order-basis">Order basis: @OrderBasisText</p>
+    @if (IsRestricted)
+    {
+        <p role="status" data-testid="mem-axis-restricted">Axis evidence is not available in the current scope.</p>
+    }
+    else if (Packet.Evidence.AxisEvidence.Count == 0)
     {
         <p role="status">Axis evidence unavailable</p>
     }
@@ -14,7 +19,7 @@
             @foreach (EvidencePacketAxisEvidence axis in Packet.Evidence.AxisEvidence)
             {
                 <li data-testid="mem-axis-item" data-axis="@axis.Axis">
-                    <strong>@axis.Axis</strong>
+                    <strong>@EvidenceDisplay.SafeText(axis.Axis, "axis unavailable")</strong>
                     <dl>
                         <dt>Normalized score</dt>
                         <dd>@EvidenceDisplay.ScoreLabel(axis.Score)</dd>
@@ -27,15 +32,23 @@
             }
         </ol>
     }
-    @if (Packet.Evidence.UnavailableAxes.Count > 0)
+    @if (!IsRestricted && Packet.Evidence.UnavailableAxes.Count > 0)
     {
-        <p role="status">Unavailable axes: @string.Join(", ", Packet.Evidence.UnavailableAxes)</p>
+        <p role="status">Unavailable axes: @EvidenceDisplay.SafeText(string.Join(", ", Packet.Evidence.UnavailableAxes), "no unavailable axes")</p>
     }
-    <p>@Packet.Evidence.Caveat</p>
+    @if (!IsRestricted && !string.IsNullOrWhiteSpace(Packet.Evidence.Caveat))
+    {
+        <p data-testid="mem-axis-caveat">@EvidenceDisplay.SafeText(Packet.Evidence.Caveat, "no caveat")</p>
+    }
 </section>
 
 @code {
     [Parameter]
     [EditorRequired]
     public EvidencePacket Packet { get; set; } = default!;
+
+    private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
+        || Packet.State == EvidencePacketState.Unauthorized;
+
+    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
 }

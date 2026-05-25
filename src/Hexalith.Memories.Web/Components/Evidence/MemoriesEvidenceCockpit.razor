@@ -4,61 +4,71 @@
          data-testid="mem-evidence-cockpit"
          aria-label="Evidence cockpit">
     <MemoriesScopeHeader Packet="EffectivePacket" />
-    <MemoriesTrustStrip Packet="EffectivePacket" />
+    <MemoriesTrustStrip Packet="EffectivePacket"
+                        Mode="@StripMode" />
 
-    @if (EffectivePacket.State == EvidencePacketState.Unauthorized || EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
+    @if (RestrictiveBanner is not null)
     {
         <section role="alert"
                  class="mem-evidence-restrictive"
-                 data-testid="mem-evidence-restrictive-state">
-            Authorization required for this tenant and case scope.
+                 data-testid="mem-evidence-restrictive-state"
+                 data-restrictive-kind="@RestrictiveBanner.Kind">
+            @RestrictiveBanner.Message
         </section>
     }
 
     <section class="mem-evidence-result"
              data-testid="mem-evidence-result"
              aria-label="Evidence result">
+        <h2>Evidence</h2>
         @if (IsLoading)
         {
-            <h2>Loading evidence</h2>
-            <p role="status">Evidence packet details are not available yet.</p>
+            <p role="status" data-testid="mem-evidence-loading">Loading evidence</p>
         }
         else if (!string.IsNullOrWhiteSpace(ErrorMessage))
         {
-            <h2>Evidence unavailable</h2>
-            <p role="alert">@EvidenceDisplay.SafeText(ErrorMessage, "Evidence unavailable")</p>
+            <p role="alert" data-testid="mem-evidence-error">
+                Evidence unavailable. @EvidenceDisplay.SafeText(ErrorMessage, "Reason redacted.")
+            </p>
         }
         else
         {
-            <h2>@EvidenceDisplay.SafeText(EffectivePacket.Result.Query, "no query")</h2>
-            <p>@EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, "summary unavailable")</p>
+            <p data-testid="mem-evidence-query">
+                <strong>Query:</strong> @EvidenceDisplay.SafeText(EffectivePacket.Result.Query, "no query")
+            </p>
+            <p data-testid="mem-evidence-summary">@EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, "summary unavailable")</p>
         }
     </section>
 
-    <nav class="mem-evidence-actions" aria-label="Evidence commands">
-        @if (CanExport)
-        {
-            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Export evidence packet">
-                Export packet
-            </FluentButton>
-        }
-        @if (EffectivePacket.Recovery.Count > 0)
-        {
-            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Retry or refine query">
-                Retry/refine
-            </FluentButton>
-        }
-        @if (CanInspectMcpPayload)
-        {
-            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Inspect MCP payload">
-                Inspect MCP payload
-            </FluentButton>
-        }
-    </nav>
+    @if (RecoveryActions.Count > 0)
+    {
+        <section class="mem-evidence-recovery"
+                 data-testid="mem-evidence-recovery"
+                 aria-label="Recovery actions">
+            <h3>Recovery</h3>
+            <ul>
+                @foreach (EvidencePacketRecoveryAction action in RecoveryActions)
+                {
+                    <li data-testid="mem-recovery-item" data-recovery-kind="@action.Kind">
+                        <strong>@EvidenceDisplay.SafeText(action.Label, "recovery action")</strong>
+                        <p>@EvidenceDisplay.SafeText(action.Guidance, "no guidance")</p>
+                        <span class="mem-evidence-label">
+                            Tenant: @EvidenceDisplay.SafeText(EffectivePacket.Scope.TenantId, "unknown tenant")
+                            · Case: @EvidenceDisplay.SafeText(EffectivePacket.Scope.CaseId, "tenant scope")
+                            · Target: @EvidenceDisplay.SafeText(action.Target, "no target")
+                        </span>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
 
-    <MemoriesSourceCitationStack Packet="EffectivePacket" />
-    <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
-    <MemoriesGraphPathSummary Packet="EffectivePacket" />
+    @if (ShouldComposeEvidenceChildren)
+    {
+        <MemoriesSourceCitationStack Packet="EffectivePacket" />
+        <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
+        <MemoriesGraphPathSummary Packet="EffectivePacket" />
+    }
 </article>
 
 @code {
@@ -77,28 +87,117 @@
     [Parameter]
     public string? ErrorMessage { get; set; }
 
-    private EvidencePacket EffectivePacket => Packet ?? UnavailablePacket;
+    private EvidencePacket? _cachedUnavailablePacket;
+    private string? _cachedUnavailableSignature;
 
-    private bool CanExport => !IsLoading
-        && string.IsNullOrWhiteSpace(ErrorMessage)
-        && EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized;
+    private EvidencePacket EffectivePacket => Packet ?? GetUnavailablePacket();
 
-    private bool CanInspectMcpPayload => CanExport && EffectivePacket.Sources.Count > 0;
+    private MemoriesTrustStrip.TrustStripMode StripMode
+        => IsLoading
+            ? MemoriesTrustStrip.TrustStripMode.Loading
+            : !string.IsNullOrWhiteSpace(ErrorMessage)
+                ? MemoriesTrustStrip.TrustStripMode.Error
+                : MemoriesTrustStrip.TrustStripMode.Packet;
 
-    private EvidencePacket UnavailablePacket => new(
-        new EvidencePacketScope(TenantId, CaseId, EvidencePacketIsolationStatus.Unknown, string.IsNullOrWhiteSpace(CaseId) ? "tenant" : "tenant-case"),
-        new EvidencePacketResultSummary(string.Empty, 0, 0, null, null),
-        [],
-        new EvidencePacketEvidence(
-            EvidencePacketEvidenceStrength.None,
-            "Scores measure query-result relevance, not factual accuracy or data completeness.",
-            [],
-            [],
-            !string.IsNullOrWhiteSpace(ErrorMessage),
-            null,
-            []),
-        new EvidencePacketGraphSummary(false, [], [], []),
-        string.IsNullOrWhiteSpace(ErrorMessage) ? EvidencePacketState.PendingExpansion : EvidencePacketState.Degraded,
-        new EvidencePacketOmittedDetails(0, 0, EvidencePacketOmissionReason.None, [], [], []),
-        []);
+    private bool HasRealPacket => Packet is not null && !IsLoading && string.IsNullOrWhiteSpace(ErrorMessage);
+
+    private bool ShouldComposeEvidenceChildren => HasRealPacket
+        && !EvidenceDisplay.IsRestrictiveScope(EffectivePacket.Scope.IsolationStatus)
+        && EffectivePacket.State is not EvidencePacketState.Unauthorized;
+
+    private IReadOnlyList<EvidencePacketRecoveryAction> RecoveryActions => HasRealPacket
+        ? EffectivePacket.Recovery
+        : [];
+
+    private RestrictiveBannerView? RestrictiveBanner => HasRealPacket
+        ? ResolveRestrictiveBanner(EffectivePacket)
+        : null;
+
+    private EvidencePacket GetUnavailablePacket()
+    {
+        string signature = $"{TenantId}|{CaseId}|{IsLoading}|{ErrorMessage}";
+        if (_cachedUnavailablePacket is not null && _cachedUnavailableSignature == signature)
+        {
+            return _cachedUnavailablePacket;
+        }
+
+        bool hasError = !string.IsNullOrWhiteSpace(ErrorMessage);
+        _cachedUnavailablePacket = new EvidencePacket(
+            Scope: new EvidencePacketScope(
+                TenantId: TenantId,
+                CaseId: CaseId,
+                IsolationStatus: EvidencePacketIsolationStatus.Unknown,
+                PermissionsContext: string.IsNullOrWhiteSpace(CaseId) ? "tenant" : "tenant-case"),
+            Result: new EvidencePacketResultSummary(
+                Query: string.Empty,
+                TotalCount: 0,
+                ReturnedCount: 0,
+                HasIndexedMemoryUnits: null,
+                Summary: null),
+            Sources: [],
+            Evidence: new EvidencePacketEvidence(
+                EvidenceStrength: EvidencePacketEvidenceStrength.None,
+                Caveat: "Evidence packet is not available.",
+                AxesUsed: [],
+                UnavailableAxes: [],
+                Degraded: hasError,
+                AllEnabledAxesUnavailable: null,
+                AxisEvidence: []),
+            Graph: new EvidencePacketGraphSummary(
+                Available: false,
+                RelatedPath: [],
+                EdgeTypes: [],
+                GapMarkers: []),
+            State: hasError ? EvidencePacketState.Empty : EvidencePacketState.Empty,
+            OmittedDetails: new EvidencePacketOmittedDetails(
+                OmittedCount: 0,
+                EstimatedTokensTotal: 0,
+                Reason: EvidencePacketOmissionReason.None,
+                FieldNames: [],
+                DetailGroups: [],
+                ExpansionHandles: []),
+            Recovery: []);
+        _cachedUnavailableSignature = signature;
+        return _cachedUnavailablePacket;
+    }
+
+    private static RestrictiveBannerView? ResolveRestrictiveBanner(EvidencePacket packet)
+    {
+        // Restrictive precedence ladder (Advanced Elicitation #3): unauthorized > schema-mismatch / missing-source
+        // > redacted/compressed > degraded/partial > supported. Only the most restrictive banner renders.
+        if (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus) || packet.State == EvidencePacketState.Unauthorized)
+        {
+            return new RestrictiveBannerView("unauthorized", "Authorization required for this tenant and case scope.");
+        }
+
+        if (packet.Evidence.Degraded || packet.Evidence.AllEnabledAxesUnavailable == true)
+        {
+            return new RestrictiveBannerView("missing-source", "Evidence retrieval is degraded for this scope.");
+        }
+
+        if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.Redaction or EvidencePacketOmissionReason.Policy)
+        {
+            return new RestrictiveBannerView("redacted", "Evidence details were redacted by policy.");
+        }
+
+        if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined)
+        {
+            return new RestrictiveBannerView("compressed", "Evidence packet is token-budget compressed.");
+        }
+
+        if (packet.State is EvidencePacketState.Degraded
+            or EvidencePacketState.Partial
+            or EvidencePacketState.Weak
+            or EvidencePacketState.Stale
+            or EvidencePacketState.Empty)
+        {
+            return new RestrictiveBannerView(
+                "degraded",
+                $"Evidence is {EvidenceDisplay.Label(packet.State).ToLowerInvariant()} for this scope.");
+        }
+
+        return null;
+    }
+
+    private sealed record RestrictiveBannerView(string Kind, string Message);
 }

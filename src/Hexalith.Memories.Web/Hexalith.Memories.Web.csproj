@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <PackageId>Hexalith.Memories.Web</PackageId>
-    <IsPackable>true</IsPackable>
+    <!-- Story 17.1: this RCL is an internal building block for the future web Evidence Cockpit
+         and has no runnable host yet. Flip to true and add NuGet metadata + README the moment a
+         consumer outside the Memories solution needs it. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -10,5 +12,8 @@
     <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts\Hexalith.FrontComposer.Contracts.csproj" />
     <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.Web.Tests" />
   </ItemGroup>
 </Project>

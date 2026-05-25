@@ -2,22 +2,23 @@
 
 <section class="mem-trust-strip"
          data-testid="mem-trust-strip"
+         data-strip-mode="@Mode"
          aria-label="Evidence trust summary">
-    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
-                   Label="@EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength)"
+    <FcStatusBadge Slot="@ConfidenceSlot"
+                   Label="@ConfidenceLabel"
                    ColumnHeader="Confidence" />
     <FcStatusBadge Slot="BadgeSlot.Neutral"
                    Label="@EvidenceDisplay.FreshnessLabel()"
                    ColumnHeader="Freshness" />
     <span data-testid="mem-trust-source-count"
-          aria-label="Source count: @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)">
-        @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)
+          aria-label="Source count: @SourceCountText">
+        @SourceCountText
     </span>
-    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
-                   Label="@EvidenceDisplay.Label(Packet.State)"
+    <FcStatusBadge Slot="@HealthSlot"
+                   Label="@HealthLabel"
                    ColumnHeader="Evidence health" />
-    <FcStatusBadge Slot="@(EvidenceDisplay.TokenBudgetLabel(Packet) == "compressed" ? BadgeSlot.Warning : BadgeSlot.Neutral)"
-                   Label="@EvidenceDisplay.TokenBudgetLabel(Packet)"
+    <FcStatusBadge Slot="@TokenBudgetSlot"
+                   Label="@TokenBudgetText"
                    ColumnHeader="Token budget" />
 </section>
 
@@ -25,4 +26,53 @@
     [Parameter]
     [EditorRequired]
     public EvidencePacket Packet { get; set; } = default!;
+
+    [Parameter]
+    public TrustStripMode Mode { get; set; } = TrustStripMode.Packet;
+
+    private bool ShowPacketValues => Mode == TrustStripMode.Packet;
+
+    private string ConfidenceLabel => ShowPacketValues
+        ? EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength)
+        : Mode == TrustStripMode.Loading ? "Loading" : "Unavailable";
+
+    private BadgeSlot ConfidenceSlot => ShowPacketValues
+        ? EvidenceDisplay.SlotForEvidenceStrength(Packet.Evidence.EvidenceStrength)
+        : BadgeSlot.Neutral;
+
+    private string HealthLabel => ShowPacketValues
+        ? EvidenceDisplay.Label(Packet.State)
+        : Mode == TrustStripMode.Loading ? "Loading" : "Unavailable";
+
+    private BadgeSlot HealthSlot => ShowPacketValues
+        ? EvidenceDisplay.SlotForState(Packet.State)
+        : BadgeSlot.Neutral;
+
+    private string SourceCountText
+    {
+        get
+        {
+            if (!ShowPacketValues || EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus))
+            {
+                return EvidenceDisplay.SourceCountLabel(0, sourcesAvailable: false);
+            }
+
+            return EvidenceDisplay.SourceCountLabel(Packet.Sources.Count, sourcesAvailable: true);
+        }
+    }
+
+    private string TokenBudgetText => ShowPacketValues
+        ? EvidenceDisplay.TokenBudgetLabel(Packet)
+        : "Unavailable";
+
+    private BadgeSlot TokenBudgetSlot => TokenBudgetText == "compressed"
+        ? BadgeSlot.Warning
+        : BadgeSlot.Neutral;
+
+    public enum TrustStripMode
+    {
+        Packet,
+        Loading,
+        Error,
+    }
 }

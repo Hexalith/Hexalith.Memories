@@ -1,6 +1,6 @@
 # Story 17.1: Evidence Cockpit and Trust Components
 
-Status: review
+Status: done
 
 ## Story
 
@@ -201,12 +201,54 @@ GPT-5
 - `tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj`
 - `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs`
 - `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs`
+- `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor.css`
+- `src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor.css`
+- `src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor.css`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Cockpit and Trust Components.
 - 2026-05-20: Party-mode review applied story hardening for contract consumption boundaries, explicit unavailable/redacted states, accessibility validation, stable selectors, and scope-limited web composition.
 - 2026-05-20: Implemented Evidence Cockpit and Trust Components; added Web RCL, bUnit tests, solution/package wiring, and moved story to review.
+- 2026-05-20: Code review patch pass applied 26 patches and recorded 18 deferred items in `deferred-work.md`. Build clean (0 warnings, 0 errors), 23/23 bUnit tests pass, `git diff --check` clean. Story moved to done.
+
+## Code Review Patch Pass
+
+- Date: 2026-05-20
+- Reviewer: bmad-code-review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) against commit `3897736`.
+- Patch outcomes:
+  - Authorization data leakage closed in `MemoriesSourceCitationStack`, `MemoriesGraphPathSummary`, `MemoriesRetrievalAxisBreakdown`: components now suppress all rendered content (URIs, snippets, edges, axes) when `Scope.IsolationStatus` is `Unauthorized` or `Unknown`, or when `State == Unauthorized`. The `UnauthorizedPacket` fixture deliberately keeps sources/graph/axis evidence populated so the negative tests fail loud if a guard regresses.
+  - Loading and error states no longer reuse contract enum values for web-only meaning: `MemoriesEvidenceCockpit` renders explicit "Loading evidence" / "Evidence unavailable" envelopes, suppresses subordinate evidence children, and the trust strip exposes a `Mode` parameter (`Packet`/`Loading`/`Error`) so badges display `Loading` / `Unavailable` text labels with accessible names instead of meaningless synthesized packet values.
+  - Dead command UI removed. Task 4's "only when the packet exposes enough data to perform the action safely" guardrail is honored — Export, Retry/refine, Inspect MCP, Open graph context, Inspect source were removed pending a future story that wires FrontComposer command primitives with payload redaction parity tests.
+  - Recovery actions are now rendered per-item with tenant, case, and target context surfaced in the visible markup; recovery details from `EvidencePacketRecoveryAction` (Kind/Label/Guidance/Target) are no longer silently dropped.
+  - Restrictive-state precedence ladder implemented per Advanced Elicitation #3: unauthorized > missing-source/degraded > redacted > compressed > degraded/partial/weak/stale/empty. The single restrictive banner exposes `data-restrictive-kind` for stable assertions.
+  - `EvidencePacketIsolationStatus.Unknown` is now treated restrictively (cannot reveal contract content). The new `EvidenceDisplay.IsRestrictiveScope` helper centralizes the rule.
+  - `EvidenceDisplay.Label` preserves acronyms (`MCP` → `MCP`, `MCPHandler` → `MCP handler`, `PendingExpansion` → `Pending expansion`) and `Strong` stays `Strong`. Trust-strip aria-label format updated to title case.
+  - `EvidenceDisplay.SafeText` now replaces only the matched span with `[REDACTED]` (`EvidenceDisplay.RedactedMarker`), preserving surrounding non-sensitive text. The regex expands to cover API key prefixes (`sk_live_`, `sk_test_`, `ghp_`, `xoxb-`, `AKIA…`), `Authorization:` header form, `api_key=`, UNC paths (`\\server\share`), POSIX system paths (`/etc/`, `/var/`, `/tmp/`, `/opt/`), and tightens the stack-trace pattern so phrases like "looked at server.com" no longer trigger redaction. Plain content surrounding a redaction is preserved.
+  - `EvidenceDisplay.ScoreLabel` rejects NaN/Infinity and renders `"score unavailable"`.
+  - `EvidenceDisplay.TokenBudgetLabel` is now reason-gated — `compressed` only when `Reason ∈ { TokenBudget, Combined }`. Authorization/Redaction/Policy omissions no longer masquerade as token-budget compression.
+  - `FreshnessLabel()` renders the explicit `EvidenceDisplay.FreshnessUnavailable` sentinel and the mapping table now records `EvidencePacketViewMapping.NoContractSource` as the contract source. Both compile-time constants are referenced from the test suite so a future Story-2.7-driven contract field appearance will require the documented swap.
+  - `EvidencePacketViewMapping.RenderedFields` expanded from 20 to 27 entries covering every UI-rendered field, including `sources.snippet/memoryUnit/rank`, `axes.normalizationMethod/unavailableAxes/caveat`, and `recovery.label/guidance`. A mapping-completeness test fails when any tracked display field disappears.
+  - Result section heading is now a stable `<h2>Evidence</h2>`; the user query renders below in a sanitized `<p data-testid="mem-evidence-query">` so a sensitive or empty query no longer hijacks the accessibility hierarchy.
+  - `UnavailablePacket` is now a signature-keyed cached field (allocated once per parameter combination) instead of an expression-bodied property allocating on every access; all `EvidencePacket` records are constructed with named record-init syntax so positional argument reorders cannot silently swap roles.
+  - `MemoriesScopeHeader` exposes stable `data-testid` selectors for tenant/case/isolation badge.
+  - Trust Strip shows `sources unavailable` when scope is restrictive (vs. `0 sources` for an authorized empty result), aligning visible state with contract intent.
+  - Per-component scoped CSS files added for source/axis/graph so list/`<dl>` styling actually reaches their markup (Blazor scoped CSS does not cross component boundaries). New `mem-evidence-restrictive` styles match the precedence-banner kinds.
+  - Graph node separator is now aria-friendly: nodes render as `<span data-testid="mem-graph-node">`, separators are `aria-hidden`, and a visually-hidden `then` is announced to assistive tech. Empty `RelatedPath` renders `no traversal path` instead of a blank `<dd>`.
+  - `Evidence.Caveat`, `Graph.EdgeTypes`, `Graph.GapMarkers`, `Evidence.UnavailableAxes`, and `Source.SourceType` are now sanitized via `SafeText`.
+  - Test suite expanded to 23 tests (up from 8) with fixtures for `Complete`, `Compressed`, `Unauthorized` (sources populated), `MultiSource`, `Sensitive`, `TenantCaseSensitive`, `Empty`, `Stale`, `Degraded`, `Partial`, `Weak`, `Redacted`, and `UnknownScope`. New coverage: precedence ladder (Theory), `IsolationStatus.Unknown` treated restrictively, tenant/case sensitive content sanitization, graph node order, keyboard reachability (no negative tabindex / aria-hidden ancestor), recovery action tenant/case/target rendering, ScoreLabel non-finite handling, and SafeText partial-replacement preserving surroundings.
+  - `Directory.Packages.props` and `Hexalith.Memories.Web.csproj` updated: prerelease FluentUI/bunit pins carry justification comments, the RCL is `IsPackable=false` until a consumer outside the solution needs it, and `InternalsVisibleTo("Hexalith.Memories.Web.Tests")` gives the test project access to the internal `EvidenceDisplay` helpers.
+  - `Host.ValidateVersionAlignment()` invoked from the test constructor so future Memories vs FrontComposer package-version drift fails fast.
+- Verification:
+  - `dotnet build src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj` — 0 warnings, 0 errors.
+  - `dotnet build tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj` — 0 warnings, 0 errors.
+  - `dotnet build Hexalith.Memories.slnx` — 0 warnings, 0 errors (warnings-as-errors gate passes for the whole solution).
+  - `dotnet test tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj` — 23/23 pass.
+  - `git diff --check` — clean (only CRLF normalization warnings on tracked text files, unchanged from prior baseline).
+- Findings deferred:
+  - 18 lower-severity findings recorded in `_bmad-output/implementation-artifacts/deferred-work.md` under `## Deferred from: code review of 17-1-evidence-cockpit-and-trust-components (2026-05-20)`. Each entry includes rationale tying the deferral to a future story or to vacuous coverage on the current command-less RCL.
+- Final recommendation: done
 
 ## Party-Mode Review
 
@@ -259,3 +301,78 @@ GPT-5
 ## Story Completion Status
 
 Ultimate context engine analysis completed - comprehensive developer guide created.
+
+## Review Findings
+
+Date: 2026-05-20
+Reviewer: bmad-code-review (Blind Hunter + Edge Case Hunter + Acceptance Auditor) against commit `3897736`.
+Triage summary: 0 decision-needed, 26 patch, 18 deferred, ~10 dismissed as noise/coupling-to-coupling.
+
+### Critical patches (data leakage and contract-truth)
+
+- [x] [Review][Patch] Unauthorized data leaks through Source/Graph/Axis components — no isolation guard around rendered content [src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor:7-30, MemoriesGraphPathSummary.razor:6-23, MemoriesRetrievalAxisBreakdown.razor:6-33]. Source list, edge types, gap markers, axis evidence render whenever the collection is non-empty; only the buttons are gated. Compounded by `EvidencePacketFixtures.UnauthorizedPacket` pre-clearing `Sources` via `with { Sources = [] }`, so `RestrictedPacket_ShouldDisplayRestrictiveStateBeforeEvidence` passes trivially and never exercises the scrubbing path. Add scope-aware render guard at each component AND update fixture to keep sources populated so the test would fail without the guard.
+- [x] [Review][Patch] `FreshnessLabel()` is a hard-coded `"unknown"` constant and the mapping table falsely declares `EvidencePacket.Sources[].SourceUri` as the source [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:33, EvidencePacketViewMapping.cs:14,19, MemoriesTrustStrip.razor:18, MemoriesSourceCitationStack.razor:23]. The contract has no freshness field. AC2 still requires the Trust Strip to show "freshness state" — render it explicitly as `freshness unavailable` everywhere, correct the mapping `ContractSource` to `null` (or a documented "no contract source" sentinel), and add a mapping-completeness test that catches this lie.
+- [x] [Review][Patch] Loading and error states hijack contract `EvidencePacketState.PendingExpansion` and `Degraded` [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:80-103]. Party-Mode #1 forbids reinterpreting contract semantics. Synthesize NO packet for loading/error — render an explicit "evidence unavailable" envelope outside the packet object graph, skip child component composition during those states.
+- [x] [Review][Patch] Dead command UI: Export, Retry/refine, Inspect MCP payload, Open graph context, Inspect source — no `@onclick`, no event callback, no command primitive [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:37-58, MemoriesSourceCitationStack.razor:30, MemoriesGraphPathSummary.razor:18]. Task 4 says "only when the packet exposes enough data to perform the action safely". With nothing wired and no payload synthesis, Advanced Elicitation #5 redaction-parity is vacuous. Remove the buttons (or move them behind a feature flag) until FrontComposer command primitives are wired with payload negative tests.
+
+### Major patches
+
+- [x] [Review][Patch] `TokenBudgetLabel` returns `"compressed"` for any `OmittedCount > 0` regardless of `Reason` [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:21-30]. Authorization/Policy/Redaction omissions render as token-budget compression. Gate on `Reason == TokenBudget`.
+- [x] [Review][Patch] Restrictive-state precedence implements only `Unauthorized` [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:9-15]. Advanced Elicitation #3 specifies a full ladder: unauthorized > schema-mismatch/missing-source > redacted/compressed > degraded/partial > supported. Extend the precedence helper and add per-rung tests.
+- [x] [Review][Patch] Scoped CSS in `MemoriesEvidenceCockpit.razor.css` cannot reach `<ol>` rendered by child components — Blazor scoped CSS attribute is applied only to the parent component's own markup [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css:25-30]. Source/axis lists silently fall back to browser defaults. Move list styling to per-child `.razor.css` files.
+- [x] [Review][Patch] `EvidencePacketViewMapping.RenderedFields` is incomplete and partly false [src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs:9-32, EvidenceCockpitTests.cs:55-67]. Missing entries: `sources.snippet`, `sources.memoryUnit`, `sources.rank`, `evidence.caveat`, `evidence.unavailableAxes`, `axes.normalizationMethod`, `recoveryAction.*`. Existing `RenderedFields_ShouldHaveNamedContractSources` asserts 6 hand-picked entries and never fails on new untracked render paths. Add a markup-scanning test or an explicit "every UI field listed here" coverage assertion.
+- [x] [Review][Patch] `UnavailablePacket` re-allocates the entire packet + child records + arrays on every property access [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:80]. Convert to a cached field built once per state.
+- [x] [Review][Patch] `UnavailablePacket` passes `!string.IsNullOrWhiteSpace(ErrorMessage)` to a positional `bool` slot in `EvidencePacketEvidence` constructor [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:91-99]. Error presence is unrelated to whatever the bool's meaning is (likely `Degraded` or `HasOmittedDetails`). Verify each positional argument and replace with named-record property initialization.
+- [x] [Review][Patch] Positional record construction is fragile across `EvidencePacketEvidence`, `EvidencePacketEvidenceAxisScore`, etc. — multiple same-typed args (e.g., two `IReadOnlyList<string>` or two empty `[]`) silently swap on contract reorder [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:91-99, tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs:103-110]. Switch to `with`-init or named arguments.
+- [x] [Review][Patch] `ScoreLabel` formats `double.NaN` as `"NaN"` and `double.PositiveInfinity` as `"Infinity"` directly to UI [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:60-61]. Reject non-finite values and render `"score unavailable"`.
+- [x] [Review][Patch] `SafeText` replaces the entire field with the fixed string `"redacted source"` on any match, destroying surrounding content [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:48-65]. A 200-word snippet with a single hex token collapses to "redacted source". On the error path, `SafeText(ErrorMessage, "Evidence unavailable")` returns "redacted source" instead of the contextual fallback. Replace only the matched span with `[REDACTED]`, preserve surrounding text, keep the field-specific fallback.
+- [x] [Review][Patch] `SafeText` regex is incomplete: no API key prefixes (`sk_live_`, `ghp_`, `xoxb-`, `AKIA…`), no UNC paths (`\\server\share`), no POSIX system paths (`/etc/`, `/var/`, `/tmp/`, `/opt/`) [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:65]. Expand the pattern set.
+- [x] [Review][Patch] `SafeText` over-redacts plain content: `\bat\s+\w+\.` matches innocuous English ("looked at server.com"); with `IgnoreCase`, "AT Acme." triggers full-field redaction [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:51]. Tighten patterns: anchor stack-trace detection to "at <NS>.<Method>(<...>) in <Path>" form.
+- [x] [Review][Patch] `Label` does not preserve consecutive uppercase runs: `Label("MCP")` returns `"m c p"`. Any future acronym-containing enum renders as fragmented letters [src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs:11-13]. Detect uppercase runs and emit them as a single token.
+- [x] [Review][Patch] Result section `<h2>` is the (sanitized) query string — when query is empty becomes "no query"; with sensitive content becomes "redacted source" [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:25]. Use a stable heading like "Evidence" or "Results"; render the query in a `<header>` or `<p>` below.
+- [x] [Review][Patch] Recovery actions silently dropped beyond a count check — per-action `Kind/Label/Guidance/Target` never rendered; UnauthorizedPacket's `CheckAuthorization` action's guidance is lost [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:44-48]. Render each action's label and guidance; add a fixture-driven test that surfaces guidance text.
+- [x] [Review][Patch] Trust Strip during loading renders a fully-formed but meaningless evaluation ("Confidence: none / Freshness: unknown / 0 sources / Evidence health: pending expansion / Token budget: within budget") [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:5,17-22, MemoriesTrustStrip.razor]. When `IsLoading`, render explicit "evidence loading" placeholders per badge — never compute a Trust Strip from synthetic data.
+- [x] [Review][Patch] `EvidencePacketIsolationStatus.Unknown` is silently treated as authorized — the restrictive-state guard fires only for `Unauthorized` [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:9]. `Unknown` should be the most restrictive default (treat as unauthorized) until the contract producer is required to set it explicitly.
+- [x] [Review][Patch] Children render with synthetic stub during error — trust strip + source stack + graph all render, duplicating the parent's error message [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:50-52]. Early-exit subordinate sections when an error envelope is the visible content.
+- [x] [Review][Patch] `Evidence.Caveat`, `Evidence.UnavailableAxes`, `Graph.EdgeTypes`, `Graph.GapMarkers` rendered without `SafeText` [src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor:22-24, MemoriesGraphPathSummary.razor:14-15]. Run every contract-sourced string through `SafeText` with field-appropriate fallback.
+- [x] [Review][Patch] No keyboard reachability / focus order / `aria-expanded` test exists [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs]. Task 5 requires verifying source/axis/graph expansion is keyboard-reachable and not hover-only. Add bUnit tests for Tab order and explicit role/accessible-name lookups.
+- [x] [Review][Patch] Trust Strip aria-label assertions are tightly coupled to `FcStatusBadge` internal formatting and `Label`'s lowercasing [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs:62-66]. Either set explicit `aria-label` on the component and assert it directly, or use accessible-name role lookups instead of attribute-string substring matches.
+- [x] [Review][Patch] No fixture covers `EvidencePacketState.Empty`, `Stale`, `Degraded`, `Partial`, or `Weak` — 5 of 8 contract states untested [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs]. Add fixtures and per-state assertions. Also: build the sensitive-content test on top of a Stale or Degraded fixture, not just Complete, to verify redaction independent of state.
+
+### Minor patches
+
+- [x] [Review][Patch] CSS class `mem-evidence-restrictive` referenced in markup but never defined in the stylesheet [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:11, MemoriesEvidenceCockpit.razor.css]. Add styles or remove the class.
+- [x] [Review][Patch] Multiple `role="alert"` regions compete (restrictive section, error paragraph, child components) [src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor:17,24]. Consolidate to one live region at any moment.
+- [x] [Review][Patch] `MemoriesScopeHeader` does not expose isolation badge via stable selector — no `data-testid` on the FcStatusBadge for isolation [src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor:11-14]. Add `data-testid="mem-scope-isolation"` and assert in tests.
+- [x] [Review][Patch] `UnauthorizedPacket` fixture is internally inconsistent: `Result.TotalCount=1, ReturnedCount=1` but `Sources=[]` after the `with` clause [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs:48-65]. Fix to `TotalCount=0, ReturnedCount=0` and `HasIndexedMemoryUnits=true`.
+- [x] [Review][Patch] `Directory.Packages.props` adds the prerelease `Microsoft.FluentUI.AspNetCore.Components 5.0.0-rc.2-26098.1` without the per-block justification comment used elsewhere [Directory.Packages.props:71-72]. Add a leading comment block stating the cross-package compatibility constraint and removal condition.
+- [x] [Review][Patch] `Hexalith.Memories.Web.csproj` is `IsPackable=true` without the NuGet metadata block other packable Memories projects ship (Description/Authors/License/Repo/Tags/README) [src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj]. Either add the metadata block and ship a README, or set `IsPackable=false` for now.
+- [x] [Review][Patch] Order-basis "unavailable" rendering missing for axis and graph; sources hard-code `"Order basis: packet order"` for every packet, never rendering "order basis: unavailable" per Advanced Elicitation #4 [src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor:7]. Render order-basis label per inspector and pick "packet order" vs "unavailable" from a contract signal (or document explicitly that the contract has no ordering field and render "unavailable").
+- [x] [Review][Patch] No test for sensitive content in tenant/case identifiers (`TenantId`, `CaseId`, `CaseName`, `PermissionsContext`) [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs]. `SafeText` is called on tenant/case at render but the sanitization path is unverified. Add a fixture with sensitive values in scope fields.
+- [x] [Review][Patch] Empty `<p>` for `Evidence.Caveat` when null/whitespace [src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor:24]. Gate the render on non-empty.
+- [x] [Review][Patch] Confidence badge color sourced from `Packet.State` (evidence health) while text sourced from `EvidenceStrength` — two different contract concepts on one chip [src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor:6-9]. Align both on `EvidenceStrength` (with documented mapping) or split into two separate chips.
+- [x] [Review][Patch] Graph `RelatedPath` empty but `Graph.Available=true` → empty `<dd>` [src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor:13]. Fallback message: "no traversal path".
+- [x] [Review][Patch] Graph node separator `" -> "` literal is not aria-friendly; screen readers read "dash greater-than" [src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor:13]. Wrap in `aria-hidden` span and add visually-hidden text "then" between nodes, or render as a semantic `<ol>` with `aria-orientation="horizontal"`.
+- [x] [Review][Patch] Graph ordering not asserted in tests [tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs]. Add a test that asserts `RelatedPath` renders in packet order (e.g., "memory-a -> memory-b" not the reverse).
+- [x] [Review][Patch] `Hexalith.FrontComposer.Testing.ValidateVersionAlignment` not invoked in test setup [tests/Hexalith.Memories.Web.Tests]. Add to bUnit context construction so future drift between Memories and FrontComposer package versions fails fast.
+
+### Deferred (pre-existing or scoped to future stories)
+
+- [x] [Review][Defer] `EvidenceDisplay.Label` is locale-insensitive humanization bypassing FrontComposer's `IStringLocalizer<FcShellResources>` pattern — deferred, broader localization work spans the whole RCL.
+- [x] [Review][Defer] `EvidencePacketScope.PermissionsContext` not surfaced in `MemoriesScopeHeader` — deferred, requires a new UX decision on where/how to display the machine-readable permission context.
+- [x] [Review][Defer] `EvidencePacketOmittedDetails` body fields (`OmittedCount/FieldNames/DetailGroups/ExpansionHandles`) silently dropped — deferred, depends on a future "expand omitted details" UX.
+- [x] [Review][Defer] `EvidencePacketSource.AnnotationsCount/CaseId/CaseName` not rendered — deferred, deemed not load-bearing for AC3 inspection workflow.
+- [x] [Review][Defer] `EvidencePacketResultSummary.TotalCount/ReturnedCount/HasIndexedMemoryUnits` not surfaced — deferred, distinguishes empty-tenant from empty-result but not required by AC1.
+- [x] [Review][Defer] `EvidencePacketEvidence.Degraded`/`AllEnabledAxesUnavailable` flags not fed into Trust Strip — deferred, overlapping signal with `State` already shown.
+- [x] [Review][Defer] Task 6 a11y checkboxes marked `[x]` despite no automated forced-colors / focus-return / touch-target / no-text-overlap check; Completion Notes correctly call out Playwright deferred for RCL-only slice. Deferred to a follow-up story once a runnable web host is added.
+- [x] [Review][Defer] `aria-label="Inspect source 0"` if Rank is 0 — deferred, only relevant if Inspect button is reinstated with wiring.
+- [x] [Review][Defer] No negative tests for copy/export/MCP-inspect payload redaction parity — deferred, vacuous until command UI is wired.
+- [x] [Review][Defer] No transition-state a11y coverage (loading→complete, complete→degraded) — deferred, useful when buttons trigger real state changes.
+- [x] [Review][Defer] `<article>` + nested `<section aria-label>` creates a verbose landmark list — deferred, a11y refinement after primary findings settle.
+- [x] [Review][Defer] Source citation order test asserts `data-source-rank` attribute values, not DOM iteration order — deferred, acceptable proxy with current rank-stable contract.
+- [x] [Review][Defer] `SourceCountLabel` does not handle negative or `int.MaxValue` — deferred, contract precludes negative counts; defensive only.
+- [x] [Review][Defer] `EvidencePacketSource.SourceType` and `axis.Axis` not wrapped in `SafeText` — deferred, enum-like strings have controlled vocabulary; revisit if contract loosens.
+- [x] [Review][Defer] Stale state never tested by fixture — covered by the broader "5 of 8 states untested" patch above; standalone deferred.
+- [x] [Review][Defer] CSS `flex-wrap: wrap` is used instead of `FluentStack` — deferred minor compliance gap with Fluent UI primitive preference; the wrapping behavior itself is correct.
+- [x] [Review][Defer] `Sources[].SourceUri` rendered without trust-mark badging (e.g., not marking external URLs vs local memory references) — deferred, not in AC3.
+- [x] [Review][Defer] `<dl>` in graph path summary uses raw `<dt>/<dd>` rather than `FluentDescriptionList` — deferred, FrontComposer primitive preference; functionality is correct.

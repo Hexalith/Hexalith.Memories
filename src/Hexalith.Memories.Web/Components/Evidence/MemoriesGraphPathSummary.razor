@@ -4,7 +4,12 @@
          data-testid="mem-graph-summary"
          aria-label="Graph path summary">
     <h3>Graph context</h3>
-    @if (!Packet.Graph.Available)
+    <p data-testid="mem-graph-order-basis">Order basis: @OrderBasisText</p>
+    @if (IsRestricted)
+    {
+        <p role="status" data-testid="mem-graph-restricted">Graph context is not available in the current scope.</p>
+    }
+    else if (!Packet.Graph.Available)
     {
         <p role="status">Graph context unavailable</p>
     }
@@ -12,17 +17,29 @@
     {
         <dl>
             <dt>Path</dt>
-            <dd>@string.Join(" -> ", Packet.Graph.RelatedPath.Select(static x => EvidenceDisplay.SafeText(x, "node unavailable")))</dd>
+            <dd>
+                @if (Packet.Graph.RelatedPath.Count == 0)
+                {
+                    <span>no traversal path</span>
+                }
+                else
+                {
+                    @for (int i = 0; i < Packet.Graph.RelatedPath.Count; i++)
+                    {
+                        <span data-testid="mem-graph-node">@EvidenceDisplay.SafeText(Packet.Graph.RelatedPath[i], "node unavailable")</span>
+                        if (i < Packet.Graph.RelatedPath.Count - 1)
+                        {
+                            <span aria-hidden="true"> -&gt; </span>
+                            <span class="visually-hidden"> then </span>
+                        }
+                    }
+                }
+            </dd>
             <dt>Edge types</dt>
-            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? "edge type unavailable" : string.Join(", ", Packet.Graph.EdgeTypes))</dd>
+            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? "edge type unavailable" : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.EdgeTypes), "edge type unavailable"))</dd>
             <dt>Gap markers</dt>
-            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? "no gap markers" : string.Join(", ", Packet.Graph.GapMarkers))</dd>
+            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? "no gap markers" : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.GapMarkers), "no gap markers"))</dd>
         </dl>
-        <FluentButton Appearance="ButtonAppearance.Default"
-                      Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
-                      aria-label="Open graph context">
-            Open graph context
-        </FluentButton>
     }
 </section>
 
@@ -30,4 +47,9 @@
     [Parameter]
     [EditorRequired]
     public EvidencePacket Packet { get; set; } = default!;
+
+    private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
+        || Packet.State == EvidencePacketState.Unauthorized;
+
+    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
 }

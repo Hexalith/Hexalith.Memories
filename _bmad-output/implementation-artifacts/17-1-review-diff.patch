@@ -1,0 +1,869 @@
+diff --git a/Directory.Packages.props b/Directory.Packages.props
+index 205e961..721a2f7 100644
+--- a/Directory.Packages.props
++++ b/Directory.Packages.props
+@@ -68,6 +68,8 @@
+     <PackageVersion Include="Testcontainers" Version="4.11.0" />
+     <!-- Story 7.5 Rev 1.3: Tier-2 WebApplicationFactory for trace-propagation + audit-log tests (no Docker). -->
+     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.8" />
++    <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.0-rc.2-26098.1" />
++    <PackageVersion Include="bunit" Version="2.7.2" />
+     <!-- CLI (Story 7.1): System.CommandLine is prerelease (3.0.0-preview) but is the Microsoft-supported
+          CLI parser with first-class support for recursive/global options (Option.Recursive = true),
+          async handlers with CancellationToken, and global-tool-friendly packaging. See ADR-7.1-008. -->
+diff --git a/Hexalith.Memories.slnx b/Hexalith.Memories.slnx
+index 2c7d9c9..059dd54 100644
+--- a/Hexalith.Memories.slnx
++++ b/Hexalith.Memories.slnx
+@@ -10,6 +10,7 @@
+     <Project Path="src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj" />
+     <Project Path="src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj" />
+     <Project Path="src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj" />
++    <Project Path="src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj" />
+   </Folder>
+   <Folder Name="/tools/">
+     <Project Path="tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj" />
+@@ -23,5 +24,6 @@
+     <Project Path="tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj" />
+     <Project Path="tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj" />
+     <Project Path="tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj" />
++    <Project Path="tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj" />
+   </Folder>
+ </Solution>
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs b/src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs
+new file mode 100644
+index 0000000..49cb9ad
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs
+@@ -0,0 +1,68 @@
++// <copyright file="EvidenceDisplay.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Web.Components.Evidence;
++
++using System.Globalization;
++using System.Text.RegularExpressions;
++
++using Hexalith.FrontComposer.Contracts.Attributes;
++using Hexalith.Memories.Contracts.V1;
++
++internal static partial class EvidenceDisplay
++{
++    public static string Label(Enum value)
++        => string.Concat(value.ToString().Select((c, index) =>
++            index > 0 && char.IsUpper(c) ? " " + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
++
++    public static string SourceCountLabel(int count)
++        => count == 1 ? "1 source" : string.Create(CultureInfo.InvariantCulture, $"{count} sources");
++
++    public static string TokenBudgetLabel(EvidencePacket packet)
++    {
++        ArgumentNullException.ThrowIfNull(packet);
++
++        return packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined
++            || packet.OmittedDetails.OmittedCount > 0
++            ? "compressed"
++            : "within budget";
++    }
++
++    public static string FreshnessLabel() => "unknown";
++
++    public static BadgeSlot SlotForState(EvidencePacketState state)
++        => state switch
++        {
++            EvidencePacketState.Complete => BadgeSlot.Success,
++            EvidencePacketState.Partial or EvidencePacketState.PendingExpansion or EvidencePacketState.Weak => BadgeSlot.Warning,
++            EvidencePacketState.Empty or EvidencePacketState.Stale or EvidencePacketState.Degraded => BadgeSlot.Warning,
++            EvidencePacketState.Unauthorized => BadgeSlot.Danger,
++            _ => BadgeSlot.Neutral,
++        };
++
++    public static BadgeSlot SlotForIsolation(EvidencePacketIsolationStatus status)
++        => status switch
++        {
++            EvidencePacketIsolationStatus.Authorized => BadgeSlot.Success,
++            EvidencePacketIsolationStatus.Unauthorized => BadgeSlot.Danger,
++            _ => BadgeSlot.Warning,
++        };
++
++    public static string SafeText(string? value, string fallback = "unavailable")
++    {
++        if (string.IsNullOrWhiteSpace(value))
++        {
++            return fallback;
++        }
++
++        return SensitiveTextRegex().IsMatch(value) ? "redacted source" : value;
++    }
++
++    public static string ScoreLabel(double? score)
++        => score.HasValue ? score.Value.ToString("0.###", CultureInfo.InvariantCulture) : "score unavailable";
++
++    [GeneratedRegex("(bearer\\s+\\S+|redis://\\S+|falkor\\S*|[A-Za-z]:\\\\|/home/|/users/|stack\\s*trace|\\bat\\s+\\w+\\.|eyJ[A-Za-z0-9_/+=-]+\\.|\\b[a-f0-9]{32,}\\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
++    private static partial Regex SensitiveTextRegex();
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketFieldMapping.cs b/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketFieldMapping.cs
+new file mode 100644
+index 0000000..6e63f3b
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketFieldMapping.cs
+@@ -0,0 +1,15 @@
++// <copyright file="EvidencePacketFieldMapping.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Web.Components.Evidence;
++
++/// <summary>Documents the explicit Evidence Packet field source for one rendered cockpit value.</summary>
++/// <param name="DisplayField">Rendered field identifier.</param>
++/// <param name="ContractSource">Canonical Evidence Packet source field.</param>
++/// <param name="UnavailableFallback">Fallback rendered when the source field is absent or unavailable.</param>
++public sealed record EvidencePacketFieldMapping(
++    string DisplayField,
++    string ContractSource,
++    string UnavailableFallback);
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs b/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs
+new file mode 100644
+index 0000000..5c0aaf4
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs
+@@ -0,0 +1,35 @@
++// <copyright file="EvidencePacketViewMapping.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Web.Components.Evidence;
++
++/// <summary>Field-by-field mapping from canonical Evidence Packet members to the Memories evidence cockpit.</summary>
++public static class EvidencePacketViewMapping
++{
++    /// <summary>Gets the fields rendered by the first Evidence Cockpit slice.</summary>
++    public static IReadOnlyList<EvidencePacketFieldMapping> RenderedFields { get; } =
++    [
++        new("scope.tenant", "EvidencePacket.Scope.TenantId", "unknown tenant"),
++        new("scope.case", "EvidencePacket.Scope.CaseId", "tenant scope"),
++        new("scope.isolation", "EvidencePacket.Scope.IsolationStatus", "unknown scope"),
++        new("trust.confidence", "EvidencePacket.Evidence.EvidenceStrength", "unknown"),
++        new("trust.freshness", "EvidencePacket.Sources[].SourceUri", "unknown"),
++        new("trust.sourceCount", "EvidencePacket.Sources.Count", "0 sources"),
++        new("trust.evidenceHealth", "EvidencePacket.State", "unavailable"),
++        new("trust.tokenBudget", "EvidencePacket.OmittedDetails.Reason", "within budget"),
++        new("result.query", "EvidencePacket.Result.Query", "no query"),
++        new("result.summary", "EvidencePacket.Result.Summary", "summary unavailable"),
++        new("sources.originIdentifier", "EvidencePacket.Sources[].SourceUri", "redacted source"),
++        new("sources.type", "EvidencePacket.Sources[].SourceType", "unknown type"),
++        new("sources.freshness", "EvidencePacket.Sources[].SourceUri", "unknown"),
++        new("sources.score", "EvidencePacket.Sources[].Score", "score unavailable"),
++        new("axes.axis", "EvidencePacket.Evidence.AxisEvidence[].Axis", "axis unavailable"),
++        new("axes.normalizedScore", "EvidencePacket.Evidence.AxisEvidence[].Score", "score unavailable"),
++        new("axes.rankingReason", "EvidencePacket.Evidence.AxisEvidence[].Description", "ranking reason unavailable"),
++        new("graph.path", "EvidencePacket.Graph.RelatedPath", "graph path unavailable"),
++        new("graph.edgeTypes", "EvidencePacket.Graph.EdgeTypes", "edge type unavailable"),
++        new("graph.gapMarkers", "EvidencePacket.Graph.GapMarkers", "no gap markers"),
++    ];
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor
+new file mode 100644
+index 0000000..e7128df
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor
+@@ -0,0 +1,104 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<article class="mem-evidence-cockpit"
++         data-testid="mem-evidence-cockpit"
++         aria-label="Evidence cockpit">
++    <MemoriesScopeHeader Packet="EffectivePacket" />
++    <MemoriesTrustStrip Packet="EffectivePacket" />
++
++    @if (EffectivePacket.State == EvidencePacketState.Unauthorized || EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
++    {
++        <section role="alert"
++                 class="mem-evidence-restrictive"
++                 data-testid="mem-evidence-restrictive-state">
++            Authorization required for this tenant and case scope.
++        </section>
++    }
++
++    <section class="mem-evidence-result"
++             data-testid="mem-evidence-result"
++             aria-label="Evidence result">
++        @if (IsLoading)
++        {
++            <h2>Loading evidence</h2>
++            <p role="status">Evidence packet details are not available yet.</p>
++        }
++        else if (!string.IsNullOrWhiteSpace(ErrorMessage))
++        {
++            <h2>Evidence unavailable</h2>
++            <p role="alert">@EvidenceDisplay.SafeText(ErrorMessage, "Evidence unavailable")</p>
++        }
++        else
++        {
++            <h2>@EvidenceDisplay.SafeText(EffectivePacket.Result.Query, "no query")</h2>
++            <p>@EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, "summary unavailable")</p>
++        }
++    </section>
++
++    <nav class="mem-evidence-actions" aria-label="Evidence commands">
++        @if (CanExport)
++        {
++            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Export evidence packet">
++                Export packet
++            </FluentButton>
++        }
++        @if (EffectivePacket.Recovery.Count > 0)
++        {
++            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Retry or refine query">
++                Retry/refine
++            </FluentButton>
++        }
++        @if (CanInspectMcpPayload)
++        {
++            <FluentButton Appearance="ButtonAppearance.Default" aria-label="Inspect MCP payload">
++                Inspect MCP payload
++            </FluentButton>
++        }
++    </nav>
++
++    <MemoriesSourceCitationStack Packet="EffectivePacket" />
++    <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
++    <MemoriesGraphPathSummary Packet="EffectivePacket" />
++</article>
++
++@code {
++    [Parameter]
++    public EvidencePacket? Packet { get; set; }
++
++    [Parameter]
++    public string TenantId { get; set; } = "unknown tenant";
++
++    [Parameter]
++    public string? CaseId { get; set; }
++
++    [Parameter]
++    public bool IsLoading { get; set; }
++
++    [Parameter]
++    public string? ErrorMessage { get; set; }
++
++    private EvidencePacket EffectivePacket => Packet ?? UnavailablePacket;
++
++    private bool CanExport => !IsLoading
++        && string.IsNullOrWhiteSpace(ErrorMessage)
++        && EffectivePacket.Scope.IsolationStatus == EvidencePacketIsolationStatus.Authorized;
++
++    private bool CanInspectMcpPayload => CanExport && EffectivePacket.Sources.Count > 0;
++
++    private EvidencePacket UnavailablePacket => new(
++        new EvidencePacketScope(TenantId, CaseId, EvidencePacketIsolationStatus.Unknown, string.IsNullOrWhiteSpace(CaseId) ? "tenant" : "tenant-case"),
++        new EvidencePacketResultSummary(string.Empty, 0, 0, null, null),
++        [],
++        new EvidencePacketEvidence(
++            EvidencePacketEvidenceStrength.None,
++            "Scores measure query-result relevance, not factual accuracy or data completeness.",
++            [],
++            [],
++            !string.IsNullOrWhiteSpace(ErrorMessage),
++            null,
++            []),
++        new EvidencePacketGraphSummary(false, [], [], []),
++        string.IsNullOrWhiteSpace(ErrorMessage) ? EvidencePacketState.PendingExpansion : EvidencePacketState.Degraded,
++        new EvidencePacketOmittedDetails(0, 0, EvidencePacketOmissionReason.None, [], [], []),
++        []);
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css
+new file mode 100644
+index 0000000..b059185
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css
+@@ -0,0 +1,53 @@
++.mem-evidence-cockpit {
++    display: grid;
++    gap: 1rem;
++    max-width: 72rem;
++}
++
++.mem-evidence-scope,
++.mem-trust-strip,
++.mem-evidence-actions {
++    align-items: center;
++    display: flex;
++    flex-wrap: wrap;
++    gap: .75rem;
++}
++
++.mem-evidence-label {
++    display: block;
++    font-size: .75rem;
++    font-weight: 600;
++}
++
++.mem-evidence-section {
++    display: grid;
++    gap: .5rem;
++}
++
++.mem-evidence-section ol {
++    display: grid;
++    gap: .75rem;
++    list-style-position: inside;
++    margin: 0;
++    padding: 0;
++}
++
++.mem-evidence-section li {
++    border: 1px solid var(--neutral-stroke-rest);
++    border-radius: 8px;
++    display: grid;
++    gap: .5rem;
++    padding: .75rem;
++}
++
++.mem-evidence-section dl {
++    display: grid;
++    gap: .25rem .75rem;
++    grid-template-columns: max-content minmax(0, 1fr);
++    margin: 0;
++}
++
++.mem-evidence-section dd {
++    margin: 0;
++    overflow-wrap: anywhere;
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor
+new file mode 100644
+index 0000000..2b7f00d
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor
+@@ -0,0 +1,33 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<section class="mem-evidence-section"
++         data-testid="mem-graph-summary"
++         aria-label="Graph path summary">
++    <h3>Graph context</h3>
++    @if (!Packet.Graph.Available)
++    {
++        <p role="status">Graph context unavailable</p>
++    }
++    else
++    {
++        <dl>
++            <dt>Path</dt>
++            <dd>@string.Join(" -> ", Packet.Graph.RelatedPath.Select(static x => EvidenceDisplay.SafeText(x, "node unavailable")))</dd>
++            <dt>Edge types</dt>
++            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? "edge type unavailable" : string.Join(", ", Packet.Graph.EdgeTypes))</dd>
++            <dt>Gap markers</dt>
++            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? "no gap markers" : string.Join(", ", Packet.Graph.GapMarkers))</dd>
++        </dl>
++        <FluentButton Appearance="ButtonAppearance.Default"
++                      Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
++                      aria-label="Open graph context">
++            Open graph context
++        </FluentButton>
++    }
++</section>
++
++@code {
++    [Parameter]
++    [EditorRequired]
++    public EvidencePacket Packet { get; set; } = default!;
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor
+new file mode 100644
+index 0000000..6dce3f1
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor
+@@ -0,0 +1,41 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<section class="mem-evidence-section"
++         data-testid="mem-axis-breakdown"
++         aria-label="Retrieval axis breakdown">
++    <h3>Retrieval axes</h3>
++    @if (Packet.Evidence.AxisEvidence.Count == 0)
++    {
++        <p role="status">Axis evidence unavailable</p>
++    }
++    else
++    {
++        <ol>
++            @foreach (EvidencePacketAxisEvidence axis in Packet.Evidence.AxisEvidence)
++            {
++                <li data-testid="mem-axis-item" data-axis="@axis.Axis">
++                    <strong>@axis.Axis</strong>
++                    <dl>
++                        <dt>Normalized score</dt>
++                        <dd>@EvidenceDisplay.ScoreLabel(axis.Score)</dd>
++                        <dt>Ranking reason</dt>
++                        <dd>@EvidenceDisplay.SafeText(axis.Description, "ranking reason unavailable")</dd>
++                        <dt>Normalization</dt>
++                        <dd>@EvidenceDisplay.SafeText(axis.NormalizationMethod, "normalization unavailable")</dd>
++                    </dl>
++                </li>
++            }
++        </ol>
++    }
++    @if (Packet.Evidence.UnavailableAxes.Count > 0)
++    {
++        <p role="status">Unavailable axes: @string.Join(", ", Packet.Evidence.UnavailableAxes)</p>
++    }
++    <p>@Packet.Evidence.Caveat</p>
++</section>
++
++@code {
++    [Parameter]
++    [EditorRequired]
++    public EvidencePacket Packet { get; set; } = default!;
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor
+new file mode 100644
+index 0000000..e61eb82
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor
+@@ -0,0 +1,23 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<header class="mem-evidence-scope"
++        data-testid="mem-evidence-scope"
++        aria-label="Evidence scope">
++    <div>
++        <span class="mem-evidence-label">Tenant</span>
++        <strong>@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
++    </div>
++    <div>
++        <span class="mem-evidence-label">Case</span>
++        <strong>@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
++    </div>
++    <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
++                   Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
++                   ColumnHeader="Scope" />
++</header>
++
++@code {
++    [Parameter]
++    [EditorRequired]
++    public EvidencePacket Packet { get; set; } = default!;
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor
+new file mode 100644
+index 0000000..957b4d1
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor
+@@ -0,0 +1,51 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<section class="mem-evidence-section"
++         data-testid="mem-source-stack"
++         aria-label="Source citation stack">
++    <h3>Sources</h3>
++    <p data-testid="mem-source-order-basis">Order basis: packet order</p>
++    @if (Sources.Count == 0)
++    {
++        <p role="status">Sources unavailable</p>
++    }
++    else
++    {
++        <ol>
++            @foreach (EvidencePacketSource source in Sources)
++            {
++                <li data-testid="mem-source-item" data-source-rank="@source.Rank">
++                    <div>
++                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, "redacted source")</strong>
++                        <span>@source.SourceType</span>
++                    </div>
++                    <p>@EvidenceDisplay.SafeText(source.Snippet, "redacted source")</p>
++                    <dl>
++                        <dt>Freshness</dt>
++                        <dd>@EvidenceDisplay.FreshnessLabel()</dd>
++                        <dt>Score</dt>
++                        <dd>@EvidenceDisplay.ScoreLabel(source.Score)</dd>
++                        <dt>Memory unit</dt>
++                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, "source unavailable")</dd>
++                    </dl>
++                    <FluentButton Appearance="ButtonAppearance.Default"
++                                  Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
++                                  aria-label="@InspectSourceAriaLabel(source)">
++                        Inspect source
++                    </FluentButton>
++                </li>
++            }
++        </ol>
++    }
++</section>
++
++@code {
++    [Parameter]
++    [EditorRequired]
++    public EvidencePacket Packet { get; set; } = default!;
++
++    private IReadOnlyList<EvidencePacketSource> Sources => Packet.Sources;
++
++    private static string InspectSourceAriaLabel(EvidencePacketSource source)
++        => $"Inspect source {source.Rank}";
++}
+diff --git a/src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor
+new file mode 100644
+index 0000000..1426178
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor
+@@ -0,0 +1,28 @@
++@namespace Hexalith.Memories.Web.Components.Evidence
++
++<section class="mem-trust-strip"
++         data-testid="mem-trust-strip"
++         aria-label="Evidence trust summary">
++    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
++                   Label="@EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength)"
++                   ColumnHeader="Confidence" />
++    <FcStatusBadge Slot="BadgeSlot.Neutral"
++                   Label="@EvidenceDisplay.FreshnessLabel()"
++                   ColumnHeader="Freshness" />
++    <span data-testid="mem-trust-source-count"
++          aria-label="Source count: @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)">
++        @EvidenceDisplay.SourceCountLabel(Packet.Sources.Count)
++    </span>
++    <FcStatusBadge Slot="@EvidenceDisplay.SlotForState(Packet.State)"
++                   Label="@EvidenceDisplay.Label(Packet.State)"
++                   ColumnHeader="Evidence health" />
++    <FcStatusBadge Slot="@(EvidenceDisplay.TokenBudgetLabel(Packet) == "compressed" ? BadgeSlot.Warning : BadgeSlot.Neutral)"
++                   Label="@EvidenceDisplay.TokenBudgetLabel(Packet)"
++                   ColumnHeader="Token budget" />
++</section>
++
++@code {
++    [Parameter]
++    [EditorRequired]
++    public EvidencePacket Packet { get; set; } = default!;
++}
+diff --git a/src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj b/src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj
+new file mode 100644
+index 0000000..b2a9957
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj
+@@ -0,0 +1,14 @@
++<Project Sdk="Microsoft.NET.Sdk.Razor">
++  <PropertyGroup>
++    <TargetFramework>net10.0</TargetFramework>
++    <PackageId>Hexalith.Memories.Web</PackageId>
++    <IsPackable>true</IsPackable>
++  </PropertyGroup>
++  <ItemGroup>
++    <FrameworkReference Include="Microsoft.AspNetCore.App" />
++    <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
++    <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts\Hexalith.FrontComposer.Contracts.csproj" />
++    <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj" />
++    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
++  </ItemGroup>
++</Project>
+diff --git a/src/Hexalith.Memories.Web/_Imports.razor b/src/Hexalith.Memories.Web/_Imports.razor
+new file mode 100644
+index 0000000..2beef7d
+--- /dev/null
++++ b/src/Hexalith.Memories.Web/_Imports.razor
+@@ -0,0 +1,5 @@
++@using Hexalith.FrontComposer.Contracts.Attributes
++@using Hexalith.FrontComposer.Shell.Components.Badges
++@using Hexalith.Memories.Contracts.V1
++@using Hexalith.Memories.Web.Components.Evidence
++@using Microsoft.FluentUI.AspNetCore.Components
+diff --git a/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs b/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs
+new file mode 100644
+index 0000000..28cde8f
+--- /dev/null
++++ b/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs
+@@ -0,0 +1,123 @@
++// <copyright file="EvidenceCockpitTests.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Web.Tests.Components.Evidence;
++
++using Bunit;
++
++using Hexalith.FrontComposer.Testing;
++using Hexalith.Memories.Contracts.V1;
++using Hexalith.Memories.Web.Components.Evidence;
++
++using Shouldly;
++
++public sealed class EvidenceCockpitTests : FrontComposerTestBase
++{
++    [Fact]
++    public void MemoriesEvidenceCockpit_CompletePacket_ShouldRenderScopeBeforeResultContent()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.Packet, EvidencePacketFixtures.CompletePacket()));
++
++        string markup = component.Markup;
++        markup.IndexOf("data-testid=\"mem-evidence-scope\"", StringComparison.Ordinal).ShouldBeLessThan(
++            markup.IndexOf("data-testid=\"mem-evidence-result\"", StringComparison.Ordinal));
++        component.Find("[data-testid='mem-evidence-scope']").TextContent.ShouldContain("tenant-a");
++        component.Find("[data-testid='mem-evidence-scope']").TextContent.ShouldContain("case-a");
++    }
++
++    [Fact]
++    public void MemoriesEvidenceCockpit_LoadingState_ShouldKeepScopeBeforeStatusContent()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.TenantId, "tenant-a")
++            .Add(p => p.CaseId, "case-a")
++            .Add(p => p.IsLoading, true));
++
++        string markup = component.Markup;
++        markup.IndexOf("data-testid=\"mem-evidence-scope\"", StringComparison.Ordinal).ShouldBeLessThan(
++            markup.IndexOf("data-testid=\"mem-evidence-result\"", StringComparison.Ordinal));
++        component.Find("[data-testid='mem-evidence-result']").TextContent.ShouldContain("Loading evidence");
++    }
++
++    [Fact]
++    public void MemoriesEvidenceCockpit_ErrorState_ShouldKeepScopeAndSanitizeMessage()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.TenantId, "tenant-a")
++            .Add(p => p.CaseId, "case-a")
++            .Add(p => p.ErrorMessage, "Failed at C:\\Users\\Jerome\\secret.txt with Bearer abc.def.ghi"));
++
++        string markup = component.Markup;
++        markup.IndexOf("data-testid=\"mem-evidence-scope\"", StringComparison.Ordinal).ShouldBeLessThan(
++            markup.IndexOf("data-testid=\"mem-evidence-result\"", StringComparison.Ordinal));
++        component.Markup.ShouldContain("Evidence unavailable");
++        component.Markup.ShouldNotContain("Bearer ");
++        component.Markup.ShouldNotContain("C:\\");
++    }
++
++    [Fact]
++    public void MemoriesTrustStrip_States_ShouldRenderVisibleLabelsAndAccessibleNames()
++    {
++        IRenderedComponent<MemoriesTrustStrip> component = Render<MemoriesTrustStrip>(parameters => parameters
++            .Add(p => p.Packet, EvidencePacketFixtures.CompressedPacket()));
++
++        component.Markup.ShouldContain("aria-label=\"Confidence: strong\"");
++        component.Markup.ShouldContain("aria-label=\"Freshness: unknown\"");
++        component.Markup.ShouldContain("aria-label=\"Evidence health: pending expansion\"");
++        component.Markup.ShouldContain("aria-label=\"Token budget: compressed\"");
++        component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("1 source");
++    }
++
++    [Fact]
++    public void EvidencePacketViewMapping_RenderedFields_ShouldHaveNamedContractSources()
++    {
++        IReadOnlyList<EvidencePacketFieldMapping> mappings = EvidencePacketViewMapping.RenderedFields;
++
++        mappings.ShouldContain(static x => x.DisplayField == "trust.confidence" && x.ContractSource == "EvidencePacket.Evidence.EvidenceStrength");
++        mappings.ShouldContain(static x => x.DisplayField == "trust.evidenceHealth" && x.ContractSource == "EvidencePacket.State");
++        mappings.ShouldContain(static x => x.DisplayField == "scope.tenant" && x.ContractSource == "EvidencePacket.Scope.TenantId");
++        mappings.ShouldContain(static x => x.DisplayField == "sources.originIdentifier" && x.ContractSource == "EvidencePacket.Sources[].SourceUri");
++        mappings.ShouldContain(static x => x.DisplayField == "axes.rankingReason" && x.ContractSource == "EvidencePacket.Evidence.AxisEvidence[].Description");
++        mappings.ShouldContain(static x => x.DisplayField == "graph.gapMarkers" && x.ContractSource == "EvidencePacket.Graph.GapMarkers");
++        mappings.ShouldAllBe(static x => !string.IsNullOrWhiteSpace(x.UnavailableFallback));
++    }
++
++    [Fact]
++    public void MemoriesEvidenceCockpit_RestrictedPacket_ShouldDisplayRestrictiveStateBeforeEvidence()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.Packet, EvidencePacketFixtures.UnauthorizedPacket()));
++
++        string markup = component.Markup;
++        markup.IndexOf("data-testid=\"mem-evidence-restrictive-state\"", StringComparison.Ordinal).ShouldBeLessThan(
++            markup.IndexOf("data-testid=\"mem-evidence-result\"", StringComparison.Ordinal));
++        component.Markup.ShouldNotContain("memory-secret");
++    }
++
++    [Fact]
++    public void MemoriesEvidenceCockpit_Details_ShouldPreservePacketOrderingAndUnavailableOrderBasis()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.Packet, EvidencePacketFixtures.MultiSourcePacket()));
++
++        component.FindAll("[data-testid='mem-source-item']").Select(x => x.GetAttribute("data-source-rank")).ShouldBe(["1", "2"]);
++        component.FindAll("[data-testid='mem-axis-item']").Select(x => x.GetAttribute("data-axis")).ShouldBe(["semantic", "syntactic"]);
++        component.Find("[data-testid='mem-source-order-basis']").TextContent.ShouldContain("packet order");
++    }
++
++    [Fact]
++    public void MemoriesEvidenceCockpit_SensitivePacket_ShouldNotRenderRawPathsTokensOrRestrictedDiagnostics()
++    {
++        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
++            .Add(p => p.Packet, EvidencePacketFixtures.SensitivePacket()));
++
++        component.Markup.ShouldNotContain("Bearer ");
++        component.Markup.ShouldNotContain("C:\\");
++        component.Markup.ShouldNotContain("/home/");
++        component.Markup.ShouldNotContain("redis://");
++        component.Markup.ShouldContain("redacted source");
++    }
++}
+diff --git a/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs b/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs
+new file mode 100644
+index 0000000..6f26b4a
+--- /dev/null
++++ b/tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs
+@@ -0,0 +1,135 @@
++// <copyright file="EvidencePacketFixtures.cs" company="ITANEO">
++// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
++// Licensed under the MIT license. See LICENSE file in the project root for full license information.
++// </copyright>
++
++namespace Hexalith.Memories.Web.Tests.Components.Evidence;
++
++using Hexalith.Memories.Contracts.V1;
++
++internal static class EvidencePacketFixtures
++{
++    public static EvidencePacket CompletePacket()
++        => Packet(
++            EvidencePacketState.Complete,
++            [Source(1, "memory-a", "https://docs.example/source-a", 0.91d)],
++            [Axis("semantic", 0.91d, "cosine", "semantic vector match")]);
++
++    public static EvidencePacket CompressedPacket()
++        => CompletePacket() with
++        {
++            State = EvidencePacketState.PendingExpansion,
++            OmittedDetails = new EvidencePacketOmittedDetails(
++                3,
++                1200,
++                EvidencePacketOmissionReason.TokenBudget,
++                ["sources"],
++                ["rankedResults"],
++                [
++                    new EvidencePacketExpansionHandle(
++                        "ep:v1:abc:rankedResults",
++                        EvidencePacketRecoveryKind.IncreaseTokenBudget,
++                        "rankedResults",
++                        "tenant-a",
++                        "case-a",
++                        "Re-run with a larger tokenBudget."),
++                ]),
++            Recovery =
++            [
++                new EvidencePacketRecoveryAction(
++                    EvidencePacketRecoveryKind.IncreaseTokenBudget,
++                    "increaseTokenBudget",
++                    "Re-run with a larger tokenBudget.",
++                    "rankedResults"),
++            ],
++        };
++
++    public static EvidencePacket UnauthorizedPacket()
++        => Packet(
++            EvidencePacketState.Unauthorized,
++            [Source(1, "memory-secret", "https://docs.example/restricted", 0.99d)],
++            []) with
++        {
++            Scope = new EvidencePacketScope(
++                "tenant-a",
++                "case-a",
++                EvidencePacketIsolationStatus.Unauthorized,
++                "tenant-case"),
++            Sources = [],
++            OmittedDetails = new EvidencePacketOmittedDetails(
++                0,
++                0,
++                EvidencePacketOmissionReason.Authorization,
++                ["sources", "evidence"],
++                ["authorization"],
++                []),
++            Recovery =
++            [
++                new EvidencePacketRecoveryAction(
++                    EvidencePacketRecoveryKind.CheckAuthorization,
++                    "checkAuthorization",
++                    "Use an authorized tenant and case scope.",
++                    "auth"),
++            ],
++        };
++
++    public static EvidencePacket MultiSourcePacket()
++        => Packet(
++            EvidencePacketState.Complete,
++            [
++                Source(1, "memory-a", "https://docs.example/source-a", 0.81d),
++                Source(2, "memory-b", "https://docs.example/source-b", 0.79d),
++            ],
++            [
++                Axis("semantic", 0.81d, "cosine", "semantic vector match"),
++                Axis("syntactic", 0.79d, "bm25", "term match"),
++            ]);
++
++    public static EvidencePacket SensitivePacket()
++        => Packet(
++            EvidencePacketState.Complete,
++            [
++                Source(1, "memory-a", "C:\\Users\\Jerome\\secret.txt", 0.81d) with { Snippet = "Bearer abc.def.ghi redis://localhost:6379 /home/jerome/file" },
++            ],
++            [Axis("semantic", 0.81d, "cosine", "semantic vector match")]);
++
++    private static EvidencePacket Packet(
++        EvidencePacketState state,
++        IReadOnlyList<EvidencePacketSource> sources,
++        IReadOnlyList<EvidencePacketAxisEvidence> axisEvidence)
++        => new(
++            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"),
++            new EvidencePacketResultSummary("find policy context", sources.Count, sources.Count, true, "Answer summary"),
++            sources,
++            new EvidencePacketEvidence(
++                EvidencePacketEvidenceStrength.Strong,
++                "Scores measure query-result relevance, not factual accuracy or data completeness.",
++                axisEvidence.Select(static x => x.Axis).ToArray(),
++                [],
++                false,
++                null,
++                axisEvidence),
++            new EvidencePacketGraphSummary(
++                true,
++                ["memory-a", "memory-b"],
++                ["supports"],
++                ["missing-parent"]),
++            state,
++            new EvidencePacketOmittedDetails(0, 0, EvidencePacketOmissionReason.None, [], [], []),
++            []);
++
++    private static EvidencePacketSource Source(int rank, string memoryUnitId, string sourceUri, double score)
++        => new(
++            rank,
++            memoryUnitId,
++            sourceUri,
++            SourceType.File,
++            "Relevant source snippet",
++            score,
++            "case-a",
++            "Case A",
++            0);
++
++    private static EvidencePacketAxisEvidence Axis(string axis, double score, string method, string description)
++        => new(axis, score, method, description);
++}
+diff --git a/tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj b/tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj
+new file mode 100644
+index 0000000..84a558d
+--- /dev/null
++++ b/tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj
+@@ -0,0 +1,19 @@
++<Project Sdk="Microsoft.NET.Sdk.Razor">
++  <PropertyGroup>
++    <TargetFramework>net10.0</TargetFramework>
++    <IsPackable>false</IsPackable>
++  </PropertyGroup>
++  <ItemGroup>
++    <ProjectReference Include="..\..\src\Hexalith.Memories.Web\Hexalith.Memories.Web.csproj" />
++    <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" />
++    <PackageReference Include="bunit" />
++    <PackageReference Include="Shouldly" />
++    <PackageReference Include="xunit.v3" />
++    <PackageReference Include="xunit.runner.visualstudio" />
++    <PackageReference Include="Microsoft.NET.Test.Sdk" />
++    <PackageReference Include="coverlet.collector">
++      <PrivateAssets>all</PrivateAssets>
++      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
++    </PackageReference>
++  </ItemGroup>
++</Project>

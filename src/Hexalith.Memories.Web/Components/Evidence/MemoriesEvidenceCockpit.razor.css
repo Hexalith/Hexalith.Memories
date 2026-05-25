@@ -13,41 +13,39 @@
     gap: .75rem;
 }
 
-.mem-evidence-label {
-    display: block;
-    font-size: .75rem;
+.mem-evidence-restrictive {
+    background: var(--warning-fill-rest, #fef3c7);
+    border: 1px solid var(--warning-stroke-rest, #f59e0b);
+    border-radius: 8px;
+    color: var(--warning-foreground-rest, #92400e);
     font-weight: 600;
+    padding: .75rem 1rem;
 }
 
-.mem-evidence-section {
+.mem-evidence-restrictive[data-restrictive-kind="unauthorized"] {
+    background: var(--danger-fill-rest, #fee2e2);
+    border-color: var(--danger-stroke-rest, #ef4444);
+    color: var(--danger-foreground-rest, #991b1b);
+}
+
+.mem-evidence-recovery ul {
     display: grid;
     gap: .5rem;
-}
-
-.mem-evidence-section ol {
-    display: grid;
-    gap: .75rem;
     list-style-position: inside;
     margin: 0;
     padding: 0;
 }
 
-.mem-evidence-section li {
+.mem-evidence-recovery li {
     border: 1px solid var(--neutral-stroke-rest);
     border-radius: 8px;
     display: grid;
-    gap: .5rem;
+    gap: .25rem;
     padding: .75rem;
 }
 
-.mem-evidence-section dl {
-    display: grid;
-    gap: .25rem .75rem;
-    grid-template-columns: max-content minmax(0, 1fr);
-    margin: 0;
-}
-
-.mem-evidence-section dd {
-    margin: 0;
-    overflow-wrap: anywhere;
+.mem-evidence-label {
+    display: block;
+    font-size: .75rem;
+    font-weight: 600;
 }

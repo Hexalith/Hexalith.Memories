@@ -4,8 +4,12 @@
          data-testid="mem-source-stack"
          aria-label="Source citation stack">
     <h3>Sources</h3>
-    <p data-testid="mem-source-order-basis">Order basis: packet order</p>
-    @if (Sources.Count == 0)
+    <p data-testid="mem-source-order-basis">Order basis: @OrderBasisText</p>
+    @if (IsRestricted)
+    {
+        <p role="status" data-testid="mem-source-restricted">Source citations are not available in the current scope.</p>
+    }
+    else if (Sources.Count == 0)
     {
         <p role="status">Sources unavailable</p>
     }
@@ -16,23 +20,18 @@
             {
                 <li data-testid="mem-source-item" data-source-rank="@source.Rank">
                     <div>
-                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, "redacted source")</strong>
-                        <span>@source.SourceType</span>
+                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, "source unavailable")</strong>
+                        <span>@EvidenceDisplay.SafeText(source.SourceType.ToString(), "unknown type")</span>
                     </div>
-                    <p>@EvidenceDisplay.SafeText(source.Snippet, "redacted source")</p>
+                    <p>@EvidenceDisplay.SafeText(source.Snippet, "snippet unavailable")</p>
                     <dl>
                         <dt>Freshness</dt>
                         <dd>@EvidenceDisplay.FreshnessLabel()</dd>
                         <dt>Score</dt>
                         <dd>@EvidenceDisplay.ScoreLabel(source.Score)</dd>
                         <dt>Memory unit</dt>
-                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, "source unavailable")</dd>
+                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable")</dd>
                     </dl>
-                    <FluentButton Appearance="ButtonAppearance.Default"
-                                  Disabled="@(Packet.Scope.IsolationStatus != EvidencePacketIsolationStatus.Authorized)"
-                                  aria-label="@InspectSourceAriaLabel(source)">
-                        Inspect source
-                    </FluentButton>
                 </li>
             }
         </ol>
@@ -46,6 +45,11 @@
 
     private IReadOnlyList<EvidencePacketSource> Sources => Packet.Sources;
 
-    private static string InspectSourceAriaLabel(EvidencePacketSource source)
-        => $"Inspect source {source.Rank}";
+    private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
+        || Packet.State == EvidencePacketState.Unauthorized;
+
+    // Advanced Elicitation #4: contract has no ordering signal — preserve packet order
+    // and surface that explicitly. When the contract starts emitting an order basis,
+    // replace this constant with the contract-sourced value.
+    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
 }
