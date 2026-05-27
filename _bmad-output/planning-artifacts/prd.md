@@ -462,6 +462,8 @@ Confidence scores must have clear, documented meaning. Each memory unit's search
 
 All axis scores are normalized to 0.0–1.0 before fusion. The fusion weights and algorithm are documented and deterministic. `--explain` exposes all component scores and the normalization method applied.
 
+**Evidence Packet (cross-surface trust envelope):** The trust primitives defined across these requirements — composite confidence with per-axis breakdown (FR63), source/origin attribution (FR24), token-budget-aware omitted-detail handling (FR23), and graceful-degradation signaling (FR66), together with tenant/case scope, result state, and recovery guidance — are composed into a single shared response object referred to as the **Evidence Packet**. The Evidence Packet is the cross-surface envelope used identically by CLI JSON output, MCP tool responses, and future web UI composition, so no interface invents a conflicting definition of confidence, degraded state, omitted details, or recovery action. Its concrete shape is owned by `Contracts.V1` (see Architecture) and its presentation semantics are elaborated in the UX Design Specification.
+
 **Critical distinction: confidence scores measure query-result relevance, NOT factual accuracy or data completeness.** A score of 0.95 means the result is highly relevant to the query — it does not mean the underlying data is complete, correct, or current. This distinction must appear in:
 - API reference documentation
 - CLI `--explain` output (every explain result includes this caveat)

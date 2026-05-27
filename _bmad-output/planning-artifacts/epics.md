@@ -420,6 +420,16 @@ If the preflight subset is not in place, do not start Story 1.2 onward. Either l
 
 New story keys must use numeric `Epic.Story` format. Alphabetic suffixes are allowed only as historical aliases during migration and must not be introduced for new work unless story tooling explicitly supports them and a sprint change approves the exception.
 
+**Story-key alias & status map** (reconciles `epics.md` keys with `_bmad-output/implementation-artifacts/*` file keys and reserved/optional slots):
+
+| Current key | Historical alias / status | Notes |
+|---|---|---|
+| Story 0.0 | was Story 1.1 | Project scaffolding & single-command boot; renumbered into the Epic 0 foundation path. Completed story file and sprint-status may retain the `1-1-project-scaffolding-and-single-command-boot` key for traceability. |
+| Epic 1 (first story 1.2) | — | Epic 1 has no Story 1.1; it begins at Story 1.2 because 1.1 became Story 0.0. |
+| Story 2.7 | was Story 2.6A | Evidence Packet Contract Mapping; implementation artifacts may keep `2.6A` as an alias. |
+| Story 8.3 | reserved-non-mvp | Phase 2 data export (FR71). The Epic 8 MVP sequence intentionally continues with 8.4 and 8.5. Story-status / file-scope tooling must treat `8.3` as `reserved-non-mvp`, not a missing MVP story. |
+| Stories 12.7 / 12.8 | optional / conditional | S11-FB / S11-FC follow-ups; created only if their re-open trigger actually fires (do not scaffold speculatively). |
+
 ## Epic List
 
 ### Phase: MVP — Foundation Gate
@@ -3369,6 +3379,8 @@ Maintainers can give the first external consumer of Hexalith.Memories (the `Hexa
 **NFRs reinforced:** tenant isolation (NFR8), idempotent at-least-once event handling, deployment/observability configurability.
 
 **Release-timing note:** Story 18.4 is the only story with semantic-release sensitivity — it changes the public `Hexalith.Memories.Client.Rest` contract and must land as an additive `feat` (new optional idempotency token / new overload; experimental-marker removal is non-breaking) and be cut before the Parties project pins the stabilised SDK. The other six stories are documentation, drift-guard tests, or additive endpoints with no breaking-change risk.
+
+**Sequencing note:** Stories 18.5 (source-URI-keyed lookup) and 18.6 (`MemoryUnitId` stability contract) are mutually dependent in their contract text — 18.5 reuses and depends on the dedup-record lifetime that 18.6 documents, and 18.6 names 18.5 as the authoritative resolution path. Land them in the same change (or 18.6's contract before/with 18.5's endpoint) so the lookup endpoint is never published against an unstated stability guarantee.
 
 ### Story 18.1: AppHost Project-Resolution Guard and Public-Surface Stability Contract
 
