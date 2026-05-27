@@ -198,3 +198,15 @@ development_status:
   17-4-role-specific-web-inspection-lenses: ready-for-dev
   17-5-responsive-and-accessible-web-validation: ready-for-dev
   epic-17-retrospective: optional
+
+  # Epic 18: Downstream Consumer Integration Contract Hardening
+  # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27. Not MVP-counted. Story 18.4 is semantic-release sensitive.
+  epic-18: backlog
+  18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: backlog
+  18-2-deployment-configuration-contract-publication: backlog
+  18-3-invocable-route-and-operation-surface-publication: backlog
+  18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: backlog
+  18-5-source-uri-keyed-memory-unit-lookup-endpoint: backlog
+  18-6-memory-unit-id-stability-contract: backlog
+  18-7-memories-client-mockability-stability-contract: backlog
+  epic-18-retrospective: optional

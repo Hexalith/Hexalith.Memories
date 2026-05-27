@@ -406,7 +406,7 @@ Minimum build/test CI is an early enabling prerequisite for any greenfield or re
 
 **Phase 1.5 fast-follow:** Epic 9 and Epic 10. Not active MVP readiness; pulled forward only by explicit sprint change.
 
-**Engineering/Operational Readiness Track:** Epics 11-16. They remain in this file for lifecycle continuity, require explicit sprint selection before implementation, and are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence. They must never be counted toward MVP product readiness.
+**Engineering/Operational Readiness Track:** Epics 11-16 and Epic 18. They remain in this file for lifecycle continuity, require explicit sprint selection before implementation, and are judged by delivery safety, release integrity, maintainer/operator outcomes, and validation evidence. They must never be counted toward MVP product readiness. Epic 18 holds the 2026-05-27 Parties downstream-consumer integration asks (MEM-1 … MEM-7); only Story 18.4 carries semantic-release sensitivity and must land before the Parties project pins the stabilised SDK.
 
 **Future web UI** (Epic 17, FrontComposer, Fluent UI implementation) remains out of MVP unless a later approved sprint change pulls it forward.
 
@@ -523,6 +523,12 @@ Maintainers and operators can close the Story 9.3 projection-registry gap by com
 ### Epic 17: Future Web UX Composition & Accessibility
 Future web users can inspect evidence, scope, sources, graph context, case activity, operator health, benchmark results, and MCP packets through FrontComposer/Fluent UI compositions with responsive and accessible behavior. This is deferred future web UI work and is not part of MVP unless a later sprint change explicitly pulls web UI implementation forward.
 **UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
+
+### Epic 18: Downstream Consumer Integration Contract Hardening
+Maintainers can give the first external consumer of Hexalith.Memories (the `Hexalith.Parties` project) a stable, documented, and race-safe integration contract, closing seven cross-repository asks (MEM-1 … MEM-7) raised during the Parties `bmad-correct-course` intake on 2026-05-27. Three asks (MEM-1, MEM-4, MEM-7) were partly satisfied by the current `main`; the stories close only the verified residual gap.
+**Lifecycle label:** Operational Readiness / Downstream Consumer Integration Hardening
+**Driven by:** Sprint Change Proposal 2026-05-27 (Parties consumer integration intake)
+**FRs reinforced:** FR6, FR24, FR59, FR60, FR61, FR62
 
 ---
 
@@ -3348,3 +3354,190 @@ So that evidence inspection is accessible and reliable rather than visual polish
 
 
 ---
+
+## Epic 18: Downstream Consumer Integration Contract Hardening
+
+**Lifecycle label:** Operational Readiness / Downstream Consumer Integration Hardening.
+
+Maintainers can give the first external consumer of Hexalith.Memories (the `Hexalith.Parties` project) a stable, documented, and race-safe integration contract, closing seven cross-repository asks (MEM-1 … MEM-7) raised during the Parties `bmad-correct-course` intake on 2026-05-27.
+
+**Origin:** Parties consumer correct-course intake, 2026-05-27 (origins tagged 7-7, 9-3, 9-6 chunk A / passes 2/3/5). Each story carries its `(MEM-n)` origin and a **Parties-side follow-up** so the cross-repo linkage stays auditable. Three asks (MEM-1, MEM-4, MEM-7) were partly satisfied by the current `main`; the stories below close only the verified residual gap.
+
+**Preflight required:** Before implementation starts, re-verify the state each story cites (the codebase moves): `Projects.Hexalith_Memories_Server` / `Projects.Hexalith_Memories_Mcp` resolution in `src/Hexalith.Memories.AppHost/Program.cs`; the `AddServerEventStoreIntegration` → `AddMemoriesEventStoreIntegration` wiring signature; the `[Experimental("HXL001")]` marker on `MemoriesClient.IngestAsync`; the `DedupKeyBuilder` / `CheckIdempotencyActivity` dedup path; the absence of a source-URI lookup endpoint; the `ResolveMemoryUnitId` logic in `IngestionWorkflow.cs`; and Architecture Decision D9. Update the story if any cited anchor has moved. Per the Engineering/Operational Readiness Track preamble, individual stories may be implemented, accepted, or carried forward with rationale recorded in `deferred-work.md`.
+
+**FRs reinforced:** FR6, FR24, FR59, FR60, FR61, FR62.
+**NFRs reinforced:** tenant isolation (NFR8), idempotent at-least-once event handling, deployment/observability configurability.
+
+**Release-timing note:** Story 18.4 is the only story with semantic-release sensitivity — it changes the public `Hexalith.Memories.Client.Rest` contract and must land as an additive `feat` (new optional idempotency token / new overload; experimental-marker removal is non-breaking) and be cut before the Parties project pins the stabilised SDK. The other six stories are documentation, drift-guard tests, or additive endpoints with no breaking-change risk.
+
+### Story 18.1: AppHost Project-Resolution Guard and Public-Surface Stability Contract
+
+**Origin:** MEM-1 (Parties passes 7-7 known-unrelated, 9-3).
+
+As a maintainer of a downstream Aspire AppHost,
+I want a compile-time guarantee that `Projects.Hexalith_Memories_Server` and `Projects.Hexalith_Memories_Mcp` resolve and that their public project/type names stay stable,
+So that a clean clone with root submodules initialised builds the full `.slnx` without submodule-drift surprises.
+
+**Acceptance Criteria:**
+
+**Given** the AppHost already references `Projects.Hexalith_Memories_Server` and `Projects.Hexalith_Memories_Mcp`,
+**When** a dedicated AppHost-resolution test runs,
+**Then** it asserts those project symbols resolve at compile time as a buildable test, not an integration/Docker test, and does not depend on a running sidecar.
+
+**Given** the Parties intake reported `AddHexalithEventStore` redis-parameter drift,
+**When** the EventStore wiring surface is reviewed,
+**Then** the story confirms the current public wiring is `AddServerEventStoreIntegration(IConfiguration)` → `AddMemoriesEventStoreIntegration(IConfiguration, Action<EventStoreIntegrationBuilder>?)` with no redis parameter, and records that the reported drift was a stale submodule pin rather than a current API.
+
+**Given** external AppHosts depend on stable project and assembly names,
+**When** this story completes,
+**Then** the project name, assembly name, and root namespace of `Hexalith.Memories.Server` and `Hexalith.Memories.Mcp` are recorded as a stability contract under `docs/dev`, and any future rename is flagged as requiring a breaking-change note.
+
+**Parties-side follow-up:** Parties adds its own AppHost compile assertion that `Projects.Hexalith_Memories_Server` resolves.
+
+### Story 18.2: Deployment Configuration Contract Publication
+
+**Origin:** MEM-2 (Parties pass 9-3).
+
+As an operator deploying Memories into a downstream Kubernetes overlay,
+I want the canonical environment, port, and OTLP configuration surface published,
+So that placeholder-shaped env literals in consumer kustomizations can be replaced with real, documented values without first running aspirate.
+
+**Acceptance Criteria:**
+
+**Given** there is no aspirate manifest tooling in the repo today,
+**When** this story completes,
+**Then** `docs/operations` documents the canonical deploy config contract: the OTLP exporter endpoint variable (`OTEL_EXPORTER_OTLP_ENDPOINT`) and its enable/disable semantics, the Dapr sidecar HTTP/gRPC ports the Server and MCP expect (3500/50001 and 3600/50101 in the AppHost defaults), and the required runtime env (`PUBSUB_REDIS_HOST`, `PUBSUB_REDIS_PASSWORD`, `MEMORIES_EVENTSTORE_TOPIC`, and connection-string keys).
+
+**Given** the documentation must not drift from code,
+**When** the contract is published,
+**Then** the documented variable names are cross-checked against `ServiceDefaults`, `AppHost/Program.cs`, and `appsettings*.json`, and a test or doc-lint guards the variable-name list against silent rename.
+
+**Given** full aspirate emission is a larger, separable effort,
+**When** this story is scoped,
+**Then** aspirate manifest generation is explicitly deferred to a future story and recorded as such; this story delivers the documented contract only.
+
+**Parties-side follow-up:** Parties replaces the placeholder env literals in `deploy/k8s/memories/kustomization.yaml` using the published contract.
+
+### Story 18.3: Invocable Route and Operation Surface Publication
+
+**Origin:** MEM-3 (Parties pass 9-3).
+
+As an operator authoring a Dapr access-control policy for Memories,
+I want the invocable HTTP route and pub/sub operation surface published,
+So that `accesscontrol.memories.yaml` can be verified against real operation paths instead of an unverified `/process` placeholder.
+
+**Acceptance Criteria:**
+
+**Given** the Parties ACL references an operation path `/process` that does not exist on the Memories surface,
+**When** the route surface is published,
+**Then** the documentation enumerates the real invocable surface — the `/api/*` REST routes and the Dapr pub/sub subscription endpoint (`[HttpPost("ingest")]` → `/events/ingest`, topic from `MEMORIES_EVENTSTORE_TOPIC`) — and explicitly states that no `/process` operation exists.
+
+**Given** an external ACL must be machine-verifiable,
+**When** this story completes,
+**Then** the route surface is published in a form an ACL can be checked against (an OpenAPI document or a maintained route-surface doc under `docs/dev` or `docs/operations`), covering method, path, and Dapr operation semantics.
+
+**Given** the surface can drift as endpoints are added,
+**When** the surface is published,
+**Then** a test or generation step keeps the published surface in sync with the actual mapped endpoints, or a documented review trigger requires updating it whenever routes change.
+
+**Parties-side follow-up:** Parties corrects the `/process` operation path in `accesscontrol.memories.yaml` and adds an end-to-end ACL assertion against the published surface.
+
+### Story 18.4: Stable Ingest Contract with Explicit Idempotency Token and Atomic Dedup
+
+**Origin:** MEM-4 (Parties pass 9-6 chunk A / 3rd pass). **Release-timing sensitive — additive `feat`.**
+
+As a downstream service indexing memories from near-simultaneous projection events,
+I want a non-experimental ingest path that accepts an explicit idempotency token and resolves concurrent same-source ingests atomically,
+So that two near-simultaneous ingests of the same party/source cannot race into duplicate or partially-written memory units, and consumers can drop the `HXL001` suppression.
+
+**Acceptance Criteria:**
+
+**Given** `MemoriesClient.IngestAsync` is currently `[Experimental("HXL001")]` (Story 7.4),
+**When** this story stabilises the ingest path,
+**Then** a non-experimental ingest entry point exists, the change is additive (new overload or experimental-marker removal — no breaking signature change), serialized through the existing JSON context, and covered by contract/client tests, so consumers can ingest without `#pragma warning disable HXL001`.
+
+**Given** the only dedup key today is `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}` derived server-side,
+**When** the ingest contract is extended,
+**Then** the request carries an optional explicit idempotency token that, when supplied, participates in dedup alongside `sourceUri`, and the contract documents token precedence and the natural-key fallback when the token is absent.
+
+**Given** the current idempotency check in `CheckIdempotencyActivity` is check-then-act and can race under concurrency,
+**When** two ingests with the same dedup key arrive near-simultaneously,
+**Then** dedup resolution is atomic (for example a Redis `SET … NX` reservation) so exactly one ingest wins and the other observes the existing `MemoryUnitId`, proven by a concurrent-ingest test.
+
+**Given** ingestion runs on at-least-once, unordered Dapr pub/sub,
+**When** a duplicate or out-of-order ingest is received,
+**Then** behavior remains idempotent and returns the same `MemoryUnitId` without creating a second unit, consistent with the project idempotency rules.
+
+**Parties-side follow-up:** Parties drops the `HXL001` suppression in `PartyMemoryIndexingService` and passes the idempotency token.
+
+### Story 18.5: Source-URI-Keyed Memory-Unit Lookup Endpoint
+
+**Origin:** MEM-5 (Parties pass 9-6 chunk A).
+
+As a downstream service resolving a graph start node from a source URI,
+I want an exact source-URI-keyed lookup that returns the canonical `MemoryUnitId`,
+So that graph mode no longer silently degrades to local mode when the canonical match falls outside a free-text search's top hits.
+
+**Acceptance Criteria:**
+
+**Given** there is no keyed lookup today and free-text/syntactic search may not surface the canonical unit in its top results,
+**When** a consumer needs the unit for a known source URI,
+**Then** a tenant- and case-scoped endpoint resolves a source URI to its canonical `MemoryUnitId` by exact key, returning a structured not-found result when no unit exists rather than a best-effort search hit.
+
+**Given** the dedup record `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}` already maps source URI → `MemoryUnitId` internally,
+**When** the lookup is implemented,
+**Then** it reuses that existing mapping as the authoritative index where possible rather than introducing a parallel store, and documents the dependency on the dedup record's lifetime (see Story 18.6).
+
+**Given** the endpoint is part of the public client contract,
+**When** it is added,
+**Then** it is exposed through `MemoriesClient` and the MCP/CLI surface as appropriate, tenant-isolated, additive to the JSON contract, and covered by success, not-found, and cross-tenant-rejection tests.
+
+**Parties-side follow-up:** Parties switches `MemoriesPartySearchService.ResolveGraphStartNodeIdAsync` from the free-text URN search to the keyed lookup.
+
+### Story 18.6: MemoryUnitId Stability Contract
+
+**Origin:** MEM-6 (Parties pass 9-6 / 5th pass).
+
+As a downstream service maintaining a per-party mapping keyed by `MemoryUnitId`,
+I want the stability semantics of `MemoryUnitId` documented and guaranteed,
+So that the mapping cannot accumulate ghost ids and exceed the Dapr state-store value-size limit after a Memories restart or contract change.
+
+**Acceptance Criteria:**
+
+**Given** `MemoryUnitId` is currently the workflow `InstanceId` or a new GUID (`ResolveMemoryUnitId` in `IngestionWorkflow.cs`) and is not derived from `sourceUri`,
+**When** the contract is documented,
+**Then** the stability guarantee is stated precisely: for a given `(tenantId, caseId, sourceUri)`, re-ingestion returns the same `MemoryUnitId` for as long as the dedup record persists, and the guarantee's dependency on the dedup record's TTL/retention is explicit.
+
+**Given** the Parties intake labelled this "decision D1" on the Parties side,
+**When** the contract is written,
+**Then** it clarifies this is unrelated to the Memories Architecture Decision D1 (FalkorDB for MVP), to avoid cross-repo confusion.
+
+**Given** loss of the dedup record (eviction, TTL expiry, or contract change) would re-mint an id,
+**When** the contract is published,
+**Then** it documents that failure mode and recommends the keyed lookup (Story 18.5) as the authoritative resolution path so consumers need not maintain a growing local id list, and notes the conditions under which a consumer should dedup by `sourceUri` instead.
+
+**Parties-side follow-up:** Parties revisits cap / TTL / dedup-by-`SourceUri` in `PartyMemoryUnitMappingStore` against the documented guarantee.
+
+### Story 18.7: MemoriesClient Mockability Stability Contract
+
+**Origin:** MEM-7 (Parties pass 9-6 / 2nd pass).
+
+As a downstream test author,
+I want the supported mocking seam for `MemoriesClient` documented and guaranteed stable,
+So that consumer test fixtures (for example `ProbingMemoriesClient`) do not break if the SDK evolves.
+
+**Acceptance Criteria:**
+
+**Given** Architecture Decision D9 deliberately keeps `MemoriesClient` a concrete class with no interface ("avoid abstraction tax; extract when a second implementation arrives"),
+**When** this story addresses the mockability ask,
+**Then** it reaffirms D9 and documents the supported mock seam as the `HttpClient` / `IHttpClientFactory` boundary with a worked example, rather than introducing an `IMemoriesClient` interface.
+
+**Given** the consumer fixture currently subclasses the concrete client and relies on `virtual` members,
+**When** the contract is published,
+**Then** it records a stability guarantee that `MemoriesClient` remains non-sealed with `virtual` public members so subclass-based fixtures keep compiling, and notes that sealing the class or removing `virtual` would be a breaking change requiring the D9 escape hatch (extract `IMemoriesClient`) and a sprint change.
+
+**Given** the recommended seam should be demonstrably real,
+**When** the doc lands,
+**Then** the `HttpClient`-boundary mocking approach is backed by an example test in the repo so the documented seam is proven, not asserted.
+
+**Parties-side follow-up:** Parties keeps `ProbingMemoriesClient` (now contract-guaranteed) or migrates to the documented `HttpClient`-boundary seam at its discretion.
