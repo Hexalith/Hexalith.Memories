@@ -18,7 +18,7 @@
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
     <Error
-      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)..\%(RequiredRootSubmodule.Identity)\.git')"
-      Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity)" />
+      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git')"
+      Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity) from the repository root." />
   </Target>
 </Project>
