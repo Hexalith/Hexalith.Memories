@@ -5,7 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hexalith.Memories.Web\Hexalith.Memories.Web.csproj" />
-    <ProjectReference Include="..\..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" />
+    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" />
     <PackageReference Include="bunit" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.v3" />
