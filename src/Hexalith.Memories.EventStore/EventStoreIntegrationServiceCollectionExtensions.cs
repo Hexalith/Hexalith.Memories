@@ -80,6 +80,7 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         services.TryAddSingleton<IEventIngestionWorkflowScheduler, DaprEventIngestionWorkflowScheduler>();
         services.TryAddSingleton<ITenantStatusAccessor, MissingTenantStatusAccessor>();
         services.TryAddSingleton<ICaseCreationService, MissingCaseCreationService>();
+        services.TryAddSingleton<ISearchIndexMaintenance, MissingSearchIndexMaintenance>();
         services.TryAddSingleton<IEventIngestionTelemetry, NoOpEventIngestionTelemetry>();
         services.TryAddSingleton<IPreflightDedupStore, RedisPreflightDedupStore>();
         services.TryAddSingleton<IAggregateCaseMappingStore, RedisAggregateCaseMappingStore>();

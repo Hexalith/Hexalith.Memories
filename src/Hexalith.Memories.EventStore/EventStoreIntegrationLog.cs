@@ -80,6 +80,24 @@ internal static partial class EventStoreIntegrationLog
         Message = "EventStore ingestion: route resolution failed for event {CloudEventId} ({ExceptionType}).")]
     public static partial void RouteResolutionFailed(ILogger logger, string cloudEventId, string exceptionType);
 
+    [LoggerMessage(
+        EventId = 9103,
+        Level = LogLevel.Information,
+        Message = "EventStore ingestion: curated search-index entry {Action} for index {TenantId}, aggregate {AggregateId} (cloudEventId={CloudEventId}).")]
+    public static partial void CuratedSearchIndexEntryApplied(ILogger logger, string action, string tenantId, string aggregateId, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9127,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: invalid curated search-index event — {Reason} (cloudEventId={CloudEventId}).")]
+    public static partial void CuratedSearchIndexEventInvalid(ILogger logger, string reason, string cloudEventId);
+
+    [LoggerMessage(
+        EventId = 9128,
+        Level = LogLevel.Error,
+        Message = "EventStore ingestion: curated search-index maintenance failed for event {CloudEventId} ({ExceptionType}).")]
+    public static partial void CuratedSearchIndexMaintenanceFailed(ILogger logger, string cloudEventId, string exceptionType);
+
     // ------------------------------------------------------------------------------------------------
     // Story 9.3 — Handler registry + mismatch detection (bank 9130-9149).
     // ------------------------------------------------------------------------------------------------

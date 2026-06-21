@@ -45,7 +45,8 @@ public sealed class EventIngestionServiceTests
         TenantEventRoutingOptions Options) Build(
             TenantEventRouteResolution? resolution = null,
             bool preflightEnabled = true,
-            IPreflightDedupStore? dedupOverride = null)
+            IPreflightDedupStore? dedupOverride = null,
+            ISearchIndexMaintenance? searchIndexOverride = null)
     {
         TenantEventRoutingOptions opts = new()
         {
@@ -73,11 +74,32 @@ public sealed class EventIngestionServiceTests
 
         IEventIngestionTelemetry telemetry = Substitute.For<IEventIngestionTelemetry>();
 
+        ISearchIndexMaintenance searchIndex = searchIndexOverride ?? Substitute.For<ISearchIndexMaintenance>();
+
         EventIngestionService service = new(
-            router, scheduler, dedup, telemetry, optionsMonitor, NullLogger<EventIngestionService>.Instance);
+            router, scheduler, dedup, searchIndex, telemetry, optionsMonitor, NullLogger<EventIngestionService>.Instance);
 
         return (service, router, scheduler, dedup, telemetry, opts);
     }
+
+    private static JsonElement CuratedChangedEnvelope(
+        string id = "tenant:t-1",
+        string aggregateId = "t-1",
+        string text = "Acme t-1",
+        string status = "Active")
+        => JsonDocument.Parse($$"""
+            {
+              "id": "{{id}}",
+              "source": "hexalith-tenants",
+              "type": "SearchIndexEntryChanged",
+              "data": {
+                "tenantId": "tenants-index",
+                "aggregateId": "{{aggregateId}}",
+                "text": "{{text}}",
+                "attributes": { "status": "{{status}}" }
+              }
+            }
+            """).RootElement;
 
     [Fact]
     public async Task ProcessAsync_HappyPath_ReturnsAcceptedWithInstanceId()
@@ -299,6 +321,104 @@ public sealed class EventIngestionServiceTests
 
         string expectedKey = EventStoreDedupKey.Build("tenant-1", "case-1", "evt-1");
         result.Response.InstanceId.ShouldBe(expectedKey);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_CuratedChanged_UpsertsViaMaintenance_BypassingDedupAndScheduler()
+    {
+        ISearchIndexMaintenance maintenance = Substitute.For<ISearchIndexMaintenance>();
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, IPreflightDedupStore dedup, _, _) =
+            Build(
+                resolution: TenantEventRouteResolution.Accepted(new TenantEventRoute("tenants-index", "case-1", "SearchIndexEntryChanged")),
+                searchIndexOverride: maintenance);
+
+        EventIngestionProcessResult result = await service.ProcessAsync(CuratedChangedEnvelope(), CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.Accepted);
+
+        // Routed (index) tenant wins over the event payload; sourceUri is the verbatim cloudevent.id.
+        await maintenance.Received(1).ApplyEntryChangedAsync(
+            "tenants-index",
+            "tenant:t-1",
+            Arg.Is<SearchIndexEntryChanged>(e => e.AggregateId == "t-1" && e.Text == "Acme t-1" && e.Attributes["status"] == "Active"),
+            "case-1",
+            Arg.Any<CancellationToken>());
+
+        // Curated maintenance must NOT go through the cloudevent.id dedup or the generic workflow.
+        await dedup.DidNotReceive().TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_CuratedRemoved_DeletesViaMaintenance()
+    {
+        ISearchIndexMaintenance maintenance = Substitute.For<ISearchIndexMaintenance>();
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, _, _, _) =
+            Build(
+                resolution: TenantEventRouteResolution.Accepted(new TenantEventRoute("tenants-index", "case-1", "SearchIndexEntryRemoved")),
+                searchIndexOverride: maintenance);
+
+        JsonElement removed = JsonDocument.Parse("""
+            {
+              "id": "tenant:t-9",
+              "source": "hexalith-tenants",
+              "type": "SearchIndexEntryRemoved",
+              "data": { "tenantId": "tenants-index", "aggregateId": "t-9" }
+            }
+            """).RootElement;
+
+        EventIngestionProcessResult result = await service.ProcessAsync(removed, CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.Accepted);
+        await maintenance.Received(1).ApplyEntryRemovedAsync(
+            "tenants-index",
+            Arg.Is<SearchIndexEntryRemoved>(e => e.AggregateId == "t-9"),
+            Arg.Any<CancellationToken>());
+        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_CuratedChanged_MissingAggregateId_ReturnsInvalidCloudEventWithoutCallingMaintenance()
+    {
+        ISearchIndexMaintenance maintenance = Substitute.For<ISearchIndexMaintenance>();
+        (EventIngestionService service, _, _, _, _, _) =
+            Build(
+                resolution: TenantEventRouteResolution.Accepted(new TenantEventRoute("tenants-index", "case-1", "SearchIndexEntryChanged")),
+                searchIndexOverride: maintenance);
+
+        JsonElement malformed = JsonDocument.Parse("""
+            {
+              "id": "tenant:t-1",
+              "source": "hexalith-tenants",
+              "type": "SearchIndexEntryChanged",
+              "data": { "tenantId": "tenants-index", "text": "Acme" }
+            }
+            """).RootElement;
+
+        EventIngestionProcessResult result = await service.ProcessAsync(malformed, CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.InvalidCloudEvent);
+        await maintenance.DidNotReceive().ApplyEntryChangedAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SearchIndexEntryChanged>(), Arg.Any<string?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ProcessAsync_CuratedMaintenanceThrows_ReturnsRetryableScheduleFailed()
+    {
+        ISearchIndexMaintenance maintenance = Substitute.For<ISearchIndexMaintenance>();
+        maintenance
+            .ApplyEntryChangedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SearchIndexEntryChanged>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("redis down")));
+
+        (EventIngestionService service, _, _, _, _, _) =
+            Build(
+                resolution: TenantEventRouteResolution.Accepted(new TenantEventRoute("tenants-index", "case-1", "SearchIndexEntryChanged")),
+                searchIndexOverride: maintenance);
+
+        EventIngestionProcessResult result = await service.ProcessAsync(CuratedChangedEnvelope(), CancellationToken.None);
+
+        // A transient maintenance fault is retryable so DAPR redelivers; the upsert is idempotent.
+        result.Outcome.ShouldBe(EventIngestionOutcome.ScheduleFailed);
     }
 
     private sealed class ReleaseFailureDedupStore : IPreflightDedupStore

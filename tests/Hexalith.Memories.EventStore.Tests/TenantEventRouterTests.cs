@@ -77,6 +77,29 @@ public sealed class TenantEventRouterTests
     }
 
     [Fact]
+    public async Task ResolveAsync_CuratedSearchIndexEvent_AcceptsWithoutCaseCreation()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "t" };
+        options.SourceToTenantMap["hexalith-tenants"] = "tenants-index";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("tenants-index", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        ICaseCreationService cases = Substitute.For<ICaseCreationService>();
+
+        TenantEventRouter router = BuildRouter(options, statusAccessor, cases);
+        TenantEventRouteResolution resolution = await router
+            .ResolveAsync(Envelope("hexalith-tenants", "SearchIndexEntryChanged"), CancellationToken.None);
+
+        // Curated events resolve to the index tenant with no case, and must NOT auto-create a case.
+        resolution.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        resolution.Route!.TenantId.ShouldBe("tenants-index");
+        resolution.Route!.CaseId.ShouldBe(string.Empty);
+        await cases.DidNotReceive().CreateCaseAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ResolveAsync_LongestPrefixWins()
     {
         TenantEventRoutingOptions options = new() { Topic = "t" };

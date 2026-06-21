@@ -31,6 +31,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(AxisExplanation))]
 [JsonSerializable(typeof(Dictionary<string, AxisExplanation>))]
 [JsonSerializable(typeof(Dictionary<string, MetadataField>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(ConfidencePromotionRequest))]
 [JsonSerializable(typeof(ConfidencePromotionResult))]
 [JsonSerializable(typeof(EdgeTypeCategory))]

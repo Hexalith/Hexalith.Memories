@@ -91,6 +91,16 @@ internal sealed class TenantEventRouter : ITenantEventRouter
 
         string aggregateType = AggregateTypeExtractor.Extract(envelope.Type);
 
+        // Curated search-index events write to a deterministic {tenantId}:mu:{aggregateId} key and never use a
+        // case. Short-circuit here — after the authoritative tenant + status check — so they do not trigger
+        // case auto-creation (which would create a spurious "events:SearchIndexEntryChanged" case, consume a
+        // MaxAutoCreatedCasesPerTenant slot, and add a workflow + Redis round-trip on the first event).
+        if (CuratedSearchIndexEventTypes.IsCuratedType(envelope.Type))
+        {
+            return TenantEventRouteResolution.Accepted(
+                new TenantEventRoute(tenantId, string.Empty, aggregateType));
+        }
+
         ConcurrentDictionary<string, string> tenantCache = _caseCache
             .GetOrAdd(tenantId, _ => new ConcurrentDictionary<string, string>(StringComparer.Ordinal));
 

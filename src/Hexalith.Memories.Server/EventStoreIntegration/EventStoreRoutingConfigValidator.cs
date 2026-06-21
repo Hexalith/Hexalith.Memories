@@ -105,7 +105,11 @@ internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
         if (missing.Count > 0)
         {
             string joined = string.Join(", ", missing);
-            if (_hostEnvironment.IsDevelopment())
+
+            // When auto-provisioning routed tenants is enabled, missing routed tenants are expected at
+            // validation time — the RoutedTenantProvisioningStartupService creates them after startup — so
+            // defer rather than fail-fast regardless of environment.
+            if (options.AutoProvisionRoutedTenants || _hostEnvironment.IsDevelopment())
             {
                 LogUnknownTenantsDeferred(_logger, joined);
                 return;

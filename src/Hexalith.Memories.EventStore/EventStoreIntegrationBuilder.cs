@@ -44,6 +44,16 @@ public sealed class EventStoreIntegrationBuilder
         return this;
     }
 
+    /// <summary>Replaces the default curated search-index maintenance adapter.</summary>
+    /// <typeparam name="TImplementation">The implementation type.</typeparam>
+    /// <returns>The current builder.</returns>
+    public EventStoreIntegrationBuilder AddSearchIndexMaintenance<TImplementation>()
+        where TImplementation : class, ISearchIndexMaintenance
+    {
+        Services.Replace(ServiceDescriptor.Singleton<ISearchIndexMaintenance, TImplementation>());
+        return this;
+    }
+
     /// <summary>Replaces the default workflow scheduler.</summary>
     /// <typeparam name="TImplementation">The implementation type.</typeparam>
     /// <returns>The current builder.</returns>

@@ -20,6 +20,14 @@ public sealed class TenantEventRoutingOptions
     /// Unknown sources are dropped with a warning at the subscription endpoint.</summary>
     public Dictionary<string, string> SourceToTenantMap { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Gets or sets a value indicating whether the routed (index) tenants in
+    /// <see cref="SourceToTenantMap"/> are auto-provisioned at startup when missing. Default: <c>false</c>
+    /// (production registers index tenants explicitly via <c>POST /api/tenants</c> and the routing validator
+    /// fail-fasts on unknown tenants). Dev/single-process hosts that own a well-known curated index (e.g. the
+    /// Tenants AppHost provisioning <c>tenants-index</c>) set this <c>true</c> so the index exists before the
+    /// first event arrives.</summary>
+    public bool AutoProvisionRoutedTenants { get; set; }
+
     /// <summary>Gets or sets a value indicating whether the router may lazily create a case on first event per
     /// <c>(tenantId, aggregateType)</c>. Default: <c>true</c> for development parity with PRD §534 "zero-code"
     /// zero-config story; production overrides to <c>false</c> per ADR 9.1-C.</summary>

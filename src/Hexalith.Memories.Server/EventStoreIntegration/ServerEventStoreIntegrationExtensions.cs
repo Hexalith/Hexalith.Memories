@@ -34,15 +34,18 @@ internal static class ServerEventStoreIntegrationExtensions
                 .AddWorkflowScheduler<EventIngestionWorkflowSchedulerAdapter>()
                 .AddTenantStatusAccessor<TenantStatusAccessorAdapter>()
                 .AddCaseCreationService<CaseCreationServiceAdapter>()
+                .AddSearchIndexMaintenance<RedisSearchIndexMaintenanceAdapter>()
                 .AddTelemetry<EventIngestionTelemetryAdapter>());
 
         services.TryAddSingleton<IEventIngestionWorkflowScheduler, EventIngestionWorkflowSchedulerAdapter>();
         services.TryAddSingleton<ITenantStatusAccessor, TenantStatusAccessorAdapter>();
         services.TryAddSingleton<ICaseCreationService, CaseCreationServiceAdapter>();
+        services.TryAddSingleton<ISearchIndexMaintenance, RedisSearchIndexMaintenanceAdapter>();
         services.TryAddSingleton<IEventIngestionTelemetry, EventIngestionTelemetryAdapter>();
 
         services.AddHostedService<EventStoreRoutingConfigValidator>();
         services.AddHostedService<EventStoreObservationStartupActivator>();
+        services.AddHostedService<RoutedTenantProvisioningStartupService>();
 
         return services;
     }

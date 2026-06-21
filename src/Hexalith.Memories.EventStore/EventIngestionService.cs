@@ -7,6 +7,7 @@ namespace Hexalith.Memories.EventStore;
 
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 using Hexalith.Memories.Contracts.V1;
 
@@ -27,6 +28,7 @@ internal sealed class EventIngestionService : IEventIngestionService
     private readonly ITenantEventRouter _router;
     private readonly IEventIngestionWorkflowScheduler _scheduler;
     private readonly IPreflightDedupStore _dedupStore;
+    private readonly ISearchIndexMaintenance _searchIndexMaintenance;
     private readonly IEventIngestionTelemetry _telemetry;
     private readonly IOptionsMonitor<TenantEventRoutingOptions> _options;
     private readonly ILogger<EventIngestionService> _logger;
@@ -35,6 +37,7 @@ internal sealed class EventIngestionService : IEventIngestionService
         ITenantEventRouter router,
         IEventIngestionWorkflowScheduler scheduler,
         IPreflightDedupStore dedupStore,
+        ISearchIndexMaintenance searchIndexMaintenance,
         IEventIngestionTelemetry telemetry,
         IOptionsMonitor<TenantEventRoutingOptions> options,
         ILogger<EventIngestionService> logger)
@@ -42,12 +45,14 @@ internal sealed class EventIngestionService : IEventIngestionService
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(dedupStore);
+        ArgumentNullException.ThrowIfNull(searchIndexMaintenance);
         ArgumentNullException.ThrowIfNull(telemetry);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
         _router = router;
         _scheduler = scheduler;
         _dedupStore = dedupStore;
+        _searchIndexMaintenance = searchIndexMaintenance;
         _telemetry = telemetry;
         _options = options;
         _logger = logger;
@@ -119,6 +124,21 @@ internal sealed class EventIngestionService : IEventIngestionService
         TenantEventRoute route = resolution.Route!;
         caseIdForTelemetry = route.CaseId;
         aggregateTypeForTelemetry = route.AggregateType;
+
+        // Curated search-index maintenance events bypass the generic raw-event ingestion workflow AND the
+        // preflight dedup. Their CloudEvent id is a stable source identity (e.g. "tenant:{id}") that is
+        // re-published verbatim on every revision (a rename keeps the same id), so routing them through the
+        // cloudevent.id dedup would silently drop legitimate updates. They are upsert-by-(index, aggregate)
+        // snapshots, so applying them directly is naturally idempotent and needs no dedup reservation.
+        if (CuratedSearchIndexEventTypes.IsCuratedType(envelope.Type))
+        {
+            EventIngestionProcessResult curated = await ApplyCuratedSearchIndexEventAsync(envelope, route, cancellationToken)
+                .ConfigureAwait(false);
+            _telemetry.RecordIngestion(
+                tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
+                cloudEventTypeForTelemetry, curated.Outcome, ElapsedMs(startTicks));
+            return curated;
+        }
 
         IngestionInput input = CloudEventToIngestionInputMapper.Map(envelope, route);
         string dedupKey = EventStoreDedupKey.Build(route.TenantId, route.CaseId, envelope.Id);
@@ -193,6 +213,76 @@ internal sealed class EventIngestionService : IEventIngestionService
             return failed;
         }
     }
+
+    private async Task<EventIngestionProcessResult> ApplyCuratedSearchIndexEventAsync(
+        CloudEventEnvelope envelope,
+        TenantEventRoute route,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.Equals(envelope.Type, CuratedSearchIndexEventTypes.Changed, StringComparison.Ordinal))
+            {
+                SearchIndexEntryChanged? entry = DeserializeData<SearchIndexEntryChanged>(envelope.Data);
+                if (entry is null || string.IsNullOrWhiteSpace(entry.AggregateId) || string.IsNullOrWhiteSpace(entry.Text))
+                {
+                    const string reason = "SearchIndexEntryChanged requires a non-empty AggregateId and Text";
+                    EventStoreIntegrationLog.CuratedSearchIndexEventInvalid(_logger, reason, envelope.Id);
+                    return new EventIngestionProcessResult(
+                        EventIngestionOutcome.InvalidCloudEvent,
+                        EventIngestionResponse.Invalid(reason));
+                }
+
+                await _searchIndexMaintenance
+                    .ApplyEntryChangedAsync(route.TenantId, envelope.Id, entry, route.CaseId, cancellationToken)
+                    .ConfigureAwait(false);
+                EventStoreIntegrationLog.CuratedSearchIndexEntryApplied(_logger, "upserted", route.TenantId, entry.AggregateId, envelope.Id);
+            }
+            else
+            {
+                SearchIndexEntryRemoved? entry = DeserializeData<SearchIndexEntryRemoved>(envelope.Data);
+                if (entry is null || string.IsNullOrWhiteSpace(entry.AggregateId))
+                {
+                    const string reason = "SearchIndexEntryRemoved requires a non-empty AggregateId";
+                    EventStoreIntegrationLog.CuratedSearchIndexEventInvalid(_logger, reason, envelope.Id);
+                    return new EventIngestionProcessResult(
+                        EventIngestionOutcome.InvalidCloudEvent,
+                        EventIngestionResponse.Invalid(reason));
+                }
+
+                await _searchIndexMaintenance
+                    .ApplyEntryRemovedAsync(route.TenantId, entry, cancellationToken)
+                    .ConfigureAwait(false);
+                EventStoreIntegrationLog.CuratedSearchIndexEntryApplied(_logger, "removed", route.TenantId, entry.AggregateId, envelope.Id);
+            }
+
+            return new EventIngestionProcessResult(
+                EventIngestionOutcome.Accepted,
+                EventIngestionResponse.Accepted(envelope.Id));
+        }
+        catch (JsonException ex)
+        {
+            EventStoreIntegrationLog.CuratedSearchIndexEventInvalid(_logger, ex.Message, envelope.Id);
+            return new EventIngestionProcessResult(
+                EventIngestionOutcome.InvalidCloudEvent,
+                EventIngestionResponse.Invalid(ex.Message));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Maintenance failed (e.g. transient Redis fault). Return a retryable outcome so DAPR redelivers;
+            // the upsert is idempotent so a retry is safe.
+            EventStoreIntegrationLog.CuratedSearchIndexMaintenanceFailed(_logger, envelope.Id, ex.GetType().Name);
+            return new EventIngestionProcessResult(
+                EventIngestionOutcome.ScheduleFailed,
+                EventIngestionResponse.Drop("search-index-maintenance-failed", ex.Message));
+        }
+    }
+
+    private static T? DeserializeData<T>(JsonElement data)
+        where T : class
+        => data.ValueKind == JsonValueKind.Object
+            ? data.Deserialize((JsonTypeInfo<T>)MemoriesJsonContext.Options.GetTypeInfo(typeof(T)))
+            : null;
 
     private EventIngestionProcessResult? MapNonAcceptedResolution(
         TenantEventRouteResolution resolution,
