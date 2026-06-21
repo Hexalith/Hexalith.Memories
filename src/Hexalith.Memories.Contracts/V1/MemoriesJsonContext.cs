@@ -184,6 +184,8 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IReadOnlyList<HandlerMismatch>))]
 [JsonSerializable(typeof(HandlerMismatchCategory))]
 [JsonSerializable(typeof(HandlerMismatchSeverity))]
+[JsonSerializable(typeof(SearchIndexEntryChanged))]
+[JsonSerializable(typeof(SearchIndexEntryRemoved))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for all Memories contracts.</summary>

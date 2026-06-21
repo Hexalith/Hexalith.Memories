@@ -14,12 +14,21 @@
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer</HexalithFrontComposerRoot>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- When Hexalith.Memories is consumed as a submodule of the Hexalith.Tenants repository, the
+         parent repo IS Hexalith.Tenants (its .slnx sits one level up), so a separate Hexalith.Tenants
+         submodule is neither present nor required. Detect that layout and drop the requirement; the
+         standalone-Memories layout (where Hexalith.Tenants is a real nested/sibling submodule) is
+         unaffected. -->
+    <HexalithMemoriesHostedInTenantsRepo Condition="Exists('$(MSBuildThisFileDirectory)..\Hexalith.Tenants.slnx')">true</HexalithMemoriesHostedInTenantsRepo>
+  </PropertyGroup>
+
   <!-- Detect missing root-level git submodules -->
   <ItemGroup>
     <RequiredRootSubmodule Include="Hexalith.Commons" />
     <RequiredRootSubmodule Include="Hexalith.EventStore" />
     <RequiredRootSubmodule Include="Hexalith.AI.Tools" />
-    <RequiredRootSubmodule Include="Hexalith.Tenants" />
+    <RequiredRootSubmodule Include="Hexalith.Tenants" Condition="'$(HexalithMemoriesHostedInTenantsRepo)' != 'true'" />
     <RequiredRootSubmodule Include="Hexalith.FrontComposer" />
   </ItemGroup>
 
