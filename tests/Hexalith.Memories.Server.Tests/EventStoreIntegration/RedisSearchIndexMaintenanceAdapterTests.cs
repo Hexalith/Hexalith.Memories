@@ -53,6 +53,7 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
                 && HasEntry(entries, "caseId", "case-1")
                 && HasEntry(entries, "cloudeventSubject", "t-1")
                 && HasEntry(entries, "metadataText", "status Active")
+                && HasEntry(entries, "attributeTags", "status=Active")
                 && HasEntry(entries, "metadataJson", JsonSerializer.Serialize(entry.Attributes, MemoriesJsonContext.Options))),
             Arg.Any<CommandFlags>());
     }
@@ -102,9 +103,12 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         // The index already exists in steady state (provisioned by TenantProvisioningWorkflow); the adapter's
         // create-if-missing catches "Index already exists" and proceeds to the hash write.
         RedisResult Execute(string command)
-            => command == "FT.CREATE"
-                ? throw new RedisServerException("Index already exists")
-                : RedisResult.Create(new RedisValue("OK"));
+            => command switch
+            {
+                "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                "FT.INFO" => CreateExistingIndexInfoResult(),
+                _ => RedisResult.Create(new RedisValue("OK")),
+            };
 
         db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
             .Returns(call => Execute(call.ArgAt<string>(0)));
@@ -115,6 +119,41 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
+
+    private static RedisResult CreateExistingIndexInfoResult() => RedisResult.Create(
+    [
+        RedisResult.Create(new RedisValue("index_definition")),
+        RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("prefixes")),
+            RedisResult.Create([RedisResult.Create(new RedisValue("tenants-index:mu:"))]),
+        ]),
+        RedisResult.Create(new RedisValue("attributes")),
+        RedisResult.Create(
+        [
+            CreateAttribute("content", "TEXT"),
+            CreateAttribute("sourceUriText", "TEXT"),
+            CreateAttribute("sourceTypeText", "TEXT"),
+            CreateAttribute("metadataText", "TEXT"),
+            CreateAttribute("sourceUri", "TAG"),
+            CreateAttribute("sourceType", "TAG"),
+            CreateAttribute("contentHash", "TAG"),
+            CreateAttribute("caseId", "TAG"),
+            CreateAttribute("cloudeventSubject", "TAG"),
+            CreateAttribute("attributeTags", "TAG"),
+            CreateAttribute("embeddingProvider", "TAG"),
+        ]),
+    ]);
+
+    private static RedisResult CreateAttribute(string identifier, string type) => RedisResult.Create(
+    [
+        RedisResult.Create(new RedisValue("identifier")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("attribute")),
+        RedisResult.Create(new RedisValue(identifier)),
+        RedisResult.Create(new RedisValue("type")),
+        RedisResult.Create(new RedisValue(type)),
+    ]);
 
     private static bool HasEntry(IEnumerable<HashEntry> entries, string name, string value)
     {

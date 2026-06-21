@@ -107,6 +107,7 @@ public class ProvisionRediSearchActivityTests
             CreateAttribute("sourceType", "TAG"),
             CreateAttribute("contentHash", "TAG"),
             CreateAttribute("caseId", "TAG"),
+            CreateAttribute("attributeTags", "TAG"),
             CreateAttribute("embeddingProvider", "TAG"),
             CreateAttribute("cloudeventSubject", "TAG"),
         ]),

@@ -7,6 +7,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
 
@@ -43,6 +44,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         var ft = db.FT();
         string sourceType = ToCamelCase(input.SourceType);
         string metadataText = FlattenMetadata(input.Metadata);
+        string attributeTags = FlattenMetadataTags(input.Metadata);
         string metadataJson = JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options);
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
         string ingestedAt = input.IngestedAt.ToString("o");
@@ -75,6 +77,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             new HashEntry("sourceType", sourceType),
             new HashEntry("sourceTypeText", sourceType),
             new HashEntry("metadataText", metadataText),
+            new HashEntry("attributeTags", attributeTags),
             new HashEntry("metadataJson", metadataJson),
             new HashEntry("contentHash", input.ContentHash),
             new HashEntry("caseId", input.CaseId),
@@ -154,6 +157,25 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             ? field.Value
             : null;
 
+    private static string FlattenMetadataTags(IReadOnlyDictionary<string, MetadataField> metadata)
+    {
+        if (metadata.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        List<string> tags = [];
+        foreach ((string key, MetadataField field) in metadata.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(field.Value))
+            {
+                tags.Add(SyntacticSearchService.BuildAttributeTag(key, field.Value));
+            }
+        }
+
+        return string.Join(',', tags);
+    }
+
     private static string ToCamelCase<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
@@ -206,14 +228,22 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
         HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
         incompleteMetadata = prefixes.Count == 0 || actualFields.Count == 0;
-        if (!actualFields.SetEquals(expectedFields)
-            && IndexSchemaDefinitions.TryUpgradeMissingTagField(db, indexName, actualFields, expectedFields, "cloudeventSubject"))
+        if (!actualFields.SetEquals(expectedFields))
         {
-            actualFields.Add("cloudeventSubject");
-            _logger.LogInformation(
-                "Added missing cloudeventSubject field to RediSearch index {IndexName} for tenant {TenantId}",
+            foreach (string upgradedField in IndexSchemaDefinitions.TryUpgradeMissingTagFields(
+                db,
                 indexName,
-                tenantId);
+                actualFields,
+                expectedFields,
+                ["cloudeventSubject", "attributeTags"]))
+            {
+                actualFields.Add(upgradedField);
+                _logger.LogInformation(
+                    "Added missing {FieldName} field to RediSearch index {IndexName} for tenant {TenantId}",
+                    upgradedField,
+                    indexName,
+                    tenantId);
+            }
         }
 
         if (!actualFields.SetEquals(expectedFields))

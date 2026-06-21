@@ -75,6 +75,16 @@ public class IndexSchemaDefinitionsTests
     }
 
     [Fact]
+    public void SyntacticSchema_IncludesAttributeTagsTagField()
+    {
+        Schema schema = IndexSchemaDefinitions.CreateSyntacticSchema();
+        bool hasAttributeTagsField = schema.Fields.Any(f =>
+            f.FieldName.Name == "attributeTags" && f.Type == Schema.FieldType.Tag);
+
+        hasAttributeTagsField.ShouldBeTrue();
+    }
+
+    [Fact]
     public void NaturalLanguageSchema_DoesNotIncludeCloudEventSubjectTagField()
     {
         Schema nl = IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(128);

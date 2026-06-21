@@ -29,6 +29,7 @@ internal static class IndexSchemaDefinitions
         "contentHash",
         "caseId",
         "cloudeventSubject",
+        "attributeTags",
         "embeddingProvider",
     ];
 
@@ -107,6 +108,7 @@ internal static class IndexSchemaDefinitions
             .AddTagField("contentHash")
             .AddTagField("caseId")
             .AddTagField("cloudeventSubject")
+            .AddTagField("attributeTags")
             .AddTagField("embeddingProvider");
 
     /// <summary>Creates the FTCreateParams for a Redis Vector semantic index.</summary>
@@ -409,6 +411,54 @@ internal static class IndexSchemaDefinitions
 
         db.Execute("FT.ALTER", indexName, "SCHEMA", "ADD", fieldName, "TAG");
         return true;
+    }
+
+    /// <summary>Attempts a safe in-place index upgrade for known missing TAG fields.</summary>
+    /// <param name="db">The Redis database connection.</param>
+    /// <param name="indexName">The index to alter.</param>
+    /// <param name="actualFields">The fields currently present on the index.</param>
+    /// <param name="expectedFields">The fields the index should expose.</param>
+    /// <param name="fieldNames">The TAG fields that are allowed to be added in place.</param>
+    /// <returns>The field names that were added.</returns>
+    public static IReadOnlyList<string> TryUpgradeMissingTagFields(
+        IDatabase db,
+        string indexName,
+        IReadOnlySet<string> actualFields,
+        IReadOnlyCollection<string> expectedFields,
+        IReadOnlyCollection<string> fieldNames)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentException.ThrowIfNullOrWhiteSpace(indexName);
+        ArgumentNullException.ThrowIfNull(actualFields);
+        ArgumentNullException.ThrowIfNull(expectedFields);
+        ArgumentNullException.ThrowIfNull(fieldNames);
+
+        HashSet<string> expected = new(expectedFields, StringComparer.OrdinalIgnoreCase);
+        if (actualFields.Any(field => !expected.Contains(field)))
+        {
+            return [];
+        }
+
+        HashSet<string> allowed = new(fieldNames, StringComparer.OrdinalIgnoreCase);
+        List<string> missing = expected.Where(field => !actualFields.Contains(field)).ToList();
+        if (missing.Count == 0 || missing.Any(field => !allowed.Contains(field)))
+        {
+            return [];
+        }
+
+        List<string> added = [];
+        foreach (string fieldName in fieldNames)
+        {
+            if (!missing.Contains(fieldName, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            db.Execute("FT.ALTER", indexName, "SCHEMA", "ADD", fieldName, "TAG");
+            added.Add(fieldName);
+        }
+
+        return added;
     }
 
     private static Dictionary<string, string> ParseKeyValuePairs(RedisResult raw)

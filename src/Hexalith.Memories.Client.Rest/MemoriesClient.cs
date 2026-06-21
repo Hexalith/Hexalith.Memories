@@ -117,9 +117,14 @@ public class MemoriesClient
             tenantId: request.TenantId,
             query: request.Query,
             caseId: request.CaseId,
+            sourceType: null,
+            metadataQuery: null,
+            subject: null,
             maxResults: request.MaxResults,
+            offset: 0,
             explain: request.Explain,
-            tokenBudget: request.TokenBudget);
+            tokenBudget: request.TokenBudget,
+            attributeFilters: null);
 
         using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -167,9 +172,14 @@ public class MemoriesClient
             tenantId: request.TenantId,
             query: request.Query,
             caseId: request.CaseId,
+            sourceType: request.SourceType,
+            metadataQuery: request.MetadataQuery,
+            subject: request.Subject,
             maxResults: request.MaxResults,
+            offset: request.Offset,
             explain: request.Explain,
-            tokenBudget: request.TokenBudget);
+            tokenBudget: request.TokenBudget,
+            attributeFilters: request.AttributeFilters);
 
         using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
@@ -542,9 +552,14 @@ public class MemoriesClient
         string tenantId,
         string? query,
         string? caseId,
+        string? sourceType,
+        string? metadataQuery,
+        string? subject,
         int maxResults,
+        int offset,
         bool explain,
-        int? tokenBudget)
+        int? tokenBudget,
+        IReadOnlyDictionary<string, string>? attributeFilters)
     {
         var builder = new StringBuilder("api/search?tenantId=");
         builder.Append(Uri.EscapeDataString(tenantId));
@@ -559,11 +574,31 @@ public class MemoriesClient
             builder.Append("&caseId=").Append(Uri.EscapeDataString(caseId));
         }
 
+        if (!string.IsNullOrEmpty(sourceType))
+        {
+            builder.Append("&sourceType=").Append(Uri.EscapeDataString(sourceType));
+        }
+
+        if (!string.IsNullOrEmpty(metadataQuery))
+        {
+            builder.Append("&metadataQuery=").Append(Uri.EscapeDataString(metadataQuery));
+        }
+
+        if (!string.IsNullOrEmpty(subject))
+        {
+            builder.Append("&subject=").Append(Uri.EscapeDataString(subject));
+        }
+
         builder.Append("&axis=").Append(Uri.EscapeDataString(axis));
 
         if (maxResults != DefaultServerMaxResults)
         {
             builder.Append("&maxResults=").Append(maxResults.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (offset > 0)
+        {
+            builder.Append("&offset=").Append(offset.ToString(CultureInfo.InvariantCulture));
         }
 
         if (explain)
@@ -574,6 +609,23 @@ public class MemoriesClient
         if (tokenBudget is not null)
         {
             builder.Append("&tokenBudget=").Append(tokenBudget.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (attributeFilters is { Count: > 0 })
+        {
+            foreach ((string key, string value) in attributeFilters.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+            {
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                builder
+                    .Append("&attribute.")
+                    .Append(Uri.EscapeDataString(key.Trim()))
+                    .Append('=')
+                    .Append(Uri.EscapeDataString(value.Trim()));
+            }
         }
 
         return builder.ToString();

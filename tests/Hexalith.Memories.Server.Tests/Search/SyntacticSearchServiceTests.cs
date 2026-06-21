@@ -237,13 +237,37 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildQueryString_WithAttributeFilters_ShouldAddExactMatchTagFilters()
+    {
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            null,
+            attributeFilters: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["status"] = "Active",
+                ["tier"] = "Gold",
+            });
+
+        result.ShouldContain(@"@attributeTags:{status\=Active}");
+        result.ShouldContain(@"@attributeTags:{tier\=Gold}");
+        result.ShouldContain("terms");
+    }
+
+    [Fact]
     public void BuildQueryString_WithAllFilters_ShouldCombineWithAnd()
     {
-        string result = SyntacticSearchService.BuildQueryString("terms", "case-1", "file", "important", "claim-42");
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            "case-1",
+            "file",
+            "important",
+            "claim-42",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["status"] = "Active" });
 
         result.ShouldContain(@"@caseId:{case\-1}");
         result.ShouldContain("@sourceType:{file}");
         result.ShouldContain(@"@cloudeventSubject:{claim\-42}");
+        result.ShouldContain(@"@attributeTags:{status\=Active}");
         result.ShouldContain("@metadataText:(important)");
         result.ShouldContain("terms");
     }

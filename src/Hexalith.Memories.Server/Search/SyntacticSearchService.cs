@@ -74,7 +74,13 @@ public sealed partial class SyntacticSearchService
         var ft = db.FT();
 
         string searchTerms = BuildSearchTermsQuery(query.Query);
-        string queryString = BuildQueryString(searchTerms, query.CaseId, query.SourceTypeFilter, query.MetadataQuery, query.CloudEventSubject);
+        string queryString = BuildQueryString(
+            searchTerms,
+            query.CaseId,
+            query.SourceTypeFilter,
+            query.MetadataQuery,
+            query.CloudEventSubject,
+            query.AttributeFilters);
 
         var redisQuery = new Query(queryString)
             .SetWithScores(true)
@@ -170,7 +176,8 @@ public sealed partial class SyntacticSearchService
         string? caseId,
         string? sourceTypeFilter = null,
         string? metadataQuery = null,
-        string? cloudEventSubject = null)
+        string? cloudEventSubject = null,
+        IReadOnlyDictionary<string, string>? attributeFilters = null)
     {
         List<string> parts = [];
 
@@ -187,6 +194,19 @@ public sealed partial class SyntacticSearchService
         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
         {
             parts.Add($"@cloudeventSubject:{{{EscapeRedisQuery(cloudEventSubject)}}}");
+        }
+
+        if (attributeFilters is { Count: > 0 })
+        {
+            foreach ((string key, string value) in attributeFilters.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+            {
+                if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
+                {
+                    continue;
+                }
+
+                parts.Add($"@attributeTags:{{{EscapeRedisQuery(BuildAttributeTag(key, value))}}}");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(metadataQuery))
@@ -241,6 +261,9 @@ public sealed partial class SyntacticSearchService
     internal static string EscapeRedisQuery(string input)
         => EscapeRegex().Replace(input, @"\$0");
 
+    internal static string BuildAttributeTag(string key, string value)
+        => $"{key.Trim()}={value.Trim()}";
+
     private static async Task<bool> HasIndexedMemoryUnitsAsync(IDatabase db, string indexName)
     {
         RedisSearchResult countResult = await db.FT()
@@ -276,7 +299,7 @@ public sealed partial class SyntacticSearchService
         return content[..cutoff] + "...";
     }
 
-    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|,]")]
+    [GeneratedRegex(@"[-=@!{}()\[\]^~*?:\\""'|,]")]
     private static partial Regex EscapeRegex();
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch index {IndexName} not found for tenant {TenantId} — returning empty results")]

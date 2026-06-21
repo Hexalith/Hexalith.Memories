@@ -28,6 +28,7 @@ using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -2226,9 +2227,10 @@ app.MapGet("/api/search", async (
                     rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
                 }
             }
-        });
+    });
     searchScope.User = ResolveReadOperationUser(httpContext, searchActivity);
     searchScope.CaseId = caseId;
+    IReadOnlyDictionary<string, string>? attributeFilters = ReadAttributeFilters(httpContext.Request.Query);
     Dictionary<string, object?> searchQueryParams = new(System.StringComparer.Ordinal)
     {
         ["query"] = query,
@@ -2239,6 +2241,7 @@ app.MapGet("/api/search", async (
         ["sourceType"] = sourceType,
         ["subject"] = subject,
         ["metadataFilterCount"] = string.IsNullOrWhiteSpace(metadataQuery) ? 0 : metadataQuery.Split(',').Length,
+        ["attributeFilterCount"] = attributeFilters?.Count ?? 0,
         ["explain"] = explain,
         ["tokenBudget"] = tokenBudget,
     };
@@ -2371,6 +2374,7 @@ app.MapGet("/api/search", async (
                 SourceTypeFilter = sourceType,
                 MetadataQuery = metadataQuery,
                 CloudEventSubject = subject,
+                AttributeFilters = attributeFilters,
                 MaxResults = clampedMaxResults,
                 Offset = Math.Max(offset, 0),
             };
@@ -2468,6 +2472,7 @@ app.MapGet("/api/search", async (
                 SourceTypeFilter = sourceType,
                 MetadataQuery = metadataQuery,
                 CloudEventSubject = subject,
+                AttributeFilters = attributeFilters,
                 MaxResults = Math.Clamp(maxResults, 1, 100),
                 Offset = Math.Max(offset, 0),
             };
@@ -2582,6 +2587,7 @@ app.MapGet("/api/search", async (
             SourceTypeFilter = sourceType,
             MetadataQuery = metadataQuery,
             CloudEventSubject = subject,
+            AttributeFilters = attributeFilters,
             MaxResults = clampedMax,
             Offset = clampedOff,
         };
@@ -3723,6 +3729,30 @@ static bool TryReadAnnotationCount(NFalkorDB.Record record, out string? memoryUn
     {
         return false;
     }
+}
+
+static IReadOnlyDictionary<string, string>? ReadAttributeFilters(IQueryCollection query)
+{
+    const string Prefix = "attribute.";
+
+    Dictionary<string, string> filters = new(StringComparer.Ordinal);
+    foreach (var pair in query)
+    {
+        if (!pair.Key.StartsWith(Prefix, StringComparison.Ordinal)
+            || pair.Key.Length == Prefix.Length)
+        {
+            continue;
+        }
+
+        string attributeName = pair.Key[Prefix.Length..].Trim();
+        string attributeValue = pair.Value.ToString().Trim();
+        if (!string.IsNullOrWhiteSpace(attributeName) && !string.IsNullOrWhiteSpace(attributeValue))
+        {
+            filters[attributeName] = attributeValue;
+        }
+    }
+
+    return filters.Count == 0 ? null : filters;
 }
 
 static List<CaseGroupSummary> BuildCaseGroups(

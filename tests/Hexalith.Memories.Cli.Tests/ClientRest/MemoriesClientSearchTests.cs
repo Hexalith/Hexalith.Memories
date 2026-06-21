@@ -97,6 +97,39 @@ public sealed class MemoriesClientSearchTests
     }
 
     [Fact]
+    public async Task SearchAsync_IncludesOptionalSearchFiltersWhenProvided()
+    {
+        SearchResult body = new() { Results = [], TotalCount = 0, HasIndexedMemoryUnits = true, Query = "needle" };
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.SearchAsync(
+            new SearchRequest(
+                TenantId: "t1",
+                Axis: "syntactic",
+                Query: "needle",
+                SourceType: "event",
+                MetadataQuery: "important",
+                Subject: "tenant.alpha",
+                MaxResults: 25,
+                Offset: 50,
+                AttributeFilters: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["status"] = "Active",
+                }),
+            CancellationToken.None);
+
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("sourceType=event");
+        uri.ShouldContain("metadataQuery=important");
+        uri.ShouldContain("subject=tenant.alpha");
+        uri.ShouldContain("maxResults=25");
+        uri.ShouldContain("offset=50");
+        uri.ShouldContain("attribute.status=Active");
+    }
+
+    [Fact]
     public async Task SearchAsync_NonSuccess_ThrowsMemoriesRemoteException()
     {
         string error = JsonSerializer.Serialize(

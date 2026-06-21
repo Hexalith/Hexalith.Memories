@@ -46,6 +46,7 @@ public class IndexSyntacticActivityTests
                 && HasEntry(entries, "sourceType", "file")
                 && HasEntry(entries, "sourceTypeText", "file")
                 && HasEntry(entries, "metadataText", "priority urgent human")
+                && HasEntry(entries, "attributeTags", "priority=urgent")
                 && HasEntry(entries, "metadataJson", JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options))
                 && HasEntry(entries, "ingestedBy", input.IngestedBy)
                 && HasEntry(entries, "ingestedAt", input.IngestedAt.ToString("o"))),
@@ -287,6 +288,7 @@ public class IndexSyntacticActivityTests
             CreateAttribute("sourceType", "TAG"),
             CreateAttribute("contentHash", "TAG"),
             CreateAttribute("caseId", "TAG"),
+            CreateAttribute("attributeTags", "TAG"),
             CreateAttribute("embeddingProvider", "TAG"),
         ];
 

@@ -13,6 +13,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -30,10 +31,9 @@ using StackExchange.Redis;
 /// back to a source aggregate id. The document is written with the same field set the generic ingestion
 /// path uses (Story 5.4/5.5 schema) so no index schema change is required.</para>
 ///
-/// <para>Attributes are persisted as a flattened, searchable <c>metadataText</c> field plus a verbatim
-/// <c>metadataJson</c> blob (so exact values survive for a later exact-match upgrade). Exact-match attribute
-/// TAG filtering is a separate follow-up (handoff §3.6); until it lands, callers filter on the hydrated
-/// authoritative status instead.</para>
+/// <para>Attributes are persisted as flattened searchable <c>metadataText</c>, exact-match
+/// <c>attributeTags</c>, and verbatim <c>metadataJson</c> fields. Search callers can pre-filter on the exact
+/// TAG values while still hydrating authoritative domain state before rendering rows.</para>
 /// </summary>
 internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexMaintenance
 {
@@ -73,6 +73,7 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         string hashKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(indexTenantId) + entry.AggregateId;
         string now = DateTimeOffset.UtcNow.ToString("o");
         string metadataText = FlattenAttributes(entry.Attributes);
+        string attributeTags = FlattenAttributeTags(entry.Attributes);
         string metadataJson = JsonSerializer.Serialize(
             entry.Attributes ?? new Dictionary<string, string>(StringComparer.Ordinal),
             MemoriesJsonContext.Options);
@@ -88,6 +89,7 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
             new HashEntry("sourceType", CuratedSourceType),
             new HashEntry("sourceTypeText", CuratedSourceType),
             new HashEntry("metadataText", metadataText),
+            new HashEntry("attributeTags", attributeTags),
             new HashEntry("metadataJson", metadataJson),
             new HashEntry("contentHash", contentHash),
             new HashEntry("caseId", caseId ?? string.Empty),
@@ -148,6 +150,25 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         return string.Join(' ', parts);
     }
 
+    private static string FlattenAttributeTags(IReadOnlyDictionary<string, string>? attributes)
+    {
+        if (attributes is null || attributes.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        List<string> tags = [];
+        foreach ((string key, string value) in attributes.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+            {
+                tags.Add(SyntacticSearchService.BuildAttributeTag(key, value));
+            }
+        }
+
+        return string.Join(',', tags);
+    }
+
     private void EnsureSyntacticIndexExists(IDatabase db, string tenantId)
     {
         // Safety net: the index is normally created by TenantProvisioningWorkflow before the tenant is Active
@@ -163,7 +184,36 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
         {
-            // Expected steady-state path: the index already exists.
+            EnsureSyntacticIndexReady(db, indexName, tenantId);
+        }
+    }
+
+    private void EnsureSyntacticIndexReady(IDatabase db, string indexName, string tenantId)
+    {
+        RedisResult info = db.Execute("FT.INFO", indexName);
+        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
+
+        if (actualFields.SetEquals(expectedFields))
+        {
+            return;
+        }
+
+        foreach (string upgradedField in IndexSchemaDefinitions.TryUpgradeMissingTagFields(
+            db,
+            indexName,
+            actualFields,
+            expectedFields,
+            ["cloudeventSubject", "attributeTags"]))
+        {
+            actualFields.Add(upgradedField);
+            LogIndexFieldUpgraded(_logger, tenantId, indexName, upgradedField);
+        }
+
+        if (!actualFields.SetEquals(expectedFields))
+        {
+            throw new InvalidOperationException(
+                $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}].");
         }
     }
 
@@ -178,4 +228,10 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         Level = LogLevel.Information,
         Message = "Curated search index removed entry for tenant {TenantId}, aggregate {AggregateId} (existed={Existed}).")]
     private static partial void LogEntryRemoved(ILogger logger, string tenantId, string aggregateId, bool existed);
+
+    [LoggerMessage(
+        EventId = 9192,
+        Level = LogLevel.Information,
+        Message = "Added missing {FieldName} field to RediSearch index {IndexName} for tenant {TenantId}.")]
+    private static partial void LogIndexFieldUpgraded(ILogger logger, string tenantId, string indexName, string fieldName);
 }
