@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>Hexalith.Memories.Aspire</PackageId>
+    <Description>.NET Aspire hosting extensions for Hexalith.Memories — adds the Memories search-index server (FalkorDB graph store, secret store, conversation/LLM component, DAPR sidecar) to a consuming domain-module AppHost.</Description>
+    <Authors>ITANEO</Authors>
+    <Company>ITANEO</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
+    <PackageTags>hexalith;memories;aspire;dapr;falkordb;search;vector-search</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.Dapr" />
+    <!-- Direct pin clears the MessagePack 2.5.192 transitive vulnerability advisory (NU1903)
+         pulled in via CommunityToolkit.Aspire.Hosting.Dapr; mirrors the AppHost pin. -->
+    <PackageReference Include="MessagePack" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

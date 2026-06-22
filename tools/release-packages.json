@@ -2,6 +2,10 @@
   "$schema": "./release-packages.schema.json",
   "packages": [
     {
+      "packageId": "Hexalith.Memories.Aspire",
+      "project": "src/Hexalith.Memories.Aspire/Hexalith.Memories.Aspire.csproj"
+    },
+    {
       "packageId": "Hexalith.Memories.Contracts",
       "project": "src/Hexalith.Memories.Contracts/Hexalith.Memories.Contracts.csproj"
     },
@@ -33,6 +37,7 @@
   "nonPackableProjects": [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
     "src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj",
-    "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj"
+    "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj",
+    "src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj"
   ]
 }
