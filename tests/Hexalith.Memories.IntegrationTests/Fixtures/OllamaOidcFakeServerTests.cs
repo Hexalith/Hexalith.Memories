@@ -99,7 +99,7 @@ public sealed class OllamaOidcFakeServerTests
     [Fact]
     public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafAndConfigOnNormalDispose()
     {
-        string fixtureAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        string fixtureAppId = $"memories-it-{Guid.NewGuid():N}";
         string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", fixtureAppId);
         string configPath = Path.Combine(parentDir, "config.yaml");
         string componentPath = Path.Combine(parentDir, "components", "fake-component.yaml");
@@ -119,7 +119,7 @@ public sealed class OllamaOidcFakeServerTests
     [Fact]
     public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafEvenWhenConfigWriteNeverSucceeded()
     {
-        string fixtureAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        string fixtureAppId = $"memories-it-{Guid.NewGuid():N}";
         string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", fixtureAppId);
         Directory.CreateDirectory(parentDir);
         string configPath = Path.Combine(parentDir, "config.yaml");
@@ -134,7 +134,7 @@ public sealed class OllamaOidcFakeServerTests
     [Fact]
     public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRefuseDeletionWhenLeafNameDoesNotMatchFixtureAppId()
     {
-        string realLeaf = $"memories-server-it-{Guid.NewGuid():N}";
+        string realLeaf = $"memories-it-{Guid.NewGuid():N}";
         string parentDir = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", realLeaf);
         Directory.CreateDirectory(parentDir);
         string configPath = Path.Combine(parentDir, "config.yaml");
@@ -144,7 +144,7 @@ public sealed class OllamaOidcFakeServerTests
         {
             AspireIngestionPipelineFixture.DeleteFixtureOwnedTempDaprDirectory(
                 configPath,
-                fixtureAppId: $"memories-server-it-{Guid.NewGuid():N}");
+                fixtureAppId: $"memories-it-{Guid.NewGuid():N}");
 
             File.Exists(configPath).ShouldBeTrue();
             Directory.Exists(parentDir).ShouldBeTrue();

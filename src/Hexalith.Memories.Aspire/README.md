@@ -4,8 +4,8 @@
 
 A Hexalith domain module that wants to embed the Memories search-index server in its own
 `*.AppHost` (for example to make a curated read model searchable) previously had to hand-roll the
-same wiring: a FalkorDB graph container, a secret-store component, a conversation/LLM component, the
-`memories-server` project with a DAPR sidecar, and the standard connection-string / topic
+same wiring: a Redis Stack search/vector container, a FalkorDB graph container, a secret-store
+component, a conversation/LLM component, the `memories` project with a DAPR sidecar, and the standard connection-string / topic
 environment. That boilerplate now lives here.
 
 ## Usage
@@ -32,6 +32,10 @@ _ = memories.Server
 The helper only **adds** the Memories topology and returns the resource builders; the consuming
 AppHost owns its DAPR component YAML files and any source-to-index routing.
 
-The `memories-server` project is referenced cross-repo with `IProjectMetadata.SuppressBuild`, so the
+By default the helper creates a `memories-vectors` `redis/redis-stack` container for the Memories
+search/vector store. Pass `redisConnectionString` only when the consuming AppHost owns a compatible
+Redis Stack dependency.
+
+The `memories` project is referenced cross-repo with `IProjectMetadata.SuppressBuild`, so the
 consuming AppHost never compiles it (Aspire runs children with `--no-build`) and the two
 repositories' package graphs stay isolated.

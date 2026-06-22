@@ -24,7 +24,7 @@ using Microsoft.Extensions.Options;
 internal static class McpCompositionRoot
 {
     /// <summary>The DAPR app-id of the upstream Memories Server resolved through service invocation.</summary>
-    internal const string MemoriesServerAppId = "memories-server";
+    internal const string MemoriesServerAppId = "memories";
 
     /// <summary>Environment variable overriding the upstream Memories Server DAPR app-id.</summary>
     internal const string MemoriesServerAppIdEnvVar = "MEMORIES_MCP_UPSTREAM_APP_ID";
@@ -57,7 +57,7 @@ internal static class McpCompositionRoot
 
         // The DAPR-supplied invoke client routes every call through the local sidecar at
         // DAPR_HTTP_ENDPOINT (defaults to http://localhost:3500) and adds the dapr-app-id header for
-        // memories-server. The wrapping handler appends dapr-api-token when token mode is enabled.
+        // memories. The wrapping handler appends dapr-api-token when token mode is enabled.
         services.AddTransient<MemoriesMcpDaprInvocationHandler>();
         services.AddScoped<MemoriesClient>(sp =>
         {
@@ -87,7 +87,7 @@ internal static class McpCompositionRoot
                 tags: ["live", "ready"],
                 timeout: TimeSpan.FromSeconds(3))
             .AddCheck<MemoriesServerUpstreamHealthCheck>(
-                "memories-server-upstream",
+                "memories-upstream",
                 failureStatus: HealthStatus.Unhealthy,
                 tags: ["ready"],
                 timeout: TimeSpan.FromSeconds(6));

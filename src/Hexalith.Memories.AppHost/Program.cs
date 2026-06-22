@@ -44,7 +44,7 @@ ApplyProcessEnvironmentTokens(daprApiToken, appApiToken);
 // Tests can override the volume name for isolation via MEMORIES_REDIS_VOLUME_NAME; local/dev
 // runs keep a stable named volume so controlled restarts preserve state.
 IResourceBuilder<ContainerResource> redis = builder
-    .AddContainer("redis", "redis/redis-stack")
+    .AddContainer("memories-vectors", "redis/redis-stack")
     .WithBindMount(redisConfigPath, "/redis-stack.conf", isReadOnly: true)
     .WithVolume(redisVolumeName, "/data")
     .WithEndpoint(targetPort: 6379, name: "redis");
@@ -79,7 +79,7 @@ redis.OnResourceReady((resource, _, _) =>
 });
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
-    if (@event.Resource.Name is "memories-server-dapr" or "memories-server-dapr-cli" or
+    if (@event.Resource.Name is "memories-dapr" or "memories-dapr-cli" or
         "memories-mcp-dapr" or "memories-mcp-dapr-cli")
     {
         Task rewriteSignal;
@@ -139,7 +139,7 @@ IResourceBuilder<IDaprComponentResource> conversationLlm = builder
 
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
-    .AddContainer("falkordb", "falkordb/falkordb")
+    .AddContainer("memories-graphs", "falkordb/falkordb")
     .WithEndpoint(targetPort: 6379, name: "falkordb");
 EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
@@ -148,7 +148,7 @@ EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 // AppPort is intentionally omitted so Aspire Testing can auto-detect the
 // randomized project port instead of pinning the sidecar to localhost:5000.
 IResourceBuilder<ProjectResource> server = builder
-    .AddProject<Projects.Hexalith_Memories_Server>("memories-server", launchProfileName: "http")
+    .AddProject<Projects.Hexalith_Memories_Server>("memories", launchProfileName: "http")
     .WithDaprSidecar(sidecar =>
     {
         _ = sidecar.WithOptions(CreateDaprSidecarOptions(
@@ -652,7 +652,7 @@ static string ResolveDaprAppId()
     string? configured = Environment.GetEnvironmentVariable("MEMORIES_DAPR_APP_ID");
     if (string.IsNullOrWhiteSpace(configured))
     {
-        return "memories-server";
+        return "memories";
     }
 
     string trimmed = configured.Trim();

@@ -22,7 +22,7 @@ public sealed record HexalithMemoriesSearchIndexServerResources(
 
 /// <summary>
 /// Provides the Aspire hosting extension that adds the Hexalith.Memories search-index server (FalkorDB graph
-/// store, secret store, conversation/LLM component, the <c>memories-server</c> project and its DAPR sidecar) to
+/// store, secret store, conversation/LLM component, the <c>memories</c> project and its DAPR sidecar) to
 /// a consuming domain-module AppHost.
 /// </summary>
 /// <remarks>
@@ -33,8 +33,9 @@ public sealed record HexalithMemoriesSearchIndexServerResources(
 /// </para>
 /// <para>
 /// The server reuses the <paramref name="stateStore"/> and <paramref name="pubSub"/> DAPR components supplied by
-/// the consumer (typically the shared EventStore state store and pub/sub) and runs its own FalkorDB graph store
-/// plus consumer-supplied secret-store and conversation components. The <c>memories-server</c> project is
+/// the consumer (typically the shared EventStore state store and pub/sub) and runs its own Redis Stack
+/// search/vector store and FalkorDB graph store plus consumer-supplied secret-store and conversation components.
+/// The <c>memories</c> project is
 /// referenced cross-repo with <see cref="IProjectMetadata.SuppressBuild"/> set to <see langword="true"/>; the
 /// Memories platform is built independently (Aspire runs children with <c>--no-build</c>). This helper only
 /// <i>adds</i> the topology and returns the resource builders — any source-to-index routing is applied by the
@@ -53,9 +54,9 @@ public static class HexalithMemoriesServerExtensions
     /// <param name="pubSub">The shared DAPR pub/sub component the Memories server reuses.</param>
     /// <param name="secretStoreComponentPath">Path to the local-file secret-store component YAML (consumer-owned).</param>
     /// <param name="llmComponentPath">Path to the conversation/LLM component YAML (consumer-owned).</param>
-    /// <param name="redisConnectionString">The Redis connection string for the Memories vector/search store. Defaults to <c>"localhost:6379"</c>.</param>
+    /// <param name="redisConnectionString">Optional Redis connection string for the Memories vector/search store. When omitted, the helper adds a <c>redis/redis-stack</c> container.</param>
     /// <param name="eventStoreTopic">The pub/sub topic the Memories server subscribes for EventStore integration. Defaults to <c>"memories-events"</c>.</param>
-    /// <param name="serverName">The Aspire resource name and DAPR app id for the Memories server. Defaults to <c>"memories-server"</c>.</param>
+    /// <param name="serverName">The Aspire resource name and DAPR app id for the Memories server. Defaults to <c>"memories"</c>.</param>
     /// <param name="daprHttpPort">The Memories sidecar DAPR HTTP port. Defaults to <c>3502</c> (the EventStore platform uses 3501).</param>
     /// <param name="daprGrpcPort">The Memories sidecar DAPR gRPC port. Defaults to <c>50002</c>.</param>
     /// <param name="daprPlacementHostAddress">Optional DAPR placement service address (<c>host</c> or <c>host:port</c>). <see langword="null"/> uses the DAPR default.</param>
@@ -65,16 +66,16 @@ public static class HexalithMemoriesServerExtensions
     /// LLM resource builders for further customization.
     /// </returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/>, <paramref name="stateStore"/> or <paramref name="pubSub"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">Thrown when a required path, connection string, topic or name is <see langword="null"/> or whitespace.</exception>
+    /// <exception cref="ArgumentException">Thrown when a required path, topic or name is <see langword="null"/> or whitespace.</exception>
     public static HexalithMemoriesSearchIndexServerResources AddHexalithMemoriesSearchIndexServer(
         this IDistributedApplicationBuilder builder,
         IResourceBuilder<IDaprComponentResource> stateStore,
         IResourceBuilder<IDaprComponentResource> pubSub,
         string secretStoreComponentPath,
         string llmComponentPath,
-        string redisConnectionString = "localhost:6379",
+        string? redisConnectionString = null,
         string eventStoreTopic = "memories-events",
-        string serverName = "memories-server",
+        string serverName = "memories",
         int daprHttpPort = 3502,
         int daprGrpcPort = 50002,
         string? daprPlacementHostAddress = null,
@@ -85,7 +86,6 @@ public static class HexalithMemoriesServerExtensions
         ArgumentNullException.ThrowIfNull(pubSub);
         ArgumentException.ThrowIfNullOrWhiteSpace(secretStoreComponentPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(llmComponentPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(redisConnectionString);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventStoreTopic);
         ArgumentException.ThrowIfNullOrWhiteSpace(serverName);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(daprHttpPort);
@@ -105,9 +105,22 @@ public static class HexalithMemoriesServerExtensions
 
         // FalkorDB graph store for the Memories graph index.
         IResourceBuilder<ContainerResource> falkorDb = builder
-            .AddContainer("memories-falkordb", "falkordb/falkordb")
+            .AddContainer("memories-graphs", "falkordb/falkordb")
             .WithEndpoint(targetPort: 6379, name: "falkordb");
         EndpointReference falkorDbEndpoint = falkorDb.GetEndpoint("falkordb");
+
+        string? redisSearchConnectionString = string.IsNullOrWhiteSpace(redisConnectionString)
+            ? null
+            : redisConnectionString.Trim();
+        IResourceBuilder<ContainerResource>? redisSearch = null;
+        EndpointReference? redisSearchEndpoint = null;
+        if (redisSearchConnectionString is null)
+        {
+            redisSearch = builder
+                .AddContainer("memories-vectors", "redis/redis-stack")
+                .WithEndpoint(targetPort: 6379, name: "redis");
+            redisSearchEndpoint = redisSearch.GetEndpoint("redis");
+        }
 
         // The server reuses the shared state store + pub/sub, runs its own FalkorDB, and gets a DAPR sidecar on a
         // unique HTTP port (the EventStore platform uses 3501). The project is built independently
@@ -127,14 +140,27 @@ public static class HexalithMemoriesServerExtensions
                 .WithReference(pubSub)
                 .WithReference(secretStore)
                 .WithReference(llm))
-            // Shared dapr-init Redis for the Memories vector/search store; FalkorDB for the graph store.
-            .WithEnvironment("ConnectionStrings__redis", redisConnectionString)
+            // Redis Stack for the Memories vector/search store; FalkorDB for the graph store.
             .WithEnvironment("ConnectionStrings__falkordb", ReferenceExpression.Create($"{falkorDbEndpoint.Property(EndpointProperty.HostAndPort)}"))
             // The controller subscription binding uses [Topic("pubsub", "$(MEMORIES_EVENTSTORE_TOPIC)")].
             .WithEnvironment("MEMORIES_EVENTSTORE_TOPIC", eventStoreTopic)
             .WaitFor(falkorDb)
             .WaitFor(secretStore)
             .WaitFor(llm);
+
+        server = redisSearch is null || redisSearchEndpoint is null
+            ? server.WithEnvironment("ConnectionStrings__redis", redisSearchConnectionString!)
+            : server
+                .WithEnvironment("ConnectionStrings__redis", ReferenceExpression.Create($"{redisSearchEndpoint.Property(EndpointProperty.HostAndPort)}"))
+                .WaitFor(redisSearch);
+
+#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr requires project-level component references.
+        server = server
+            .WithReference(stateStore)
+            .WithReference(pubSub)
+            .WithReference(secretStore)
+            .WithReference(llm);
+#pragma warning restore CS0618
 
         return new HexalithMemoriesSearchIndexServerResources(server, falkorDb, secretStore, llm);
     }

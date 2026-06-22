@@ -201,7 +201,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <inheritdoc/>
     public async ValueTask InitializeAsync()
     {
-        _daprAppId = $"memories-server-it-{Guid.NewGuid():N}";
+        _daprAppId = $"memories-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
         _eventStoreMappedTenantId = $"tenant-eventstore-{Guid.NewGuid():N}";
 
@@ -594,11 +594,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
 
         _ = await _app.ResourceNotifications
-            .WaitForResourceHealthyAsync("memories-server", cancellationToken)
+            .WaitForResourceHealthyAsync("memories", cancellationToken)
             .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
-        MemoriesClient = _app.CreateHttpClient("memories-server");
+        MemoriesClient = _app.CreateHttpClient("memories");
         MemoriesClient.Timeout = TimeSpan.FromSeconds(60);
 
         // The AppHost resource-health wait above is the backend readiness gate. Use the liveness
@@ -636,8 +636,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
 
-        Uri redisEndpoint = _app.GetEndpoint("redis", "redis");
-        Uri falkorEndpoint = _app.GetEndpoint("falkordb", "falkordb");
+        Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");
+        Uri falkorEndpoint = _app.GetEndpoint("memories-graphs", "falkordb");
 
         RedisConnection = await ConnectionMultiplexer.ConnectAsync(redisEndpoint.Authority).ConfigureAwait(false);
         FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(falkorEndpoint.Authority).ConfigureAwait(false);
@@ -654,11 +654,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>
     /// Accepts the Aspire resource-log category for the Memories Server resource. The Aspire runtime prefixes
-    /// category names with either the resource id ("memories-server") or the AppHost resource-log
-    /// category prefix ("Hexalith.Memories.AppHost.Resources.memories-server"), followed by either
+    /// category names with either the resource id ("memories") or the AppHost resource-log
+    /// category prefix ("Hexalith.Memories.AppHost.Resources.memories"), followed by either
     /// the end of the category or a "-" / "." separator (for related sub-resources such as
-    /// "memories-server-dapr-cli"). A raw substring <c>Contains</c> match is too broad — any unrelated
-    /// future test-runner category that happens to embed "memories-server" would be elevated above the
+    /// "memories-dapr-cli"). A raw substring <c>Contains</c> match is too broad — any unrelated
+    /// future test-runner category that happens to embed "memories" would be elevated above the
     /// Warning floor and add noise to the captured stream.
     /// </summary>
     /// <param name="category">The logger category name as provided by the logging pipeline.</param>
@@ -670,12 +670,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             return false;
         }
 
-        const string resourceId = "memories-server";
+        const string resourceId = "memories";
         const string aspireResourceMarker = ".Resources." + resourceId;
         // Anchor the resource match to two well-known shapes so an unrelated category like
-        // `Foo.Bar.SomeResource.memories-server` cannot collide with the real resource:
-        //   1. Direct resource category: `memories-server[.|-]<sub>` (or exact match).
-        //   2. AppHost resource category: `<assembly>.Resources.memories-server[.|-]<sub>`.
+        // `Foo.Bar.SomeResource.memories` cannot collide with the real resource:
+        //   1. Direct resource category: `memories[.|-]<sub>` (or exact match).
+        //   2. AppHost resource category: `<assembly>.Resources.memories[.|-]<sub>`.
         int resourceIndex;
         if (category.StartsWith(resourceId, StringComparison.OrdinalIgnoreCase))
         {
@@ -708,7 +708,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         if (_app is not null)
         {
-            foreach (string resourceName in new[] { "memories-server-dapr", "memories-server-dapr-cli" })
+            foreach (string resourceName in new[] { "memories-dapr", "memories-dapr-cli" })
             {
                 try
                 {
@@ -732,7 +732,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         for (int i = entries.Count - 1; i >= 0; i--)
         {
             CapturedLogEntry entry = entries[i];
-            if (!entry.Category.Contains("memories-server-dapr-cli", StringComparison.OrdinalIgnoreCase))
+            if (!entry.Category.Contains("memories-dapr-cli", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

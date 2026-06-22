@@ -368,7 +368,7 @@ Examples:
             $"Server did not become ready within {DefaultHealthTimeout.TotalSeconds:F0}s. "
             + $"Verify '{BootCommand}' is running in another terminal. "
             + "If the AppHost is running but on a different port (Aspire Testing fixtures randomize ports), "
-            + "check the Aspire dashboard for the 'memories-server' port and re-run with '--endpoint http://localhost:<port>'."
+            + "check the Aspire dashboard for the 'memories' port and re-run with '--endpoint http://localhost:<port>'."
             + (result.LastError is null ? string.Empty : $" Last probe error: {result.LastError}");
 
         var fail = new QuickstartStepResult(

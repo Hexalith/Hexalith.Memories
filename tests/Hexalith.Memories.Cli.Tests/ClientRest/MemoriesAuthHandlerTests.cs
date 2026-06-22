@@ -20,7 +20,7 @@ public class MemoriesAuthHandlerTests
     private const string IngressEndpoint = "https://ingress.example.com/";
     private const string LocalhostEndpoint = "http://127.0.0.1:5000/";
     private const string TokenValue = "t";
-    private static readonly string DockerServiceEndpoint = $"{Uri.UriSchemeHttp}://memories-server:5000/";
+    private static readonly string DockerServiceEndpoint = $"{Uri.UriSchemeHttp}://memories:5000/";
     public static object?[][] NoTokenEndpoints =>
     [
         [null, IngressEndpoint],

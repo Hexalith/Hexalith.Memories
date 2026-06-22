@@ -24,7 +24,7 @@ internal sealed class MemoriesServerUpstreamHealthCheck : IHealthCheck
     internal const int FailureStrikeThreshold = 3;
 
     /// <summary>The upstream service identifier surfaced via <c>data["upstream"]</c>.</summary>
-    internal const string UpstreamIdentifier = "memories-server";
+    internal const string UpstreamIdentifier = "memories";
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Lock _lock = new();

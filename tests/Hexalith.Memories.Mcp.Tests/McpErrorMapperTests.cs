@@ -32,7 +32,7 @@ public sealed class McpErrorMapperTests
         result.Content.ShouldHaveSingleItem();
         var text = result.Content[0] as TextContentBlock;
         text.ShouldNotBeNull();
-        text!.Text.ShouldStartWith("[TENANT_NOT_FOUND] (service=memories-server): Tenant 'acme' was not found. Run memories tenant list.");
+        text!.Text.ShouldStartWith("[TENANT_NOT_FOUND] (service=memories): Tenant 'acme' was not found. Run memories tenant list.");
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class McpErrorMapperTests
         CallToolResult result = _mapper.Map(ex, "search_memory");
         var text = (TextContentBlock)result.Content[0];
 
-        text.Text.ShouldBe("[INVALID_INPUT] (service=memories-server): bad input");
+        text.Text.ShouldBe("[INVALID_INPUT] (service=memories): bad input");
         text.Text.ShouldNotEndWith(" ");
     }
 
@@ -57,8 +57,8 @@ public sealed class McpErrorMapperTests
         CallToolResult resultNoArg = _mapper.Map(ex, "search_memory");
         CallToolResult resultBlank = _mapper.Map(ex, "search_memory", failedService: " ");
 
-        ((TextContentBlock)resultNoArg.Content[0]).Text.ShouldContain("service=memories-server");
-        ((TextContentBlock)resultBlank.Content[0]).Text.ShouldContain("service=memories-server");
+        ((TextContentBlock)resultNoArg.Content[0]).Text.ShouldContain("service=memories");
+        ((TextContentBlock)resultBlank.Content[0]).Text.ShouldContain("service=memories");
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class McpErrorMapperTests
         result.StructuredContent.ShouldNotBeNull();
         JsonElement json = result.StructuredContent!.Value;
         json.GetProperty("code").GetString().ShouldBe("CASE_NOT_FOUND");
-        json.GetProperty("service").GetString().ShouldBe("memories-server");
+        json.GetProperty("service").GetString().ShouldBe("memories");
         json.GetProperty("tool").GetString().ShouldBe("get_case_info");
         json.GetProperty("message").GetString().ShouldBe("no case");
         json.GetProperty("suggestion").GetString().ShouldBe("list cases");
@@ -101,7 +101,7 @@ public sealed class McpErrorMapperTests
         text.Text.ShouldNotContain("at System.");
         text.Text.ShouldNotContain("---> System.");
         text.Text.ShouldNotContain("StackTrace");
-        text.Text.ShouldContain("(service=memories-server)");
+        text.Text.ShouldContain("(service=memories)");
     }
 
     [Theory]

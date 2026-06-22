@@ -29,7 +29,7 @@ public sealed class AppHostComponentFileOrderingTests
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(true);
 
-        // Capture the statestore.yaml content observed at the moment the memories-server-dapr sidecar
+        // Capture the statestore.yaml content observed at the moment the memories-dapr sidecar
         // begins starting. This tap subscribes AFTER Program.cs's production subscriber, so Aspire
         // dispatches it second; the production subscriber awaits the rewrite TCS before it returns,
         // so by the time this tap runs the rewrite must be complete and any 127.0.0.1 placeholder
@@ -38,8 +38,8 @@ public sealed class AppHostComponentFileOrderingTests
 
         builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, _) =>
         {
-            if (@event.Resource.Name is not ("memories-server-dapr"
-                or "memories-server-dapr-cli"
+            if (@event.Resource.Name is not ("memories-dapr"
+                or "memories-dapr-cli"
                 or "memories-mcp-dapr"
                 or "memories-mcp-dapr-cli"))
             {
@@ -58,12 +58,12 @@ public sealed class AppHostComponentFileOrderingTests
 
         await app.StartAsync(cts.Token).ConfigureAwait(true);
 
-        // Wait for memories-server-dapr to transition into Running — the tap above runs before the
+        // Wait for memories-dapr to transition into Running — the tap above runs before the
         // sidecar starts, so by the time the resource is healthy, capturedStateStoreContent reflects
         // the file state at the start barrier.
         _ = await app.ResourceNotifications
             .WaitForResourceAsync(
-                "memories-server-dapr",
+                "memories-dapr",
                 e => e.Snapshot.State?.Text is "Running" or "Finished",
                 cts.Token)
             .ConfigureAwait(true);

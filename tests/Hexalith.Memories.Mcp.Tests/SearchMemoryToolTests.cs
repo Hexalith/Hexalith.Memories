@@ -71,7 +71,7 @@ public sealed class SearchMemoryToolTests
         CallToolResult result = await tool.SearchAsync("acme", "needle", cancellationToken: TestContext.Current.CancellationToken);
 
         AssertIsErrorWithCode(result, "TENANT_NOT_FOUND");
-        ExtractText(result).ShouldStartWith("[TENANT_NOT_FOUND] (service=memories-server):");
+        ExtractText(result).ShouldStartWith("[TENANT_NOT_FOUND] (service=memories):");
     }
 
     [Fact]

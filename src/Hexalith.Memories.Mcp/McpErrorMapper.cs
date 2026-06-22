@@ -22,7 +22,7 @@ using ModelContextProtocol.Protocol;
 internal sealed partial class McpErrorMapper
 {
     /// <summary>The default <c>failedService</c> identifier.</summary>
-    internal const string DefaultFailedService = "memories-server";
+    internal const string DefaultFailedService = "memories";
 
     /// <summary>Generic error code for transport / network failures.</summary>
     internal const string NetworkErrorCode = "NETWORK_ERROR";
@@ -45,7 +45,7 @@ internal sealed partial class McpErrorMapper
     /// </summary>
     /// <param name="exception">The remote exception.</param>
     /// <param name="toolName">The MCP tool that observed the failure (used in <c>StructuredContent.tool</c>).</param>
-    /// <param name="failedService">The service identifier reported to the LLM client; defaults to <c>memories-server</c>.</param>
+    /// <param name="failedService">The service identifier reported to the LLM client; defaults to <c>memories</c>.</param>
     /// <returns>A tool result with <see cref="CallToolResult.IsError"/> set.</returns>
     public CallToolResult Map(MemoriesRemoteException exception, string toolName, string? failedService = null)
     {

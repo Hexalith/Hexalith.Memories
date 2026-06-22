@@ -34,11 +34,11 @@ public sealed class McpCompositionRootTests
     [Fact]
     public void ResolveMemoriesServerAppId_WhenConfigured_TrimsValue()
     {
-        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, "  memories-server-it-123  "));
+        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, "  memories-it-123  "));
 
         string appId = McpCompositionRoot.ResolveMemoriesServerAppId();
 
-        appId.ShouldBe("memories-server-it-123");
+        appId.ShouldBe("memories-it-123");
     }
 
     private sealed class EnvScope : IDisposable
