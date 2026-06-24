@@ -1418,11 +1418,17 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Re-open trigger: a downstream consumer needs ready-to-apply Kubernetes/Dapr manifests emitted from the AppHost topology rather than a hand-filled documented contract.
   - Rationale: Story 18.2 delivered the documented deploy-config contract plus its drift guard but explicitly deferred full aspirate (manifest) emission as a larger, separable effort; per the 2026-05-27 locked decision ("document now, defer aspirate") no follow-up story id is assigned yet - the deferral is open-ended.
 - ID: MEM-3
-  - Status: carried-forward
+  - Status: resolved
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.3)
   - Re-open trigger: an external Dapr ACL cannot be verified against the Memories operation surface, or the published surface drifts from the mapped endpoints.
-  - Rationale: no `/process` operation exists; the real surface (`/api/*` + pub/sub `/events/ingest`) must be published in an ACL-verifiable form, scheduled as Story 18.3.
+  - Evidence: Story 18.3 published the invocable route/operation-surface contract at `docs/operations/route-surface.md` (full 45-route `/api/*` inventory, pub/sub `/dapr/subscribe` + `POST /events/ingest` operation surface, health and MCP probes, and the explicit `/process` refutation tied to code) and guards it against drift with `tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs` (forward code->doc route tie deriving the list from `Program.cs`, a 45-route count tie, bidirectional pub/sub + health constant ties, an MCP source-text tie, and a code-tied `/process` negative assertion). Residual OpenAPI/Swagger document emission is carried forward as `MEM-3-OPENAPI`.
+- ID: MEM-3-OPENAPI
+  - Status: carried-forward
+  - Source story: 18-3-invocable-route-and-operation-surface-publication
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future OpenAPI document-generation story - unassigned)
+  - Re-open trigger: a downstream consumer needs a generated OpenAPI/Swagger document (machine-consumable schema for client/ACL generation) rather than the maintained route-surface contract.
+  - Rationale: Story 18.3 delivered the maintained route-surface contract plus its drift guard but explicitly deferred full OpenAPI/Swagger document emission - no `AddOpenApi`/`MapOpenApi`/Swashbuckle exists today - as a larger, separable effort; per AC2 ("an OpenAPI document OR a maintained route-surface doc") the documented surface satisfies the story, so per the open-ended-deferral precedent no follow-up story id is assigned yet.
 - ID: MEM-4
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
