@@ -1381,43 +1381,43 @@ Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced 
 
 Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course intake and carried forward into Epic 18 (Sprint Change Proposal 2026-05-27). Each entry maps an `MEM-n` ask to the Epic 18 story that closes its verified residual gap.
 
-- ID: `MEM-1`
+- ID: MEM-1
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.1)
   - Re-open trigger: a clean clone with root submodules initialised fails to build the full `.slnx`, or `Projects.Hexalith_Memories_Server` / `Projects.Hexalith_Memories_Mcp` stops resolving.
   - Rationale: current `main` already resolves both project symbols and exposes no redis-param wiring; residual gap is a dedicated compile-resolution guard test + documented name-stability contract, scheduled as Story 18.1.
-- ID: `MEM-2`
+- ID: MEM-2
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.2)
   - Re-open trigger: a downstream operator cannot fill deployment placeholders because the canonical env/port/OTLP config surface is undocumented or has drifted from code.
   - Rationale: no aspirate tooling exists; the agreed course documents the deploy config contract now and defers full aspirate emission, scheduled as Story 18.2.
-- ID: `MEM-3`
+- ID: MEM-3
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.3)
   - Re-open trigger: an external Dapr ACL cannot be verified against the Memories operation surface, or the published surface drifts from the mapped endpoints.
   - Rationale: no `/process` operation exists; the real surface (`/api/*` + pub/sub `/events/ingest`) must be published in an ACL-verifiable form, scheduled as Story 18.3.
-- ID: `MEM-4`
+- ID: MEM-4
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.4)
   - Re-open trigger: concurrent same-source ingests race into duplicate/partial memory units, or consumers still require the `HXL001` suppression to ingest.
   - Rationale: `IngestAsync` is experimental (not Obsolete) and dedup is check-then-act; residual gap is a stable additive ingest contract + explicit idempotency token + atomic dedup, scheduled as Story 18.4 (semantic-release sensitive).
-- ID: `MEM-5`
+- ID: MEM-5
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.5)
   - Re-open trigger: a consumer resolving a memory unit from a known source URI must rely on free-text search and silently degrades graph mode to local.
   - Rationale: no keyed lookup exists though the dedup record already maps sourceUri→MemoryUnitId internally; residual gap is exposing an exact source-URI lookup endpoint, scheduled as Story 18.5.
-- ID: `MEM-6`
+- ID: MEM-6
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.6)
   - Re-open trigger: a consumer's `MemoryUnitId`-keyed mapping accumulates ghost ids after a Memories restart/contract change because the stability semantics are unspecified.
   - Rationale: `MemoryUnitId` is workflow-instance/GUID derived and stable only while the dedup record persists; residual gap is documenting/guaranteeing the stability contract and its dedup-lifetime dependency, scheduled as Story 18.6.
-- ID: `MEM-7`
+- ID: MEM-7
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.7)

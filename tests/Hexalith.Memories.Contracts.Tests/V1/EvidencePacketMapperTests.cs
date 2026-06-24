@@ -104,6 +104,192 @@ public sealed class EvidencePacketMapperTests
     }
 
     [Fact]
+    public void FromSearchResult_EmptyAuthorizedScope_ShouldEmitEmptyPacketShape()
+    {
+        var result = new SearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            HasIndexedMemoryUnits = true,
+            Query = "missing phrase",
+            AxesUsed = ["semantic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.State.ShouldBe(EvidencePacketState.Empty);
+        packet.Result.TotalCount.ShouldBe(0);
+        packet.Result.ReturnedCount.ShouldBe(0);
+        packet.Sources.ShouldBeEmpty();
+        packet.Evidence.EvidenceStrength.ShouldBe(EvidencePacketEvidenceStrength.None);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.None);
+        packet.OmittedDetails.ExpansionHandles.ShouldBeEmpty();
+        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.BroadenScope);
+    }
+
+    [Fact]
+    public void FromSearchResult_DegradedTokenBudget_ShouldCombineOmissionMetadata()
+    {
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.91,
+                    ContentSnippet = "Claim denial language",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "syntactic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 3,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            Degraded = true,
+            UnavailableAxes = ["syntactic"],
+            OmittedCount = 2,
+            EstimatedTokensTotal = 2_048,
+            OmittedReason = OmittedReason.TokenBudget,
+            AxesUsed = ["syntactic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.State.ShouldBe(EvidencePacketState.Degraded);
+        packet.Evidence.Degraded.ShouldBeTrue();
+        packet.Evidence.UnavailableAxes.ShouldBe(["syntactic"]);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.Combined);
+        packet.OmittedDetails.FieldNames.ShouldContain("sources");
+        packet.OmittedDetails.FieldNames.ShouldContain("evidence.unavailableAxes");
+        packet.OmittedDetails.DetailGroups.ShouldContain("rankedResults");
+        packet.OmittedDetails.DetailGroups.ShouldContain("backendDiagnostics");
+        EvidencePacketExpansionHandle handle = packet.OmittedDetails.ExpansionHandles.ShouldHaveSingleItem();
+        handle.Handle.ShouldStartWith("ep:v1:");
+        handle.TargetDetailGroup.ShouldBe("rankedResults");
+        handle.TenantId.ShouldBe("tenant-a");
+        handle.CaseId.ShouldBe("case-a");
+        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.Retry);
+        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.InspectBackendHealth);
+    }
+
+    [Fact]
+    public void FromSearchResult_TenantWideScope_ShouldKeepScopeSeparateFromSourceCase()
+    {
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.79,
+                    ContentSnippet = "Tenant-wide match",
+                    SourceUri = "mem://tenant-a/case-visible/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "semantic",
+                    CaseId = "case-visible",
+                    CaseName = "Visible Case",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "tenant wide",
+            AxesUsed = ["semantic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", null, EvidencePacketIsolationStatus.Authorized, "tenant"));
+
+        packet.Scope.CaseId.ShouldBeNull();
+        packet.Scope.PermissionsContext.ShouldBe("tenant");
+        packet.Sources[0].CaseId.ShouldBe("case-visible");
+        packet.Sources[0].CaseName.ShouldBe("Visible Case");
+    }
+
+    [Fact]
+    public void FromSearchResult_AxisEvidence_ShouldBeNormalizedDeduplicatedAndSorted()
+    {
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.71,
+                    ContentSnippet = "Semantic match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "Semantic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = ["Syntactic", " semantic ", "syntactic"],
+            Explanation = new SearchExplanation
+            {
+                Caveat = "Scores measure relevance, not factual accuracy.",
+                AxisDetails = new Dictionary<string, AxisExplanation>
+                {
+                    ["Graph"] = new() { NormalizationMethod = "path_decay", Description = "graph proximity" },
+                    ["semantic"] = new() { NormalizationMethod = "cosine", Description = "cosine similarity" },
+                },
+            },
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.AxesUsed.ShouldBe(["semantic", "syntactic"]);
+        packet.Evidence.AxisEvidence.Select(axis => axis.Axis).ToArray().ShouldBe(["graph", "semantic", "syntactic"]);
+        packet.Evidence.AxisEvidence.Single(axis => axis.Axis == "semantic").Score.ShouldBe(0.71);
+        packet.Evidence.AxisEvidence.Single(axis => axis.Axis == "graph").NormalizationMethod.ShouldBe("path_decay");
+    }
+
+    [Theory]
+    [InlineData("TENANT_FORBIDDEN", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("CASE_UNAUTHORIZED", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("BACKEND_DEGRADED", EvidencePacketState.Degraded, EvidencePacketOmissionReason.BackendUnavailable, EvidencePacketRecoveryKind.Retry)]
+    public void FromError_StateMapping_ShouldPreserveSanitizedPacketShape(
+        string code,
+        EvidencePacketState expectedState,
+        EvidencePacketOmissionReason expectedReason,
+        EvidencePacketRecoveryKind expectedRecoveryKind)
+    {
+        var error = new ErrorResponse(
+            code,
+            "Sensitive backend failure at C:\\secret\\trace.txt.",
+            "Retry after Bearer abc123def456ghi789jkl012mno345pqr678 reconnects to redis://backend-key/0.");
+
+        EvidencePacket packet = EvidencePacketMapper.FromError(
+            error,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"),
+            query: "claim denied");
+
+        packet.State.ShouldBe(expectedState);
+        packet.OmittedDetails.Reason.ShouldBe(expectedReason);
+        packet.Recovery.ShouldContain(action => action.Kind == expectedRecoveryKind);
+
+        string json = JsonSerializer.Serialize(packet, MemoriesJsonContext.Options);
+        json.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("Bearer abc123def456ghi789jkl012mno345pqr678", Shouldly.Case.Sensitive);
+        json.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
     public void FromError_Unauthorized_ShouldUseHardcodedRecoveryWithoutCopyingErrorFields()
     {
         // Sensitive fragments live in error.Message and error.Suggestion. The unauthorized branch must not

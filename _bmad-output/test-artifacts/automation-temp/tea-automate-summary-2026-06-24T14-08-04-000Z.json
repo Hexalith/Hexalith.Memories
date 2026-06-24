@@ -1,0 +1,26 @@
+{
+  "detected_stack": "backend",
+  "total_tests": 12,
+  "api_tests": 0,
+  "e2e_tests": 0,
+  "backend_tests": 12,
+  "fixtures_created": 0,
+  "api_test_files": 0,
+  "e2e_test_files": 0,
+  "backend_test_files": 3,
+  "priority_coverage": {
+    "P0": 0,
+    "P1": 10,
+    "P2": 2,
+    "P3": 0
+  },
+  "knowledge_fragments_used": [
+    "api-request",
+    "data-factories",
+    "test-levels-framework",
+    "test-priorities-matrix",
+    "test-quality"
+  ],
+  "subagent_execution": "SEQUENTIAL (API then backend workers; subagent spawn not authorized by active user request)",
+  "performance_gain": "baseline (no parallel speedup)"
+}

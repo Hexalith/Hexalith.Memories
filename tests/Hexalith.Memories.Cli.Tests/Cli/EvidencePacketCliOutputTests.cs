@@ -51,13 +51,196 @@ public sealed class EvidencePacketCliOutputTests
         packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-001");
     }
 
-    private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices()
+    [Fact]
+    public async Task SearchQuery_HybridJson_EmptyResult_EmitsEmptyEvidencePacket()
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onHybridSearch: (request, _) => Task.FromResult(new HybridSearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                Degraded = false,
+                UnavailableAxes = [],
+                Query = request.Query,
+                AxesUsed = ["semantic"],
+            }));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "no matches" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        JsonElement packet = ReadEvidencePacket(stdout);
+
+        packet.GetProperty("state").GetString().ShouldBe("empty");
+        packet.GetProperty("sources").GetArrayLength().ShouldBe(0);
+        packet.GetProperty("evidence").GetProperty("evidenceStrength").GetString().ShouldBe("none");
+        packet.GetProperty("omittedDetails").GetProperty("reason").GetString().ShouldBe("none");
+        packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("broadenScope");
+    }
+
+    [Fact]
+    public async Task SearchQuery_HybridJson_DegradedTokenBudget_EmitsCombinedOmissionMetadata()
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onHybridSearch: (request, _) => Task.FromResult(new HybridSearchResult
+            {
+                Results =
+                [
+                    new FusedScoredResult
+                    {
+                        MemoryUnitId = "mu-001",
+                        CompositeScore = 0.83,
+                        ContentSnippet = "Partial hybrid evidence",
+                        SourceUri = "mem://tenant-a/case-a/mu-001",
+                        SourceType = SourceType.File,
+                        SemanticScore = 0.83,
+                        SyntacticScore = 0.61,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 3,
+                Degraded = true,
+                UnavailableAxes = ["graph"],
+                Query = request.Query,
+                AxesUsed = ["semantic", "syntactic"],
+                OmittedCount = 2,
+                EstimatedTokensTotal = 2_048,
+                OmittedReason = OmittedReason.TokenBudget,
+            }));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        JsonElement packet = ReadEvidencePacket(stdout);
+        JsonElement omitted = packet.GetProperty("omittedDetails");
+
+        packet.GetProperty("state").GetString().ShouldBe("degraded");
+        packet.GetProperty("evidence").GetProperty("degraded").GetBoolean().ShouldBeTrue();
+        packet.GetProperty("evidence").GetProperty("unavailableAxes")[0].GetString().ShouldBe("graph");
+        omitted.GetProperty("reason").GetString().ShouldBe("combined");
+        ReadStringArray(omitted.GetProperty("fieldNames")).ShouldContain("sources");
+        ReadStringArray(omitted.GetProperty("fieldNames")).ShouldContain("evidence.unavailableAxes");
+        ReadStringArray(omitted.GetProperty("detailGroups")).ShouldContain("rankedResults");
+        ReadStringArray(omitted.GetProperty("detailGroups")).ShouldContain("backendDiagnostics");
+        JsonElement handle = omitted.GetProperty("expansionHandles")[0];
+        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v1:");
+        handle.GetProperty("targetDetailGroup").GetString().ShouldBe("rankedResults");
+        handle.GetProperty("tenantId").GetString().ShouldBe("tenant-a");
+        handle.GetProperty("caseId").GetString().ShouldBe("case-a");
+        ReadRecoveryKinds(packet).ShouldContain("retry");
+        ReadRecoveryKinds(packet).ShouldContain("inspectBackendHealth");
+    }
+
+    [Fact]
+    public async Task SearchQuery_SingleAxisJson_EmitsEvidencePacketWithSameSemantics()
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onSearch: (request, _) => Task.FromResult(new SearchResult
+            {
+                Results =
+                [
+                    new ScoredResult
+                    {
+                        MemoryUnitId = "mu-010",
+                        Score = 0.77,
+                        ContentSnippet = "Syntactic evidence",
+                        SourceUri = "mem://tenant-a/case-a/mu-010",
+                        SourceType = SourceType.File,
+                        Axis = request.Axis,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 1,
+                HasIndexedMemoryUnits = true,
+                Query = request.Query ?? string.Empty,
+                AxesUsed = [request.Axis],
+            }));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied", "--axis", "syntactic" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        JsonElement packet = ReadEvidencePacket(stdout);
+
+        packet.GetProperty("scope").GetProperty("tenantId").GetString().ShouldBe("tenant-a");
+        packet.GetProperty("scope").GetProperty("caseId").GetString().ShouldBe("case-a");
+        packet.GetProperty("state").GetString().ShouldBe("complete");
+        packet.GetProperty("evidence").GetProperty("axesUsed")[0].GetString().ShouldBe("syntactic");
+        packet.GetProperty("evidence").GetProperty("axisEvidence")[0].GetProperty("axis").GetString().ShouldBe("syntactic");
+        packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-010");
+    }
+
+    [Fact]
+    public async Task SearchQuery_SingleAxisJson_TokenBudgetCompressed_EmitsExpansionGuidance()
+    {
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onSearch: (request, _) => Task.FromResult(new SearchResult
+            {
+                Results =
+                [
+                    new ScoredResult
+                    {
+                        MemoryUnitId = "mu-011",
+                        Score = 0.81,
+                        ContentSnippet = "Compressed evidence",
+                        SourceUri = "mem://tenant-a/case-a/mu-011",
+                        SourceType = SourceType.File,
+                        Axis = request.Axis,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 4,
+                HasIndexedMemoryUnits = true,
+                Query = request.Query ?? string.Empty,
+                AxesUsed = [request.Axis],
+                OmittedCount = 3,
+                EstimatedTokensTotal = 4_096,
+                OmittedReason = OmittedReason.TokenBudget,
+            }));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied", "--axis", "semantic" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        JsonElement packet = ReadEvidencePacket(stdout);
+        JsonElement omitted = packet.GetProperty("omittedDetails");
+
+        packet.GetProperty("state").GetString().ShouldBe("pendingExpansion");
+        omitted.GetProperty("omittedCount").GetInt32().ShouldBe(3);
+        omitted.GetProperty("estimatedTokensTotal").GetInt64().ShouldBe(4_096);
+        omitted.GetProperty("reason").GetString().ShouldBe("tokenBudget");
+        JsonElement handle = omitted.GetProperty("expansionHandles")[0];
+        handle.GetProperty("handle").GetString()!.ShouldStartWith("ep:v1:");
+        handle.GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
+        handle.GetProperty("targetDetailGroup").GetString().ShouldBe("rankedResults");
+        packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
+    }
+
+    private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(
+        Func<SearchRequest, CancellationToken, Task<SearchResult>>? onSearch = null,
+        Func<HybridSearchRequest, CancellationToken, Task<HybridSearchResult>>? onHybridSearch = null)
     {
         var stdout = new StringWriter();
         var stderr = new StringWriter();
         IServiceCollection collection = CliServices.BuildCollection();
         collection.AddSingleton(new CliConsole { Out = stdout, Error = stderr, Format = OutputFormat.Json });
-        collection.Replace(ServiceDescriptor.Transient<MemoriesClient>(_ => new StubMemoriesClient()));
+        collection.Replace(ServiceDescriptor.Transient<MemoriesClient>(_ => new StubMemoriesClient(onSearch, onHybridSearch)));
 
         ServiceProvider provider = collection.BuildServiceProvider();
         FlagConfigurationSource flag = provider.GetRequiredService<FlagConfigurationSource>();
@@ -65,18 +248,51 @@ public sealed class EvidencePacketCliOutputTests
         return (provider, stdout, stderr);
     }
 
+    private static JsonElement ReadEvidencePacket(StringWriter stdout)
+    {
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        return doc.RootElement.GetProperty("data").GetProperty("evidencePacket").Clone();
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement array)
+        => array.EnumerateArray().Select(item => item.GetString()!).ToArray();
+
+    private static IReadOnlyList<string> ReadRecoveryKinds(JsonElement packet)
+        => packet.GetProperty("recovery").EnumerateArray().Select(item => item.GetProperty("kind").GetString()!).ToArray();
+
     private sealed class StubMemoriesClient : MemoriesClient
     {
-        public StubMemoriesClient()
+        private readonly Func<SearchRequest, CancellationToken, Task<SearchResult>>? _onSearch;
+        private readonly Func<HybridSearchRequest, CancellationToken, Task<HybridSearchResult>>? _onHybridSearch;
+
+        public StubMemoriesClient(
+            Func<SearchRequest, CancellationToken, Task<SearchResult>>? onSearch,
+            Func<HybridSearchRequest, CancellationToken, Task<HybridSearchResult>>? onHybridSearch)
             : base(
                 new HttpClient { BaseAddress = new Uri("http://127.0.0.1:65001/") },
                 Options.Create(new MemoriesClientOptions { Endpoint = new Uri("http://127.0.0.1:65001/") }),
                 NullLogger<MemoriesClient>.Instance)
         {
+            _onSearch = onSearch;
+            _onHybridSearch = onHybridSearch;
         }
 
+        public override Task<SearchResult> SearchAsync(SearchRequest request, CancellationToken ct)
+            => _onSearch is not null
+                ? _onSearch(request, ct)
+                : Task.FromResult(new SearchResult
+                {
+                    Results = [],
+                    TotalCount = 0,
+                    HasIndexedMemoryUnits = true,
+                    Query = request.Query ?? string.Empty,
+                    AxesUsed = [request.Axis],
+                });
+
         public override Task<HybridSearchResult> HybridSearchAsync(HybridSearchRequest request, CancellationToken ct)
-            => Task.FromResult(new HybridSearchResult
+            => _onHybridSearch is not null
+                ? _onHybridSearch(request, ct)
+                : Task.FromResult(new HybridSearchResult
             {
                 Results =
                 [

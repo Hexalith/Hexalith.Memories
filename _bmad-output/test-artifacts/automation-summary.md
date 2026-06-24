@@ -1,13 +1,17 @@
 ---
-stepsCompleted: ['step-01-preflight-and-context', 'step-02-identify-targets', 'step-03-generate-tests', 'step-04-validate-and-summarize']
+stepsCompleted: ['step-01-preflight-and-context', 'step-02-identify-targets', 'step-03-generate-tests', 'step-03c-aggregate', 'step-04-validate-and-summarize']
 lastStep: 'step-04-validate-and-summarize'
 lastSaved: '2026-06-24'
 detectedStack: backend
 executionMode: bmad-integrated
 inputDocuments:
   - _bmad-output/project-context.md
-  - _bmad-output/planning-artifacts/sprint-change-proposal-2026-06-24.md
-  - _bmad-output/implementation-artifacts/9-1-event-auto-discovery-and-dapr-pub-sub-subscription.md
+  - Hexalith.EventStore/_bmad-output/project-context.md
+  - Hexalith.FrontComposer/_bmad-output/project-context.md
+  - Hexalith.Tenants/_bmad-output/project-context.md
+  - _bmad/tea/config.yaml
+  - _bmad-output/planning-artifacts/prd.md
+  - _bmad-output/planning-artifacts/architecture.md
   - _bmad-output/implementation-artifacts/sprint-status.yaml
   - _bmad-output/test-artifacts/traceability/traceability-matrix.md
   - .agents/skills/bmad-testarch-automate/resources/knowledge/test-levels-framework.md
@@ -16,6 +20,11 @@ inputDocuments:
   - .agents/skills/bmad-testarch-automate/resources/knowledge/selective-testing.md
   - .agents/skills/bmad-testarch-automate/resources/knowledge/ci-burn-in.md
   - .agents/skills/bmad-testarch-automate/resources/knowledge/test-quality.md
+  - .agents/skills/bmad-testarch-automate/resources/knowledge/overview.md
+  - .agents/skills/bmad-testarch-automate/resources/knowledge/api-request.md
+  - .agents/skills/bmad-testarch-automate/resources/knowledge/auth-session.md
+  - .agents/skills/bmad-testarch-automate/resources/knowledge/recurse.md
+  - .agents/skills/bmad-testarch-automate/resources/knowledge/playwright-cli.md
 ---
 
 # Test Automation Summary — Epic 1 Gap Closure
@@ -169,3 +178,125 @@ Recommended next workflow:
 
 1. Run `bmad-testarch-test-review` or `bmad-testarch-trace` after Story 18.8 implementation artifacts are finalized.
 2. Run the full Server test project if broader regression confidence is needed before merging.
+
+---
+
+# Test Automation Summary - Create Run 2026-06-24
+
+## Step 1 - Preflight and Context
+
+- **Date:** 2026-06-24
+- **Detected stack:** backend. The root `package.json` contains release tooling only; active test scaffolding is .NET/xUnit under `tests/`.
+- **Framework status:** ready. `tests/Directory.Build.props`, `tests/tests.runsettings`, xUnit test projects, integration fixtures, and `tests/README.md` are present.
+- **Execution mode:** BMad-integrated. PRD, architecture, sprint status, and traceability artifacts are available.
+- **Browser/Pact decision:** no root browser harness or Pact setup detected. TEA Playwright utilities are loaded in API-only profile; no Playwright/Cypress framework is introduced.
+
+Loaded context:
+
+- Repository and submodule project-context facts required by workflow activation.
+- `_bmad/tea/config.yaml`.
+- `_bmad-output/planning-artifacts/prd.md`.
+- `_bmad-output/planning-artifacts/architecture.md`.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`.
+- `_bmad-output/test-artifacts/traceability/traceability-matrix.md`.
+- Existing root test inventory under `tests/`.
+- Core TEA fragments for levels, priorities, factories, selective execution, CI burn-in, and test quality.
+- API-only Playwright utility fragments: overview, api-request, auth-session, recurse, and Playwright CLI guidance.
+
+## Step 2 - Coverage Plan
+
+Automation target: **Story 2.7 Evidence Packet Contract Mapping** from the active sprint status entry `2-7-evidence-packet-contract-mapping`.
+
+Existing coverage found:
+
+| Surface | Existing coverage | Gap decision |
+|---|---|---|
+| Contracts mapper | Happy-path search, degraded hybrid, unauthorized error, sensitive suggestion fallback, benign token-budget guidance | Expand with table-driven edge states, tenant/case scope isolation, deterministic axes, and token-budget expansion metadata. |
+| CLI JSON output | One hybrid happy-path evidence packet test | Add empty, degraded, token-budget-compressed, and single-axis JSON packet checks. Do not invent unauthorized success-path CLI behavior. |
+| MCP output | Hybrid structured content evidence packet and authorization error evidence packets | Add single-axis structured content evidence packet check. Authorization path is already covered. |
+| Server metadata | Token-budget and degraded metadata covered by `SearchEndpointTokenBudgetTests` and `HybridSearchServiceTests` | Treat as supporting coverage; avoid duplicating server tests in this run. |
+
+Priority model:
+
+| Target | Level | Priority | Justification |
+|---|---|---:|---|
+| Contract mapper preserves empty, degraded, unauthorized, token-budget-compressed, and tenant/case-scope packet semantics | Unit/contract | P1 | Story AC #1 and #4 require stable shape across complete and exceptional packet states. |
+| Mapper sanitizes non-authorized and degraded guidance without leaking sensitive backend details | Unit/contract | P1 | Evidence packets are exposed to CLI/MCP consumers; leakage would violate trust and isolation requirements. |
+| CLI JSON emits the same evidence packet semantics for hybrid and single-axis search outputs | CLI/API contract | P1 | Story AC #2 requires no conflicting definitions across CLI and MCP/future UI consumers. |
+| Token-budget omissions include deterministic omitted fields, detail groups, and expansion handles | Unit/contract + CLI | P1 | Story AC #3 requires actionable deterministic expansion guidance. |
+| MCP single-axis structured content includes an evidence packet | MCP/API contract | P2 | Hybrid MCP coverage exists; single-axis parity is an important surface gap but narrower than CLI contract coverage. |
+| Shared cross-project fixture extraction | Test infrastructure | P3/defer | Useful cleanup, but not necessary to close the immediate behavioral coverage gaps without changing project references. |
+
+Planned implementation scope:
+
+- Add focused xUnit tests in `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketMapperTests.cs`.
+- Extend `tests/Hexalith.Memories.Cli.Tests/Cli/EvidencePacketCliOutputTests.cs` using its existing in-process `MemoriesClient` stub pattern.
+- Extend `tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs` for single-axis structured output parity.
+- Use existing JSON serializers and `JsonDocument` assertions; no Playwright, browser exploration, Pact, or new packages.
+- Validate with focused `dotnet test` filters first, then run impacted test projects if the focused suites pass.
+
+## Step 3 - Generated Tests
+
+Execution mode resolution:
+
+| Field | Value |
+|---|---|
+| Requested | `auto` |
+| Probe enabled | `true` |
+| Supports agent-team | no explicit authorization in active user request |
+| Supports subagent | no explicit authorization in active user request |
+| Resolved | `sequential` |
+
+Generated test coverage:
+
+| Target | File | New test cases | Priority | Notes |
+|---|---|---:|---:|---|
+| Contract mapper edge states and sanitization | `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketMapperTests.cs` | 7 | P1/P2 | Covers empty packets, combined degraded/token-budget omissions, tenant-wide scope vs source case, deterministic axis evidence, and table-driven error-state sanitization. |
+| CLI JSON evidence packet parity | `tests/Hexalith.Memories.Cli.Tests/Cli/EvidencePacketCliOutputTests.cs` | 4 | P1 | Covers empty hybrid output, degraded token-budget metadata, single-axis parity, and token-budget expansion guidance. |
+| MCP structured content parity | `tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs` | 1 | P2 | Adds single-axis structured-content evidence packet coverage to complement existing hybrid and authorization packet coverage. |
+
+Generation summary:
+
+- Stack type: backend.
+- Total new test cases: 12.
+- API endpoint tests: 0. No TypeScript/API endpoint harness is present or needed for this target.
+- Backend/contract tests: 12 across 3 existing files.
+- Fixtures created: 0. Existing in-process stubs and source-generated JSON contexts were sufficient.
+- Worker outputs stored under `_bmad-output/test-artifacts/automation-temp/`: `tea-automate-api-tests-2026-06-24T14-08-04-000Z.json`, `tea-automate-backend-tests-2026-06-24T14-08-04-000Z.json`, `tea-automate-summary-2026-06-24T14-08-04-000Z.json`.
+
+## Step 4 - Validation
+
+Checklist status:
+
+- Framework readiness: passed. Existing .NET/xUnit projects and test settings were reused; no browser or Pact harness was introduced.
+- Coverage mapping: passed. Story 2.7 ACs map to contract mapper, CLI JSON, and MCP structured-content tests without duplicating server metadata coverage already held by `SearchEndpointTokenBudgetTests` and `HybridSearchServiceTests`.
+- Test quality: passed. Tests are deterministic, in-process, use existing stubs/source-generated JSON contexts, and do not call external services.
+- Fixtures/helpers: no new shared fixtures required.
+- CLI/browser sessions: N/A. No browser automation was started.
+- Temp artifacts: passed. Worker JSON outputs are stored under `_bmad-output/test-artifacts/automation-temp/`; `/tmp` worker copies were removed.
+
+Validation results:
+
+| Command | Result |
+|---|---|
+| `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --filter "FullyQualifiedName~EvidencePacketMapperTests" --no-restore` | Passed: 12, Failed: 0 |
+| `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~EvidencePacketCliOutputTests" --no-restore` | Passed: 5, Failed: 0 |
+| `dotnet test tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj --filter "FullyQualifiedName~SearchMemoryToolTests" --no-restore` | Passed: 15, Failed: 0 |
+| `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --no-restore` | Passed: 504, Failed: 0 |
+| `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --no-restore` | Passed: 379, Failed: 0 |
+| `dotnet test tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj --no-restore` | Passed: 80, Failed: 0 |
+| `git diff --check` | Passed |
+
+Additional validation fix:
+
+- `_bmad-output/implementation-artifacts/deferred-work.md` had seven structured entries written as `ID: \`MEM-n\``. The existing CLI inventory parser requires a bare token, so the first full CLI project run failed on `MEM-1`. The IDs were normalized to `ID: MEM-1` through `ID: MEM-7`, and the full CLI project then passed.
+
+Residual scope:
+
+- Full solution-level tests were not run; validation covered the three impacted projects and diff hygiene.
+- Shared cross-project evidence packet fixture extraction remains deferred because the behavioral coverage gaps closed without new project references.
+
+Recommended next workflow:
+
+1. Run `bmad-testarch-test-review` for Story 2.7 if the test quality needs independent review.
+2. Run `bmad-testarch-trace` if the Story 2.7 AC-to-test traceability matrix should be refreshed.

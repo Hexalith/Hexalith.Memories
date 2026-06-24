@@ -196,6 +196,53 @@ public sealed class SearchMemoryToolTests
         ExtractText(result).ShouldContain("\"evidencePacket\"");
     }
 
+    [Fact]
+    public async Task SingleAxisResult_StructuredContent_IncludesEvidencePacket()
+    {
+        var stub = new StubMemoriesClient
+        {
+            OnSearch = (request, _) => Task.FromResult(new SearchResult
+            {
+                Results =
+                [
+                    new ScoredResult
+                    {
+                        MemoryUnitId = "mu-010",
+                        Score = 0.77,
+                        ContentSnippet = "Syntactic evidence",
+                        SourceUri = "mem://acme/case-a/mu-010",
+                        SourceType = SourceType.File,
+                        Axis = request.Axis,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 1,
+                HasIndexedMemoryUnits = true,
+                Query = request.Query ?? string.Empty,
+                AxesUsed = [request.Axis],
+            }),
+        };
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync(
+            tenantId: "acme",
+            query: "needle",
+            @case: "case-a",
+            axes: SearchAxis.Syntactic,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        result.IsError.ShouldBe(false);
+        JsonElement packet = result.StructuredContent!.Value.GetProperty("evidencePacket");
+        packet.GetProperty("scope").GetProperty("tenantId").GetString().ShouldBe("acme");
+        packet.GetProperty("scope").GetProperty("caseId").GetString().ShouldBe("case-a");
+        packet.GetProperty("state").GetString().ShouldBe("complete");
+        packet.GetProperty("evidence").GetProperty("axesUsed")[0].GetString().ShouldBe("syntactic");
+        packet.GetProperty("evidence").GetProperty("axisEvidence")[0].GetProperty("axis").GetString().ShouldBe("syntactic");
+        packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-010");
+        ExtractText(result).ShouldContain("\"evidencePacket\"");
+    }
+
     private static void AssertIsErrorWithCode(CallToolResult result, string expectedCode)
     {
         result.IsError.ShouldBe(true);
