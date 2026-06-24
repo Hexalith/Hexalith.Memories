@@ -191,14 +191,14 @@ development_status:
 
   # Epic 17: Future Web UX Composition & Accessibility
   # Scope note: Future web UI work; not part of MVP readiness unless a later approved sprint change pulls web UI implementation forward.
-  epic-17: in-progress
+  epic-17: done
   17-1-evidence-cockpit-and-trust-components: done
   17-2-recovery-and-feedback-state-grammar: done
   17-3-contract-aware-web-interaction-patterns: done
   17-4-role-specific-web-inspection-lenses: done
   17-5-responsive-and-accessible-web-validation: done
   17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: done
-  epic-17-retrospective: optional
+  epic-17-retrospective: done
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
   # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27, plus cross-module DAPR event intake per Sprint Change Proposal 2026-06-24. Not MVP-counted. Story 18.4 is semantic-release sensitive.
@@ -212,3 +212,34 @@ development_status:
   18-7-memories-client-mockability-stability-contract: backlog
   18-8-cross-module-dapr-event-intake-contract-and-verification: backlog
   epic-18-retrospective: optional
+
+# Action items recorded from epic retrospectives. status: open | in-progress | done
+action_items:
+  - epic: 17
+    action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema, and freshness metadata instead of unavailable boundaries"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 17
+    action: "Define and schedule a runnable web host / specimen app and at least one manual screen-reader pass to close the fail-closed browser/AT gaps in Epic17ValidationInventory.Gaps (Playwright/axe, forced-colors, reduced-motion, zoom/reflow, touch-target)"
+    owner: "Sally, Murat"
+    status: open
+  - epic: 17
+    action: "Triage the 17.1-CR1..17.1-CR18 deferred items and deferred architectural decisions (command-palette scope, refresh persistence, mobile grid, role authorization model) into bounded follow-up stories or accept with rationale in deferred-work.md"
+    owner: "Amelia, Sally"
+    status: open
+  - epic: 17
+    action: "Record the xUnit v3 in-process test workaround (DiffEngine_Disabled=true, VSTest TCP-listener limitation) in the web project dev notes / contributing guidance"
+    owner: "Paige, Amelia"
+    status: open
+  - epic: 17
+    action: "Track test counts in the Change Log at each phase (create-story, dev-story, QA gap-closure, review) to stop dev/QA/review count drift and File List omissions"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 17
+    action: "Add a root .gitattributes (or an accepted-debt entry) to settle repo-wide LF/CRLF and stop whole-file diff churn on .razor/.razor.css"
+    owner: "Amelia"
+    status: open
+  - epic: 17
+    action: "Keep sprint-status.yaml epic rows aligned with story completion (carry-forward from Epic 16): mark the epic row done when all stories are done and the retro is complete"
+    owner: "Amelia"
+    status: open
