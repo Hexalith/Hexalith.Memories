@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-06-24T23:05:00+02:00
+# last_updated: 2026-06-24
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -37,6 +37,7 @@
 generated: 2026-05-17T08:56:54+02:00
 last_updated: 2026-06-24
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
+# 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -205,7 +206,7 @@ development_status:
   # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27, plus cross-module DAPR event intake per Sprint Change Proposal 2026-06-24. Not MVP-counted. Story 18.4 is semantic-release sensitive.
   epic-18: in-progress
   18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: done
-  18-2-deployment-configuration-contract-publication: backlog
+  18-2-deployment-configuration-contract-publication: done
   18-3-invocable-route-and-operation-surface-publication: backlog
   18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: backlog
   18-5-source-uri-keyed-memory-unit-lookup-endpoint: backlog

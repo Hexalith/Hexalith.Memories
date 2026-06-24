@@ -364,3 +364,84 @@ now-test-enforced assembly-name/root-namespace half.
 
 - Run the new tests in CI's default (no-Docker) lane alongside the rest of `Hexalith.Memories.IntegrationTests`.
 - Commit as `test:` (guard tests) + `docs:` (doc sync) — **never `feat:`**; Story 18.1 has no release impact.
+
+---
+
+# Test Automation Summary — Story 18.2 (Deployment Configuration Contract Publication)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-24
+- **Story:** `_bmad-output/implementation-artifacts/18-2-deployment-configuration-contract-publication.md`
+- **Feature under test:** the deployment-config contract `docs/operations/deployment-configuration.md` and
+  its drift guard `tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs`.
+- **Framework detected:** xUnit v3 (3.2.2) + Shouldly in `tests/Hexalith.Memories.Server.Tests`, default
+  (no-Docker) lane. Matched the existing stack; no new framework introduced.
+- **Run command (sandbox):** `DiffEngine_Disabled=true dotnet exec
+  tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll
+  -class …Deployment.DeploymentConfigurationContractTests` (`dotnet test`/VSTest socket is blocked in this
+  sandbox, per the story's Dev Agent Record).
+
+## Result
+
+| | Discovered (Server.Tests assembly) | Target run (contract class) | Failed | Skipped |
+|---|---|---|---|---|
+| Baseline (existing) | 1859 | 4 | 0 | 1 (pre-existing `SubmoduleGuardTests`) |
+| **After gap auto-apply** | **1861** | **6** | **0** | **1** |
+
+All 6 contract tests pass (**+2** new `[Fact]`s; the existing source-tie fact was also extended). Build is
+**0 warnings / 0 errors**.
+
+## Scope note — API vs E2E
+
+Not applicable. Story 18.2 is a **docs + drift-guard test** story; it adds no runnable HTTP/API or UI
+surface. Its "feature" is the published deployment-config contract, and the applicable automated tests are
+buildable, no-Docker **content-asserting drift-guard** `[Fact]`s tying the doc to its authoritative sources
+(AC2). The QA mandate here is to make every documented element with an authoritative source drift-guarded.
+
+## Gaps discovered and auto-applied
+
+Audited the existing 4-fact guard against the **full** published contract. Five elements were documented but
+not source-tied (doc-presence-only or untested) — all five auto-applied:
+
+| # | Documented element previously unguarded | Authoritative source | Guard added |
+| :-- | :-- | :-- | :-- |
+| A | Server Dapr app-id default `memories` + the `memories-server` reconciliation note (AC2 headline) | `AppHost/Program.cs` `ResolveDaprAppId` (`return "memories";`) | new `[Fact] DeploymentConfigurationDoc_TiesServerAppIdDefaultToResolveDaprAppId` |
+| B | OTLP Production-empty warning service `OtlpExporterWarningHostedService` | `ServiceDefaults/Extensions.cs` | source↔doc tie in `LiteralsMatchAuthoritativeSourceFiles` |
+| C | Component name `pubsub` agreement: `TenantEventRoutingOptions.PubSubName` default + yaml `metadata.name` | `TenantEventRoutingOptions.cs`, `deploy/dapr/components/pubsub.yaml:18` | new `[Fact] DeploymentConfigurationDoc_IsTiedToRoutingOptionDefaults` + `name: pubsub` source assertion |
+| D | Ingest route attributes `[Route("events")]` + `[HttpPost("ingest")]` | `EventIngestionController.cs` | source↔doc ties in `LiteralsMatchAuthoritativeSourceFiles` |
+| E | Config-section prefix `EventStoreIntegration:Routing` (doc previously labelled "review-enforced") | `EventStoreIntegrationServiceCollectionExtensions.cs` `GetSection(...)` | source↔doc tie; doc enforcement section upgraded to test-enforced |
+
+## Files modified
+
+- `tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs` — **4 → 6
+  `[Fact]`s**; `LiteralsMatchAuthoritativeSourceFiles` extended (gaps B, D, E + yaml `metadata.name`).
+- `docs/operations/deployment-configuration.md` — "Automated enforcement" section rewritten to truthfully
+  describe the strengthened guards; **no contract value changed** and every previously-asserted literal
+  preserved.
+
+## Verification (negative-proof that drift is actually caught)
+
+- Doc-removal of `OtlpExporterWarningHostedService` → 1 fail; doc-removal of the `memories-server` note →
+  1 fail; source-rename of `EventStoreIntegration:Routing` → 1 fail; source-rename of `[HttpPost("ingest")]`
+  → 1 fail. All 6 green again after restore; all proof mutations reverted (`git status` clean for `src/`,
+  `deploy/`).
+- Known limitation (inherited from the `DocumentationCompletenessTests` precedent): `ShouldContain` is
+  substring-based, so an append-style rename (`…Service` → `…ServiceXYZ`) is not caught — only token-removing
+  renames are. Acceptable for this contract.
+
+## Coverage map (Story 18.2)
+
+- **AC1** (publish canonical contract): every published literal is doc-asserted; OTLP var + warning service,
+  Dapr sidecar ports, required runtime env now source-tied.
+- **AC2** (guard against drift): all documented elements with an authoritative source are now test-enforced;
+  only the architecture-projection backend/dashboard ports (`6379`/`6380`/`18888`/`18889`) remain
+  review-enforced by design.
+- **AC3** (defer aspirate): unchanged — `MEM-2-ASPIRATE` remains `carried-forward`.
+- **AC4** (pub/sub intake surface): component name now tied across all three sources; routing key prefix and
+  ingest route attributes now source-tied.
+
+## Next steps
+
+- Run the new tests in CI's default (no-Docker) lane alongside the rest of `Hexalith.Memories.Server.Tests`.
+- Commit as `test:` (guard tests) + `docs:` (enforcement-section sync) — **never `feat:`**; Story 18.2 has no
+  release impact.

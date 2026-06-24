@@ -1406,11 +1406,17 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Re-open trigger: a clean clone with root submodules initialised fails to build the full `.slnx`, or `Projects.Hexalith_Memories_Server` / `Projects.Hexalith_Memories_Mcp` stops resolving.
   - Rationale: current `main` already resolves both project symbols and exposes no redis-param wiring; residual gap is a dedicated compile-resolution guard test + documented name-stability contract, scheduled as Story 18.1.
 - ID: MEM-2
-  - Status: carried-forward
+  - Status: resolved
   - Source story: parties-consumer-integration-intake-2026-05-27
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.2)
   - Re-open trigger: a downstream operator cannot fill deployment placeholders because the canonical env/port/OTLP config surface is undocumented or has drifted from code.
-  - Rationale: no aspirate tooling exists; the agreed course documents the deploy config contract now and defers full aspirate emission, scheduled as Story 18.2.
+  - Evidence: Story 18.2 published the canonical deploy-config contract at `docs/operations/deployment-configuration.md` (OTLP env gate, Dapr sidecar ports, required runtime env, pub/sub event-intake surface, app-id reconciliation) and guards it against drift with `tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs` (bidirectional doc<->code tie on the `EventIngestionController` constants plus authoritative source-file cross-checks). Residual full aspirate manifest emission is carried forward as `MEM-2-ASPIRATE`.
+- ID: MEM-2-ASPIRATE
+  - Status: carried-forward
+  - Source story: 18-2-deployment-configuration-contract-publication
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future aspirate manifest-emission story - unassigned)
+  - Re-open trigger: a downstream consumer needs ready-to-apply Kubernetes/Dapr manifests emitted from the AppHost topology rather than a hand-filled documented contract.
+  - Rationale: Story 18.2 delivered the documented deploy-config contract plus its drift guard but explicitly deferred full aspirate (manifest) emission as a larger, separable effort; per the 2026-05-27 locked decision ("document now, defer aspirate") no follow-up story id is assigned yet - the deferral is open-ended.
 - ID: MEM-3
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
