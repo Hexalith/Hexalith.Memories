@@ -1,0 +1,198 @@
+@namespace Hexalith.Memories.Web.Components.Forms
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.3 (AC1) — Contract-aware interaction form. Places tenant and case scope first, renders
+    field-associated validation messages and a validation summary, gates dangerous changes behind an
+    explicit acknowledgement, and only allows dispatch through the host's command lifecycle when the
+    contract-aware validator reports CanDispatch. Uses FrontComposer + Fluent UI Blazor V5 primitives only
+    and emits a submit intent; it never executes commands or bypasses authorization itself.
+*@
+
+<div class="mem-interaction-form"
+     role="form"
+     data-testid="mem-interaction-form"
+     data-form-kind="@Request.FormKind"
+     data-can-dispatch="@_result.CanDispatch.ToString().ToLowerInvariant()"
+     data-requires-ack="@_result.RequiresAcknowledgement.ToString().ToLowerInvariant()"
+     data-has-errors="@_result.HasErrors.ToString().ToLowerInvariant()"
+     aria-label="@Localizer[FormResourceKeys.PanelLabel]">
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="10">
+
+        <section class="mem-form-scope"
+                 data-testid="mem-form-scope"
+                 data-tenant="@_tenantDisplay"
+                 aria-label="@Localizer[FormResourceKeys.ScopeSectionLabel]">
+            <FluentLabel Typo="Typography.Subject">
+                <strong>@Localizer[FormResourceKeys.ScopeSectionLabel]</strong>
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-form-scope-line">
+                @Localizer[FormResourceKeys.TenantLabel]: @_tenantDisplay
+                · @Localizer[FormResourceKeys.CaseLabel]: @_caseDisplay
+            </FluentLabel>
+            @foreach (MemoriesFormField field in _scopeFields)
+            {
+                @FieldRow(field)
+            }
+        </section>
+
+        @if (_otherFields.Count > 0)
+        {
+            <section class="mem-form-fields" data-testid="mem-form-fields">
+                @foreach (MemoriesFormField field in _otherFields)
+                {
+                    @FieldRow(field)
+                }
+            </section>
+        }
+
+        @if (_result.Messages.Count > 0)
+        {
+            <div class="mem-form-summary"
+                 role="status"
+                 aria-live="polite"
+                 data-testid="mem-form-summary"
+                 aria-label="@Localizer[FormResourceKeys.ValidationSummaryLabel]">
+                <FluentLabel Typo="Typography.Subject">
+                    <strong>@Localizer[FormResourceKeys.ValidationSummaryLabel]</strong>
+                </FluentLabel>
+                @foreach (FormValidationMessage message in _result.Messages)
+                {
+                    <FluentLabel Typo="Typography.Body"
+                                 data-testid="mem-form-summary-item"
+                                 data-validation-code="@message.Code">
+                        @Localizer[message.MessageKey]
+                    </FluentLabel>
+                }
+            </div>
+        }
+
+        @if (_result.RequiresAcknowledgement)
+        {
+            <FluentCheckbox Value="_acknowledged"
+                            ValueChanged="OnAcknowledgeChanged"
+                            data-testid="mem-form-acknowledge"
+                            Label="@Localizer[FormResourceKeys.AcknowledgeLabel].Value" />
+        }
+
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+            <FluentButton Appearance="ButtonAppearance.Primary"
+                          Disabled="@(!_result.CanDispatch)"
+                          data-testid="mem-form-submit"
+                          OnClick="EmitSubmitAsync">
+                @Localizer[FormResourceKeys.SubmitLabel]
+            </FluentButton>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-form-dispatch-status">
+                @if (_result.CanDispatch)
+                {
+                    @Localizer[FormResourceKeys.DispatchReadyLabel]
+                }
+                else
+                {
+                    @Localizer[FormResourceKeys.DispatchBlockedLabel]
+                }
+            </FluentLabel>
+        </FluentStack>
+    </FluentStack>
+</div>
+
+@code {
+    private FormValidationResult _result = default!;
+    private bool _acknowledged;
+    private IReadOnlyList<MemoriesFormField> _scopeFields = [];
+    private IReadOnlyList<MemoriesFormField> _otherFields = [];
+    private string _tenantDisplay = string.Empty;
+    private string _caseDisplay = string.Empty;
+
+    /// <summary>Gets or sets the proposed contract-aware form submission to validate and render.</summary>
+    [Parameter]
+    [EditorRequired]
+    public MemoriesFormRequest Request { get; set; } = default!;
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the user submits a dispatchable form. The host routes the
+    /// emitted request through the existing command lifecycle, authorization, and tenant context.
+    /// </summary>
+    [Parameter]
+    public EventCallback<MemoriesFormRequest> OnSubmit { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Request);
+        _acknowledged = Request.Acknowledged;
+        _tenantDisplay = InteractionDisplay.SafeText(Request.RequestedTenantId, "unknown tenant");
+        _caseDisplay = string.IsNullOrWhiteSpace(Request.RequestedCaseId)
+            ? Localizer[FormResourceKeys.TenantScope].Value
+            : InteractionDisplay.SafeText(Request.RequestedCaseId, "tenant scope");
+        Recompute();
+    }
+
+    private void Recompute()
+    {
+        _result = ContractAwareFormValidator.Validate(Request with { Acknowledged = _acknowledged });
+        _scopeFields = [.. _result.OrderedFields.Where(static f =>
+            f.Kind is MemoriesFormFieldKind.TenantScope or MemoriesFormFieldKind.CaseScope)];
+        _otherFields = [.. _result.OrderedFields.Where(static f =>
+            f.Kind is not (MemoriesFormFieldKind.TenantScope or MemoriesFormFieldKind.CaseScope))];
+    }
+
+    private void OnAcknowledgeChanged(bool value)
+    {
+        _acknowledged = value;
+        Recompute();
+    }
+
+    private async Task EmitSubmitAsync()
+    {
+        if (!_result.CanDispatch)
+        {
+            return;
+        }
+
+        await OnSubmit.InvokeAsync(Request with { Acknowledged = _acknowledged }).ConfigureAwait(true);
+    }
+
+    private static BadgeSlot SeveritySlot(InteractionSeverity severity) => InteractionDisplay.SeveritySlot(severity);
+
+    private RenderFragment<MemoriesFormField> FieldRow => row =>
+        @<div class="mem-form-field"
+              data-testid="mem-form-field"
+              data-field-key="@row.FieldKey"
+              data-field-kind="@row.Kind">
+            <FluentLabel Typo="Typography.Body" data-testid="mem-form-field-label">
+                <strong>@Localizer[row.LabelKey]</strong>
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body"
+                         data-testid="mem-form-field-value"
+                         aria-describedby="@(_result.MessagesFor(row.FieldKey).Count > 0 ? $"{row.FieldKey}-msg" : null)">
+                @InteractionDisplay.SafeText(row.Value, "—")
+            </FluentLabel>
+            @if (_result.MessagesFor(row.FieldKey).Count > 0)
+            {
+                <div id="@($"{row.FieldKey}-msg")">
+                    @foreach (FormValidationMessage message in _result.MessagesFor(row.FieldKey))
+                    {
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="6" VerticalAlignment="VerticalAlignment.Center">
+                            <FcStatusBadge Slot="@SeveritySlot(message.Severity)"
+                                           Label="@Localizer[InteractionResourceKeys.Severity(message.Severity)]"
+                                           ColumnHeader="@Localizer[InteractionResourceKeys.SeverityLabel]" />
+                            <FluentLabel Typo="Typography.Body"
+                                         data-testid="mem-form-field-message"
+                                         data-validation-code="@message.Code"
+                                         data-severity="@message.Severity">
+                                @Localizer[message.MessageKey]
+                            </FluentLabel>
+                        </FluentStack>
+                    }
+                </div>
+            }
+        </div>;
+}

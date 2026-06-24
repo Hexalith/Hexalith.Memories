@@ -1,0 +1,175 @@
+@namespace Hexalith.Memories.Web.Components.Filters
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.FrontComposer.Shell.Components.DataGrid
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.3 (AC2) — Inspectable filter summary. Renders every active filter as a chip showing its axis,
+    sanitized value, and trust effect (narrows/broadens/excludes/affects confidence), downgrading unknown
+    contract tokens to disabled boundary chips. Reuses FrontComposer's FcFilterSummary for the canonical
+    summary string and FcStatusBadge for trust-coded badges, and emits remove/reset intents only.
+*@
+
+<div class="mem-filter-summary"
+     role="group"
+     data-testid="mem-filter-summary"
+     data-active-count="@_view.ActiveCount"
+     data-has-unavailable="@_view.HasUnavailableFilter.ToString().ToLowerInvariant()"
+     data-broadens-scope="@_view.HasScopeBroadeningChange.ToString().ToLowerInvariant()"
+     data-excludes-axis="@_view.HasAxisExclusion.ToString().ToLowerInvariant()"
+     data-affects-confidence="@_view.HasConfidenceImpact.ToString().ToLowerInvariant()"
+     aria-label="@Localizer[FilterResourceKeys.SummaryLabel]">
+
+    @if (_view.ActiveCount == 0)
+    {
+        <FluentLabel Typo="Typography.Body" data-testid="mem-filter-none">
+            @Localizer[FilterResourceKeys.NoFilters]
+        </FluentLabel>
+    }
+    else
+    {
+        <FcFilterSummary ViewKey="@ViewKey"
+                         Filters="_summaryFilters"
+                         HumanisedColumnHeaders="_summaryHeaders"
+                         FilteredCount="FilteredCount"
+                         TotalCount="TotalCount"
+                         EntityPlural="@EntityPlural" />
+
+        <div class="mem-filter-chips"
+             data-testid="mem-filter-chips"
+             aria-label="@Localizer[FilterResourceKeys.ChipsLabel]">
+            @for (int i = 0; i < _view.Chips.Count; i++)
+            {
+                FilterChipView chip = _view.Chips[i];
+                MemoriesFilter original = Filters[i];
+                <div class="mem-filter-chip"
+                     data-testid="mem-filter-chip"
+                     data-axis="@chip.Axis"
+                     data-effect="@chip.Effect"
+                     data-availability="@chip.Availability">
+                    <FcStatusBadge Slot="@SeveritySlot(chip.Severity)"
+                                   Label="@Localizer[chip.AxisLabelKey]"
+                                   ColumnHeader="@Localizer[FilterResourceKeys.ChipsLabel]" />
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-filter-chip-value">@chip.ValueText</FluentLabel>
+                    @if (chip.Availability == FilterChipAvailability.Available)
+                    {
+                        <FluentLabel Typo="Typography.Body"
+                                     data-testid="mem-filter-chip-effect"
+                                     data-effect="@chip.Effect">
+                            @Localizer[chip.EffectLabelKey]
+                        </FluentLabel>
+                    }
+                    else
+                    {
+                        <FluentLabel Typo="Typography.Body" data-testid="mem-filter-chip-unavailable">
+                            @Localizer[chip.UnavailableReasonKey!]
+                        </FluentLabel>
+                    }
+                    <FluentButton Appearance="ButtonAppearance.Subtle"
+                                  data-testid="mem-filter-chip-remove"
+                                  Title="@Localizer[FilterResourceKeys.RemoveLabel].Value"
+                                  OnClick="@(() => EmitRemoveAsync(original))">
+                        @Localizer[FilterResourceKeys.RemoveLabel]
+                    </FluentButton>
+                </div>
+            }
+        </div>
+
+        <FluentButton Appearance="ButtonAppearance.Outline"
+                      data-testid="mem-filter-reset"
+                      OnClick="EmitResetAsync">
+            @Localizer[FilterResourceKeys.ResetLabel]
+        </FluentButton>
+    }
+
+    @if (FilteredCount == 0 && Packet is not null)
+    {
+        <div class="mem-filter-empty"
+             role="status"
+             aria-live="polite"
+             data-testid="mem-filter-empty"
+             data-empty-reason="@_emptyReason"
+             aria-label="@Localizer[FilterResourceKeys.EmptyStateLabel]">
+            <FluentLabel Typo="Typography.Body">@Localizer[FilterResourceKeys.EmptyReason(_emptyReason)]</FluentLabel>
+        </div>
+    }
+</div>
+
+@code {
+    private FilterInspectionViewModel _view = default!;
+    private FilteredEmptyReason _emptyReason;
+    private IReadOnlyDictionary<string, string> _summaryFilters = new Dictionary<string, string>(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, string> _summaryHeaders = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets the active filters to inspect.</summary>
+    [Parameter]
+    [EditorRequired]
+    public IReadOnlyList<MemoriesFilter> Filters { get; set; } = [];
+
+    /// <summary>Gets or sets the Evidence Packet behind the view, used to explain an empty filtered state.</summary>
+    [Parameter]
+    public EvidencePacket? Packet { get; set; }
+
+    /// <summary>Gets or sets the number of results matching the current filters.</summary>
+    [Parameter]
+    public int FilteredCount { get; set; }
+
+    /// <summary>Gets or sets the total number of results before filtering.</summary>
+    [Parameter]
+    public int TotalCount { get; set; }
+
+    /// <summary>Gets or sets the humanized entity plural shown in the summary (for example "results").</summary>
+    [Parameter]
+    public string EntityPlural { get; set; } = "results";
+
+    /// <summary>Gets or sets the stable per-view key passed to the reused FrontComposer summary.</summary>
+    [Parameter]
+    public string ViewKey { get; set; } = "memories-evidence";
+
+    /// <summary>Gets or sets the callback invoked when a filter chip is removed.</summary>
+    [Parameter]
+    public EventCallback<MemoriesFilter> OnRemoveFilter { get; set; }
+
+    /// <summary>Gets or sets the callback invoked when all filters are reset.</summary>
+    [Parameter]
+    public EventCallback OnReset { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Filters);
+        _view = FilterInspectionMapper.Map(Filters);
+
+        Dictionary<string, string> filters = new(StringComparer.Ordinal);
+        Dictionary<string, string> headers = new(StringComparer.Ordinal);
+        foreach (FilterChipView chip in _view.Chips)
+        {
+            string key = chip.Axis.ToString();
+            filters[key] = chip.ValueText;
+            headers[key] = Localizer[chip.AxisLabelKey].Value;
+        }
+
+        _summaryFilters = filters;
+        _summaryHeaders = headers;
+
+        if (Packet is not null)
+        {
+            _emptyReason = FilterInspectionMapper.ResolveEmptyReason(Packet, Filters.Count > 0);
+        }
+    }
+
+    private static BadgeSlot SeveritySlot(InteractionSeverity severity) => InteractionDisplay.SeveritySlot(severity);
+
+    private async Task EmitRemoveAsync(MemoriesFilter filter)
+        => await OnRemoveFilter.InvokeAsync(filter).ConfigureAwait(true);
+
+    private async Task EmitResetAsync()
+        => await OnReset.InvokeAsync().ConfigureAwait(true);
+}

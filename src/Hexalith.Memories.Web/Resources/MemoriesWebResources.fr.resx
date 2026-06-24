@@ -247,4 +247,336 @@
   <data name="Recovery_Unknown_Explanation" xml:space="preserve">
     <value>L'état des preuves ne peut être déterminé de façon sûre à partir des données disponibles.</value>
   </data>
+  <!-- Story 17.3 — étiquettes de gravité d'interaction partagées. -->
+  <data name="Interaction_Severity_Label" xml:space="preserve">
+    <value>Gravité</value>
+  </data>
+  <data name="Interaction_Severity_None" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Interaction_Severity_Info" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Interaction_Severity_Caution" xml:space="preserve">
+    <value>Attention</value>
+  </data>
+  <data name="Interaction_Severity_Warning" xml:space="preserve">
+    <value>Avertissement</value>
+  </data>
+  <data name="Interaction_Severity_Critical" xml:space="preserve">
+    <value>Critique</value>
+  </data>
+  <!-- Story 17.3 (AC1) — surface de formulaire contractuelle. -->
+  <data name="Form_Panel_Label" xml:space="preserve">
+    <value>Formulaire de configuration</value>
+  </data>
+  <data name="Form_ScopeSection_Label" xml:space="preserve">
+    <value>Portée locataire et dossier</value>
+  </data>
+  <data name="Form_Tenant_Label" xml:space="preserve">
+    <value>Locataire</value>
+  </data>
+  <data name="Form_Case_Label" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="Form_TenantScope" xml:space="preserve">
+    <value>Tout le locataire</value>
+  </data>
+  <data name="Form_ValidationSummary_Label" xml:space="preserve">
+    <value>Résumé de validation</value>
+  </data>
+  <data name="Form_Acknowledge_Label" xml:space="preserve">
+    <value>Je comprends que ce changement modifie la portée ou est irréversible</value>
+  </data>
+  <data name="Form_Submit_Label" xml:space="preserve">
+    <value>Soumettre</value>
+  </data>
+  <data name="Form_DispatchBlocked_Label" xml:space="preserve">
+    <value>Corrigez les problèmes ci-dessus avant de soumettre.</value>
+  </data>
+  <data name="Form_DispatchReady_Label" xml:space="preserve">
+    <value>Prêt à soumettre.</value>
+  </data>
+  <data name="Form_NoMessages" xml:space="preserve">
+    <value>Aucun problème de validation.</value>
+  </data>
+  <data name="Form_Msg_TenantRequired" xml:space="preserve">
+    <value>Une portée locataire est requise.</value>
+  </data>
+  <data name="Form_Msg_CaseRequired" xml:space="preserve">
+    <value>Un dossier est requis pour cette portée.</value>
+  </data>
+  <data name="Form_Msg_FieldRequired" xml:space="preserve">
+    <value>Ce champ est requis.</value>
+  </data>
+  <data name="Form_Msg_UnknownEnumValue" xml:space="preserve">
+    <value>Cette valeur n'est pas une option reconnue.</value>
+  </data>
+  <data name="Form_Msg_ValueOutOfRange" xml:space="preserve">
+    <value>Cette valeur est en dehors de la plage autorisée.</value>
+  </data>
+  <data name="Form_Msg_UnauthorizedScope" xml:space="preserve">
+    <value>Vous n'êtes pas autorisé pour cette portée.</value>
+  </data>
+  <data name="Form_Msg_TenantChange" xml:space="preserve">
+    <value>Ceci change le locataire actif. Confirmez avant de continuer.</value>
+  </data>
+  <data name="Form_Msg_ScopeBroadened" xml:space="preserve">
+    <value>Ceci élargit la portée d'un seul dossier à tout le locataire.</value>
+  </data>
+  <data name="Form_Msg_DangerousChange" xml:space="preserve">
+    <value>Ceci est un changement dangereux. Confirmez avant de continuer.</value>
+  </data>
+  <!-- Story 17.3 (AC2) — résumé de filtres inspectable. -->
+  <data name="Filter_Summary_Label" xml:space="preserve">
+    <value>Filtres actifs</value>
+  </data>
+  <data name="Filter_Chips_Label" xml:space="preserve">
+    <value>Puces de filtres actifs</value>
+  </data>
+  <data name="Filter_NoFilters" xml:space="preserve">
+    <value>Aucun filtre appliqué.</value>
+  </data>
+  <data name="Filter_Reset_Label" xml:space="preserve">
+    <value>Réinitialiser les filtres</value>
+  </data>
+  <data name="Filter_Remove_Label" xml:space="preserve">
+    <value>Retirer le filtre</value>
+  </data>
+  <data name="Filter_Unavailable_Reason" xml:space="preserve">
+    <value>Ce filtre n'est pas reconnu et a été désactivé.</value>
+  </data>
+  <data name="Filter_EmptyState_Label" xml:space="preserve">
+    <value>Aucun résultat</value>
+  </data>
+  <data name="Filter_TrustNotice_Label" xml:space="preserve">
+    <value>Filtres affectant la confiance</value>
+  </data>
+  <data name="Filter_Axis_RetrievalAxis" xml:space="preserve">
+    <value>Axe de récupération</value>
+  </data>
+  <data name="Filter_Axis_SourceType" xml:space="preserve">
+    <value>Type de source</value>
+  </data>
+  <data name="Filter_Axis_Freshness" xml:space="preserve">
+    <value>Fraîcheur</value>
+  </data>
+  <data name="Filter_Axis_Confidence" xml:space="preserve">
+    <value>Confiance</value>
+  </data>
+  <data name="Filter_Axis_TimeRange" xml:space="preserve">
+    <value>Plage temporelle</value>
+  </data>
+  <data name="Filter_Axis_Metadata" xml:space="preserve">
+    <value>Métadonnées</value>
+  </data>
+  <data name="Filter_Axis_GraphDepth" xml:space="preserve">
+    <value>Profondeur du graphe</value>
+  </data>
+  <data name="Filter_Axis_EvidenceState" xml:space="preserve">
+    <value>État des preuves</value>
+  </data>
+  <data name="Filter_Effect_None" xml:space="preserve">
+    <value>Aucun effet sur la confiance</value>
+  </data>
+  <data name="Filter_Effect_NarrowsScope" xml:space="preserve">
+    <value>Réduit la portée</value>
+  </data>
+  <data name="Filter_Effect_BroadensScope" xml:space="preserve">
+    <value>Élargit la portée</value>
+  </data>
+  <data name="Filter_Effect_ExcludesAxis" xml:space="preserve">
+    <value>Exclut un axe</value>
+  </data>
+  <data name="Filter_Effect_ChangesGraphDepth" xml:space="preserve">
+    <value>Modifie la profondeur du graphe</value>
+  </data>
+  <data name="Filter_Effect_HidesStaleOrConflicting" xml:space="preserve">
+    <value>Masque les preuves périmées ou contradictoires</value>
+  </data>
+  <data name="Filter_Effect_AffectsConfidence" xml:space="preserve">
+    <value>Affecte la confiance</value>
+  </data>
+  <data name="Filter_Empty_NoMatch" xml:space="preserve">
+    <value>Aucun résultat ne correspond à votre recherche dans cette portée.</value>
+  </data>
+  <data name="Filter_Empty_FilteredOut" xml:space="preserve">
+    <value>Des preuves existent mais les filtres actifs les ont exclues.</value>
+  </data>
+  <data name="Filter_Empty_InaccessibleScope" xml:space="preserve">
+    <value>Cette portée n'est pas accessible.</value>
+  </data>
+  <data name="Filter_Empty_NotIngested" xml:space="preserve">
+    <value>Les connaissances correspondantes n'ont pas encore été ingérées.</value>
+  </data>
+  <data name="Filter_Empty_StaleMemory" xml:space="preserve">
+    <value>La mémoire disponible peut être périmée.</value>
+  </data>
+  <data name="Filter_Empty_DegradedBackend" xml:space="preserve">
+    <value>Un backend de récupération était dégradé.</value>
+  </data>
+  <data name="Filter_Empty_InsufficientEvidence" xml:space="preserve">
+    <value>Il n'y a pas assez de preuves pour afficher un résultat.</value>
+  </data>
+  <!-- Story 17.3 (AC6) — grille de données de preuves. -->
+  <data name="Grid_Label" xml:space="preserve">
+    <value>Sources de preuves</value>
+  </data>
+  <data name="Grid_Col_Rank" xml:space="preserve">
+    <value>Rang</value>
+  </data>
+  <data name="Grid_Col_Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Grid_Col_Case" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="Grid_Col_Confidence" xml:space="preserve">
+    <value>Confiance</value>
+  </data>
+  <data name="Grid_Col_Annotations" xml:space="preserve">
+    <value>Annotations</value>
+  </data>
+  <data name="Grid_Col_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Grid_RowAction_Label" xml:space="preserve">
+    <value>Inspecter la source</value>
+  </data>
+  <data name="Grid_MoreColumns_Label" xml:space="preserve">
+    <value>Plus</value>
+  </data>
+  <data name="Grid_Empty_Label" xml:space="preserve">
+    <value>Aucune source de preuves</value>
+  </data>
+  <!-- Story 17.3 (AC3-5) — navigation contextuelle, confirmations et commandes. -->
+  <data name="Command_Surface_Label" xml:space="preserve">
+    <value>Commandes de preuve</value>
+  </data>
+  <data name="Command_Search_Label" xml:space="preserve">
+    <value>Rechercher</value>
+  </data>
+  <data name="Command_Ingest_Label" xml:space="preserve">
+    <value>Ingérer</value>
+  </data>
+  <data name="Command_InspectSource_Label" xml:space="preserve">
+    <value>Inspecter la source</value>
+  </data>
+  <data name="Command_VerifyTenant_Label" xml:space="preserve">
+    <value>Vérifier le locataire</value>
+  </data>
+  <data name="Command_OpenGraph_Label" xml:space="preserve">
+    <value>Ouvrir le graphe</value>
+  </data>
+  <data name="Command_RetryIngestion_Label" xml:space="preserve">
+    <value>Relancer l'ingestion</value>
+  </data>
+  <data name="Command_ExportPacket_Label" xml:space="preserve">
+    <value>Exporter le paquet</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Label" xml:space="preserve">
+    <value>Inspecter la charge MCP</value>
+  </data>
+  <data name="Command_Search_Consequence" xml:space="preserve">
+    <value>Lance une recherche limitée au locataire et au dossier courants.</value>
+  </data>
+  <data name="Command_Ingest_Consequence" xml:space="preserve">
+    <value>Démarre l'ingestion dans le périmètre du locataire courant.</value>
+  </data>
+  <data name="Command_InspectSource_Consequence" xml:space="preserve">
+    <value>Ouvre le détail de la source pour la ligne de preuve sélectionnée.</value>
+  </data>
+  <data name="Command_VerifyTenant_Consequence" xml:space="preserve">
+    <value>Vérifie le locataire et le dossier courants avant de continuer.</value>
+  </data>
+  <data name="Command_OpenGraph_Consequence" xml:space="preserve">
+    <value>Ouvre le contexte de graphe pour le chemin du paquet sélectionné.</value>
+  </data>
+  <data name="Command_RetryIngestion_Consequence" xml:space="preserve">
+    <value>Relance l'ingestion pour la cible concernée.</value>
+  </data>
+  <data name="Command_ExportPacket_Consequence" xml:space="preserve">
+    <value>Exporte le paquet de preuve assaini et les diagnostics bornés.</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Consequence" xml:space="preserve">
+    <value>Ouvre la vue d'inspection bornée de la charge MCP.</value>
+  </data>
+  <data name="Command_Search_Recovery" xml:space="preserve">
+    <value>Revenir au paquet et ajuster les filtres ou la requête si le résultat est incorrect.</value>
+  </data>
+  <data name="Command_Ingest_Recovery" xml:space="preserve">
+    <value>Annuler avant l'envoi ou inspecter l'activité d'ingestion après exécution.</value>
+  </data>
+  <data name="Command_InspectSource_Recovery" xml:space="preserve">
+    <value>Utiliser le retour pour revenir au paquet d'origine.</value>
+  </data>
+  <data name="Command_VerifyTenant_Recovery" xml:space="preserve">
+    <value>Aucune donnée n'est modifiée ; revenir au paquet après vérification.</value>
+  </data>
+  <data name="Command_OpenGraph_Recovery" xml:space="preserve">
+    <value>Utiliser le retour pour revenir au paquet source.</value>
+  </data>
+  <data name="Command_RetryIngestion_Recovery" xml:space="preserve">
+    <value>La relance peut être annulée avant activation ; suivre ensuite l'état de l'activité.</value>
+  </data>
+  <data name="Command_ExportPacket_Recovery" xml:space="preserve">
+    <value>L'export est assaini ; supprimer le paquet exporté s'il n'est plus utile.</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Recovery" xml:space="preserve">
+    <value>Fermer l'inspecteur pour revenir au paquet.</value>
+  </data>
+  <data name="Interaction_Disabled_Valid" xml:space="preserve">
+    <value>Disponible.</value>
+  </data>
+  <data name="Interaction_Disabled_MissingTenant" xml:space="preserve">
+    <value>Un locataire est requis.</value>
+  </data>
+  <data name="Interaction_Disabled_TenantChanged" xml:space="preserve">
+    <value>Le locataire a changé ; rechargez la cible.</value>
+  </data>
+  <data name="Interaction_Disabled_CaseChanged" xml:space="preserve">
+    <value>Le dossier a changé ; rechargez la cible.</value>
+  </data>
+  <data name="Interaction_Disabled_UnauthorizedScope" xml:space="preserve">
+    <value>Ce périmètre n'est pas autorisé.</value>
+  </data>
+  <data name="Interaction_Disabled_MissingTarget" xml:space="preserve">
+    <value>La cible n'est plus disponible.</value>
+  </data>
+  <data name="Interaction_Disabled_ContractVersionMismatch" xml:space="preserve">
+    <value>La version de contrat du paquet n'est pas prise en charge.</value>
+  </data>
+  <data name="Confirmation_Title" xml:space="preserve">
+    <value>Confirmer l'action bornée</value>
+  </data>
+  <data name="Confirmation_Tenant_Label" xml:space="preserve">
+    <value>Locataire</value>
+  </data>
+  <data name="Confirmation_Case_Label" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="Confirmation_Object_Label" xml:space="preserve">
+    <value>Objet</value>
+  </data>
+  <data name="Confirmation_Consequence_Label" xml:space="preserve">
+    <value>Conséquence</value>
+  </data>
+  <data name="Confirmation_Recovery_Label" xml:space="preserve">
+    <value>Récupération</value>
+  </data>
+  <data name="Navigation_Label" xml:space="preserve">
+    <value>Contexte de navigation de preuve</value>
+  </data>
+  <data name="Navigation_Query_Label" xml:space="preserve">
+    <value>Requête</value>
+  </data>
+  <data name="Navigation_Return_Label" xml:space="preserve">
+    <value>Chemin de retour</value>
+  </data>
+  <data name="Navigation_Open_Label" xml:space="preserve">
+    <value>Ouvrir la cible</value>
+  </data>
+  <data name="Navigation_ReturnAction_Label" xml:space="preserve">
+    <value>Retourner au paquet</value>
+  </data>
 </root>

@@ -1,0 +1,84 @@
+@namespace Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+<FluentStack Orientation="Orientation.Vertical"
+             VerticalGap="6"
+             data-testid="mem-command-surface"
+             aria-label="@Localizer[InteractionResourceKeys.CommandSurfaceLabel]">
+    @foreach (MemoriesCommandView command in _commands)
+    {
+        <FluentButton Appearance="ButtonAppearance.Subtle"
+                      Disabled="@(!command.IsAvailable)"
+                      data-testid="mem-command-action"
+                      data-command-kind="@command.Kind"
+                      data-requires-confirmation="@command.RequiresConfirmation.ToString().ToLowerInvariant()"
+                      Title="@DisabledReason(command)"
+                      OnClick="@(() => EmitCommandAsync(command))">
+            @Localizer[command.LabelKey]
+        </FluentButton>
+        @if (!command.IsAvailable && command.DisabledReasonKey is not null)
+        {
+            <FluentLabel Typo="Typography.Body" data-testid="mem-command-disabled-reason">
+                @Localizer[command.DisabledReasonKey]
+            </FluentLabel>
+        }
+    }
+</FluentStack>
+
+@code {
+    private IReadOnlyList<MemoriesCommandView> _commands = [];
+
+    /// <summary>Gets or sets the canonical Evidence Packet used to build command availability.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the captured interaction context.</summary>
+    [Parameter]
+    [EditorRequired]
+    public InteractionContextSnapshot Snapshot { get; set; } = default!;
+
+    /// <summary>Gets or sets the active tenant at render/activation time.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string ActiveTenantId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the active case at render/activation time.</summary>
+    [Parameter]
+    public string? ActiveCaseId { get; set; }
+
+    /// <summary>Gets or sets the callback invoked when an available command is chosen.</summary>
+    [Parameter]
+    public EventCallback<MemoriesCommandInvocation> OnCommand { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        ArgumentNullException.ThrowIfNull(Snapshot);
+        _commands = MemoriesCommandSurfaceMapper.Map(Packet, Snapshot, ActiveTenantId, ActiveCaseId);
+    }
+
+    private string? DisabledReason(MemoriesCommandView command)
+        => command.DisabledReasonKey is null ? null : Localizer[command.DisabledReasonKey].Value;
+
+    private async Task EmitCommandAsync(MemoriesCommandView command)
+    {
+        if (!command.IsAvailable)
+        {
+            return;
+        }
+
+        await OnCommand.InvokeAsync(new MemoriesCommandInvocation(
+            command.Kind,
+            Snapshot.TenantId,
+            Snapshot.CaseId,
+            command.Target,
+            Snapshot.ReturnRoute)).ConfigureAwait(true);
+    }
+}

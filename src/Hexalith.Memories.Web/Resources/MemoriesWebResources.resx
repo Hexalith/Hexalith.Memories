@@ -248,4 +248,336 @@
   <data name="Recovery_Unknown_Explanation" xml:space="preserve">
     <value>The evidence state cannot be determined safely from the available data.</value>
   </data>
+  <!-- Story 17.3 — shared interaction severity labels. -->
+  <data name="Interaction_Severity_Label" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="Interaction_Severity_None" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="Interaction_Severity_Info" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Interaction_Severity_Caution" xml:space="preserve">
+    <value>Caution</value>
+  </data>
+  <data name="Interaction_Severity_Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="Interaction_Severity_Critical" xml:space="preserve">
+    <value>Critical</value>
+  </data>
+  <!-- Story 17.3 (AC1) — contract-aware form surface. -->
+  <data name="Form_Panel_Label" xml:space="preserve">
+    <value>Configuration form</value>
+  </data>
+  <data name="Form_ScopeSection_Label" xml:space="preserve">
+    <value>Tenant and case scope</value>
+  </data>
+  <data name="Form_Tenant_Label" xml:space="preserve">
+    <value>Tenant</value>
+  </data>
+  <data name="Form_Case_Label" xml:space="preserve">
+    <value>Case</value>
+  </data>
+  <data name="Form_TenantScope" xml:space="preserve">
+    <value>Tenant-wide</value>
+  </data>
+  <data name="Form_ValidationSummary_Label" xml:space="preserve">
+    <value>Validation summary</value>
+  </data>
+  <data name="Form_Acknowledge_Label" xml:space="preserve">
+    <value>I understand this change affects scope or cannot be undone</value>
+  </data>
+  <data name="Form_Submit_Label" xml:space="preserve">
+    <value>Submit</value>
+  </data>
+  <data name="Form_DispatchBlocked_Label" xml:space="preserve">
+    <value>Resolve the issues above before submitting.</value>
+  </data>
+  <data name="Form_DispatchReady_Label" xml:space="preserve">
+    <value>Ready to submit.</value>
+  </data>
+  <data name="Form_NoMessages" xml:space="preserve">
+    <value>No validation issues.</value>
+  </data>
+  <data name="Form_Msg_TenantRequired" xml:space="preserve">
+    <value>A tenant scope is required.</value>
+  </data>
+  <data name="Form_Msg_CaseRequired" xml:space="preserve">
+    <value>A case is required for this scope.</value>
+  </data>
+  <data name="Form_Msg_FieldRequired" xml:space="preserve">
+    <value>This field is required.</value>
+  </data>
+  <data name="Form_Msg_UnknownEnumValue" xml:space="preserve">
+    <value>This value is not a recognized option.</value>
+  </data>
+  <data name="Form_Msg_ValueOutOfRange" xml:space="preserve">
+    <value>This value is outside the allowed range.</value>
+  </data>
+  <data name="Form_Msg_UnauthorizedScope" xml:space="preserve">
+    <value>You are not authorized for this scope.</value>
+  </data>
+  <data name="Form_Msg_TenantChange" xml:space="preserve">
+    <value>This changes the active tenant. Confirm before continuing.</value>
+  </data>
+  <data name="Form_Msg_ScopeBroadened" xml:space="preserve">
+    <value>This broadens the scope from a single case to the whole tenant.</value>
+  </data>
+  <data name="Form_Msg_DangerousChange" xml:space="preserve">
+    <value>This is a dangerous change. Confirm before continuing.</value>
+  </data>
+  <!-- Story 17.3 (AC2) — inspectable filter summary. -->
+  <data name="Filter_Summary_Label" xml:space="preserve">
+    <value>Active filters</value>
+  </data>
+  <data name="Filter_Chips_Label" xml:space="preserve">
+    <value>Active filter chips</value>
+  </data>
+  <data name="Filter_NoFilters" xml:space="preserve">
+    <value>No filters applied.</value>
+  </data>
+  <data name="Filter_Reset_Label" xml:space="preserve">
+    <value>Reset filters</value>
+  </data>
+  <data name="Filter_Remove_Label" xml:space="preserve">
+    <value>Remove filter</value>
+  </data>
+  <data name="Filter_Unavailable_Reason" xml:space="preserve">
+    <value>This filter is not recognized and has been disabled.</value>
+  </data>
+  <data name="Filter_EmptyState_Label" xml:space="preserve">
+    <value>No results</value>
+  </data>
+  <data name="Filter_TrustNotice_Label" xml:space="preserve">
+    <value>Filters affecting trust</value>
+  </data>
+  <data name="Filter_Axis_RetrievalAxis" xml:space="preserve">
+    <value>Retrieval axis</value>
+  </data>
+  <data name="Filter_Axis_SourceType" xml:space="preserve">
+    <value>Source type</value>
+  </data>
+  <data name="Filter_Axis_Freshness" xml:space="preserve">
+    <value>Freshness</value>
+  </data>
+  <data name="Filter_Axis_Confidence" xml:space="preserve">
+    <value>Confidence</value>
+  </data>
+  <data name="Filter_Axis_TimeRange" xml:space="preserve">
+    <value>Time range</value>
+  </data>
+  <data name="Filter_Axis_Metadata" xml:space="preserve">
+    <value>Metadata</value>
+  </data>
+  <data name="Filter_Axis_GraphDepth" xml:space="preserve">
+    <value>Graph depth</value>
+  </data>
+  <data name="Filter_Axis_EvidenceState" xml:space="preserve">
+    <value>Evidence state</value>
+  </data>
+  <data name="Filter_Effect_None" xml:space="preserve">
+    <value>No trust effect</value>
+  </data>
+  <data name="Filter_Effect_NarrowsScope" xml:space="preserve">
+    <value>Narrows scope</value>
+  </data>
+  <data name="Filter_Effect_BroadensScope" xml:space="preserve">
+    <value>Broadens scope</value>
+  </data>
+  <data name="Filter_Effect_ExcludesAxis" xml:space="preserve">
+    <value>Excludes an axis</value>
+  </data>
+  <data name="Filter_Effect_ChangesGraphDepth" xml:space="preserve">
+    <value>Changes graph depth</value>
+  </data>
+  <data name="Filter_Effect_HidesStaleOrConflicting" xml:space="preserve">
+    <value>Hides stale or conflicting evidence</value>
+  </data>
+  <data name="Filter_Effect_AffectsConfidence" xml:space="preserve">
+    <value>Affects confidence</value>
+  </data>
+  <data name="Filter_Empty_NoMatch" xml:space="preserve">
+    <value>No results matched your search in this scope.</value>
+  </data>
+  <data name="Filter_Empty_FilteredOut" xml:space="preserve">
+    <value>Evidence exists but the active filters excluded it.</value>
+  </data>
+  <data name="Filter_Empty_InaccessibleScope" xml:space="preserve">
+    <value>This scope is not accessible.</value>
+  </data>
+  <data name="Filter_Empty_NotIngested" xml:space="preserve">
+    <value>Matching knowledge has not been ingested yet.</value>
+  </data>
+  <data name="Filter_Empty_StaleMemory" xml:space="preserve">
+    <value>The available memory may be stale.</value>
+  </data>
+  <data name="Filter_Empty_DegradedBackend" xml:space="preserve">
+    <value>A retrieval backend was degraded.</value>
+  </data>
+  <data name="Filter_Empty_InsufficientEvidence" xml:space="preserve">
+    <value>There is not enough evidence to show a result.</value>
+  </data>
+  <!-- Story 17.3 (AC6) — evidence data grid. -->
+  <data name="Grid_Label" xml:space="preserve">
+    <value>Evidence sources</value>
+  </data>
+  <data name="Grid_Col_Rank" xml:space="preserve">
+    <value>Rank</value>
+  </data>
+  <data name="Grid_Col_Source" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Grid_Col_Case" xml:space="preserve">
+    <value>Case</value>
+  </data>
+  <data name="Grid_Col_Confidence" xml:space="preserve">
+    <value>Confidence</value>
+  </data>
+  <data name="Grid_Col_Annotations" xml:space="preserve">
+    <value>Annotations</value>
+  </data>
+  <data name="Grid_Col_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Grid_RowAction_Label" xml:space="preserve">
+    <value>Inspect source</value>
+  </data>
+  <data name="Grid_MoreColumns_Label" xml:space="preserve">
+    <value>More</value>
+  </data>
+  <data name="Grid_Empty_Label" xml:space="preserve">
+    <value>No evidence sources</value>
+  </data>
+  <!-- Story 17.3 (AC3-5) — contextual navigation, confirmations, and command actions. -->
+  <data name="Command_Surface_Label" xml:space="preserve">
+    <value>Evidence commands</value>
+  </data>
+  <data name="Command_Search_Label" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="Command_Ingest_Label" xml:space="preserve">
+    <value>Ingest</value>
+  </data>
+  <data name="Command_InspectSource_Label" xml:space="preserve">
+    <value>Inspect source</value>
+  </data>
+  <data name="Command_VerifyTenant_Label" xml:space="preserve">
+    <value>Verify tenant</value>
+  </data>
+  <data name="Command_OpenGraph_Label" xml:space="preserve">
+    <value>Open graph</value>
+  </data>
+  <data name="Command_RetryIngestion_Label" xml:space="preserve">
+    <value>Retry ingestion</value>
+  </data>
+  <data name="Command_ExportPacket_Label" xml:space="preserve">
+    <value>Export packet</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Label" xml:space="preserve">
+    <value>Inspect MCP payload</value>
+  </data>
+  <data name="Command_Search_Consequence" xml:space="preserve">
+    <value>Runs a scoped search using the current tenant and case context.</value>
+  </data>
+  <data name="Command_Ingest_Consequence" xml:space="preserve">
+    <value>Starts ingestion in the current tenant scope.</value>
+  </data>
+  <data name="Command_InspectSource_Consequence" xml:space="preserve">
+    <value>Opens source detail for the selected evidence row.</value>
+  </data>
+  <data name="Command_VerifyTenant_Consequence" xml:space="preserve">
+    <value>Checks the current tenant and case scope before continuing.</value>
+  </data>
+  <data name="Command_OpenGraph_Consequence" xml:space="preserve">
+    <value>Opens graph context for the selected packet path.</value>
+  </data>
+  <data name="Command_RetryIngestion_Consequence" xml:space="preserve">
+    <value>Retries ingestion for the scoped target.</value>
+  </data>
+  <data name="Command_ExportPacket_Consequence" xml:space="preserve">
+    <value>Exports the sanitized Evidence Packet and bounded diagnostics.</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Consequence" xml:space="preserve">
+    <value>Opens the bounded MCP payload inspection view.</value>
+  </data>
+  <data name="Command_Search_Recovery" xml:space="preserve">
+    <value>Return to the packet and adjust filters or query if the result is wrong.</value>
+  </data>
+  <data name="Command_Ingest_Recovery" xml:space="preserve">
+    <value>Cancel before submit or inspect ingestion activity after dispatch.</value>
+  </data>
+  <data name="Command_InspectSource_Recovery" xml:space="preserve">
+    <value>Use the return path to get back to the originating packet.</value>
+  </data>
+  <data name="Command_VerifyTenant_Recovery" xml:space="preserve">
+    <value>No data changes are made; return to the packet after verification.</value>
+  </data>
+  <data name="Command_OpenGraph_Recovery" xml:space="preserve">
+    <value>Use the return path to get back to the source packet.</value>
+  </data>
+  <data name="Command_RetryIngestion_Recovery" xml:space="preserve">
+    <value>Retry can be cancelled before activation; follow activity status afterward.</value>
+  </data>
+  <data name="Command_ExportPacket_Recovery" xml:space="preserve">
+    <value>The export is sanitized; discard the exported packet if no longer needed.</value>
+  </data>
+  <data name="Command_InspectMcpPayload_Recovery" xml:space="preserve">
+    <value>Close the inspector to return to the packet.</value>
+  </data>
+  <data name="Interaction_Disabled_Valid" xml:space="preserve">
+    <value>Available.</value>
+  </data>
+  <data name="Interaction_Disabled_MissingTenant" xml:space="preserve">
+    <value>A tenant is required.</value>
+  </data>
+  <data name="Interaction_Disabled_TenantChanged" xml:space="preserve">
+    <value>The tenant changed; reload the target.</value>
+  </data>
+  <data name="Interaction_Disabled_CaseChanged" xml:space="preserve">
+    <value>The case changed; reload the target.</value>
+  </data>
+  <data name="Interaction_Disabled_UnauthorizedScope" xml:space="preserve">
+    <value>This scope is not authorized.</value>
+  </data>
+  <data name="Interaction_Disabled_MissingTarget" xml:space="preserve">
+    <value>The target is no longer available.</value>
+  </data>
+  <data name="Interaction_Disabled_ContractVersionMismatch" xml:space="preserve">
+    <value>The packet contract version is not supported.</value>
+  </data>
+  <data name="Confirmation_Title" xml:space="preserve">
+    <value>Confirm scoped action</value>
+  </data>
+  <data name="Confirmation_Tenant_Label" xml:space="preserve">
+    <value>Tenant</value>
+  </data>
+  <data name="Confirmation_Case_Label" xml:space="preserve">
+    <value>Case</value>
+  </data>
+  <data name="Confirmation_Object_Label" xml:space="preserve">
+    <value>Object</value>
+  </data>
+  <data name="Confirmation_Consequence_Label" xml:space="preserve">
+    <value>Consequence</value>
+  </data>
+  <data name="Confirmation_Recovery_Label" xml:space="preserve">
+    <value>Recovery</value>
+  </data>
+  <data name="Navigation_Label" xml:space="preserve">
+    <value>Evidence navigation context</value>
+  </data>
+  <data name="Navigation_Query_Label" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="Navigation_Return_Label" xml:space="preserve">
+    <value>Return path</value>
+  </data>
+  <data name="Navigation_Open_Label" xml:space="preserve">
+    <value>Open target</value>
+  </data>
+  <data name="Navigation_ReturnAction_Label" xml:space="preserve">
+    <value>Return to packet</value>
+  </data>
 </root>

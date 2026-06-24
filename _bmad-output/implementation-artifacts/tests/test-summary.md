@@ -98,3 +98,94 @@ Task 5 test requirements against existing coverage and filled the remaining gaps
 - Run the Web test lane in CI alongside the rest of the solution.
 - When a runnable web host lands (later Epic 17 stories), add Playwright + axe viewport checks at 360/768/
   1024/1440px to complete Task 6's browser-level validation.
+
+---
+
+# Test Automation Summary — Story 17.3 (Contract-Aware Web Interaction Patterns)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-24
+- **Story:** `_bmad-output/implementation-artifacts/17-3-contract-aware-web-interaction-patterns.md`
+- **Framework detected:** xUnit v3 (3.2.2) + bUnit (2.8.4-preview) + Shouldly + `Hexalith.FrontComposer.Testing`
+  (`FrontComposerTestBase`). Matched the existing stack; no new framework introduced.
+- **Run command (sandbox-safe in-process runner):**
+  `DiffEngine_Disabled=true ./tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests`
+  (`dotnet test`/VSTest socket is blocked in this sandbox, per the story's Dev Agent Record.)
+
+## Result
+
+| | Tests | Errors | Failed | Skipped |
+|---|---|---|---|---|
+| Baseline (existing) | 156 | 0 | 0 | 0 |
+| **After gap auto-apply** | **212** | **0** | **0** | **0** |
+
+All 212 tests pass (**+56**). The test project builds clean under `TreatWarningsAsErrors=true` (0 warnings /
+0 errors), and `git diff --check` is clean for every added file.
+
+## Scope note — API vs E2E
+
+- **API tests:** Not applicable. Story 17.3 is an RCL-only web-interaction slice over the shared Evidence
+  Packet contract; it adds no runnable API endpoints or HTTP surface. The pure mappers/validators
+  (`FilterInspectionMapper`, `ContractAwareFormValidator`, `InteractionContextValidator`,
+  `MemoriesCommandSurfaceMapper`, `ConfirmationPromptMapper`, `CompactGridColumnPlanner`) are the
+  API-equivalent layer and are unit-tested directly.
+- **Browser E2E (Playwright/axe):** Not applicable here — no runnable web host is shipped by this slice (as the
+  story records). The project's component/interaction test surface is **bUnit**, which is what these gap tests use.
+
+## Gaps discovered and auto-applied
+
+Mapped Story 17.3's six ACs and Task 5 test requirements against existing coverage and filled the remaining
+gaps, following the repo's `*GapTests.cs` convention. Tests use `data-testid`/accessible locators (no CSS-class
+selectors), canonical `EvidencePacketFixtures`, no sleeps, and each builds its own fixtures (order-independent).
+
+### Filters (AC2) — `FilterInspectionMapperGapTests.cs`, `MemoriesFilterSummaryGapTests.cs`
+- Empty-state reason branches not previously exercised: `NotIngested`, `DegradedBackend`, `StaleMemory`,
+  `InsufficientEvidence`, plus `Unknown` isolation → `InaccessibleScope`.
+- Per-effect chip trust severity mapping; sensitive chip value redaction (mapper + rendered chip).
+- No-filters render path (`mem-filter-none`); null-argument guards; component surfaces distinct empty reasons.
+
+### Forms (AC1) — `ContractAwareFormValidatorGapTests.cs`
+- Required case / text / enum / range blank-value paths → field-associated `CaseRequired` / `FieldRequired`.
+- Optional text never blocks; unbounded range accepts a finite value; `Infinity`/`-Infinity` blocks dispatch.
+
+### Grid (AC6) — `MemoriesEvidenceGridGapTests.cs`
+- Planner non-compact path + guard paths (negative cap, null columns).
+- Multi-source render (row count + per-row action); sensitive source URI redaction (no `C:\`, no `Bearer `).
+- Non-restrictive empty → `NoMatch`; `Unknown` isolation → no rows + `InaccessibleScope`.
+
+### Navigation / Overlays / Confirmations / Commands (AC3–AC5) — tenant isolation & stale context
+`InteractionContextValidatorGapTests.cs`, `MemoriesCommandSurfaceGapTests.cs`,
+`MemoriesConfirmationAndNavigationGapTests.cs`
+- Missing-tenant guards (blank snapshot/active tenant).
+- **Cross-tenant / cross-case leakage:** snapshot matches the active scope but the live packet belongs to
+  another tenant/case → `TenantChanged` / `CaseChanged`.
+- Graph/activity target existence (known graph valid; unknown → `MissingTarget`; activity w/o id valid).
+- **Contract-version mismatch** disables every command (incl. tenant verification) — at the mapper and the
+  rendered surface; empty graph disables only Open Graph.
+- Confirmation accept/cancel transitions invoke `OnConfirm`/`OnCancel`; tenant-wide (null case) copy names
+  "tenant-wide"; mapper null guards; navigation context sanitization + stale-context disabled-reason surface.
+
+## Files added
+
+- `tests/Hexalith.Memories.Web.Tests/Components/Filters/FilterInspectionMapperGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Filters/MemoriesFilterSummaryGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Forms/ContractAwareFormValidatorGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Grid/MemoriesEvidenceGridGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Interaction/InteractionContextValidatorGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Interaction/MemoriesCommandSurfaceGapTests.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Interaction/MemoriesConfirmationAndNavigationGapTests.cs`
+
+## Coverage map (Story 17.3)
+
+- **AC1** forms (scope-first, contract-aware validation, acknowledgement, dispatch gating): forms gap tests + existing.
+- **AC2** inspectable filters (axes, trust effects, empty-state distinctions, contract-boundary unknowns): filters gap tests + existing.
+- **AC3** navigation context preservation + return path: validator + navigation gap tests + existing.
+- **AC4** safety-gated confirmations (tenant/case/object/consequence/recovery; accept/cancel): confirmation gap tests + existing.
+- **AC5** command access (availability, disabled reasons, stale/version revalidation): command-surface gap tests + existing.
+- **AC6** data grid (compact column priority, trust-critical columns, row actions, empty/restricted states): grid gap tests + existing.
+
+## Next steps
+
+- Run the Web test lane in CI alongside the rest of the solution.
+- When a runnable web host lands (later Epic 17 stories), add Playwright + axe viewport checks at
+  360/768/1024/1440px to complete Task 6's browser-level validation; not applicable for this RCL-only slice.

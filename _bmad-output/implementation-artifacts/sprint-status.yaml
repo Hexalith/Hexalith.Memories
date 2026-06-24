@@ -194,7 +194,7 @@ development_status:
   epic-17: in-progress
   17-1-evidence-cockpit-and-trust-components: done
   17-2-recovery-and-feedback-state-grammar: done
-  17-3-contract-aware-web-interaction-patterns: ready-for-dev
+  17-3-contract-aware-web-interaction-patterns: done
   17-4-role-specific-web-inspection-lenses: ready-for-dev
   17-5-responsive-and-accessible-web-validation: ready-for-dev
   17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: backlog

@@ -1,0 +1,61 @@
+@namespace Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.FrontComposer.Shell.Components.Forms
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+<div data-testid="mem-action-confirmation"
+     data-command-kind="@Command.Kind"
+     data-target="@InteractionDisplay.SafeText(Command.Target, "target")">
+    <FcDestructiveConfirmationDialog Title="@Localizer[_prompt.TitleKey].Value"
+                                     Body="@Body"
+                                     DestructiveLabel="@Localizer[_prompt.ConfirmLabelKey].Value"
+                                     OnConfirm="OnConfirm"
+                                     OnCancel="OnCancel" />
+</div>
+
+@code {
+    private ConfirmationPrompt _prompt = default!;
+
+    /// <summary>Gets or sets the safety-gated command being confirmed.</summary>
+    [Parameter]
+    [EditorRequired]
+    public MemoriesCommandView Command { get; set; } = default!;
+
+    /// <summary>Gets or sets the captured interaction context.</summary>
+    [Parameter]
+    [EditorRequired]
+    public InteractionContextSnapshot Snapshot { get; set; } = default!;
+
+    /// <summary>Gets or sets the callback invoked when the action is confirmed.</summary>
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    /// <summary>Gets or sets the callback invoked when the action is cancelled.</summary>
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string Body => string.Join(" | ", _prompt.BodyLines.Select(LocalizePromptLine));
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Command);
+        ArgumentNullException.ThrowIfNull(Snapshot);
+        _prompt = ConfirmationPromptMapper.Map(Command, Snapshot);
+    }
+
+    private string LocalizePromptLine(string line)
+    {
+        int separator = line.IndexOf(':', StringComparison.Ordinal);
+        if (separator < 0)
+        {
+            return line;
+        }
+
+        string key = line[..separator];
+        string value = line[(separator + 1)..].Trim();
+        return $"{Localizer[key].Value}: {Localizer[value].ResourceNotFound switch { true => value, false => Localizer[value].Value }}";
+    }
+}

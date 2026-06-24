@@ -1,0 +1,95 @@
+@namespace Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+<FluentStack Orientation="Orientation.Vertical"
+             VerticalGap="6"
+             data-testid="mem-context-navigation"
+             data-valid="@_validation.IsValid.ToString().ToLowerInvariant()"
+             data-return-route="@InteractionDisplay.SafeText(Snapshot.ReturnRoute, "return unavailable")"
+             data-target-kind="@Snapshot.TargetKind"
+             aria-label="@Localizer[InteractionResourceKeys.NavigationLabel]">
+    <FluentLabel Typo="Typography.Body" data-testid="mem-navigation-context">
+        @Localizer[InteractionResourceKeys.ConfirmationTenantLabel]: @InteractionDisplay.SafeText(Snapshot.TenantId, "unknown tenant")
+        · @Localizer[InteractionResourceKeys.ConfirmationCaseLabel]: @InteractionDisplay.SafeText(Snapshot.CaseId, "tenant-wide")
+        · @Localizer[InteractionResourceKeys.NavigationQueryLabel]: @InteractionDisplay.SafeText(Snapshot.Query, "query unavailable")
+    </FluentLabel>
+    <FluentLabel Typo="Typography.Body" data-testid="mem-navigation-return">
+        @Localizer[InteractionResourceKeys.NavigationReturnLabel]: @InteractionDisplay.SafeText(Snapshot.ReturnRoute, "return unavailable")
+    </FluentLabel>
+    @if (!_validation.IsValid && _validation.DisabledReasonKey is not null)
+    {
+        <FluentLabel Typo="Typography.Body" data-testid="mem-navigation-disabled-reason">
+            @Localizer[_validation.DisabledReasonKey]
+        </FluentLabel>
+    }
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+        <FluentButton Appearance="ButtonAppearance.Primary"
+                      Disabled="@(!_validation.IsValid)"
+                      data-testid="mem-navigation-open"
+                      OnClick="EmitOpenAsync">
+            @Localizer[InteractionResourceKeys.NavigationOpenLabel]
+        </FluentButton>
+        <FluentButton Appearance="ButtonAppearance.Outline"
+                      data-testid="mem-navigation-return-action"
+                      OnClick="EmitReturnAsync">
+            @Localizer[InteractionResourceKeys.NavigationReturnActionLabel]
+        </FluentButton>
+    </FluentStack>
+</FluentStack>
+
+@code {
+    private InteractionContextValidationResult _validation = new(false, InteractionContextValidationReason.MissingTenant, InteractionResourceKeys.DisabledReason(InteractionContextValidationReason.MissingTenant));
+
+    /// <summary>Gets or sets the current Evidence Packet.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the captured interaction context.</summary>
+    [Parameter]
+    [EditorRequired]
+    public InteractionContextSnapshot Snapshot { get; set; } = default!;
+
+    /// <summary>Gets or sets the active tenant at render/activation time.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string ActiveTenantId { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the active case at render/activation time.</summary>
+    [Parameter]
+    public string? ActiveCaseId { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to open the target.</summary>
+    [Parameter]
+    public EventCallback<InteractionContextSnapshot> OnOpen { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet/grid.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        ArgumentNullException.ThrowIfNull(Snapshot);
+        _validation = InteractionContextValidator.Validate(Packet, Snapshot, ActiveTenantId, ActiveCaseId);
+    }
+
+    private async Task EmitOpenAsync()
+    {
+        if (!_validation.IsValid)
+        {
+            return;
+        }
+
+        await OnOpen.InvokeAsync(Snapshot).ConfigureAwait(true);
+    }
+
+    private async Task EmitReturnAsync()
+        => await OnReturn.InvokeAsync(Snapshot.ReturnRoute).ConfigureAwait(true);
+}

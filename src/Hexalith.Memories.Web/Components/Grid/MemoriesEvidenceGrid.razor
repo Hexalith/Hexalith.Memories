@@ -1,0 +1,180 @@
+@namespace Hexalith.Memories.Web.Components.Grid
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Evidence
+@using Hexalith.Memories.Web.Components.Filters
+@using Hexalith.Memories.Web.Components.Interaction
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.3 (AC6) — Compact evidence data grid over the Evidence Packet sources. Keeps trust-critical
+    columns (case, confidence) always visible, moves only non-trust columns to a reachable detail cell in
+    compact mode, renders sortable columns, status badges, keyboard-navigable rows (FluentDataGrid), and a
+    per-row inspect action. Restricted scopes render no rows. Emits a row-action intent only.
+*@
+
+<div class="mem-evidence-grid"
+     data-testid="mem-evidence-grid"
+     data-compact="@Compact.ToString().ToLowerInvariant()"
+     data-row-count="@_sources.Count"
+     aria-label="@Localizer[GridResourceKeys.GridLabel]">
+
+    @if (_sources.Count == 0)
+    {
+        <div class="mem-grid-empty"
+             role="status"
+             aria-live="polite"
+             data-testid="mem-grid-empty"
+             data-empty-reason="@_emptyReason"
+             aria-label="@Localizer[GridResourceKeys.EmptyLabel]">
+            <FluentLabel Typo="Typography.Body">@Localizer[FilterResourceKeys.EmptyReason(_emptyReason)]</FluentLabel>
+        </div>
+    }
+    else
+    {
+        <FluentDataGrid Items="_items" data-testid="mem-grid-table" aria-label="@Localizer[GridResourceKeys.GridLabel]">
+            @if (IsVisible(RankKey))
+            {
+                <PropertyColumn Property="@(s => s.Rank)" Title="@Localizer[GridResourceKeys.RankColumn].Value" Sortable="true" />
+            }
+            @if (IsVisible(SourceKey))
+            {
+                <TemplateColumn Title="@Localizer[GridResourceKeys.SourceColumn].Value">
+                    <span data-testid="mem-grid-cell" data-column-key="@SourceKey" data-trust-critical="false" data-collapsed="false">
+                        @InteractionDisplay.SafeText(context.SourceUri, "source")
+                    </span>
+                </TemplateColumn>
+            }
+            @if (IsVisible(CaseKey))
+            {
+                <TemplateColumn Title="@Localizer[GridResourceKeys.CaseColumn].Value">
+                    <span data-testid="mem-grid-cell" data-column-key="@CaseKey" data-trust-critical="true" data-collapsed="false">
+                        @InteractionDisplay.SafeText(context.CaseName ?? context.CaseId, "tenant scope")
+                    </span>
+                </TemplateColumn>
+            }
+            @if (IsVisible(ConfidenceKey))
+            {
+                <TemplateColumn Title="@Localizer[GridResourceKeys.ConfidenceColumn].Value">
+                    <span data-testid="mem-grid-cell" data-column-key="@ConfidenceKey" data-trust-critical="true" data-collapsed="false">
+                        <FcStatusBadge Slot="@ScoreSlot(context.Score)"
+                                       Label="@EvidenceDisplay.ScoreLabel(context.Score)"
+                                       ColumnHeader="@Localizer[GridResourceKeys.ConfidenceColumn]" />
+                    </span>
+                </TemplateColumn>
+            }
+            @if (IsVisible(AnnotationsKey))
+            {
+                <PropertyColumn Property="@(s => s.AnnotationsCount)" Title="@Localizer[GridResourceKeys.AnnotationsColumn].Value" Sortable="true" />
+            }
+            @if (_plan.Collapsible.Count > 0)
+            {
+                <TemplateColumn Title="@Localizer[GridResourceKeys.MoreColumnsLabel].Value">
+                    <div data-testid="mem-grid-more">
+                        @foreach (MemoriesGridColumn column in _plan.Collapsible)
+                        {
+                            <span data-testid="mem-grid-cell" data-column-key="@column.ColumnKey" data-trust-critical="false" data-collapsed="true">
+                                <strong>@Localizer[column.HeaderKey]:</strong> @CollapsedValue(column.ColumnKey, context)
+                            </span>
+                        }
+                    </div>
+                </TemplateColumn>
+            }
+            <TemplateColumn Title="@Localizer[GridResourceKeys.ActionsColumn].Value">
+                <FluentButton Appearance="ButtonAppearance.Subtle"
+                              data-testid="mem-grid-row-action"
+                              data-memory-unit="@context.MemoryUnitId"
+                              Title="@Localizer[GridResourceKeys.RowActionLabel].Value"
+                              OnClick="@(() => EmitRowActionAsync(context))">
+                    @Localizer[GridResourceKeys.RowActionLabel]
+                </FluentButton>
+            </TemplateColumn>
+        </FluentDataGrid>
+    }
+</div>
+
+@code {
+    private const string RankKey = "rank";
+    private const string SourceKey = "source";
+    private const string CaseKey = "case";
+    private const string ConfidenceKey = "confidence";
+    private const string AnnotationsKey = "annotations";
+
+    private static readonly IReadOnlyList<MemoriesGridColumn> ColumnSet =
+    [
+        new(RankKey, GridResourceKeys.RankColumn, false),
+        new(SourceKey, GridResourceKeys.SourceColumn, false),
+        new(CaseKey, GridResourceKeys.CaseColumn, true),
+        new(ConfidenceKey, GridResourceKeys.ConfidenceColumn, true),
+        new(AnnotationsKey, GridResourceKeys.AnnotationsColumn, false),
+    ];
+
+    private IReadOnlyList<EvidencePacketSource> _sources = [];
+    private IQueryable<EvidencePacketSource> _items = Array.Empty<EvidencePacketSource>().AsQueryable();
+    private GridColumnPlan _plan = new([], []);
+    private FilteredEmptyReason _emptyReason;
+
+    /// <summary>Gets or sets the canonical Evidence Packet whose ranked sources are rendered.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets a value indicating whether the grid renders in a compact layout.</summary>
+    [Parameter]
+    public bool Compact { get; set; }
+
+    /// <summary>Gets or sets the target maximum number of visible columns in compact mode.</summary>
+    [Parameter]
+    public int MaxVisibleColumns { get; set; } = 4;
+
+    /// <summary>Gets or sets the callback invoked when a row's inspect action is chosen.</summary>
+    [Parameter]
+    public EventCallback<EvidencePacketSource> OnRowAction { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+
+        // Restricted scopes never render rows; the producer may leave sources populated.
+        bool restrictive = EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
+            || Packet.State == EvidencePacketState.Unauthorized;
+        _sources = restrictive ? [] : Packet.Sources;
+        _items = _sources.AsQueryable();
+        _plan = CompactGridColumnPlanner.Plan(ColumnSet, MaxVisibleColumns, Compact);
+        _emptyReason = FilterInspectionMapper.ResolveEmptyReason(Packet, filtersActive: false);
+    }
+
+    private bool IsVisible(string columnKey) => _plan.Visible.Any(c => c.ColumnKey == columnKey);
+
+    private string CollapsedValue(string columnKey, EvidencePacketSource source) => columnKey switch
+    {
+        RankKey => source.Rank.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        SourceKey => InteractionDisplay.SafeText(source.SourceUri, "source"),
+        AnnotationsKey => source.AnnotationsCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => string.Empty,
+    };
+
+    private static BadgeSlot ScoreSlot(double? score)
+    {
+        if (!score.HasValue || !double.IsFinite(score.Value))
+        {
+            return BadgeSlot.Neutral;
+        }
+
+        return score.Value switch
+        {
+            >= 0.75d => BadgeSlot.Success,
+            >= 0.4d => BadgeSlot.Warning,
+            _ => BadgeSlot.Danger,
+        };
+    }
+
+    private async Task EmitRowActionAsync(EvidencePacketSource source)
+        => await OnRowAction.InvokeAsync(source).ConfigureAwait(true);
+}
