@@ -279,3 +279,88 @@ Tests use `data-testid`/accessible locators (no CSS-class selectors), the canoni
   and add `Regression`/`Inconclusive`/`Unreproducible` benchmark coverage.
 - When a runnable web host lands, add one Playwright + axe smoke path per lens at 360/768/1024/1440px
   (Task 7 viewport set) using role/label or `data-testid` selectors.
+
+---
+
+# Test Automation Summary — Story 18.1 (AppHost Project-Resolution Guard & Public-Surface Stability Contract)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-24
+- **Story:** `_bmad-output/implementation-artifacts/18-1-apphost-project-resolution-guard-and-public-surface-stability-contract.md`
+- **Framework detected:** xUnit v3 (3.2.2) + Shouldly (4.3.0) in `tests/Hexalith.Memories.IntegrationTests`,
+  default (no-Docker) lane. Matched the existing stack; no new framework introduced.
+- **Run command (sandbox):** `DiffEngine_Disabled=true dotnet exec
+  tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll
+  -class …AppHostProjectResolutionTests -class …PublicSurfaceStabilityTests` (`dotnet test`/VSTest socket is
+  blocked in this sandbox, per the story's Dev Agent Record).
+
+## Result
+
+| | Discovered (IntegrationTests assembly) | Target run | Failed | Skipped |
+|---|---|---|---|---|
+| Baseline (existing) | 237 | 1 (AC1 guard) | 0 | 0 |
+| **After gap auto-apply** | **239** | **3** | **0** | **0** |
+
+All 3 target tests pass (**+2** new `[Fact]`s). The IntegrationTests project builds clean under
+`TreatWarningsAsErrors=true` (0 warnings / 0 errors).
+
+## Scope note — API vs E2E
+
+- **API / Browser E2E tests:** Not applicable. Story 18.1 is a **test + docs** story; its "feature" is a
+  public-surface **stability contract** (`docs/dev/public-surface-stability.md`), not a runnable HTTP/API or
+  UI surface. The applicable automated tests are buildable, no-Docker **guard tests** over that contract. The
+  AC1 constraint forbids `DistributedApplicationTestingBuilder` / Testcontainers, so all tests stay plain
+  `[Fact]`s in the default lane.
+
+## Gaps discovered and auto-applied
+
+Audited the existing single AC1 guard test against the **full** documented contract. The contract doc itself
+flagged that the assembly-name / root-namespace / PackageId half was "enforced by review" only — two of those
+three are reflectable with no Docker, so they were untested-but-testable gaps.
+
+- **G1 — Server assembly name + root namespace** (`Hexalith.Memories.Server`): reflectable, previously
+  review-only. → new `PublicSurfaceStabilityTests.ServerAssembly_KeepsStableNameAndRootNamespace`.
+- **G2 — Mcp assembly name + root namespace** (`Hexalith.Memories.Mcp`): same. → new
+  `PublicSurfaceStabilityTests.McpAssembly_KeepsStableNameAndRootNamespace`.
+- **G3 — Aspire symbol *shape*** (`Projects.Hexalith_Memories_*`, the dots→underscores rule the doc calls
+  load-bearing): only `ProjectPath` was asserted, not the generated type name/namespace. → strengthened
+  `AppHostProjectResolutionTests` with `GetType().Namespace`/`.Name` assertions.
+
+**Not auto-applied (correctly out of reach):** the **Mcp PackageId** half of the contract is a pack-time
+NuGet property, not embedded in a built assembly, so it is not reflectable at runtime. It remains
+review-enforced; the contract doc was updated to state that precisely instead of lumping it with the
+now-test-enforced assembly-name/root-namespace half.
+
+## Files added / modified
+
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/PublicSurfaceStabilityTests.cs` — **added** (2 `[Fact]`s;
+  reflects over a stable public anchor type from each assembly: `IGraphQueryBuilder` for Server,
+  `MemoriesMcpAuthenticationOptions` for Mcp).
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostProjectResolutionTests.cs` — **strengthened**
+  (AC1 `[Fact]` now also asserts the generated symbol shape).
+- `docs/dev/public-surface-stability.md` — **modified** ("Automated enforcement" section synced: assembly-name
+  / root-namespace half now test-enforced; only PackageId remains review-enforced).
+
+## Coverage map (Story 18.1)
+
+- **AC1** (buildable project-resolution guard, no Docker): existing compile-time reference + ProjectPath
+  assertions, now also the symbol-shape assertions (G3). Still a plain `[Fact]`, no fixture.
+- **AC2** (EventStore wiring surface / stale-pin finding): documentation-only AC (`eventstore-integration.md`
+  §1.2.1) — no runtime surface to test; left as-is.
+- **AC3** (public-surface stability contract): 5/6 contract items now automated — symbol resolution, symbol
+  shape, Server assembly name+namespace (G1), Mcp assembly name+namespace (G2), ProjectPath csproj. Mcp
+  PackageId (6th) is review-enforced by design.
+
+## Constraints honored
+
+- No Docker / no `DistributedApplicationTestingBuilder` / no Testcontainers — all new tests are default-lane
+  `[Fact]`s (AC1).
+- No production `src/` code changed, no submodule touched, no `.slnx` / `Directory.Packages.props` /
+  `release-packages.json` edits, no PublicAPI analyzer added.
+- ITANEO MIT header, file-scoped namespace, global `using Xunit;` (not re-added), Shouldly assertions,
+  4-space C#, final newline.
+
+## Next steps
+
+- Run the new tests in CI's default (no-Docker) lane alongside the rest of `Hexalith.Memories.IntegrationTests`.
+- Commit as `test:` (guard tests) + `docs:` (doc sync) — **never `feat:`**; Story 18.1 has no release impact.

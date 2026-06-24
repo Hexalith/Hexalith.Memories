@@ -49,6 +49,35 @@ app.MapSubscribeHandler();
 // metadata, so the canonical /dapr/subscribe probe exposes the concrete topic value.
 ```
 
+### 1.2.1 Public wiring surface (stable) - Story 18.1
+
+The two extension methods downstream hosts and in-repo wiring depend on are **stable, no-redis** signatures:
+
+```csharp
+// src/Hexalith.Memories.Server/EventStoreIntegration/ServerEventStoreIntegrationExtensions.cs
+internal static IServiceCollection AddServerEventStoreIntegration(
+    this IServiceCollection services,
+    IConfiguration configuration);
+
+// src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs
+public static IServiceCollection AddMemoriesEventStoreIntegration(
+    this IServiceCollection services,
+    IConfiguration configuration,
+    Action<EventStoreIntegrationBuilder>? configure = null);
+```
+
+Neither takes a `redis` parameter, and **no `AddHexalithEventStore` redis-parameter overload exists on the
+Memories side**. Redis is wired implicitly via the DAPR state-store / pub-sub components (see section 1.3).
+`AddHexalithEventStore` itself lives **only** in the `Hexalith.EventStore` submodule
+([`Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs`](../../Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs)),
+and even there takes no redis parameter.
+
+The Parties consumer intake (MEM-1, 2026-05-27) reported an `AddHexalithEventStore` redis-parameter "drift";
+a grounded codebase review found this was a **stale submodule pin** on the consumer side, not a current
+Memories API. The signatures above are the authoritative wiring surface. See
+[public-surface-stability.md](./public-surface-stability.md) for the matching project/assembly/namespace
+stability contract and the compile-time resolution guard that enforces it.
+
 ### 1.3 Wire the pub/sub broker
 
 Production deployments bind-mount `deploy/dapr/components/pubsub.yaml` and inject:
