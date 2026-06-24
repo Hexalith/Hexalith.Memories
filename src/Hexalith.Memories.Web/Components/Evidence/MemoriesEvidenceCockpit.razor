@@ -9,12 +9,18 @@
 
     @if (RestrictiveBanner is not null)
     {
-        <section role="alert"
-                 class="mem-evidence-restrictive"
-                 data-testid="mem-evidence-restrictive-state"
-                 data-restrictive-kind="@RestrictiveBanner.Kind">
-            @RestrictiveBanner.Message
-        </section>
+        @* Story 17.6 — restrictive precedence banner. The status intent (colour, icon, role styling) now
+           comes from the Fluent message primitive instead of hand-authored CSS. The outer container keeps
+           the assertive alert live region and the trust contract anchors (data-testid + restrictive kind)
+           that Stories 17.1–17.5 and the Epic17 validation suite assert. *@
+        <div role="alert"
+             aria-live="assertive"
+             data-testid="mem-evidence-restrictive-state"
+             data-restrictive-kind="@RestrictiveBanner.Kind">
+            <FluentMessageBar Intent="@RestrictiveBanner.Intent" AllowDismiss="false">
+                @RestrictiveBanner.Message
+            </FluentMessageBar>
+        </div>
     }
 
     <section class="mem-evidence-result"
@@ -157,22 +163,22 @@
         // > redacted/compressed > degraded/partial > supported. Only the most restrictive banner renders.
         if (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus) || packet.State == EvidencePacketState.Unauthorized)
         {
-            return new RestrictiveBannerView("unauthorized", "Authorization required for this tenant and case scope.");
+            return new RestrictiveBannerView("unauthorized", "Authorization required for this tenant and case scope.", MessageBarIntent.Error);
         }
 
         if (packet.Evidence.Degraded || packet.Evidence.AllEnabledAxesUnavailable == true)
         {
-            return new RestrictiveBannerView("missing-source", "Evidence retrieval is degraded for this scope.");
+            return new RestrictiveBannerView("missing-source", "Evidence retrieval is degraded for this scope.", MessageBarIntent.Warning);
         }
 
         if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.Redaction or EvidencePacketOmissionReason.Policy)
         {
-            return new RestrictiveBannerView("redacted", "Evidence details were redacted by policy.");
+            return new RestrictiveBannerView("redacted", "Evidence details were redacted by policy.", MessageBarIntent.Warning);
         }
 
         if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined)
         {
-            return new RestrictiveBannerView("compressed", "Evidence packet is token-budget compressed.");
+            return new RestrictiveBannerView("compressed", "Evidence packet is token-budget compressed.", MessageBarIntent.Warning);
         }
 
         if (packet.State is EvidencePacketState.Degraded
@@ -183,11 +189,15 @@
         {
             return new RestrictiveBannerView(
                 "degraded",
-                $"Evidence is {EvidenceDisplay.Label(packet.State).ToLowerInvariant()} for this scope.");
+                $"Evidence is {EvidenceDisplay.Label(packet.State).ToLowerInvariant()} for this scope.",
+                MessageBarIntent.Warning);
         }
 
         return null;
     }
 
-    private sealed record RestrictiveBannerView(string Kind, string Message);
+    // Story 17.6 — Kind/Message preserve the existing trust contract; Intent maps the restrictive precedence
+    // to a Fluent message intent (unauthorized = Error/red, every other restrictive state = Warning/amber),
+    // matching the danger/warning palette the deleted .mem-evidence-restrictive CSS used to hand-author.
+    private sealed record RestrictiveBannerView(string Kind, string Message, MessageBarIntent Intent);
 }

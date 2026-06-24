@@ -197,7 +197,7 @@ development_status:
   17-3-contract-aware-web-interaction-patterns: done
   17-4-role-specific-web-inspection-lenses: done
   17-5-responsive-and-accessible-web-validation: done
-  17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: backlog
+  17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: done
   epic-17-retrospective: optional
 
   # Epic 18: Downstream Consumer Integration Contract Hardening

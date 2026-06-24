@@ -1,51 +1,12 @@
+/* Story 17.6 — layout the design system does not own (the cockpit's own grid). Status colour, borders,
+   and typography come from Fluent components and Fluent 2 tokens, not hand-authored CSS:
+   - the restrictive banner is a FluentMessageBar (its intent owns colour/icon/role styling);
+   - scope-header / trust-strip layout belongs to those child components (Blazor scoped CSS does not cross
+     component boundaries — Story 17.1 review learning), so no parent rule targets them here;
+   - the recovery panel is a child component that renders its own FluentMessageBar/FluentStack structure;
+   - field captions use semantic markup rather than a hand-authored type ramp. */
 .mem-evidence-cockpit {
     display: grid;
     gap: 1rem;
     max-width: 72rem;
-}
-
-.mem-evidence-scope,
-.mem-trust-strip,
-.mem-evidence-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: .75rem;
-}
-
-.mem-evidence-restrictive {
-    background: var(--warning-fill-rest, #fef3c7);
-    border: 1px solid var(--warning-stroke-rest, #f59e0b);
-    border-radius: 8px;
-    color: var(--warning-foreground-rest, #92400e);
-    font-weight: 600;
-    padding: .75rem 1rem;
-}
-
-.mem-evidence-restrictive[data-restrictive-kind="unauthorized"] {
-    background: var(--danger-fill-rest, #fee2e2);
-    border-color: var(--danger-stroke-rest, #ef4444);
-    color: var(--danger-foreground-rest, #991b1b);
-}
-
-.mem-evidence-recovery ul {
-    display: grid;
-    gap: .5rem;
-    list-style-position: inside;
-    margin: 0;
-    padding: 0;
-}
-
-.mem-evidence-recovery li {
-    border: 1px solid var(--neutral-stroke-rest);
-    border-radius: 8px;
-    display: grid;
-    gap: .25rem;
-    padding: .75rem;
-}
-
-.mem-evidence-label {
-    display: block;
-    font-size: .75rem;
-    font-weight: 600;
 }

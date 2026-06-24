@@ -1,21 +1,34 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
 
+@*
+    Story 17.6 — scope captions use Fluent typography (FluentLabel) and FluentStack layout instead of
+    hand-authored span weight (the removed .mem-evidence-label ramp) plus scoped flex CSS. The landmark
+    <header>, the FcStatusBadge isolation chip, and the data-testid / accessible-name anchors that the
+    Epic17 validation suite asserts are preserved; the <strong> value elements keep semantic emphasis.
+*@
+
 <header class="mem-evidence-scope"
         data-testid="mem-evidence-scope"
         aria-label="Evidence scope">
-    <div>
-        <span class="mem-evidence-label">Tenant</span>
-        <strong data-testid="mem-scope-tenant">@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
-    </div>
-    <div>
-        <span class="mem-evidence-label">Case</span>
-        <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
-    </div>
-    <div data-testid="mem-scope-isolation">
-        <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
-                       Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
-                       ColumnHeader="Scope" />
-    </div>
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+            <FluentLabel Typo="Typography.Body">Tenant</FluentLabel>
+            <FluentLabel Typo="Typography.Subject">
+                <strong data-testid="mem-scope-tenant">@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
+            </FluentLabel>
+        </FluentStack>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+            <FluentLabel Typo="Typography.Body">Case</FluentLabel>
+            <FluentLabel Typo="Typography.Subject">
+                <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
+            </FluentLabel>
+        </FluentStack>
+        <div data-testid="mem-scope-isolation">
+            <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
+                           Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
+                           ColumnHeader="Scope" />
+        </div>
+    </FluentStack>
 </header>
 
 @code {
