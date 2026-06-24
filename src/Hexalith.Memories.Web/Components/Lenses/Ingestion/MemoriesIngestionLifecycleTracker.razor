@@ -1,0 +1,155 @@
+@namespace Hexalith.Memories.Web.Components.Lenses.Ingestion
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — Ingestion Lifecycle Tracker lens (AC2). Pipeline recoverability for each memory unit: its
+    stage (an unavailable boundary, because the canonical contract exposes no stage taxonomy), outcome,
+    safe failure summary, affected capability, and a safe recovery action. Built only from the canonical
+    Evidence Packet via IngestionLifecycleMapper. The live region announces only meaningful state, never
+    every progress tick. FrontComposer + Fluent UI Blazor V5 primitives only.
+*@
+
+<MemoriesLensShell Shell="@_shell" OnReturn="OnReturn">
+    <div class="mem-ingestion-tracker"
+         data-testid="mem-ingestion-tracker"
+         role="@LiveRole"
+         aria-live="@LivePoliteness"
+         data-highest-severity="@_view.HighestSeverity"
+         aria-label="@Localizer[IngestionLifecycleResourceKeys.RegionLabel]">
+        <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-stage-note">
+            @Localizer[_view.StageNoteKey]
+        </FluentLabel>
+
+        @if (_view.IsEmpty)
+        {
+            <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-empty">
+                @Localizer[_view.EmptyReasonKey]
+            </FluentLabel>
+        }
+
+        @foreach (IngestionUnitRow unit in _view.Units)
+        {
+            <div class="mem-ingestion-unit"
+                 data-testid="mem-ingestion-unit"
+                 data-outcome="@unit.Outcome"
+                 data-stage-availability="@unit.StageAvailability"
+                 data-recovery-available="@unit.RecoveryAvailable.ToString().ToLowerInvariant()">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+                        <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-unit-id">
+                            @Localizer[IngestionLifecycleResourceKeys.UnitLabel]: @unit.UnitId
+                        </FluentLabel>
+                        <FcStatusBadge Slot="@SeveritySlot(unit.Severity)"
+                                       Label="@Localizer[unit.OutcomeLabelKey]"
+                                       ColumnHeader="@Localizer[IngestionLifecycleResourceKeys.OutcomeLabel]" />
+                        <FcStatusBadge Slot="BadgeSlot.Info"
+                                       Label="@Localizer[unit.AffectedCapabilityKey]"
+                                       ColumnHeader="@Localizer[IngestionLifecycleResourceKeys.OutcomeLabel]" />
+                    </FluentStack>
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-stage">
+                        @Localizer[IngestionLifecycleResourceKeys.StageLabel]:
+                        @Localizer[LensResourceKeys.Availability(unit.StageAvailability)]
+                    </FluentLabel>
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-failure">
+                        @Localizer[IngestionLifecycleResourceKeys.FailureLabel]:
+                        @(string.IsNullOrEmpty(unit.SafeFailureSummary)
+                            ? Localizer[IngestionLifecycleResourceKeys.FailureNone].Value
+                            : unit.SafeFailureSummary)
+                    </FluentLabel>
+                    <div data-testid="mem-ingestion-recovery" data-recovery-kind="@unit.RecoveryKind">
+                        @if (unit.RecoveryActionKey is not null)
+                        {
+                            <FluentButton Appearance="ButtonAppearance.Subtle"
+                                          Disabled="@(!unit.RecoveryAvailable)"
+                                          Title="@(unit.RecoveryAvailable ? null : Localizer[IngestionLifecycleResourceKeys.RecoveryDisabledReason].Value)"
+                                          data-testid="mem-ingestion-recovery-button"
+                                          OnClick="@(() => EmitRecoveryAsync(unit))">
+                                @Localizer[IngestionLifecycleResourceKeys.RecoveryLabel]: @Localizer[unit.RecoveryActionKey]
+                            </FluentButton>
+                            @if (!unit.RecoveryAvailable)
+                            {
+                                <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-recovery-disabled">
+                                    @Localizer[IngestionLifecycleResourceKeys.RecoveryDisabledReason]
+                                </FluentLabel>
+                            }
+                        }
+                        else
+                        {
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-recovery-none">
+                                @Localizer[IngestionLifecycleResourceKeys.RecoveryNone]
+                            </FluentLabel>
+                        }
+                    </div>
+                </FluentStack>
+            </div>
+        }
+    </div>
+</MemoriesLensShell>
+
+@code {
+    private LensShellViewModel _shell = default!;
+    private IngestionLifecycleViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into the ingestion tracker.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the active role-density profile.</summary>
+    [Parameter]
+    public LensRole Role { get; set; } = LensRole.Operator;
+
+    /// <summary>Gets or sets a safe internal route back to the originating packet or surface.</summary>
+    [Parameter]
+    public string? ReturnRoute { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when an operator chooses a safe ingestion recovery action. The
+    /// host routes the emitted recovery intent through existing command/navigation conventions.
+    /// </summary>
+    [Parameter]
+    public EventCallback<RecoveryActionInvocation> OnRecoveryAction { get; set; }
+
+    private bool IsCritical => _view.HighestSeverity == RecoverySeverity.Critical;
+
+    private string LiveRole => IsCritical ? "alert" : "status";
+
+    private string LivePoliteness => IsCritical ? "assertive" : "polite";
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _shell = LensShellMapper.Map(Packet, LensKind.IngestionLifecycleTracker, Role, ReturnRoute);
+        _view = IngestionLifecycleMapper.Map(Packet, Role);
+    }
+
+    private async Task EmitRecoveryAsync(IngestionUnitRow unit)
+    {
+        if (!unit.RecoveryAvailable)
+        {
+            return;
+        }
+
+        await OnRecoveryAction.InvokeAsync(new RecoveryActionInvocation(
+            unit.RecoveryKind,
+            unit.UnitId,
+            _shell.TenantId,
+            _shell.CaseId)).ConfigureAwait(true);
+    }
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);
+}

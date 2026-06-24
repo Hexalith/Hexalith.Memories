@@ -1,0 +1,145 @@
+@namespace Hexalith.Memories.Web.Components.Lenses.OperatorHealth
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — Operator Health Matrix lens (AC3). Operational risk across tenant isolation, retrieval
+    backend, axis availability, graph context, authorization, and detail completeness. Each cell shows
+    status, affected capability, a whitelisted evidence clue, and a safe next action — never secrets, raw
+    diagnostics, paths, or serialized packets. Built only from the canonical Evidence Packet via
+    OperatorHealthMatrixMapper. FrontComposer + Fluent UI Blazor V5 primitives only.
+*@
+
+<MemoriesLensShell Shell="@_shell" OnReturn="OnReturn">
+    <div class="mem-health-matrix"
+         data-testid="mem-health-matrix"
+         role="@LiveRole"
+         aria-live="@LivePoliteness"
+         data-highest-severity="@_view.HighestSeverity"
+         data-has-trust-blocking="@_view.HasTrustBlocking.ToString().ToLowerInvariant()"
+         aria-label="@Localizer[OperatorHealthResourceKeys.RegionLabel]">
+        <FluentLabel Typo="Typography.Body" data-testid="mem-health-lastchecked-note">
+            @Localizer[_view.LastCheckedNoteKey]
+        </FluentLabel>
+
+        @foreach (OperatorHealthCheckRow check in _view.Checks)
+        {
+            <div class="mem-health-check"
+                 data-testid="mem-health-check"
+                 data-check="@check.Kind"
+                 data-status="@check.Status"
+                 data-trust-blocking="@check.TrustBlocking.ToString().ToLowerInvariant()">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+                        <FluentLabel Typo="Typography.Body" data-testid="mem-health-check-name">
+                            @Localizer[OperatorHealthResourceKeys.CheckLabel]: @Localizer[check.CheckLabelKey]
+                        </FluentLabel>
+                        <FcStatusBadge Slot="@SeveritySlot(check.Severity)"
+                                       Label="@Localizer[check.StatusLabelKey]"
+                                       ColumnHeader="@Localizer[OperatorHealthResourceKeys.StatusLabel]" />
+                        <FcStatusBadge Slot="BadgeSlot.Info"
+                                       Label="@Localizer[check.AffectedCapabilityKey]"
+                                       ColumnHeader="@Localizer[OperatorHealthResourceKeys.CapabilityLabel]" />
+                        @if (check.TrustBlocking)
+                        {
+                            <FcStatusBadge Slot="BadgeSlot.Danger"
+                                           Label="@Localizer[OperatorHealthResourceKeys.TrustBlockingLabel]"
+                                           ColumnHeader="@Localizer[OperatorHealthResourceKeys.StatusLabel]" />
+                        }
+                    </FluentStack>
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-health-evidence">
+                        @Localizer[OperatorHealthResourceKeys.EvidenceLabel]: @check.SafeEvidence
+                    </FluentLabel>
+                    <div data-testid="mem-health-next-action" data-action-kind="@check.NextActionKind">
+                        @if (check.NextActionKey is not null)
+                        {
+                            <FluentButton Appearance="ButtonAppearance.Subtle"
+                                          Disabled="@(!check.NextActionAvailable)"
+                                          Title="@(check.NextActionAvailable ? null : Localizer[OperatorHealthResourceKeys.NextActionDisabled].Value)"
+                                          data-testid="mem-health-action-button"
+                                          OnClick="@(() => EmitActionAsync(check))">
+                                @Localizer[OperatorHealthResourceKeys.NextActionLabel]: @Localizer[check.NextActionKey]
+                            </FluentButton>
+                            @if (!check.NextActionAvailable)
+                            {
+                                <FluentLabel Typo="Typography.Body" data-testid="mem-health-action-disabled">
+                                    @Localizer[OperatorHealthResourceKeys.NextActionDisabled]
+                                </FluentLabel>
+                            }
+                        }
+                        else
+                        {
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-health-action-none">
+                                @Localizer[OperatorHealthResourceKeys.NextActionNone]
+                            </FluentLabel>
+                        }
+                    </div>
+                </FluentStack>
+            </div>
+        }
+    </div>
+</MemoriesLensShell>
+
+@code {
+    private LensShellViewModel _shell = default!;
+    private OperatorHealthViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into the health matrix.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the active role-density profile.</summary>
+    [Parameter]
+    public LensRole Role { get; set; } = LensRole.Operator;
+
+    /// <summary>Gets or sets a safe internal route back to the originating packet or surface.</summary>
+    [Parameter]
+    public string? ReturnRoute { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <summary>Gets or sets the callback invoked when an operator chooses a safe next action.</summary>
+    [Parameter]
+    public EventCallback<RecoveryActionInvocation> OnNextAction { get; set; }
+
+    private bool IsCritical => _view.HighestSeverity == RecoverySeverity.Critical;
+
+    private string LiveRole => IsCritical ? "alert" : "status";
+
+    private string LivePoliteness => IsCritical ? "assertive" : "polite";
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _shell = LensShellMapper.Map(Packet, LensKind.OperatorHealthMatrix, Role, ReturnRoute);
+        _view = OperatorHealthMatrixMapper.Map(Packet, Role);
+    }
+
+    private async Task EmitActionAsync(OperatorHealthCheckRow check)
+    {
+        if (!check.NextActionAvailable)
+        {
+            return;
+        }
+
+        await OnNextAction.InvokeAsync(new RecoveryActionInvocation(
+            check.NextActionKind,
+            check.Kind.ToString(),
+            _shell.TenantId,
+            _shell.CaseId)).ConfigureAwait(true);
+    }
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);
+}

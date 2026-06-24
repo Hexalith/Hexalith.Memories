@@ -1,0 +1,121 @@
+@namespace Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Evidence
+@using Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — shared lens shell. Every role-specific inspection lens wraps its body in this shell so the
+    same trust context stays visible or keyboard-reachable across all five lenses: tenant, case, active
+    lens, active role, packet state, affected capability, confidence (suppressed when restrictive),
+    freshness, contract version, and a return path to the originating Evidence Packet or surface. Built only
+    from the canonical Evidence Packet via LensShellMapper. FrontComposer + Fluent UI Blazor V5 primitives
+    only; emits a return intent and never executes work directly.
+*@
+
+<section class="mem-lens-shell"
+         data-testid="mem-lens-shell"
+         data-lens="@Shell.Lens"
+         data-role="@Shell.Role"
+         data-state="@Shell.StateKind"
+         data-severity="@Shell.Severity"
+         data-restrictive="@Shell.Restrictive.ToString().ToLowerInvariant()"
+         data-detail-level="@Shell.DetailLevel"
+         aria-label="@Localizer[LensResourceKeys.ShellLabel]">
+    <header class="mem-lens-scope" data-testid="mem-lens-scope">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-tenant">
+                @Localizer[LensResourceKeys.TenantLabel]: <strong>@Shell.TenantId</strong>
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-case">
+                @Localizer[LensResourceKeys.CaseLabel]: <strong>@(Shell.CaseId ?? Localizer[LensResourceKeys.TenantScope].Value)</strong>
+            </FluentLabel>
+            <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Shell.IsolationStatus)"
+                           Label="@EvidenceDisplay.Label(Shell.IsolationStatus)"
+                           ColumnHeader="@Localizer[LensResourceKeys.TenantLabel]" />
+        </FluentStack>
+    </header>
+
+    <div class="mem-lens-titlebar" data-testid="mem-lens-titlebar">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.Subject">
+                <strong data-testid="mem-lens-title">@Localizer[LensResourceKeys.ActiveLensLabel]: @Localizer[Shell.LensTitleKey]</strong>
+            </FluentLabel>
+            <div data-testid="mem-lens-role">
+                <FcStatusBadge Slot="BadgeSlot.Info"
+                               Label="@Localizer[Shell.RoleLabelKey]"
+                               ColumnHeader="@Localizer[LensResourceKeys.RoleLabel]" />
+            </div>
+        </FluentStack>
+    </div>
+
+    <div class="mem-lens-trust" data-testid="mem-lens-trust" aria-label="@Localizer[LensResourceKeys.StateLabel]">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+            <div data-testid="mem-lens-state">
+                <FcStatusBadge Slot="@SeveritySlot(Shell.Severity)"
+                               Label="@Localizer[Shell.StateTitleKey]"
+                               ColumnHeader="@Localizer[LensResourceKeys.StateLabel]" />
+            </div>
+            <div data-testid="mem-lens-capability">
+                <FcStatusBadge Slot="BadgeSlot.Info"
+                               Label="@Localizer[Shell.AffectedCapabilityKey]"
+                               ColumnHeader="@Localizer[LensResourceKeys.CapabilityLabel]" />
+            </div>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-confidence">
+                @Localizer[LensResourceKeys.ConfidenceLabel]: @Shell.ConfidenceLabel
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-freshness">
+                @Localizer[LensResourceKeys.FreshnessLabel]: @Shell.FreshnessLabel
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-contract-version">
+                @Localizer[LensResourceKeys.ContractVersionLabel]: @Shell.ContractVersion
+            </FluentLabel>
+        </FluentStack>
+    </div>
+
+    <div class="mem-lens-body" data-testid="mem-lens-body">
+        @ChildContent
+    </div>
+
+    <footer class="mem-lens-return" data-testid="mem-lens-return">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-return-route">
+                @Localizer[LensResourceKeys.ReturnLabel]: @Shell.ReturnRoute
+            </FluentLabel>
+            <FluentButton Appearance="ButtonAppearance.Outline"
+                          data-testid="mem-lens-return-action"
+                          OnClick="EmitReturnAsync">
+                @Localizer[LensResourceKeys.ReturnAction]
+            </FluentButton>
+        </FluentStack>
+    </footer>
+</section>
+
+@code {
+    /// <summary>Gets or sets the shared lens shell projection to render.</summary>
+    [Parameter]
+    [EditorRequired]
+    public LensShellViewModel Shell { get; set; } = default!;
+
+    /// <summary>Gets or sets the lens body rendered inside the shell.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet() => ArgumentNullException.ThrowIfNull(Shell);
+
+    private async Task EmitReturnAsync()
+        => await OnReturn.InvokeAsync(Shell.ReturnRoute).ConfigureAwait(true);
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);
+}

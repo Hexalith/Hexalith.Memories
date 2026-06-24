@@ -1,0 +1,166 @@
+@namespace Hexalith.Memories.Web.Components.Lenses.AgentPacket
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — Agent Packet Inspector lens (AC5). MCP trust: request summary, response schema, token
+    budget, omitted fields, expansion handles, and structured errors. The readable schema is the primary
+    path; a user never needs raw JSON to learn whether the packet is valid, compressed, failed, or
+    expandable. The copy control and the secondary JSON view share one sanitized payload so they can never
+    leak bearer tokens, secrets, raw payloads, paths, or restricted source details. Built only from the
+    canonical Evidence Packet via AgentPacketInspectorMapper. FrontComposer + Fluent UI Blazor V5 only.
+*@
+
+<MemoriesLensShell Shell="@_shell" OnReturn="OnReturn">
+    <div class="mem-packet-inspector"
+         data-testid="mem-packet-inspector"
+         data-has-error="@_view.HasError.ToString().ToLowerInvariant()"
+         data-restrictive="@_view.Restrictive.ToString().ToLowerInvariant()"
+         aria-label="@Localizer[AgentPacketResourceKeys.RegionLabel]">
+
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.Subject">
+                <strong>@Localizer[AgentPacketResourceKeys.ErrorLabel]</strong>
+            </FluentLabel>
+            <FcStatusBadge Slot="@SeveritySlot(_view.Severity)"
+                           Label="@Localizer[_view.ErrorStateKey]"
+                           ColumnHeader="@Localizer[AgentPacketResourceKeys.ErrorLabel]" />
+        </FluentStack>
+
+        <section data-testid="mem-packet-request-summary" aria-label="@Localizer[AgentPacketResourceKeys.RequestSummaryLabel]">
+            <FluentLabel Typo="Typography.Body" data-testid="mem-packet-query">
+                @Localizer[AgentPacketResourceKeys.QueryLabel]: @_view.SafeQuery
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-packet-counts" data-availability="@_view.CountsAvailability">
+                @Localizer[AgentPacketResourceKeys.CountsLabel]:
+                @(_view.CountsAvailability == LensFieldAvailability.Available
+                    ? _view.SafeCounts
+                    : Localizer[LensResourceKeys.Availability(_view.CountsAvailability)].Value)
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-packet-token-budget" data-availability="@_view.TokenBudgetAvailability">
+                @Localizer[AgentPacketResourceKeys.TokenBudgetLabel]:
+                @(_view.TokenBudgetAvailability == LensFieldAvailability.Available
+                    ? _view.SafeTokenBudget
+                    : Localizer[LensResourceKeys.Availability(_view.TokenBudgetAvailability)].Value)
+                (@Localizer[_view.TokenBudgetStateKey])
+            </FluentLabel>
+        </section>
+
+        <section data-testid="mem-packet-schema" aria-label="@Localizer[AgentPacketResourceKeys.SchemaLabel]">
+            <FluentLabel Typo="Typography.Subject"><strong>@Localizer[AgentPacketResourceKeys.SchemaLabel]</strong></FluentLabel>
+            <ul class="mem-packet-schema-fields">
+                @foreach (PacketSchemaField field in _view.SchemaFields)
+                {
+                    <li class="mem-packet-field"
+                        data-testid="mem-packet-field"
+                        data-field="@field.Kind"
+                        data-availability="@field.Availability">
+                        <FluentLabel Typo="Typography.Body">
+                            @Localizer[field.NameKey]:
+                            @(field.Availability == LensFieldAvailability.Available
+                                ? field.SafeValue
+                                : Localizer[LensResourceKeys.Availability(field.Availability)].Value)
+                        </FluentLabel>
+                    </li>
+                }
+            </ul>
+        </section>
+
+        <section data-testid="mem-packet-omitted" aria-label="@Localizer[AgentPacketResourceKeys.OmittedFieldsLabel]">
+            <FluentLabel Typo="Typography.Body">
+                @Localizer[AgentPacketResourceKeys.OmittedFieldsLabel]:
+                @(_view.OmittedFieldNames.Count > 0
+                    ? string.Join(", ", _view.OmittedFieldNames)
+                    : Localizer[AgentPacketResourceKeys.OmittedFieldsNone].Value)
+            </FluentLabel>
+        </section>
+
+        <section data-testid="mem-packet-expansions" aria-label="@Localizer[AgentPacketResourceKeys.ExpansionHandlesLabel]">
+            <FluentLabel Typo="Typography.Subject"><strong>@Localizer[AgentPacketResourceKeys.ExpansionHandlesLabel]</strong></FluentLabel>
+            @if (_view.Expansions.Count > 0)
+            {
+                @foreach (RecoveryExpansionView expansion in _view.Expansions)
+                {
+                    <FluentLabel Typo="Typography.Body"
+                                 data-testid="mem-packet-expansion"
+                                 data-expansion-kind="@expansion.Kind">
+                        @Localizer[RecoveryResourceKeys.Action(expansion.Kind)]:
+                        @expansion.TargetDetailGroup — @expansion.Guidance
+                    </FluentLabel>
+                }
+            }
+            else
+            {
+                <FluentLabel Typo="Typography.Body" data-testid="mem-packet-expansion-none">
+                    @Localizer[AgentPacketResourceKeys.ExpansionHandlesNone]
+                </FluentLabel>
+            }
+        </section>
+
+        <FluentLabel Typo="Typography.Body" data-testid="mem-packet-diagnostic">
+            @Localizer[AgentPacketResourceKeys.DiagnosticLabel]: @_view.SafeDiagnosticCode
+        </FluentLabel>
+
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+            <FluentButton Appearance="ButtonAppearance.Subtle"
+                          data-testid="mem-packet-copy"
+                          OnClick="EmitCopyAsync">
+                @Localizer[AgentPacketResourceKeys.CopyLabel]
+            </FluentButton>
+        </FluentStack>
+
+        <details class="mem-packet-json">
+            <summary data-testid="mem-packet-json-summary">@Localizer[AgentPacketResourceKeys.JsonLabel]</summary>
+            <pre data-testid="mem-packet-json">@_view.SafeCopyText</pre>
+        </details>
+    </div>
+</MemoriesLensShell>
+
+@code {
+    private LensShellViewModel _shell = default!;
+    private AgentPacketInspectorViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into the inspector.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the active role-density profile.</summary>
+    [Parameter]
+    public LensRole Role { get; set; } = LensRole.AgentIntegrator;
+
+    /// <summary>Gets or sets a safe internal route back to the originating packet or surface.</summary>
+    [Parameter]
+    public string? ReturnRoute { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked with the single sanitized copy payload. The host performs the
+    /// clipboard write; the payload shares the JSON view's sanitization path and carries no secrets.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnCopy { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _shell = LensShellMapper.Map(Packet, LensKind.AgentPacketInspector, Role, ReturnRoute);
+        _view = AgentPacketInspectorMapper.Map(Packet, Role);
+    }
+
+    private async Task EmitCopyAsync() => await OnCopy.InvokeAsync(_view.SafeCopyText).ConfigureAwait(true);
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);
+}

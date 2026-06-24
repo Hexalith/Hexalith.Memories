@@ -189,3 +189,93 @@ selectors), canonical `EvidencePacketFixtures`, no sleeps, and each builds its o
 - Run the Web test lane in CI alongside the rest of the solution.
 - When a runnable web host lands (later Epic 17 stories), add Playwright + axe viewport checks at
   360/768/1024/1440px to complete Task 6's browser-level validation; not applicable for this RCL-only slice.
+
+---
+
+# Test Automation Summary — Story 17.4 (Role-Specific Web Inspection Lenses)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-24
+- **Story:** `_bmad-output/implementation-artifacts/17-4-role-specific-web-inspection-lenses.md`
+- **Framework detected:** xUnit v3 (3.2.2) + bUnit (2.8.4-preview) + Shouldly + `Hexalith.FrontComposer.Testing`
+  (`FrontComposerTestBase`). Matched the existing stack; no new framework introduced.
+- **Run command (sandbox-safe in-process runner):**
+  `./tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests`
+  (`dotnet test`/VSTest socket is blocked in this sandbox, per the story's Dev Agent Record.)
+
+## Result
+
+| | Tests | Errors | Failed | Skipped |
+|---|---|---|---|---|
+| Baseline (existing) | 256 | 0 | 0 | 0 |
+| **After gap auto-apply** | **291** | **0** | **0** | **0** |
+
+All 291 tests pass (**+35**). The test project builds clean under `TreatWarningsAsErrors=true`
+(0 warnings / 0 errors), and `git diff --check` is clean.
+
+## Scope note — API vs E2E
+
+- **API tests:** Not applicable. Story 17.4 is a **consume-only RCL** web slice over the shared Evidence
+  Packet contract; it adds no runnable API endpoints. The pure mappers (`LensShellMapper`,
+  `CaseActivityTrailMapper`, `IngestionLifecycleMapper`, `OperatorHealthMatrixMapper`,
+  `BenchmarkResultComparatorMapper`, `AgentPacketInspectorMapper`) are the API-equivalent layer and are
+  unit-tested directly.
+- **Browser E2E (Playwright/axe):** Not applicable — no runnable web host ships with this slice (as the
+  story records). The project's component test surface is **bUnit**; keyboard/accessibility/responsive
+  behavior is asserted there.
+
+## Gaps discovered and auto-applied
+
+Mapped Story 17.4 Task 6 / Task 7 required coverage against existing tests and filled the remaining gaps.
+Tests use `data-testid`/accessible locators (no CSS-class selectors), the canonical bounded
+`LensPacketFixtures` inventory, no sleeps, and each builds its own fixtures (order-independent).
+
+### Cross-cutting guardrails — `Components/Lenses/LensCrossCuttingTests.cs` (new, 20 cases)
+
+- **Cross-lens consistency:** same packet → identical shell state / severity / affected capability /
+  confidence / freshness / contract version / scope across all five lenses (5 fixtures); confidence
+  suppressed identically under a restrictive scope.
+- **Tenant isolation:** cross-tenant packet carries the foreign tenant/case across every lens; the Agent
+  Packet copy payload / command target repartition with **no originating-tenant residue**.
+- **Role-density invariance:** Ingestion / Operator Health / Benchmark / Agent Packet projections preserve
+  packet semantics across roles (only ordering/density differs); **no role broadens authorization** on an
+  unauthorized packet (4 roles × 5 lenses).
+- **Fail-closed:** unknown isolation scope is treated as restrictively as unauthorized across every lens.
+- **Contract version:** every lens always reports the supported contract version (incl. schema-mismatch /
+  cross-tenant packets).
+- **Stale/changed-context revalidation:** a previously-expandable compressed packet and a recoverable
+  degraded packet have their expansion / recovery commands **disabled before activation** once the scope
+  becomes restrictive.
+
+### Per-lens state matrix completion (added to existing mapper test files, 13 cases)
+
+- **Case Activity (AC1):** empty (trust-state continuity preserved), degraded explicit.
+- **Ingestion (AC2):** empty (no fabricated unit), schema-mismatch fail-closed without leak.
+- **Operator Health (AC3):** empty (no trust-blocking), redacted (DetailCompleteness caution, no producer
+  action), schema-mismatch safe with fixed 6-check set.
+- **Benchmark (AC4):** empty (MissingBaseline, nothing inferred), sensitive-axis scrubbing, schema-mismatch,
+  and a sweep proving benchmark-only states (`Regression`/`Inconclusive`/`Unreproducible`) and NDCG@10 are
+  **never inferred** from the bounded inventory.
+- **Agent Packet (AC5):** empty (NoMatch signalled without raw-JSON inspection), redacted (omitted groups
+  announced, not an error).
+
+### Component (bUnit) — `Components/Lenses/MemoriesLensComponentsTests.cs` (2 cases)
+
+- Cross-tenant packet renders the foreign tenant/case in the rendered shell (no tenant-a residue).
+- The return action is reachable and emits the sanitized return route (keyboard-reachable return for AC1).
+
+## Coverage map (Story 17.4)
+
+- **AC1–AC5:** each lens has mapper + component coverage across populated / empty / degraded / unauthorized /
+  unknown-scope / redacted-sensitive / schema-mismatch states.
+- **Cross-cutting:** shared-shell consistency, tenant isolation, role-density invariance, fail-closed
+  authorization, contract-version stability, stale-context command revalidation, and copy/diagnostics
+  sanitization are covered across all five lenses.
+
+## Next steps
+
+- When **Story 2.7** lands canonical benchmark / ingestion-stage / MCP-tool-name / freshness / last-checked
+  contract fields, replace the deferred `NoContractSource` unavailable boundaries with populated-value tests
+  and add `Regression`/`Inconclusive`/`Unreproducible` benchmark coverage.
+- When a runnable web host lands, add one Playwright + axe smoke path per lens at 360/768/1024/1440px
+  (Task 7 viewport set) using role/label or `data-testid` selectors.

@@ -579,4 +579,403 @@
   <data name="Navigation_ReturnAction_Label" xml:space="preserve">
     <value>Retourner au paquet</value>
   </data>
+  <data name="Lens_Shell_Label" xml:space="preserve">
+    <value>Loupe d'inspection</value>
+  </data>
+  <data name="Lens_Tenant_Label" xml:space="preserve">
+    <value>Locataire</value>
+  </data>
+  <data name="Lens_Case_Label" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="Lens_TenantScope" xml:space="preserve">
+    <value>tout le locataire</value>
+  </data>
+  <data name="Lens_ActiveLens_Label" xml:space="preserve">
+    <value>Loupe active</value>
+  </data>
+  <data name="Lens_Role_Label" xml:space="preserve">
+    <value>Rôle</value>
+  </data>
+  <data name="Lens_Confidence_Label" xml:space="preserve">
+    <value>Confiance</value>
+  </data>
+  <data name="Lens_Freshness_Label" xml:space="preserve">
+    <value>Fraîcheur</value>
+  </data>
+  <data name="Lens_State_Label" xml:space="preserve">
+    <value>État</value>
+  </data>
+  <data name="Lens_Capability_Label" xml:space="preserve">
+    <value>Capacité affectée</value>
+  </data>
+  <data name="Lens_ContractVersion_Label" xml:space="preserve">
+    <value>Version du contrat</value>
+  </data>
+  <data name="Lens_Return_Label" xml:space="preserve">
+    <value>Chemin de retour</value>
+  </data>
+  <data name="Lens_Return_Action" xml:space="preserve">
+    <value>Revenir au paquet</value>
+  </data>
+  <data name="Lens_CaseActivityTrail_Title" xml:space="preserve">
+    <value>Journal d'activité du dossier</value>
+  </data>
+  <data name="Lens_IngestionLifecycleTracker_Title" xml:space="preserve">
+    <value>Suivi du cycle d'ingestion</value>
+  </data>
+  <data name="Lens_OperatorHealthMatrix_Title" xml:space="preserve">
+    <value>Matrice de santé opérateur</value>
+  </data>
+  <data name="Lens_BenchmarkResultComparator_Title" xml:space="preserve">
+    <value>Comparateur de résultats de benchmark</value>
+  </data>
+  <data name="Lens_AgentPacketInspector_Title" xml:space="preserve">
+    <value>Inspecteur de paquet d'agent</value>
+  </data>
+  <data name="Lens_CaseActivityTrail_Description" xml:space="preserve">
+    <value>Comment la mémoire de ce dossier a évolué.</value>
+  </data>
+  <data name="Lens_IngestionLifecycleTracker_Description" xml:space="preserve">
+    <value>Où en est chaque unité dans le flux d'ingestion.</value>
+  </data>
+  <data name="Lens_OperatorHealthMatrix_Description" xml:space="preserve">
+    <value>Quels contrôles sont en échec et quelle capacité est affectée.</value>
+  </data>
+  <data name="Lens_BenchmarkResultComparator_Description" xml:space="preserve">
+    <value>Récupération hybride contre axe unique au seuil NDCG@10.</value>
+  </data>
+  <data name="Lens_AgentPacketInspector_Description" xml:space="preserve">
+    <value>Requête MCP, schéma de réponse et signaux de confiance.</value>
+  </data>
+  <data name="Lens_Role_Developer" xml:space="preserve">
+    <value>Développeur</value>
+  </data>
+  <data name="Lens_Role_Operator" xml:space="preserve">
+    <value>Opérateur</value>
+  </data>
+  <data name="Lens_Role_TeamLead" xml:space="preserve">
+    <value>Chef d'équipe</value>
+  </data>
+  <data name="Lens_Role_AgentIntegrator" xml:space="preserve">
+    <value>Intégrateur d'agent</value>
+  </data>
+  <data name="Lens_Availability_Available" xml:space="preserve">
+    <value>disponible</value>
+  </data>
+  <data name="Lens_Availability_Unavailable" xml:space="preserve">
+    <value>indisponible</value>
+  </data>
+  <data name="Lens_Availability_Redacted" xml:space="preserve">
+    <value>expurgé</value>
+  </data>
+  <data name="Lens_Availability_InsufficientEvidence" xml:space="preserve">
+    <value>preuves insuffisantes</value>
+  </data>
+  <data name="Lens_Availability_Unauthorized" xml:space="preserve">
+    <value>non autorisé</value>
+  </data>
+  <data name="CaseActivity_Region_Label" xml:space="preserve">
+    <value>Journal d'activité du dossier</value>
+  </data>
+  <data name="CaseActivity_Empty" xml:space="preserve">
+    <value>Aucune activité de source, d'annotation, de relation ou de lacune dans la portée.</value>
+  </data>
+  <data name="CaseActivity_Ordering_Basis" xml:space="preserve">
+    <value>Trié de façon déterministe par rang ; les horodatages chronologiques ne sont pas fournis par le contrat.</value>
+  </data>
+  <data name="CaseActivity_Status_Label" xml:space="preserve">
+    <value>Statut</value>
+  </data>
+  <data name="CaseActivity_Link_Label" xml:space="preserve">
+    <value>Lien</value>
+  </data>
+  <data name="CaseActivity_Kind_SourceCitation" xml:space="preserve">
+    <value>Citation de source</value>
+  </data>
+  <data name="CaseActivity_Kind_Annotation" xml:space="preserve">
+    <value>Annotation</value>
+  </data>
+  <data name="CaseActivity_Kind_Relationship" xml:space="preserve">
+    <value>Relation</value>
+  </data>
+  <data name="CaseActivity_Kind_GraphGap" xml:space="preserve">
+    <value>Lacune de graphe</value>
+  </data>
+  <data name="CaseActivity_Kind_TrustState" xml:space="preserve">
+    <value>État de confiance</value>
+  </data>
+  <data name="CaseActivity_Kind_Recovery" xml:space="preserve">
+    <value>Action de récupération</value>
+  </data>
+  <data name="CaseActivity_LinkStatus_Available" xml:space="preserve">
+    <value>lié à la source</value>
+  </data>
+  <data name="CaseActivity_LinkStatus_Unavailable" xml:space="preserve">
+    <value>source indisponible</value>
+  </data>
+  <data name="CaseActivity_LinkStatus_Redacted" xml:space="preserve">
+    <value>source expurgée</value>
+  </data>
+  <data name="CaseActivity_LinkStatus_InsufficientEvidence" xml:space="preserve">
+    <value>preuves insuffisantes</value>
+  </data>
+  <data name="CaseActivity_LinkStatus_Unauthorized" xml:space="preserve">
+    <value>source non autorisée</value>
+  </data>
+  <data name="Ingestion_Region_Label" xml:space="preserve">
+    <value>Suivi du cycle d'ingestion</value>
+  </data>
+  <data name="Ingestion_Empty" xml:space="preserve">
+    <value>Aucune unité d'ingestion à suivre dans la portée.</value>
+  </data>
+  <data name="Ingestion_StageNote" xml:space="preserve">
+    <value>L'étape d'ingestion détaillée n'est pas exposée par le contrat ; le résultat est affiché à la granularité disponible.</value>
+  </data>
+  <data name="Ingestion_Unit_Label" xml:space="preserve">
+    <value>Unité</value>
+  </data>
+  <data name="Ingestion_Stage_Label" xml:space="preserve">
+    <value>Étape</value>
+  </data>
+  <data name="Ingestion_Outcome_Label" xml:space="preserve">
+    <value>Résultat</value>
+  </data>
+  <data name="Ingestion_Failure_Label" xml:space="preserve">
+    <value>Échec</value>
+  </data>
+  <data name="Ingestion_Recovery_Label" xml:space="preserve">
+    <value>Récupération</value>
+  </data>
+  <data name="Ingestion_Recovery_Disabled" xml:space="preserve">
+    <value>La récupération est indisponible pour la portée ou la cible actuelle.</value>
+  </data>
+  <data name="Ingestion_Recovery_None" xml:space="preserve">
+    <value>Aucune action de récupération nécessaire.</value>
+  </data>
+  <data name="Ingestion_Failure_None" xml:space="preserve">
+    <value>aucun</value>
+  </data>
+  <data name="Ingestion_Outcome_Indexed" xml:space="preserve">
+    <value>Indexée</value>
+  </data>
+  <data name="Ingestion_Outcome_NotIngestedYet" xml:space="preserve">
+    <value>Pas encore ingérée</value>
+  </data>
+  <data name="Ingestion_Outcome_Degraded" xml:space="preserve">
+    <value>Dégradée</value>
+  </data>
+  <data name="Ingestion_Outcome_BackendUnavailable" xml:space="preserve">
+    <value>Service indisponible</value>
+  </data>
+  <data name="Ingestion_Outcome_Unauthorized" xml:space="preserve">
+    <value>Non autorisée</value>
+  </data>
+  <data name="Ingestion_Outcome_Unknown" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="Health_Region_Label" xml:space="preserve">
+    <value>Matrice de santé opérateur</value>
+  </data>
+  <data name="Health_LastChecked_Note" xml:space="preserve">
+    <value>L'heure du dernier contrôle n'est pas exposée par le contrat.</value>
+  </data>
+  <data name="Health_Check_Label" xml:space="preserve">
+    <value>Contrôle</value>
+  </data>
+  <data name="Health_Status_Label" xml:space="preserve">
+    <value>Statut</value>
+  </data>
+  <data name="Health_Capability_Label" xml:space="preserve">
+    <value>Capacité affectée</value>
+  </data>
+  <data name="Health_Evidence_Label" xml:space="preserve">
+    <value>Preuve</value>
+  </data>
+  <data name="Health_NextAction_Label" xml:space="preserve">
+    <value>Action suivante</value>
+  </data>
+  <data name="Health_NextAction_None" xml:space="preserve">
+    <value>Aucune action nécessaire.</value>
+  </data>
+  <data name="Health_NextAction_Disabled" xml:space="preserve">
+    <value>L'action est indisponible pour la portée actuelle.</value>
+  </data>
+  <data name="Health_TrustBlocking_Label" xml:space="preserve">
+    <value>Bloque la confiance</value>
+  </data>
+  <data name="Health_Check_TenantIsolation" xml:space="preserve">
+    <value>Isolation du locataire</value>
+  </data>
+  <data name="Health_Check_RetrievalBackend" xml:space="preserve">
+    <value>Service de récupération</value>
+  </data>
+  <data name="Health_Check_AxisAvailability" xml:space="preserve">
+    <value>Disponibilité des axes</value>
+  </data>
+  <data name="Health_Check_GraphContext" xml:space="preserve">
+    <value>Contexte de graphe</value>
+  </data>
+  <data name="Health_Check_Authorization" xml:space="preserve">
+    <value>Autorisation</value>
+  </data>
+  <data name="Health_Check_DetailCompleteness" xml:space="preserve">
+    <value>Complétude des détails</value>
+  </data>
+  <data name="Health_Status_Healthy" xml:space="preserve">
+    <value>Sain</value>
+  </data>
+  <data name="Health_Status_Caution" xml:space="preserve">
+    <value>Attention</value>
+  </data>
+  <data name="Health_Status_Degraded" xml:space="preserve">
+    <value>Dégradé</value>
+  </data>
+  <data name="Health_Status_Blocked" xml:space="preserve">
+    <value>Bloqué</value>
+  </data>
+  <data name="Health_Status_Unknown" xml:space="preserve">
+    <value>Inconnu</value>
+  </data>
+  <data name="Benchmark_Region_Label" xml:space="preserve">
+    <value>Comparateur de résultats de benchmark</value>
+  </data>
+  <data name="Benchmark_Ndcg_Label" xml:space="preserve">
+    <value>NDCG@10 hybride contre axe unique</value>
+  </data>
+  <data name="Benchmark_Threshold_Label" xml:space="preserve">
+    <value>Statut du seuil de thèse 80%</value>
+  </data>
+  <data name="Benchmark_PerQuery_Label" xml:space="preserve">
+    <value>Détail par requête</value>
+  </data>
+  <data name="Benchmark_EvidenceLink_Label" xml:space="preserve">
+    <value>Preuve reproductible</value>
+  </data>
+  <data name="Benchmark_AxisEvidence_Label" xml:space="preserve">
+    <value>Preuve d'axe de récupération (approximation)</value>
+  </data>
+  <data name="Benchmark_Proxy_Note" xml:space="preserve">
+    <value>Ce sont des scores d'axe de pertinence de récupération, pas des résultats NDCG@10 de benchmark ; la preuve de benchmark n'est pas exposée par le contrat.</value>
+  </data>
+  <data name="Benchmark_ResultState_Label" xml:space="preserve">
+    <value>État du résultat</value>
+  </data>
+  <data name="Benchmark_Axis_Label" xml:space="preserve">
+    <value>Axe</value>
+  </data>
+  <data name="Benchmark_Score_Label" xml:space="preserve">
+    <value>Score</value>
+  </data>
+  <data name="Benchmark_Normalization_Label" xml:space="preserve">
+    <value>Normalisation</value>
+  </data>
+  <data name="Benchmark_UnavailableAxes_Label" xml:space="preserve">
+    <value>Axes indisponibles</value>
+  </data>
+  <data name="Benchmark_Empty" xml:space="preserve">
+    <value>Aucune preuve d'axe de récupération disponible.</value>
+  </data>
+  <data name="Benchmark_State_Unavailable" xml:space="preserve">
+    <value>Preuve de benchmark indisponible</value>
+  </data>
+  <data name="Benchmark_State_MissingBaseline" xml:space="preserve">
+    <value>Référence manquante</value>
+  </data>
+  <data name="Benchmark_State_DegradedAxis" xml:space="preserve">
+    <value>Axe dégradé</value>
+  </data>
+  <data name="Benchmark_State_Stale" xml:space="preserve">
+    <value>Preuve périmée</value>
+  </data>
+  <data name="Benchmark_State_Inconclusive" xml:space="preserve">
+    <value>Non concluant</value>
+  </data>
+  <data name="Benchmark_State_Regression" xml:space="preserve">
+    <value>Régression</value>
+  </data>
+  <data name="Benchmark_State_Unreproducible" xml:space="preserve">
+    <value>Non reproductible</value>
+  </data>
+  <data name="Packet_Region_Label" xml:space="preserve">
+    <value>Inspecteur de paquet d'agent</value>
+  </data>
+  <data name="Packet_RequestSummary_Label" xml:space="preserve">
+    <value>Résumé de la requête</value>
+  </data>
+  <data name="Packet_Query_Label" xml:space="preserve">
+    <value>Requête</value>
+  </data>
+  <data name="Packet_Counts_Label" xml:space="preserve">
+    <value>Résultats</value>
+  </data>
+  <data name="Packet_Schema_Label" xml:space="preserve">
+    <value>Schéma de réponse</value>
+  </data>
+  <data name="Packet_Json_Label" xml:space="preserve">
+    <value>Vue JSON</value>
+  </data>
+  <data name="Packet_TokenBudget_Label" xml:space="preserve">
+    <value>Budget de jetons</value>
+  </data>
+  <data name="Packet_OmittedFields_Label" xml:space="preserve">
+    <value>Champs omis</value>
+  </data>
+  <data name="Packet_OmittedFields_None" xml:space="preserve">
+    <value>aucun</value>
+  </data>
+  <data name="Packet_ExpansionHandles_Label" xml:space="preserve">
+    <value>Poignées d'expansion</value>
+  </data>
+  <data name="Packet_ExpansionHandles_None" xml:space="preserve">
+    <value>Aucune poignée d'expansion.</value>
+  </data>
+  <data name="Packet_Error_Label" xml:space="preserve">
+    <value>État du paquet</value>
+  </data>
+  <data name="Packet_Diagnostic_Label" xml:space="preserve">
+    <value>Diagnostic</value>
+  </data>
+  <data name="Packet_Copy_Label" xml:space="preserve">
+    <value>Copier le résumé expurgé</value>
+  </data>
+  <data name="Packet_TokenBudget_Compressed" xml:space="preserve">
+    <value>compressé</value>
+  </data>
+  <data name="Packet_TokenBudget_Within" xml:space="preserve">
+    <value>dans le budget</value>
+  </data>
+  <data name="Packet_Field_ScopeTenant" xml:space="preserve">
+    <value>Locataire</value>
+  </data>
+  <data name="Packet_Field_ScopeCase" xml:space="preserve">
+    <value>Dossier</value>
+  </data>
+  <data name="Packet_Field_ScopeIsolation" xml:space="preserve">
+    <value>Isolation</value>
+  </data>
+  <data name="Packet_Field_ResultQuery" xml:space="preserve">
+    <value>Requête</value>
+  </data>
+  <data name="Packet_Field_ResultCounts" xml:space="preserve">
+    <value>Résultats</value>
+  </data>
+  <data name="Packet_Field_EvidenceStrength" xml:space="preserve">
+    <value>Force des preuves</value>
+  </data>
+  <data name="Packet_Field_EvidenceAxes" xml:space="preserve">
+    <value>Axes utilisés</value>
+  </data>
+  <data name="Packet_Field_State" xml:space="preserve">
+    <value>État</value>
+  </data>
+  <data name="Packet_Field_OmissionReason" xml:space="preserve">
+    <value>Raison de l'omission</value>
+  </data>
+  <data name="Packet_Field_TokenBudget" xml:space="preserve">
+    <value>Jetons estimés</value>
+  </data>
+  <data name="Packet_Field_ToolName" xml:space="preserve">
+    <value>Outil MCP</value>
+  </data>
 </root>

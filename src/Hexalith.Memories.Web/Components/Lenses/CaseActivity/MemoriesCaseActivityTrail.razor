@@ -1,0 +1,95 @@
+@namespace Hexalith.Memories.Web.Components.Lenses.CaseActivity
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — Case Activity Trail lens (AC1). A developer/operator/team-lead continuity view: how this
+    case's memory changed over time, source-linked where the contract allows, status-labelled, and scoped
+    to tenant/case through the shared lens shell. Built only from the canonical Evidence Packet via
+    CaseActivityTrailMapper. FrontComposer + Fluent UI Blazor V5 primitives only.
+*@
+
+<MemoriesLensShell Shell="@_shell" OnReturn="OnReturn">
+    <div class="mem-activity-trail"
+         data-testid="mem-activity-trail"
+         data-timestamps-available="@_view.TimestampsAvailable.ToString().ToLowerInvariant()"
+         role="list"
+         aria-label="@Localizer[CaseActivityResourceKeys.RegionLabel]">
+        <FluentLabel Typo="Typography.Body" data-testid="mem-activity-ordering-note">
+            @Localizer[_view.OrderingBasisKey]
+        </FluentLabel>
+
+        @if (_view.IsEmpty)
+        {
+            <FluentLabel Typo="Typography.Body" data-testid="mem-activity-empty">
+                @Localizer[_view.EmptyReasonKey]
+            </FluentLabel>
+        }
+
+        @foreach (CaseActivityRow row in _view.Rows)
+        {
+            <div class="mem-activity-row"
+                 role="listitem"
+                 data-testid="mem-activity-row"
+                 data-activity-kind="@row.Kind"
+                 data-link-availability="@row.LinkAvailability"
+                 data-order="@row.Order">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+                    <FcStatusBadge Slot="@SeveritySlot(row.Severity)"
+                                   Label="@Localizer[row.StatusLabelKey]"
+                                   ColumnHeader="@Localizer[CaseActivityResourceKeys.StatusLabel]" />
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-activity-kind">
+                        @Localizer[row.KindLabelKey]
+                    </FluentLabel>
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-activity-summary">
+                        @row.SafeSummary
+                    </FluentLabel>
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-activity-link">
+                        @Localizer[CaseActivityResourceKeys.LinkLabel]:
+                        @Localizer[CaseActivityResourceKeys.LinkStatus(row.LinkAvailability)] — @row.SafeLink
+                    </FluentLabel>
+                </FluentStack>
+            </div>
+        }
+    </div>
+</MemoriesLensShell>
+
+@code {
+    private LensShellViewModel _shell = default!;
+    private CaseActivityTrailViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into the activity trail.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the active role-density profile.</summary>
+    [Parameter]
+    public LensRole Role { get; set; } = LensRole.Developer;
+
+    /// <summary>Gets or sets a safe internal route back to the originating packet or surface.</summary>
+    [Parameter]
+    public string? ReturnRoute { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _shell = LensShellMapper.Map(Packet, LensKind.CaseActivityTrail, Role, ReturnRoute);
+        _view = CaseActivityTrailMapper.Map(Packet, Role);
+    }
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => RecoveryDisplay.SeveritySlot(severity);
+}

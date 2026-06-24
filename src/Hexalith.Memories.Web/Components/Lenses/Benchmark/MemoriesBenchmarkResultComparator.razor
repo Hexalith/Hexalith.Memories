@@ -1,0 +1,124 @@
+@namespace Hexalith.Memories.Web.Components.Lenses.Benchmark
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Components.Lenses
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.4 — Benchmark Result Comparator lens (AC4). Thesis validation: did hybrid retrieval beat
+    single-axis baselines at the NDCG@10 threshold? The canonical contract exposes no benchmark scores,
+    threshold, per-query breakdown, or reproducible-evidence link, so each renders an explicit unavailable
+    boundary (deferred to Story 2.7) and the per-axis retrieval evidence is shown as an explicitly labelled
+    proxy with text equivalents beside every bar. Built only from the canonical Evidence Packet via
+    BenchmarkResultComparatorMapper. FrontComposer + Fluent UI Blazor V5 primitives only.
+*@
+
+<MemoriesLensShell Shell="@_shell" OnReturn="OnReturn">
+    <div class="mem-benchmark-comparator"
+         data-testid="mem-benchmark-comparator"
+         data-result-state="@_view.ResultState"
+         aria-label="@Localizer[BenchmarkResourceKeys.RegionLabel]">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
+            <FluentLabel Typo="Typography.Subject">
+                <strong data-testid="mem-benchmark-result-state">@Localizer[BenchmarkResourceKeys.ResultStateLabel]: @Localizer[_view.ResultStateKey]</strong>
+            </FluentLabel>
+        </FluentStack>
+
+        <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-ndcg" data-availability="@_view.NdcgAvailability">
+            @Localizer[BenchmarkResourceKeys.NdcgLabel]: @Localizer[LensResourceKeys.Availability(_view.NdcgAvailability)]
+        </FluentLabel>
+        <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-threshold" data-availability="@_view.ThresholdAvailability">
+            @Localizer[BenchmarkResourceKeys.ThresholdLabel]: @Localizer[LensResourceKeys.Availability(_view.ThresholdAvailability)]
+        </FluentLabel>
+        <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-perquery" data-availability="@_view.PerQueryAvailability">
+            @Localizer[BenchmarkResourceKeys.PerQueryLabel]: @Localizer[LensResourceKeys.Availability(_view.PerQueryAvailability)]
+        </FluentLabel>
+        <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-evidence-link" data-availability="@_view.EvidenceLinkAvailability">
+            @Localizer[BenchmarkResourceKeys.EvidenceLinkLabel]: @Localizer[LensResourceKeys.Availability(_view.EvidenceLinkAvailability)]
+        </FluentLabel>
+
+        <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-proxy-note">
+            @Localizer[_view.ProxyNoteKey]
+        </FluentLabel>
+
+        @if (_view.IsEmpty)
+        {
+            <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-empty">
+                @Localizer[_view.EmptyReasonKey]
+            </FluentLabel>
+        }
+        else
+        {
+            <FluentLabel Typo="Typography.Subject">
+                <strong>@Localizer[BenchmarkResourceKeys.AxisEvidenceLabel]</strong>
+            </FluentLabel>
+            <ul class="mem-benchmark-axes" data-testid="mem-benchmark-axes">
+                @foreach (BenchmarkAxisRow row in _view.AxisRows)
+                {
+                    <li class="mem-benchmark-axis" data-testid="mem-benchmark-axis" data-axis="@row.Axis" data-has-score="@row.HasScore.ToString().ToLowerInvariant()">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-axis-score">
+                                @Localizer[BenchmarkResourceKeys.AxisLabel]: @row.Axis
+                                · @Localizer[BenchmarkResourceKeys.ScoreLabel]: @row.SafeScore
+                                · @Localizer[BenchmarkResourceKeys.NormalizationLabel]: @row.SafeNormalization
+                            </FluentLabel>
+                            @if (row.HasScore)
+                            {
+                                <FluentProgressBar Min="0"
+                                                   Max="100"
+                                                   Value="@row.ScorePercent"
+                                                   aria-label="@($"{Localizer[BenchmarkResourceKeys.ScoreLabel]}: {row.SafeScore}")"
+                                                   data-testid="mem-benchmark-axis-bar" />
+                            }
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-axis-description">
+                                @row.SafeDescription
+                            </FluentLabel>
+                        </FluentStack>
+                    </li>
+                }
+            </ul>
+
+            @if (_view.UnavailableAxes.Count > 0)
+            {
+                <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-unavailable-axes">
+                    @Localizer[BenchmarkResourceKeys.UnavailableAxesLabel]: @string.Join(", ", _view.UnavailableAxes)
+                </FluentLabel>
+            }
+        }
+    </div>
+</MemoriesLensShell>
+
+@code {
+    private LensShellViewModel _shell = default!;
+    private BenchmarkResultComparatorViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into the benchmark comparator.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>Gets or sets the active role-density profile.</summary>
+    [Parameter]
+    public LensRole Role { get; set; } = LensRole.TeamLead;
+
+    /// <summary>Gets or sets a safe internal route back to the originating packet or surface.</summary>
+    [Parameter]
+    public string? ReturnRoute { get; set; }
+
+    /// <summary>Gets or sets the callback invoked to return to the originating packet or surface.</summary>
+    [Parameter]
+    public EventCallback<string> OnReturn { get; set; }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _shell = LensShellMapper.Map(Packet, LensKind.BenchmarkResultComparator, Role, ReturnRoute);
+        _view = BenchmarkResultComparatorMapper.Map(Packet, Role);
+    }
+}
