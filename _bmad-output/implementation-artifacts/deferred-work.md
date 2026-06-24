@@ -1317,6 +1317,24 @@ Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced 
 
 ## Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)
 
+> **Resolution update — 2026-06-24 (dev-story carry-over pass).** Decisions taken with Jerome and the
+> spec-required test-coverage gaps closed before moving Story 2.7 to review. The original findings below
+> are preserved for history; current status per item:
+>
+> - **Resolved (implemented 2026-06-24):**
+>   - **2.7-CR1** — shared `EvidencePacketCanonicalFixtures` added to `Hexalith.Memories.TestHelpers`; contract, CLI, MCP, and server tests now assert against the same canonical JSON (spec's "compare each surface against shared canonical JSON" option, rather than relocating the internal fixtures).
+>   - **2.7-CR2** — CLI tests now cover empty, degraded, token-budget, unauthorized, single-axis, and default-caveat packet states.
+>   - **2.7-CR3** — table-driven sanitization tests across unauthorized / backend-failure / partial-degradation / token-budget / server-diagnostic categories (`EvidencePacketSanitizationTests`).
+>   - **2.7-CR4** — tenant/case negative isolation tests (`EvidencePacketIsolationTests`), written under the CR9 trust-upstream decision: they pin that `packet.Scope` is always request-derived and never source-derived, and that cross-case/tenant-wide search is preserved.
+>   - **2.7-CR5** — server-side mapper tests (`EvidencePacketServerMappingTests`) drive the real `SearchResponseMetadataApplier`.
+>   - **2.7-CR18 / 2.7-CR26** — single-axis + hybrid MCP canonical parity, deterministic axis-evidence ordering, and a structural text-fallback assertion replacing the brittle substring match.
+>   - **2.7-CR27** — CLI stub already supports `onSearch`; single-axis CLI coverage added.
+>   - **2.7-CR10** — *decision: implement.* `search query` JSON error envelopes now carry an additive `evidencePacket` (via `EvidencePacketMapper.FromError`), threaded opt-in through the executor → error-writer pipeline. The shared `CliOutputEnvelope<T>` `data XOR error` invariant and ADR-7.2-001 field-ordering are preserved (packet appended after `error`, null-suppressed for every other command). Local pre-resolution input-validation errors keep the minimal envelope (no resolved scope).
+> - **Closed by decision (no code change):**
+>   - **2.7-CR9** — *decision: trust upstream.* The mapper does not reconcile `source.CaseId` against request scope; cross-scope consistency is the upstream/server boundary. The packet-scope-is-request-derived invariant is pinned by 2.7-CR4 tests.
+>   - **2.7-CR11 + 2.7-CR15** — *decision: defer to a future server-side hardening story.* The contract already carries the carriers (`EvidencePacketScope.IsolationStatus`, `OmittedReason.{Redaction,Policy,Authorization}`); only the server must begin emitting the empty-vs-unauthorized / redaction signal. No mapper heuristic added.
+> - **Still deferred (non-spec enhancements / design or schema changes):** 2.7-CR6, 2.7-CR7, 2.7-CR8, 2.7-CR12, 2.7-CR13, 2.7-CR14, 2.7-CR16, 2.7-CR17, 2.7-CR19, 2.7-CR20, 2.7-CR21, 2.7-CR22, 2.7-CR23, 2.7-CR24, 2.7-CR25.
+
 - **2.7-CR1. Canonical `EvidencePacketFixtures` not shared cross-surface.** Currently `internal static class` in `Hexalith.Memories.Contracts.Tests`; only consumed by `EvidencePacketSerializationTests`. Spec Task 5 demanded cross-surface fixture reuse (CLI, MCP, server tests). Rationale: requires moving fixtures to a shared test helper assembly (cross-cutting refactor) and re-keying CLI/MCP/server tests; paired with 2.7-CR2/CR3/CR4/CR5.
 - **2.7-CR2. No CLI tests for empty/degraded/unauthorized/token-budget-compressed packets.** `EvidencePacketCliOutputTests.cs` has a single hybrid happy-path `[Fact]`. Spec Task 5 demanded full state coverage at the CLI surface. Rationale: significant test-scope expansion; depends on 2.7-CR1 shared fixtures.
 - **2.7-CR3. No table-driven sanitization tests across the spec'd categories** (unauthorized, all-backend failure, partial degradation, token-budget compression, server diagnostics, MCP error mapping). Rationale: paired with 2.7-CR1 shared fixtures.

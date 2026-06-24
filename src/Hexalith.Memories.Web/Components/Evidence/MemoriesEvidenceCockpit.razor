@@ -40,27 +40,14 @@
         }
     </section>
 
-    @if (RecoveryActions.Count > 0)
+    @if (HasRealPacket)
     {
-        <section class="mem-evidence-recovery"
-                 data-testid="mem-evidence-recovery"
-                 aria-label="Recovery actions">
-            <h3>Recovery</h3>
-            <ul>
-                @foreach (EvidencePacketRecoveryAction action in RecoveryActions)
-                {
-                    <li data-testid="mem-recovery-item" data-recovery-kind="@action.Kind">
-                        <strong>@EvidenceDisplay.SafeText(action.Label, "recovery action")</strong>
-                        <p>@EvidenceDisplay.SafeText(action.Guidance, "no guidance")</p>
-                        <span class="mem-evidence-label">
-                            Tenant: @EvidenceDisplay.SafeText(EffectivePacket.Scope.TenantId, "unknown tenant")
-                            · Case: @EvidenceDisplay.SafeText(EffectivePacket.Scope.CaseId, "tenant scope")
-                            · Target: @EvidenceDisplay.SafeText(action.Target, "no target")
-                        </span>
-                    </li>
-                }
-            </ul>
-        </section>
+        @* Story 17.2 — Recovery Action Panel renders the recovery state grammar and gated actions from
+           the canonical Evidence Packet. AnnounceAssertively is false so it does not compete with the
+           precedence banner's assertive alert above. *@
+        <MemoriesRecoveryActionPanel Packet="EffectivePacket"
+                                     AnnounceAssertively="false"
+                                     OnRecoveryAction="OnRecoveryAction" />
     }
 
     @if (ShouldComposeEvidenceChildren)
@@ -87,6 +74,13 @@
     [Parameter]
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// Gets or sets the callback raised when the operator chooses a recovery action in the panel. The
+    /// host routes the emitted intent through existing command, navigation, or handler conventions.
+    /// </summary>
+    [Parameter]
+    public EventCallback<RecoveryActionInvocation> OnRecoveryAction { get; set; }
+
     private EvidencePacket? _cachedUnavailablePacket;
     private string? _cachedUnavailableSignature;
 
@@ -104,10 +98,6 @@
     private bool ShouldComposeEvidenceChildren => HasRealPacket
         && !EvidenceDisplay.IsRestrictiveScope(EffectivePacket.Scope.IsolationStatus)
         && EffectivePacket.State is not EvidencePacketState.Unauthorized;
-
-    private IReadOnlyList<EvidencePacketRecoveryAction> RecoveryActions => HasRealPacket
-        ? EffectivePacket.Recovery
-        : [];
 
     private RestrictiveBannerView? RestrictiveBanner => HasRealPacket
         ? ResolveRestrictiveBanner(EffectivePacket)
@@ -148,7 +138,7 @@
                 RelatedPath: [],
                 EdgeTypes: [],
                 GapMarkers: []),
-            State: hasError ? EvidencePacketState.Empty : EvidencePacketState.Empty,
+            State: EvidencePacketState.Empty,
             OmittedDetails: new EvidencePacketOmittedDetails(
                 OmittedCount: 0,
                 EstimatedTokensTotal: 0,

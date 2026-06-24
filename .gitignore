@@ -423,3 +423,4 @@ FodyWeavers.xsd
 # DAPR secrets
 secrets.json
 deploy/dapr/components/secrets.json
+.agents/.story-automator-active

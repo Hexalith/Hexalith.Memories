@@ -24,11 +24,11 @@ internal static class CommandPayloadRegistry
     /// irrelevant in the error case because <c>Data</c> is <see langword="null"/> and suppressed via
     /// <c>JsonIgnoreCondition.WhenWritingNull</c>; only the source-gen registration must resolve.
     /// </summary>
-    private static readonly Action<TextWriter, string, CliErrorPayload> DefaultWriter =
+    private static readonly Action<TextWriter, string, CliErrorPayload, EvidencePacket?> DefaultWriter =
         JsonErrorEnvelopeWriter.Write<IReadOnlyList<TenantSummary>>;
 
-    private static readonly IReadOnlyDictionary<string, Action<TextWriter, string, CliErrorPayload>> Writers =
-        new Dictionary<string, Action<TextWriter, string, CliErrorPayload>>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, Action<TextWriter, string, CliErrorPayload, EvidencePacket?>> Writers =
+        new Dictionary<string, Action<TextWriter, string, CliErrorPayload, EvidencePacket?>>(StringComparer.Ordinal)
         {
             ["tenant list"] = JsonErrorEnvelopeWriter.Write<IReadOnlyList<TenantSummary>>,
             ["config show"] = JsonErrorEnvelopeWriter.Write<ConfigShowData>,
@@ -47,9 +47,9 @@ internal static class CommandPayloadRegistry
     /// </summary>
     /// <param name="command">The CLI command name (e.g., <c>search query</c>).</param>
     /// <returns>The writer action bound to the matching envelope shape.</returns>
-    public static Action<TextWriter, string, CliErrorPayload> ResolveWriter(string command)
+    public static Action<TextWriter, string, CliErrorPayload, EvidencePacket?> ResolveWriter(string command)
     {
-        if (!string.IsNullOrEmpty(command) && Writers.TryGetValue(command, out Action<TextWriter, string, CliErrorPayload>? writer))
+        if (!string.IsNullOrEmpty(command) && Writers.TryGetValue(command, out Action<TextWriter, string, CliErrorPayload, EvidencePacket?>? writer))
         {
             return writer;
         }

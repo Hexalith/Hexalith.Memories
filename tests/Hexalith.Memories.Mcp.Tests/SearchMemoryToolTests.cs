@@ -11,6 +11,7 @@ using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Mcp;
 using Hexalith.Memories.Mcp.Tools;
+using Hexalith.Memories.TestHelpers.EvidencePackets;
 
 using ModelContextProtocol.Protocol;
 
@@ -193,7 +194,9 @@ public sealed class SearchMemoryToolTests
         packet.GetProperty("scope").GetProperty("caseId").GetString().ShouldBe("case-a");
         packet.GetProperty("state").GetString().ShouldBe("complete");
         packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-001");
-        ExtractText(result).ShouldContain("\"evidencePacket\"");
+        // CR26: parse the text fallback structurally instead of a brittle substring match.
+        EvidencePacketCanonicalFixtures.CanonicalizeEmbedded(ExtractText(result))
+            .ShouldContain("\"state\":\"complete\"");
     }
 
     [Fact]
@@ -240,7 +243,9 @@ public sealed class SearchMemoryToolTests
         packet.GetProperty("evidence").GetProperty("axesUsed")[0].GetString().ShouldBe("syntactic");
         packet.GetProperty("evidence").GetProperty("axisEvidence")[0].GetProperty("axis").GetString().ShouldBe("syntactic");
         packet.GetProperty("sources")[0].GetProperty("memoryUnitId").GetString().ShouldBe("mu-010");
-        ExtractText(result).ShouldContain("\"evidencePacket\"");
+        // CR26: parse the text fallback structurally instead of a brittle substring match.
+        EvidencePacketCanonicalFixtures.CanonicalizeEmbedded(ExtractText(result))
+            .ShouldContain("\"state\":\"complete\"");
     }
 
     private static void AssertIsErrorWithCode(CallToolResult result, string expectedCode)

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.CommandLine;
+using System.Net;
 using System.Text.Json;
 
 using Hexalith.Memories.Cli;
@@ -15,6 +16,7 @@ using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.TestHelpers.EvidencePackets;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -230,6 +232,101 @@ public sealed class EvidencePacketCliOutputTests
         handle.GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
         handle.GetProperty("targetDetailGroup").GetString().ShouldBe("rankedResults");
         packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("increaseTokenBudget");
+    }
+
+    [Fact]
+    public async Task SearchQuery_HybridJson_ServerForbidden_EmitsErrorEnvelopeWithUnauthorizedEvidencePacket()
+    {
+        // CR10: server-originated error responses now carry an Evidence Packet alongside the error.
+        (IServiceProvider services, StringWriter stdout, _) = BuildServices(
+            onHybridSearch: (_, _) => Task.FromException<HybridSearchResult>(
+                new MemoriesRemoteException(
+                    HttpStatusCode.Forbidden,
+                    new ErrorResponse(
+                        "TENANT_FORBIDDEN",
+                        "Denied for tenant-b at C:\\secret\\trace.txt.",
+                        "Switch to tenant-b or reconnect to redis://backend-key/0."))));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldNotBe(CliExitCodes.Success);
+        using JsonDocument doc = JsonDocument.Parse(stdout.ToString());
+        JsonElement root = doc.RootElement;
+        root.GetProperty("error").GetProperty("code").GetString().ShouldBe("TENANT_FORBIDDEN");
+        root.TryGetProperty("data", out _).ShouldBeFalse();
+
+        JsonElement packet = root.GetProperty("evidencePacket");
+        packet.GetProperty("state").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("scope").GetProperty("isolationStatus").GetString().ShouldBe("unauthorized");
+        packet.GetProperty("scope").GetProperty("tenantId").GetString().ShouldBe("tenant-a");
+        packet.GetProperty("recovery")[0].GetProperty("kind").GetString().ShouldBe("checkAuthorization");
+
+        // The packet must not leak the sensitive server diagnostic text or cross-tenant identifiers.
+        string packetText = packet.GetRawText();
+        packetText.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
+        packetText.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
+        packetText.ShouldNotContain("tenant-b", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
+    public async Task SearchQuery_HybridJson_NoExplain_EmitsDefaultCaveat()
+    {
+        // CR18: without --explain the server returns no explanation, so the packet uses the default caveat.
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(
+            onHybridSearch: (request, _) => Task.FromResult(new HybridSearchResult
+            {
+                Results =
+                [
+                    new FusedScoredResult
+                    {
+                        MemoryUnitId = "mu-001",
+                        CompositeScore = 0.88,
+                        ContentSnippet = "Hybrid evidence",
+                        SourceUri = "mem://tenant-a/case-a/mu-001",
+                        SourceType = SourceType.File,
+                        SemanticScore = 0.88,
+                        CaseId = request.CaseId,
+                        CaseName = "Case A",
+                    },
+                ],
+                TotalCount = 1,
+                Degraded = false,
+                UnavailableAxes = [],
+                Query = request.Query,
+                AxesUsed = ["semantic"],
+            }));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        JsonElement packet = ReadEvidencePacket(stdout);
+        packet.GetProperty("evidence").GetProperty("caveat").GetString()
+            .ShouldBe("Scores measure query-result relevance, not factual accuracy or data completeness.");
+    }
+
+    [Fact]
+    public async Task SearchQuery_HybridJson_MatchesSharedCanonicalPacket()
+    {
+        // CR1: the CLI surface emits exactly the shared canonical packet for the canonical input.
+        (IServiceProvider services, StringWriter stdout, _) = BuildServices(
+            onHybridSearch: (_, _) => Task.FromResult(EvidencePacketCanonicalFixtures.HybridComplete()));
+        Command command = SearchQueryCommand.Build(services);
+
+        int exit = await command
+            .Parse(new[] { "query", "--tenant", "tenant-a", "--case", "case-a", "--query", "claim denied" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Success);
+        JsonElement packet = ReadEvidencePacket(stdout);
+        EvidencePacketCanonicalFixtures.Canonicalize(packet.GetRawText())
+            .ShouldBe(EvidencePacketCanonicalFixtures.Canonicalize(EvidencePacketCanonicalFixtures.HybridCompletePacket()));
     }
 
     private static (IServiceProvider Services, StringWriter Stdout, StringWriter Stderr) BuildServices(

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Cli.Output.Json;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>
 /// Stable JSON envelope returned by every <c>--format json</c> command (ADR-7.2-001). Exactly four
 /// top-level fields — <c>schemaVersion</c>, <c>command</c>, <c>data</c>, <c>error</c>. The <c>data</c>
@@ -42,8 +44,14 @@ public sealed record CliOutputEnvelope<T>
     /// <param name="command">The invoked command name (e.g., <c>tenant list</c>).</param>
     /// <param name="data">The command-specific payload, or <see langword="null"/> on error.</param>
     /// <param name="error">The translated error payload, or <see langword="null"/> on success.</param>
+    /// <param name="evidencePacket">
+    /// Optional canonical Evidence Packet projection for <c>search query</c> error responses (Story 2.7 /
+    /// CR10). Appended after <c>error</c> per the field-ordering convention; <see langword="null"/> (and
+    /// suppressed) for every other command and for success envelopes, which already carry the packet
+    /// inside <c>data</c>.
+    /// </param>
     /// <exception cref="ArgumentException">Thrown when both <paramref name="data"/> and <paramref name="error"/> are populated, or both are null.</exception>
-    public CliOutputEnvelope(int schemaVersion, string command, T? data, CliErrorPayload? error = null)
+    public CliOutputEnvelope(int schemaVersion, string command, T? data, CliErrorPayload? error = null, EvidencePacket? evidencePacket = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         if ((data is null) == (error is null))
@@ -55,6 +63,7 @@ public sealed record CliOutputEnvelope<T>
         Command = command;
         Data = data;
         Error = error;
+        EvidencePacket = evidencePacket;
     }
 
     /// <summary>Gets the envelope schema version.</summary>
@@ -68,6 +77,13 @@ public sealed record CliOutputEnvelope<T>
 
     /// <summary>Gets the error payload, or <see langword="null"/> for success envelopes.</summary>
     public CliErrorPayload? Error { get; }
+
+    /// <summary>
+    /// Gets the optional Evidence Packet projection for <c>search query</c> error responses, or
+    /// <see langword="null"/> for all other commands and success envelopes. Declared last so it
+    /// serializes after <c>error</c> per the field-ordering convention.
+    /// </summary>
+    public EvidencePacket? EvidencePacket { get; }
 
     /// <summary>
     /// Initializes a success envelope (<paramref name="data"/> non-null, error slot null). Preserves
@@ -88,11 +104,12 @@ public sealed record CliOutputEnvelope<T>
     /// </summary>
     /// <param name="command">The invoked command name.</param>
     /// <param name="error">The translated error payload.</param>
+    /// <param name="evidencePacket">Optional Evidence Packet projection (Story 2.7 / CR10), or <see langword="null"/>.</param>
     /// <returns>A new error envelope with <c>data</c> suppressed.</returns>
-    public static CliOutputEnvelope<T> ForError(string command, CliErrorPayload error)
+    public static CliOutputEnvelope<T> ForError(string command, CliErrorPayload error, EvidencePacket? evidencePacket = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentNullException.ThrowIfNull(error);
-        return new CliOutputEnvelope<T>(CurrentSchemaVersion, command, data: null, error: error);
+        return new CliOutputEnvelope<T>(CurrentSchemaVersion, command, data: null, error: error, evidencePacket: evidencePacket);
     }
 }

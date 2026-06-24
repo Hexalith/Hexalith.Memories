@@ -35,14 +35,15 @@ internal static class JsonErrorEnvelopeWriter
     /// <param name="writer">The target writer (typically <c>console.Out</c> — stdout in JSON mode).</param>
     /// <param name="command">The invoked command name (e.g., <c>tenant list</c>).</param>
     /// <param name="error">The translated error payload.</param>
-    public static void Write<TPayload>(TextWriter writer, string command, CliErrorPayload error)
+    /// <param name="evidencePacket">Optional Evidence Packet projection (Story 2.7 / CR10), or <see langword="null"/>.</param>
+    public static void Write<TPayload>(TextWriter writer, string command, CliErrorPayload error, EvidencePacket? evidencePacket = null)
         where TPayload : class
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentNullException.ThrowIfNull(error);
 
-        CliOutputEnvelope<TPayload> envelope = CliOutputEnvelope<TPayload>.ForError(command, error);
+        CliOutputEnvelope<TPayload> envelope = CliOutputEnvelope<TPayload>.ForError(command, error, evidencePacket);
         JsonTypeInfo typeInfo = CliJsonContext.Options.GetTypeInfo(typeof(CliOutputEnvelope<TPayload>));
         string json = JsonSerializer.Serialize(envelope, typeInfo);
         writer.WriteLine(json);
@@ -56,14 +57,15 @@ internal static class JsonErrorEnvelopeWriter
     /// <param name="writer">The target writer (typically <c>console.Out</c>).</param>
     /// <param name="command">The invoked command name (e.g., <c>search query</c>), or <c>memories</c> for pre-handler.</param>
     /// <param name="error">The translated error payload.</param>
-    public static void WriteForCommand(TextWriter writer, string command, CliErrorPayload error)
+    /// <param name="evidencePacket">Optional Evidence Packet projection (Story 2.7 / CR10), or <see langword="null"/>.</param>
+    public static void WriteForCommand(TextWriter writer, string command, CliErrorPayload error, EvidencePacket? evidencePacket = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentNullException.ThrowIfNull(error);
 
-        Action<TextWriter, string, CliErrorPayload> writeAction =
+        Action<TextWriter, string, CliErrorPayload, EvidencePacket?> writeAction =
             CommandPayloadRegistry.ResolveWriter(command);
-        writeAction(writer, command, error);
+        writeAction(writer, command, error, evidencePacket);
     }
 }

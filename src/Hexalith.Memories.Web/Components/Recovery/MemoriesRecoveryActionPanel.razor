@@ -1,0 +1,226 @@
+@namespace Hexalith.Memories.Web.Components.Recovery
+@using Hexalith.FrontComposer.Contracts.Attributes
+@using Hexalith.FrontComposer.Shell.Components.Badges
+@using Hexalith.Memories.Contracts.V1
+@using Hexalith.Memories.Web.Resources
+@using Microsoft.Extensions.Localization
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject IStringLocalizer<MemoriesWebResources> Localizer
+
+@*
+    Story 17.2 — Recovery Action Panel/footer. Renders the recovery state grammar (title, explanation,
+    diagnostic clue, severity, affected capability) and one safest primary action before secondary
+    actions, built only from the canonical Evidence Packet via RecoveryStateMapper. Uses FrontComposer
+    and Fluent UI Blazor V5 primitives only; emits intents and never executes recovery work directly.
+*@
+
+@if (ShouldShow)
+{
+    <div class="mem-recovery-panel"
+         role="@LiveRole"
+         aria-live="@LivePoliteness"
+         data-testid="mem-evidence-recovery"
+         data-recovery-state="@_view.StateKind"
+         data-severity="@_view.Severity"
+         aria-label="@Localizer[RecoveryResourceKeys.PanelLabel]">
+        <FluentMessageBar Intent="@MessageIntent" AllowDismiss="false">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                    <FluentLabel Typo="Typography.Subject">
+                        <strong data-testid="mem-recovery-title">@Localizer[_view.TitleKey]</strong>
+                    </FluentLabel>
+                    <FcStatusBadge Slot="@SeveritySlot(_view.Severity)"
+                                   Label="@Localizer[RecoveryResourceKeys.Severity(_view.Severity)]"
+                                   ColumnHeader="@Localizer[RecoveryResourceKeys.SeverityLabel]" />
+                    <FcStatusBadge Slot="BadgeSlot.Info"
+                                   Label="@Localizer[_view.AffectedCapabilityKey]"
+                                   ColumnHeader="@Localizer[RecoveryResourceKeys.CapabilityLabel]" />
+                </FluentStack>
+
+                <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-explanation">
+                    @Localizer[_view.ExplanationKey]
+                </FluentLabel>
+
+                <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-clue">
+                    @Localizer[_view.DiagnosticClueLabelKey]: @_view.DiagnosticClueCode
+                </FluentLabel>
+
+                @if (_view.RiskMarkers.Count > 0)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal"
+                                 HorizontalGap="8"
+                                 VerticalAlignment="VerticalAlignment.Center"
+                                 data-testid="mem-recovery-risk-markers"
+                                 aria-label="@Localizer[RecoveryResourceKeys.RiskMarkersLabel]">
+                        @foreach (RecoveryRiskMarker marker in _view.RiskMarkers)
+                        {
+                            <FcStatusBadge Slot="@SeveritySlot(marker.Severity)"
+                                           Label="@Localizer[marker.LabelKey]"
+                                           ColumnHeader="@Localizer[RecoveryResourceKeys.RiskMarkersLabel]" />
+                        }
+                    </FluentStack>
+                }
+
+                @if (_view.OmittedDetailNames.Count > 0 || _view.Expansions.Count > 0)
+                {
+                    <FluentStack Orientation="Orientation.Vertical"
+                                 VerticalGap="4"
+                                 data-testid="mem-recovery-omitted"
+                                 aria-label="@Localizer[RecoveryResourceKeys.OmittedDetailsLabel]">
+                        @if (_view.OmittedDetailNames.Count > 0)
+                        {
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-omitted-names">
+                                @Localizer[RecoveryResourceKeys.OmittedDetailsLabel]: @string.Join(", ", _view.OmittedDetailNames)
+                            </FluentLabel>
+                        }
+                        @foreach (RecoveryExpansionView expansion in _view.Expansions)
+                        {
+                            <FluentLabel Typo="Typography.Body"
+                                         data-testid="mem-recovery-expansion"
+                                         data-expansion-kind="@expansion.Kind">
+                                @Localizer[RecoveryResourceKeys.ExpansionLabel]
+                                (@Localizer[RecoveryResourceKeys.Action(expansion.Kind)]):
+                                @expansion.TargetDetailGroup — @expansion.Guidance
+                            </FluentLabel>
+                        }
+                    </FluentStack>
+                }
+
+                @if (_view.PrimaryAction is { } primary)
+                {
+                    <FluentStack Orientation="Orientation.Vertical"
+                                 VerticalGap="4"
+                                 data-testid="mem-recovery-primary"
+                                 aria-label="@Localizer[RecoveryResourceKeys.PrimaryActionLabel]">
+                        @ActionTemplate(primary)
+                    </FluentStack>
+                }
+
+                @if (_view.SecondaryActions.Count > 0)
+                {
+                    <FluentStack Orientation="Orientation.Vertical"
+                                 VerticalGap="4"
+                                 data-testid="mem-recovery-secondary"
+                                 aria-label="@Localizer[RecoveryResourceKeys.SecondaryActionsLabel]">
+                        @foreach (RecoveryActionView action in _view.SecondaryActions)
+                        {
+                            @ActionTemplate(action)
+                        }
+                    </FluentStack>
+                }
+
+                @if (_view.PrimaryAction is null && _view.SecondaryActions.Count == 0)
+                {
+                    <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-no-action">
+                        @Localizer[RecoveryResourceKeys.NoAction]
+                    </FluentLabel>
+                }
+            </FluentStack>
+        </FluentMessageBar>
+    </div>
+}
+
+@code {
+    private RecoveryStateViewModel _view = default!;
+
+    /// <summary>Gets or sets the canonical Evidence Packet to project into a recovery state.</summary>
+    [Parameter]
+    [EditorRequired]
+    public EvidencePacket Packet { get; set; } = default!;
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the operator chooses a recovery action. The host routes the
+    /// emitted intent through existing command, navigation, or handler conventions.
+    /// </summary>
+    [Parameter]
+    public EventCallback<RecoveryActionInvocation> OnRecoveryAction { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether a safety-critical state announces assertively. The cockpit
+    /// sets this to false so the panel does not compete with the precedence banner's assertive alert.
+    /// </summary>
+    [Parameter]
+    public bool AnnounceAssertively { get; set; } = true;
+
+    private bool ShouldShow => _view.StateKind != RecoveryStateKind.Supported
+        || _view.PrimaryAction is not null
+        || _view.SecondaryActions.Count > 0;
+
+    private bool IsCritical => _view.Severity == RecoverySeverity.Critical;
+
+    private string LiveRole => IsCritical && AnnounceAssertively ? "alert" : "status";
+
+    private string LivePoliteness => IsCritical && AnnounceAssertively ? "assertive" : "polite";
+
+    private MessageBarIntent MessageIntent => _view.Severity switch
+    {
+        RecoverySeverity.Critical => MessageBarIntent.Error,
+        RecoverySeverity.Warning => MessageBarIntent.Warning,
+        RecoverySeverity.Caution => MessageBarIntent.Warning,
+        RecoverySeverity.Info => MessageBarIntent.Info,
+        _ => MessageBarIntent.Success,
+    };
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        ArgumentNullException.ThrowIfNull(Packet);
+        _view = RecoveryStateMapper.Map(Packet);
+    }
+
+    private static BadgeSlot SeveritySlot(RecoverySeverity severity) => severity switch
+    {
+        RecoverySeverity.Critical => BadgeSlot.Danger,
+        RecoverySeverity.Warning => BadgeSlot.Warning,
+        RecoverySeverity.Caution => BadgeSlot.Warning,
+        RecoverySeverity.Info => BadgeSlot.Info,
+        _ => BadgeSlot.Success,
+    };
+
+    private async Task EmitAsync(RecoveryActionView action)
+    {
+        if (action.Availability != RecoveryActionAvailability.Available)
+        {
+            return;
+        }
+
+        await OnRecoveryAction.InvokeAsync(new RecoveryActionInvocation(
+            action.Kind,
+            action.Target,
+            _view.TenantId,
+            _view.CaseId)).ConfigureAwait(true);
+    }
+
+    private RenderFragment<RecoveryActionView> ActionTemplate => action =>
+        @<div class="mem-recovery-action"
+              data-testid="mem-recovery-item"
+              data-recovery-kind="@action.Kind"
+              data-availability="@action.Availability">
+            <FluentButton Appearance="@(action.IsPrimary ? ButtonAppearance.Primary : ButtonAppearance.Subtle)"
+                          Disabled="@(action.Availability == RecoveryActionAvailability.Unavailable)"
+                          Title="@DisabledReason(action)"
+                          data-testid="mem-recovery-action-button"
+                          OnClick="@(() => EmitAsync(action))">
+                @Localizer[RecoveryResourceKeys.Action(action.Kind)]
+            </FluentButton>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-action-label">@action.Label</FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-action-guidance">@action.Guidance</FluentLabel>
+            <FluentLabel Typo="Typography.Body">
+                @Localizer[RecoveryResourceKeys.TenantLabel]: @_view.TenantId
+                · @Localizer[RecoveryResourceKeys.CaseLabel]: @(_view.CaseId ?? Localizer[RecoveryResourceKeys.TenantScope].Value)
+                · @Localizer[RecoveryResourceKeys.TargetLabel]: @action.Target
+            </FluentLabel>
+            @if (action.Availability == RecoveryActionAvailability.Unavailable && action.DisabledReasonKey is not null)
+            {
+                <FluentLabel Typo="Typography.Body" data-testid="mem-recovery-disabled-reason">
+                    @Localizer[action.DisabledReasonKey]
+                </FluentLabel>
+            }
+        </div>;
+
+    private string? DisabledReason(RecoveryActionView action)
+        => action.Availability == RecoveryActionAvailability.Unavailable && action.DisabledReasonKey is not null
+            ? Localizer[action.DisabledReasonKey].Value
+            : null;
+}

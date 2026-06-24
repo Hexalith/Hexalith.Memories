@@ -232,7 +232,14 @@ Examples:
                 hasResults: single.Results.Count > 0,
                 hasExplanation: single.Explanation is not null);
             return CliExitCodes.Success;
-        }, ct).ConfigureAwait(false);
+        },
+        ct,
+        // CR10: project server-originated error responses into the same Evidence Packet grammar the
+        // success path exposes, so JSON error consumers see consistent scope/state/recovery semantics.
+        evidencePacketFactory: (code, message, suggestion) => EvidencePacketMapper.FromError(
+            new ErrorResponse(code, message, suggestion),
+            CreateEvidenceScope(tenantId!, caseId),
+            query ?? string.Empty)).ConfigureAwait(false);
     }
 
     private static EvidencePacketScope CreateEvidenceScope(string tenantId, string? caseId)

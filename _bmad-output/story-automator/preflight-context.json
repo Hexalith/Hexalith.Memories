@@ -296,5 +296,16 @@
     "defaultFallback": "codex"
   },
   "primary_agent": "claude",
-  "agent_choice": "uniform: claude primary, codex fallback"
+  "agent_choice": "uniform: claude primary, codex fallback",
+  "save_agent_config": false,
+  "state_path": "/home/administrator/projects/hexalith/memories/_bmad-output/story-automator/orchestration-2-20260624-144343.md",
+  "complexity_path": "/home/administrator/projects/hexalith/memories/_bmad-output/story-automator/complexity-orchestration-2-20260624-144343.json",
+  "agents_path": "/home/administrator/projects/hexalith/memories/_bmad-output/story-automator/agents/agents-orchestration-2-20260624-144343.md",
+  "marker_info": {
+    "file": "/home/administrator/projects/hexalith/memories/.agents/.story-automator-active",
+    "entry": ".agents/.story-automator-active"
+  },
+  "marker_entry": ".agents/.story-automator-active",
+  "project_slug": "memories",
+  "started_heartbeat": "2026-06-24T14:44:43Z"
 }

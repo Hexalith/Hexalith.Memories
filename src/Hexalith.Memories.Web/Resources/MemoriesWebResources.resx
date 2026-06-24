@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Story 17.2 — EN default resources for the Memories web recovery panel. Every key MUST have a
+    matching entry in MemoriesWebResources.fr.resx. RecoveryResourceKeys + RecoveryStateTraceability
+    define the key conventions; RecoveryLocalizationTests asserts every key resolves.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <data name="Recovery_Panel_Label" xml:space="preserve">
+    <value>Recovery and feedback</value>
+  </data>
+  <data name="Recovery_DiagnosticClue_Label" xml:space="preserve">
+    <value>Diagnostic clue</value>
+  </data>
+  <data name="Recovery_Severity_Label" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="Recovery_Capability_Label" xml:space="preserve">
+    <value>Affected capability</value>
+  </data>
+  <data name="Recovery_PrimaryAction_Label" xml:space="preserve">
+    <value>Recommended action</value>
+  </data>
+  <data name="Recovery_SecondaryActions_Label" xml:space="preserve">
+    <value>Other actions</value>
+  </data>
+  <data name="Recovery_RiskMarkers_Label" xml:space="preserve">
+    <value>Additional risks</value>
+  </data>
+  <data name="Recovery_NoAction" xml:space="preserve">
+    <value>No recovery action is available for this state.</value>
+  </data>
+  <data name="Recovery_Disabled_AuthRequired" xml:space="preserve">
+    <value>Authorization required before this action is available.</value>
+  </data>
+  <data name="Recovery_Tenant_Label" xml:space="preserve">
+    <value>Tenant</value>
+  </data>
+  <data name="Recovery_Case_Label" xml:space="preserve">
+    <value>Case</value>
+  </data>
+  <data name="Recovery_Target_Label" xml:space="preserve">
+    <value>Target</value>
+  </data>
+  <data name="Recovery_TenantScope" xml:space="preserve">
+    <value>tenant scope</value>
+  </data>
+  <data name="Recovery_OmittedDetails_Label" xml:space="preserve">
+    <value>Omitted details</value>
+  </data>
+  <data name="Recovery_Expansion_Label" xml:space="preserve">
+    <value>How to expand</value>
+  </data>
+
+  <data name="Recovery_Severity_None" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="Recovery_Severity_Info" xml:space="preserve">
+    <value>Information</value>
+  </data>
+  <data name="Recovery_Severity_Caution" xml:space="preserve">
+    <value>Caution</value>
+  </data>
+  <data name="Recovery_Severity_Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="Recovery_Severity_Critical" xml:space="preserve">
+    <value>Critical</value>
+  </data>
+
+  <data name="Recovery_Capability_Access" xml:space="preserve">
+    <value>Tenant and case access</value>
+  </data>
+  <data name="Recovery_Capability_AnswerConfidence" xml:space="preserve">
+    <value>Answer confidence</value>
+  </data>
+  <data name="Recovery_Capability_Ingestion" xml:space="preserve">
+    <value>Ingestion</value>
+  </data>
+  <data name="Recovery_Capability_Retrieval" xml:space="preserve">
+    <value>Retrieval</value>
+  </data>
+  <data name="Recovery_Capability_GraphContext" xml:space="preserve">
+    <value>Graph context</value>
+  </data>
+  <data name="Recovery_Capability_Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="Recovery_Capability_Freshness" xml:space="preserve">
+    <value>Freshness</value>
+  </data>
+  <data name="Recovery_Capability_EvidenceStrength" xml:space="preserve">
+    <value>Evidence strength</value>
+  </data>
+  <data name="Recovery_Capability_DetailCompleteness" xml:space="preserve">
+    <value>Detail completeness</value>
+  </data>
+  <data name="Recovery_Capability_AnswerSupport" xml:space="preserve">
+    <value>Answer support</value>
+  </data>
+
+  <data name="Recovery_Action_None" xml:space="preserve">
+    <value>No action</value>
+  </data>
+  <data name="Recovery_Action_Retry" xml:space="preserve">
+    <value>Retry request</value>
+  </data>
+  <data name="Recovery_Action_IncreaseTokenBudget" xml:space="preserve">
+    <value>Increase token budget</value>
+  </data>
+  <data name="Recovery_Action_IncreaseMaxResults" xml:space="preserve">
+    <value>Increase result count</value>
+  </data>
+  <data name="Recovery_Action_FetchMemoryUnit" xml:space="preserve">
+    <value>Fetch memory unit</value>
+  </data>
+  <data name="Recovery_Action_BroadenScope" xml:space="preserve">
+    <value>Broaden scope</value>
+  </data>
+  <data name="Recovery_Action_CheckAuthorization" xml:space="preserve">
+    <value>Check authorization</value>
+  </data>
+  <data name="Recovery_Action_InspectBackendHealth" xml:space="preserve">
+    <value>Inspect backend health</value>
+  </data>
+  <data name="Recovery_Action_UseTraversal" xml:space="preserve">
+    <value>Use graph traversal</value>
+  </data>
+
+  <data name="Recovery_RiskMarker_Compressed" xml:space="preserve">
+    <value>Compressed</value>
+  </data>
+  <data name="Recovery_RiskMarker_Stale" xml:space="preserve">
+    <value>Stale</value>
+  </data>
+  <data name="Recovery_RiskMarker_Degraded" xml:space="preserve">
+    <value>Degraded</value>
+  </data>
+
+  <data name="Recovery_Supported_Title" xml:space="preserve">
+    <value>Supported answer</value>
+  </data>
+  <data name="Recovery_Supported_Explanation" xml:space="preserve">
+    <value>The answer is supported by the current evidence.</value>
+  </data>
+  <data name="Recovery_Weak_Title" xml:space="preserve">
+    <value>Weak evidence</value>
+  </data>
+  <data name="Recovery_Weak_Explanation" xml:space="preserve">
+    <value>An answer is available, but the supporting evidence is weak. Verify before relying on it.</value>
+  </data>
+  <data name="Recovery_StaleMemory_Title" xml:space="preserve">
+    <value>Stale memory</value>
+  </data>
+  <data name="Recovery_StaleMemory_Explanation" xml:space="preserve">
+    <value>The available evidence may be old or superseded.</value>
+  </data>
+  <data name="Recovery_DegradedBackend_Title" xml:space="preserve">
+    <value>Degraded backend</value>
+  </data>
+  <data name="Recovery_DegradedBackend_Explanation" xml:space="preserve">
+    <value>One or more retrieval backends or axes were unavailable, so evidence may be incomplete.</value>
+  </data>
+  <data name="Recovery_Unauthorized_Title" xml:space="preserve">
+    <value>Authorization required</value>
+  </data>
+  <data name="Recovery_Unauthorized_Explanation" xml:space="preserve">
+    <value>This tenant and case scope is not authorized or is inaccessible.</value>
+  </data>
+  <data name="Recovery_Compressed_Title" xml:space="preserve">
+    <value>Compressed evidence</value>
+  </data>
+  <data name="Recovery_Compressed_Explanation" xml:space="preserve">
+    <value>Some details were omitted to fit the response budget and can be expanded.</value>
+  </data>
+  <data name="Recovery_Conflicting_Title" xml:space="preserve">
+    <value>Conflicting evidence</value>
+  </data>
+  <data name="Recovery_Conflicting_Explanation" xml:space="preserve">
+    <value>Sources, backend health, or retrieval axes disagree, so this is not presented as a confident answer.</value>
+  </data>
+  <data name="Recovery_NoMatch_Title" xml:space="preserve">
+    <value>No match</value>
+  </data>
+  <data name="Recovery_NoMatch_Explanation" xml:space="preserve">
+    <value>The search completed in the authorized scope but found no supported candidate.</value>
+  </data>
+  <data name="Recovery_NotIngestedYet_Title" xml:space="preserve">
+    <value>Not ingested yet</value>
+  </data>
+  <data name="Recovery_NotIngestedYet_Explanation" xml:space="preserve">
+    <value>Matching knowledge may still be pending ingestion or indexing.</value>
+  </data>
+  <data name="Recovery_WrongCase_Title" xml:space="preserve">
+    <value>Possible wrong case</value>
+  </data>
+  <data name="Recovery_WrongCase_Explanation" xml:space="preserve">
+    <value>The query may belong to a different case. The system cannot confirm this without revealing other scopes.</value>
+  </data>
+  <data name="Recovery_GraphGap_Title" xml:space="preserve">
+    <value>Graph gap</value>
+  </data>
+  <data name="Recovery_GraphGap_Explanation" xml:space="preserve">
+    <value>Graph context is incomplete or missing causal links.</value>
+  </data>
+  <data name="Recovery_InsufficientEvidence_Title" xml:space="preserve">
+    <value>Insufficient evidence</value>
+  </data>
+  <data name="Recovery_InsufficientEvidence_Explanation" xml:space="preserve">
+    <value>There is not enough evidence to support a confident answer.</value>
+  </data>
+  <data name="Recovery_Unknown_Title" xml:space="preserve">
+    <value>Unknown state</value>
+  </data>
+  <data name="Recovery_Unknown_Explanation" xml:space="preserve">
+    <value>The evidence state cannot be determined safely from the available data.</value>
+  </data>
+</root>

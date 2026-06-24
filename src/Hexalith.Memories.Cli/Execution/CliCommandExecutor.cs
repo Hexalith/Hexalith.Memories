@@ -39,6 +39,15 @@ public sealed class CliCommandExecutor
     private readonly IOptionsMutator _mutator;
     private readonly CliConsole _console;
 
+    /// <summary>
+    /// Per-invocation factory that projects an error <c>(code, message, suggestion)</c> into a canonical
+    /// Evidence Packet for the current command (Story 2.7 / CR10). Set at the start of every
+    /// <see cref="ExecuteAsync(string, Func{ResolvedConfig, CancellationToken, Task{int}}, CancellationToken, Func{string, string, string, EvidencePacket})"/>
+    /// call (null for commands that do not opt in). The CLI runs a single command per process, so this
+    /// field is never shared across concurrent invocations.
+    /// </summary>
+    private Func<string, string, string, EvidencePacket?>? _evidencePacketFactory;
+
     /// <summary>Initializes a new instance of the <see cref="CliCommandExecutor"/> class.</summary>
     /// <param name="pipeline">The endpoint resolver pipeline.</param>
     /// <param name="optionsMonitor">The options monitor for diagnostics.</param>
@@ -83,14 +92,22 @@ public sealed class CliCommandExecutor
     /// <param name="commandName">The invoked command name (e.g., <c>search query</c>). Used as the <c>command</c> value in JSON error envelopes.</param>
     /// <param name="handler">The handler body, receiving the resolved config.</param>
     /// <param name="ct">Cancellation token (driven by the CLI SIGINT wiring).</param>
+    /// <param name="evidencePacketFactory">
+    /// Optional factory that projects a server-originated error <c>(code, message, suggestion)</c> into a
+    /// canonical Evidence Packet for JSON error envelopes (Story 2.7 / CR10). Supplied only by commands
+    /// that expose packet semantics (currently <c>search query</c>); <see langword="null"/> for the rest.
+    /// </param>
     /// <returns>The process exit code.</returns>
     public async Task<int> ExecuteAsync(
         string commandName,
         Func<ResolvedConfig, CancellationToken, Task<int>> handler,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<string, string, string, EvidencePacket?>? evidencePacketFactory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
         ArgumentNullException.ThrowIfNull(handler);
+
+        _evidencePacketFactory = evidencePacketFactory;
 
         // Story 7.5 — wrap the invocation in a root CLI span. Null-safe when no listener attached.
         using System.Diagnostics.Activity? cliActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CliInvoke);
@@ -271,7 +288,8 @@ public sealed class CliCommandExecutor
 
     private void EmitError(string commandName, string code, string message, string resolvedSuggestion)
     {
-        CliErrorWriter.Write(_console, commandName, code, message, resolvedSuggestion);
+        EvidencePacket? evidencePacket = _evidencePacketFactory?.Invoke(code, message, resolvedSuggestion);
+        CliErrorWriter.Write(_console, commandName, code, message, resolvedSuggestion, evidencePacket);
     }
 
     private void WriteVerbose(ResolvedConfig? config, Exception exception, string? token)

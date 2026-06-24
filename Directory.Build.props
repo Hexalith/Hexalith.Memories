@@ -30,6 +30,8 @@
     <RequiredRootSubmodule Include="Hexalith.AI.Tools" />
     <RequiredRootSubmodule Include="Hexalith.Tenants" Condition="'$(HexalithMemoriesHostedInTenantsRepo)' != 'true'" />
     <RequiredRootSubmodule Include="Hexalith.FrontComposer" />
+    <RequiredRootSubmodule Include="Hexalith.Builds" />
+    <RequiredRootSubmodule Include="Hexalith.PolymorphicSerializations" />
   </ItemGroup>
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">

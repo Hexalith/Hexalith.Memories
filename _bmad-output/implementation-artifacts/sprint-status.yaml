@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-06-24T15:12:36+02:00
+last_updated: 2026-06-24
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -68,7 +68,7 @@ development_status:
   2-4-score-normalization: done
   2-5-fusion-algorithm-and-hybrid-search: done
   2-6-explain-mode-and-confidence-scores: done
-  2-7-evidence-packet-contract-mapping: in-progress
+  2-7-evidence-packet-contract-mapping: review
   2-8-benchmark-suite-and-thesis-validation: done
   epic-2-retrospective: done
 
@@ -193,7 +193,7 @@ development_status:
   # Scope note: Future web UI work; not part of MVP readiness unless a later approved sprint change pulls web UI implementation forward.
   epic-17: in-progress
   17-1-evidence-cockpit-and-trust-components: done
-  17-2-recovery-and-feedback-state-grammar: ready-for-dev
+  17-2-recovery-and-feedback-state-grammar: done
   17-3-contract-aware-web-interaction-patterns: ready-for-dev
   17-4-role-specific-web-inspection-lenses: ready-for-dev
   17-5-responsive-and-accessible-web-validation: ready-for-dev

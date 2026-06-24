@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
 using Hexalith.Memories.Cli.Output.Json;
+using Hexalith.Memories.Contracts.V1;
 
 /// <summary>
 /// Shared formatter for CLI-side errors that do not originate from the server response pipeline
@@ -24,7 +25,11 @@ internal static class CliErrorWriter
     /// <param name="code">The stable error code.</param>
     /// <param name="message">The rendered error message.</param>
     /// <param name="suggestion">The actionable next-step suggestion.</param>
-    public static void Write(CliConsole console, string commandName, string code, string message, string suggestion)
+    /// <param name="evidencePacket">
+    /// Optional canonical Evidence Packet projection attached to JSON error envelopes (Story 2.7 / CR10).
+    /// Only the <c>search query</c> command supplies one; ignored for non-JSON formats.
+    /// </param>
+    public static void Write(CliConsole console, string commandName, string code, string message, string suggestion, EvidencePacket? evidencePacket = null)
     {
         ArgumentNullException.ThrowIfNull(console);
         ArgumentException.ThrowIfNullOrWhiteSpace(commandName);
@@ -37,7 +42,8 @@ internal static class CliErrorWriter
             JsonErrorEnvelopeWriter.WriteForCommand(
                 console.Out,
                 commandName,
-                new CliErrorPayload(code, message, suggestion));
+                new CliErrorPayload(code, message, suggestion),
+                evidencePacket);
             return;
         }
 

@@ -1,6 +1,6 @@
 # Story 2.7: Evidence Packet Contract Mapping
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -187,6 +187,7 @@ GPT-5
 - No product code implementation performed in this create-story workflow.
 - Implemented canonical Evidence Packet contracts, pure mapper, CLI/MCP packet exposure, documentation, and focused regression tests.
 - Attempted full solution regression with `dotnet test Hexalith.Memories.slnx --no-restore`; after fixing the discovered CLI null-axes regression, remaining full-suite failures are Docker/Testcontainers environment failures (`npipe://./pipe/docker_engine` unavailable) in benchmark/integration lanes.
+- 2026-06-24 dev-story carry-over pass: closed the spec-required Task 5 test-coverage gaps and the CR10 CLI-error-parity gap that had held the story at in-progress. Decisions taken with Jerome first: CR9 = trust upstream (no mapper change); CR10 = add `evidencePacket` to CLI error responses (implemented); CR11 + CR15 = defer to a future server-side hardening story (contract already carries the signals). Full solution build clean (0/0). Focused suites green: Contracts.Tests 542, Cli.Tests 382, Mcp.Tests 83, Server.Tests Search 240. Docker/Testcontainers integration + benchmark lanes still require an engine and were not run here.
 
 ### Completion Notes List
 
@@ -199,6 +200,16 @@ GPT-5
 - Documented the packet field mapping, relevance-only confidence semantics, omitted-detail handling, and CLI/MCP surface behavior.
 - Validation passed for Contracts, CLI, MCP, EventStore unit tests, Server unit tests, focused server search tests, and `git diff --check`; full solution integration/benchmark lanes require Docker/Testcontainers.
 - 2026-05-20 code-review patches: ran focused suites with all changes — Contracts.Tests (495 passed), Cli.Tests filtered to EvidencePacket/SearchResult/SearchQuery (20 passed), Mcp.Tests filtered to McpErrorMapper/SearchMemoryTool (36 passed). `git diff --check` clean (only CRLF advisory warnings). Story moved to in-progress because the deferred test-coverage items in `deferred-work.md` (2.7-CR1…CR5) cover spec invariants the dev had marked complete; they remain as accepted carry-over rather than being fixed in-band.
+- 2026-06-24 dev-story carry-over resolution (moves story to review):
+  - Added a single cross-surface source of truth: `EvidencePacketCanonicalFixtures` in `Hexalith.Memories.TestHelpers`, referenced by contract, CLI, MCP, and server tests; each surface is asserted against the shared canonical JSON (CR1, via the spec's sanctioned "compare each surface against shared canonical JSON" option).
+  - CR2/CR18/CR27: CLI packet tests now cover empty, degraded, token-budget, unauthorized (CR10), single-axis, and default-caveat states; the CLI stub already supports `onSearch` (CR27).
+  - CR3: table-driven sanitization tests across unauthorized, backend-failure, partial-degradation, token-budget, and server-diagnostic categories.
+  - CR4: tenant/case negative isolation tests under the CR9 trust-upstream decision — pin that `packet.Scope` always reflects the request scope and never source-derived attribution, and that cross-case/tenant-wide search is not broken.
+  - CR5: server-side mapper tests drive the real `SearchResponseMetadataApplier` so server-emitted token-budget/degraded metadata is proven to map correctly.
+  - CR18/CR26 (MCP): added single-axis + hybrid canonical parity, deterministic axis-evidence ordering, and replaced the brittle text-fallback substring assertion with a structural parse.
+  - CR10 (decision: implement): `search query` JSON error envelopes now carry an additive `evidencePacket` (via `EvidencePacketMapper.FromError`), threaded opt-in through the executor → error-writer pipeline without breaking the shared `CliOutputEnvelope<T>` `data XOR error` invariant or any other command's envelope. Local pre-resolution input-validation errors keep the minimal envelope (no resolved scope).
+  - CR9 (decision: trust upstream) — no mapper change; documented as the isolation boundary in `deferred-work.md`. CR11 + CR15 (decision: defer to a server-side hardening story) — contract already carries `IsolationStatus` / `OmissionReason.{Redaction,Policy,Authorization}` for when the server emits the signal.
+  - Remaining deferred (non-spec enhancements / design changes, still tracked in `deferred-work.md`): 2.7-CR6, CR7, CR8, CR12, CR13, CR14, CR16, CR17, CR19, CR20–CR25.
 
 ### File List
 
@@ -222,6 +233,32 @@ GPT-5
 - `tests/Hexalith.Memories.Mcp.Tests/McpErrorMapperTests.cs`
 - `tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs`
 
+### File List — 2026-06-24 carry-over pass
+
+New files:
+
+- `tests/Hexalith.Memories.TestHelpers/EvidencePackets/EvidencePacketCanonicalFixtures.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketSanitizationTests.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketIsolationTests.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketCanonicalParityTests.cs`
+- `tests/Hexalith.Memories.Mcp.Tests/EvidencePacketMcpParityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Search/EvidencePacketServerMappingTests.cs`
+
+Modified files:
+
+- `src/Hexalith.Memories.Cli/Commands/SearchQueryCommand.cs` (CR10: supply error-packet factory)
+- `src/Hexalith.Memories.Cli/Execution/CliCommandExecutor.cs` (CR10: per-invocation error-packet factory)
+- `src/Hexalith.Memories.Cli/Output/Formatters/CliErrorWriter.cs` (CR10: thread packet)
+- `src/Hexalith.Memories.Cli/Output/Formatters/CommandPayloadRegistry.cs` (CR10: packet-aware writer delegate)
+- `src/Hexalith.Memories.Cli/Output/Formatters/JsonErrorEnvelopeWriter.cs` (CR10: thread packet)
+- `src/Hexalith.Memories.Cli/Output/Json/CliOutputEnvelope.cs` (CR10: additive `evidencePacket` after `error`)
+- `tests/Hexalith.Memories.Cli.Tests/Cli/EvidencePacketCliOutputTests.cs` (CR2/CR10/CR18/CR1 CLI tests)
+- `tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs` (CR26: structural text-fallback assertion)
+- `tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj` (reference TestHelpers)
+- `tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj` (reference TestHelpers)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (mark resolved CRs; record CR9/CR10/CR11/CR15 decisions)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (2-7 → review)
+
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Packet Contract Mapping.
@@ -229,6 +266,7 @@ GPT-5
 - 2026-05-20: Advanced elicitation applied story hardening for field mapping, state precedence, scoped expansion handles, sanitization, and canonical fixture parity.
 - 2026-05-20: Implemented Evidence Packet contract mapping and moved story to review.
 - 2026-05-20: Code review (3 layers, 38 findings). Applied 7 patches (C1 sanitization-test integrity; C2 `SanitizeGuidance` over-broad regex; M2 `TENANT_MALFORMED` unauthorized routing; M3 hybrid `evidence.degraded` alignment; M5 `PendingExpansion` fallback recovery; M11 axis-name normalization; Mi3 dead-code removal). 3 decision-needed resolved as deferred (2.7-CR9/CR10/CR11). 27 lower-priority items added to deferred-work (2.7-CR1…CR27). Story moved to in-progress because spec-required test coverage gaps (2.7-CR1…CR5) remain.
+- 2026-06-24: Dev-story carry-over pass. Decisions taken with Jerome (CR9 trust-upstream; CR10 implement CLI error packet; CR11+CR15 defer to server-side story). Closed spec-required test-coverage gaps 2.7-CR1, CR2, CR3, CR4, CR5, CR18, CR26, CR27 and implemented CR10 (additive `evidencePacket` on `search query` JSON error envelopes). Added shared `EvidencePacketCanonicalFixtures` for cross-surface parity. Full solution build clean; focused suites green (Contracts 542, Cli 382, Mcp 83, Server-Search 240). Story moved to review. Remaining deferred items (2.7-CR6/CR7/CR8/CR12/CR13/CR14/CR16/CR17/CR19/CR20–CR25) are non-spec enhancements/design changes tracked in `deferred-work.md`.
 
 ## Party-Mode Review
 
