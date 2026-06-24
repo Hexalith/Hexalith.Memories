@@ -178,6 +178,7 @@ GPT-5
 - Added explicit Evidence Packet view-field mapping so rendered values trace to named contract sources with unavailable/redacted fallbacks.
 - Added bUnit coverage using `Hexalith.FrontComposer.Testing`, including scope-before-result DOM order, accessible trust labels, restrictive precedence, packet ordering preservation, loading/error states, and non-leakage of bearer tokens, local paths, and backend connection strings.
 - No runnable web host was added in this story, so viewport Playwright/axe validation remains not applicable to this RCL-only slice; responsive behavior is covered through wrapping CSS and component-level markup assertions.
+- Post-completion course correction approved on 2026-06-24: Story 17.1 predates the stricter "FrontComposer and Fluent UI Blazor V5 only" UX boundary. The delivered RCL remains a useful contract-bound Evidence Cockpit slice, but raw markup/scoped CSS and non-Fluent-2 token usage must be audited and remediated under Story 17.6. Do not extend the current raw markup/CSS pattern into Stories 17.2-17.5.
 
 ### File List
 

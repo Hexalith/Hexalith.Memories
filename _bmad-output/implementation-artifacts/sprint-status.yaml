@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-05-20T19:45:00+02:00
+# last_updated: 2026-06-24T15:12:36+02:00
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-05-20T19:45:00+02:00
+last_updated: 2026-06-24T15:12:36+02:00
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -197,6 +197,7 @@ development_status:
   17-3-contract-aware-web-interaction-patterns: ready-for-dev
   17-4-role-specific-web-inspection-lenses: ready-for-dev
   17-5-responsive-and-accessible-web-validation: ready-for-dev
+  17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: backlog
   epic-17-retrospective: optional
 
   # Epic 18: Downstream Consumer Integration Contract Hardening

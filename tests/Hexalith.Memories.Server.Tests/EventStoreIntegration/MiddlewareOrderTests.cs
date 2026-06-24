@@ -125,6 +125,17 @@ public sealed class MiddlewareOrderTests : System.IDisposable
     }
 
     [Fact]
+    public async Task ProcessRoute_IsNotMappedAsEventIngestionSurface()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        StringContent content = new("{}", Encoding.UTF8, "application/json");
+        HttpResponseMessage response = await client.PostAsync("/process", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task MalformedStructuredCloudEvent_Returns400InsteadOfMiddleware500()
     {
         using HttpClient client = _factory.CreateClient();

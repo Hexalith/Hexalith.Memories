@@ -238,7 +238,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - UX-DR12: Conflicting evidence must be exposed rather than smoothed away, including competing sources, stale versus fresh memory, high lexical match with weak graph support, strong graph context with weak source confidence, and backend disagreement.
 - UX-DR13: CLI UX must be keyboard-driven and developer/operator focused, with compact explain output, actionable diagnostics, tenant/case visibility, and scriptable output formats.
 - UX-DR14: MCP UX must be schema-first, typed, bounded, source-attributed, confidence-aware, token-budget-aware, and structured so agents can act without parsing prose-only explanations.
-- UX-DR15: Future web UI composition must use Hexalith.FrontComposer patterns and Microsoft Fluent UI Blazor primitives for controls, navigation, forms, grids, dialogs, drawers, tabs, menus, status feedback, layout, and focus behavior.
+- UX-DR15: All Memories web UI and UX implementation must use only Hexalith.FrontComposer and Microsoft Fluent UI Blazor V5 components for controls, navigation, forms, grids, dialogs, drawers, tabs, menus, status feedback, layout, focus behavior, and command surfaces. Raw HTML/CSS/JavaScript or third-party UI components are allowed only as explicitly justified gaps when no FrontComposer or Fluent UI V5 component/token exists, and those exceptions must be tracked by conformance tests.
 - UX-DR16: Future web surfaces must provide an Evidence Cockpit lens centered on scoped search, Evidence Packets, source inspection, retrieval axes, graph context, and recovery actions.
 - UX-DR17: Implement a Retrieval Axis Breakdown component or response section for explain mode and benchmark inspection, showing raw score, normalized score, fusion contribution, ranking reason, omitted/degraded axis state, and detail expansion.
 - UX-DR18: Implement a Source Citation Stack for cited sources, including source type, origin identifier, freshness, snippet or summary, confidence/metadata origin, and keyboard-openable preview behavior where UI exists.
@@ -281,7 +281,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - UX-DR12: Stories 2.6, 2.7, 8.2, and 17.2 — conflicting evidence and backend discrepancy visibility.
 - UX-DR13: Stories 7.1, 7.2, 7.3, and 7.4 — CLI interaction, formatting, errors, and quickstart.
 - UX-DR14: Stories 10.1 and 10.2 — MCP schema-first bounded responses and structured errors.
-- UX-DR15: Stories 17.1, 17.3, and 17.5 — FrontComposer and Fluent UI Blazor web implementation foundation.
+- UX-DR15: Stories 17.1, 17.3, 17.5, and 17.6 — FrontComposer and Fluent UI Blazor V5 web implementation foundation and conformance hardening.
 - UX-DR16: Story 17.1 — Evidence Cockpit future web surface.
 - UX-DR17: Stories 2.6, 2.8, and 17.1 — Retrieval Axis Breakdown for explain and benchmark inspection.
 - UX-DR18: Stories 2.6, 2.7, 7.2, and 17.1 — Source Citation Stack semantics and presentation.
@@ -3218,6 +3218,8 @@ Future web users can inspect evidence, scope, sources, graph context, case activ
 
 **Scope note:** This epic records story coverage for UX Design Specification requirements that are explicitly future web UI work. It is not part of MVP readiness unless a later approved sprint change pulls web UI implementation forward.
 
+**UX implementation boundary:** Epic 17 web work is FrontComposer-first and Fluent UI Blazor V5-only. Components must consume FrontComposer shell/composition primitives and Fluent UI Blazor V5 primitives before creating Memories-specific wrappers. Raw semantic markup and scoped CSS may be used only for unavoidable container/layout gaps with no component equivalent, and must not recreate Fluent theme primitives, controls, status treatments, typography ramps, color roles, or spacing systems. Any exception requires an explicit conformance-test allowlist entry and removal condition.
+
 **UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
 
 ### Story 17.1: Evidence Cockpit and Trust Components
@@ -3365,6 +3367,61 @@ So that evidence inspection is accessible and reliable rather than visual polish
 **Given** accessible labels, tooltips, announcements, copied text, diagnostics, or error payloads are emitted
 **When** they contain tenant or source context
 **Then** secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, and restricted source details are not exposed.
+
+### Story 17.6: FrontComposer and Fluent UI Blazor V5 Conformance Hardening
+
+As a maintainer of the Memories web UX,
+I want all Memories web components to use only FrontComposer and Fluent UI Blazor V5 components and tokens,
+So that Epic 17 cannot drift into a parallel design system or raw HTML/CSS implementation.
+
+**Acceptance Criteria:**
+
+**Given** the existing `Hexalith.Memories.Web` RCL from Story 17.1
+**When** conformance is audited
+**Then** every `.razor` and `.razor.css` file is classified as FrontComposer component usage, Fluent UI Blazor V5 component usage, unavoidable semantic/container markup, or a violation requiring remediation.
+
+**Given** a FrontComposer or Fluent UI Blazor V5 component exists for a control, status indicator, message, badge, stack/layout, grid/list, dialog/drawer, menu, tooltip, input, command surface, tab, or data display
+**When** the Memories web component renders that function
+**Then** it uses the component rather than raw HTML or a custom UI primitive.
+
+**Given** hand-authored CSS remains
+**When** it is reviewed
+**Then** it contains only layout the design system does not own, uses Fluent 2 tokens where tokens are needed, and does not define theme primitives, direct typography ramps, direct foreground roles, legacy Fluent v4/FAST tokens, or one-off status color systems.
+
+**Given** an exception is unavoidable
+**When** it remains in source
+**Then** a conformance allowlist names the file, selector or markup pattern, reason, missing FrontComposer/Fluent primitive, owner story, and removal condition.
+
+**Given** Stories 17.2 through 17.5 are implemented
+**When** their code is reviewed
+**Then** they reuse the same conformance tests and cannot add new raw UI/CSS exceptions without an explicit allowlist entry.
+
+**Given** the Fluent UI Blazor package version is checked
+**When** component APIs are selected
+**Then** implementation follows the centrally pinned `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.3-26138.1` and the aligned `Hexalith.FrontComposer` submodule; incompatible MCP documentation examples are not copied blindly.
+
+**Given** focused validation runs
+**Then** `dotnet test tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj`, the new conformance tests, and `git diff --check` pass.
+
+**Target artifacts:**
+
+- `src/Hexalith.Memories.Web/**/*.razor`
+- `src/Hexalith.Memories.Web/**/*.razor.css`
+- `tests/Hexalith.Memories.Web.Tests/**`
+- `_bmad-output/implementation-artifacts/17-1-evidence-cockpit-and-trust-components.md`
+- `_bmad-output/implementation-artifacts/17-2-recovery-and-feedback-state-grammar.md`
+- `_bmad-output/implementation-artifacts/17-3-contract-aware-web-interaction-patterns.md`
+- `_bmad-output/implementation-artifacts/17-4-role-specific-web-inspection-lenses.md`
+- `_bmad-output/implementation-artifacts/17-5-responsive-and-accessible-web-validation.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+**Out of scope:**
+
+- Broad FrontComposer framework redesign
+- Fluent UI package upgrade beyond the current pinned V5 prerelease
+- New Evidence Packet semantics
+- Backend, CLI, MCP, storage, ingestion, search, or tenant-isolation behavior
+- Recursive submodule initialization or casual submodule changes
 
 
 ---

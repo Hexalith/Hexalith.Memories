@@ -94,6 +94,23 @@ reuses the existing Redis dependency.
 | `PreflightDedupEnabled`        | `true`      | `true`                                                  | Saves 1-3 s of embedding compute per at-least-once redelivery. Fails open on Redis outage. ADR 9.1-B.                                                                        |
 | `PreflightDedupTtl`            | `24h`       | **Must be ≥ DAPR resiliency max-duration + 10% buffer** | See §7 TTL coupling.                                                                                                                                                         |
 
+### 1.6 Route surface for Hexalith modules
+
+The Memories Server is the sidecar-managed event subscriber for Hexalith modules. Domain modules publish
+CloudEvents to the configured DAPR pub/sub component and shared-topic pattern; they do not call Memories
+REST ingestion directly for domain event streams.
+
+The published operation surface for DAPR ACL and route review is:
+
+- `GET /dapr/subscribe` for subscription discovery.
+- `POST /events/ingest` for DAPR pub/sub delivery through the Memories Server sidecar.
+
+`/process` is not part of the Memories event-ingest surface. ACLs or downstream runbooks that reference
+`/process` are using the wrong operation path.
+
+When one shared topic cannot satisfy independent routing or retention requirements, run separate Memories
+deployments per topic until multi-topic routing in a single deployment is approved.
+
 ---
 
 ## 2. CloudEvents envelope requirements

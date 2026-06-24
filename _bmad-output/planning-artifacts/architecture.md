@@ -139,6 +139,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - **MCP** — LLM agent surface, search/ingest/traverse/case-info only, token-budget-aware. Token-budget truncation includes `omitted_count`, explicit omitted fields, and deterministic expansion handles; score range metadata for omitted results (min/max) is Phase 1.5.
 - **REST** (via ingress) — MVP: minimal ingress routing for CLI connectivity. Full REST API (pagination, facets, drill-down for application UIs) is Phase 2.
 - **DAPR service invocation** — internal programmatic API
+- **Web UI / RCL (Epic 17)** — future web composition surface. `Hexalith.Memories.Web` is a FrontComposer-aligned Razor component library over `Contracts.V1` Evidence Packet semantics. It uses FrontComposer shell/composition primitives and Microsoft Fluent UI Blazor V5 only; it must not become a standalone design system, raw HTML control library, or CSS theme fork. Custom markup/CSS is allowed only for explicitly justified semantic/container gaps and is guarded by conformance tests.
 
 **Decision rule:** A capability goes to MCP if an LLM agent needs it to complete a user-facing task (search, ingest, traverse, case info). A capability stays CLI-only if it is operational, diagnostic, or administrative (tenant management, tenant verification, status, handlers, explore, quickstart). MVP CLI essentials are thesis-validation scope; full CLI polish is Phase 1.5. DAPR service invocation mirrors MCP scope for internal programmatic access.
 

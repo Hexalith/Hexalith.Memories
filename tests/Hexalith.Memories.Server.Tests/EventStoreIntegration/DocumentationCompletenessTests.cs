@@ -68,6 +68,12 @@ public sealed class DocumentationCompletenessTests
         content.ShouldContain("MEMORIES_EVENTSTORE_TOPIC", Case.Sensitive, "Topic env var must be documented.");
         content.ShouldContain("AutoCreateCases", Case.Sensitive, "Auto-create case option must be documented.");
         content.ShouldContain("PreflightDedupTtl", Case.Sensitive, "Preflight TTL option must appear in docs.");
+        content.ShouldContain("/dapr/subscribe", Case.Sensitive, "DAPR subscription discovery route must be documented.");
+        content.ShouldContain("POST /events/ingest", Case.Sensitive, "Pub/sub delivery route must be documented.");
+        content.ShouldContain("`/process` is not part of the Memories event-ingest surface", Case.Sensitive, "Docs must reject the incorrect /process ACL path.");
+        content.ShouldContain("shared-topic pattern", Case.Sensitive, "Docs must describe the supported shared-topic module integration pattern.");
+        content.ShouldContain("separate Memories", Case.Sensitive, "Docs must describe the separate-deployment workaround for independent topics.");
+        content.ShouldContain("deployments per topic", Case.Sensitive, "Docs must describe the separate-deployment workaround for independent topics.");
         content.ShouldContain("aggregateType", Case.Insensitive, "Aggregate-type extraction rule must be documented.");
         content.ShouldContain("cloudevent.subject", Case.Sensitive, "Exact-match subject filtering must be documented.");
         content.ShouldContain("publishAllowedTopics", Case.Sensitive, "MVP publisher-spoofing mitigation must be documented.");

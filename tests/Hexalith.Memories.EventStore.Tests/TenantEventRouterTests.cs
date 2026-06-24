@@ -100,6 +100,41 @@ public sealed class TenantEventRouterTests
     }
 
     [Fact]
+    public async Task ResolveAsync_TwoHexalithModulePrefixes_RouteToConfiguredTenants()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "memories-events" };
+        options.SourceToTenantMap["hexalith/tenants"] = "tenant-events";
+        options.SourceToTenantMap["hexalith/parties"] = "party-events";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("tenant-events", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+        statusAccessor.GetStatusAsync("party-events", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        ICaseCreationService cases = Substitute.For<ICaseCreationService>();
+        cases.CreateCaseAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => $"{callInfo.ArgAt<string>(0)}:{callInfo.ArgAt<string>(1)}");
+
+        TenantEventRouter router = BuildRouter(options, statusAccessor, cases);
+
+        TenantEventRouteResolution tenants = await router
+            .ResolveAsync(Envelope("hexalith/tenants/events", "Hexalith.Tenants.TenantCreatedV1"), CancellationToken.None);
+        TenantEventRouteResolution parties = await router
+            .ResolveAsync(Envelope("hexalith/parties/events", "Hexalith.Parties.PartyRegisteredV1"), CancellationToken.None);
+
+        tenants.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        tenants.Route!.TenantId.ShouldBe("tenant-events");
+        tenants.Route.AggregateType.ShouldBe("Tenants");
+        tenants.Route.CaseId.ShouldBe("tenant-events:events:Tenants");
+
+        parties.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        parties.Route!.TenantId.ShouldBe("party-events");
+        parties.Route.AggregateType.ShouldBe("Parties");
+        parties.Route.CaseId.ShouldBe("party-events:events:Parties");
+    }
+
+    [Fact]
     public async Task ResolveAsync_LongestPrefixWins()
     {
         TenantEventRoutingOptions options = new() { Topic = "t" };

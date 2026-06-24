@@ -335,11 +335,15 @@ A custom design system would not currently justify its cost. The product's diffe
 
 ### Implementation Approach
 
-Use Fluent UI components as the default for future web UI surfaces. Favor standard components before introducing custom UI, especially for forms, command surfaces, navigation, dialogs, status indicators, and tabular data.
+All Hexalith.Memories web UX implementation must be composed from Hexalith.FrontComposer and Microsoft Fluent UI Blazor V5 components. FrontComposer is the application composition boundary; Fluent UI Blazor V5 is the component primitive boundary.
+
+Raw HTML controls, custom component primitives, JavaScript UI behavior, and third-party UI components are not allowed when a FrontComposer or Fluent UI Blazor V5 component exists. Hand-authored HTML or CSS is allowed only for unavoidable semantic/container structure or layout gaps that neither FrontComposer nor Fluent UI V5 owns, and each exception must be justified and covered by conformance tests.
+
+Use Fluent UI V5 component parameters and Fluent 2 tokens for color, typography, spacing, status, and focus treatment. Do not use legacy Fluent v4/FAST tokens or recreate theme primitives in scoped CSS.
 
 Represent core Memories objects as inspectable application entities: memory units, evidence packets, cases, ingestion jobs, tenant checks, backend health states, graph paths, annotations, and search sessions. Each entity should expose state, context, source, history, related objects, and next actions.
 
-Use Hexalith.FrontComposer-style typed descriptors to drive UI composition where practical. Search results, ingestion status, tenant verification, case activity, and diagnostics should be describable as contracts that can also inform CLI and MCP output.
+Use Hexalith.FrontComposer-style typed descriptors to drive UI composition. Search results, ingestion status, tenant verification, case activity, and diagnostics should be describable as contracts that can also inform CLI and MCP output.
 
 Design command lifecycle states consistently across long-running and recoverable operations. Ingestion, reindexing, tenant provisioning, verification, consistency repair, and search expansion should show pending, running, succeeded, failed, degraded, and recoverable states with bounded diagnostics.
 
@@ -912,11 +916,11 @@ The main component gaps are not low-level UI controls. They are FrontComposer-na
 
 ### Component Implementation Strategy
 
-Custom Memories components should be implemented as FrontComposer-aligned compositions using Microsoft Fluent UI Blazor primitives, not as standalone design-system inventions. FrontComposer should provide the composition model, tenant and command patterns, contract awareness, and shell behavior. Fluent UI Blazor should provide the accessible component mechanics and visual primitives.
+Custom Memories components should be implemented as FrontComposer-aligned compositions using Microsoft Fluent UI Blazor V5 primitives, not as standalone design-system inventions. FrontComposer should provide the composition model, tenant and command patterns, contract awareness, and shell behavior. Fluent UI Blazor V5 should provide the accessible component mechanics and visual primitives.
 
 Implementation should begin with the Evidence Packet contract and shared state grammar. CLI, MCP, and web UI should expose the same concepts even when density differs: scope, source, reasoning, state, recovery, freshness, confidence, omitted details, and degraded behavior.
 
-Custom components should use Fluent UI tokens, semantic status colors, accessible controls, command bars, data grids, panels, dialogs, and menus. They should preserve FrontComposer expectations for tenant-aware command surfaces, typed descriptors, Fluxor-compatible state, accessible labels, keyboard reachability, and predictable lifecycle behavior across Blazor render modes.
+Custom components should use FrontComposer and Fluent UI Blazor V5 components first. Any remaining custom CSS must be limited to layout gaps that the component systems do not own and must use Fluent 2 tokens where tokenized styling is required. Custom components must not recreate theme primitives, typography ramps, foreground roles, status color systems, controls, or focus treatment in scoped CSS. They should preserve FrontComposer expectations for tenant-aware command surfaces, typed descriptors, Fluxor-compatible state, accessible labels, keyboard reachability, and predictable lifecycle behavior across Blazor render modes.
 
 Custom components should avoid dashboard sprawl. The default view should show trust essentials first, then allow progressive expansion into source detail, retrieval-axis scoring, graph paths, activity history, token-budget details, and backend diagnostics.
 
