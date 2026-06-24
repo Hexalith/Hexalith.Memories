@@ -200,7 +200,7 @@ development_status:
   epic-17-retrospective: optional
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
-  # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27. Not MVP-counted. Story 18.4 is semantic-release sensitive.
+  # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27, plus cross-module DAPR event intake per Sprint Change Proposal 2026-06-24. Not MVP-counted. Story 18.4 is semantic-release sensitive.
   epic-18: backlog
   18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: backlog
   18-2-deployment-configuration-contract-publication: backlog
@@ -209,4 +209,5 @@ development_status:
   18-5-source-uri-keyed-memory-unit-lookup-endpoint: backlog
   18-6-memory-unit-id-stability-contract: backlog
   18-7-memories-client-mockability-stability-contract: backlog
+  18-8-cross-module-dapr-event-intake-contract-and-verification: backlog
   epic-18-retrospective: optional

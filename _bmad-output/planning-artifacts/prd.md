@@ -157,9 +157,11 @@ All 3 hard gates must pass. At least 2 of 3 soft gates must pass. If a hard gate
 
 | # | Feature | Validates |
 |---|---|---|
-| 1 | EventStore Integration (DAPR pub/sub, auto-discovery, dual embedding, causal chains) | Zero-code promise, <30 min onboarding |
+| 1 | EventStore / Hexalith Module Event Integration (DAPR pub/sub through the Memories Server sidecar, auto-discovery, dual embedding, causal chains) | Zero-code promise, <30 min onboarding |
 | 2 | MCP Server (search, ingest, traverse, case-info with token-budget awareness) | LLM agent integration |
 | 3 | CLI expansion: `explore`, `status`, `handlers`, `quickstart`, batch directory ingestion | Full developer experience |
+
+The Memories Server is the sidecar-managed event subscriber. Hexalith modules publish CloudEvents to the configured DAPR pub/sub topic; the server sidecar delivers them to `/events/ingest`, where source-prefix routing maps events to tenant/case memory. Modules should not bypass this path with direct REST pushes for domain event streams.
 
 **Hard commitment:** Phase 1.5 ships within 4 weeks of thesis validation. If this timeline can't be met, MCP Server moves back into the MVP to ensure the product is usable — not just validated — at launch.
 

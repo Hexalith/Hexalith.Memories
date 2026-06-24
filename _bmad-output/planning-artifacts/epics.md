@@ -2095,6 +2095,10 @@ So that I can get memory integration for my event-sourced system without writing
 **When** an event is published to DAPR pub/sub
 **Then** it is searchable within <5 seconds of publication (NFR6)
 
+**Scope Clarification (2026-06-24):** For Hexalith module integration, modules publish CloudEvents to the configured DAPR pub/sub topic and set stable `source` prefixes so `SourceToTenantMap` can route them. A consumer needing multiple independent topics runs separate Memories deployments today; multi-topic routing remains a future refinement.
+
+The Memories Server DAPR sidecar is the event-subscription owner. Other Hexalith modules should not call Memories REST ingestion directly for domain event streams; they publish to DAPR pub/sub and let the Memories sidecar deliver to `/events/ingest`.
+
 ### Story 9.2: Dual Embedding & Causal Chain Indexing
 
 As a developer,
@@ -3428,6 +3432,10 @@ So that placeholder-shaped env literals in consumer kustomizations can be replac
 **When** this story is scoped,
 **Then** aspirate manifest generation is explicitly deferred to a future story and recorded as such; this story delivers the documented contract only.
 
+**Given** Hexalith modules publish events through DAPR pub/sub,
+**When** the deployment contract is published,
+**Then** it documents the shared pub/sub component name (`pubsub`), the required `MEMORIES_EVENTSTORE_TOPIC`, the source-prefix routing map (`EventStoreIntegration:Routing:SourceToTenantMap`), and the Memories Server sidecar ports used for subscription discovery and internal delivery.
+
 **Parties-side follow-up:** Parties replaces the placeholder env literals in `deploy/k8s/memories/kustomization.yaml` using the published contract.
 
 ### Story 18.3: Invocable Route and Operation Surface Publication
@@ -3451,6 +3459,10 @@ So that `accesscontrol.memories.yaml` can be verified against real operation pat
 **Given** the surface can drift as endpoints are added,
 **When** the surface is published,
 **Then** a test or generation step keeps the published surface in sync with the actual mapped endpoints, or a documented review trigger requires updating it whenever routes change.
+
+**Given** the Memories Server sidecar manages event delivery,
+**When** the route surface is published,
+**Then** it includes the DAPR subscription discovery contract (`/dapr/subscribe`) and the pub/sub delivery route (`POST /events/ingest`), and it states that domain modules publish CloudEvents to DAPR rather than invoking Memories REST ingestion for event streams.
 
 **Parties-side follow-up:** Parties corrects the `/process` operation path in `accesscontrol.memories.yaml` and adds an end-to-end ACL assertion against the published surface.
 
@@ -3553,3 +3565,56 @@ So that consumer test fixtures (for example `ProbingMemoriesClient`) do not brea
 **Then** the `HttpClient`-boundary mocking approach is backed by an example test in the repo so the documented seam is proven, not asserted.
 
 **Parties-side follow-up:** Parties keeps `ProbingMemoriesClient` (now contract-guaranteed) or migrates to the documented `HttpClient`-boundary seam at its discretion.
+
+### Story 18.8: Cross-Module Dapr Event Intake Contract and Verification
+
+**Origin:** Sprint Change Proposal 2026-06-24.
+
+As an operator integrating Hexalith modules with Memories,
+I want the Memories Server DAPR sidecar to be the documented and tested subscriber for module CloudEvents,
+So that Tenants, Parties, and future Hexalith modules can publish events without direct REST coupling or per-module ingestion code.
+
+**Acceptance Criteria:**
+
+**Given** a downstream Hexalith module publishes a CloudEvent to the configured DAPR `pubsub` component and `MEMORIES_EVENTSTORE_TOPIC`,
+**When** the Memories Server sidecar discovers subscriptions,
+**Then** `/dapr/subscribe` exposes `pubsubname=pubsub`, the configured topic, and route `/events/ingest`.
+
+**Given** two module source prefixes, for example `hexalith/tenants` and `hexalith/parties`,
+**When** events are published on the shared topic,
+**Then** `SourceToTenantMap` routes each source prefix to the configured tenant without direct REST ingestion calls.
+
+**Given** an operator authors DAPR access-control policy,
+**When** they inspect the published operation surface,
+**Then** the documented allowed operation is `POST /events/ingest` through pub/sub delivery and the docs explicitly state that `/process` is not part of the Memories event-ingest surface.
+
+**Given** the same CloudEvent is delivered more than once by DAPR,
+**When** the event reaches Memories,
+**Then** existing preflight and workflow idempotency produce one memory unit and duplicate deliveries do not create additional units.
+
+**Given** a module publishes to an unknown source prefix,
+**When** the event reaches Memories,
+**Then** the endpoint returns the existing non-retry drop outcome and handler mismatch/unknown-source diagnostics identify the missing route.
+
+**Given** the current one-topic-per-deployment limitation,
+**When** docs are updated,
+**Then** they explain the supported shared-topic pattern and the separate-deployment workaround for independent topics; multi-topic routing remains deferred.
+
+**Given** this story completes,
+**When** focused validation runs,
+**Then** tests or documented smoke evidence prove sidecar subscription discovery, source-prefix routing for at least two synthetic Hexalith modules, and duplicate-safe delivery.
+
+**Target artifacts:**
+
+- `docs/dev/eventstore-integration.md`
+- `docs/operations/*` deployment or route-surface docs
+- `src/Hexalith.Memories.Aspire/HexalithMemoriesServerExtensions.cs` if consumer AppHost guidance needs stronger defaults
+- `tests/Hexalith.Memories.*` focused tests for subscription discovery/routing where practical
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+**Out of scope:**
+
+- Multi-topic routing in a single Memories deployment
+- Direct REST-based module event ingestion
+- Mutating Hexalith.EventStore, Hexalith.Tenants, or other submodules
+- New persistence mechanisms outside the existing Memories ingestion workflow

@@ -1466,7 +1466,9 @@ Hexalith.Memories/
 ### Data Flow
 
 ```
-Ingest: CLI/MCP → Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
+Event ingest: Hexalith module → DAPR pub/sub component → Memories Server DAPR sidecar → POST /events/ingest → EventIngestionService → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
+
+Content ingest: CLI/MCP/REST → Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
   IngestionWorkflow orchestration:
     1. CheckIdempotencyActivity (duplicate detection)
     2. ValidateContentActivity (domain validation)
