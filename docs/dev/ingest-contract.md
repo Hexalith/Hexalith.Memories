@@ -68,3 +68,18 @@ in `IngestionWorkflow`.
 Stories **18.5** (`sourceUri → MemoryUnitId` lookup endpoint) and **18.6** (`MemoryUnitId` stability) rely on the
 permanent `dedup:{tenantId}:{caseId}:{sha256(sourceUri)}` record. The idempotency token **augments** this record;
 it never replaces it. Do not change the committed `sourceUri`-keyed record to TTL-bound or token-only.
+
+## 6. `MemoryUnitId` stability — authoritative guarantee (Story 18.6)
+
+The precise lifetime guarantee for the returned `MemoryUnitId` — exactly when re-ingestion of the same
+`(tenantId, caseId, sourceUri)` returns the same id, why that depends on the permanent source-URI dedup record,
+the loss/failure modes, and the consumer resolution path — is published in
+[`memory-unit-id-stability.md`](./memory-unit-id-stability.md), which is the **authoritative** contract for
+`MemoryUnitId` stability. In short: `MemoryUnitId` is an **opaque** id string (not derived from `sourceUri`, not
+guaranteed to be a ULID), stable only while the committed `dedup:{tenantId}:{caseId}:{sha256(sourceUri)}` record
+persists.
+
+**Consumer note.** For long-lived downstream correlation, store or resolve by `sourceUri` plus `tenantId`/`caseId`
+where possible — resolve the current id on demand via
+`MemoriesClient.LookupMemoryUnitIdBySourceUriAsync` (Story 18.5) — and use `MemoryUnitId` as the graph/start-node
+id once resolved, rather than maintaining an unbounded historical list of ids.

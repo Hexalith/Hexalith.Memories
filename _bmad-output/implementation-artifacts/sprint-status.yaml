@@ -41,6 +41,7 @@ last_updated: 2026-06-25
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.4 created (18.4 → ready-for-dev) via create-story. Release-sensitive feat (only such story in epic 18).
 # 2026-06-25: Story 18.5 created (18.5 → ready-for-dev) via create-story. Additive feat (sourceUri→MemoryUnitId keyed lookup endpoint); contract-coupled with 18.6.
+# 2026-06-25: Story 18.6 created (18.6 → ready-for-dev) via create-story. Docs/test contract story for MemoryUnitId stability; coupled with 18.5 lookup.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -213,7 +214,7 @@ development_status:
   18-3-invocable-route-and-operation-surface-publication: done
   18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: done
   18-5-source-uri-keyed-memory-unit-lookup-endpoint: done
-  18-6-memory-unit-id-stability-contract: backlog
+  18-6-memory-unit-id-stability-contract: done
   18-7-memories-client-mockability-stability-contract: backlog
   18-8-cross-module-dapr-event-intake-contract-and-verification: backlog
   epic-18-retrospective: optional

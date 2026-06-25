@@ -129,6 +129,59 @@ public class IngestionWorkflowTests
             Arg.Any<WorkflowTaskOptions>());
     }
 
+    // Story 18.6 — the core stability claim for the COMMON path. The two tests above only cover
+    // SourceType.Event; docs/dev/memory-unit-id-stability.md §1 states that for ordinary file/url ingests
+    // ResolveMemoryUnitId returns context.InstanceId, so the workflow instance id IS the MemoryUnitId. This
+    // pins the file path every REST/file ingest actually takes — and that the id is reused verbatim (opaque,
+    // not parsed/validated as a ULID), threading into both indexing and the permanent dedup write.
+    [Fact]
+    public async Task RunAsync_FileSource_WithStableInstanceId_ShouldReuseInstanceIdAsMemoryUnitId()
+    {
+        const string instanceId = "wf-file-instance-7";
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.File, sourceUri: "file:///doc.pdf");
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns(instanceId);
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.MemoryUnitId.ShouldBe(instanceId);
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(index => index.MemoryUnitId == instanceId),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == instanceId),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    // Story 18.6 — the `dedup:`-prefix regeneration is gated STRICTLY on SourceType.Event
+    // (RequiresIndependentMemoryUnitId). The SAME dedup:-prefixed instance id that forces an independent id
+    // for an Event source (RunAsync_EventStoreDedupInstanceId_ShouldGenerateIndependentMemoryUnitId) must be
+    // REUSED verbatim for a file/url source. Broadening the regeneration to all source types would silently
+    // change file/url ids and break the workflow-id == memory-id stability the Story 18.5 lookup relies on.
+    [Fact]
+    public async Task RunAsync_NonEventSourceWithDedupPrefixedInstanceId_ShouldReuseInstanceId()
+    {
+        const string dedupInstanceId = "dedup:tenant-1:case-1:abc123";
+        IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.File, sourceUri: "file:///doc.pdf");
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns(dedupInstanceId);
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.MemoryUnitId.ShouldBe(dedupInstanceId);
+        result.MemoryUnitId.ShouldNotBe(TestGuid.ToString());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == dedupInstanceId),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
     [Fact]
     public async Task RunAsync_FanOut_ShouldCallAllThreeIndexingActivities()
     {

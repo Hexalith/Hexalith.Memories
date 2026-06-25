@@ -36,6 +36,24 @@ public class SaveDedupKeyActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_ShouldWritePermanentRecordWithNullExpiry()
+    {
+        // Story 18.6 AC2 — the source-URI dedup record is the MemoryUnitId-stability authority and MUST stay
+        // TTL-less. A non-null expiry (or a When other than Always) would silently weaken the stability
+        // guarantee documented in docs/dev/memory-unit-id-stability.md, so pin both arguments here.
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        SaveDedupKeyActivity activity = new(redis);
+
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
+
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
+        call.GetArguments()[2].ShouldBeNull("the permanent dedup record must be written with expiry: null (TTL-less).");
+        call.GetArguments()[3].ShouldBe(When.Always);
+    }
+
+    [Fact]
     public async Task RunAsync_ShouldReturnTrue()
     {
         (IDatabase _, IConnectionMultiplexer redis) = CreateRedis();
