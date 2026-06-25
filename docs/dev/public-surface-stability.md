@@ -80,5 +80,8 @@ from a built assembly. Any PR that renames the Mcp `PackageId` must add a breaki
   a stale submodule pin (see [eventstore-integration.md](./eventstore-integration.md) §1.2.1).
 - [experimental-apis.md](./experimental-apis.md) — companion stability surface (member-level
   `[Experimental]` diagnostics); this document covers host project/assembly/namespace names instead.
+- [client-mockability.md](./client-mockability.md) — Story 18.7 companion stability surface (the
+  `MemoriesClient` non-sealed/`virtual`/no-`IMemoriesClient` mock seam); this document covers host
+  project/assembly/namespace names instead.
 - [eventstore-integration.md](./eventstore-integration.md) — stable EventStore wiring surface and the
   no-redis-parameter finding.

@@ -5,3 +5,7 @@ Each entry documents a `[System.Diagnostics.CodeAnalysis.Experimental("<id>")]` 
 | Diagnostic id | Introduced | Scope | Notes |
 | :------------ | :--------- | :---- | :---- |
 | `HXL001` | Story 7.4 | Quickstart-wizard-support methods: `MemoriesClient.CreateTenantAsync`, `MemoriesClient.CreateCaseAsync`. **Extended by Story 7.5:** `MemoriesClient.GetTelemetrySummaryAsync`. **Graduated by Story 18.4:** `MemoriesClient.IngestAsync` is now stable and **no longer carries `HXL001`** — see the [ingest contract](./ingest-contract.md). | Signature may change in Phase 1.5 when `memories tenant create`, `memories case create` CLI subcommands are wired; the telemetry method may gain latency-percentile fields when the observability surface stabilizes. Until then, these methods exist primarily to unblock the `memories quickstart` wizard and the `memories status telemetry` subcommand — see `src/Hexalith.Memories.Cli/Quickstart/` and `src/Hexalith.Memories.Cli/Commands/StatusTelemetryCommand.cs`. |
+
+## See also
+
+- [client-mockability.md](./client-mockability.md) — Story 18.7 `MemoriesClient` mockability stability contract. This member-level `[Experimental]` surface is a companion to the type-shape mock seam (non-sealed / `virtual` / no `IMemoriesClient`); fixtures that override an `[Experimental]` member scope a narrow `#pragma warning disable HXL001`/`HXL002` exactly as `StubMemoriesClient` does.
