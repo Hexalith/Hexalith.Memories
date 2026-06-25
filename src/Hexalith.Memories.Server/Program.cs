@@ -14,6 +14,7 @@ using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
@@ -139,6 +140,10 @@ builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
 builder.Services.AddSingleton<IngestDedupReservation>();
+
+// Story 18.5 — exact sourceUri → MemoryUnitId lookup seam over the permanent dedup record (reads the same
+// keyed-redis index SaveDedupKeyActivity/CheckIdempotencyActivity use; no parallel store).
+builder.Services.AddSingleton<SourceUriMemoryUnitLookup>();
 
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
@@ -1778,6 +1783,12 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}",
         throw;
     }
 });
+
+// Story 18.5 — exact source-URI-keyed lookup returning the canonical MemoryUnitId. The literal `by-source-uri`
+// segment is a sibling of the `{memoryUnitId}` template above; ASP.NET Core gives literal segments higher
+// precedence, so this route wins for that path (asserted in MemoryUnitLookupEndpointTests). Reads the permanent
+// dedup record by exact key (no search delegation); structured 404 on miss, 503 on backend failure (AC6).
+app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri", MemoryUnitLookupEndpoint.HandleAsync);
 
 // Story 6.3 FR12: re-ingest a single failed memory unit. Atomic claim via Lua deletes the failed-unit
 // hash, sorted-set entry, AND the dedup key in one round-trip; if the claim fails (already gone),

@@ -138,6 +138,12 @@ public static class CliServices
             new MemoryUnitJsonFormatter(),
             new MemoryUnitTableFormatter());
 
+        // Story 18.5: source-URI lookup result formatters (human + json).
+        RegisterFormatters<MemoryUnitIdLookupResponse>(
+            services,
+            new MemoryUnitIdLookupHumanFormatter(),
+            new MemoryUnitIdLookupJsonFormatter());
+
         // Story 8.2: consistency formatters.
         RegisterFormatters<ConsistencyInspectionResult>(
             services,

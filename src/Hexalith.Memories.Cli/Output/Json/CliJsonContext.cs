@@ -26,6 +26,7 @@ using Hexalith.Memories.Contracts.V1;
 [JsonSerializable(typeof(CliOutputEnvelope<HybridSearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<SearchResult>))]
 [JsonSerializable(typeof(CliOutputEnvelope<MemoryUnit>))]
+[JsonSerializable(typeof(CliOutputEnvelope<MemoryUnitIdLookupResponse>))]
 [JsonSerializable(typeof(CliOutputEnvelope<QuickstartEnvelopeData>))]
 // Story 8.2 CLI envelopes.
 [JsonSerializable(typeof(CliOutputEnvelope<ConsistencyInspectionResult>))]

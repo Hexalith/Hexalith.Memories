@@ -114,10 +114,11 @@ Examples:
         configCommand.SetAction(_ => configCommand.Parse("--help").Invoke());
         root.Subcommands.Add(configCommand);
 
-        // search — wired group in 7.2 (query + inspect).
+        // search — wired group in 7.2 (query + inspect); Story 18.5 adds the keyed lookup diagnostic.
         var searchCommand = new Command("search", SearchCommandDescription);
         searchCommand.Subcommands.Add(SearchQueryCommand.Build(services));
         searchCommand.Subcommands.Add(SearchInspectCommand.Build(services));
+        searchCommand.Subcommands.Add(SearchLookupCommand.Build(services));
         searchCommand.SetAction(_ => searchCommand.Parse("--help").Invoke());
         root.Subcommands.Add(searchCommand);
 

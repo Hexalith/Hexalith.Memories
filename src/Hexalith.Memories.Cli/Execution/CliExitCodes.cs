@@ -24,6 +24,13 @@ public static class CliExitCodes
     /// <summary>Plumbing/config error: connection failure, bad URI, TLS failure, token-over-http guard.</summary>
     public const int Plumbing = 2;
 
+    /// <summary>
+    /// Structured not-found (Story 18.5): the request resolved deterministically to "no match" (e.g.
+    /// <c>memories search lookup</c> when no committed unit maps to the source URI). Distinct from
+    /// <see cref="DomainError"/> so a caller can branch on a genuine miss vs a server-side domain failure.
+    /// </summary>
+    public const int NotFound = 4;
+
     /// <summary>User cancellation (Ctrl-C / SIGINT).</summary>
     public const int Cancelled = 130;
 }

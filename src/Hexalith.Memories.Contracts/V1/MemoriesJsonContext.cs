@@ -69,6 +69,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IngestionInput))]
 [JsonSerializable(typeof(IngestionResult))]
 [JsonSerializable(typeof(MemoryUnit))]
+[JsonSerializable(typeof(MemoryUnitIdLookupResponse))]
 [JsonSerializable(typeof(MetadataField))]
 [JsonSerializable(typeof(ScoredResult))]
 [JsonSerializable(typeof(SearchExplanation))]

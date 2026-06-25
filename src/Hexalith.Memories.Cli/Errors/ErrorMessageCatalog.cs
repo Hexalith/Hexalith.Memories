@@ -112,6 +112,12 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Use one of: syntactic, semantic, graph, hybrid.",
                 ExitCode: 1),
 
+            // Story 18.5: search lookup — missing/blank source URI query parameter.
+            ["INVALID_SOURCE_URI"] = new(
+                CliMessage: null,
+                CliSuggestion: "Provide a non-empty --source-uri. Run 'memories search lookup --help' for usage.",
+                ExitCode: 1),
+
             // config show — server config rejection.
             ["INVALID_CONFIG"] = new(
                 CliMessage: null,
@@ -358,6 +364,13 @@ public static class ErrorMessageCatalog
             ["EXPORT_BACKEND_UNAVAILABLE"] = new(
                 CliMessage: null,
                 CliSuggestion: "Check Redis/FalkorDB connectivity and retry the export.",
+                ExitCode: 2),
+
+            // Story 18.5: search lookup — Redis read failed; this is a backend outage, NOT a not-found. Retry
+            // rather than treating the URI as unmapped (which could trigger a duplicate re-ingest downstream).
+            ["LOOKUP_BACKEND_UNAVAILABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "The lookup backend is temporarily unavailable. Retry shortly; do NOT treat this as 'no unit exists'.",
                 ExitCode: 2),
 
             // Embedding / vector configuration.

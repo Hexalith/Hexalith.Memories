@@ -261,6 +261,69 @@ public class MemoriesClient
     }
 
     /// <summary>
+    /// Story 18.5 — resolves the canonical <c>MemoryUnitId</c> for a known source URI by exact key via
+    /// <c>GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>. This is a deterministic
+    /// keyed lookup, NOT a search — the Parties caller uses it so graph mode no longer degrades when the
+    /// canonical match falls outside a free-text search's top hits.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <param name="sourceUri">The exact source URI to resolve.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The canonical memory-unit id, or <see langword="null"/> when the server returns a structured 404.</returns>
+    /// <exception cref="MemoriesRemoteException">Thrown for any non-2xx status other than <c>404</c> (e.g. a 503 backend error — never silently a miss).</exception>
+    public virtual async Task<string?> LookupMemoryUnitIdBySourceUriAsync(
+        string tenantId,
+        string caseId,
+        string sourceUri,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
+
+        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/by-source-uri?sourceUri={Uri.EscapeDataString(sourceUri)}";
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+
+        // A structured 404 is the deterministic "no committed unit for this URI" signal — surface it as null
+        // rather than an exception so callers can branch cheaply. Any other non-2xx (e.g. 503 backend error)
+        // is a real failure and must NOT be flattened into a miss.
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+            throw new MemoriesRemoteException(response.StatusCode, error);
+        }
+
+        try
+        {
+            MemoryUnitIdLookupResponse? result = await response.Content
+                .ReadFromJsonAsync<MemoryUnitIdLookupResponse>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return result?.MemoryUnitId ?? throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with an empty body.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+        }
+        catch (System.Text.Json.JsonException jsonException)
+        {
+            throw new MemoriesRemoteException(
+                response.StatusCode,
+                new ErrorResponse(
+                    Code: "INVALID_RESPONSE",
+                    Message: "Server returned a 2xx response with a body that could not be parsed as MemoryUnitIdLookupResponse.",
+                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
+                jsonException);
+        }
+    }
+
+    /// <summary>
     /// Schedules a tenant-provisioning workflow via <c>POST /api/tenants</c>. Fire-and-forget semantics — the
     /// server returns <c>202 Accepted</c> with the workflow instance id before the tenant is fully active.
     /// Callers observe completion via <see cref="GetTenantAsync(string, CancellationToken)"/> — polling for
