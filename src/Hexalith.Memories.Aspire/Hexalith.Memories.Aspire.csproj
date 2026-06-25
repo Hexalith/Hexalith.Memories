@@ -11,6 +11,9 @@
     <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
     <PackageTags>hexalith;memories;aspire;dapr;falkordb;search;vector-search</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- NU5104: CommunityToolkit.Aspire.Hosting.Dapr currently ships only as a prerelease aligned with
+         Aspire 13.4. Keep the suppression scoped to this Aspire helper package. -->
+    <NoWarn>$(NoWarn);NU5104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
