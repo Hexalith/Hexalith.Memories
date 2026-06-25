@@ -45,4 +45,13 @@ public sealed record IngestionInput
     public string? CausationId { get; init; }
 
     public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// Gets the optional explicit idempotency token. When supplied it takes precedence over
+    /// <see cref="SourceUri"/> as the dedup identity, so two near-simultaneous ingests carrying the same
+    /// token resolve to a single memory unit. When absent (the default), dedup falls back to the
+    /// <see cref="SourceUri"/> natural key exactly as before. A supplied token <em>augments</em> the
+    /// permanent <c>sourceUri → MemoryUnitId</c> mapping; it never replaces it. Story 18.4.
+    /// </summary>
+    public string? IdempotencyToken { get; init; }
 }

@@ -138,6 +138,7 @@ builder.Services.AddSingleton<FailedUnitsRegistry>();
 builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
+builder.Services.AddSingleton<IngestDedupReservation>();
 
 builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
     ConnectRequiredMultiplexer(builder.Configuration, "redis"));
@@ -372,6 +373,8 @@ MemoriesMeter.EnsureHandlerGaugeCreated(() =>
 app.MapPost("/api/ingest", async (
     DaprWorkflowClient workflowClient,
     TenantStatusGuard tenantGuard,
+    IngestDedupReservation ingestReservation,
+    IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
     ILogger<AccessTelemetryCategory> auditLogger,
     IngestionInput input) =>
 {
@@ -420,8 +423,51 @@ app.MapPost("/api/ingest", async (
             return TenantStatusGuard.ToHttpResult(tenantStatusError);
         }
 
-        string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
-        return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
+        // Story 18.4 (MEM-4) — atomic preflight dedup reservation closes the concurrent-ingest race on the
+        // REST path. The candidate id becomes the workflow instance id (and, for SourceType.File, the
+        // MemoryUnitId), so a losing concurrent ingest returns the winner's instance and observes the same
+        // MemoryUnitId without scheduling a second workflow.
+        Hexalith.Memories.EventStore.TenantEventRoutingOptions routing = ingestRoutingOptions.CurrentValue;
+        string candidateInstanceId = Guid.NewGuid().ToString();
+        bool reservationHeld = false;
+
+        if (routing.PreflightDedupEnabled)
+        {
+            IngestReservationResult reservation = await ingestReservation.TryReserveAsync(
+                input.TenantId,
+                input.CaseId,
+                input.SourceUri,
+                input.IdempotencyToken,
+                candidateInstanceId,
+                routing.PreflightDedupTtl,
+                CancellationToken.None);
+
+            if (reservation.Outcome == IngestReservationOutcome.DuplicateInFlight)
+            {
+                string winnerInstanceId = reservation.ExistingInstanceId!;
+                return Results.Accepted($"/api/ingest/{winnerInstanceId}", new { instanceId = winnerInstanceId });
+            }
+
+            // Reserved → we own the reservation; FailOpen (Redis down, ADR 9.1-B) → proceed anyway.
+            reservationHeld = reservation.Outcome == IngestReservationOutcome.Reserved;
+        }
+
+        try
+        {
+            string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
+                nameof(IngestionWorkflow), instanceId: candidateInstanceId, input: input);
+            return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
+        }
+        catch
+        {
+            if (reservationHeld)
+            {
+                await ingestReservation.ReleaseAsync(
+                    input.TenantId, input.CaseId, input.SourceUri, input.IdempotencyToken, CancellationToken.None);
+            }
+
+            throw;
+        }
     }
     catch (Exception ex)
     {

@@ -73,7 +73,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
             IdempotencyResult idempotency = await context.CallActivityAsync<IdempotencyResult>(
                 nameof(CheckIdempotencyActivity),
-                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId),
+                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId, input.IdempotencyToken),
                 For(nameof(CheckIdempotencyActivity)));
 
             if (idempotency.IsDuplicate)
@@ -426,6 +426,19 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     nameof(SaveDedupKeyActivity),
                     new DedupKeyInput(dedupKey, memoryUnitId),
                     For(nameof(SaveDedupKeyActivity)));
+
+                // Story 18.4 — when an explicit idempotency token was supplied, also persist a token-keyed
+                // permanent record pointing at the SAME MemoryUnitId. This augments (never replaces) the
+                // sourceUri mapping written above, so token-based redelivery stays idempotent while
+                // Stories 18.5/18.6's sourceUri → MemoryUnitId lookup and stability remain intact.
+                if (!string.IsNullOrWhiteSpace(input.IdempotencyToken))
+                {
+                    string tokenDedupKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
+                    await context.CallActivityAsync<bool>(
+                        nameof(SaveDedupKeyActivity),
+                        new DedupKeyInput(tokenDedupKey, memoryUnitId),
+                        For(nameof(SaveDedupKeyActivity)));
+                }
             }
             catch (Exception ex)
             {

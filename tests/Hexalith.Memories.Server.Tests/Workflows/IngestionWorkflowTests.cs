@@ -627,6 +627,84 @@ public class IngestionWorkflowTests
             nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
+    // Story 18.4 — explicit idempotency token threads into the dedup check and augments the permanent record.
+    [Fact]
+    public async Task RunAsync_WithIdempotencyToken_ShouldPassTokenIntoIdempotencyInput()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with { IdempotencyToken = "idem-xyz" };
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<IdempotencyResult>(
+            nameof(CheckIdempotencyActivity),
+            Arg.Is<IdempotencyInput>(i => i.IdempotencyToken == "idem-xyz"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_TokenKeyedDuplicate_ShouldShortCircuitWithSameId()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with { IdempotencyToken = "idem-xyz" };
+        WorkflowContext context = CreateMockContext();
+
+        context.CallActivityAsync<IdempotencyResult>(
+                nameof(CheckIdempotencyActivity), Arg.Any<IdempotencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IdempotencyResult(true, "mu-existing"));
+
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.WasDuplicate.ShouldBeTrue();
+        result.MemoryUnitId.ShouldBe("mu-existing");
+        // No second unit: validation/extraction never ran.
+        await context.DidNotReceive().CallActivityAsync<ValidateResult>(
+            nameof(ValidateContentActivity), Arg.Any<IngestionInput>());
+    }
+
+    [Fact]
+    public async Task RunAsync_SuccessfulIngestionWithToken_ShouldPersistBothSourceUriAndTokenDedupRecords()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with { IdempotencyToken = "idem-xyz" };
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        string sourceKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
+        string tokenKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, "idem-xyz");
+
+        // Augment, not replace: the sourceUri permanent record (18.5/18.6) AND a token-keyed record, both
+        // pointing at the SAME MemoryUnitId.
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(d => d.DedupKey == sourceKey && d.MemoryUnitId == TestGuid.ToString()),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity),
+            Arg.Is<DedupKeyInput>(d => d.DedupKey == tokenKey && d.MemoryUnitId == TestGuid.ToString()),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_SuccessfulIngestionWithoutToken_ShouldPersistOnlySourceUriDedupRecord()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        // No token ⇒ exactly one SaveDedupKey call (sourceUri natural key) — behavior unchanged.
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
     [Fact]
     public async Task RunAsync_SuccessfulIngestion_ShouldCallSaveDedupKeyActivity()
     {

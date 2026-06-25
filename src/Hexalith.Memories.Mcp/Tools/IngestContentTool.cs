@@ -137,7 +137,7 @@ internal sealed class IngestContentTool
 
         try
         {
-#pragma warning disable HXL001 // MemoriesClient.IngestAsync is HXL001-experimental.
+            // Story 18.4: MemoriesClient.IngestAsync graduated out of HXL001 — no suppression needed.
             string instanceId = await _client.IngestAsync(
                 authorizedTenant,
                 caseId,
@@ -147,7 +147,6 @@ internal sealed class IngestContentTool
                 effectiveIngestedBy,
                 metadata: null,
                 cancellationToken).ConfigureAwait(false);
-#pragma warning restore HXL001
             return McpToolResultSerializer.Success(new IngestContentResponse(instanceId));
         }
         catch (OperationCanceledException)

@@ -407,12 +407,13 @@ public class MemoriesClient
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The workflow instance id.</returns>
     /// <remarks>
-    /// EXPERIMENTAL (HXL001 — Story 7.4): Added to unblock the <c>memories quickstart</c> wizard. Signature
-    /// may change when the <c>memories ingest</c> CLI subcommand is wired in Phase 1.5. Suppress with
-    /// <c>#pragma warning disable HXL001</c> at opt-in call sites.
+    /// Stable since Story 18.4 — graduated out of <c>HXL001</c>; callers no longer need
+    /// <c>#pragma warning disable HXL001</c>. To supply an explicit idempotency token (so two
+    /// near-simultaneous ingests of the same source resolve to one memory unit) use the
+    /// <see cref="IngestAsync(string, string, string, byte[], string, string, IReadOnlyDictionary{string, MetadataField}, string, CancellationToken)"/>
+    /// overload.
     /// </remarks>
-    [System.Diagnostics.CodeAnalysis.Experimental("HXL001")]
-    public virtual async Task<string> IngestAsync(
+    public virtual Task<string> IngestAsync(
         string tenantId,
         string caseId,
         string sourceUri,
@@ -420,6 +421,49 @@ public class MemoriesClient
         string contentType,
         string ingestedBy,
         IReadOnlyDictionary<string, MetadataField>? metadata,
+        CancellationToken ct)
+        => IngestCoreAsync(tenantId, caseId, sourceUri, content, contentType, ingestedBy, metadata, idempotencyToken: null, ct);
+
+    /// <summary>
+    /// Submits a file ingestion via <c>POST /api/ingest</c> with an explicit idempotency token. Returns the
+    /// workflow instance id; the ingestion runs asynchronously on the server. Story 18.4 additive overload.
+    /// </summary>
+    /// <param name="tenantId">The tenant id.</param>
+    /// <param name="caseId">The case id.</param>
+    /// <param name="sourceUri">The logical source URI recorded with the memory unit (callers supply their own scheme — e.g. <c>quickstart://</c>, <c>file://</c>, or a content-addressed URI).</param>
+    /// <param name="content">The raw content bytes to ingest.</param>
+    /// <param name="contentType">The MIME content-type of <paramref name="content"/>.</param>
+    /// <param name="ingestedBy">Identifier of the submitter (user or system).</param>
+    /// <param name="metadata">Optional metadata fields (each entry carries its own <see cref="MetadataOrigin"/> and confidence) to attach to the memory unit.</param>
+    /// <param name="idempotencyToken">
+    /// Optional explicit idempotency token. When non-blank it takes precedence over <paramref name="sourceUri"/>
+    /// as the dedup identity, so concurrent ingests carrying the same token resolve to a single memory unit and
+    /// the loser observes the winner's <c>MemoryUnitId</c>. When <see langword="null"/>/blank, dedup falls back
+    /// to the <paramref name="sourceUri"/> natural key.
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow instance id.</returns>
+    public virtual Task<string> IngestAsync(
+        string tenantId,
+        string caseId,
+        string sourceUri,
+        byte[] content,
+        string contentType,
+        string ingestedBy,
+        IReadOnlyDictionary<string, MetadataField>? metadata,
+        string? idempotencyToken,
+        CancellationToken ct)
+        => IngestCoreAsync(tenantId, caseId, sourceUri, content, contentType, ingestedBy, metadata, idempotencyToken, ct);
+
+    private async Task<string> IngestCoreAsync(
+        string tenantId,
+        string caseId,
+        string sourceUri,
+        byte[] content,
+        string contentType,
+        string ingestedBy,
+        IReadOnlyDictionary<string, MetadataField>? metadata,
+        string? idempotencyToken,
         CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
@@ -448,6 +492,7 @@ public class MemoriesClient
             SourceType = SourceType.File,
             IngestedBy = ingestedBy,
             Metadata = metadataMap,
+            IdempotencyToken = string.IsNullOrWhiteSpace(idempotencyToken) ? null : idempotencyToken,
         };
 
         using HttpResponseMessage response = await _httpClient

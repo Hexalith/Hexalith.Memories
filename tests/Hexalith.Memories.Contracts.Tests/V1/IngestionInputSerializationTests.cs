@@ -85,6 +85,54 @@ public class IngestionInputSerializationTests
         json.ShouldNotContain("\"sourceType\":2");
     }
 
+    // Story 18.4 — optional explicit idempotency token (AC1/AC2).
+    [Fact]
+    public void IdempotencyToken_WhenPopulated_ShouldSerializeAsCamelCaseAndRoundTrip()
+    {
+        IngestionInput original = CreateFullInput() with { IdempotencyToken = "idem-token-abc" };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(json, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"idempotencyToken\":\"idem-token-abc\"");
+        deserialized.ShouldNotBeNull();
+        deserialized.IdempotencyToken.ShouldBe("idem-token-abc");
+    }
+
+    [Fact]
+    public void IdempotencyToken_WhenNull_ShouldRoundTripAsNull()
+    {
+        IngestionInput original = CreateFullInput();
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.IdempotencyToken.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Deserialize_PayloadWithoutIdempotencyToken_ShouldSucceedWithNullToken()
+    {
+        // Back-compat: a pre-18.4 payload that never carried the field must still deserialize.
+        const string legacyJson = """
+            {
+              "tenantId": "tenant-001",
+              "caseId": "case-001",
+              "sourceUri": "file:///document.pdf",
+              "contentType": "application/pdf",
+              "sourceType": "file",
+              "ingestedBy": "user@example.com"
+            }
+            """;
+
+        IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(legacyJson, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.IdempotencyToken.ShouldBeNull();
+        deserialized.SourceUri.ShouldBe("file:///document.pdf");
+    }
+
     private static IngestionInput CreateFullInput() => new()
     {
         TenantId = "tenant-001",

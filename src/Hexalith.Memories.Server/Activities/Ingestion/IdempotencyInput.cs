@@ -9,4 +9,9 @@ namespace Hexalith.Memories.Server.Activities.Ingestion;
 /// <param name="SourceUri">The URI of the source content.</param>
 /// <param name="TenantId">The tenant identifier.</param>
 /// <param name="CaseId">The case identifier.</param>
-public sealed record IdempotencyInput(string SourceUri, string TenantId, string CaseId);
+/// <param name="IdempotencyToken">
+/// Optional explicit idempotency token (Story 18.4). When non-blank it is checked first (precedence);
+/// the <see cref="SourceUri"/> natural key is the fallback. Defaults to <see langword="null"/> so existing
+/// callers and serialized payloads are unaffected.
+/// </param>
+public sealed record IdempotencyInput(string SourceUri, string TenantId, string CaseId, string? IdempotencyToken = null);

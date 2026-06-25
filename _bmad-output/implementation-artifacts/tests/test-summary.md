@@ -445,3 +445,85 @@ not source-tied (doc-presence-only or untested) — all five auto-applied:
 - Run the new tests in CI's default (no-Docker) lane alongside the rest of `Hexalith.Memories.Server.Tests`.
 - Commit as `test:` (guard tests) + `docs:` (enforcement-section sync) — **never `feat:`**; Story 18.2 has no
   release impact.
+
+---
+
+# Test Automation Summary — Story 18.4 (Stable Ingest Contract with Explicit Idempotency Token and Atomic Dedup)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-25
+- **Story:** `_bmad-output/implementation-artifacts/18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup.md`
+- **Feature under test:** the stable ingest path — `IngestionInput.IdempotencyToken`, `MemoriesClient.IngestAsync`
+  (graduated out of `HXL001` + token overload), `DedupKeyBuilder` (token `:tok:` namespace), the atomic REST-ingress
+  `IngestDedupReservation` (`SET … NX`), `CheckIdempotencyActivity` token precedence, and the workflow's dual
+  permanent-record write.
+- **Framework detected:** xUnit v3 (3.2.2) + Shouldly (4.3.0) + NSubstitute (5.3.0). Matched the existing stack;
+  no new framework introduced.
+- **Run command (sandbox):** `DiffEngine_Disabled=true dotnet exec
+  tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class …`
+  (`dotnet test`/VSTest socket is blocked in this sandbox, per the story's Dev Agent Record).
+
+## Result
+
+| | Tests | Errors | Failed | Skipped |
+|---|---|---|---|---|
+| `Server.Tests` baseline (post-dev) | 1887 | 0 | 0 | 1 (pre-existing `SubmoduleGuardTests`) |
+| **`Server.Tests` after gap auto-apply** | **1904** | **0** | **0** | **1** |
+| `Cli.Tests` baseline (post-dev) | 384 | 0 | 0 | 0 |
+| **`Cli.Tests` after gap auto-apply** | **385** | **0** | **0** | **0** |
+| `Contracts.Tests` (already covered) | 545 | 0 | 0 | 0 |
+
+**QA delta: +18 test cases** (Server +17, Cli +1). Build **0 warnings / 0 errors** under `TreatWarningsAsErrors=true`.
+
+## Scope note — API vs E2E
+
+Story 18.4 has **no UI surface**; the user-facing path is the REST `/api/ingest` ingress + the `MemoriesClient`
+SDK over the `IngestionInput` contract. The applicable automated tests are **contract/client API tests** and
+**activity/seam unit tests** — which is the layer exercised here. A browser E2E lane is not applicable.
+
+## Gaps discovered and auto-applied
+
+The dev phase shipped focused happy-path coverage for all four ACs. This pass audited the feature's **own
+production code for uncovered branches/boundaries** and filled five:
+
+| # | Gap (uncovered production behavior) | Production anchor | AC | Test added |
+| :- | :--- | :--- | :-- | :--- |
+| 1 | `TryReserveAsync` **"reservation expired between `SET NX` and `GET`" → `FailOpen`** (NX-false **and** GET-miss) — only NX-false + GET-hit was tested. | `IngestDedupReservation.cs:87-95` | AC3 | `TryReserveAsync_NxFailsButKeyAlreadyExpired_FailsOpen` |
+| 2 | `ReleaseAsync` **must swallow a Redis failure** (compensation never hard-fails; TTL is backstop — invariant 8). | `IngestDedupReservation.cs:124-131` | AC3 | `ReleaseAsync_RedisFailure_DoesNotThrow` |
+| 3 | `TryReserveAsync` **blank `instanceId` boundary validation** (`ArgumentException.ThrowIfNullOrWhiteSpace`). | `IngestDedupReservation.cs:73` | AC3 | `TryReserveAsync_BlankInstanceId_ThrowsArgumentException` (`[Theory]` ×2) |
+| 4 | `DedupKeyBuilder` — the **central design decision** (token `:tok:` namespace *augments-not-replaces*, precedence/fallback, tenant/case isolation, lowercase-hex SHA-256) was only asserted **indirectly**; the 18.5/18.6 invariant (token key ≠ sourceUri key) had no direct guard. | `DedupKeyBuilder.cs:12-37` | AC2 | **new** `DedupKeyBuilderTests` (13 cases) |
+| 5 | `MemoriesClient` — **blank/whitespace token → `null`-on-wire** normalization. | `MemoriesClient.cs:495` | AC1/AC2 | `IngestAsync_TokenOverload_BlankToken_NormalizesToNullOnWire` |
+
+## Files added / modified (tests only — no production change)
+
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/DedupKeyBuilderTests.cs` — **new** (13 cases).
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs` — **+4** (expired→fail-open,
+  blank-id ×2, release-on-redis-failure).
+- `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientTests.cs` — **+1** (blank-token normalization).
+
+## Coverage map (Story 18.4)
+
+- **AC1** (stable additive entry point): contract round-trip + back-compat (dev) + client stable/token/blank
+  normalization (dev + G5).
+- **AC2** (token precedence + sourceUri fallback, augment-not-replace): `CheckIdempotencyActivity` precedence
+  (dev) + **direct `DedupKeyBuilder` invariants (G4)** + workflow dual-record (dev).
+- **AC3** (atomic, exactly-one-winner): `IngestDedupReservation` winner/loser/concurrent/key-selection/fail-open
+  (dev) + **expired→fail-open, blank-id, release-resilience edges (G1-G3)**.
+- **AC4** (idempotent under redelivery): workflow duplicate short-circuit, token + sourceUri (dev — fully covered).
+
+## Documented coverage boundary (deferred by design — not a gap)
+
+The REST `/api/ingest` handler orchestration (Reserved→schedule; `DuplicateInFlight`→return winner id without
+scheduling; `FailOpen`→schedule; `PreflightDedupEnabled == false`→bypass; release-on-scheduling-failure) is an
+inline minimal-API lambda in `Program.cs`, verified at unit level only via its `IngestDedupReservation` seam. A
+faithful handler test needs a live `DaprWorkflowClient` + Redis (`WebApplicationFactory`/Aspire/Testcontainers),
+which is Docker-dependent and cannot run in this sandbox. This matches the story's stated strategy: the
+deterministic substitute-based reservation test is the **authoritative unit-level proof of AC3**, with a true
+two-thread real-Redis race deferred to `tests/Hexalith.Memories.IntegrationTests/`. Recorded so the boundary is
+explicit rather than implied as covered.
+
+## Next steps
+
+- Run the new tests in CI alongside the existing suites.
+- When an Aspire/Testcontainers Redis+Dapr fixture lands, promote the `/api/ingest` reservation wiring and a true
+  two-thread race to `Hexalith.Memories.IntegrationTests` (the deferred boundary above).

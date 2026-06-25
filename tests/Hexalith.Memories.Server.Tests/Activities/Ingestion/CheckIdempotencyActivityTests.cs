@@ -104,6 +104,79 @@ public class CheckIdempotencyActivityTests
                 new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1")));
     }
 
+    // Story 18.4 — explicit idempotency token: precedence (token first) with sourceUri natural-key fallback.
+    [Fact]
+    public async Task RunAsync_WithToken_TokenRecordExists_ReturnsDuplicateFromTokenKey()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        string tokenKey = DedupKeyBuilder.BuildTokenKey("tenant-1", "case-1", "idem-xyz");
+        db.StringGetAsync(Arg.Is<RedisKey>(k => k == tokenKey), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)"mu-from-token");
+        CheckIdempotencyActivity activity = new(redis);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IdempotencyResult result = await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1", "idem-xyz"));
+
+        result.IsDuplicate.ShouldBeTrue();
+        result.ExistingMemoryUnitId.ShouldBe("mu-from-token");
+    }
+
+    [Fact]
+    public async Task RunAsync_WithToken_TokenRecordMissing_FallsBackToSourceUriKey()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        string sourceKey = DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
+        // Token key is unconfigured → RedisValue.Null (miss); sourceUri natural key holds the existing unit.
+        db.StringGetAsync(Arg.Is<RedisKey>(k => k == sourceKey), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)"mu-from-source");
+        CheckIdempotencyActivity activity = new(redis);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IdempotencyResult result = await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1", "idem-xyz"));
+
+        result.IsDuplicate.ShouldBeTrue();
+        result.ExistingMemoryUnitId.ShouldBe("mu-from-source");
+    }
+
+    [Fact]
+    public async Task RunAsync_WithToken_ChecksTokenKeyBeforeSourceUriKey()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(RedisValue.Null);
+        CheckIdempotencyActivity activity = new(redis);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1", "idem-xyz"));
+
+        string tokenKey = DedupKeyBuilder.BuildTokenKey("tenant-1", "case-1", "idem-xyz");
+        string sourceKey = DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
+        await db.Received(1).StringGetAsync(tokenKey, Arg.Any<CommandFlags>());
+        await db.Received(1).StringGetAsync(sourceKey, Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task RunAsync_NoToken_OnlyChecksSourceUriKey()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(RedisValue.Null);
+        CheckIdempotencyActivity activity = new(redis);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        await activity.RunAsync(
+            context,
+            new IdempotencyInput("file:///doc.pdf", "tenant-1", "case-1"));
+
+        string sourceKey = DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
+        await db.Received(1).StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        await db.Received(1).StringGetAsync(sourceKey, Arg.Any<CommandFlags>());
+    }
+
     private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();

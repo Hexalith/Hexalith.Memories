@@ -31,8 +31,28 @@ public sealed class CheckIdempotencyActivity : WorkflowActivity<IdempotencyInput
         ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.CaseId);
 
-        string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
         IDatabase db = _redis.GetDatabase();
+
+        // Story 18.4 — token precedence: when an explicit idempotency token is supplied, the token-keyed
+        // record is the authoritative dedup identity. Fall back to the sourceUri natural key (the historical
+        // behavior, and the permanent record Stories 18.5/18.6 rely on) when the token is absent or its
+        // record does not yet exist.
+        if (!string.IsNullOrWhiteSpace(input.IdempotencyToken))
+        {
+            string tokenKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
+            IdempotencyResult tokenResult = await CheckKeyAsync(db, tokenKey).ConfigureAwait(false);
+            if (tokenResult.IsDuplicate)
+            {
+                return tokenResult;
+            }
+        }
+
+        string sourceKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
+        return await CheckKeyAsync(db, sourceKey).ConfigureAwait(false);
+    }
+
+    private static async Task<IdempotencyResult> CheckKeyAsync(IDatabase db, string dedupKey)
+    {
         RedisValue existing = await db.StringGetAsync(dedupKey).ConfigureAwait(false);
 
         if (PreflightDedupReservation.IsTransientReservation(existing.ToString()))
