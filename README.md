@@ -37,7 +37,7 @@ dotnet build Hexalith.Memories.slnx
 dotnet run --project src/Hexalith.Memories.AppHost
 ```
 
-On first AppHost run, a gitignored local `secrets.json` placeholder is created automatically if it does not already exist. Wait for the Aspire dashboard to show the `memories-server` resource as Running.
+On first AppHost run, a gitignored local `secrets.json` placeholder is created automatically if it does not already exist. Wait for the Aspire dashboard to show the `memories` resource as Running.
 
 ### 5. Install the CLI (~1 min first time, ~10s subsequent)
 

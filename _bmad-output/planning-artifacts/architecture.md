@@ -99,7 +99,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 | Field | Type | Required | Source | Notes |
 |---|---|---|---|---|
-| `Id` | string (ULID) | Yes | Generated | Globally unique, time-sortable |
+| `Id` | string (opaque) | Yes | Generated | Workflow `InstanceId` (a GUID) or a fresh GUID via `ResolveMemoryUnitId`; opaque, **not** a ULID and **not** time-sortable. Stability semantics: `docs/dev/memory-unit-id-stability.md` |
 | `TenantId` | string | Yes | Caller | Physical index routing key |
 | `CaseId` | string | Yes | Caller | Strict ownership — one unit, one case |
 | `Content` | string | Yes | Extracted | Raw text content (extracted from source) |
@@ -259,7 +259,7 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 
 | Service | Language | DAPR App ID | Purpose | Called By |
 |---|---|---|---|---|
-| Memories Server | C# (.NET 10) | `memories-server` | Core domain: ingestion, search, tenants, fusion | Controllers, CLI, MCP |
+| Memories Server | C# (.NET 10) | `memories` | Core domain: ingestion, search, tenants, fusion | CLI, MCP, REST / Dapr callers |
 | AI Agent Service | Python | `ai-agent` | Dapr Agents: AI enrichment, metadata extraction, causal inference | `CallAiAgentActivity` in `AiEnrichmentWorkflow` via DAPR service invocation |
 | MCP Server (Phase 1.5) | C# (.NET 10) | `memories-mcp` | LLM tool surface | External LLM agents |
 
@@ -551,7 +551,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 
 | # | Decision | Choice | Rationale | Affects |
 |---|---|---|---|---|
-| D16 | Test framework | xUnit + FluentAssertions | Aspire `DistributedApplicationTestingBuilder` aligned. Readable assertions. | All test projects |
+| D16 | Test framework | xUnit v3 + Shouldly + NSubstitute | Aspire `DistributedApplicationTestingBuilder` aligned. Readable assertions. | All test projects |
 | D17 | CI/CD pipeline | GitHub Actions minimum build/test gate first, then full semantic release | The minimum build/test feedback gate is an early foundation prerequisite for any greenfield or restarted implementation sequence. Automated versioning from conventional commits, NuGet publish on tag, branch protection on `main`, and release hardening remain Engineering/Operational Readiness work. | Git workflow, commit conventions, NuGet publishing, CONTRIBUTING.md |
 
 ### Updated Deployment Topology
@@ -606,8 +606,8 @@ Server Workflows → CallAiAgentActivity → DAPR service invocation → Python 
 Python AI Agent → DAPR Conversation API → LLM providers
 Server Actors → Redis (DAPR actor state store)
 Server Search → CorpusStatisticsActor (via IActorProxyFactory)
-Controller → DaprWorkflowClient (schedule, status, cancel workflows)
-Controller → IActorProxyFactory (rate limiter queries)
+Minimal API endpoint → DaprWorkflowClient (schedule, status, cancel workflows)
+Minimal API endpoint → IActorProxyFactory (rate limiter queries)
 
 CI: commit → build → test → semantic-release → NuGet publish
 ```
@@ -1094,10 +1094,10 @@ var aiAgent = builder.AddContainer("ai-agent", "hexalith-memories-ai-agent")
     .WithReference(secretStore);
 
 // C# Memories Server — references AI Agent via DAPR service invocation
-var server = builder.AddProject<Projects.Hexalith_Memories_Server>("memories-server")
+var server = builder.AddProject<Projects.Hexalith_Memories_Server>("memories")
     .WithDaprSidecar(new DaprSidecarOptions
     {
-        AppId = "memories-server",
+        AppId = "memories",
         AppPort = 5000,
         DaprHttpPort = 3500,
         DaprGrpcPort = 50001,
@@ -1130,7 +1130,7 @@ var server = builder.AddProject<Projects.Hexalith_Memories_Server>("memories-ser
 
 ### Test Patterns
 
-**Framework:** xUnit 2.9.3, Shouldly 4.3.0, NSubstitute 5.3.0, coverlet.collector
+**Framework:** xUnit v3 (`xunit.v3` 3.2.2), Shouldly 4.3.0, NSubstitute 5.3.0, coverlet.collector
 
 **Three-tier structure:**
 - **Tier 1:** Unit tests (no external deps) — run on every PR
@@ -1296,12 +1296,8 @@ Hexalith.Memories/
 │   │   ├── Cases/
 │   │   │   ├── CaseService.cs
 │   │   │   └── CaseValidator.cs
-│   │   ├── Controllers/
-│   │   │   ├── IngestionController.cs
-│   │   │   ├── SearchController.cs
-│   │   │   ├── TenantController.cs
-│   │   │   ├── CaseController.cs
-│   │   │   └── WorkflowController.cs              # Workflow status/management endpoints
+│   │   ├── Endpoints/                            # REST surface is minimal-API (app.MapGet/MapPost/... in Program.cs); handler bodies extracted here
+│   │   │   └── MemoryUnitLookupEndpoint.cs        # (no Controllers/ folder; cross-module event intake uses EventIngestionController in the EventStore submodule)
 │   │   ├── Extensions/
 │   │   │   └── MemoriesServerServiceCollectionExtensions.cs
 │   │   ├── Program.cs
@@ -1426,7 +1422,7 @@ Hexalith.Memories/
 
 | Boundary | Entry Point | Validation | Auth (MVP) | Auth (Phase 1.5) |
 |---|---|---|---|---|
-| REST (external) | `Controllers/*Controller.cs` | `IngestionValidator` + FluentValidation | Direct tenant ID | `TenantAuthorizationMiddleware` |
+| REST (external) | minimal-API endpoints in `Program.cs` (`app.MapGet/MapPost/...`) | `IngestionValidator` + FluentValidation | Direct tenant ID | `TenantAuthorizationMiddleware` |
 | DAPR service invocation (internal) | DAPR endpoint mapping | Same validators | DAPR API token | DAPR API token |
 | MCP (Phase 1.5) | `Mcp/` project | Delegates to Server via Client | — | MCP-level auth |
 
@@ -1457,7 +1453,7 @@ Hexalith.Memories/
 | Memory Organization (FR26-37) | `Server/Cases/` | `CaseService.cs`, `CaseValidator.cs` |
 | Tenant Management (FR38-45) | `Server/Workflows/` + `Server/Activities/Tenants/` + `Server/Tenants/` | `TenantProvisioningWorkflow.cs`, `TenantDeletionWorkflow.cs`, `ProvisionRediSearchActivity.cs`, `ProvisionRedisVectorActivity.cs`, `ProvisionFalkorDbActivity.cs`, `TenantProvisioningService.cs`, `TenantIsolationVerifier.cs`, `TenantDeletionService.cs` |
 | Causal Intelligence (FR46-52) | `Server/Graph/` | `GraphTraversalService.cs`, `GraphQueryBuilder.cs`, `GapFiller.cs` |
-| Developer Interfaces (FR53-58) | `Controllers/`, `Cli/`, `Mcp/` | Controllers + MVP CLI essentials, MCP and full CLI expansion in Phase 1.5 |
+| Developer Interfaces (FR53-58) | `Server/Program.cs` + `Server/Endpoints/`, `Cli/`, `Mcp/`, `EventStore/EventIngestionController.cs` | Minimal API endpoints + MVP CLI essentials, EventStore Dapr event controller, MCP and full CLI expansion in Phase 1.5 |
 | EventStore Integration (FR59-62) | `EventStore/` | Phase 1.5 |
 | Trust & Transparency (FR63-67) | `Contracts/V1/` | `MetadataField.cs`, `ScoredResult.cs`, `SearchResult.cs`, Evidence Packet contracts (`EvidencePacket`, scope, source, state, omitted details, recovery actions) |
 | Embedding Provider (FR68-70) | `Server/Ingestion/` | `EmbeddingClient.cs`, tenant config |
@@ -1469,7 +1465,7 @@ Hexalith.Memories/
 ```
 Event ingest: Hexalith module → DAPR pub/sub component → Memories Server DAPR sidecar → POST /events/ingest → EventIngestionService → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
 
-Content ingest: CLI/MCP/REST → Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
+Content ingest: CLI/MCP/REST → minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)
   IngestionWorkflow orchestration:
     1. CheckIdempotencyActivity (duplicate detection)
     2. ValidateContentActivity (domain validation)
@@ -1490,17 +1486,17 @@ Content ingest: CLI/MCP/REST → Controller → DaprWorkflowClient.ScheduleNewWo
     8. VerifyConsistencyActivity (all 3 backends)
   Workflow state persisted at each step — survives restarts.
 
-Search: CLI/MCP → Controller → SearchService
+Search: CLI/MCP → minimal API endpoint → SearchService
   → RediSearchQueryExecutor (syntactic) + RedisVectorQueryExecutor (semantic)
   + FalkorDbQueryExecutor (graph, optional)
   → CorpusStatisticsActor (per-tenant BM25 stats)
   → FusionAlgorithm (pure function) → SearchResult
 
-Traverse: CLI/MCP → Controller → GraphTraversalService
+Traverse: CLI/MCP → minimal API endpoint → GraphTraversalService
   → FalkorDbQueryExecutor (via IGraphQueryBuilder)
   → Ordered nodes + edges + gap markers
 
-Tenant Ops: Controller → DaprWorkflowClient.ScheduleNewWorkflowAsync(...)
+Tenant Ops: minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync(...)
   TenantProvisioningWorkflow: sole tenant infrastructure lifecycle owner; provision 3 backends sequentially, rollback on failure
   TenantDeletionWorkflow: batched deletion across 3 backends
   ConsistencyVerificationWorkflow: audit all memory units across backends

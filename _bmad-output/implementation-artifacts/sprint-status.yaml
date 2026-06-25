@@ -44,6 +44,7 @@ last_updated: 2026-06-25
 # 2026-06-25: Story 18.6 created (18.6 → ready-for-dev) via create-story. Docs/test contract story for MemoryUnitId stability; coupled with 18.5 lookup.
 # 2026-06-25: Story 18.7 created (18.7 → ready-for-dev) via create-story. Docs/test contract story for MemoriesClient mockability (D9 concrete client, HttpClient seam + non-sealed/virtual guarantee); independent, no release impact.
 # 2026-06-25: Story 18.8 created (18.8 → ready-for-dev) via create-story. Docs/test contract story for cross-module Dapr event intake; no release impact, no multi-topic/direct-REST scope.
+# 2026-06-25: Epic 18 retrospective completed (epic-18-retrospective → done; epic-18 in-progress → done at close-out). Retro: epic-18-retro-2026-06-25.md. 8 action items recorded; Epic 17 follow-through statuses updated.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -210,7 +211,7 @@ development_status:
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
   # Scope note: Engineering/Operational Readiness Track; Parties consumer integration asks (MEM-1..7) per Sprint Change Proposal 2026-05-27, plus cross-module DAPR event intake per Sprint Change Proposal 2026-06-24. Not MVP-counted. Story 18.4 is semantic-release sensitive.
-  epic-18: in-progress
+  epic-18: done
   18-1-apphost-project-resolution-guard-and-public-surface-stability-contract: done
   18-2-deployment-configuration-contract-publication: done
   18-3-invocable-route-and-operation-surface-publication: done
@@ -219,7 +220,7 @@ development_status:
   18-6-memory-unit-id-stability-contract: done
   18-7-memories-client-mockability-stability-contract: done
   18-8-cross-module-dapr-event-intake-contract-and-verification: done
-  epic-18-retrospective: optional
+  epic-18-retrospective: done
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:
@@ -238,16 +239,40 @@ action_items:
   - epic: 17
     action: "Record the xUnit v3 in-process test workaround (DiffEngine_Disabled=true, VSTest TCP-listener limitation) in the web project dev notes / contributing guidance"
     owner: "Paige, Amelia"
-    status: open
+    status: in-progress  # Epic 18 follow-through: workaround re-applied and noted in every Epic 18 story, but still not centralized in a contributing doc
   - epic: 17
     action: "Track test counts in the Change Log at each phase (create-story, dev-story, QA gap-closure, review) to stop dev/QA/review count drift and File List omissions"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # Epic 18 follow-through: applied from 18.2 onward and improved, but 18.1 still took three MEDIUM tracking findings
   - epic: 17
     action: "Add a root .gitattributes (or an accepted-debt entry) to settle repo-wide LF/CRLF and stop whole-file diff churn on .razor/.razor.css"
     owner: "Amelia"
     status: open
   - epic: 17
     action: "Keep sprint-status.yaml epic rows aligned with story completion (carry-forward from Epic 16): mark the epic row done when all stories are done and the retro is complete"
+    owner: "Amelia"
+    status: in-progress  # Epic 18 follow-through: recurring; epic-18 row corrected from in-progress to done at this retro's close-out
+  - epic: 18
+    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle repo-wide LF/CRLF; carry-forward from Epic 17 with evidence it caused MEDIUM findings and diff churn in stories 18.4/18.5/18.6"
+    owner: "Amelia"
+    status: open
+  - epic: 18
+    action: "Reconcile architecture.md stale anchors against live code: MemoryUnitId is opaque/GUID-derived (not ULID); tests are xunit.v3 3.2.2 (not 2.9.3); routes are minimal-API app.MapX (not Controllers/*Controller.cs); Server Dapr app-id default is memories (not memories-server)"
+    owner: "Winston, Paige"
+    status: open
+  - epic: 18
+    action: "Generalize the drift-guard hardening lessons: prefer table-row-form anchors over bare ShouldContain substrings, and add an anti-corruption assertion (no leaked tool-call markup) to contract-doc guard tests"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 18
+    action: "Give the parked carry-forwards real backlog homes: MEM-2-ASPIRATE (aspirate emission), MEM-3-OPENAPI (OpenAPI generation), the real-Redis two-thread race test, the Dapr-sidecar pub/sub smoke, and the 18.4 token-anchoring edge — each scheduled as a story or accepted with rationale in deferred-work.md"
+    owner: "Amelia"
+    status: open
+  - epic: 18
+    action: "Centralize the sandbox test workaround (DiffEngine_Disabled=true dotnet exec; VSTest SocketException 13) in contributing/dev guidance; carry-forward from Epic 17 item 4"
+    owner: "Paige, Amelia"
+    status: open
+  - epic: 18
+    action: "Remove the now-stale '#pragma warning disable HXL001' for IngestAsync in tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs (18.7 review finding L2, post-18.4 stabilization)"
     owner: "Amelia"
     status: open
