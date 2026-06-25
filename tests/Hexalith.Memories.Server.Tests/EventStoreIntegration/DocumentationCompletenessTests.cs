@@ -74,6 +74,14 @@ public sealed class DocumentationCompletenessTests
         content.ShouldContain("shared-topic pattern", Case.Sensitive, "Docs must describe the supported shared-topic module integration pattern.");
         content.ShouldContain("separate Memories", Case.Sensitive, "Docs must describe the separate-deployment workaround for independent topics.");
         content.ShouldContain("deployments per topic", Case.Sensitive, "Docs must describe the separate-deployment workaround for independent topics.");
+
+        // Story 18.8 — cross-module event-intake contract literals. The developer doc is the canonical
+        // home for the Hexalith-module (Tenants + Parties + future modules) shared-topic routing example,
+        // so these guards stop the contract from silently regressing to an EventStore-only framing.
+        content.ShouldContain("Hexalith modules", Case.Sensitive, "Docs must frame the contract as cross-module Hexalith event intake, not EventStore-only.");
+        content.ShouldContain("hexalith/tenants", Case.Sensitive, "Docs must show the hexalith/tenants source-prefix routing example.");
+        content.ShouldContain("hexalith/parties", Case.Sensitive, "Docs must show the hexalith/parties source-prefix routing example.");
+
         content.ShouldContain("aggregateType", Case.Insensitive, "Aggregate-type extraction rule must be documented.");
         content.ShouldContain("cloudevent.subject", Case.Sensitive, "Exact-match subject filtering must be documented.");
         content.ShouldContain("publishAllowedTopics", Case.Sensitive, "MVP publisher-spoofing mitigation must be documented.");

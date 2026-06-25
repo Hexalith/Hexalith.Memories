@@ -1,9 +1,16 @@
-# EventStore Integration — DAPR Pub/Sub Subscription (Story 9.1)
+# EventStore / Hexalith Module Event Integration — DAPR Pub/Sub Subscription (Story 9.1)
 
 Zero-code DAPR pub/sub subscription for `Hexalith.Memories`. Configure one topic, publish CloudEvents
 to it, and the Memories server ingests the event payload into the existing ingestion workflow —
 no mapping code required. Scope: **one topic per deployment**; dual-embeddings and causal-edge
 indexing are Story 9.2+.
+
+This is the **cross-module event-intake contract** for all Hexalith modules — Tenants, Parties, and
+future modules publish their domain event streams through this same Dapr pub/sub path. It is **not** an
+EventStore-only integration: the package name reflects the publisher SDK, but any Hexalith module is a
+first-class publisher. See [§1.6 Route surface for Hexalith modules](#16-route-surface-for-hexalith-modules)
+for the canonical module-to-Memories flow and a shared-topic `SourceToTenantMap` example covering two
+modules (`hexalith/tenants` and `hexalith/parties`) on one topic.
 
 - **Status:** Phase 1.5
 - **Package:** [`Hexalith.Memories.EventStore`](../../src/Hexalith.Memories.EventStore/) (NuGet-publishable)
@@ -128,6 +135,39 @@ reuses the existing Redis dependency.
 The Memories Server is the sidecar-managed event subscriber for Hexalith modules. Domain modules publish
 CloudEvents to the configured DAPR pub/sub component and shared-topic pattern; they do not call Memories
 REST ingestion directly for domain event streams.
+
+**Canonical cross-module event flow.** Every Hexalith module event reaches Memories through exactly this
+path, with no per-module ingestion code:
+
+`Hexalith module -> Dapr pub/sub component -> Memories Server sidecar -> POST /events/ingest -> EventIngestionService -> DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)`
+
+A publisher only needs Dapr pub/sub write access to the shared topic and a `source` prefix that is mapped
+in `SourceToTenantMap`. The REST `POST /api/ingest` path remains for **external content** ingestion only;
+Hexalith module event streams always use the pub/sub path above.
+
+**Shared-topic `SourceToTenantMap` example (two Hexalith modules on one topic).** Both `hexalith/tenants`
+and `hexalith/parties` publish to the same `memories-events` topic; the `source` prefix is what routes each
+module's stream to its configured tenant:
+
+```json
+{
+    "EventStoreIntegration": {
+        "Routing": {
+            "PubSubName": "pubsub",
+            "Topic": "memories-events",
+            "SourceToTenantMap": {
+                "hexalith/tenants": "tenant-events",
+                "hexalith/parties": "party-events"
+            }
+        }
+    }
+}
+```
+
+Source-prefix matching is **longest-prefix-wins and case-insensitive**; `source` is the publisher's
+**stable identity**, not a deploy-time URL (see §5); and an unmapped `source` drops as `unknown-source`
+(EventId 9110) with **no DAPR retry** (see §6). One topic serves every module in a deployment — independent
+topics require separate Memories deployments per topic until multi-topic routing is approved (see §8).
 
 The published operation surface for DAPR ACL and route review is:
 
