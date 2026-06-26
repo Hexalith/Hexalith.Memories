@@ -24,15 +24,13 @@
     <PackageVersion Include="OpenTelemetry" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
-    <!-- AspNetCore instrumentation latest is 1.15.2; the broader OTel stack moved to 1.15.3
-         but AspNetCore has not had a 1.15.3 release. NU1902 advisories targeted the exporter,
-         not this package, so 1.15.2 stays acceptable. -->
+    <!-- OpenTelemetry instrumentation packages stay aligned with the 1.16.x core/exporter stack. -->
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
     <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
          explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
-    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.15.1-beta.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.16.0-beta.1" />
     <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests. Bumped to 1.15.3
          alongside the rest of the OTel core/exporter stack (Story 10.1 NU1902 sweep). -->
     <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.16.0" />
@@ -56,7 +54,7 @@
     <PackageVersion Include="Kreuzberg" Version="4.9.9" />
     <!-- Redis / FalkorDB -->
     <PackageVersion Include="NRedisStack" Version="1.6.0" />
-    <PackageVersion Include="StackExchange.Redis" Version="3.0.47-preview" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.0.7" />
     <PackageVersion Include="NFalkorDB" Version="1.0.6" />
     <!-- Testing -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
