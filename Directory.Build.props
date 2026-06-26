@@ -12,6 +12,7 @@
          root-level sibling in the parent repository (mirrors the Hexalith*Root pattern). -->
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)Hexalith.FrontComposer</HexalithFrontComposerRoot>
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer</HexalithFrontComposerRoot>
+    <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer.slnx') and Exists('$(MSBuildThisFileDirectory)..\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..</HexalithFrontComposerRoot>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -21,6 +22,7 @@
          standalone-Memories layout (where Hexalith.Tenants is a real nested/sibling submodule) is
          unaffected. -->
     <HexalithMemoriesHostedInTenantsRepo Condition="Exists('$(MSBuildThisFileDirectory)..\Hexalith.Tenants.slnx')">true</HexalithMemoriesHostedInTenantsRepo>
+    <HexalithMemoriesHostedInFrontComposerRepo Condition="Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
   </PropertyGroup>
 
   <!-- Detect missing root-level git submodules -->
@@ -29,7 +31,7 @@
     <RequiredRootSubmodule Include="Hexalith.EventStore" />
     <RequiredRootSubmodule Include="Hexalith.AI.Tools" />
     <RequiredRootSubmodule Include="Hexalith.Tenants" Condition="'$(HexalithMemoriesHostedInTenantsRepo)' != 'true'" />
-    <RequiredRootSubmodule Include="Hexalith.FrontComposer" />
+    <RequiredRootSubmodule Include="Hexalith.FrontComposer" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'" />
   </ItemGroup>
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
