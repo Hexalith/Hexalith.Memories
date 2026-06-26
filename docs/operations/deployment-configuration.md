@@ -31,6 +31,7 @@ These are the **AppHost defaults**. The canonical source is `src/Hexalith.Memori
 
 | Variable / key | Default | Source-of-truth | Env-only or appsettings? |
 | :------------- | :------ | :-------------- | :----------------------- |
+| `EnableKeycloak` | enabled unless set to `false` | `AppHost/Program.cs` via `HexalithEventStoreSecurityExtensions` | AppHost/local-dev switch. Set to `false` to skip the local `security` resource and use symmetric-key/env-var JWT fallback for MCP. |
 | `PUBSUB_REDIS_HOST` | `redis:6379` | `deploy/dapr/components/pubsub.yaml` (YAML-interpolated) | **Env-only** (no C# constant; substituted into the Dapr component YAML). |
 | `PUBSUB_REDIS_PASSWORD` | _(empty)_ | `deploy/dapr/components/pubsub.yaml` (YAML-interpolated) | **Env-only**; inject from a secret in production. |
 | `MEMORIES_EVENTSTORE_TOPIC` | `memories-events` (AppHost-injected convention; **required downstream** — see note) | `EventIngestionController.TopicEnvVar`; value injected by `AppHost/Program.cs` | **Env-only**; **required in a downstream overlay** — there is no runtime fallback (see note below). Mirrors config `EventStoreIntegration:Routing:Topic`. |
@@ -39,6 +40,11 @@ These are the **AppHost defaults**. The canonical source is `src/Hexalith.Memori
 | `MEMORIES_DAPR_APP_ID` | `memories` (when unset) | `AppHost/Program.cs` (`ResolveDaprAppId`) | **Env-only**, optional override. |
 
 In a downstream Kubernetes overlay the AppHost is not present, so the operator supplies `PUBSUB_REDIS_HOST`, `PUBSUB_REDIS_PASSWORD`, `MEMORIES_EVENTSTORE_TOPIC`, and the `ConnectionStrings__*` values directly (the `ConnectionStrings__*` pair points the Server at the in-cluster Redis and FalkorDB services).
+
+For local AppHost runs, the local identity provider appears in the Aspire dashboard as `security`.
+It is Keycloak-backed, but consumers should depend on the `security` resource name rather than a
+Keycloak-specific resource name. This initializes MCP authentication configuration only; full
+Memories Server endpoint authorization remains tracked separately in deferred work.
 
 > **`MEMORIES_EVENTSTORE_TOPIC` has no runtime default.** The `memories-events` value above is injected only by the AppHost (`src/Hexalith.Memories.AppHost/Program.cs`), which is absent in a downstream overlay. At runtime the topic is resolved purely from this environment variable — `EnvironmentTopicAttribute` for the `/dapr/subscribe` discovery probe, and the `EventStoreIntegration:Routing:Topic` config key for routing — and both resolve to `null` when neither is set, silently stopping event intake. A downstream operator **must** set `MEMORIES_EVENTSTORE_TOPIC` (reusing `memories-events` keeps it consistent with the AppHost-orchestrated deployment) or set `EventStoreIntegration:Routing:Topic` in configuration.
 

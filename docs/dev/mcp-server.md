@@ -147,6 +147,12 @@ sidecars. The MCP endpoint is exposed at the Aspire-allocated HTTP port (open th
 and click `memories-mcp` to see the live URL), with the MCP server itself listening on `/mcp` for
 Streamable HTTP traffic.
 
+By default the AppHost also initializes a local Keycloak-backed Aspire resource named `security`
+through `HexalithEventStoreSecurityExtensions`. When `security` is enabled, `memories-mcp` receives
+its JWT bearer authority, issuer, audience, and HTTPS-metadata settings from that shared resource.
+Set `EnableKeycloak=false` to keep the no-Keycloak fallback path, where MCP reads
+`Authentication__JwtBearer__*` environment variables or `appsettings.Development.json`.
+
 Connect any compliant MCP client (Claude Desktop, a custom `McpClient`, etc.) to
 `http://<host>:<port>/mcp` with `Authorization: Bearer <token>`. The four tools above will appear
 in the tool list after authentication.

@@ -58,6 +58,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _daprConfigPathScope;
     private EnvVarScope? _redisVolumeNameScope;
     private EnvVarScope? _eventStoreSourceMapScope;
+    private EnvVarScope? _enableKeycloakScope;
     private EnvVarScope? _telemetryInMemoryScope;
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
@@ -225,6 +226,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _eventStoreSourceMapScope = EnvVarScope.Set(
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
+            _enableKeycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
 
             WriteLocalDaprSecretIfNeeded();
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
@@ -245,6 +247,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         _eventStoreSourceMapScope?.Dispose();
         _eventStoreSourceMapScope = null;
+        _enableKeycloakScope?.Dispose();
+        _enableKeycloakScope = null;
         _redisVolumeNameScope?.Dispose();
         _redisVolumeNameScope = null;
         _daprAppIdScope?.Dispose();

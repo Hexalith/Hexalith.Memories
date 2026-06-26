@@ -1,13 +1,18 @@
-using Aspire.Hosting.Eventing;
-using Aspire.Hosting.ApplicationModel;
-using CommunityToolkit.Aspire.Hosting.Dapr;
-using Hexalith.Memories.AppHost;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
 
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Eventing;
+
+using CommunityToolkit.Aspire.Hosting.Dapr;
+
+using Hexalith.EventStore.Aspire;
+using Hexalith.Memories.AppHost;
+
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
+HexalithEventStoreSecurityResources? security = builder.AddHexalithEventStoreSecurity();
 string secretsFile = EnsureSecretsFile();
 string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
@@ -209,6 +214,11 @@ if (daprApiToken is not null)
     server = server.WithEnvironment("DAPR_API_TOKEN", daprApiToken);
 }
 
+if (security is not null)
+{
+    server = server.WithSecurityDependency(security);
+}
+
 _ = server;
 
 // Story 10.1 — MCP Server.
@@ -247,7 +257,9 @@ if (daprApiToken is not null)
     mcp = mcp.WithEnvironment("DAPR_API_TOKEN", daprApiToken);
 }
 
-mcp = PropagateJwtBearerAuthenticationEnvironment(mcp);
+mcp = security is null
+    ? PropagateJwtBearerAuthenticationEnvironment(mcp)
+    : mcp.WithJwtBearerSecurity(security);
 
 _ = mcp;
 

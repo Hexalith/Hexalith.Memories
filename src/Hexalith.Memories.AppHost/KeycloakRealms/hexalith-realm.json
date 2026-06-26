@@ -1,0 +1,102 @@
+{
+  "realm": "hexalith",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": false,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 3600,
+  "clients": [
+    {
+      "clientId": "hexalith-eventstore",
+      "name": "Hexalith EventStore",
+      "description": "Shared local API audience for Hexalith Aspire security smoke tests.",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "audience-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "hexalith-eventstore",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "tenants-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenants",
+            "claim.name": "tenants",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "aggregate.attrs": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "admin-user",
+      "username": "admin-user",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "email": "admin@hexalith.io",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin-pass",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenants": [
+          "tenant-a",
+          "tenant-b",
+          "system"
+        ]
+      }
+    },
+    {
+      "id": "tenant-a-user",
+      "username": "tenant-a-user",
+      "firstName": "Tenant",
+      "lastName": "A",
+      "enabled": true,
+      "email": "tenant-a@hexalith.io",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "tenant-a-pass",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenants": [
+          "tenant-a"
+        ]
+      }
+    }
+  ]
+}
