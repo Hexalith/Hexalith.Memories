@@ -27,8 +27,8 @@
     <!-- AspNetCore instrumentation latest is 1.15.2; the broader OTel stack moved to 1.15.3
          but AspNetCore has not had a 1.15.3 release. NU1902 advisories targeted the exporter,
          not this package, so 1.15.2 stays acceptable. -->
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
     <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
          explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
@@ -59,7 +59,7 @@
     <PackageVersion Include="StackExchange.Redis" Version="3.0.47-preview" />
     <PackageVersion Include="NFalkorDB" Version="1.0.6" />
     <!-- Testing -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
