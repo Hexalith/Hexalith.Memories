@@ -23,8 +23,10 @@
          submodule is neither present nor required. Detect that layout and drop the requirement; the
          standalone-Memories layout (where Hexalith.Tenants is a real nested/sibling submodule) is
          unaffected. -->
-    <HexalithMemoriesHostedInTenantsRepo Condition="Exists('$(MSBuildThisFileDirectory)..\Hexalith.Tenants.slnx')">true</HexalithMemoriesHostedInTenantsRepo>
-    <HexalithMemoriesHostedInFrontComposerRepo Condition="Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
+    <HexalithMemoriesHostedInTenantsRepo Condition="'$(HexalithMemoriesHostedInTenantsRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.Tenants.slnx')">true</HexalithMemoriesHostedInTenantsRepo>
+    <HexalithMemoriesHostedInTenantsRepo Condition="'$(HexalithMemoriesHostedInTenantsRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.Tenants.slnx')">true</HexalithMemoriesHostedInTenantsRepo>
+    <HexalithMemoriesHostedInFrontComposerRepo Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
+    <HexalithMemoriesHostedInFrontComposerRepo Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
   </PropertyGroup>
 
   <!-- Detect missing root-level git submodules -->
