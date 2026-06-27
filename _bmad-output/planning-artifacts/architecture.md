@@ -89,11 +89,11 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 6. **Backend Portability (NFR15) [MVP-critical]:** Concrete Redis implementation first. Extraction points for IMemoryIndex/IMemoryGraph identified but not prematurely abstracted. Server depends on Contracts only — Redis registered at composition root. This avoids breaking NuGet version bumps when extracting interfaces in Phase 2/3. Redis scores highest on operational simplicity (critical for solo-developer MVP) but lowest on capability depth and scalability ceiling. PostgreSQL + pgvector + Apache AGE is a viable future migration target alongside Qdrant, offering clean licensing and single-engine simplicity.
 
-7. **Serialization & Protocol Conformance (NFR20-21) [MVP-critical]:** JSON everywhere. CloudEvents envelope for DAPR pub/sub. MCP protocol specification conformance for tool schemas, typed parameters, structured errors. Contract tests for serialization round-trips.
+7. **Serialization & Protocol Conformance (phase-split):** JSON contract serialization and source-generated round-trip tests are MVP-critical. MCP protocol conformance (NFR20) and DAPR CloudEvents publisher compatibility for EventStore ingestion (NFR21) are Phase 1.5 fast-follow scope; the MVP architecture must keep these additions additive, not count them as MVP gate completion.
 
 8. **Fusion Algorithm (FR17, FR19, NFR24-26) [MVP-critical]:** The architectural center of gravity — depends on all 3 backends producing results, all 3 normalization strategies being correct, and feeds all 4 interface layers. **BM25 normalization is corpus-dependent** — the architecture must support per-tenant corpus statistics or a corpus-invariant normalization strategy (e.g., rank-based instead of score-based). Three-axis retrieval is a hypothesis, not a given — the graph axis must be architecturally optional so the system degrades gracefully to two-axis if the hypothesis fails.
 
-9. **Multi-Backend Consistency (FR6, FR13) [MVP-critical]:** "Atomic write across all three backends" is not achievable — no distributed transaction across Redis + FalkorDB. Replace with **eventual consistency + DAPR Workflow saga/compensation**. The `IngestionWorkflow` writes to each backend as separate activities — `IndexSyntacticActivity` (RediSearch), `IndexSemanticActivity` (Redis Vector), `IndexGraphActivity` (FalkorDB) — each with its own `WorkflowRetryPolicy` (exponential backoff). If any activity fails after retries, the workflow executes compensation activities to clean up partially-written state. `VerifyConsistencyActivity` runs after all writes succeed. `memories tenant verify` triggers `ConsistencyVerificationWorkflow` for operator-initiated audits. Per-memory-unit consistency inspection (`memories inspect --id <unit-id>`) queries all three backends for a single unit's state — essential for developer debugging.
+9. **Multi-Backend Consistency (FR6, FR13) [MVP-critical]:** "Atomic write across all three backends" is not achievable — no distributed transaction across Redis + FalkorDB. Replace with **eventual consistency + DAPR Workflow saga/compensation**. The `IngestionWorkflow` writes to each backend as separate activities — `IndexSyntacticActivity` (RediSearch), `IndexSemanticActivity` (Redis Vector), `IndexGraphActivity` (FalkorDB) — each with its own `WorkflowRetryPolicy` (exponential backoff). If any activity fails after retries, the workflow executes compensation activities to clean up partially-written state. `VerifyConsistencyActivity` runs after all writes succeed. `memories tenant verify` triggers `ConsistencyVerificationWorkflow` for operator-initiated audits. Per-memory-unit consistency inspection (`memories consistency inspect --tenant <tenant-id> --id <unit-id>`) queries all three backends for a single unit's state — essential for operator and developer debugging. This command is owned by Epic 8 operational consistency work, not by the root MVP CLI essentials list in Epic 7.
 
 ### Memory Unit Field Inventory (Draft)
 
@@ -1516,19 +1516,21 @@ Tenant Ops: minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync
 
 ### Requirements Coverage
 
-**Functional Requirements: 73/74 covered in MVP. 1 deferred.**
+**Functional Requirements: 74/74 architecturally traceable. Active MVP scope is phase-filtered.**
 
 | Status | FRs | Note |
 |---|---|---|
-| Covered (MVP) | FR1-70, FR72-74 | All architecturally supported |
-| Deferred (Phase 2) | FR71 (export) | `TenantExportService.cs` added in Phase 2 |
+| Active MVP readiness | FR1-FR22, FR24-FR53, FR55-FR57, FR63-FR70, FR72-FR74 | Covered by Epic 0-Epic 8 MVP scope |
+| Phase 1.5 fast-follow | FR23, FR54, FR58-FR62 | MCP and EventStore integration scope; architecturally additive, not MVP-counted |
+| Deferred (Phase 2) | FR71 (export) | Portable export remains non-MVP unless an approved sprint change pulls it forward |
 
-**Non-Functional Requirements: 30/31 covered in MVP. 1 deferred by design.**
+**Non-Functional Requirements: 31/31 architecturally traceable. Active MVP scope is phase-filtered.**
 
 | Status | NFRs | Note |
 |---|---|---|
-| Covered (MVP) | NFR1-10, NFR12-31 | All architecturally supported |
-| Deferred (Phase 1.5) | NFR11 (ingress auth) | Matches D8 (TenantAuthorizationMiddleware) |
+| Active MVP readiness | NFR1-NFR4, NFR8, NFR16-NFR17, NFR24-NFR26, NFR30-NFR31 | MVP gate and thesis-validation NFRs |
+| Phase 1.5 fast-follow | NFR6, NFR11, NFR20-NFR21 | Event freshness, ingress auth, MCP protocol conformance, CloudEvents publisher compatibility |
+| Ongoing / operational hardening | NFR5, NFR7, NFR9-NFR10, NFR12-NFR15, NFR18-NFR19, NFR22-NFR23, NFR27-NFR29 | Required but not all MVP gate-blocking; implemented through MVP and operational-readiness tracks as selected |
 
 ### Resolved Gaps
 
@@ -1628,7 +1630,7 @@ tests/
 2. Configure git submodules under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`)
 3. Set up `Directory.Packages.props` (including `Dapr.Workflow`, `Dapr.Actors`, `Dapr.Actors.AspNetCore` 1.17.6), `.editorconfig`, `global.json`, `.releaserc.json`
 4. Configure DAPR statestore component with `actorStateStore: "true"` for workflow + actor state
-5. CI pipeline: `.github/workflows/ci.yml` + `release.yml`
+5. Minimum build/test CI preflight: `.github/workflows/ci.yml` with restore, build, and Docker-free unit/contract tests before Epic 1 data-writing work; release automation remains later operational-readiness scope.
 6. Register workflows and actors in `Program.cs` via `AddDaprWorkflow()` + `AddActors()` + `MapActorsHandlers()`
 7. Begin Gate 1 critical path: `FusionAlgorithm.cs` + `Bm25Normalizer.cs` + unit tests
 8. Implement `IngestionWorkflow` + activities for end-to-end ingestion pipeline

@@ -393,9 +393,10 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 2. Story 0.1: Tenant Provisioning Minimum Viable Workflow
 3. Story 0.2: Minimal Case Bootstrap
 4. Story 0.3: Tenant and Case Validation Guard
-5. Epic 1 data-writing ingestion/search stories
+5. Story 0.4: Minimum Build/Test CI Preflight
+6. Epic 1 data-writing ingestion/search stories
 
-Minimum build/test CI is an early enabling prerequisite for any greenfield or restarted implementation sequence. The historical CI story remains Story 11.1, but implementation handoff must treat the minimum build/test gate as active before broad product work begins. Semantic release, NuGet publishing, branch protection hardening, and release operations remain in the Engineering/Operational Readiness track.
+Minimum build/test CI is part of the executable foundation path and is tracked as Story 0.4. Semantic release, NuGet publishing, branch protection hardening, release operations, and extended CI quality hardening remain in the Engineering/Operational Readiness track.
 
 ## Implementation Readiness Boundary
 
@@ -412,9 +413,9 @@ Minimum build/test CI is an early enabling prerequisite for any greenfield or re
 
 ### Pre-Implementation CI Preflight Gate (2026-05-19)
 
-Before any Epic 1.x product-capability story writes data, the minimum build/test CI subset declared in Story 11.1 must be in place — specifically: pull-request build, restore + `dotnet build` with `TreatWarningsAsErrors=true`, and the test-tier execution that covers Tier-1 unit tests. This is the implementation reader's preflight; the rest of Story 11.1 (semantic release hardening, branch protection, release run integrity) remains in the Engineering/Operational Readiness Track.
+Before any Epic 1.x product-capability story writes data, Story 0.4 must be complete. Story 0.4 is the minimum build/test CI preflight: pull-request build, restore, `dotnet build` with `TreatWarningsAsErrors=true`, and Docker-free Tier-1 unit/contract test execution.
 
-If the preflight subset is not in place, do not start Story 1.2 onward. Either land the preflight subset of Story 11.1 first, or open a sprint change to defer the preflight requirement explicitly.
+If Story 0.4 is not complete, do not start Story 1.2 onward. Either complete Story 0.4 first, or open a sprint change to defer the preflight requirement explicitly. Story 11.1 extends this foundation into the full GitHub Actions quality pipeline; it is no longer the source of the Epic 1 prerequisite.
 
 ### Story Key Policy
 
@@ -503,6 +504,8 @@ Epics in this track are judged by delivery safety, release integrity, maintainer
 Operational-readiness stories are accepted only when they produce maintainer/operator decisions and concrete evidence such as CI check names, release run results, package inventory proof, deferred-ID resolution records, runbook updates, or explicit accepted-risk entries. Before implementing Epics 14 or 15, verify every referenced deferred ID, retrospective item, review finding, and sprint-change proposal path still exists. If a reference is stale, update the story before implementation begins.
 
 Acceptance criteria that allow "implemented, documented, accepted, or carried forward" are allowed only in Engineering/Operational Readiness stories. MVP product capability stories must deliver working behavior or explicit testable validation, not documentation-only completion, unless a separate sprint change approves a deferral.
+
+Operational checkpoint stories may remain umbrella tracking stories, but each checkpoint must be implemented, reviewed, and evidenced as a separately verifiable slice. A checkpoint cannot be marked complete only because the umbrella story is complete.
 
 ### Epic 11: CI/CD & Automated Quality Pipeline
 Minimum build/test CI is an enabling prerequisite for any greenfield or restarted implementation sequence. Semantic release, NuGet publishing, branch protection, and release-hardening behavior remain in this operational-readiness epic.
@@ -660,17 +663,44 @@ So that ingestion, indexing, search, graph traversal, CLI, and later MCP behavio
 
 **Traceability:** FR44, NFR8. Story 5.4 deepens this guard across all access layers after the minimum prerequisite is in place.
 
+### Story 0.4: Minimum Build/Test CI Preflight
+
+As a maintainer preparing the first data-writing product stories,
+I want a minimum automated build and Docker-free test gate in place,
+So that Epic 1 work cannot proceed on an unbuildable or untested foundation.
+
+**Acceptance Criteria:**
+
+**Given** a pull request is opened against `main`
+**When** the minimum CI preflight runs
+**Then** the repository restores and builds `Hexalith.Memories.slnx` with `TreatWarningsAsErrors=true`
+**And** the build uses the SDK pinned by `global.json`
+**And** package versions remain centrally managed.
+
+**Given** Docker is not available on a contributor machine
+**When** the Docker-free test command runs
+**Then** Tier-1 unit and contract tests execute without a Dapr sidecar
+**And** Docker-required tests are skipped by filter or isolated in a separate lane with clear guidance.
+
+**Given** the CI preflight reports status
+**When** a build or test lane fails, is cancelled, or runs zero matching tests
+**Then** the lane fails visibly and exposes diagnostics sufficient for implementation handoff.
+
+**Validation Evidence Required:** Story completion must name the build command, Docker-free test command, CI check names if available, and the evidence location. If the minimum gate already exists, Story 0.4 may cite evidence originally produced under Story 11.1 as imported historical evidence. That citation does not create a dependency on future Story 11.1 completion.
+
 ## Epic 1: First Tenant-Scoped Memory Ingestion and Search
 
 Developer can boot the stack, provision or select an active tenant and case, ingest local content, and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and typed graph edges. Implementation foundation delivered by this epic includes Aspire AppHost, DAPR Workflows (`TenantProvisioningWorkflow` as tenant infrastructure owner, `IngestionWorkflow` with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), `references/` submodule validation, and graph indexing activities.
 
-**Implementation Readiness Amendment (2026-05-18):** Stories 1.2 through 1.5 are accepted as historical technical slices, but they must not be used as a pattern for future work without an observable proof gate. Any reopened, reimplemented, or analogous technical slice in Epic 1 must close with at least one developer-visible, contract-visible, CLI/API-visible, trace-visible, or integration-harness proof that demonstrates how the slice advances the tenant-scoped ingestion/search journey. Internal classes, mocks, or green unit tests alone are not sufficient completion evidence.
+**Implementation Readiness Amendment (2026-05-18; reaffirmed 2026-06-27):** Stories 1.2, 1.5, and 1.6 are accepted as historical broad technical or bundled infrastructure slices, but they are not valid patterns for future story creation. Any reopened, reimplemented, or analogous work must be split into independently demonstrable vertical stories with CLI/API/contract/trace/integration evidence. Internal classes, mocks, or green unit tests alone are not sufficient completion evidence.
 
 ### Story 1.2: Memory Unit Domain Model & Contracts
 
 As a developer,
 I want a well-defined domain model for memory units, graph edges, metadata fields, and ingestion types in `Contracts.V1`,
 So that all services share a consistent, versioned type system with serialization guarantees.
+
+**Historical Scope Guard:** Do not reopen Story 1.2 as a single broad contract/model implementation unit. If contract rework resumes, split it into separate numeric stories such as memory-unit contract shape, graph-edge contract shape, Evidence Packet/error contract mapping, and downstream serialization/consumer fixture proof.
 
 **Acceptance Criteria:**
 
@@ -1041,9 +1071,12 @@ So that I get the best possible results by combining syntactic, semantic, and gr
 **When** results are returned
 **Then** p95 latency is <1s at 10 concurrent queries/tenant with 10K memory units (NFR3)
 
-**Given** one search backend is unavailable during hybrid search
-**When** the remaining axes return results
-**Then** the system returns partial results with a `degraded: true` flag indicating which axes were unavailable
+**Given** hybrid search receives axis-availability information from the system degradation policy
+**When** one axis is unavailable and the remaining axes return results
+**Then** the fusion layer combines only the available axes
+**And** the response carries degraded search metadata naming the excluded axis.
+
+**Ownership note:** Story 2.5 owns search-layer fusion behavior over available axes. Story 5.6 owns the system-wide backend availability policy, health detection, chaos/degradation verification, and FR66/NFR18 degraded-service contract.
 
 ### Story 2.6: Explain Mode & Confidence Scores
 
@@ -1567,6 +1600,8 @@ As a developer,
 I want the system to return partial results when a backend is unavailable,
 So that I get the best possible answer even during infrastructure issues.
 
+**Ownership note:** Story 5.6 is the canonical owner of FR66 and NFR18 degraded-service behavior. Search stories consume the availability/degradation result; they do not define backend health policy independently.
+
 **Acceptance Criteria:**
 
 **Given** Redis Vector is unavailable but RediSearch and FalkorDB are healthy
@@ -1938,7 +1973,7 @@ So that I can ensure data integrity and resolve divergence caused by partial fai
 **And** each discrepancy identifies: memory unit ID, which backends have the unit, which backends are missing it
 
 **Given** a per-unit consistency inspection
-**When** I run `memories inspect --id <unit-id>`
+**When** I run `memories consistency inspect --tenant <tenant-id> --id <unit-id>`
 **Then** the system queries all three backends for that specific unit's state
 **And** reports: present/absent per backend, index entry details, vector presence, graph node and edges
 
@@ -2032,6 +2067,8 @@ I want to export all memory units, metadata, and graph edges for a case or tenan
 So that I can back up knowledge, migrate data, or analyze it externally.
 
 **Phase Note:** FR71 export is deferred to Phase 2 for readiness accounting and is not part of Epic 8's MVP Operations story sequence. If export exists as completed historical work, it remains non-blocking and must not be counted as MVP readiness unless a later sprint change explicitly pulls export forward. Story key `8.3` is reserved for this Phase 2 export history; the detailed MVP Epic 8 sequence intentionally continues with `8.4` and `8.5`. Story-status and story-file-scope tooling must treat `8.3` as `reserved-non-mvp` or explicitly map it as non-MVP historical work so it is not reported as a missing MVP story.
+
+**Activation rule:** When FR71 becomes active, create a normal Story 8.3 story file and sprint-status entry before implementation. Until then, this placeholder remains `reserved-non-mvp` and must not be counted as a missing MVP story or as active MVP readiness.
 
 **Acceptance Criteria:**
 
@@ -2256,7 +2293,7 @@ As a contributor,
 I want every PR to be automatically built and tested,
 So that I can trust the codebase quality and get fast feedback on my changes.
 
-**Sequencing note:** The minimum build/test gate represented by this story is an early enabling prerequisite for greenfield implementation. Semantic release, NuGet publish automation, release preflight, and branch-protection hardening remain later Epic 11/12 operational-readiness work.
+**Sequencing note:** The minimum Epic 1 preflight is owned by Story 0.4. Story 11.1 extends that foundation into the full GitHub Actions quality pipeline, including stable check names, integration-fast behavior, diagnostic artifacts, branch-protection documentation, and contributor/maintainer CI parity.
 
 **Acceptance Criteria:**
 
@@ -3220,6 +3257,8 @@ Future web users can inspect evidence, scope, sources, graph context, case activ
 
 **UX implementation boundary:** Epic 17 web work is FrontComposer-first and Fluent UI Blazor V5-only. Components must consume FrontComposer shell/composition primitives and Fluent UI Blazor V5 primitives before creating Memories-specific wrappers. Raw semantic markup and scoped CSS may be used only for unavoidable container/layout gaps with no component equivalent, and must not recreate Fluent theme primitives, controls, status treatments, typography ramps, color roles, or spacing systems. Any exception requires an explicit conformance-test allowlist entry and removal condition.
 
+**Readiness note:** Story 17.6 is the current conformance gate for the host-less web RCL. It does not close product-route browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, or manual screen-reader validation gaps; those remain future web-host validation work and must be sprint-selected separately.
+
 **UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
 
 ### Story 17.1: Evidence Cockpit and Trust Components
@@ -3441,7 +3480,7 @@ Maintainers can give the first external consumer of Hexalith.Memories (the `Hexa
 
 **Release-timing note:** Story 18.4 is the only story with semantic-release sensitivity — it changes the public `Hexalith.Memories.Client.Rest` contract and must land as an additive `feat` (new optional idempotency token / new overload; experimental-marker removal is non-breaking) and be cut before the Parties project pins the stabilised SDK. The other six stories are documentation, drift-guard tests, or additive endpoints with no breaking-change risk.
 
-**Sequencing note:** Stories 18.5 (source-URI-keyed lookup) and 18.6 (`MemoryUnitId` stability contract) are mutually dependent in their contract text — 18.5 reuses and depends on the dedup-record lifetime that 18.6 documents, and 18.6 names 18.5 as the authoritative resolution path. Land them in the same change (or 18.6's contract before/with 18.5's endpoint) so the lookup endpoint is never published against an unstated stability guarantee.
+**Sequencing correction:** Stories 18.5 and 18.6 must not be treated as mutually dependent. Story 18.6 is the independent `MemoryUnitId` and source-URI dedup-record stability contract. Story 18.5 is the lookup endpoint that consumes that contract. If either story is reopened or reimplemented, complete or refresh Story 18.6's contract first, then apply Story 18.5's endpoint work. Preserve the existing numeric keys and completed story history for traceability.
 
 ### Story 18.1: AppHost Project-Resolution Guard and Public-Surface Stability Contract
 
@@ -3565,9 +3604,10 @@ So that graph mode no longer silently degrades to local mode when the canonical 
 **When** a consumer needs the unit for a known source URI,
 **Then** a tenant- and case-scoped endpoint resolves a source URI to its canonical `MemoryUnitId` by exact key, returning a structured not-found result when no unit exists rather than a best-effort search hit.
 
-**Given** the dedup record `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}` already maps source URI → `MemoryUnitId` internally,
-**When** the lookup is implemented,
-**Then** it reuses that existing mapping as the authoritative index where possible rather than introducing a parallel store, and documents the dependency on the dedup record's lifetime (see Story 18.6).
+**Given** the Story 18.6 stability contract states the lifetime and failure modes of the source-URI dedup record `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}`,
+**When** the lookup is implemented or reworked,
+**Then** it reuses that existing mapping as the authoritative index where possible rather than introducing a parallel store
+**And** if the stability contract is missing or stale, Story 18.6 must be completed or refreshed before the endpoint is accepted.
 
 **Given** the endpoint is part of the public client contract,
 **When** it is added,
@@ -3595,7 +3635,9 @@ So that the mapping cannot accumulate ghost ids and exceed the Dapr state-store 
 
 **Given** loss of the dedup record (eviction, TTL expiry, or contract change) would re-mint an id,
 **When** the contract is published,
-**Then** it documents that failure mode and recommends the keyed lookup (Story 18.5) as the authoritative resolution path so consumers need not maintain a growing local id list, and notes the conditions under which a consumer should dedup by `sourceUri` instead.
+**Then** it documents that failure mode
+**And** it tells consumers to retain `(tenantId, caseId, sourceUri)` as the durable source identity for long-lived correlation
+**And** it states that consumers should resolve the current `MemoryUnitId` through the source-URI keyed lookup when that endpoint is available, or dedup by `sourceUri` when it is not.
 
 **Parties-side follow-up:** Parties revisits cap / TTL / dedup-by-`SourceUri` in `PartyMemoryUnitMappingStore` against the documented guarantee.
 
