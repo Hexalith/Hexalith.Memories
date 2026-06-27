@@ -181,7 +181,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 
 **From Architecture — Starter Template & Scaffolding:**
 - Aspire Empty + Incremental Projects (D-selected approach). `dotnet new aspire` for orchestration foundation, then add projects incrementally as features are built
-- Git submodules: `Hexalith.Commons` (error handling, shared base types) and `Hexalith.EventStore` (event types, versioning conventions)
+- Git submodules under `references/`: `references/Hexalith.Commons` (error handling, shared base types) and `references/Hexalith.EventStore` (event types, versioning conventions)
 - Build script must detect missing submodules and print helpful error
 
 **From Architecture — DAPR as First-Class Citizen:**
@@ -577,7 +577,7 @@ So that I have a working development environment without manual container orches
 
 **Acceptance Criteria:**
 
-**Given** the repository is cloned with root-level git submodules initialized (`Hexalith.Commons`, `Hexalith.EventStore`, `Hexalith.AI.Tools`, `Hexalith.Tenants`, `Hexalith.FrontComposer`)
+**Given** the repository is cloned with root-declared git submodules initialized under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, `references/Hexalith.FrontComposer`, `references/Hexalith.Builds`, `references/Hexalith.PolymorphicSerializations`)
 **When** I run `dotnet run --project Hexalith.Memories.AppHost`
 **Then** Redis Stack container starts on port 6379
 **And** FalkorDB container starts on port 6380
@@ -662,7 +662,7 @@ So that ingestion, indexing, search, graph traversal, CLI, and later MCP behavio
 
 ## Epic 1: First Tenant-Scoped Memory Ingestion and Search
 
-Developer can boot the stack, provision or select an active tenant and case, ingest local content, and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and typed graph edges. Implementation foundation delivered by this epic includes Aspire AppHost, DAPR Workflows (`TenantProvisioningWorkflow` as tenant infrastructure owner, `IngestionWorkflow` with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), root-level submodule validation, and graph indexing activities.
+Developer can boot the stack, provision or select an active tenant and case, ingest local content, and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and typed graph edges. Implementation foundation delivered by this epic includes Aspire AppHost, DAPR Workflows (`TenantProvisioningWorkflow` as tenant infrastructure owner, `IngestionWorkflow` with saga/compensation), Contracts V1, Redis (RediSearch + Vector), FalkorDB, Kreuzberg (NuGet, in-process), `references/` submodule validation, and graph indexing activities.
 
 **Implementation Readiness Amendment (2026-05-18):** Stories 1.2 through 1.5 are accepted as historical technical slices, but they must not be used as a pattern for future work without an observable proof gate. Any reopened, reimplemented, or analogous technical slice in Epic 1 must close with at least one developer-visible, contract-visible, CLI/API-visible, trace-visible, or integration-harness proof that demonstrates how the slice advances the tenant-scoped ingestion/search journey. Internal classes, mocks, or green unit tests alone are not sufficient completion evidence.
 
@@ -2977,7 +2977,7 @@ So that future planning can distinguish open risk, resolved risk, accepted risk,
 
 **Given** this governance story touches planning and tracking files,
 **When** it is implemented,
-**Then** it avoids submodule pointer changes and follows root-level submodule discipline.
+**Then** it avoids submodule pointer changes and follows root-declared `references/` submodule discipline.
 
 ## Epic 15: Carry-Forward Operational Risk Closure
 
@@ -3119,7 +3119,7 @@ So that historical noise, consciously accepted risks, and true backlog candidate
 **Implementation Checkpoints:**
 
 - Checkpoint A — AppHost boot orchestration: `OnResourceReady` rewrite for the DAPR sidecar start-event, per-invocation temp directory for component YAML generation, and concurrent-AppHost-run isolation for `statestore.yaml` and `pubsub.yaml`.
-- Checkpoint B — Submodule guard expansion: `Directory.Build.props` `CheckSubmodules` MSBuild target validates every `.gitmodules` entry (Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, Hexalith.FrontComposer).
+- Checkpoint B — Submodule guard expansion: `Directory.Build.props` `CheckSubmodules` MSBuild target validates every `.gitmodules` entry under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, `references/Hexalith.FrontComposer`, `references/Hexalith.Builds`, `references/Hexalith.PolymorphicSerializations`).
 - Checkpoint C — Health-check and DAPR-template hardening: `ServiceDefaults.AddDefaultHealthChecks` returns 503 from `/ready` when Redis is unreachable, `memories-server` waits for `secretstore` and `llm` components, and the production DAPR templates (`statestore.yaml`, `secretstore.yaml`, `conversation-llm.yaml`) ship with correct env-var interpolation, volume mounts, and Conversation API metadata keys.
 - Checkpoint D — Story 1.1 Scope-Override and regression coverage: AppPort=5000 spec receives the Scope-Override block recording the Aspire-Testing port-randomization decision, Completion Notes amended, and targeted regression coverage exercises the expanded submodule guard, the ready-tagged Redis health check, and the component-file rewrite ordering invariant.
 
@@ -3143,7 +3143,7 @@ So that the AppHost boot orchestration, ServiceDefaults health/telemetry surface
 
 **Given** `Directory.Build.props` is the build gate for missing submodules,
 **When** the implementation lands,
-**Then** the `CheckSubmodules` MSBuild target validates every entry in `.gitmodules`: Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, and Hexalith.FrontComposer.
+**Then** the `CheckSubmodules` MSBuild target validates every entry in `.gitmodules`: `references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, `references/Hexalith.FrontComposer`, `references/Hexalith.Builds`, and `references/Hexalith.PolymorphicSerializations`.
 
 **Given** `ServiceDefaults.AddDefaultHealthChecks` is the canonical health-check entry point,
 **When** the implementation lands,
@@ -3449,7 +3449,7 @@ Maintainers can give the first external consumer of Hexalith.Memories (the `Hexa
 
 As a maintainer of a downstream Aspire AppHost,
 I want a compile-time guarantee that `Projects.Hexalith_Memories_Server` and `Projects.Hexalith_Memories_Mcp` resolve and that their public project/type names stay stable,
-So that a clean clone with root submodules initialised builds the full `.slnx` without submodule-drift surprises.
+So that a clean clone with root-declared `references/` submodules initialised builds the full `.slnx` without submodule-drift surprises.
 
 **Acceptance Criteria:**
 
@@ -3673,5 +3673,5 @@ So that Tenants, Parties, and future Hexalith modules can publish events without
 
 - Multi-topic routing in a single Memories deployment
 - Direct REST-based module event ingestion
-- Mutating Hexalith.EventStore, Hexalith.Tenants, or other submodules
+- Mutating `references/Hexalith.EventStore`, `references/Hexalith.Tenants`, or other submodules
 - New persistence mechanisms outside the existing Memories ingestion workflow

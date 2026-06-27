@@ -46,9 +46,13 @@ FORBIDDEN_DEFAULT_GLOBS = (
     "tools/pack-release.ps1",
     "tools/test-release.ps1",
     "package-lock.json",
-    "Hexalith.AI.Tools/**",
-    "Hexalith.Commons/**",
-    "Hexalith.EventStore/**",
+    "references/Hexalith.AI.Tools/**",
+    "references/Hexalith.Builds/**",
+    "references/Hexalith.Commons/**",
+    "references/Hexalith.EventStore/**",
+    "references/Hexalith.FrontComposer/**",
+    "references/Hexalith.PolymorphicSerializations/**",
+    "references/Hexalith.Tenants/**",
 )
 
 

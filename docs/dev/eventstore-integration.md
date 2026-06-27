@@ -76,7 +76,7 @@ public static IServiceCollection AddMemoriesEventStoreIntegration(
 Neither takes a `redis` parameter, and **no `AddHexalithEventStore` redis-parameter overload exists on the
 Memories side**. Redis is wired implicitly via the DAPR state-store / pub-sub components (see section 1.3).
 `AddHexalithEventStore` itself lives **only** in the `Hexalith.EventStore` submodule
-([`Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs`](../../Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs)),
+([`references/Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs`](../../references/Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreExtensions.cs)),
 and even there takes no redis parameter.
 
 The Parties consumer intake (MEM-1, 2026-05-27) reported an `AddHexalithEventStore` redis-parameter "drift";

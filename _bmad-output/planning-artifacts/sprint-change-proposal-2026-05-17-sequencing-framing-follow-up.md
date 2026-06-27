@@ -141,7 +141,7 @@ NEW:
 ### Epic 1: First Tenant-Scoped Memory Ingestion and Search
 Developer can boot the stack, provision or select a tenant and case, ingest local content, and see it persisted and searchable across text, vector, and graph axes with tenant-safe provenance and graph edges.
 
-Implementation foundation delivered by this epic includes Aspire AppHost, DAPR workflows, Contracts V1, Redis, FalkorDB, Kreuzberg, root-level submodule validation, and graph indexing activities.
+Implementation foundation delivered by this epic includes Aspire AppHost, DAPR workflows, Contracts V1, Redis, FalkorDB, Kreuzberg, `references/` submodule validation, and graph indexing activities.
 ```
 
 Rationale: Leads with the developer-visible outcome while preserving implementation details.

@@ -2,7 +2,7 @@
 
 ## Setup
 
-Clone with submodules or initialize them before restoring:
+Clone with root-declared submodules under `references/` or initialize them before restoring:
 
 ```powershell
 git submodule update --init
@@ -112,11 +112,14 @@ it out explicitly in story review.
 
 The forbidden-default list (one source of truth, in `tools/check-story-file-scope.py`) currently
 covers: `src/**/*.cs`, `tests/**/*.cs`, `tools/publish-nuget.ps1`, `tools/pack-release.ps1`,
-`tools/test-release.ps1`, `package-lock.json`, and the submodule trees `Hexalith.AI.Tools/**`,
-`Hexalith.Commons/**`, `Hexalith.EventStore/**`. Submodule pointer changes (a tree entry like the bare
-`Hexalith.EventStore` path with no children) are also detected and treated as forbidden-default — the
-matcher uses recursive `**` semantics so a `<submodule>/**` glob matches both the bare submodule path
-and any path beneath it.
+`tools/test-release.ps1`, `package-lock.json`, and the submodule trees under `references/`
+(`references/Hexalith.AI.Tools/**`, `references/Hexalith.Builds/**`,
+`references/Hexalith.Commons/**`, `references/Hexalith.EventStore/**`,
+`references/Hexalith.FrontComposer/**`, `references/Hexalith.PolymorphicSerializations/**`,
+and `references/Hexalith.Tenants/**`). Submodule pointer changes (a tree entry like the bare
+`references/Hexalith.EventStore` path with no children) are also detected and treated as
+forbidden-default — the matcher uses recursive `**` semantics so a `<submodule>/**` glob matches
+both the bare submodule path and any path beneath it.
 
 To run the check directly:
 
@@ -166,9 +169,9 @@ review.
 - An entry intentionally left open after the story completes must carry a fresh
   `Re-open trigger:` value that names the future condition under which it should
   be revisited. Do not silently delete or hide such entries.
-- Root-level submodule pointer changes are forbidden by default. An Epic 14
-  story must not initialize, update, or bump nested submodule pointers as part
-  of its scope.
+- Root-declared submodule pointer changes under `references/` are forbidden by
+  default. An Epic 14 story must not initialize, update, or bump nested
+  submodule pointers as part of its scope.
 
 ## Conventional Commits
 
@@ -251,7 +254,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | `test-unit-contract` | Run Docker-free unit/contract tests from `tools/test-projects.unit-contract.txt`. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
-All jobs checkout submodules and use the SDK from `global.json`. Test lanes write TRX files
+All jobs checkout root-declared submodules under `references/` and use the SDK from `global.json`. Test lanes write TRX files
 under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
 selected project executes zero tests **when `--results-directory` (or `-ResultsDirectory`) is passed**;
 local invocations without the flag skip TRX emission and therefore skip the zero-test guard. Pass the

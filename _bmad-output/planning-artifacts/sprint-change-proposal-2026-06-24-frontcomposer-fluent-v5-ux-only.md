@@ -186,13 +186,13 @@ Section: Task 0 package/version bullet in each story.
 OLD:
 
 ```markdown
-Verify the local Fluent UI Blazor package in `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
+Verify the local Fluent UI Blazor package in `references/Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The local package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.2-26098.1`; the available MCP documentation is for `5.0.0.26098`, so local code/tests are authoritative when signatures differ.
 ```
 
 NEW:
 
 ```markdown
-Verify the local Fluent UI Blazor package in `Directory.Packages.props` and `Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The current aligned package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.3-26138.1`; the available Fluent UI MCP documentation targets `5.0.0.26139` and is incompatible, so local package/submodule code and tests are authoritative when signatures differ.
+Verify the local Fluent UI Blazor package in `Directory.Packages.props` and `references/Hexalith.FrontComposer/Directory.Packages.props` before copying examples. The current aligned package is `Microsoft.FluentUI.AspNetCore.Components` `5.0.0-rc.3-26138.1`; the available Fluent UI MCP documentation targets `5.0.0.26139` and is incompatible, so local package/submodule code and tests are authoritative when signatures differ.
 ```
 
 ADD near each Story 17.2-17.5 Task 0:

@@ -624,7 +624,7 @@ The epics file contains Epic 0 through Epic 15. MVP readiness scope is explicitl
 - Story independence: Pass with caveats. Story 0.0 no longer includes later tenant/case acceptance criteria; those criteria now live at the Epic 0 readiness-gate level and in Stories 0.1-0.3.
 - Story sizing: Mostly pass. Historical oversized or technical stories are guarded with observable proof gates, historical-scope notes, or implementation checkpoints.
 - Acceptance criteria quality: Pass with minor caveats. The reviewed stories generally use Given/When/Then criteria with testable outcomes, error behavior, and evidence requirements.
-- Starter template requirement: Pass. Story 0.0 covers AppHost, ServiceDefaults, build, DAPR sidecar, Redis, FalkorDB, Aspire Dashboard, and root-level submodule discipline.
+- Starter template requirement: Pass. Story 0.0 covers AppHost, ServiceDefaults, build, DAPR sidecar, Redis, FalkorDB, Aspire Dashboard, and root-declared `references/` submodule discipline.
 - Database/resource creation timing: Pass. Tenant infrastructure is owned by `TenantProvisioningWorkflow`; Story 0.1 establishes the minimum prerequisite, and Story 5.1 owns the full lifecycle without introducing a divergent path.
 
 ### Critical Violations

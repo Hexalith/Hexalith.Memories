@@ -65,7 +65,7 @@ Story 0.0 included `Foundation Epic Minimum Acceptance Criteria` covering tenant
 
 NEW:
 
-The same criteria were moved to `Epic 0 Definition of Done / Readiness Gate`. Story 0.0 now remains limited to scaffold, AppHost boot, ServiceDefaults, contracts/test structure, Redis/FalkorDB/DAPR/Aspire Dashboard, and root-level submodule behavior.
+The same criteria were moved to `Epic 0 Definition of Done / Readiness Gate`. Story 0.0 now remains limited to scaffold, AppHost boot, ServiceDefaults, contracts/test structure, Redis/FalkorDB/DAPR/Aspire Dashboard, and root-declared `references/` submodule behavior.
 
 Rationale: Story 0.0 is independently completable. Stories 0.1, 0.2, and 0.3 remain responsible for the later foundation behaviors.
 

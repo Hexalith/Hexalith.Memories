@@ -140,7 +140,7 @@ in `.github/workflows/release.yml`. From `npx semantic-release` onward, the work
 semantic-release plugins, not by additional workflow steps.
 
 1. A `push` event on `main` triggered `.github/workflows/release.yml`.
-2. The release job checked out the repository (submodules enabled at root level only;
+2. The release job checked out the repository (root-declared `references/` submodules enabled;
    `submodules: true`, not `recursive`).
 3. The job restored and built `Hexalith.Memories.slnx`.
 4. `tools/test-release.ps1` ran the unit and non-Docker release test suite.

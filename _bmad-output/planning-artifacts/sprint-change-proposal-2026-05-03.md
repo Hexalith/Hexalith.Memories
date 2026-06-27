@@ -209,7 +209,7 @@ Acceptance criteria:
 - Existing open deferred entries targeted by Epic 14 stories are updated as `resolved`, `accepted`, or `carried-forward`.
 - Sprint-status update guidance avoids unbounded one-line history comments.
 - Tests or scripts that parse deferred-work entries are updated to the new structure.
-- The proposal avoids changing submodule pointers and follows root-level submodule discipline.
+- The proposal avoids changing submodule pointers and follows root-declared `references/` submodule discipline.
 ```
 
 ### 5.2 `sprint-status.yaml` addition

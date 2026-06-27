@@ -265,12 +265,12 @@ class StoryScopeValidatorTests(unittest.TestCase):
             "--story-key",
             "12-3-story-file-scope-enforcement",
             "--changed-file",
-            "Hexalith.EventStore",
+            "references/Hexalith.EventStore",
         )
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            "Hexalith.EventStore",
+            "references/Hexalith.EventStore",
             section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
         )
 

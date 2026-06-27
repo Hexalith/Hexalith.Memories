@@ -30,7 +30,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Web UI uses FrontComposer + Fluent UI Blazor V5** - Fluent UI is pinned to `5.0.0-rc.3-26138.1`; bUnit is `2.8.4-preview`.
 - **Tests use xUnit v3 + Shouldly + NSubstitute** - package pins are `xunit.v3` `3.2.2`, `Shouldly` `4.3.0`, `NSubstitute` `5.3.0`, and `Microsoft.NET.Test.Sdk` `18.6.0`.
 - **Release packages are explicit** - `tools/release-packages.json` is the source of truth for the eight packable projects.
-- **Root submodules are required** - follow the root-level submodule policy from `AGENTS.md`; never initialize nested submodules recursively.
+- **Root-declared submodules are required under `references/`** - follow the submodule policy from `AGENTS.md`; never initialize nested submodules recursively.
 
 ## Critical Implementation Rules
 
@@ -105,8 +105,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Do not label refactors as features** - internal reshaping without public capability should be `refactor`, not `feat`.
 - **`tools/release-packages.json` controls publish scope** - package additions/removals must update this file and related release tests/scripts.
 - **Verify before handoff/commit** - run focused tests for small changes; run `dotnet build` and broader tests for shared contracts, workflows, storage, MCP, Web, release, or tenant-isolation changes.
-- **Respect root-level submodule policy** - initialize/update only root-level submodules by default; never use recursive submodule updates unless the user explicitly asks for nested submodules.
-- **Do not modify submodule contents casually** - shared dependencies such as `Hexalith.Commons`, `Hexalith.EventStore`, `Hexalith.AI.Tools`, `Hexalith.Tenants`, and `Hexalith.FrontComposer` require explicit intent and separate submodule commits.
+- **Respect root-declared `references/` submodule policy** - initialize/update only root-declared submodules under `references/` by default; never use recursive submodule updates unless the user explicitly asks for nested submodules.
+- **Do not modify submodule contents casually** - shared dependencies such as `references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, and `references/Hexalith.FrontComposer` require explicit intent and separate submodule commits.
 - **Keep dependency bumps deliberate** - update `Directory.Packages.props` with comments when versions are pinned for advisories, prerelease dependencies, or cross-package compatibility.
 - **CI/release files are product code** - changes to `.github`, `.releaserc.json`, commitlint, NuGet packaging, release scripts, or package maps need tests or dry-run validation where practical.
 - **Use feature branches and PRs for publishable work** - avoid direct commits to main/release branches.
@@ -126,7 +126,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Never bypass existing formatter/router paths** - CLI output must remain format-selectable and testable.
 - **Never copy legacy Fluent tokens into new UI** - use FrontComposer, Fluent UI V5 components, and Fluent 2 tokens; track legacy token cleanup as migration debt.
 - **Never add package versions to `.csproj` files** - use `Directory.Packages.props`.
-- **Never use recursive submodule commands by default** - initialize/update only root-level submodules unless nested submodules are explicitly requested.
+- **Never use recursive submodule commands by default** - initialize/update only root-declared `references/` submodules unless nested submodules are explicitly requested.
 - **Never skip focused tests on tenant, workflow, search, auth, serialization, MCP, Web evidence states, release packaging, or telemetry changes** - these areas carry the highest regression risk.
 
 ---

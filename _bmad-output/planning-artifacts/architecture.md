@@ -63,8 +63,8 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 | .NET Aspire | Orchestration, local dev, health checks, observability defaults | Development experience and deployment model |
 | Redis Stack (SSPL/RSAL) | Cannot offer as competing managed service; self-host or Redis Cloud | **Operational simplicity** — one infrastructure for three capabilities. Trade-off: capability depth (RediSearch ≠ Elasticsearch, Redis Vector ≠ Qdrant, FalkorDB ≠ Neo4j). Extraction points address this. Avoid deep dependencies on RediSearch-specific query syntax in domain logic — wrap query construction behind a builder pattern. |
 | FalkorDB (AGPL) | Architectural boundary via DAPR required; extraction point for future swap. **Unvalidated at scale** — graph traversal performance at >100K nodes, depth >3 needs early benchmarking. **Memory is shared at process level** — physical database isolation does NOT provide memory isolation; memory-heavy tenants risk OOM affecting all co-located tenants. | Graph engine for causal intelligence. Decision: FalkorDB for MVP (see resolved decision below). |
-| Hexalith.Commons (git submodule) | Error handling conventions, shared base types. **Build script must detect missing submodules** and print helpful error instead of cryptic MSBuild failures. | Ecosystem consistency |
-| Hexalith.EventStore (git submodule) | Event types, versioning conventions, DAPR integration patterns | Zero-code integration target |
+| references/Hexalith.Commons (git submodule) | Error handling conventions, shared base types. **Build script must detect missing submodules** and print helpful error instead of cryptic MSBuild failures. | Ecosystem consistency |
+| references/Hexalith.EventStore (git submodule) | Event types, versioning conventions, DAPR integration patterns | Zero-code integration target |
 | Embedding provider APIs | External dependency for vector generation; rate limits, latency, cost. **Provider outage halts ingestion for all affected tenants.** Thundering herd risk on recovery — workflow retry policies with jitter. Shared rate limiter coordination deferred to Phase 3. | External chokepoint |
 | Polyglot services via DAPR | When a Python/other-language library is the best fit for a major feature, create a service in that language and call it through DAPR service invocation. **DAPR makes the calling language invisible** — C# workflows call Python services identically to C# activities. The Dapr Agents Python SDK (GA 1.0.0) is the primary example: AI enrichment runs as a Python sidecar service rather than reimplementing agent patterns in C#. | Best-of-breed per feature; DAPR service invocation as universal glue |
 | JSON-only serialization | All service communication; CloudEvents for pub/sub | Simplicity and interoperability |
@@ -517,7 +517,7 @@ dotnet new classlib -n Hexalith.Memories.EventStore
 | 10 | `Hexalith.Memories.Mcp` | LLM agent interface (Phase 1.5) |
 | 11 | `Hexalith.Memories.EventStore` | Zero-code integration (Phase 1.5) |
 
-**Note:** Project initialization is the first implementation story. Git submodules (`Hexalith.Commons`, `Hexalith.EventStore`) must be configured in the same story.
+**Note:** Project initialization is the first implementation story. Git submodules under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`) must be configured in the same story.
 
 ## Core Architectural Decisions
 
@@ -1184,7 +1184,7 @@ results.ShouldNotBeEmpty();
 Hexalith.Memories/
 ├── .editorconfig
 ├── .gitignore
-├── .gitmodules                                # Hexalith.Commons, Hexalith.EventStore
+├── .gitmodules                                # Root-declared submodules under references/
 ├── .releaserc.json                            # semantic-release config
 ├── commitlint.config.js                       # Conventional Commits enforcement
 ├── Directory.Build.props                      # Shared MSBuild properties
@@ -1625,7 +1625,7 @@ tests/
 
 **First Implementation Steps:**
 1. Project scaffold: `dotnet new aspire`, create Contracts + Server + Redis + Testing + AppHost + ServiceDefaults
-2. Configure git submodules (Hexalith.Commons, Hexalith.EventStore)
+2. Configure git submodules under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`)
 3. Set up `Directory.Packages.props` (including `Dapr.Workflow`, `Dapr.Actors`, `Dapr.Actors.AspNetCore` 1.17.6), `.editorconfig`, `global.json`, `.releaserc.json`
 4. Configure DAPR statestore component with `actorStateStore: "true"` for workflow + actor state
 5. CI pipeline: `.github/workflows/ci.yml` + `release.yml`

@@ -37,7 +37,7 @@ public static class HexalithMemoriesServerExtensions
     /// <summary>
     /// Adds the Hexalith.Memories search-index server and its supporting DAPR topology to the distributed
     /// application, resolving the server project cross-repo from the consuming repository's
-    /// <c>Hexalith.Memories</c> submodule.
+    /// <c>references/Hexalith.Memories</c> submodule.
     /// </summary>
     /// <param name="builder">The distributed application builder.</param>
     /// <param name="stateStore">The shared DAPR state-store component the Memories server reuses.</param>

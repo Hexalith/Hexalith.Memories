@@ -71,7 +71,7 @@
     <!-- Story 17.1: Fluent UI Blazor is pinned to the prerelease aligned with the Hexalith.FrontComposer
          submodule. The MCP documentation target 5.0.0.26098 is incompatible with the local package, so
          component API choices follow the submodule's pinned version. Bump only in lockstep with
-         Hexalith.FrontComposer/Directory.Packages.props. -->
+         references/Hexalith.FrontComposer/Directory.Packages.props. -->
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.0-rc.3-26138.1" />
     <!-- Story 17.1: bUnit follows Hexalith.FrontComposer.Testing's validated prerelease floor. -->
     <PackageVersion Include="bunit" Version="2.8.4-preview" />

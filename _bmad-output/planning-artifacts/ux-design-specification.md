@@ -8,9 +8,9 @@ inputDocuments:
   - _bmad-output/planning-artifacts/product-brief-Hexalith.Memories-2026-03-22.md
   - _bmad-output/planning-artifacts/research/technical-kreuzberg-ocr-research-2026-03-28.md
   - _bmad-output/project-context.md
-  - Hexalith.Commons/_bmad-output/project-context.md
-  - Hexalith.FrontComposer/_bmad-output/project-context.md
-  - Hexalith.EventStore/_bmad-output/project-context.md
+  - references/Hexalith.Commons/_bmad-output/project-context.md
+  - references/Hexalith.FrontComposer/_bmad-output/project-context.md
+  - references/Hexalith.EventStore/_bmad-output/project-context.md
 ---
 
 # UX Design Specification Hexalith.Memories

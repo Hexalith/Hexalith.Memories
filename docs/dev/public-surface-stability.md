@@ -8,7 +8,7 @@ its assembly, its root namespace, or its NuGet `PackageId` silently breaks consu
 signature changed. This document records the contract and the breaking-change rule that protects it.
 
 Origin: MEM-1 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27). A clean clone with
-root submodules initialised must build the full `.slnx` without submodule-drift surprises; that requires the
+root-declared `references/` submodules initialised must build the full `.slnx` without submodule-drift surprises; that requires the
 two consumer-facing host projects below to keep resolving under stable names.
 
 ## Contract — consumer-facing host projects

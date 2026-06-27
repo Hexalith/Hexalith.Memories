@@ -22,8 +22,8 @@ cd Hexalith.Memories
 git submodule update --init
 ```
 
-The submodules are checked out at the repository root: `Hexalith.Commons`, `Hexalith.EventStore`, `Hexalith.AI.Tools`, `Hexalith.Tenants`, `Hexalith.FrontComposer`, `Hexalith.Builds`, and `Hexalith.PolymorphicSerializations`.
-The non-recursive `git submodule update --init` above initializes all of them; `Hexalith.FrontComposer` is required to build the `Hexalith.Memories.Web` component library. Initialize only these root-level submodules; do not use `--recursive`.
+The root-declared submodules are checked out under `references/`: `references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, `references/Hexalith.FrontComposer`, `references/Hexalith.Builds`, and `references/Hexalith.PolymorphicSerializations`.
+The non-recursive `git submodule update --init` above initializes all of them; `references/Hexalith.FrontComposer` is required to build the `Hexalith.Memories.Web` component library. Initialize only these root-declared submodules; do not use `--recursive`.
 
 ### 3. Build the solution (~5 min first time, ~30s incremental)
 

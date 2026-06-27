@@ -583,7 +583,7 @@ Missing nodes are already handled by gap detection (`[MISSING: event-id]`). If c
 
 ### Project-Type Overview
 
-Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet packages with a DAPR-native service architecture orchestrated by .NET Aspire. Internal services communicate via DAPR service invocation; external consumers (CLI, LLM agents, third-party apps) connect through a REST API behind infrastructure-managed ingress. The system reuses shared infrastructure from the Hexalith ecosystem via git submodules (Hexalith.Commons for error handling, Hexalith.EventStore for versioning conventions).
+Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet packages with a DAPR-native service architecture orchestrated by .NET Aspire. Internal services communicate via DAPR service invocation; external consumers (CLI, LLM agents, third-party apps) connect through a REST API behind infrastructure-managed ingress. The system reuses shared infrastructure from the Hexalith ecosystem via root-declared git submodules under `references/` (`references/Hexalith.Commons` for error handling, `references/Hexalith.EventStore` for versioning conventions).
 
 ### Technical Architecture Considerations
 
@@ -643,7 +643,7 @@ MCP Server is a DAPR service with its own sidecar, communicating with Memories S
 
 **Error Handling Model:**
 
-Errors follow the Hexalith.Commons shared error handling conventions (via git submodule). Error propagation chain across all hops:
+Errors follow the Hexalith.Commons shared error handling conventions (via `references/Hexalith.Commons`). Error propagation chain across all hops:
 
 | Hop | Error Format | Includes |
 |---|---|---|
@@ -656,7 +656,7 @@ Internal DAPR errors must propagate through ingress with enough context for CLI 
 
 **Versioning Strategy:**
 
-Aligned with Hexalith.EventStore conventions (via git submodule):
+Aligned with Hexalith.EventStore conventions (via `references/Hexalith.EventStore`):
 - NuGet packages: Semantic versioning
 - Service contract: Backward-compatible additions only (no versioned endpoints — DAPR app-id is unversioned)
 - Breaking changes: New message types, deprecation cycle matching EventStore patterns
@@ -827,8 +827,8 @@ Contributors can run unit tests without Docker. Integration tests require Docker
 ### Implementation Considerations
 
 **Git Submodule Dependencies:**
-- `Hexalith.Commons` — Error handling, shared utilities, base types
-- `Hexalith.EventStore` — Event types, versioning conventions, DAPR integration patterns
+- `references/Hexalith.Commons` — Error handling, shared utilities, base types
+- `references/Hexalith.EventStore` — Event types, versioning conventions, DAPR integration patterns
 
 **DAPR + Aspire Orchestration:**
 - No standalone server deployment — .NET Aspire AppHost orchestrates all services with DAPR sidecars

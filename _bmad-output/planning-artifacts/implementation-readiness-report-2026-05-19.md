@@ -669,7 +669,7 @@ All cross-epic dependencies are **backward**, not forward:
 
 #### Starter Template Requirement
 
-✅ **Met.** Story 0.0 (Project Scaffolding & Single-Command Boot) is the first story. It creates the Aspire AppHost, ServiceDefaults, Contracts, Server, Redis projects, integrates root-level submodules (Hexalith.Commons, Hexalith.EventStore, Hexalith.AI.Tools, Hexalith.Tenants, Hexalith.FrontComposer), and validates submodule presence with a helpful error message. Aligned with Architecture D-selected approach (Aspire Empty + Incremental Projects).
+✅ **Met.** Story 0.0 (Project Scaffolding & Single-Command Boot) is the first story. It creates the Aspire AppHost, ServiceDefaults, Contracts, Server, Redis projects, integrates root-declared submodules under `references/` (`references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, `references/Hexalith.FrontComposer`, `references/Hexalith.Builds`, `references/Hexalith.PolymorphicSerializations`), and validates submodule presence with a helpful error message. Aligned with Architecture D-selected approach (Aspire Empty + Incremental Projects).
 
 #### Greenfield Indicators
 

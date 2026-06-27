@@ -15,7 +15,7 @@ using System.Xml.Linq;
 using Shouldly;
 
 /// <summary>
-/// Story 15.6 AC #3 / #7 — behavioral regression guard for the root-level submodule check defined in
+/// Story 15.6 AC #3 / #7 — behavioral regression guard for the root-declared submodule check defined in
 /// <c>Directory.Build.props</c>. The earlier implementation introspected XML and asserted text patterns
 /// without ever invoking MSBuild (Story 15.6 code review patch); this rewrite invokes the
 /// <c>CheckSubmodules</c> target directly with one submodule's <c>.git</c> marker temporarily renamed
@@ -23,19 +23,20 @@ using Shouldly;
 /// </summary>
 /// <remarks>
 /// The runtime test is intentionally non-parallel with the rest of this assembly: it mutates the
-/// shared workspace by renaming <c>Hexalith.AI.Tools/.git</c> for the duration of one
+/// shared workspace by renaming <c>references/Hexalith.AI.Tools/.git</c> for the duration of one
 /// <c>dotnet msbuild</c> invocation, restores it in <c>finally</c>, and guards against concurrent
 /// invocations via a named mutex. The XML-introspection fallback remains as a cheap smoke check.
 /// </remarks>
 [Collection(SubmoduleGuardCollection.Name)]
 public sealed partial class SubmoduleGuardTests
 {
-    private const string TargetSubmodule = "Hexalith.AI.Tools";
+    private const string TargetSubmoduleName = "Hexalith.AI.Tools";
+    private static readonly string TargetSubmodulePath = Path.Combine("references", TargetSubmoduleName);
     private const string GitMarkerName = ".git";
     private const string BackupSuffix = ".15-6-test-backup";
 
     [Fact]
-    public void DirectoryBuildProps_CheckSubmodulesIncludesEveryRootGitmoduleEntry()
+    public void DirectoryBuildProps_CheckSubmodulesIncludesEveryGitmodulePath()
     {
         string repoRoot = LocateRepoRoot();
         string gitmodules = File.ReadAllText(Path.Combine(repoRoot, ".gitmodules"));
@@ -52,7 +53,7 @@ public sealed partial class SubmoduleGuardTests
         guardedModules.ShouldBe(
             modulePaths,
             ignoreOrder: true,
-            customMessage: "CheckSubmodules must guard every root-level entry in .gitmodules.");
+            customMessage: "CheckSubmodules must guard every root-declared path in .gitmodules.");
     }
 
     [Fact]
@@ -67,20 +68,20 @@ public sealed partial class SubmoduleGuardTests
         content.ShouldContain(
             "Git submodule '%(RequiredRootSubmodule.Identity)' is missing",
             Case.Sensitive,
-            "Missing-submodule failures should name the exact root-level submodule.");
+            "Missing-submodule failures should name the exact root-declared submodule path.");
     }
 
     [Fact(Skip = "Story 15.6 AC #7 behavioral guard — invokes `dotnet msbuild` against a workspace with a renamed submodule .git marker. Disabled by default because it mutates the shared worktree and depends on `dotnet` being on PATH; unskip manually or in the dedicated regression lane.")]
-    public void CheckSubmodulesTarget_FailsBuildWhenRootSubmoduleGitMarkerIsMissing()
+    public void CheckSubmodulesTarget_FailsBuildWhenSubmoduleGitMarkerIsMissing()
     {
         string repoRoot = LocateRepoRoot();
-        string submodulePath = Path.Combine(repoRoot, TargetSubmodule);
+        string submodulePath = Path.Combine(repoRoot, TargetSubmodulePath);
         string gitMarker = Path.Combine(submodulePath, GitMarkerName);
         string backup = gitMarker + BackupSuffix;
 
         // Concurrency guard. Two parallel test runs that both rename `.git` would corrupt each other;
         // a single named mutex serializes the dangerous window across processes on the same machine.
-        using Mutex testMutex = new(initiallyOwned: false, name: $"Hexalith.Memories.Tests.{nameof(SubmoduleGuardTests)}.{TargetSubmodule}");
+        using Mutex testMutex = new(initiallyOwned: false, name: $"Hexalith.Memories.Tests.{nameof(SubmoduleGuardTests)}.{TargetSubmoduleName}");
         bool acquired = false;
         try
         {
@@ -95,9 +96,9 @@ public sealed partial class SubmoduleGuardTests
             (int exitCode, string output) = RunMsBuildCheckSubmodules(repoRoot);
 
             exitCode.ShouldNotBe(0,
-                $"`dotnet msbuild` exited 0 despite the missing {TargetSubmodule}/.git marker; the CheckSubmodules target failed to fire. Output:\n{output}");
+                $"`dotnet msbuild` exited 0 despite the missing {TargetSubmodulePath}/.git marker; the CheckSubmodules target failed to fire. Output:\n{output}");
             output.ShouldContain(
-                $"Git submodule '{TargetSubmodule}' is missing",
+                $"Git submodule '{TargetSubmodulePath.Replace(Path.DirectorySeparatorChar, '/')}' is missing",
                 Case.Sensitive,
                 $"The MSBuild error did not name the renamed submodule. Output:\n{output}");
         }

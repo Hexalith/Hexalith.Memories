@@ -27,8 +27,8 @@ Evidence:
 - `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj` does not reference `Hexalith.EventStore.Aspire`.
 - `src/Hexalith.Memories.Mcp/Program.cs` uses `UseAuthentication()`, `UseAuthorization()`, and `MapMcp("/mcp").RequireAuthorization()`.
 - `src/Hexalith.Memories.Server/Program.cs` maps public API, controller, DAPR subscription, and health endpoints without auth middleware.
-- `Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreSecurityExtensions.cs` already provides `AddHexalithEventStoreSecurity`, `WithJwtBearerSecurity`, `WithEventStoreClientCredentials`, `WithOpenIdConnectSecurity`, and `WithSecurityDependency`.
-- `Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs` already uses this helper successfully as the reference pattern.
+- `references/Hexalith.EventStore/src/Hexalith.EventStore.Aspire/HexalithEventStoreSecurityExtensions.cs` already provides `AddHexalithEventStoreSecurity`, `WithJwtBearerSecurity`, `WithEventStoreClientCredentials`, `WithOpenIdConnectSecurity`, and `WithSecurityDependency`.
+- `references/Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs` already uses this helper successfully as the reference pattern.
 
 ## 2. Impact Analysis
 

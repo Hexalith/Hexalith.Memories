@@ -8,13 +8,18 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Resolve dependent submodules to the nested copy when initialized, otherwise to the
-         root-level sibling in the parent repository (mirrors the Hexalith*Root pattern). -->
-    <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)Hexalith.FrontComposer</HexalithFrontComposerRoot>
+    <!-- Resolve dependent submodules under references/ when initialized, otherwise to the
+         sibling checkout in the parent repository (mirrors the Hexalith*Root pattern). -->
+    <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)references\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)references\Hexalith.FrontComposer</HexalithFrontComposerRoot>
+    <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\references\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..\references\Hexalith.FrontComposer</HexalithFrontComposerRoot>
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer</HexalithFrontComposerRoot>
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.FrontComposer.slnx') and Exists('$(MSBuildThisFileDirectory)..\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..</HexalithFrontComposerRoot>
-    <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)Hexalith.EventStore\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)Hexalith.EventStore</HexalithEventStoreRoot>
+    <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.FrontComposer.slnx') and Exists('$(MSBuildThisFileDirectory)..\..\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)..\..</HexalithFrontComposerRoot>
+    <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)references\Hexalith.EventStore\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)references\Hexalith.EventStore</HexalithEventStoreRoot>
+    <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\references\Hexalith.EventStore\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..\references\Hexalith.EventStore</HexalithEventStoreRoot>
     <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.EventStore\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..\Hexalith.EventStore</HexalithEventStoreRoot>
+    <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.EventStore.slnx') and Exists('$(MSBuildThisFileDirectory)..\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..</HexalithEventStoreRoot>
+    <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.EventStore.slnx') and Exists('$(MSBuildThisFileDirectory)..\..\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..\..</HexalithEventStoreRoot>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -29,20 +34,34 @@
     <HexalithMemoriesHostedInFrontComposerRepo Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
   </PropertyGroup>
 
-  <!-- Detect missing root-level git submodules -->
+  <!-- Detect missing root-declared git submodules under references/. -->
   <ItemGroup>
-    <RequiredRootSubmodule Include="Hexalith.Commons" />
-    <RequiredRootSubmodule Include="Hexalith.EventStore" />
-    <RequiredRootSubmodule Include="Hexalith.AI.Tools" />
-    <RequiredRootSubmodule Include="Hexalith.Tenants" Condition="'$(HexalithMemoriesHostedInTenantsRepo)' != 'true'" />
-    <RequiredRootSubmodule Include="Hexalith.FrontComposer" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'" />
-    <RequiredRootSubmodule Include="Hexalith.Builds" />
-    <RequiredRootSubmodule Include="Hexalith.PolymorphicSerializations" />
+    <RequiredRootSubmodule Include="references/Hexalith.Commons">
+      <RootName>Hexalith.Commons</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.EventStore">
+      <RootName>Hexalith.EventStore</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.AI.Tools">
+      <RootName>Hexalith.AI.Tools</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.Tenants" Condition="'$(HexalithMemoriesHostedInTenantsRepo)' != 'true'">
+      <RootName>Hexalith.Tenants</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.FrontComposer" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'">
+      <RootName>Hexalith.FrontComposer</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.Builds">
+      <RootName>Hexalith.Builds</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.PolymorphicSerializations">
+      <RootName>Hexalith.PolymorphicSerializations</RootName>
+    </RequiredRootSubmodule>
   </ItemGroup>
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
     <Error
-      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git')"
+      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.RootName)/.git')"
       Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity) from the repository root." />
   </Target>
 </Project>
