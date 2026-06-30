@@ -10,10 +10,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Mcp\Hexalith.Memories.Mcp.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
-    <ProjectReference Include="$(HexalithEventStoreRoot)\src\Hexalith.EventStore.Aspire\Hexalith.EventStore.Aspire.csproj" IsAspireProjectResource="false" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)\src\Hexalith.EventStore.Aspire\Hexalith.EventStore.Aspire.csproj" IsAspireProjectResource="false" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hexalith.EventStore.Aspire" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Dapr" />
     <PackageReference Include="MessagePack" />
   </ItemGroup>

@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <HexalithEventStoreVersion>3.20.0</HexalithEventStoreVersion>
+    <HexalithFrontComposerVersion>0.2.0-review.77962d15</HexalithFrontComposerVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Hexalith Commons dependencies -->
@@ -36,6 +38,12 @@
     <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.16.0" />
     <!-- DAPR Aspire Hosting -->
     <PackageVersion Include="CommunityToolkit.Aspire.Hosting.Dapr" Version="13.4.0-preview.1.260602-0230" />
+    <!-- External Hexalith package fallback for Release/package builds.
+         Debug builds use source project references when root-declared submodules are present. -->
+    <PackageVersion Include="Hexalith.EventStore.Aspire" Version="$(HexalithEventStoreVersion)" />
+    <PackageVersion Include="Hexalith.FrontComposer.Contracts" Version="$(HexalithFrontComposerVersion)" />
+    <PackageVersion Include="Hexalith.FrontComposer.Shell" Version="$(HexalithFrontComposerVersion)" />
+    <PackageVersion Include="Hexalith.FrontComposer.Testing" Version="$(HexalithFrontComposerVersion)" />
     <!-- Story 10.1: Model Context Protocol C# SDK 1.2.0 (Microsoft-collaboration release).
          Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
     <PackageVersion Include="ModelContextProtocol" Version="1.4.0" />

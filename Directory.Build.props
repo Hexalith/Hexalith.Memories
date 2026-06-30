@@ -23,6 +23,20 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- Cross-repo Hexalith dependencies use source by default for Debug builds and
+         centrally pinned NuGet packages for Release/package builds. Override
+         UseHexalithProjectReferences only for intentional source-debug sessions. -->
+    <UseHexalithProjectReferences Condition="'$(UseHexalithProjectReferences)' == '' and '$(UseNuGetDeps)' == 'true'">false</UseHexalithProjectReferences>
+    <UseHexalithProjectReferences Condition="'$(UseHexalithProjectReferences)' == '' and '$(UseNuGetDeps)' == 'false'">true</UseHexalithProjectReferences>
+    <UseHexalithProjectReferences Condition="'$(UseHexalithProjectReferences)' == '' and '$(Configuration)' == 'Debug'">true</UseHexalithProjectReferences>
+    <UseHexalithProjectReferences Condition="'$(UseHexalithProjectReferences)' == ''">false</UseHexalithProjectReferences>
+    <UseNuGetDeps Condition="'$(UseNuGetDeps)' == '' and '$(UseHexalithProjectReferences)' == 'true'">false</UseNuGetDeps>
+    <UseNuGetDeps Condition="'$(UseNuGetDeps)' == ''">true</UseNuGetDeps>
+    <HexalithFrontComposerFromSource Condition="'$(UseHexalithProjectReferences)' == 'true' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Contracts\Hexalith.FrontComposer.Contracts.csproj')">true</HexalithFrontComposerFromSource>
+    <HexalithEventStoreFromSource Condition="'$(UseHexalithProjectReferences)' == 'true' and Exists('$(HexalithEventStoreRoot)\src\Hexalith.EventStore.Aspire\Hexalith.EventStore.Aspire.csproj')">true</HexalithEventStoreFromSource>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <!-- When Hexalith.Memories is consumed as a submodule of the Hexalith.Tenants repository, the
          parent repo IS Hexalith.Tenants (its .slnx sits one level up), so a separate Hexalith.Tenants
          submodule is neither present nor required. Detect that layout and drop the requirement; the
@@ -59,9 +73,17 @@
     </RequiredRootSubmodule>
   </ItemGroup>
 
-  <Target Name="CheckSubmodules" BeforeTargets="Restore;Build">
+  <Target Name="CheckSubmodules" BeforeTargets="Restore;Build" Condition="'$(UseHexalithProjectReferences)' == 'true'">
     <Error
       Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.RootName)/.git')"
       Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity) from the repository root." />
+  </Target>
+
+  <Target Name="FailReleaseWithHexalithProjectReferences" BeforeTargets="Restore;Build" Condition="'$(Configuration)' != 'Debug' and '$(UseHexalithProjectReferences)' == 'true'">
+    <Error Text="Release builds must use NuGet package references for external Hexalith libraries. Remove -p:UseHexalithProjectReferences=true or build Debug for source-debugging." />
+  </Target>
+
+  <Target Name="FailPackWithHexalithProjectReferences" BeforeTargets="GenerateNuspec;Pack;Publish" Condition="'$(UseHexalithProjectReferences)' == 'true'">
+    <Error Text="Package publication must not use external Hexalith project references. Run pack/publish with UseHexalithProjectReferences=false." />
   </Target>
 </Project>
