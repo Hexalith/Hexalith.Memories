@@ -231,10 +231,10 @@ development_status:
 
   # Epic 19: Deferred Register Backlog Home and Residual Hardening
   epic-19: in-progress
-  19-1-deferred-register-active-entry-classification-sweep: review
-  19-2-downstream-contract-artifact-generation-decisions: review
-  19-3-release-preflight-and-baseline-evidence-residual-sweep: review
-  19-4-provider-registry-and-migration-residual-sweep: review
+  19-1-deferred-register-active-entry-classification-sweep: done
+  19-2-downstream-contract-artifact-generation-decisions: done
+  19-3-release-preflight-and-baseline-evidence-residual-sweep: done
+  19-4-provider-registry-and-migration-residual-sweep: done
   epic-19-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done

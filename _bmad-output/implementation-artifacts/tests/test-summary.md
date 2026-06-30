@@ -192,6 +192,62 @@ selectors), canonical `EvidencePacketFixtures`, no sleeps, and each builds its o
 
 ---
 
+# Test Automation Summary — Story 2.7 (Evidence Packet Contract Mapping)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-06-30
+- **Story:** `_bmad-output/implementation-artifacts/2-7-evidence-packet-contract-mapping.md`
+- **Historical artifact ignored:** `_bmad-output/implementation-artifacts/2-7-benchmark-suite-and-thesis-validation.md`
+  is explicitly marked as historical; benchmark validation moved to Story 2.8.
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute. CLI/MCP/server tests use existing in-process
+  fakes and contract fixtures; no new framework introduced.
+- **Sandbox runner:** `dotnet build --no-restore -m:1`, then xUnit v3 executable fallback. `dotnet test`
+  is blocked here by VSTest socket permissions.
+
+## Generated / Validated Tests
+
+### API / Contract Tests
+- [x] `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketMapperTests.cs` — packet mapping,
+  unauthorized short-circuit, omission precedence, score-strength edge cases, and fallback axes.
+- [x] `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketSanitizationTests.cs` — sensitive diagnostic
+  redaction for backend URLs, bearer tokens, stack traces, local/UNC paths, and credentials.
+- [x] `tests/Hexalith.Memories.Contracts.Tests/V1/EvidencePacketSerializationTests.cs` and parity/isolation
+  tests — stable JSON shape, round trips, canonical fixture parity, and tenant/case non-leakage.
+
+### Surface / E2E-Equivalent Tests
+- [x] `tests/Hexalith.Memories.Cli.Tests/Cli/EvidencePacketCliOutputTests.cs` — end-to-end command execution
+  for CLI JSON evidence packets, token-budget compression, degraded results, and sanitized error envelopes.
+- [x] `tests/Hexalith.Memories.Mcp.Tests/EvidencePacketMcpParityTests.cs` and `SearchMemoryToolTests.cs` —
+  MCP `search_memory` structured content and text fallback parity.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/EvidencePacketServerMappingTests.cs` — server-emitted
+  metadata maps into packet state, omissions, recovery actions, and canonical JSON.
+
+## Coverage
+
+- Contract packet states: complete, weak, empty, degraded, unauthorized, pending expansion covered.
+- Omitted-detail reasons: none, token budget, backend unavailable, combined, authorization covered.
+- Surfaces: Contracts, CLI JSON, MCP structured/text fallback, and server metadata mapping covered.
+- UI/browser E2E: not applicable for Story 2.7; the story forbids web UI implementation.
+
+## Validation
+
+- `dotnet build` focused projects with `-m:1`: Contracts.Tests, Cli.Tests, Mcp.Tests, Server.Tests all clean
+  with 0 warnings / 0 errors.
+- xUnit fallback results:
+  - Contracts Evidence Packet lane: 101 passed.
+  - CLI packet/search lane: 19 passed.
+  - MCP packet/search/error lane: 37 passed.
+  - Server packet/search lane: 71 passed.
+
+## Checklist Result
+
+- API tests generated/validated where applicable.
+- E2E-equivalent surface tests generated/validated for CLI and MCP; no browser UI exists in this story.
+- Tests use standard xUnit v3 APIs, semantic command/tool contracts, no sleeps, and independent fixtures.
+- Summary includes coverage metrics and validation commands/results.
+
+---
+
 # Test Automation Summary — Story 17.4 (Role-Specific Web Inspection Lenses)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

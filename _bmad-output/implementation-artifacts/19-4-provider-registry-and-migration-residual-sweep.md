@@ -4,7 +4,7 @@ baseline_commit: 462d37c14f7599d3d66f4fc8a38d9d8fb719f0e4
 
 # Story 19.4: Provider Registry and Migration Residual Sweep
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -202,8 +202,31 @@ Decision-only governance sweep (no production code, tests, or docs changed). Pat
 ### File List
 
 - `_bmad-output/implementation-artifacts/deferred-work.md` (modified — nine `15.2-RV*` blocks `open` -> `accepted`; new Story 19.4 decision rollup section)
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — `19-4-...` status `ready-for-dev` -> `in-progress` -> `review`)
-- `_bmad-output/implementation-artifacts/19-4-provider-registry-and-migration-residual-sweep.md` (modified — task checkboxes, Dev Agent Record, Status -> review, Change Log)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — `19-4-...` status `ready-for-dev` -> `in-progress` -> `review` -> `done`)
+- `_bmad-output/implementation-artifacts/19-4-provider-registry-and-migration-residual-sweep.md` (modified — task checkboxes, Dev Agent Record, Senior Developer Review, Status -> done, Change Log)
+
+## Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex on 2026-06-30.
+
+Outcome: Approved after automatic fixes. No critical issues remain.
+
+### Findings Fixed
+
+- [MEDIUM] Story status was still `review` after the decision sweep and parser validation were complete. Fixed by setting this story's `Status` to `done`.
+- [MEDIUM] Sprint tracking still showed `19-4-provider-registry-and-migration-residual-sweep: review`, so the workflow status was not synced after review. Fixed in `sprint-status.yaml`.
+- [LOW] The story lacked the required `Senior Developer Review (AI)` record and review changelog entry. Fixed here.
+
+### Validation Notes
+
+- AC1 is satisfied: `15.2-RV1` through `15.2-RV9` are all `accepted` with stable `ID`, `Source story`, `Target artifact`, and `Re-open trigger` fields, plus Story 19.4 rationales and no standalone `Owner:` field.
+- AC2 is satisfied: the Story 19.4 rollup classifies the owned Story 15.3 migration-marker residuals into trigger-bound accepted risks, the target-consistency cluster required before the next provider-migration investment, and the operator-recovery cluster to reassess before production migration claims.
+- AC3 did not fire because implement-now selections remain zero and no provider-registry or migration-marker code changed.
+- Current-code evidence was re-checked against `EmbeddingProviderDefaults`, `EmbeddingClient`, `GenerateEmbeddingActivity`, `EmbeddingVectorMigrationService`, `EmbeddingMigrationMarkerReader`, `RedisEmbeddingMigrationStore`, and `docs/operations/embedding-providers.md`.
+- File List matches the Story 19.4 review surface: `deferred-work.md`, this story file, and `sprint-status.yaml`; unrelated dirty working-tree files outside Story 19.4 scope were left untouched.
+- MCP resource discovery returned no configured resources; no web documentation lookup was required because this story adds no package, API, or source implementation and relies on current repository evidence.
+- Review validation reran `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests`: 48 total, 0 failed.
+- CR-at-EOL-aware whitespace validation passed for `deferred-work.md`, this story file, and `sprint-status.yaml`; line endings remain as required (`deferred-work.md` and this story file CRLF, `sprint-status.yaml` LF).
 
 ## Change Log
 
@@ -211,3 +234,4 @@ Decision-only governance sweep (no production code, tests, or docs changed). Pat
 |---|---|---|
 | 2026-06-30 | create-story | Story drafted for provider-registry and migration-marker residual decisions. Recommended path is a decision-only sweep: accept-until-trigger for `15.2-RV1` ... `15.2-RV9`, roll up legacy `15.3-RV*` migration-marker items, and schedule code only if a third-provider or next-provider-migration investment trigger exists. Status -> ready-for-dev. |
 | 2026-06-30 | dev-story | Decision-only sweep executed; current code re-verified (six signals CONFIRMED). Flipped all nine `15.2-RV*` entries `open` -> `accepted` with Story 19.4 rationales; added the Story 19.4 decision rollup section with the `15.3-RV*` trigger-bound vs migration-hardening classification. Zero implement-now; no production code/test/doc changes. Parser guard `CiTestInventoryTests` 48/48 pass. Status -> review. |
+| 2026-06-30 | review | Senior review found and fixed review bookkeeping, revalidated AC1/AC2/AC3 conditional behavior, reran the deferred-work parser guard, and moved status to done. |

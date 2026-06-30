@@ -4,7 +4,7 @@ baseline_commit: 462d37c14f7599d3d66f4fc8a38d9d8fb719f0e4
 
 # Story 19.3: Release Preflight and Baseline Evidence Residual Sweep
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -251,7 +251,8 @@ GPT-5 Codex
 - 2026-06-30: `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` passed: 48 total, 0 failed.
 - 2026-06-30: Broader existing CLI test assembly run reached 415 tests; 2 failed due sandbox socket permission in `QuickstartPrerequisiteTests` TCP listener setup, unrelated to this Markdown governance sweep.
 - 2026-06-30: `git diff --check -- _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/implementation-artifacts/19-3-release-preflight-and-baseline-evidence-residual-sweep.md _bmad-output/implementation-artifacts/sprint-status.yaml` reports CRLF-as-trailing-whitespace warnings on Markdown additions; this is the documented expected behavior for CRLF deferred-work/story edits.
-- 2026-06-30: Scope check found no tracked `src/**`, `tests/**`, `docs/**`, `tools/**`, or `.github/**` changes. A pre-existing `references/Hexalith.Tenants` submodule pointer change and other unrelated dirty files were left untouched.
+- 2026-06-30: Story-scoped diff review found no Story 19.3 production source, release-tooling, test, docs, or `.github/**` edits; unrelated working-tree changes outside the Story 19.3 File List were left untouched.
+- 2026-06-30: Senior Developer Review verified AC1/AC2 dispositions, parser-relevant fields, line endings, and sprint tracking; corrected the scope-note wording above and moved Story 19.3 to done.
 
 ### Completion Notes List
 
@@ -259,6 +260,7 @@ GPT-5 Codex
 - Final disposition recorded for all 16 `15.1-RV*` entries: `accepted` / accept-until-trigger, grouped into natural future homes for release-preflight script robustness, release test-helper hardening, and docs/governance hygiene.
 - Added Story 19.3 rollup documenting implement-now = none, AC3 no-fire, completed Epics 12/15 referenced but not reopened, and the future-release-hardening homes if triggers fire.
 - Validation passed for the load-bearing deferred-work parser guard (`CiTestInventoryTests` 48/48). Full rebuild was blocked by an undiagnosed MSBuild startup failure; broader existing CLI assembly run was blocked only by sandbox TCP listener permission in two quickstart prerequisite tests.
+- Senior Developer Review found one bookkeeping issue: the scope note could be read as claiming a fully clean working tree despite unrelated dirty files outside Story 19.3. The note now distinguishes Story 19.3 scope from unrelated working-tree changes.
 
 ### File List
 
@@ -266,9 +268,30 @@ GPT-5 Codex
 - `_bmad-output/implementation-artifacts/19-3-release-preflight-and-baseline-evidence-residual-sweep.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
+## Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex on 2026-06-30.
+
+Outcome: Approve after automatic fix. No CRITICAL issues remain.
+
+### Findings Fixed
+
+- [MEDIUM] Scope-note wording was too broad for the current repository state. The Dev Agent Record claimed no tracked `src/**`, `tests/**`, `docs/**`, `tools/**`, or `.github/**` changes, but the working tree contains unrelated dirty files outside Story 19.3's File List. Fixed by narrowing the statement to the Story 19.3 scoped diff and explicitly noting unrelated working-tree changes were left untouched.
+
+### Validation Notes
+
+- AC1 is satisfied: `12.4-RV20` is accepted with an ancestry-proof rationale, no strict replay story is scheduled, and the re-open trigger remains explicit.
+- AC2 is satisfied: `15.1-RV1` through `15.1-RV16` are accepted until trigger and grouped into the release-preflight script robustness, release test-helper hardening, and docs/governance hygiene future homes.
+- AC3 did not fire because implement-now selections remain zero and no release tooling/workflow/test surface was changed by Story 19.3.
+- File List matches the Story 19.3 review surface: `deferred-work.md`, this story file, and `sprint-status.yaml`.
+- Review validation reran `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests`: 48 total, 0 failed.
+- `git diff --check` reports CRLF-as-trailing-whitespace on the newly added CRLF Markdown review lines; this is the documented expected behavior for these artifacts.
+- Line endings remain as required: this story file and `deferred-work.md` use CRLF; `sprint-status.yaml` uses LF.
+
 ## Change Log
 
 | Date | Phase | Summary |
 |---|---|---|
 | 2026-06-30 | create-story | Story drafted: release-quality decision sweep for `12.4-RV20` + `15.1-RV1`…`15.1-RV16` (17 entries). Recommended disposition = accept-until-trigger for all 17 (flip `carried-forward` → `accepted`), zero implement-now per the Epic 19 anti-over-promotion guardrail; `12.4-RV20` accepts ancestry-based proof as sufficient (AC1); 16 `15.1-RV*` bucketed accept-until-trigger with natural future-sweep homes recorded (AC2); AC3 focused-validation does not fire because no implement-now item is selected. No production/release-tooling/test/doc/submodule scope. Status → ready-for-dev. |
 | 2026-06-30 | dev-story | Accepted `12.4-RV20` and `15.1-RV1`...`15.1-RV16` until trigger, added the Story 19.3 decision rollup, selected zero implement-now items so AC3 focused release-tooling validation did not fire, ran the deferred-work parser guard successfully, and moved status to review. |
+| 2026-06-30 | review | Senior Developer Review fixed the scope-note wording, verified AC1/AC2/AC3 conditional behavior, confirmed no critical issues remain, and moved status to done. |

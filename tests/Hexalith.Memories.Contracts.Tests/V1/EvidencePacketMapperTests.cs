@@ -262,6 +262,10 @@ public sealed class EvidencePacketMapperTests
     [Theory]
     [InlineData("TENANT_FORBIDDEN", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
     [InlineData("CASE_UNAUTHORIZED", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("HTTP_401", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("HTTP_403", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("ACCESS_DENIED", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
+    [InlineData("PERMISSION_DENIED", EvidencePacketState.Unauthorized, EvidencePacketOmissionReason.Authorization, EvidencePacketRecoveryKind.CheckAuthorization)]
     [InlineData("BACKEND_DEGRADED", EvidencePacketState.Degraded, EvidencePacketOmissionReason.BackendUnavailable, EvidencePacketRecoveryKind.Retry)]
     public void FromError_StateMapping_ShouldPreserveSanitizedPacketShape(
         string code,
@@ -361,6 +365,314 @@ public sealed class EvidencePacketMapperTests
             query: "claim denied");
 
         packet.Recovery[0].Guidance.ShouldBe("Increase the token budget and retry.");
+    }
+
+    [Fact]
+    public void FromSearchResult_UnauthorizedScopeWithPopulatedResults_ShouldZeroSourcesAndEvidence()
+    {
+        // Story 2.7 re-review: when the caller already knows the scope is unauthorized, the mapper must
+        // short-circuit and NOT project any row-level evidence, even when the lower-level result still
+        // carries ranked rows. Proves populated sources/evidence cannot leak through an unauthorized scope.
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.91,
+                    ContentSnippet = "SENSITIVE-ROW-SNIPPET should never be exposed.",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "semantic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 4,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = ["semantic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Unauthorized, "tenant-case"));
+
+        packet.State.ShouldBe(EvidencePacketState.Unauthorized);
+        packet.Scope.IsolationStatus.ShouldBe(EvidencePacketIsolationStatus.Unauthorized);
+        packet.Result.ReturnedCount.ShouldBe(0);
+        packet.Sources.ShouldBeEmpty();
+        packet.Evidence.AxesUsed.ShouldBeEmpty();
+        packet.Evidence.AxisEvidence.ShouldBeEmpty();
+        packet.Evidence.EvidenceStrength.ShouldBe(EvidencePacketEvidenceStrength.None);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.Authorization);
+        packet.Recovery.ShouldHaveSingleItem();
+        packet.Recovery[0].Kind.ShouldBe(EvidencePacketRecoveryKind.CheckAuthorization);
+
+        string json = JsonSerializer.Serialize(packet, MemoriesJsonContext.Options);
+        json.ShouldNotContain("SENSITIVE-ROW-SNIPPET", Shouldly.Case.Sensitive);
+    }
+
+    [Fact]
+    public void FromHybridSearchResult_UnauthorizedScopeWithPopulatedResults_ShouldZeroSourcesAndEvidence()
+    {
+        var result = new HybridSearchResult
+        {
+            Results =
+            [
+                new FusedScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    CompositeScore = 0.82,
+                    ContentSnippet = "SENSITIVE-ROW-SNIPPET should never be exposed.",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.Url,
+                    SyntacticScore = 0.51,
+                    SemanticScore = 0.82,
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 2,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "claim denied",
+            AxesUsed = ["semantic", "syntactic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromHybridSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Unauthorized, "tenant-case"));
+
+        packet.State.ShouldBe(EvidencePacketState.Unauthorized);
+        packet.Sources.ShouldBeEmpty();
+        packet.Evidence.AxesUsed.ShouldBeEmpty();
+        packet.Evidence.AxisEvidence.ShouldBeEmpty();
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.Authorization);
+        packet.Recovery.ShouldHaveSingleItem();
+        packet.Recovery[0].Kind.ShouldBe(EvidencePacketRecoveryKind.CheckAuthorization);
+
+        string json = JsonSerializer.Serialize(packet, MemoriesJsonContext.Options);
+        json.ShouldNotContain("SENSITIVE-ROW-SNIPPET", Shouldly.Case.Sensitive);
+    }
+
+    [Theory]
+    [InlineData(0.92, EvidencePacketEvidenceStrength.Strong, EvidencePacketState.Complete)]
+    [InlineData(0.50, EvidencePacketEvidenceStrength.Moderate, EvidencePacketState.Complete)]
+    [InlineData(0.30, EvidencePacketEvidenceStrength.Weak, EvidencePacketState.Weak)]
+    public void FromSearchResult_SemanticAxis_ShouldGradeStrengthAndStateByScore(
+        double score,
+        EvidencePacketEvidenceStrength expectedStrength,
+        EvidencePacketState expectedState)
+    {
+        // The semantic axis produces [0,1]-normalized scores, so the strength thresholds apply directly.
+        // A low semantic score also drives the Weak state branch (not otherwise covered).
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = score,
+                    ContentSnippet = "Semantic match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "semantic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = ["semantic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.EvidenceStrength.ShouldBe(expectedStrength);
+        packet.State.ShouldBe(expectedState);
+
+        if (expectedState == EvidencePacketState.Weak)
+        {
+            packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.BroadenScope);
+        }
+    }
+
+    [Theory]
+    [InlineData("syntactic")]
+    [InlineData("graph")]
+    public void FromSearchResult_NonNormalizedSingleAxis_ShouldReportUnknownStrength(string axis)
+    {
+        // Syntactic (raw BM25) and graph scores are unbounded, so the [0,1] strength thresholds cannot be
+        // applied. The mapper must report Unknown rather than fabricating Strong from a large raw score.
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 7.3,
+                    ContentSnippet = "Raw-scored match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = axis,
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = [axis],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.EvidenceStrength.ShouldBe(EvidencePacketEvidenceStrength.Unknown);
+        packet.State.ShouldBe(EvidencePacketState.Complete);
+    }
+
+    [Fact]
+    public void FromSearchResult_MixedAxes_ShouldReportUnknownStrength()
+    {
+        // Strength is only graded when every contributing axis is normalized (semantic-only). Any non-semantic
+        // axis in the mix forces Unknown so a raw axis cannot inflate the grade.
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.9,
+                    ContentSnippet = "Mixed-axis match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "semantic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = ["semantic", "syntactic"],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.EvidenceStrength.ShouldBe(EvidencePacketEvidenceStrength.Unknown);
+    }
+
+    [Fact]
+    public void FromHybridSearchResult_AllEnabledAxesUnavailableWithoutDegradedFlag_ShouldTreatAsDegraded()
+    {
+        // Regression: when AllEnabledAxesUnavailable is true but the raw Degraded flag is false, the mapper
+        // must treat the packet as degraded consistently — state, evidence.degraded, the omission reason, and
+        // the backendDiagnostics detail group must all agree (effectiveDegraded fed to every consumer).
+        var result = new HybridSearchResult
+        {
+            Results = [],
+            TotalCount = 0,
+            Degraded = false,
+            AllEnabledAxesUnavailable = true,
+            UnavailableAxes = ["semantic", "syntactic", "graph"],
+            Query = "claim denied",
+            AxesUsed = [],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromHybridSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.State.ShouldBe(EvidencePacketState.Degraded);
+        packet.Evidence.Degraded.ShouldBeTrue();
+        packet.Evidence.AllEnabledAxesUnavailable.ShouldBe(true);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.BackendUnavailable);
+        packet.OmittedDetails.FieldNames.ShouldContain("evidence.unavailableAxes");
+        packet.OmittedDetails.DetailGroups.ShouldContain("backendDiagnostics");
+        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.Retry);
+        packet.Recovery.ShouldContain(action => action.Kind == EvidencePacketRecoveryKind.InspectBackendHealth);
+    }
+
+    [Fact]
+    public void FromSearchResult_EmptyAxesUsed_ShouldFallBackToRowDerivedAxes()
+    {
+        // An empty (non-null) AxesUsed must behave like an absent one: the mapper falls back to the axes
+        // present on the scored rows rather than emitting an empty axesUsed for a result that has evidence.
+        var result = new SearchResult
+        {
+            Results =
+            [
+                new ScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    Score = 0.8,
+                    ContentSnippet = "Semantic match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    Axis = "semantic",
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            HasIndexedMemoryUnits = true,
+            Query = "claim denied",
+            AxesUsed = [],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.AxesUsed.ShouldBe(["semantic"]);
+        packet.Evidence.AxisEvidence.ShouldContain(axis => axis.Axis == "semantic");
+    }
+
+    [Fact]
+    public void FromHybridSearchResult_EmptyAxesUsed_ShouldFallBackToInferredAxes()
+    {
+        var result = new HybridSearchResult
+        {
+            Results =
+            [
+                new FusedScoredResult
+                {
+                    MemoryUnitId = "mu-001",
+                    CompositeScore = 0.8,
+                    ContentSnippet = "Hybrid match",
+                    SourceUri = "mem://tenant-a/case-a/mu-001",
+                    SourceType = SourceType.File,
+                    SyntacticScore = 0.6,
+                    SemanticScore = 0.8,
+                    GraphScore = null,
+                    CaseId = "case-a",
+                    CaseName = "Case A",
+                },
+            ],
+            TotalCount = 1,
+            Degraded = false,
+            UnavailableAxes = [],
+            Query = "claim denied",
+            AxesUsed = [],
+        };
+
+        EvidencePacket packet = EvidencePacketMapper.FromHybridSearchResult(
+            result,
+            new EvidencePacketScope("tenant-a", "case-a", EvidencePacketIsolationStatus.Authorized, "tenant-case"));
+
+        packet.Evidence.AxesUsed.ShouldBe(["semantic", "syntactic"]);
     }
 
     private static SearchExplanation BuildExplanation() => new()

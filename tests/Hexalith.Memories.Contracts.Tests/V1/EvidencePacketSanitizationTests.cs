@@ -36,6 +36,13 @@ public sealed class EvidencePacketSanitizationTests
         { "Failure at Hexalith.Server.SearchEndpoint.Handle in the pipeline.", "at Hexalith.Server.SearchEndpoint" },
         { "Token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload is expired.", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." },
         { "Object hash deadbeefdeadbeefdeadbeefdeadbeef0001 mismatch on retry.", "deadbeefdeadbeefdeadbeefdeadbeef0001" },
+        { "Reconnect to postgres://svc:pw@db-primary:5432/memories and retry.", "postgres://svc" },
+        { "Inspect mongodb://svc:pw@mongo-primary:27017 before retrying.", "mongodb://svc" },
+        { "Graph backend bolt://neo4j-primary:7687 is unreachable.", "bolt://neo4j-primary" },
+        { "Copy logs from \\\\fileserver\\share\\trace.log first.", "\\\\fileserver\\share" },
+        { "See /var/log/memories/trace.log for the failure.", "/var/log/memories" },
+        { "Read /etc/memories/secrets.conf for credentials.", "/etc/memories" },
+        { "Connection used Server=db;Password=hunter2;Database=app.", "Password=hunter2" },
     };
 
     [Theory]
@@ -81,14 +88,51 @@ public sealed class EvidencePacketSanitizationTests
     [InlineData("Increase the token budget and retry.")]
     [InlineData("Broaden your query terms and retry.")]
     [InlineData("Re-run the request with a larger maxResults value.")]
+    [InlineData("Look at the logs and retry the authorized request.")]
+    [InlineData("We arrived at noon; retry afterward.")]
     public void FromError_NonUnauthorized_ShouldPreserveBenignGuidance(string suggestion)
     {
-        // Regression guard for the over-broad sanitization regex: benign operator prose must survive.
+        // Regression guard for the over-broad sanitization regex: benign operator prose must survive,
+        // including ordinary "at <word>" phrasing that must NOT trip the stack-frame pattern.
         var error = new ErrorResponse("BACKEND_DEGRADED", "Backend is degraded.", suggestion);
 
         EvidencePacket packet = EvidencePacketMapper.FromError(error, AuthorizedScope, query: "claim denied");
 
         packet.Recovery[0].Guidance.ShouldBe(suggestion);
+    }
+
+    [Theory]
+    [InlineData("Inspect redis://backend-host:6379/0 then retry.")]
+    [InlineData("Reconnect using Bearer abc123def456ghi789jkl012mno345pqr678.")]
+    [InlineData("See the log at C:\\secret\\trace.txt.")]
+    [InlineData("Connect via postgres://svc:pw@db-primary:5432/app.")]
+    [InlineData("Copy from \\\\fileserver\\share\\trace.log.")]
+    [InlineData("Read /var/log/memories/trace.log.")]
+    [InlineData("Connection used Server=db;Password=hunter2.")]
+    [InlineData("Failure at Hexalith.Server.SearchEndpoint.Handle.")]
+    public void SanitizeFreeText_SensitiveInput_ShouldReturnFallback(string value)
+    {
+        // SanitizeFreeText is the public entry point CLI/MCP surfaces call to scrub server-sourced text.
+        EvidencePacketMapper.SanitizeFreeText(value, Fallback).ShouldBe(Fallback);
+    }
+
+    [Theory]
+    [InlineData("Retry the authorized request.")]
+    [InlineData("Increase the token budget and retry.")]
+    [InlineData("Look at the logs and broaden your query.")]
+    [InlineData("We arrived at noon; retry afterward.")]
+    public void SanitizeFreeText_BenignInput_ShouldPreserveValue(string value)
+    {
+        EvidencePacketMapper.SanitizeFreeText(value, Fallback).ShouldBe(value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void SanitizeFreeText_NullOrWhitespace_ShouldReturnFallback(string? value)
+    {
+        EvidencePacketMapper.SanitizeFreeText(value, Fallback).ShouldBe(Fallback);
     }
 
     [Fact]

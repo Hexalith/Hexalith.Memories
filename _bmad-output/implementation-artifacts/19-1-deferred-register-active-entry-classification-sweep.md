@@ -4,7 +4,7 @@ baseline_commit: 462d37c14f7599d3d66f4fc8a38d9d8fb719f0e4
 
 # Story 19.1: Deferred Register Active-Entry Classification Sweep
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -188,11 +188,32 @@ claude-opus-4-8[1m] (Opus 4.8, 1M context) — BMAD dev-story workflow.
 ### File List
 
 - `_bmad-output/implementation-artifacts/deferred-work.md` (modified) — new `## Story 19.1 Classification Sweep (2026-06-30)` rollup section incl. 3 new accepted-debt blocks (`18.4-REDIS-RACE`, `18.8-DAPR-SMOKE`, `18.4-TOKEN-EDGE`); in-place field edits to `1.1-RR3` and `MEM-1`.
-- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — `19-1-…` → `in-progress` then `review`; Epic 18 Action Item 4 → `done` with dated note.
-- `_bmad-output/implementation-artifacts/19-1-deferred-register-active-entry-classification-sweep.md` (modified) — `baseline_commit` frontmatter; task checkboxes; Dev Agent Record; Change Log; Status → review.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — `19-1-…` → `in-progress` then `review`; Epic 18 Action Item 4 → `done` with dated note; senior review synced Story 19.1 → `done`.
+- `_bmad-output/implementation-artifacts/19-1-deferred-register-active-entry-classification-sweep.md` (modified) — `baseline_commit` frontmatter; task checkboxes; Dev Agent Record; Senior Developer Review; Change Log; Status → done.
+
+## Senior Developer Review (AI)
+
+Reviewer: Codex on 2026-06-30
+
+Outcome: Approved after automatic fixes. No critical issues remain.
+
+Findings fixed:
+
+- [MEDIUM] Story status was still `review` after the accepted/deferred classifications and parser validation were complete. Fixed by setting this story's `Status` to `done`.
+- [MEDIUM] Sprint tracking still showed `19-1-deferred-register-active-entry-classification-sweep: review`, so the workflow status was not synced after review. Fixed in `sprint-status.yaml`.
+- [LOW] The story lacked the required `Senior Developer Review (AI)` record and review changelog entry. Fixed here.
+
+Validation performed:
+
+- AC1: verified the Story 19.1 rollup classifies the 30 active structured entries: 28 routed to Stories 19.2/19.3/19.4, `1.1-RR3` and `MEM-1` retained as carried-forward with owner/trigger/rationale, and the three Epic 18 retro prose items added as accepted-debt entries.
+- AC2: verified all five Epic 18 parked carry-forwards have homes: `MEM-2-ASPIRATE`/`MEM-3-OPENAPI` route to Story 19.2; `18.4-REDIS-RACE`, `18.8-DAPR-SMOKE`, and `18.4-TOKEN-EDGE` are accepted-debt entries with re-open triggers.
+- AC3: verified completed Epic 15 and Epic 18 rows remain `done`; the sweep references completed source stories rather than reopening history.
+- AC4: verified Epic 18 Action Item 4 is `done` and Action Item 2 remains `open`.
+- Parser guard: `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Release/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` -> Total 48, Failed 0.
 
 ## Change Log
 
 | Date | Phase | Summary |
 |---|---|---|
 | 2026-06-30 | dev-story | Classified all 30 active `open`/`carried-forward` structured entries: 28 affirmed scheduled-story; `1.1-RR3` and `MEM-1` re-decided in place (kept carried-forward, owner/trigger/rationale refreshed); 3 new accepted-debt entries created for the Epic 18 retro Action Item 4 prose items. Epic 18 Action Item 4 → `done`. Parser guard `CiTestInventoryTests` 48/48 green. No production/submodule changes. Story → review. |
+| 2026-06-30 | senior-review | Auto-fixed review bookkeeping: story status → `done`, sprint-status Story 19.1 → `done`, Senior Developer Review notes appended. Parser guard remained 48/48 green. |
