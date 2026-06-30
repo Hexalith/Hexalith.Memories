@@ -104,7 +104,7 @@ public sealed class PipelinePersistenceIntegrationTests
         (string syntacticKey, _) = await WaitForBackendWritesAsync(tenantId, caseId, sourceUri).ConfigureAwait(false);
         string memoryUnitId = syntacticKey.Split(':').Last();
 
-        string[] dedupKeys = await ListKeysAsync($"dedup:{tenantId}:{caseId}:*").ConfigureAwait(false);
+        string[] dedupKeys = await WaitForSingleDedupValueAsync(tenantId, caseId, memoryUnitId, DefaultTimeout).ConfigureAwait(false);
         dedupKeys.Length.ShouldBe(1);
 
         RedisValue dedupValue = await _fixture.RedisConnection.GetDatabase().StringGetAsync(dedupKeys[0]).ConfigureAwait(false);
@@ -327,11 +327,7 @@ public sealed class PipelinePersistenceIntegrationTests
         recoveredMemoryUnitId.ShouldBe(failedUnit.MemoryUnitId);
         recoveredSemanticKey.Split(':').Last().ShouldBe(failedUnit.MemoryUnitId);
 
-        RedisValue dedupValue = await _fixture.RedisConnection
-            .GetDatabase()
-            .StringGetAsync(BuildDedupKey(tenantId, caseId, sourceUri))
-            .ConfigureAwait(false);
-        dedupValue.ToString().ShouldBe(failedUnit.MemoryUnitId);
+        _ = await WaitForSingleDedupValueAsync(tenantId, caseId, failedUnit.MemoryUnitId, DefaultTimeout).ConfigureAwait(false);
 
         FailedUnitsPage cleared = await WaitForFailedUnitsPageAsync(
             tenantId,
@@ -357,6 +353,7 @@ public sealed class PipelinePersistenceIntegrationTests
         (string syntacticKey, string semanticKey) = await WaitForBackendWritesAsync(tenantId, caseId, sourceUri).ConfigureAwait(false);
         string memoryUnitId = syntacticKey.Split(':').Last();
         string dedupKey = BuildDedupKey(tenantId, caseId, sourceUri);
+        _ = await WaitForSingleDedupValueAsync(tenantId, caseId, memoryUnitId, DefaultTimeout).ConfigureAwait(false);
 
         _ = await _fixture.RestartTopologyAsync().ConfigureAwait(false);
 
@@ -620,6 +617,41 @@ public sealed class PipelinePersistenceIntegrationTests
     {
         IServer redisServer = _fixture.RedisConnection.GetServer(_fixture.RedisConnection.GetEndPoints().Single());
         return await Task.FromResult(redisServer.Keys(pattern: pattern).Select(key => key.ToString()).ToArray()).ConfigureAwait(false);
+    }
+
+    private async Task<string[]> WaitForSingleDedupValueAsync(
+        string tenantId,
+        string caseId,
+        string expectedMemoryUnitId,
+        TimeSpan timeout)
+    {
+        string pattern = $"dedup:{tenantId}:{caseId}:*";
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+        IDatabase redis = _fixture.RedisConnection.GetDatabase();
+        string[] lastKeys = [];
+        string lastValue = string.Empty;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            string[] dedupKeys = await ListKeysAsync(pattern).ConfigureAwait(false);
+            lastKeys = dedupKeys;
+
+            if (dedupKeys.Length == 1)
+            {
+                RedisValue value = await redis.StringGetAsync(dedupKeys[0]).ConfigureAwait(false);
+                lastValue = value.ToString();
+                if (string.Equals(lastValue, expectedMemoryUnitId, StringComparison.Ordinal))
+                {
+                    return dedupKeys;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException(
+            $"Dedup key matching '{pattern}' did not resolve to '{expectedMemoryUnitId}' within {timeout}. " +
+            $"Last observed keys ({lastKeys.Length}): [{string.Join(", ", lastKeys)}]; last value: '{lastValue}'.");
     }
 
     private async Task<CaseStatusDetail> WaitForCaseStatusAsync(

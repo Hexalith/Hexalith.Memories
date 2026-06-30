@@ -49,6 +49,20 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Deferred Register Backlog Home Rollup (2026-06-30)
+
+Sprint Change Proposal 2026-06-30 creates Epic 19 as the backlog home for active
+deferred-register residuals that outlived completed epics.
+
+- `MEM-2-ASPIRATE` and `MEM-3-OPENAPI` target Story 19.2 unless the story
+  explicitly accepts or reassigns them.
+- `12.4-RV20` and `15.1-RV1` through `15.1-RV16` target Story 19.3 unless the
+  story explicitly accepts or reassigns them.
+- `15.2-RV1` through `15.2-RV9` and Story 15.3 migration-marker residuals
+  target Story 19.4 unless the story explicitly accepts or reassigns them.
+- Other active `open` or `carried-forward` entries are classified by Story 19.1
+  before implementation is scheduled.
+
 ## Story 15.5 Triage Rollup (2026-05-15)
 
 Story 15.5 performed a bounded sweep rather than a full historical migration.

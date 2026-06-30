@@ -20,7 +20,7 @@ public sealed class RetryFailureIntegrationTests
 
     public RetryFailureIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
+    [RunnableSkippedFact("Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
     public void IngestUrl_ProviderReturns500_ExhaustsRetriesAndPersistsFailedUnit()
     {
         // AC3, AC4: ingest a URL whose backend returns 500. Assert workflow exhausts retries, the
@@ -30,7 +30,7 @@ public sealed class RetryFailureIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
+    [RunnableSkippedFact("Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
     public void ReIngestSingle_PreservesMemoryUnitId_AndClearsRegistry()
     {
         // AC9: re-ingest a failed unit via POST. Assert the new workflow's instanceId equals the
@@ -39,7 +39,7 @@ public sealed class RetryFailureIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
+    [RunnableSkippedFact("Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
     public void ReIngestBulk_MixedOutcomes_EnumeratedInResponse()
     {
         // AC10: bulk re-ingest 5 units; one is missing, one is mid-claim by another caller, one
@@ -48,7 +48,7 @@ public sealed class RetryFailureIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
+    [RunnableSkippedFact("Unskipped by Story 6.4 (pipeline state persistence) or Epic 7 e2e harness — requires Aspire fixture + deterministic 500-producing provider test double.")]
     public void CounterActor_TracksConcurrentInflightWorkflows()
     {
         // AC5, AC6: schedule 3 in Embedding, 2 in Extracting, 1 in Queued. Assert

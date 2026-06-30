@@ -15,7 +15,7 @@ public sealed class DirectoryIngestionIntegrationTests
 
     public DirectoryIngestionIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness OR Epic 7 e2e harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness OR Epic 7 e2e harness")]
     public void DirectoryIngestion_MixedFiles_ShouldIndexSupportedAndSkipUnsupported()
     {
         // Scenario (Story 6.1 AC5, AC6):
@@ -27,7 +27,7 @@ public sealed class DirectoryIngestionIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
     public void DirectoryIngestion_CrossTenantIsolation_ShouldNotSerialize()
     {
         // Scenario (Story 6.1 AC11):

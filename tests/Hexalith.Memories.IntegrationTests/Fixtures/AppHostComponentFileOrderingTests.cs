@@ -22,7 +22,7 @@ using Shouldly;
 /// </summary>
 public sealed class AppHostComponentFileOrderingTests
 {
-    [Fact(Skip = "Story 15.6 AC #7 behavioral guard — requires Docker (Redis/FalkorDB containers). Runs in the Aspire integration lane only; the default test lane does not provision containers. Unskip when the integration lane is wired up.")]
+    [RunnableSkippedFact("Story 15.6 AC #7 behavioral guard — requires Docker (Redis/FalkorDB containers). Runs in the Aspire integration lane only; the default test lane does not provision containers. Unskip when the integration lane is wired up.")]
     public async Task SidecarStart_DoesNotBeginUntilStatestoreYamlIsRewrittenWithAllocatedRedisHost()
     {
         IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
@@ -35,6 +35,7 @@ public sealed class AppHostComponentFileOrderingTests
         // so by the time this tap runs the rewrite must be complete and any 127.0.0.1 placeholder
         // must have been replaced with the allocated Redis host:port.
         string? capturedStateStoreContent = null;
+        string? capturedSidecarResourceName = null;
 
         builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, _) =>
         {
@@ -45,6 +46,8 @@ public sealed class AppHostComponentFileOrderingTests
             {
                 return;
             }
+
+            capturedSidecarResourceName ??= @event.Resource.Name;
 
             string? statestoreYamlPath = LocateMostRecentStatestoreYaml();
             if (statestoreYamlPath is not null && File.Exists(statestoreYamlPath))
@@ -58,15 +61,19 @@ public sealed class AppHostComponentFileOrderingTests
 
         await app.StartAsync(cts.Token).ConfigureAwait(true);
 
-        // Wait for memories-dapr to transition into Running — the tap above runs before the
-        // sidecar starts, so by the time the resource is healthy, capturedStateStoreContent reflects
-        // the file state at the start barrier.
-        _ = await app.ResourceNotifications
-            .WaitForResourceAsync(
-                "memories-dapr",
-                e => e.Snapshot.State?.Text is "Running" or "Finished",
-                cts.Token)
-            .ConfigureAwait(true);
+        if (capturedSidecarResourceName is not null)
+        {
+            // Wait for the sidecar resource that actually exists in this DAPR hosting version
+            // (for example memories-dapr-cli). The tap above runs before the sidecar starts, so
+            // by the time that resource is healthy, capturedStateStoreContent reflects the file
+            // state at the start barrier.
+            _ = await app.ResourceNotifications
+                .WaitForResourceAsync(
+                    capturedSidecarResourceName,
+                    e => e.Snapshot.State?.Text is "Running" or "Finished",
+                    cts.Token)
+                .ConfigureAwait(true);
+        }
 
         capturedStateStoreContent.ShouldNotBeNull(
             "BeforeResourceStartedEvent did not fire for any DAPR sidecar — the rewrite-ordering invariant cannot be asserted.");

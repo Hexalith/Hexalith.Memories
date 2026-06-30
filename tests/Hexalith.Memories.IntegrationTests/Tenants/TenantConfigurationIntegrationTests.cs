@@ -32,7 +32,7 @@ public sealed class TenantConfigurationIntegrationTests
         => _fixture = fixture;
 
     // AC1 / FR41 — enriched tenant listing.
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task ListTenants_ReturnsEnrichedSummaryWithCountsAndIndexHealth()
     {
         // Given a tenant with indexed memory units,
@@ -43,7 +43,7 @@ public sealed class TenantConfigurationIntegrationTests
         await Task.CompletedTask;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with one backend stopped")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with one backend stopped")]
     public async Task ListTenants_WhenOneBackendStopped_TenantStillListedWithUnknownOnThatAxis()
     {
         // Given the Redis Vector backend is stopped,
@@ -55,7 +55,7 @@ public sealed class TenantConfigurationIntegrationTests
     }
 
     // AC2 / FR45 — tenant configuration view.
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task GetConfiguration_ReturnsComposedView_WithFullEmbeddingConfig()
     {
         // Given a provisioned tenant,
@@ -67,7 +67,7 @@ public sealed class TenantConfigurationIntegrationTests
         await Task.CompletedTask;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task GetConfiguration_UnknownTenant_Returns404TenantNotFound()
     {
         _ = _fixture;
@@ -75,7 +75,7 @@ public sealed class TenantConfigurationIntegrationTests
     }
 
     // AC3 / FR42 — PATCH display name.
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task PatchDisplayName_UpdatesRegistryAndReflectsInSubsequentGet()
     {
         // Given a provisioned tenant with displayName "Old",
@@ -88,7 +88,7 @@ public sealed class TenantConfigurationIntegrationTests
         await Task.CompletedTask;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with non-Active tenant")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with non-Active tenant")]
     public async Task PatchDisplayName_NonActiveTenant_Returns409()
     {
         // Given a tenant in Provisioning / Deleting / Failed state,
@@ -99,7 +99,7 @@ public sealed class TenantConfigurationIntegrationTests
     }
 
     // AC4 / FR43 — embedding config breaking-change flow (existing PUT /embedding-config).
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task PutEmbeddingConfig_BreakingChange_WithoutForceReindex_Returns409()
     {
         // Given a tenant with dimensions=768,
@@ -111,7 +111,7 @@ public sealed class TenantConfigurationIntegrationTests
         await Task.CompletedTask;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task PutEmbeddingConfig_BreakingChange_WithForceReindex_Returns200AndSetsReindexRequired()
     {
         _ = _fixture;
@@ -119,7 +119,7 @@ public sealed class TenantConfigurationIntegrationTests
     }
 
     // AC5 / FR69 — rate-limit propagation on next embedding request.
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task PutEmbeddingConfig_RateLimitChange_PropagatesToRateLimiterOnNextIngest()
     {
         // Given a tenant with rateLimitPerMinute=1500,
@@ -135,7 +135,7 @@ public sealed class TenantConfigurationIntegrationTests
     // Fallback: IngestionWorkflowTests asserts IndexInput.EmbeddingModel is populated from
     // EmbeddingResult.EmbeddingModel (covered at unit level by GenerateEmbeddingActivityTests and
     // IndexSyntacticActivityTests).
-    [Fact(Skip = "Requires Aspire AppHost fixture — fall back to unit-level assertions if unavailable")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — fall back to unit-level assertions if unavailable")]
     public async Task IngestMemoryUnit_EndToEnd_PersistsEmbeddingProviderAndModel()
     {
         // Given a provisioned tenant using Google provider + gemini-embedding-001,

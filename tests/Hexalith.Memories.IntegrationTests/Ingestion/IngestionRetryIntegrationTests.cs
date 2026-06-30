@@ -15,7 +15,7 @@ public sealed class IngestionRetryIntegrationTests
 
     public IngestionRetryIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Requires Aspire AppHost fixture — unskip with Story 6.3 retry validation harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry validation harness")]
     public void TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries()
     {
         // Scenario (Task 4.4):

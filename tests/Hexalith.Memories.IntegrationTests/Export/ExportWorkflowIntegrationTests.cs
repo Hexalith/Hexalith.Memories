@@ -19,7 +19,7 @@ namespace Hexalith.Memories.IntegrationTests.Export;
 public class ExportWorkflowIntegrationTests
 {
     /// <summary>Ingest three units into one case, export the case, assert manifest + units + edges round-trip.</summary>
-    [Fact(Skip = "Aspire fixture build failure tracked in 5.6 Dev Notes")]
+    [RunnableSkippedFact("Aspire fixture build failure tracked in 5.6 Dev Notes")]
     public async Task IngestThreeUnits_ExportCase_RoundTripsThroughStream()
     {
         await Task.Yield();
@@ -29,7 +29,7 @@ public class ExportWorkflowIntegrationTests
     }
 
     /// <summary>Ingest two cases of units, export the tenant, assert all cases + units + edges are present.</summary>
-    [Fact(Skip = "Aspire fixture build failure tracked in 5.6 Dev Notes")]
+    [RunnableSkippedFact("Aspire fixture build failure tracked in 5.6 Dev Notes")]
     public async Task IngestTwoCases_ExportTenant_ReturnsEverything()
     {
         await Task.Yield();

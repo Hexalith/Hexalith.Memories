@@ -21,7 +21,7 @@ public sealed class RateLimitingIntegrationTests
 
     public RateLimitingIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
     public void TwoTenantIsolation_ShouldEnforceIndependentCeilings()
     {
         // AC1, AC10: two tenants with different ceilings (500 vs 3000) run concurrently.
@@ -29,7 +29,7 @@ public sealed class RateLimitingIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
     public void BatchVsSingleIngest_ShouldNotStarveRealTimeTenant()
     {
         // AC2: t1 submits 500-file batch, t2 submits single file within 1 s.
@@ -37,7 +37,7 @@ public sealed class RateLimitingIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
     public void Provider429_ShouldReportToActorAndRetry()
     {
         // AC3, AC4: provider returns 429 for first 3 attempts, success on 4th.

@@ -15,7 +15,7 @@ public sealed class UrlIngestionIntegrationTests
 
     public UrlIngestionIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Requires Aspire AppHost fixture + scripted local HTTP server — unskip with Story 6.3 retry harness OR Epic 7 e2e harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture + scripted local HTTP server — unskip with Story 6.3 retry harness OR Epic 7 e2e harness")]
     public void UrlIngestion_SmallTextPage_ShouldCompleteAndBeSearchable()
     {
         // Scenario (Story 6.1 AC1):
@@ -27,7 +27,7 @@ public sealed class UrlIngestionIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
     public void UrlIngestion_404Url_ShouldFailAfterRetries()
     {
         // Scenario (Story 6.1 AC2):
@@ -36,7 +36,7 @@ public sealed class UrlIngestionIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry harness")]
     public void UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling()
     {
         // Scenario (Story 6.1 AC3):

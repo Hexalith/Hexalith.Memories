@@ -37,7 +37,16 @@ internal static class ServerActivityStreamReader
         IReadOnlyList<CapturedServerActivity> latest = [];
         while (DateTimeOffset.UtcNow < deadline)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                if (IsAtPollingDeadline(deadline, pollInterval))
+                {
+                    break;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             latest = ScanCapturedLogs(fixture, logStartIndex);
             int matchingCount = matchPredicate is null
                 ? latest.Count
@@ -50,6 +59,10 @@ internal static class ServerActivityStreamReader
             try
             {
                 await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (IsAtPollingDeadline(deadline, pollInterval))
+            {
+                break;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -66,6 +79,9 @@ internal static class ServerActivityStreamReader
 
         return latest;
     }
+
+    private static bool IsAtPollingDeadline(DateTimeOffset deadline, TimeSpan pollInterval)
+        => DateTimeOffset.UtcNow + pollInterval >= deadline;
 
     private static IReadOnlyList<CapturedServerActivity> ScanCapturedLogs(
         AspireIngestionPipelineFixture fixture,

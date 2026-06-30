@@ -60,6 +60,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _eventStoreSourceMapScope;
     private EnvVarScope? _enableKeycloakScope;
     private EnvVarScope? _telemetryInMemoryScope;
+    private EnvVarScope? _workflowReplaySafetyScope;
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
     private bool _secretsFileExisted;
@@ -227,6 +228,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
             _enableKeycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
+            _workflowReplaySafetyScope = EnvVarScope.Set("WorkflowReplaySafety__Enabled", "false");
 
             WriteLocalDaprSecretIfNeeded();
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
@@ -249,6 +251,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _eventStoreSourceMapScope = null;
         _enableKeycloakScope?.Dispose();
         _enableKeycloakScope = null;
+        _workflowReplaySafetyScope?.Dispose();
+        _workflowReplaySafetyScope = null;
         _redisVolumeNameScope?.Dispose();
         _redisVolumeNameScope = null;
         _daprAppIdScope?.Dispose();
@@ -710,6 +714,15 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     private Uri ResolveDaprSidecarHttpEndpoint(int logStartIndex)
     {
+        try
+        {
+            return ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
+        }
+        catch (InvalidOperationException)
+        {
+            // Fall back to Aspire resource endpoints when the DAPR CLI log line is unavailable.
+        }
+
         if (_app is not null)
         {
             foreach (string resourceName in new[] { "memories-dapr", "memories-dapr-cli" })
@@ -720,13 +733,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 }
                 catch (ArgumentException)
                 {
-                    // Fall back to the historical log-scrape path below when the sidecar resource
-                    // does not expose a directly allocated endpoint under this name.
+                    // Continue probing known sidecar resource names.
                 }
             }
         }
 
-        return ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
+        throw new InvalidOperationException(
+            "Could not determine the Memories Server Dapr sidecar HTTP endpoint from Aspire resources or captured logs.");
     }
 
     private static Uri ResolveDaprSidecarHttpEndpoint(IReadOnlyList<CapturedLogEntry> entries)
@@ -858,7 +871,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         using Process process = Process.GetProcessById(processId);
-        process.Kill(entireProcessTree: true);
+        process.Kill(entireProcessTree: false);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
     }
 

@@ -92,7 +92,7 @@ public sealed class AspireEndToEndTraceTests
         // memories.search spans are emitted as test-only activity breadcrumbs to the server's stderr under
         // HEXALITH_MEMORIES_TELEMETRY_INMEMORY=1 and parsed from the Aspire log stream.
         string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-telemetry-trace-{Guid.NewGuid():N}");
-        string query = $"trace-redis-probe-{Guid.NewGuid():N}";
+        string query = $"traceredisprobe{Guid.NewGuid():N}";
         await SeedSyntacticDocumentAsync(tenantId, query);
 
         await using CliTracingHarness harness = CliTracingHarness.Create();

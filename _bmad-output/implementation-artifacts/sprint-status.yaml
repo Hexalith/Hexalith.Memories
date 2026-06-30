@@ -1,5 +1,5 @@
 # generated: 2026-05-17T08:56:54+02:00
-# last_updated: 2026-06-27
+# last_updated: 2026-06-30
 # project: Hexalith.Memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-06-27
+last_updated: 2026-06-30
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
 # 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
@@ -46,6 +46,7 @@ last_updated: 2026-06-27
 # 2026-06-25: Story 18.8 created (18.8 → ready-for-dev) via create-story. Docs/test contract story for cross-module Dapr event intake; no release impact, no multi-topic/direct-REST scope.
 # 2026-06-25: Epic 18 retrospective completed (epic-18-retrospective → done; epic-18 in-progress → done at close-out). Retro: epic-18-retro-2026-06-25.md. 8 action items recorded; Epic 17 follow-through statuses updated.
 # 2026-06-27: Story 0.4 added as a planning-history migration of the minimum build/test CI preflight from Story 11.1. No new implementation story file required; completion evidence remains in 11-1-github-actions-build-and-test-pipeline.md.
+# 2026-06-30: Epic 19 backlog rows added by approved Sprint Change Proposal 2026-06-30. Epic owns deferred-register backlog homes and residual hardening; no story files created yet.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -223,6 +224,14 @@ development_status:
   18-7-memories-client-mockability-stability-contract: done
   18-8-cross-module-dapr-event-intake-contract-and-verification: done
   epic-18-retrospective: done
+
+  # Epic 19: Deferred Register Backlog Home and Residual Hardening
+  epic-19: backlog
+  19-1-deferred-register-active-entry-classification-sweep: backlog
+  19-2-downstream-contract-artifact-generation-decisions: backlog
+  19-3-release-preflight-and-baseline-evidence-residual-sweep: backlog
+  19-4-provider-registry-and-migration-residual-sweep: backlog
+  epic-19-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:

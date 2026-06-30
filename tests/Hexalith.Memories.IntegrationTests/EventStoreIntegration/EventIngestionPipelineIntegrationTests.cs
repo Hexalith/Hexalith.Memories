@@ -43,7 +43,8 @@ public sealed class EventIngestionPipelineIntegrationTests
         await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         string eventId = $"evt-{Guid.NewGuid():N}";
-        string queryToken = $"claimtoken{Guid.NewGuid():N}";
+        const string indexedText = "claim event content";
+        const string searchQuery = "claim event";
         const string subject = "claim-42";
         string envelope = $$"""
             {
@@ -54,7 +55,7 @@ public sealed class EventIngestionPipelineIntegrationTests
               "subject": "{{subject}}",
               "time": "{{DateTimeOffset.UtcNow:o}}",
               "data": {
-                "summary": "{{queryToken}}",
+                "summary": "{{indexedText}}",
                 "amount": 100
               }
             }
@@ -80,18 +81,20 @@ public sealed class EventIngestionPipelineIntegrationTests
         string memoryUnitId = await WaitForDedupResolutionAsync(instanceId);
         MemoryUnit indexed = await WaitForMemoryUnitAsync(tenantId, caseId, memoryUnitId);
         indexed.Status.ShouldBe(MemoryUnitStatus.Indexed);
-        indexed.Content.ShouldContain(queryToken, Shouldly.Case.Sensitive);
+        indexed.Content.ShouldContain(indexedText, Shouldly.Case.Sensitive);
         indexed.Metadata.ShouldContainKey("cloudevent.subject");
         indexed.Metadata["cloudevent.subject"].Value.ShouldBe(subject);
+        RedisValue indexedSubject = await _fixture.RedisConnection
+            .GetDatabase()
+            .HashGetAsync($"{tenantId}:mu:{memoryUnitId}", "cloudeventSubject");
+        indexedSubject.ToString().ShouldBe(subject);
 
-        await WaitForIndexedMatchAsync(tenantId, queryToken, subject);
-
-        SearchResult matching = await WaitForSearchAsync(tenantId, queryToken, subject);
+        SearchResult matching = await WaitForSearchAsync(tenantId, searchQuery, subject, memoryUnitId);
         matching.Results.ShouldNotBeEmpty();
-        matching.Results.ShouldContain(r => r.ContentSnippet.Contains(queryToken, StringComparison.Ordinal));
+        matching.Results.ShouldContain(r => r.ContentSnippet.Contains(indexedText, StringComparison.Ordinal));
 
         using HttpResponseMessage wrongSubjectResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(queryToken)}&subject=claim-999");
+            $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(searchQuery)}&subject=claim-999");
         wrongSubjectResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         SearchResult? wrongSubject = await wrongSubjectResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
@@ -107,26 +110,28 @@ public sealed class EventIngestionPipelineIntegrationTests
         await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         string eventId = $"evt-dapr-{Guid.NewGuid():N}";
-        string firstToken = $"daprclaim{Guid.NewGuid():N}";
-        string duplicateToken = $"duplicateclaim{Guid.NewGuid():N}";
+        const string firstText = "dapr claim content";
+        const string firstQuery = "dapr claim";
+        const string duplicateText = "duplicate claim content";
+        const string duplicateQuery = "duplicate claim";
         const string subject = "claim-42";
 
         using HttpClient daprClient = new() { BaseAddress = _fixture.DaprSidecarHttpEndpoint };
 
         Stopwatch freshness = Stopwatch.StartNew();
-        await PublishEventViaDaprAsync(daprClient, eventId, subject, firstToken);
+        await PublishEventViaDaprAsync(daprClient, eventId, subject, firstText);
 
-        SearchResult firstMatch = await WaitForSearchAsync(tenantId, firstToken, subject);
+        SearchResult firstMatch = await WaitForSearchAsync(tenantId, firstQuery, subject);
         freshness.Stop();
 
         freshness.Elapsed.ShouldBeLessThanOrEqualTo(
             FreshnessTimeout,
             $"Dapr pub/sub publish path should surface searchable results within {FreshnessTimeout}.");
         firstMatch.TotalCount.ShouldBeGreaterThan(0);
-        firstMatch.Results.ShouldContain(result => result.ContentSnippet.Contains(firstToken, StringComparison.Ordinal));
+        firstMatch.Results.ShouldContain(result => result.ContentSnippet.Contains(firstText, StringComparison.Ordinal));
 
-        await PublishEventViaDaprAsync(daprClient, eventId, subject, duplicateToken);
-        await AssertNoSearchMatchWithinAsync(tenantId, duplicateToken, subject, FreshnessTimeout);
+        await PublishEventViaDaprAsync(daprClient, eventId, subject, duplicateText);
+        await AssertNoSearchMatchWithinAsync(tenantId, duplicateQuery, subject, FreshnessTimeout);
     }
 
     private async Task EnsureTenantActiveAsync(string tenantId, string displayName)
@@ -272,61 +277,6 @@ public sealed class EventIngestionPipelineIntegrationTests
         return null!;
     }
 
-    private async Task WaitForIndexedMatchAsync(string tenantId, string query, string subject)
-    {
-        Stopwatch timeout = Stopwatch.StartNew();
-        long lastCount = -1;
-        string? lastError = null;
-
-        while (timeout.Elapsed < SearchTimeout)
-        {
-            try
-            {
-                lastCount = await GetIndexedMatchCountAsync(tenantId, query, subject);
-                if (lastCount > 0)
-                {
-                    return;
-                }
-            }
-            catch (RedisServerException ex)
-            {
-                lastError = ex.Message;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-        }
-
-        false.ShouldBeTrue(
-            $"RediSearch index for tenant '{tenantId}' did not expose a subject-filtered match within {SearchTimeout}. "
-            + $"Last count={lastCount}, last error={lastError}");
-    }
-
-    private async Task<long> GetIndexedMatchCountAsync(string tenantId, string query, string subject)
-    {
-        IDatabase db = _fixture.RedisConnection.GetDatabase();
-        string indexName = $"{tenantId}:memories:idx";
-        string queryString = $"@cloudeventSubject:{{{EscapeRedisSearchValue(subject)}}} {EscapeRedisSearchValue(query)}";
-
-        RedisResult raw = await db.ExecuteAsync(
-            "FT.SEARCH",
-            indexName,
-            queryString,
-            "NOCONTENT",
-            "LIMIT",
-            "0",
-            "0",
-            "DIALECT",
-            "2");
-
-        RedisResult[]? values = (RedisResult[]?)raw;
-        if (values is null || values.Length == 0)
-        {
-            return 0;
-        }
-
-        return ParseRedisLong(values[0]);
-    }
-
     private async Task PublishEventViaDaprAsync(HttpClient daprClient, string eventId, string subject, string queryToken)
     {
         string envelope = $$"""
@@ -351,24 +301,12 @@ public sealed class EventIngestionPipelineIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
 
-    private static long ParseRedisLong(RedisResult result)
-    {
-        string? raw = result.ToString();
-        return long.TryParse(raw, out long value) ? value : 0;
-    }
-
-    private static string EscapeRedisSearchValue(string value)
-        => string.Concat(value.Select(ch => ch switch
-        {
-            '-' or '@' or '!' or '{' or '}' or '(' or ')' or '[' or ']' or '^' or '~' or '*' or '?' or ':' or '\\' or '"' or '\'' or '|' or ',' => $"\\{ch}",
-            _ => ch.ToString(),
-        }));
-
-    private async Task<SearchResult> WaitForSearchAsync(string tenantId, string query, string subject)
+    private async Task<SearchResult> WaitForSearchAsync(string tenantId, string query, string subject, string? memoryUnitId = null)
     {
         Stopwatch timeout = Stopwatch.StartNew();
         HttpStatusCode? lastStatusCode = null;
         string? lastBody = null;
+        string? lastUnfilteredBody = null;
         while (timeout.Elapsed < SearchTimeout)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
@@ -384,12 +322,16 @@ public sealed class EventIngestionPipelineIntegrationTests
                 }
             }
 
+            using HttpResponseMessage unfiltered = await _fixture.MemoriesClient.GetAsync(
+                $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}");
+            lastUnfilteredBody = await unfiltered.Content.ReadAsStringAsync();
+
             await Task.Delay(TimeSpan.FromMilliseconds(500));
         }
 
         false.ShouldBeTrue(
             $"Search did not return a result for subject '{subject}' within {SearchTimeout}. "
-            + $"Last status={lastStatusCode}, last body={lastBody}");
+            + $"Last status={lastStatusCode}, last body={lastBody}, last unfiltered body={lastUnfilteredBody}");
         return null!;
     }
 

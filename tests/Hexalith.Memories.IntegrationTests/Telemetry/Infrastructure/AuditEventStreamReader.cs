@@ -109,7 +109,16 @@ internal static class AuditEventStreamReader
         IReadOnlyList<CapturedAuditEvent> latest = [];
         while (DateTimeOffset.UtcNow < deadline)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                if (IsAtPollingDeadline(deadline, pollInterval))
+                {
+                    break;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             latest = ScanCapturedLogs(fixture, logStartIndex);
             int matchingCount = matchPredicate is null
                 ? latest.Count
@@ -122,6 +131,10 @@ internal static class AuditEventStreamReader
             try
             {
                 await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (IsAtPollingDeadline(deadline, pollInterval))
+            {
+                break;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -140,6 +153,9 @@ internal static class AuditEventStreamReader
 
         return latest;
     }
+
+    private static bool IsAtPollingDeadline(DateTimeOffset deadline, TimeSpan pollInterval)
+        => DateTimeOffset.UtcNow + pollInterval >= deadline;
 
     /// <summary>Scans once with no polling window — useful for negative-space assertions where the
     /// caller has already waited for stragglers to land and just wants the current snapshot.</summary>

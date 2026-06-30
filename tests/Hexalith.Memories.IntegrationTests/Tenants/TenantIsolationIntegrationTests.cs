@@ -26,7 +26,7 @@ public sealed class TenantIsolationIntegrationTests
     /// <param name="fixture">The Aspire pipeline fixture.</param>
     public TenantIsolationIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with multi-tenant data")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with multi-tenant data")]
     public async Task VerifyTenant_WithTwoProvisionedTenants_AllChecksShouldPass()
     {
         // Arrange: Provision tenant A and B, ingest memory units into both
@@ -45,7 +45,7 @@ public sealed class TenantIsolationIntegrationTests
         result.Checks.ShouldNotBeEmpty();
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with multi-tenant graph data")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with multi-tenant graph data")]
     public async Task VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes()
     {
         // AC #2: Create identical graph structures in tenant A and B with colliding edge IDs
@@ -64,7 +64,7 @@ public sealed class TenantIsolationIntegrationTests
         graphCheck.Passed.ShouldBeTrue();
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with multi-tenant data")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with multi-tenant data")]
     public async Task VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes()
     {
         // Ingest into A, search from B context, confirm zero results across all axes
@@ -81,7 +81,7 @@ public sealed class TenantIsolationIntegrationTests
         result.Checks.First(c => c.CheckName == "SemanticIsolation").Passed.ShouldBeTrue();
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task VerifyTenant_MalformedTenantId_Returns400()
     {
         // Run verify with malformed tenant ID, confirm rejection
@@ -92,7 +92,7 @@ public sealed class TenantIsolationIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task VerifyTenant_NonExistentTenant_Returns404()
     {
         // Run verify with non-existent tenant ID
@@ -107,7 +107,7 @@ public sealed class TenantIsolationIntegrationTests
         error.Code.ShouldBe("TENANT_NOT_FOUND");
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with multi-tenant data and deletion")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with multi-tenant data and deletion")]
     public async Task VerifyTenant_AfterOtherTenantDeleted_IsolationUnaffected()
     {
         // Delete tenant B, run verify on A, confirm A isolation unaffected
@@ -123,7 +123,7 @@ public sealed class TenantIsolationIntegrationTests
         result.AllPassed.ShouldBeTrue();
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with planted cross-tenant data")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with planted cross-tenant data")]
     public async Task VerifyTenant_PlantedCrossTenantData_DetectsLeakage()
     {
         // Negative test (false-pass prevention): Deliberately plant cross-tenant data

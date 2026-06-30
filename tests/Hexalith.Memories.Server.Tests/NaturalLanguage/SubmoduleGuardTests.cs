@@ -71,7 +71,7 @@ public sealed partial class SubmoduleGuardTests
             "Missing-submodule failures should name the exact root-declared submodule path.");
     }
 
-    [Fact(Skip = "Story 15.6 AC #7 behavioral guard — invokes `dotnet msbuild` against a workspace with a renamed submodule .git marker. Disabled by default because it mutates the shared worktree and depends on `dotnet` being on PATH; unskip manually or in the dedicated regression lane.")]
+    [RunnableSkippedFact("Story 15.6 AC #7 behavioral guard — invokes `dotnet msbuild` against a workspace with a renamed submodule .git marker. Disabled by default because it mutates the shared worktree and depends on `dotnet` being on PATH; unskip manually or in the dedicated regression lane.")]
     public void CheckSubmodulesTarget_FailsBuildWhenSubmoduleGitMarkerIsMissing()
     {
         string repoRoot = LocateRepoRoot();
@@ -137,6 +137,8 @@ public sealed partial class SubmoduleGuardTests
         psi.ArgumentList.Add("msbuild");
         psi.ArgumentList.Add(Path.Combine("src", "Hexalith.Memories.ServiceDefaults", "Hexalith.Memories.ServiceDefaults.csproj"));
         psi.ArgumentList.Add("-t:CheckSubmodules");
+        psi.ArgumentList.Add("-p:UseHexalithProjectReferences=true");
+        psi.ArgumentList.Add("-p:UseNuGetDeps=false");
         psi.ArgumentList.Add("-nologo");
         psi.ArgumentList.Add("-v:minimal");
 

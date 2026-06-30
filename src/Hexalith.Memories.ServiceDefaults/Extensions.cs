@@ -100,23 +100,6 @@ public static class Extensions
                 }
             });
 
-        if (configureRedisInstrumentation)
-        {
-            // Story 8.5 — add both keyed connections to the shared Redis instrumentation singleton
-            // once the TracerProvider has been built. ConfigureRedisInstrumentation is invoked during
-            // service resolution of the TracerProvider, which is AFTER the container has been built,
-            // so both keyed IConnectionMultiplexer instances are available.
-            _ = builder.Services
-                .AddOpenTelemetry()
-                .WithTracing(tracing => tracing.ConfigureRedisInstrumentation((sp, instrumentation) =>
-                {
-                    IConnectionMultiplexer redis = sp.GetRequiredKeyedService<IConnectionMultiplexer>(RedisConnectionKey);
-                    IConnectionMultiplexer falkordb = sp.GetRequiredKeyedService<IConnectionMultiplexer>(FalkorDbConnectionKey);
-                    instrumentation.AddConnection(RedisConnectionKey, redis);
-                    instrumentation.AddConnection(FalkorDbConnectionKey, falkordb);
-                }));
-        }
-
         _ = builder.AddOpenTelemetryExporters();
 
         return builder;
@@ -124,22 +107,17 @@ public static class Extensions
 
     private static void ConfigureRedisTracing(TracerProviderBuilder tracing)
     {
-        // Story 8.5 — Redis OTEL instrumentation. The 1.15.1-beta.1 upstream package does
-        // not expose a `AddRedisInstrumentation(serviceKey)` keyed-DI overload (that was
-        // the spec's original assumption, since rejected). Instead:
-        //   1. AddRedisInstrumentation(configure) registers the source + FlushInterval.
-        //   2. ConfigureRedisInstrumentation(...) is called post-TracerProvider-build with
-        //      the StackExchangeRedisInstrumentation singleton; we resolve both keyed
-        //      IConnectionMultiplexer instances from DI and call AddConnection per key.
-        //
+        // Story 8.5 — Redis OTEL instrumentation for both keyed multiplexers. Use the package's keyed
+        // service overload so the real connections are attached during provider construction; a later
+        // ConfigureRedisInstrumentation(...AddConnection...) hook can miss early request traffic.
         // The DI-guard pattern from ADR-8.5-001 (f) is preserved: an AddInstrumentation
         // callback per key throws InvalidOperationException at TracerProvider.Build() if
         // the expected keyed multiplexer is absent, guarding against the silent-drop path
-        // that would otherwise occur if the post-build ConfigureRedisInstrumentation
-        // simply observed a null key.
+        // that would otherwise occur when Redis instrumentation has no connection to observe.
         AddRedisKeyedConnectionGuard(tracing, RedisConnectionKey);
         AddRedisKeyedConnectionGuard(tracing, FalkorDbConnectionKey);
-        _ = tracing.AddRedisInstrumentation(ConfigureRedisInstrumentation);
+        _ = tracing.AddRedisInstrumentation(RedisConnectionKey, RedisConnectionKey, ConfigureRedisInstrumentation);
+        _ = tracing.AddRedisInstrumentation(FalkorDbConnectionKey, FalkorDbConnectionKey, ConfigureRedisInstrumentation);
 
         // Story 8.5 ADR-8.5-001 (h) Path A — rewrite db.system tags on FalkorDB spans so
         // APM backends don't misclassify graph queries as generic Redis commands. Resolve
@@ -404,6 +382,15 @@ public static class Extensions
 
             if (string.Equals(data.Source.Name, RedisSourceName, StringComparison.Ordinal))
             {
+                if (data.Parent is null && NormalizeSpanId(data.ParentSpanId) is not null)
+                {
+                    // StackExchange.Redis instrumentation drains completed commands on its own thread. In
+                    // that path the Activity can preserve TraceId/ParentSpanId while Activity.Parent is no
+                    // longer linked as an object reference. Emit the breadcrumb and let the integration test
+                    // rebuild the parent chain from span ids across all server breadcrumbs.
+                    return true;
+                }
+
                 return ParentChainReachesMemoriesOrAspNetCore(data, logger);
             }
 

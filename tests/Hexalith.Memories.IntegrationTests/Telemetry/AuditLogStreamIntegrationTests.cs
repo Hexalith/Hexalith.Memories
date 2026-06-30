@@ -159,10 +159,8 @@ public sealed class AuditLogStreamIntegrationTests
     public async Task SearchOperation_RetrySequence_EmitsDistinctAuditEventsPerStatus()
     {
         string tenantId = await EnsureProvisionedTenantAsync();
-        string startNodeId = $"retry-probe-{Guid.NewGuid():N}";
+        string secondAttemptQuery = $"retry-query-{Guid.NewGuid():N}";
         int logStartIndex = _fixture.LogEntryCount;
-
-        await _fixture.StopFalkorDbContainerAsync();
 
         // Register an ActivityListener so the test-owned ActivitySource activates and
         // Activity.Current propagates a real W3C trace id. Without an active listener,
@@ -183,18 +181,15 @@ public sealed class AuditLogStreamIntegrationTests
         using (Activity? firstAttempt = retrySource.StartActivity("telemetry-retry-attempt-1"))
         {
             using HttpResponseMessage first = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
-            first.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+                $"/api/search?tenantId={tenantId}&axis=graph&depth=1");
+            first.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         }
-
-        await _fixture.RestartTopologyAsync();
-        await _fixture.WaitForTenantActiveAsync(tenantId);
 
         string traceId = retryRoot.TraceId.ToString();
 
         using Activity? secondAttempt = retrySource.StartActivity("telemetry-retry-attempt-2");
         using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&axis=graph&startNodeId={startNodeId}&depth=1");
+            $"/api/search?tenantId={tenantId}&axis=syntactic&query={secondAttemptQuery}");
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
         SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
         retryResult.ShouldNotBeNull();

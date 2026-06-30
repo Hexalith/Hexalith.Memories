@@ -43,7 +43,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     // ---------------------------------------------------------------------------------------------
     // AC1 — Registry validation on previously-unprotected endpoints
     // ---------------------------------------------------------------------------------------------
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task EmbeddingConfig_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
@@ -56,7 +56,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         error.Code.ShouldBe("TENANT_NOT_FOUND");
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with a Provisioning-state tenant")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with a Provisioning-state tenant")]
     public async Task EmbeddingConfig_ProvisioningTenant_Returns409TenantProvisioning()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
@@ -69,7 +69,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         error.Code.ShouldBe("TENANT_PROVISIONING");
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task ProvisionStatus_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
@@ -78,7 +78,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with a Deleting-state tenant")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with a Deleting-state tenant")]
     public async Task DeletionStatus_DeletingTenant_Returns200()
     {
         // AC1 edge case: deletion-status must remain callable for Deleting tenants (that's its purpose).
@@ -88,7 +88,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with a Failed-state tenant")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with a Failed-state tenant")]
     public async Task Verify_FailedTenant_Returns200()
     {
         // AC1 edge case: verify endpoint must work on any existing tenant regardless of status
@@ -99,7 +99,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task Verify_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
@@ -115,7 +115,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     // ---------------------------------------------------------------------------------------------
     // AC2 — Cross-tenant mismatch detection end-to-end
     // ---------------------------------------------------------------------------------------------
-    [Fact(Skip = "Requires Aspire AppHost fixture with two provisioned tenants and shared Redis")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with two provisioned tenants and shared Redis")]
     public async Task MemoryUnit_CorruptedTenantId_Returns404AndLogsCritical()
     {
         // This is the tertiary-defense test from Story 5.4 AC2:
@@ -138,7 +138,7 @@ public sealed class TenantContextEnforcementIntegrationTests
             .ShouldBeTrue();
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with two provisioned tenants")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with two provisioned tenants")]
     public async Task Search_CrossTenantScope_ReturnsZeroResultsFromOtherTenant()
     {
         // Search scoped to tenant A must never return content from tenant B.
@@ -154,7 +154,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     // ---------------------------------------------------------------------------------------------
     // AC3 — DAPR API token behavior (manual-verification equivalent)
     // ---------------------------------------------------------------------------------------------
-    [Fact(Skip = "Requires Aspire AppHost fixture with DAPR_API_TOKEN_MODE=enabled; manual verification in MVP")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with DAPR_API_TOKEN_MODE=enabled; manual verification in MVP")]
     public async Task DaprSidecar_RequestWithoutApiToken_IsRejected()
     {
         // AC3 is fundamentally not unit-testable (DAPR runtime validates tokens). When the fixture

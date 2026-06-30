@@ -34,6 +34,7 @@ public sealed class HealthEndpointIntegrationTests
 
     private static readonly TimeSpan HealthTransitionTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan HealthPollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan HealthProbeTimeout = TimeSpan.FromSeconds(5);
 
     public HealthEndpointIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
@@ -79,14 +80,13 @@ public sealed class HealthEndpointIntegrationTests
     {
         try
         {
-            using CancellationTokenSource cts = new(HealthTransitionTimeout);
-            await _fixture.StopFalkorDbContainerAsync(cts.Token);
+            using CancellationTokenSource stopCts = new(HealthTransitionTimeout);
+            await _fixture.StopFalkorDbContainerAsync(stopCts.Token);
 
             JsonElement root = await WaitForEndpointAsync(
                 "/ready",
                 HttpStatusCode.OK,
-                "Degraded",
-                cts.Token);
+                "Degraded");
 
             JsonElement falkor = root.GetProperty("entries").GetProperty("falkordb");
             falkor.GetProperty("status").GetString().ShouldBe("Degraded");
@@ -106,14 +106,13 @@ public sealed class HealthEndpointIntegrationTests
     {
         try
         {
-            using CancellationTokenSource cts = new(HealthTransitionTimeout);
-            await _fixture.StopDaprSidecarAsync(cts.Token);
+            using CancellationTokenSource stopCts = new(HealthTransitionTimeout);
+            await _fixture.StopDaprSidecarAsync(stopCts.Token);
 
             JsonElement root = await WaitForEndpointAsync(
                 "/alive",
                 HttpStatusCode.ServiceUnavailable,
-                "Unhealthy",
-                cts.Token);
+                "Unhealthy");
 
             JsonElement sidecar = root.GetProperty("entries").GetProperty("dapr-sidecar");
             sidecar.GetProperty("status").GetString().ShouldBe("Unhealthy");
@@ -128,7 +127,7 @@ public sealed class HealthEndpointIntegrationTests
         string path,
         HttpStatusCode expectedStatusCode,
         string expectedStatus,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken = default)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(HealthTransitionTimeout);
         HttpStatusCode? lastStatusCode = null;
@@ -141,9 +140,11 @@ public sealed class HealthEndpointIntegrationTests
 
             try
             {
-                using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(path, cancellationToken).ConfigureAwait(false);
+                using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                probeCts.CancelAfter(HealthProbeTimeout);
+                using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(path, probeCts.Token).ConfigureAwait(false);
                 lastStatusCode = response.StatusCode;
-                lastBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                lastBody = await response.Content.ReadAsStringAsync(probeCts.Token).ConfigureAwait(false);
 
                 if (response.StatusCode == expectedStatusCode)
                 {
@@ -154,6 +155,10 @@ public sealed class HealthEndpointIntegrationTests
                         return root;
                     }
                 }
+            }
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastException = ex;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

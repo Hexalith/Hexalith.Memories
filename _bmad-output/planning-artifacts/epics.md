@@ -543,6 +543,11 @@ Maintainers can give the first external consumer of Hexalith.Memories (the `Hexa
 **Driven by:** Sprint Change Proposal 2026-05-27 (Parties consumer integration intake)
 **FRs reinforced:** FR6, FR24, FR59, FR60, FR61, FR62
 
+### Epic 19: Deferred Register Backlog Home and Residual Hardening
+Maintainers can convert active `open` and `carried-forward` deferred-work entries into explicit backlog homes, accepted-debt decisions, or trigger-bound future work without reopening completed epics.
+**Lifecycle label:** Operational Readiness / Deferred Register Governance
+**Driven by:** Sprint Change Proposal 2026-06-30 (Deferred Work Backlog Homes)
+
 ---
 
 ## Epic 0: Tenant and Case Safety Foundation
@@ -3717,3 +3722,97 @@ So that Tenants, Parties, and future Hexalith modules can publish events without
 - Direct REST-based module event ingestion
 - Mutating `references/Hexalith.EventStore`, `references/Hexalith.Tenants`, or other submodules
 - New persistence mechanisms outside the existing Memories ingestion workflow
+
+## Epic 19: Deferred Register Backlog Home and Residual Hardening
+
+**Lifecycle label:** Operational Readiness / Deferred Register Governance.
+
+Maintainers can convert active `open` and `carried-forward` entries from `deferred-work.md` and recent retrospective action items into explicit backlog homes, accepted-debt decisions, or trigger-bound future work without reopening completed epics.
+
+**Driven by:** Sprint Change Proposal 2026-06-30 (Deferred Work Backlog Homes).
+
+**Preflight required:** Before implementing any story, re-read `deferred-work.md`, `sprint-status.yaml` action items, and the relevant retrospective that produced each residual. Do not bulk-rewrite historical deferred prose; only migrate active entries that need planning signal.
+
+### Story 19.1: Deferred Register Active-Entry Classification Sweep
+
+As a maintainer,
+I want every active `open` or `carried-forward` deferred-work entry to have a current disposition,
+So that completed epics do not hide unscheduled operational or consumer-risk work.
+
+**Acceptance Criteria:**
+
+**Given** `deferred-work.md` contains structured entries with `Status: open` or `Status: carried-forward`,
+**When** the sweep runs,
+**Then** every active structured entry is classified as one of: scheduled story, accepted debt with rationale, carried-forward with explicit trigger and owner, or resolved with evidence.
+
+**Given** Epic 18 retrospective Action Item 4 names parked carry-forwards,
+**When** the sweep runs,
+**Then** `MEM-2-ASPIRATE`, `MEM-3-OPENAPI`, the real-Redis race evidence, the Dapr-sidecar pub/sub smoke evidence, and the Story 18.4 token-anchoring edge each receive a story id or accepted-debt entry with a re-open trigger.
+
+**Given** active entries from completed Epics 15 and 18 may still be valid,
+**When** the sweep updates planning artifacts,
+**Then** it references the completed source story but does not reopen the completed epic or alter completed story history.
+
+**Given** `sprint-status.yaml` has retrospective action items,
+**When** the sweep completes,
+**Then** related action items are updated only when their acceptance condition is actually met.
+
+### Story 19.2: Downstream Contract Artifact Generation Decisions
+
+As a downstream integration maintainer,
+I want explicit decisions for generated deployment and route artifacts,
+So that consumers know whether to rely on maintained docs, generated manifests, or generated OpenAPI/Swagger output.
+
+**Acceptance Criteria:**
+
+**Given** `MEM-2-ASPIRATE` is carried forward without a story id,
+**When** this story runs,
+**Then** aspirate or equivalent manifest emission is either scheduled for implementation, explicitly accepted as not needed, or deferred with an owner, trigger, and target artifact.
+
+**Given** `MEM-3-OPENAPI` is carried forward without a story id,
+**When** this story runs,
+**Then** OpenAPI/Swagger generation is either scheduled for implementation, explicitly accepted as not needed, or deferred with an owner, trigger, and target artifact.
+
+**Given** maintained docs already exist for deployment configuration and route surface,
+**When** generated artifacts remain deferred,
+**Then** the rationale states why the maintained-doc plus drift-guard tests remain sufficient for current consumers.
+
+### Story 19.3: Release Preflight and Baseline Evidence Residual Sweep
+
+As a release maintainer,
+I want release-preflight and baseline-evidence carry-forwards reviewed as one release-quality backlog decision,
+So that low-value hardening stays trigger-bound and high-value release risks get implementation stories.
+
+**Acceptance Criteria:**
+
+**Given** `12.4-RV20` requests optional strict literal per-SHA replay evidence,
+**When** release evidence needs are reviewed,
+**Then** the team either creates a strict replay evidence story or records why ancestry-based proof remains sufficient until a release post-mortem or quality story reopens it.
+
+**Given** `15.1-RV1` through `15.1-RV16` are carried forward from release-preflight review,
+**When** the sweep runs,
+**Then** each entry is grouped into implement-now, accept-until-trigger, or future release-hardening story buckets.
+
+**Given** release tooling changes can affect package publication,
+**When** any implement-now item is selected,
+**Then** focused validation covers the changed script, workflow, and inventory-test behavior.
+
+### Story 19.4: Provider Registry and Migration Residual Sweep
+
+As a system operator,
+I want provider-registry and migration-marker residual risks reviewed against current code,
+So that embedding-provider expansion and live migration do not inherit stale assumptions.
+
+**Acceptance Criteria:**
+
+**Given** `15.2-RV1` through `15.2-RV9` are marked `open`,
+**When** the sweep runs,
+**Then** each item is either resolved, accepted with rationale, or assigned to a concrete provider-registry follow-up story.
+
+**Given** migration-marker deferred entries from Story 15.3 include concurrency, stale-marker, TTL, and operator-documentation risks,
+**When** the sweep runs,
+**Then** the team identifies which risks remain trigger-bound and which need a migration-hardening story before the next provider migration investment.
+
+**Given** provider/model casing and registry dispatch appear in both provider and migration paths,
+**When** follow-up work is scheduled,
+**Then** tests cover both write-time validation and read/runtime comparison paths where practical.

@@ -180,8 +180,12 @@ builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.IsStubBackfil
 
 // Story 9.2 Task 5.9: startup gate that delays workflow-host startup until in-flight IngestionWorkflow
 // instances drain (Risk #13 replay determinism fail-safe). Uses IHostedLifecycleService (Spike 0.4)
-// so ordering is DI-registration-independent.
-builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.WorkflowReplaySafetyHostedService>();
+// so ordering is DI-registration-independent. Same-version integration restart tests disable this
+// gate because there is no second replica available to drain in-flight workflows before startup.
+if (builder.Configuration.GetValue("WorkflowReplaySafety:Enabled", true))
+{
+    builder.Services.AddHostedService<Hexalith.Memories.Server.Hosting.WorkflowReplaySafetyHostedService>();
+}
 builder.Services.AddSingleton<GraphScopedSearch>(sp =>
     new GraphScopedSearch(
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),

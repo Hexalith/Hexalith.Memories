@@ -21,7 +21,7 @@ public sealed class DegradationIntegrationTests
     // Story 6.3 (Retry, Failure Visibility & Re-Ingestion) when the Aspire fixture learns to
     // manipulate container state.
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
     public void HybridSearch_RedisVectorStopped_ShouldReturn200Degraded()
     {
         // Scenario:
@@ -32,7 +32,7 @@ public sealed class DegradationIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
     public void HybridSearch_FalkorDbStopped_ShouldDegradeToSyntacticAndSemantic()
     {
         // Scenario:
@@ -43,7 +43,7 @@ public sealed class DegradationIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
     public void HybridSearch_AllBackendsStopped_ShouldReturn503AllBackendsUnavailable()
     {
         // Scenario:
@@ -54,7 +54,7 @@ public sealed class DegradationIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
     public void HybridSearch_AfterBackendRestart_ShouldReturnNonDegradedResult()
     {
         // Scenario:
@@ -65,7 +65,7 @@ public sealed class DegradationIntegrationTests
         _ = _fixture;
     }
 
-    [Fact(Skip = "Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
+    [RunnableSkippedFact("Requires Aspire AppHost fixture with backend stop/start capability — unskip with Story 6.3 resilience harness")]
     public void SingleAxisSearch_RedisStopped_ShouldReturn503BackendUnavailable()
     {
         // Scenario:

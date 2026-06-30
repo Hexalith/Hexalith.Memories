@@ -40,7 +40,7 @@ public class ConsistencyWorkflowIntegrationTests
     // using Shouldly;
 
     /// <summary>Verification on a clean tenant reports zero discrepancies.</summary>
-    [Fact(Skip = "Story 8.2 Phase C: execute only in the Docker-enabled Aspire integration lane; the fixture exists but the default test lane does not provision containers.")]
+    [RunnableSkippedFact("Story 8.2 Phase C: execute only in the Docker-enabled Aspire integration lane; the fixture exists but the default test lane does not provision containers.")]
     public async Task VerifyOnCleanTenant_ReportsZeroDiscrepancies()
     {
         await Task.Yield();
@@ -50,7 +50,7 @@ public class ConsistencyWorkflowIntegrationTests
     }
 
     /// <summary>Manually-seeded orphan is detected with the correct recommendation.</summary>
-    [Fact(Skip = "Story 8.2 Phase C: execute only in the Docker-enabled Aspire integration lane; the fixture exists but the default test lane does not provision containers.")]
+    [RunnableSkippedFact("Story 8.2 Phase C: execute only in the Docker-enabled Aspire integration lane; the fixture exists but the default test lane does not provision containers.")]
     public async Task SeedOrphanThenVerify_ReportsOneDiscrepancyWithCorrectRecommendation()
     {
         await Task.Yield();
@@ -60,7 +60,7 @@ public class ConsistencyWorkflowIntegrationTests
     }
 
     /// <summary>Repair converges from a seeded-orphan state to fully consistent.</summary>
-    [Fact(Skip = "Story 8.2 Phase C: SemanticIndexer.ReIndexFromSyntacticAsync throws NotSupportedException until embedding regeneration wiring lands (Phase D follow-up).")]
+    [RunnableSkippedFact("Story 8.2 Phase C: SemanticIndexer.ReIndexFromSyntacticAsync throws NotSupportedException until embedding regeneration wiring lands (Phase D follow-up).")]
     public async Task SeedOrphanThenRepair_ConvergesToConsistent()
     {
         await Task.Yield();

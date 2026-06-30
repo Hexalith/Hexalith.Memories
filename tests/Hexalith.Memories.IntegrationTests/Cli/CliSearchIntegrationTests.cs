@@ -88,7 +88,6 @@ public sealed class CliSearchIntegrationTests
             new HybridSearchRequest(
                 TenantId: tenantId,
                 Query: needleQuery,
-                CaseId: caseId,
                 Explain: true),
             CancellationToken.None);
 
@@ -138,6 +137,7 @@ public sealed class CliSearchIntegrationTests
     private async Task WaitForIngestionCompletionAsync(string instanceId)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(IngestionTimeout);
+        string lastPayload = string.Empty;
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage statusResponse = await _fixture.MemoriesClient
@@ -145,23 +145,51 @@ public sealed class CliSearchIntegrationTests
 
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {
-                string body = await statusResponse.Content.ReadAsStringAsync();
-                using JsonDocument doc = JsonDocument.Parse(body);
-                if (doc.RootElement.TryGetProperty("status", out JsonElement status))
+                lastPayload = await statusResponse.Content.ReadAsStringAsync();
+                if (ReachedCompletedRuntimeStatus(lastPayload))
                 {
-                    string? statusValue = status.GetString();
-                    if (string.Equals(statusValue, "COMPLETED", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(statusValue, "Completed", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return;
-                    }
+                    return;
                 }
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(500));
         }
 
-        false.ShouldBeTrue($"Ingestion instance '{instanceId}' did not complete within {IngestionTimeout}.");
+        false.ShouldBeTrue(
+            $"Ingestion instance '{instanceId}' did not complete within {IngestionTimeout}. Last payload: {lastPayload}");
+    }
+
+    private static bool ReachedCompletedRuntimeStatus(string payload)
+    {
+        using JsonDocument doc = JsonDocument.Parse(payload);
+        JsonElement root = doc.RootElement;
+
+        if (root.TryGetProperty("status", out JsonElement status)
+            && status.ValueKind == JsonValueKind.String
+            && (string.Equals(status.GetString(), "COMPLETED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(status.GetString(), "Completed", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (root.TryGetProperty("runtimeStatus", out JsonElement runtimeStatus))
+        {
+            if (runtimeStatus.ValueKind == JsonValueKind.String
+                && string.Equals(runtimeStatus.GetString(), "Completed", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (runtimeStatus.ValueKind == JsonValueKind.Number
+                && runtimeStatus.TryGetInt32(out int ordinal)
+                && ordinal == 3)
+            {
+                return true;
+            }
+        }
+
+        return root.TryGetProperty("isWorkflowCompleted", out JsonElement completed)
+            && completed.ValueKind == JsonValueKind.True;
     }
 
     private sealed record AcceptedResponse(string InstanceId);
