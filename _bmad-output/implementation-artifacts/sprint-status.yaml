@@ -47,6 +47,10 @@ last_updated: 2026-06-30
 # 2026-06-25: Epic 18 retrospective completed (epic-18-retrospective → done; epic-18 in-progress → done at close-out). Retro: epic-18-retro-2026-06-25.md. 8 action items recorded; Epic 17 follow-through statuses updated.
 # 2026-06-27: Story 0.4 added as a planning-history migration of the minimum build/test CI preflight from Story 11.1. No new implementation story file required; completion evidence remains in 11-1-github-actions-build-and-test-pipeline.md.
 # 2026-06-30: Epic 19 backlog rows added by approved Sprint Change Proposal 2026-06-30. Epic owns deferred-register backlog homes and residual hardening; no story files created yet.
+# 2026-06-30: Story 19.1 created (epic-19 → in-progress, 19.1 → ready-for-dev) via create-story. Classification sweep of active open/carried-forward deferred-work entries; no production code scope.
+# 2026-06-30: Story 19.2 created (19.2 → ready-for-dev) via create-story. Decision sweep for MEM-2-ASPIRATE / MEM-3-OPENAPI (recommended: accept-as-not-needed, grounded in maintained docs + drift-guard tests); no production code scope.
+# 2026-06-30: Story 19.3 created (19.3 → ready-for-dev) via create-story. Release-quality decision sweep for 12.4-RV20 + 15.1-RV1..16 (17 entries; recommended: accept-until-trigger, zero implement-now per anti-over-promotion guardrail); no production code scope.
+# 2026-06-30: Story 19.4 created (19.4 → ready-for-dev) via create-story. Provider-registry / migration-marker residual decision sweep; recommended decision-only path unless a third-provider or next-provider-migration trigger exists.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -80,7 +84,7 @@ development_status:
   2-4-score-normalization: done
   2-5-fusion-algorithm-and-hybrid-search: done
   2-6-explain-mode-and-confidence-scores: done
-  2-7-evidence-packet-contract-mapping: review
+  2-7-evidence-packet-contract-mapping: done
   2-8-benchmark-suite-and-thesis-validation: done
   epic-2-retrospective: done
 
@@ -226,11 +230,11 @@ development_status:
   epic-18-retrospective: done
 
   # Epic 19: Deferred Register Backlog Home and Residual Hardening
-  epic-19: backlog
-  19-1-deferred-register-active-entry-classification-sweep: backlog
-  19-2-downstream-contract-artifact-generation-decisions: backlog
-  19-3-release-preflight-and-baseline-evidence-residual-sweep: backlog
-  19-4-provider-registry-and-migration-residual-sweep: backlog
+  epic-19: in-progress
+  19-1-deferred-register-active-entry-classification-sweep: review
+  19-2-downstream-contract-artifact-generation-decisions: review
+  19-3-release-preflight-and-baseline-evidence-residual-sweep: review
+  19-4-provider-registry-and-migration-residual-sweep: review
   epic-19-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
@@ -278,7 +282,7 @@ action_items:
   - epic: 18
     action: "Give the parked carry-forwards real backlog homes: MEM-2-ASPIRATE (aspirate emission), MEM-3-OPENAPI (OpenAPI generation), the real-Redis two-thread race test, the Dapr-sidecar pub/sub smoke, and the 18.4 token-anchoring edge — each scheduled as a story or accepted with rationale in deferred-work.md"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-06-30 (Story 19.1): all five have homes — MEM-2-ASPIRATE/MEM-3-OPENAPI routed to Story 19.2 (story ids); real-Redis race (18.4-REDIS-RACE), Dapr-sidecar smoke (18.8-DAPR-SMOKE), and token-anchoring edge (18.4-TOKEN-EDGE) added as accepted-debt entries with re-open triggers in deferred-work.md.
   - epic: 18
     action: "Centralize the sandbox test workaround (DiffEngine_Disabled=true dotnet exec; VSTest SocketException 13) in contributing/dev guidance; carry-forward from Epic 17 item 4"
     owner: "Paige, Amelia"

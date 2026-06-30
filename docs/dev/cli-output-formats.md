@@ -170,7 +170,22 @@ Confidence scores measure query-result relevance, NOT factual accuracy or data c
                 "isolationStatus": "authorized",
                 "permissionsContext": "tenant"
             },
-            "state": "complete",
+            "result": {
+                "query": "deployment incident",
+                "totalCount": 1,
+                "returnedCount": 1
+            },
+            "sources": [
+                {
+                    "rank": 1,
+                    "memoryUnitId": "mu-1024",
+                    "sourceUri": "memory://acme/mu-1024",
+                    "sourceType": "file",
+                    "snippet": "rollback completed after the incident",
+                    "score": 0.82,
+                    "annotationsCount": 0
+                }
+            ],
             "evidence": {
                 "evidenceStrength": "strong",
                 "caveat": "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.",
@@ -181,11 +196,29 @@ Confidence scores measure query-result relevance, NOT factual accuracy or data c
                 "unavailableAxes": [],
                 "degraded": false,
                 "axisEvidence": []
-            }
+            },
+            "graph": {
+                "available": false,
+                "relatedPath": [],
+                "edgeTypes": [],
+                "gapMarkers": []
+            },
+            "state": "complete",
+            "omittedDetails": {
+                "omittedCount": 0,
+                "estimatedTokensTotal": 0,
+                "reason": "none",
+                "fieldNames": [],
+                "detailGroups": [],
+                "expansionHandles": []
+            },
+            "recovery": []
         }
     }
 }
 ```
+
+`scope`, `result`, `sources`, `evidence`, `graph`, `state`, `omittedDetails`, and `recovery` are always present; `caseId`, `summary`, per-source `score`/`caseId`/`caseName`, and `allEnabledAxesUnavailable` are omitted when null.
 
 `data.evidencePacket` is additive in Story 2.7 and shares the same semantics used by MCP
 structured results and future UI composition descriptors. Existing `data.results`,

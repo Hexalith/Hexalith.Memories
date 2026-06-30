@@ -184,14 +184,21 @@ public sealed class CliCommandExecutor
             // the wire for THIS call — not the currently-live value.
             string tokenAtSendTime = config.ApiToken ?? string.Empty;
             ErrorTranslation translation = ErrorMessageCatalog.Resolve(remote.Error.Code);
-            string message = translation.CliMessage
-                ?? SanitizeText(remote.Error.Message, config, tokenAtSendTime);
 
-            // Symmetric sanitization: both message AND suggestion flow through SanitizeText when sourced
-            // from the server. Catalog-overridden suggestions are compile-time constants and bypass
-            // sanitization (cannot contain runtime tokens).
+            // Symmetric sanitization: both message AND suggestion flow through SanitizeText (token/endpoint
+            // redaction) when sourced from the server. Story 2.7 re-review (CR10 hardening): the result is
+            // then routed through the shared packet sanitizer so connection strings, file paths, JWTs, and
+            // stack-trace markers cannot leak into the JSON error envelope beside the sanitized Evidence
+            // Packet. Catalog-overridden text is a compile-time constant and bypasses both passes.
+            string message = translation.CliMessage
+                ?? EvidencePacketMapper.SanitizeFreeText(
+                    SanitizeText(remote.Error.Message, config, tokenAtSendTime),
+                    "The server rejected the request. Run with --verbose for diagnostic detail.");
+
             string suggestion = translation.CliSuggestion
-                ?? SanitizeText(remote.Error.Suggestion, config, tokenAtSendTime);
+                ?? EvidencePacketMapper.SanitizeFreeText(
+                    SanitizeText(remote.Error.Suggestion, config, tokenAtSendTime),
+                    "Inspect service health or retry the authorized request.");
 
             EmitError(
                 commandName,

@@ -1,4 +1,16 @@
 {
   "version": "1.0.0",
-  "presets": []
+  "presets": [
+    {
+      "name": "claude-with-codex-fallback",
+      "createdAt": "2026-06-30T13:05:35Z",
+      "config": {
+        "defaultPrimary": "claude",
+        "defaultFallback": "codex",
+        "auto": {
+          "skip": false
+        }
+      }
+    }
+  ]
 }

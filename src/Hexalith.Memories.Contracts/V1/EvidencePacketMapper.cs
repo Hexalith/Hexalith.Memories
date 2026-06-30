@@ -23,6 +23,11 @@ public static partial class EvidencePacketMapper
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(scope);
 
+        if (scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
+        {
+            return BuildUnauthorizedPacket(scope, result.Query);
+        }
+
         IReadOnlyList<EvidencePacketSource> sources = result.Results
             .Select((source, index) => new EvidencePacketSource(
                 index + 1,
@@ -35,9 +40,13 @@ public static partial class EvidencePacketMapper
                 source.CaseName,
                 source.AnnotationsCount))
             .ToArray();
-        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed ?? result.Results.Select(static source => source.Axis));
+        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed is { Count: > 0 }
+            ? result.AxesUsed
+            : result.Results.Select(static source => source.Axis));
         IReadOnlyList<string> unavailableAxes = NormalizeAxes(result.UnavailableAxes ?? []);
-        EvidencePacketEvidenceStrength strength = DetermineEvidenceStrength(sources.Select(static source => source.Score));
+        EvidencePacketEvidenceStrength strength = sources.Count > 0 && !AxesProduceNormalizedScores(axesUsed)
+            ? EvidencePacketEvidenceStrength.Unknown
+            : DetermineEvidenceStrength(sources.Select(static source => source.Score));
         EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, result.Degraded);
         EvidencePacketState state = DetermineState(
             scope,
@@ -83,6 +92,11 @@ public static partial class EvidencePacketMapper
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(scope);
 
+        if (scope.IsolationStatus == EvidencePacketIsolationStatus.Unauthorized)
+        {
+            return BuildUnauthorizedPacket(scope, result.Query);
+        }
+
         IReadOnlyList<EvidencePacketSource> sources = result.Results
             .Select((source, index) => new EvidencePacketSource(
                 index + 1,
@@ -95,11 +109,13 @@ public static partial class EvidencePacketMapper
                 source.CaseName,
                 source.AnnotationsCount))
             .ToArray();
-        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed ?? InferHybridAxes(result.Results));
+        IReadOnlyList<string> axesUsed = NormalizeAxes(result.AxesUsed is { Count: > 0 }
+            ? result.AxesUsed
+            : InferHybridAxes(result.Results));
         IReadOnlyList<string> unavailableAxes = NormalizeAxes(result.UnavailableAxes ?? []);
         EvidencePacketEvidenceStrength strength = DetermineEvidenceStrength(sources.Select(static source => source.Score));
-        EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, result.Degraded);
         bool effectiveDegraded = result.Degraded || result.AllEnabledAxesUnavailable == true;
+        EvidencePacketOmissionReason omissionReason = MapOmittedReason(result.OmittedReason, effectiveDegraded);
         EvidencePacketState state = DetermineState(
             scope,
             result.TotalCount,
@@ -196,6 +212,33 @@ public static partial class EvidencePacketMapper
             state,
             omitted,
             recovery);
+    }
+
+    private static EvidencePacket BuildUnauthorizedPacket(EvidencePacketScope scope, string query)
+    {
+        var omitted = new EvidencePacketOmittedDetails(
+            0,
+            0,
+            EvidencePacketOmissionReason.Authorization,
+            ["sources", "evidence"],
+            ["authorization"],
+            []);
+        return new EvidencePacket(
+            scope with { IsolationStatus = EvidencePacketIsolationStatus.Unauthorized },
+            new EvidencePacketResultSummary(query, 0, 0, null, null),
+            [],
+            new EvidencePacketEvidence(
+                EvidencePacketEvidenceStrength.None,
+                DefaultCaveat,
+                [],
+                [],
+                false,
+                null,
+                []),
+            new EvidencePacketGraphSummary(false, [], [], []),
+            EvidencePacketState.Unauthorized,
+            omitted,
+            BuildRecovery(EvidencePacketState.Unauthorized, omitted));
     }
 
     private static EvidencePacketState DetermineState(
@@ -500,6 +543,13 @@ public static partial class EvidencePacketMapper
             .Order(StringComparer.Ordinal)
             .ToArray();
 
+    // Only the semantic axis produces scores already normalized to the [0,1] range that the strength
+    // thresholds assume. Syntactic (raw BM25) and graph scores are unbounded, so single-axis strength
+    // for those axes is reported as Unknown rather than fabricated. Hybrid grades the normalized
+    // composite score and is unaffected.
+    private static bool AxesProduceNormalizedScores(IReadOnlyList<string> axes)
+        => axes.Count > 0 && axes.All(static axis => string.Equals(axis, "semantic", StringComparison.Ordinal));
+
     private static IReadOnlyList<string> DistinctOrdinal(IEnumerable<string> values)
         => values.Distinct(StringComparer.Ordinal).ToArray();
 
@@ -525,7 +575,22 @@ public static partial class EvidencePacketMapper
 
     private static bool IsUnauthorized(string code)
         => code.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase)
-            || code.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase);
+            || code.Contains("FORBIDDEN", StringComparison.OrdinalIgnoreCase)
+            || code.Contains("ACCESS_DENIED", StringComparison.OrdinalIgnoreCase)
+            || code.Contains("PERMISSION_DENIED", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(code, "HTTP_401", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(code, "HTTP_403", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns <paramref name="value"/> when it contains no sensitive text (connection strings, file
+    /// paths, bearer tokens, JWTs, long opaque hex, or stack-trace markers); otherwise returns
+    /// <paramref name="fallback"/>. Shared so CLI/MCP surfaces sanitize free text consistently with the
+    /// packet recovery guidance.
+    /// </summary>
+    /// <param name="value">The candidate free text (for example a server error message).</param>
+    /// <param name="fallback">The safe replacement used when sensitive text is detected.</param>
+    /// <returns>The original value when safe, otherwise the fallback.</returns>
+    public static string SanitizeFreeText(string? value, string fallback) => SanitizeGuidance(value, fallback);
 
     private static string SanitizeGuidance(string? value, string fallback)
     {
@@ -537,6 +602,6 @@ public static partial class EvidencePacketMapper
         return SensitiveTextRegex().IsMatch(value) ? fallback : value;
     }
 
-    [GeneratedRegex("(bearer\\s+\\S+|redis://\\S+|falkor\\S*|[A-Za-z]:\\\\|/home/|/users/|stack\\s*trace|\\bat\\s+\\w+\\.|eyJ[A-Za-z0-9_/+=-]+\\.|\\b[a-f0-9]{32,}\\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex("(bearer\\s+\\S+|(?:redis|rediss|postgres|postgresql|mongodb|mysql|amqp|amqps|bolt|neo4j)://\\S+|falkor\\S*|[A-Za-z]:\\\\|\\\\\\\\[^\\s\\\\]+|/(?:home|users|var|etc|opt|tmp|root|usr)/|(?:password|pwd)\\s*=\\S|stack\\s*trace|\\bat\\s+\\w+(?:\\.\\w+)+|eyJ[A-Za-z0-9_/+=-]+\\.|\\b[a-f0-9]{32,}\\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex SensitiveTextRegex();
 }

@@ -63,6 +63,191 @@ deferred-register residuals that outlived completed epics.
 - Other active `open` or `carried-forward` entries are classified by Story 19.1
   before implementation is scheduled.
 
+## Story 19.1 Classification Sweep (2026-06-30)
+
+Story 19.1 classifies every active `open` / `carried-forward` structured entry (Story
+14.5 schema) so completed epics do not hide unscheduled operational or consumer-risk
+work. The active universe is 30 structured entries: 9 `open` (`15.2-RV1`…`15.2-RV9`)
+and 21 `carried-forward` (`12.4-RV20`, `15.1-RV1`…`15.1-RV16`, `1.1-RR3`, `MEM-1`,
+`MEM-2-ASPIRATE`, `MEM-3-OPENAPI`). Legacy prose bullets and `resolved`/`accepted`
+entries are outside this AC1 universe. The 28 entries already routed by the Backlog
+Home Rollup keep their existing blocks byte-for-byte and are recorded here as
+**scheduled story**; only `1.1-RR3` and `MEM-1` were re-decided in place; three new
+accepted-debt blocks are added below for the Epic 18 retrospective items that lived
+only in prose. Completed Epics 15 and 18 are referenced, never reopened. [Source:
+epics.md Story 19.1 ACs; sprint-change-proposal-2026-06-30.md; epic-18-retro-2026-06-25.md
+Action Item 4]
+
+| Active entry | Disposition | Home / cross-reference |
+|---|---|---|
+| `15.2-RV1` … `15.2-RV9` (open) | scheduled story | Story 19.4 (provider-registry / migration residual sweep) |
+| `12.4-RV20` (carried-forward) | scheduled story | Story 19.3 (release-preflight / baseline-evidence sweep) |
+| `15.1-RV1` … `15.1-RV16` (carried-forward) | scheduled story | Story 19.3 |
+| `MEM-2-ASPIRATE` (carried-forward) | scheduled story | Story 19.2 (downstream contract artifact decisions) — story-id home for Action Item 4 |
+| `MEM-3-OPENAPI` (carried-forward) | scheduled story | Story 19.2 — story-id home for Action Item 4 |
+| `1.1-RR3` (carried-forward) | accept-until-trigger (kept carried-forward; owner named in its Rationale) | residual owned here; AppHost/release maintainer |
+| `MEM-1` (carried-forward) | accept-until-trigger (kept carried-forward; trigger/owner/rationale refreshed) | residual non-reflectable Mcp `PackageId` half; Story 18.1 (done) test-enforces the reflectable half |
+| real-Redis two-thread race (Story 18.4) | accepted debt — new block `18.4-REDIS-RACE` | this story — accepted-debt home for Action Item 4 |
+| Dapr-sidecar pub/sub smoke (Story 18.8) | accepted debt — new block `18.8-DAPR-SMOKE` | this story — accepted-debt home for Action Item 4 |
+| Story 18.4 token-anchoring edge | accepted debt — new block `18.4-TOKEN-EDGE` | this story — accepted-debt home for Action Item 4 |
+
+Anti-over-promotion note (AC1): the three new entries plus `1.1-RR3` and `MEM-1` are
+accept-until-trigger decisions, not scheduled implementation; only the 28 routed
+entries carry a "schedule now" signal, and Stories 19.2/19.3/19.4 make the final
+implement/accept/defer call for the IDs they own. The `15.3-RV*` migration-marker
+items the Backlog Home Rollup names for Story 19.4 are legacy prose (no field block),
+so they are out of this sweep's AC1 structured-entry scope and are left for Story 19.4.
+
+### New accepted-debt entries (Epic 18 retrospective Action Item 4)
+
+These three items existed only in Epic 18 retrospective prose. They are recorded here
+as `accepted` (infra-lane-deferred) structured entries with explicit re-open triggers,
+giving Action Item 4 its remaining three homes without reopening Epic 18.
+
+- **18.4-REDIS-RACE - accepted.** Real two-thread Redis race test for the Story 18.4 atomic ingest-dedup reservation runs only in an Aspire/Testcontainers lane this sandbox cannot execute.
+
+  - ID: 18.4-REDIS-RACE
+  - Status: accepted
+  - Source story: 19-1-deferred-register-active-entry-classification-sweep
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs (real-Redis / Aspire-Testcontainers concurrency lane)
+  - Re-open trigger: before any production claim about concurrent ingest, run the real two-thread Redis race wherever a Docker/Aspire lane is available, or that lane becomes runnable in CI.
+  - Rationale: Story 18.4 is substitute-proven by a deterministic winner/loser reservation test and unit-proven today; the real two-thread Redis race is infra-lane-deferred because this sandbox cannot run the Docker/Aspire lane. Owner: Amelia / release maintainer. [Source: epic-18-retro-2026-06-25.md Action Item 4; Story 18.4 / MEM-4]
+
+- **18.8-DAPR-SMOKE - accepted.** Dapr-sidecar pub/sub smoke for cross-module event delivery (Story 18.8) runs only in an Aspire/Testcontainers lane this sandbox cannot execute.
+
+  - ID: 18.8-DAPR-SMOKE
+  - Status: accepted
+  - Source story: 19-1-deferred-register-active-entry-classification-sweep
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests (Dapr-sidecar pub/sub smoke lane over /events/ingest)
+  - Re-open trigger: before any production claim about cross-module event delivery, run the Dapr-sidecar pub/sub smoke wherever a Docker/Aspire lane is available, or that lane becomes runnable in CI.
+  - Rationale: Story 18.8 is proven today by in-process HTTP E2E tests over `/events/ingest`; the Dapr-sidecar smoke is infra-lane-deferred because this sandbox cannot run the sidecar lane. Owner: Amelia / release maintainer. [Source: epic-18-retro-2026-06-25.md Action Item 4; Story 18.8]
+
+- **18.4-TOKEN-EDGE - accepted.** Story 18.4 token-anchoring edge: a token whose first use falls back to a pre-existing `sourceUri` unit relies on the 24h reservation key rather than the permanent dedup record.
+
+  - ID: 18.4-TOKEN-EDGE
+  - Status: accepted
+  - Source story: 19-1-deferred-register-active-entry-classification-sweep
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs (idempotency-token anchoring path)
+  - Re-open trigger: a token whose first use falls back to a pre-existing `sourceUri` unit relying on the 24h reservation key (not a permanent record) causes a real dedup/idempotency defect, or a hardening story is scheduled.
+  - Rationale: tokens augment and never replace the permanent source-URI dedup record, so the edge is a known narrow case accepted until it produces a real defect or a hardening story is scheduled. Owner: Amelia / release maintainer. [Source: epic-18-retro-2026-06-25.md Action Item 4; Story 18.4 / MEM-4]
+
+## Story 19.2 Downstream Contract Artifact Decisions (2026-06-30)
+
+Story 19.2 makes the final implement/accept/defer call for the two generated-artifact
+carry-forwards that Story 19.1 routed here (the "story-id home" for Epic 18 retrospective
+Action Item 4). Both are accepted as not needed for current consumers, because a maintained
+operator/ACL-facing contract plus a build-failing drift-guard test already covers the need
+and no consumer is blocked on generated output.
+
+| ID | Decision | Maintained-doc + drift guard (AC3) | Re-open trigger |
+|---|---|---|---|
+| `MEM-2-ASPIRATE` | accepted (not needed now) | `docs/operations/deployment-configuration.md` + `DeploymentConfigurationContractTests` | a consumer needs ready-to-apply K8s/Dapr manifests emitted from the AppHost topology |
+| `MEM-3-OPENAPI` | accepted (not needed now) | `docs/operations/route-surface.md` + `RouteSurfaceContractTests` | a consumer needs a generated OpenAPI/Swagger document for client/ACL generation |
+
+Action Item 4 (Epic 18 retro) is already `done` (closed by Story 19.1 because both IDs had a
+story-id home); converting them from `carried-forward` to `accepted` does not change its
+done-condition, so no `sprint-status.yaml` action-item edit is made here. Completed Epics 15
+and 18 are referenced, never reopened. [Source: epics.md Story 19.2 ACs;
+sprint-change-proposal-2026-06-30.md Story 19.2; deferred-work.md Story 19.1 rollup]
+
+## Story 19.3 Release Preflight and Baseline Evidence Decisions (2026-06-30)
+
+Story 19.3 makes the final implement/accept/defer call for the 17 release-quality
+carry-forwards that Story 19.1 routed here: `12.4-RV20` (strict baseline replay evidence)
+and `15.1-RV1` ... `15.1-RV16` (the 15.1 release-preflight code-review residuals). All 17 are
+bucketed accept-until-trigger with **no implement-now selection**, because none has a current
+failure, a pulling consumer, or a blocked release, and each fix is a release-owner policy
+decision rather than a clear patch -- promoting any of them now would violate the Epic 19
+anti-over-promotion guardrail. The natural future-release-hardening-story homes below are
+recorded so a triggered entry is pre-routed; no such story is scheduled now.
+
+| Entry(ies) | Decision | Natural future home on trigger |
+|---|---|---|
+| `12.4-RV20` | accepted (ancestry-based proof sufficient; AC1) | a release-quality "Strict Release Baseline Replay Evidence" story, only if a post-mortem or quality story reopens it |
+| `15.1-RV1`, `15.1-RV2`, `15.1-RV3`, `15.1-RV13`, `15.1-RV15` | accepted (accept-until-trigger) | release-preflight script robustness sweep (`tools/release-preflight.ps1`) |
+| `15.1-RV4`, `15.1-RV5`, `15.1-RV6`, `15.1-RV7`, `15.1-RV8`, `15.1-RV9`, `15.1-RV14`, `15.1-RV16` | accepted (accept-until-trigger) | release test-helper hardening sweep (preflight pytest + `CiTestInventoryTests`) |
+| `15.1-RV10`, `15.1-RV11`, `15.1-RV12` | accepted (accept-until-trigger) | docs/governance hygiene (`docs/dev/release-runbook.md`; deferred-register tooling) |
+
+No implement-now item was selected, so AC3's focused-validation obligation (changed script +
+workflow + inventory test) does not fire; only the `CiTestInventoryTests` deferred-work parser
+guard was run. Completed Epics 12 and 15 (the entries' source stories) are referenced, never
+reopened. [Source: epics.md Story 19.3 ACs; sprint-change-proposal-2026-06-30.md Story 19.3 +
+risk note line 95; deferred-work.md Backlog Home Rollup + Story 19.1 classification table]
+
+## Story 19.4 Provider Registry and Migration Residual Decisions (2026-06-30)
+
+Story 19.4 makes the final implement/accept/defer call for the provider-registry and
+migration-marker residuals the Backlog Home Rollup routed here: the nine `15.2-RV1` ...
+`15.2-RV9` structured entries (Story 15.2 provider/model/dimension registry review) and the
+twelve owned `15.3-RV*` legacy-prose migration-marker items (Story 15.3 live-migration
+coordination review). Every decision below was taken after re-reading current code
+(`EmbeddingProviderDefaults`, `EmbeddingClient`, `GenerateEmbeddingActivity`,
+`EmbeddingVectorMigrationService`, `EmbeddingMigrationMarkerReader`,
+`RedisEmbeddingMigrationStore`) and the operator docs. This story makes the final call under
+the Backlog Home Rollup's "unless the story explicitly accepts or reassigns them" clause,
+references completed Stories 15.2 and 15.3 as sources without reopening Epic 15, and preserves
+the historical `15.3-RV*` prose unchanged (no new structured follow-up entry was scheduled).
+**Implement-now selections: zero.** Because no implement-now provider or migration item was
+selected, AC3's focused write-time-plus-read/runtime test obligation does not fire; only the
+`CiTestInventoryTests` deferred-work parser guard was run. [Source: epics.md Story 19.4 ACs;
+sprint-change-proposal-2026-06-30.md Story 19.4 + risk note line 95; deferred-work.md Backlog
+Home Rollup + Story 19.1 classification table]
+
+### Provider-registry residuals (`15.2-RV1` ... `15.2-RV9`) — AC1, AC3
+
+All nine flip `open` -> `accepted` (accept-until-trigger), zero implement-now. The risks are
+real but dormant: the closed registry currently holds one model per provider and exactly two
+runtime providers (Google, Ollama), so cross-provider dispatch, persisted-casing, and
+migration-target risks cannot fire today. Each entry's structured block carries the full
+rationale, re-open trigger, and owner; this table is the at-a-glance final call.
+
+| ID | Final decision | Natural future home on trigger |
+|---|---|---|
+| `15.2-RV1` | accepted (no implement-now) | contract casing/canonicalization story, only if the contract boundary changes |
+| `15.2-RV2` | accepted (no implement-now) | provider-registry model-expansion tests when a second model lands under one provider |
+| `15.2-RV3` | accepted (no implement-now) | registry-wide test-fixture hygiene sweep |
+| `15.2-RV4` | accepted (no implement-now) | provider-runtime dispatch abstraction story for a third provider |
+| `15.2-RV5` | accepted (no implement-now) | provider identifier canonicalization story covering write/read/migration equality |
+| `15.2-RV6` | accepted (no implement-now) | migration target factory/registry story for a third provider |
+| `15.2-RV7` | accepted (no implement-now) | provider validation UX cleanup if whitespace diagnostics become operator-visible |
+| `15.2-RV8` | accepted (no implement-now) | operator visibility/remediation story for persisted invalid configs |
+| `15.2-RV9` | accepted (no implement-now) | test-isolation sweep if the metric test flakes |
+
+If any of these is later selected implement-now, the strongest coherent cluster is
+`15.2-RV4` + `15.2-RV5` + `15.2-RV6` (runtime dispatch, persisted identifier casing, and
+migration target selection), which must be solved together; AC3 then requires tests for both
+write-time validation and read/runtime comparison paths where practical.
+
+### Migration-marker residuals (Story 15.3 legacy prose) — AC2, AC3
+
+The twelve owned `15.3-RV*` items stay as historical prose under the Story 15.3 review heading
+(not migrated into structured blocks, since no follow-up story is scheduled). This table is the
+forward-looking decision: which remain trigger-bound versus which become mandatory before the
+next provider-migration investment.
+
+| Legacy item(s) | Final decision | Required before next provider migration investment? |
+|---|---|---|
+| `15.3-RV6`, `15.3-RV8`, `15.3-RV10`, `15.3-RV13`, `15.3-RV22`, `15.3-RV24`, `15.3-RV26` | trigger-bound accepted risks | No — only if each item's own re-open trigger fires |
+| `15.3-RV15`, `15.3-RV16`, `15.3-RV27` | migration-marker target-consistency cluster | Yes — bundle as a concrete target-consistency migration-hardening story before scheduling a new provider migration investment |
+| `15.3-RV18`, `15.3-RV25` | operator-recovery and operator-copy cluster | Reassess before any production migration claim or operator-facing migration investment; accepted until then |
+
+Current code confirms the cluster split: `RedisEmbeddingMigrationStore` completion does not
+target-match the active marker and resume does not verify the active-marker target, and the
+active-marker hash has no TTL — so the `15.3-RV15`/`15.3-RV16`/`15.3-RV27` target-consistency
+cluster is the only clearly code-shaped migration-hardening story (detect an existing active
+marker for another target, verify the completion target matches the active marker, and make
+resume refuse drifted active-marker state). The `15.3-RV18`/`15.3-RV25` operator-recovery items
+are documentation/alerting decisions, accepted until an operator escalation or the next
+migration-investment story. The trigger-bound group stays dormant: the marker reader compares
+provider/model with `OrdinalIgnoreCase` and stores/parses dimensions invariantly, the completed
+active-marker hash is short-circuited by the reader's `status` check, and the keyed-Redis guard
+is intentionally optional at the generate site while the indexing activities remain the
+mandatory gate. Current `docs/operations/embedding-providers.md` already states the durable-marker
+behavior, active-marker retry/failure semantics, and no global ingestion pause, so no doc change
+is made here. [Source: deferred-work.md "Deferred from: code review of
+15-3-live-migration-coordination-policy (2026-05-14)"; RedisEmbeddingMigrationStore.cs;
+EmbeddingMigrationMarkerReader.cs; GenerateEmbeddingActivity.cs; docs/operations/embedding-providers.md]
+
 ## Story 15.5 Triage Rollup (2026-05-15)
 
 Story 15.5 performed a bounded sweep rather than a full historical migration.
@@ -70,18 +255,17 @@ The selected set below contains entries that need active planning signal,
 refreshed ownership, or an explicit risk decision before the next implementation
 epic. Historical prose entries remain under their original headings for context.
 
-- **12.4-RV20 - carried-forward.** Strict literal per-SHA replay evidence is a
-  release-quality proof candidate, not a runtime defect. The current HEAD
-  inheritance rationale remains acceptable for existing close-out evidence, but a
-  future quality story can run the literal replay drill if maintainers want
-  stronger historical proof.
+- **12.4-RV20 - accepted.** Strict literal per-SHA replay evidence is a
+  release-quality proof candidate, not a runtime defect. Ancestry-based HEAD-inheritance
+  proof remains acceptable for existing close-out evidence; Story 19.3 declines to
+  schedule a strict replay evidence story now.
 
   - ID: 12.4-RV20
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-5-deferred-register-triage-sweep
   - Target artifact: _bmad-output/implementation-artifacts/12-4-baseline-failures-sweep.md; tools/test-release.ps1; tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
   - Re-open trigger: A release post-mortem traces a regression to a test that existed at one of the named anchor SHAs but was silently fixed before HEAD, or a release-quality story explicitly requests strict literal replay evidence over ancestry-based proof.
-  - Rationale: Proposed follow-up story "Strict Release Baseline Replay Evidence" owns the optional proof drill for `12.4-RV20`; this governance sweep does not run historical checkout/build/test lanes or mutate release tooling.
+  - Rationale: Story 19.3 (2026-06-30) reviewed the release-evidence need (AC1) and accepts ancestry-based HEAD-inheritance proof as sufficient for current close-out evidence, declining to create the proposed "Strict Release Baseline Replay Evidence" story until the re-open trigger fires. This governance sweep does not run historical checkout/build/test lanes or mutate release tooling. Owner: release maintainer.
 
 - **12.6-RV5 - resolved.** The `EmbeddingInputContentKindTests` telemetry
   assertions now use per-test unique tenant ids, tenant-filtered captures, and a
@@ -282,86 +466,86 @@ Items below were surfaced by the 3-layer adversarial review (Blind Hunter +
 Edge Case Hunter + Acceptance Auditor) of commit `57819b4` but are outside the
 story's File Scope or out of immediate fix range.
 
-- **15.2-RV1 - open.** AC5 contract-tier serialization test not updated.
+- **15.2-RV1 - accepted.** AC5 contract-tier serialization test not updated.
 
   - ID: 15.2-RV1
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: tests/Hexalith.Memories.Contracts.Tests/V1/TenantEmbeddingConfigSerializationTests.cs
   - Re-open trigger: A casing/canonicalization change at the contract boundary is later considered.
-  - Rationale: Task 2 chose `accepted` for casing semantics, so contract-tier serialization is intentionally unchanged. Recorded for traceability against AC5's "contract/server tests cover ... deferred-work dispositions" wording.
+  - Rationale: Task 2 chose `accepted` for casing semantics, so contract-tier serialization is intentionally unchanged. Recorded for traceability against AC5's "contract/server tests cover ... deferred-work dispositions" wording. Story 19.4 (2026-06-30) re-reviewed the current contract serializer against live code and accepts this until the contract boundary changes: the contract tests still preserve JSON shape and value round-trip, and provider/model validation lives in server/provider paths, not the contract serializer, so no contract-tier change is warranted now. Natural future home: a contract casing/canonicalization story, only if the contract boundary changes. Owner: Contracts / Server maintainer.
 
-- **15.2-RV2 - open.** Actor reindex tests lost same-Provider/different-Model isolation.
+- **15.2-RV2 - accepted.** Actor reindex tests lost same-Provider/different-Model isolation.
 
   - ID: 15.2-RV2
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: tests/Hexalith.Memories.Server.Tests/Actors/TenantConfigurationActorTests.cs
   - Re-open trigger: Registry adds a second model under Google or Ollama, OR `GetBreakingChangeFields` regresses to flag only provider changes.
-  - Rationale: Tests now switch Provider AND Model (Google→Ollama) instead of Model-only; same-provider/model-change reindex-trigger coverage cannot be restored inside this story because the closed registry currently lists exactly one model per provider.
+  - Rationale: Tests now switch Provider AND Model (Google→Ollama) instead of Model-only; same-provider/model-change reindex-trigger coverage cannot be restored inside this story because the closed registry currently lists exactly one model per provider. Story 19.4 (2026-06-30) confirmed the closed registry still lists exactly one model per provider (Google + Ollama only), so same-provider/different-model reindex coverage stays trigger-bound and accepted until a supported provider gains a second model or `GetBreakingChangeFields(...)` regresses. Natural future home: provider-registry model-expansion tests when a second model lands under one provider. Owner: Server test maintainer.
 
-- **15.2-RV3 - open.** Other test files still use unregistered model literals.
+- **15.2-RV3 - accepted.** Other test files still use unregistered model literals.
 
   - ID: 15.2-RV3
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs, tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs
   - Re-open trigger: The covered code paths add a Validate-preflight, OR a registry-wide test-fixture-hygiene sweep is scheduled.
-  - Rationale: `HybridSearchServiceTests` (line 74) and `TenantEmbeddingConfigEndpointTests` (lines 30, 39) use `"text-embedding-004"` / `"different-model"` literals that compile only because those tests do not call `Validate`. Pre-existing; out of File Scope.
+  - Rationale: `HybridSearchServiceTests` (line 74) and `TenantEmbeddingConfigEndpointTests` (lines 30, 39) use `"text-embedding-004"` / `"different-model"` literals that compile only because those tests do not call `Validate`. Pre-existing; out of File Scope. Story 19.4 (2026-06-30) accepts this as fixture-hygiene debt: the literals remain harmless until those paths begin validating tenant configs or a registry-wide test-fixture sweep is scheduled. Natural future home: a registry-wide test-fixture hygiene sweep. Owner: Server test maintainer.
 
-- **15.2-RV4 - open.** `EmbeddingClient.IsGoogle/IsOllama` dispatch is hardcoded.
+- **15.2-RV4 - accepted.** `EmbeddingClient.IsGoogle/IsOllama` dispatch is hardcoded.
 
   - ID: 15.2-RV4
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingClient.cs
   - Re-open trigger: Registry adds a third provider, OR an operator reports a failed identifier parse for a registered provider/model pair.
-  - Rationale: Closed-allowlist behavior of `EmbeddingProviderDefaults` does not extend to `EmbeddingClient.ParseEmbeddingProviderIdentifier` or the dispatch site, which binary-check `IsGoogle || IsOllama`. Architectural follow-up; out of this story's File Scope.
+  - Rationale: Closed-allowlist behavior of `EmbeddingProviderDefaults` does not extend to `EmbeddingClient.ParseEmbeddingProviderIdentifier` or the dispatch site, which binary-check `IsGoogle || IsOllama`. Architectural follow-up; out of this story's File Scope. Story 19.4 (2026-06-30) verified `EmbeddingClient` still dispatches via `IsGoogle`/`IsOllama` and parses only those two providers; this is safe while the registry holds two providers and stays accepted until a third provider is added or an operator reports a failed parse for a registered pair. It is the strongest implement-now cluster with `15.2-RV5` and `15.2-RV6` (runtime dispatch, persisted identifier casing, migration target selection) and must be solved together, not in isolation. Natural future home: a provider-runtime dispatch abstraction story for a third provider. Owner: Server / ingestion maintainer.
 
-- **15.2-RV5 - open.** `GenerateEmbeddingActivity` may emit mixed-case provider in persisted identifier.
+- **15.2-RV5 - accepted.** `GenerateEmbeddingActivity` may emit mixed-case provider in persisted identifier.
 
   - ID: 15.2-RV5
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs
   - Re-open trigger: A tenant persists `Provider = "Google"` (mixed case, now accepted by Validate) and an equality comparison or migration state diverges from the lowercased parsed form.
-  - Rationale: Tenant-persisted casing is preserved, but `ParseEmbeddingProviderIdentifier` lowercases the provider on read — write and read forms can diverge. Related to 15.2-RV4. Out of File Scope.
+  - Rationale: Tenant-persisted casing is preserved, but `ParseEmbeddingProviderIdentifier` lowercases the provider on read — write and read forms can diverge. Related to 15.2-RV4. Out of File Scope. Story 19.4 (2026-06-30) confirmed `GenerateEmbeddingActivity` writes the raw `$"{config.Provider}:{config.Model}"` form while the parser lowercases the provider, and the migration marker guard compares with `OrdinalIgnoreCase`, so this is accepted compatibility today, not a current defect. Accepted until a casing-sensitive equality or migration-state divergence is observed. Natural future home: a provider identifier canonicalization story covering write/read/migration equality (bundled with `15.2-RV4`/`15.2-RV6`). Owner: Server / ingestion maintainer.
 
-- **15.2-RV6 - open.** Migration tool uses binary Google/Ollama coin-flip, not registry.
+- **15.2-RV6 - accepted.** Migration tool uses binary Google/Ollama coin-flip, not registry.
 
   - ID: 15.2-RV6
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs
   - Re-open trigger: Registry adds a third provider, OR a migration plan needs to target a new provider.
-  - Rationale: `TargetProvider` defaults to `Ollama()` if not Google (lines 125-149). Related to 15.2-RV4. Out of File Scope.
+  - Rationale: `TargetProvider` defaults to `Ollama()` if not Google (lines 125-149). Related to 15.2-RV4. Out of File Scope. Story 19.4 (2026-06-30) confirmed `EmbeddingVectorMigrationService.TryBuildTargetConfig(...)` still chooses Google defaults for a Google target and Ollama defaults otherwise, then relies on `EmbeddingProviderDefaults.Validate(...)` to reject unsupported providers — safe for two providers but a binary defaulting path, accepted until a third provider or a new migration target lands. Natural future home: a migration target factory/registry story for a third provider (bundled with `15.2-RV4`/`15.2-RV5`). Owner: Server / migration maintainer.
 
-- **15.2-RV7 - open.** Whitespace-prefixed provider not trimmed before registry lookup.
+- **15.2-RV7 - accepted.** Whitespace-prefixed provider not trimmed before registry lookup.
 
   - ID: 15.2-RV7
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs
   - Re-open trigger: Operator reports an unhelpful "Provider ' google' is not supported" error and the registry path needs to suggest the whitespace cause.
-  - Rationale: `ArgumentException.ThrowIfNullOrWhiteSpace` accepts `" google"`, then `FindProvider` misses (no trim). Already family-deferred as `13.1-RV4`; surfaces again in the registry path.
+  - Rationale: `ArgumentException.ThrowIfNullOrWhiteSpace` accepts `" google"`, then `FindProvider` misses (no trim). Already family-deferred as `13.1-RV4`; surfaces again in the registry path. Story 19.4 (2026-06-30) accepts this until an operator UX issue justifies whitespace-specific diagnostics in `EmbeddingProviderDefaults.Validate(...)`. Natural future home: a provider validation UX cleanup if whitespace diagnostics become operator-visible. Owner: Server / ingestion maintainer.
 
-- **15.2-RV8 - open.** Already-persisted invalid configs not surfaced on read.
+- **15.2-RV8 - accepted.** Already-persisted invalid configs not surfaced on read.
 
   - ID: 15.2-RV8
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: src/Hexalith.Memories.Server/Actors/TenantConfigurationActor.cs
   - Re-open trigger: Operator needs visibility into tenants whose persisted config no longer validates under the closed registry.
-  - Rationale: Closed-registry validation runs on write only — tenants whose state was valid under loose rules continue to be served. Story 15.2 documents this as intentional compatibility behavior; operator-visibility design is a follow-up.
+  - Rationale: Closed-registry validation runs on write only — tenants whose state was valid under loose rules continue to be served. Story 15.2 documents this as intentional compatibility behavior; operator-visibility design is a follow-up. Story 19.4 (2026-06-30) accepts this until operator visibility for already-persisted invalid configs is explicitly needed; per the scope boundary, no read-time tenant-config rejection is added without an approved operator remediation path. Natural future home: an operator visibility/remediation story for persisted invalid configs. Owner: Server / ingestion maintainer.
 
-- **15.2-RV9 - open.** "Order-sensitive metric test passed in isolation" acknowledged.
+- **15.2-RV9 - accepted.** "Order-sensitive metric test passed in isolation" acknowledged.
 
   - ID: 15.2-RV9
-  - Status: open
+  - Status: accepted
   - Source story: 15-2-provider-model-dimension-registry
   - Target artifact: tests/Hexalith.Memories.Server.Tests (test ordering)
   - Re-open trigger: The order-sensitive metric test fails intermittently in CI, OR a test-isolation sweep is scheduled.
-  - Rationale: Acknowledged in the Dev Agent Record but not fixed; not caused by this story.
+  - Rationale: Acknowledged in the Dev Agent Record but not fixed; not caused by this story. Story 19.4 (2026-06-30) accepts this until the order-sensitive metric test flakes in CI or a test-isolation sweep is scheduled. Natural future home: a test-isolation sweep if the metric test flakes. Owner: Server test maintainer.
 
 ## Closed/Accepted by: Story 15.1 Release Edge-Case Preflight Hardening (2026-05-13)
 
@@ -406,133 +590,133 @@ story's File Scope or out of immediate fix range.
 
 Carry-forward findings from the 3-layer adversarial code review on 2026-05-13. Each entry uses the Story 14.5 schema; status is `carried-forward` unless noted.
 
-- **15.1-RV1 - carried-forward.** Transient network failure in `Test-RemoteTagCollision` aborts the release lane.
+- **15.1-RV1 - accepted.** Transient network failure in `Test-RemoteTagCollision` aborts the release lane.
   - ID: 15.1-RV1
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tools/release-preflight.ps1
   - Re-open trigger: A release attempt fails because `git ls-remote` returns a transient network/DNS error and the preflight has no retry/backoff.
-  - Rationale: The preflight currently has no retry. A DNS hiccup turns a recoverable error into a hard abort. Deferred because the right policy (number of retries, backoff window, idempotency boundary) is a release-owner decision rather than a clear patch.
+  - Rationale: The preflight currently has no retry. A DNS hiccup turns a recoverable error into a hard abort. Deferred because the right policy (number of retries, backoff window, idempotency boundary) is a release-owner decision rather than a clear patch. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no release has failed on it; the retry policy is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 
-- **15.1-RV2 - carried-forward.** Dry-run version regex hard-codes English semantic-release output.
+- **15.1-RV2 - accepted.** Dry-run version regex hard-codes English semantic-release output.
   - ID: 15.1-RV2
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tools/release-preflight.ps1
   - Re-open trigger: semantic-release ever rewords `The next release version is X.Y.Z` or ships i18n output that no longer matches the regex, and the preflight starts mis-detecting the next version.
-  - Rationale: Bound to current semantic-release output. A more stable contract would be `semantic-release --dry-run --debug` JSON or a plugin hook, but switching is out of scope for Story 15.1.
+  - Rationale: Bound to current semantic-release output. A more stable contract would be `semantic-release --dry-run --debug` JSON or a plugin hook, but switching is out of scope for Story 15.1. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 
-- **15.1-RV3 - carried-forward.** Final `catch` block loses inner-exception and stack trace.
+- **15.1-RV3 - accepted.** Final `catch` block loses inner-exception and stack trace.
   - ID: 15.1-RV3
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tools/release-preflight.ps1
   - Re-open trigger: A release failure investigation requires the original stack/inner exception and the operator only has the truncated `Write-Error -Message $_.Exception.Message` output.
-  - Rationale: `Write-Error -Message $_.Exception.Message` discards inner exception and stack. Switch to `Write-Error -ErrorRecord $_` or `$_.Exception.ToString()` when a future release post-mortem proves the loss matters.
+  - Rationale: `Write-Error -Message $_.Exception.Message` discards inner exception and stack. Switch to `Write-Error -ErrorRecord $_` or `$_.Exception.ToString()` when a future release post-mortem proves the loss matters. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 
-- **15.1-RV4 - carried-forward.** `CiTestInventoryTests` workflow-string assertions are brittle to cosmetic edits.
+- **15.1-RV4 - accepted.** `CiTestInventoryTests` workflow-string assertions are brittle to cosmetic edits.
   - ID: 15.1-RV4
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
   - Re-open trigger: A future workflow edit needs `npm ci --ignore-scripts`, a renamed step name, or `pwsh ./tools/release-preflight.ps1` invocation form, and the existing strict `ShouldBe` assertions fail without a real contract violation.
-  - Rationale: Exact-match `ShouldBe` for `Run`, `Name`, and `Shell` is consistent with the rest of `CiTestInventoryTests`. Loosening to `ShouldContain`/`ShouldStartWith` should be done as a sweep across the file, not in isolation.
+  - Rationale: Exact-match `ShouldBe` for `Run`, `Name`, and `Shell` is consistent with the rest of `CiTestInventoryTests`. Loosening to `ShouldContain`/`ShouldStartWith` should be done as a sweep across the file, not in isolation. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV5 - carried-forward.** Windows tempdir cleanup can raise `PermissionError`.
+- **15.1-RV5 - accepted.** Windows tempdir cleanup can raise `PermissionError`.
   - ID: 15.1-RV5
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: CI or a Windows developer hits intermittent `PermissionError` on tempdir cleanup because git keeps an index lock open when the test ends.
-  - Rationale: Tests currently pass locally and in CI. Switching to `tempfile.TemporaryDirectory(ignore_cleanup_errors=True)` (Py 3.10+) is a one-line hardening but Story 15.1 has no evidence the path manifests yet.
+  - Rationale: Tests currently pass locally and in CI. Switching to `tempfile.TemporaryDirectory(ignore_cleanup_errors=True)` (Py 3.10+) is a one-line hardening but Story 15.1 has no evidence the path manifests yet. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV6 - carried-forward.** `Path | None` union syntax requires Python 3.10+.
+- **15.1-RV6 - accepted.** `Path | None` union syntax requires Python 3.10+.
   - ID: 15.1-RV6
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: A contributor runs the test on Python 3.9 (or the project lowers its minimum) and gets a `TypeError` on test collection.
-  - Rationale: Current CI runs Python 3.11+. Lowering to `Optional[Path]` would broaden compatibility but is not needed today.
+  - Rationale: Current CI runs Python 3.11+. Lowering to `Optional[Path]` would broaden compatibility but is not needed today. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV7 - carried-forward.** Non-UTF-8 Windows codepage may raise `UnicodeDecodeError` on subprocess output.
+- **15.1-RV7 - accepted.** Non-UTF-8 Windows codepage may raise `UnicodeDecodeError` on subprocess output.
   - ID: 15.1-RV7
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: A test runner uses a non-UTF-8 codepage and `pwsh` stderr contains non-ASCII characters, raising `UnicodeDecodeError` on `subprocess.run(..., text=True)`.
-  - Rationale: Pass `encoding='utf-8', errors='replace'` to `subprocess.run`. Deferred as low-impact hardening; CI codepages are UTF-8.
+  - Rationale: Pass `encoding='utf-8', errors='replace'` to `subprocess.run`. Deferred as low-impact hardening; CI codepages are UTF-8. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV8 - carried-forward.** `git init` default branch depends on host `init.defaultBranch`.
+- **15.1-RV8 - accepted.** `git init` default branch depends on host `init.defaultBranch`.
   - ID: 15.1-RV8
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: A future test that relies on the default branch name (rather than just tags) fails on a runner with a non-standard `init.defaultBranch` value.
-  - Rationale: Current tests only push tags, so the default-branch name is irrelevant. Adding `--initial-branch=main` would future-proof the helper.
+  - Rationale: Current tests only push tags, so the default-branch name is irrelevant. Adding `--initial-branch=main` would future-proof the helper. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV9 - carried-forward.** Test runner hardcodes `pwsh` without availability guard.
+- **15.1-RV9 - accepted.** Test runner hardcodes `pwsh` without availability guard.
   - ID: 15.1-RV9
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: A non-Windows developer environment without PowerShell 7 runs `pytest`/`unittest discover` and sees a confusing `FileNotFoundError` instead of a clear skip.
-  - Rationale: Add `@unittest.skipUnless(shutil.which('pwsh'), 'pwsh required')`. Deferred because CI and dev environments today all have pwsh.
+  - Rationale: Add `@unittest.skipUnless(shutil.which('pwsh'), 'pwsh required')`. Deferred because CI and dev environments today all have pwsh. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV10 - carried-forward.** Runbook release-day checklist renumbered to 17 items; other docs may reference old step numbers.
+- **15.1-RV10 - accepted.** Runbook release-day checklist renumbered to 17 items; other docs may reference old step numbers.
   - ID: 15.1-RV10
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: docs/dev/release-runbook.md
   - Re-open trigger: A maintainer follows a stale "see step 7" cross-reference in CONTRIBUTING.md or another doc that no longer matches the renumbered checklist.
-  - Rationale: A repo-wide `rg "step 7|step 8|step 9" docs/` sweep is warranted but out of scope for Story 15.1.
+  - Rationale: A repo-wide `rg "step 7|step 8|step 9" docs/` sweep is warranted but out of scope for Story 15.1. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
 
-- **15.1-RV11 - carried-forward.** `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path.
+- **15.1-RV11 - accepted.** `S11-FC` re-open trigger names `tools/release-preflight.ps1` by path.
   - ID: 15.1-RV11
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md
   - Re-open trigger: The preflight script is renamed or relocated and the `S11-FC` re-open trigger silently fails to reference the right artifact.
-  - Rationale: Use a more stable artifact phrasing like "the repository-owned release preflight script in `tools/`" if the script ever moves.
+  - Rationale: Use a more stable artifact phrasing like "the repository-owned release preflight script in `tools/`" if the script ever moves. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
 
-- **15.1-RV12 - carried-forward.** `12.1-RV3` accepted-until 2026-08-13 has no automated reminder.
+- **15.1-RV12 - accepted.** `12.1-RV3` accepted-until 2026-08-13 has no automated reminder.
   - ID: 15.1-RV12
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md
   - Re-open trigger: Accepted-until date `2026-08-13` passes with no review surfacing the expired entry.
-  - Rationale: No infrastructure today surfaces expired `accepted` entries. A scheduled check would close the gap.
+  - Rationale: No infrastructure today surfaces expired `accepted` entries. A scheduled check would close the gap. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
 
-- **15.1-RV13 - carried-forward.** `git show-ref --verify` allowed exit codes do not cover `128`.
+- **15.1-RV13 - accepted.** `git show-ref --verify` allowed exit codes do not cover `128`.
   - ID: 15.1-RV13
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tools/release-preflight.ps1
   - Re-open trigger: A release attempt fails with the generic "git failed with exit code 128" wrapper because the ref store is corrupt or otherwise unreadable.
-  - Rationale: A clearer "ref-state probe failed" diagnostic would shorten release-day investigation. Current wrapper is acceptable for the common case.
+  - Rationale: A clearer "ref-state probe failed" diagnostic would shorten release-day investigation. Current wrapper is acceptable for the common case. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 
-- **15.1-RV14 - carried-forward.** Peeled-only-ref remote response not fixtured.
+- **15.1-RV14 - accepted.** Peeled-only-ref remote response not fixtured.
   - ID: 15.1-RV14
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/tooling/release_preflight/release_preflight_test.py
   - Re-open trigger: A real remote returns only peeled refs (`refs/tags/vX.Y.Z^{}`) without the unpeeled entry and the contract is not test-fixtured.
-  - Rationale: The script accepts either, but no fixture proves the peeled-only path.
+  - Rationale: The script accepts either, but no fixture proves the peeled-only path. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
-- **15.1-RV15 - carried-forward.** `Resolve-Path` throws a cryptic error when `-RepositoryPath` is missing.
+- **15.1-RV15 - accepted.** `Resolve-Path` throws a cryptic error when `-RepositoryPath` is missing.
   - ID: 15.1-RV15
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tools/release-preflight.ps1
   - Re-open trigger: A caller invokes the script with a stale or wrong `-RepositoryPath` and gets a generic `Cannot find path` error instead of an actionable message.
-  - Rationale: Pre-check with `Test-Path -PathType Container` and throw a script-owned message. Minor UX improvement.
+  - Rationale: Pre-check with `Test-Path -PathType Container` and throw a script-owned message. Minor UX improvement. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release-preflight script robustness sweep. Owner: release maintainer.
 
-- **15.1-RV16 - carried-forward.** `GetReleaseWorkflowJobScalar` depends on 4-space indentation.
+- **15.1-RV16 - accepted.** `GetReleaseWorkflowJobScalar` depends on 4-space indentation.
   - ID: 15.1-RV16
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 15-1-release-edge-case-preflight-hardening
   - Target artifact: tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs
   - Re-open trigger: A future `release.yml` reformat (2-space, tabs) silently passes the job-scalar contract test without actually inspecting the right scope.
-  - Rationale: Structural YAML parsing would be ideal, but a hand-rolled prefix parser is consistent with the rest of `CiTestInventoryTests`. A broader test-helper sweep is the natural home.
+  - Rationale: Structural YAML parsing would be ideal, but a hand-rolled prefix parser is consistent with the rest of `CiTestInventoryTests`. A broader test-helper sweep is the natural home. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: release test-helper hardening sweep. Owner: release maintainer.
 
 ## Closed by: Deferred Work 13.7-RV4 Repository Root Locator Consolidation (2026-05-12)
 
@@ -1251,7 +1435,7 @@ Fresh re-review of Story 1.1 scaffolding files at HEAD `76aa84c` surfaced seven 
   - Source story: 1-1-project-scaffolding-and-single-command-boot
   - Target artifact: src/Hexalith.Memories.AppHost/Program.cs; Directory.Packages.props
   - Re-open trigger: Aspire 14.x package bump turns the warning into an error, or CommunityToolkit.Aspire.Hosting.Dapr releases a non-obsolete component-binding API.
-  - Rationale: CommunityToolkit.Aspire.Hosting.Dapr 9.7 still reads project-level component references; removing the suppression now would break sidecar wiring with no upstream replacement.
+  - Rationale: CommunityToolkit.Aspire.Hosting.Dapr 9.7 still reads project-level component references; removing the suppression now would break sidecar wiring with no upstream replacement. Owner: the AppHost/release maintainer carries the CS0618 suppression and removes it when the trigger fires (the Aspire 14.x bump, or a non-obsolete CommunityToolkit.Aspire.Hosting.Dapr component-binding API). Re-confirmed carried-forward by Story 19.1 (2026-06-30).
 
 - **1.1-RR4. `RepositoryRootLocator.Resolve()` failure is unhandled in AppHost helpers.** `EnsureTestDataRoot`, `EnsureSecretsFile`, `ResolveDaprConfigPath`, and `ResolveRedisConfigPath` propagate raw `InvalidOperationException` if the AppHost runs from outside a recognizable repo layout.
 
@@ -1416,9 +1600,9 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - ID: MEM-1
   - Status: carried-forward
   - Source story: parties-consumer-integration-intake-2026-05-27
-  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.1)
-  - Re-open trigger: a clean clone with root submodules initialised fails to build the full `.slnx`, or `Projects.Hexalith_Memories_Server` / `Projects.Hexalith_Memories_Mcp` stops resolving.
-  - Rationale: current `main` already resolves both project symbols and exposes no redis-param wiring; residual gap is a dedicated compile-resolution guard test + documented name-stability contract, scheduled as Story 18.1.
+  - Target artifact: docs/dev/public-surface-stability.md (review-enforced Mcp `PackageId` stability half); _bmad-output/implementation-artifacts/18-1-apphost-project-resolution-guard-and-public-surface-stability-contract.md
+  - Re-open trigger: the published `Hexalith.Memories.Mcp` NuGet `PackageId` is renamed without a semantic-release `BREAKING CHANGE:` note, or a pack-time/analyzer guard becomes available to enforce the `PackageId` half that reflection cannot cover.
+  - Rationale: Story 18.1 (done) delivered the compile-resolution guard test (`AppHostProjectResolutionTests`) and the name-stability contract (`docs/dev/public-surface-stability.md`), test-enforcing 5 of 6 contract items (project-symbol resolution, Server/Mcp assembly name + root namespace, Aspire symbol shape); the Mcp `PackageId` is a pack-time NuGet property not reflectable from a built assembly, so it stays review-enforced only and is carried forward as the residual half. Owner: AppHost/release maintainer. Story 19.1 (2026-06-30) refreshed this entry against the now-completed Story 18.1 without reopening Epic 18.
 - ID: MEM-2
   - Status: resolved
   - Source story: parties-consumer-integration-intake-2026-05-27
@@ -1426,11 +1610,11 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Re-open trigger: a downstream operator cannot fill deployment placeholders because the canonical env/port/OTLP config surface is undocumented or has drifted from code.
   - Evidence: Story 18.2 published the canonical deploy-config contract at `docs/operations/deployment-configuration.md` (OTLP env gate, Dapr sidecar ports, required runtime env, pub/sub event-intake surface, app-id reconciliation) and guards it against drift with `tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs` (bidirectional doc<->code tie on the `EventIngestionController` constants plus authoritative source-file cross-checks). Residual full aspirate manifest emission is carried forward as `MEM-2-ASPIRATE`.
 - ID: MEM-2-ASPIRATE
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 18-2-deployment-configuration-contract-publication
-  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future aspirate manifest-emission story - unassigned)
+  - Target artifact: docs/operations/deployment-configuration.md (maintained deploy-config contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs; a future aspirate/Aspir8 manifest-emission story stays unassigned until the re-open trigger fires.
   - Re-open trigger: a downstream consumer needs ready-to-apply Kubernetes/Dapr manifests emitted from the AppHost topology rather than a hand-filled documented contract.
-  - Rationale: Story 18.2 delivered the documented deploy-config contract plus its drift guard but explicitly deferred full aspirate (manifest) emission as a larger, separable effort; per the 2026-05-27 locked decision ("document now, defer aspirate") no follow-up story id is assigned yet - the deferral is open-ended.
+  - Rationale: Story 19.2 (2026-06-30) accepts the documented-contract approach as sufficient for current consumers and declines to schedule aspirate emission. The maintained deploy-config contract publishes every env/port/OTLP/pub-sub literal an operator must supply, and DeploymentConfigurationContractTests fails the build on doc<->code drift, so consumers fill kustomization placeholders today without generated manifests; no current consumer requires emitted manifests, and no aspirate tooling exists in src/** or tools/**. Per the 2026-05-27 "document now, defer aspirate" locked decision this is accept-until-trigger. Owner: AppHost / release maintainer.
 - ID: MEM-3
   - Status: resolved
   - Source story: parties-consumer-integration-intake-2026-05-27
@@ -1438,11 +1622,11 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Re-open trigger: an external Dapr ACL cannot be verified against the Memories operation surface, or the published surface drifts from the mapped endpoints.
   - Evidence: Story 18.3 published the invocable route/operation-surface contract at `docs/operations/route-surface.md` (full 45-route `/api/*` inventory, pub/sub `/dapr/subscribe` + `POST /events/ingest` operation surface, health and MCP probes, and the explicit `/process` refutation tied to code) and guards it against drift with `tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs` (forward code->doc route tie deriving the list from `Program.cs`, a 45-route count tie, bidirectional pub/sub + health constant ties, an MCP source-text tie, and a code-tied `/process` negative assertion). Residual OpenAPI/Swagger document emission is carried forward as `MEM-3-OPENAPI`.
 - ID: MEM-3-OPENAPI
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 18-3-invocable-route-and-operation-surface-publication
-  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future OpenAPI document-generation story - unassigned)
+  - Target artifact: docs/operations/route-surface.md (maintained route/operation-surface contract) guarded by tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs; a future OpenAPI/Swagger document-generation story stays unassigned until the re-open trigger fires.
   - Re-open trigger: a downstream consumer needs a generated OpenAPI/Swagger document (machine-consumable schema for client/ACL generation) rather than the maintained route-surface contract.
-  - Rationale: Story 18.3 delivered the maintained route-surface contract plus its drift guard but explicitly deferred full OpenAPI/Swagger document emission - no `AddOpenApi`/`MapOpenApi`/Swashbuckle exists today - as a larger, separable effort; per AC2 ("an OpenAPI document OR a maintained route-surface doc") the documented surface satisfies the story, so per the open-ended-deferral precedent no follow-up story id is assigned yet.
+  - Rationale: Story 19.2 (2026-06-30) accepts the maintained route-surface contract as sufficient for current consumers and declines to schedule OpenAPI/Swagger generation. Story 18.3 AC2 explicitly permitted "an OpenAPI document OR a maintained route-surface doc"; route-surface.md publishes the full 46-route ACL-verifiable surface and RouteSurfaceContractTests ties it to Program.cs so it cannot drift. The repo has no AddOpenApi/MapOpenApi/Swashbuckle today and no consumer needs a generated schema; standing up OpenAPI for 46 minimal-API endpoints plus the pub/sub controller is accept-until-trigger. Owner: Server / API maintainer.
 - ID: MEM-4
   - Status: resolved
   - Source story: parties-consumer-integration-intake-2026-05-27
@@ -1467,3 +1651,10 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 18.7)
   - Re-open trigger: `MemoriesClient` is sealed or has `virtual` members removed, breaking consumer subclass-based test fixtures.
   - Evidence: Story 18.7 published the MemoriesClient mockability stability contract at `docs/dev/client-mockability.md` (reaffirms Architecture Decision D9 — concrete class, avoid the abstraction tax, extract an interface only when a second implementation arrives — and explicitly declines to add `IMemoriesClient`; documents the two supported seams: the recommended `HttpClient`/`IHttpClientFactory` boundary with a worked example and subclass override; guarantees `MemoriesClient` stays public + non-sealed with `virtual` public methods; records the breaking-change rule that sealing the class or removing `virtual` requires the D9 escape hatch (extract `IMemoriesClient`) plus a sprint change; notes the non-virtual `BaseAddress` passthrough is outside the mock seam) with companion cross-links added in `docs/dev/public-surface-stability.md` and `docs/dev/experimental-apis.md`. Guarded by `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientMockabilityContractTests.cs` (doc mandatory-claims content ties + reflection guard asserting `MemoriesClient` is public, non-sealed, exposes no `IMemoriesClient`, and that every public declared instance method is `IsVirtual && !IsFinal`, plus worked-example `[Fact]`s for both seams). The subclass seam remains proven by `tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs` and the `HttpClient` seam by the `tests/Hexalith.Memories.Cli.Tests/ClientRest/*` suite; no production code changed (`MemoriesClient` already satisfied the contract).
+
+## Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-06-30)
+
+- **`HasIndexedMemoryUnits` captured but never consulted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61] — true-empty (no index for the tenant) is not distinguished from query-empty; both yield `state: empty` + `broadenScope`, which is misleading for an unindexed tenant. Needs a recovery/state design choice (e.g. an "ingest first" recovery when `HasIndexedMemoryUnits==false`).
+- **`state: empty` emitted when `returnedCount==0` but `totalCount>0` and nothing omitted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:224] — the `returnedCount==0` short-circuit ignores `totalCount`, producing a self-contradictory empty packet. Low likelihood (requires upstream to report a contradictory result).
+- **Graph summary hardcoded `Available=false`/empty even when a `graph` axisEvidence entry has a real `GraphScore`** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:71, 132] — internal inconsistency between graph axis evidence and the graph summary section. Tolerable per spec (explicit-unavailable); graph mapping is optional/out of scope for this story.
+- **`EvidencePacketSource` has no freshness field** [src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs:63-72] — deviation from the architecture grammar (`sources: … freshness`); not an AC1-enumerated field. Grammar-alignment enhancement.

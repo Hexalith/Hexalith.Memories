@@ -269,6 +269,19 @@ public sealed class EvidencePacketCliOutputTests
         packetText.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
         packetText.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
         packetText.ShouldNotContain("tenant-b", Shouldly.Case.Sensitive);
+
+        // CR10 re-review hardening: the surrounding error envelope must also be free of sanitizable server
+        // diagnostics, not just the packet. TENANT_FORBIDDEN is not in the catalog, so the message falls
+        // back to the raw server text and the CLI must scrub it before serialization.
+        string errorMessage = root.GetProperty("error").GetProperty("message").GetString()!;
+        string errorSuggestion = root.GetProperty("error").GetProperty("suggestion").GetString()!;
+        errorMessage.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
+        errorMessage.ShouldNotContain("tenant-b", Shouldly.Case.Sensitive);
+        errorSuggestion.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
+
+        string envelope = stdout.ToString();
+        envelope.ShouldNotContain("C:\\secret", Shouldly.Case.Sensitive);
+        envelope.ShouldNotContain("redis://backend-key", Shouldly.Case.Sensitive);
     }
 
     [Fact]
