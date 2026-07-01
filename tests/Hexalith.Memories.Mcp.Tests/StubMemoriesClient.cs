@@ -11,8 +11,6 @@ using Hexalith.Memories.Contracts.V1;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable HXL001 // MemoriesClient.IngestAsync is HXL001-experimental.
-
 /// <summary>
 /// Minimal in-process stand-in for <see cref="MemoriesClient"/>. Override the public virtuals
 /// per test. Inherits from <see cref="MemoriesClient"/> so the production tools accept it
@@ -137,5 +135,3 @@ internal sealed record IngestionInputCapture(
     string ContentType,
     string IngestedBy,
     IReadOnlyDictionary<string, MetadataField>? Metadata);
-
-#pragma warning restore HXL001

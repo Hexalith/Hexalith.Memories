@@ -221,6 +221,25 @@ EventStore.Tests
 `Hexalith.Memories.Benchmarks` is intentionally excluded from PR CI; run benchmark tests explicitly
 with `Category=Benchmark` when needed.
 
+### Sandbox test runner workaround
+
+Use the standard `tools/test.*` commands above for normal local development and CI parity. In locked-down
+sandbox or WSL environments, `dotnet test` can abort before running tests because VSTest opens a local
+TCP listener and receives `SocketException (13): Permission denied`. When that happens, build the
+target test project and run the xUnit v3 assembly directly with `DiffEngine_Disabled=true`:
+
+```powershell
+dotnet build tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj --configuration Debug
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests.dll -class Hexalith.Memories.Web.Tests.Components.Validation.Epic17ConformanceTests
+```
+
+`DiffEngine_Disabled=true` prevents snapshot/diff tooling from launching an external diff tool in the
+sandbox. Prefer the narrowest useful xUnit v3 filter (`-class`, `-method`, or `-namespace`) and record
+the command, test count, and the VSTest socket limitation in the story or review artifact. Do not use
+this workaround as evidence for Docker, DAPR sidecar, Aspire, browser, or other infrastructure lanes;
+when those lanes cannot run in the sandbox, record the limitation and run them later in an environment
+that provides the required infrastructure.
+
 Docker-required tests are isolated in the integration lane. The standard skip/diagnostic wording for
 Docker-only paths is:
 

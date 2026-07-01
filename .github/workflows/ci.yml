@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  DAPR_CLI_VERSION: '1.17.1'
-  DAPR_RUNTIME_VERSION: '1.17.6'
+  DAPR_CLI_VERSION: '1.18.0'
+  DAPR_RUNTIME_VERSION: '1.18.1'
   MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS: '127.0.0.1:50005'
   MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS: '127.0.0.1:50006'
 
@@ -219,9 +219,12 @@ jobs:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        uses: dapr/setup-dapr@v2
-        with:
-          version: ${{ env.DAPR_CLI_VERSION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="${RUNNER_TEMP}/install-dapr-cli.sh"
+          curl -fsSL "https://raw.githubusercontent.com/dapr/cli/v${DAPR_CLI_VERSION}/install/install.sh" -o "$installer"
+          /bin/bash "$installer" "$DAPR_CLI_VERSION"
 
       - name: Initialize Dapr runtime
         run: |
