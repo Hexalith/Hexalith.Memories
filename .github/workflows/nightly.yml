@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -32,7 +32,7 @@ jobs:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        uses: dapr/setup-dapr@v1
+        uses: dapr/setup-dapr@v2
         with:
           version: ${{ env.DAPR_CLI_VERSION }}
 
@@ -45,14 +45,14 @@ jobs:
           dapr --version
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
       - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance)
-        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"
+        run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-integration-fast-artifacts
           path: |
@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -77,7 +77,7 @@ jobs:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        uses: dapr/setup-dapr@v1
+        uses: dapr/setup-dapr@v2
         with:
           version: ${{ env.DAPR_CLI_VERSION }}
 
@@ -90,14 +90,14 @@ jobs:
           dapr --version
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
       - name: Run Tier 3 integration tests (slow lane only)
-        run: bash ./tools/test.sh --filter "Category=IntegrationSlow"
+        run: bash ./tools/test.sh --filter "Category=IntegrationSlow" --configuration Release
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: nightly-integration-slow-artifacts
           path: |

@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository head
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -91,7 +91,7 @@ jobs:
             fi
 
             if [[ "$use_main_base" == "1" ]]; then
-              # `actions/checkout@v6` with fetch-depth: 0 already pulled full
+              # `actions/checkout@v7` with fetch-depth: 0 already pulled full
               # history; refresh main without `|| true` so auth/network/repo-rename
               # failures are loud and named (12.4-RV1).
               if ! git fetch --no-tags --prune origin main; then
@@ -152,7 +152,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -163,7 +163,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -174,7 +174,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -185,7 +185,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload unit and contract test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: test-unit-contract-results
           path: TestResults/test-unit-contract/**
@@ -208,7 +208,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Initialize build submodules
         uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
@@ -219,7 +219,7 @@ jobs:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        uses: dapr/setup-dapr@v1
+        uses: dapr/setup-dapr@v2
         with:
           version: ${{ env.DAPR_CLI_VERSION }}
 
@@ -237,7 +237,7 @@ jobs:
           docker info
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload fast integration test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: integration-fast-results
           path: TestResults/integration-fast/**

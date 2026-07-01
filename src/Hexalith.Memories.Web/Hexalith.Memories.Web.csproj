@@ -5,12 +5,15 @@
          and has no runnable host yet. Flip to true and add NuGet metadata + README the moment a
          consumer outside the Memories solution needs it. -->
     <IsPackable>false</IsPackable>
+    <!-- FrontComposer packages are not published on the configured CI feed. This non-packable
+         web RCL consumes the initialized root submodule when it is available. -->
+    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj')">true</HexalithFrontComposerFromSource>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
-    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Contracts\Hexalith.FrontComposer.Contracts.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" />
-    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" />
+    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Contracts\Hexalith.FrontComposer.Contracts.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" SetConfiguration="Configuration=$(Configuration)" />
+    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Shell\Hexalith.FrontComposer.Shell.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" SetConfiguration="Configuration=$(Configuration)" />
     <PackageReference Include="Hexalith.FrontComposer.Contracts" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />
     <PackageReference Include="Hexalith.FrontComposer.Shell" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />

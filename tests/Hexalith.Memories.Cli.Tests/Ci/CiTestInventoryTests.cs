@@ -176,40 +176,43 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_ThirdPartyActions_ArePinnedToCommitSha()
+    public void Workflows_ExternalActions_UseAllowedRefs()
     {
         string repoRoot = GetRepoRoot();
-        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+        string workflowsRoot = Path.Combine(repoRoot, ".github", "workflows");
 
-        // Match 'uses: <ref>' allowing a trailing '# v<x.y.z>' comment after the SHA so the pin
-        // can carry a human-readable tag annotation alongside the canonical commit SHA.
         Regex usesRegex = new(@"^\s*uses:\s*(?<ref>\S+)");
-        Regex shaRegex = new(@"^[0-9a-f]{40}$");
+        Regex majorTagRegex = new(@"^v[1-9]\d*$");
         bool foundAny = false;
 
-        foreach (string line in lines)
+        foreach (string workflowPath in Directory.GetFiles(workflowsRoot, "*.yml"))
         {
-            Match match = usesRegex.Match(line);
-            if (!match.Success)
+            foreach (string line in File.ReadAllLines(workflowPath))
             {
-                continue;
-            }
+                Match match = usesRegex.Match(line);
+                if (!match.Success)
+                {
+                    continue;
+                }
 
-            string reference = match.Groups["ref"].Value;
-            if (reference.StartsWith("./", StringComparison.Ordinal) || reference.StartsWith("../", StringComparison.Ordinal))
-            {
-                // Local repository action; SHA-pinning does not apply.
-                continue;
-            }
+                string reference = match.Groups["ref"].Value;
+                if (reference.StartsWith("./", StringComparison.Ordinal) || reference.StartsWith("../", StringComparison.Ordinal))
+                {
+                    // Local repository action; external action version policy does not apply.
+                    continue;
+                }
 
-            int atIndex = reference.LastIndexOf('@');
-            atIndex.ShouldBeGreaterThan(0, $"third-party action reference '{reference}' must include a '@<ref>' suffix");
-            string refSuffix = reference[(atIndex + 1)..];
-            shaRegex.IsMatch(refSuffix).ShouldBeTrue($"third-party action '{reference}' must be SHA-pinned (got '@{refSuffix}'); follow https://docs.github.com/actions/learn-github-actions/security-hardening-for-github-actions and use a 40-char commit SHA.");
-            foundAny = true;
+                int atIndex = reference.LastIndexOf('@');
+                atIndex.ShouldBeGreaterThan(0, $"third-party action reference '{reference}' must include a '@<ref>' suffix");
+                string refSuffix = reference[(atIndex + 1)..];
+                bool isHexalithBuildsAction = reference.StartsWith("Hexalith/Hexalith.Builds/", StringComparison.Ordinal);
+                bool isAllowedRef = isHexalithBuildsAction ? refSuffix == "main" : majorTagRegex.IsMatch(refSuffix);
+                isAllowedRef.ShouldBeTrue($"third-party action '{reference}' must use a major version tag like '@v7'; Hexalith.Builds actions must use '@main' so CI consumes the latest shared build logic.");
+                foundAny = true;
+            }
         }
 
-        foundAny.ShouldBeTrue("expected release.yml to declare at least one third-party action under 'uses:'.");
+        foundAny.ShouldBeTrue("expected workflows to declare at least one third-party action under 'uses:'.");
     }
 
     [Fact]

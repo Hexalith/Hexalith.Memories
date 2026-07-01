@@ -2,10 +2,13 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <!-- FrontComposer.Testing packages are not published on the configured CI feed. This
+         non-packable test project consumes the initialized root submodule when it is available. -->
+    <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj')">true</HexalithFrontComposerFromSource>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hexalith.Memories.Web\Hexalith.Memories.Web.csproj" />
-    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" />
+    <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" SetConfiguration="Configuration=$(Configuration)" />
     <PackageReference Include="Hexalith.FrontComposer.Testing" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />
     <PackageReference Include="bunit" />
     <PackageReference Include="Shouldly" />
