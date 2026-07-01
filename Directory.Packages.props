@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <HexalithEventStoreVersion>3.20.0</HexalithEventStoreVersion>
+    <HexalithEventStoreVersion>3.21.0</HexalithEventStoreVersion>
     <HexalithFrontComposerVersion>0.2.0-review.77962d15</HexalithFrontComposerVersion>
   </PropertyGroup>
   <ItemGroup>
