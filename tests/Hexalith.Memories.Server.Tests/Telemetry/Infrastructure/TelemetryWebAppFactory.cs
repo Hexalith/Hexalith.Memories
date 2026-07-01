@@ -5,17 +5,15 @@
 
 namespace Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
-using System.Collections.Generic;
-using System.Linq;
-
 using Dapr.Client;
+
+using Hexalith.Memories.Server.Tests.Infrastructure;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -38,8 +36,8 @@ using StackExchange.Redis;
 ///     services see the fakes on first resolution.</description></item>
 ///   <item><description>Replaces <see cref="DaprClient"/> with an NSubstitute fake so DI resolution does
 ///     not connect to the DAPR sidecar.</description></item>
-///   <item><description>Removes the DAPR workflow + actor hosted services that otherwise would try to open
-///     gRPC channels to a non-existent sidecar on <see cref="IHostedService.StartAsync"/>.</description></item>
+///   <item><description>Removes infrastructure services that otherwise would resolve DAPR workflow clients
+///     or backend adapters during in-memory test host startup.</description></item>
 /// </list>
 /// </para>
 /// <para>
@@ -110,24 +108,12 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<DaprClient>();
             services.AddSingleton<DaprClient>(DaprClient);
 
-            // 3. Remove DAPR-specific hosted services (workflow runtime + actor registration) — both try to
-            //    open gRPC channels to the sidecar on StartAsync. Filter by implementation assembly so we do
-            //    not touch the RollingCounterStore hosted service or other legitimate test-compatible ones.
-            List<ServiceDescriptor> hostedToRemove = [.. services.Where(s =>
-                s.ServiceType == typeof(IHostedService) &&
-                s.ImplementationType is not null &&
-                IsDaprAssembly(s.ImplementationType.Assembly.GetName().Name))];
-            foreach (ServiceDescriptor descriptor in hostedToRemove)
-            {
-                services.Remove(descriptor);
-            }
+            // 3. Remove infrastructure hosted services; keep RollingCounterStore for telemetry assertions.
+            services.RemoveInfrastructureHostedServices();
 
             // 4. Register the capturing audit-log provider. AddSingleton<ILoggerProvider> composes with the
             //    existing logging pipeline — AddJsonConsole keeps running; our provider captures in parallel.
             services.AddSingleton<ILoggerProvider>(AuditLogs);
         });
     }
-
-    private static bool IsDaprAssembly(string? assemblyName)
-        => assemblyName is not null && assemblyName.StartsWith("Dapr.", System.StringComparison.OrdinalIgnoreCase);
 }

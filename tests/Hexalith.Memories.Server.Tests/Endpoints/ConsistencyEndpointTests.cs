@@ -18,8 +18,9 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
-using Hexalith.Memories.Server.Tenants;
+using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
+using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.AspNetCore.Hosting;
@@ -27,7 +28,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -454,16 +454,8 @@ public sealed class ConsistencyEndpointTests : IDisposable
                 services.RemoveAll<IConsistencyWorkflowService>();
                 services.AddSingleton<IConsistencyWorkflowService>(WorkflowService);
 
-                // Strip DAPR-specific hosted services so nothing tries to open gRPC channels.
-                List<ServiceDescriptor> hostedToRemove = [.. services.Where(s =>
-                    s.ServiceType == typeof(IHostedService) &&
-                    s.ImplementationType is not null &&
-                    s.ImplementationType.Assembly.GetName().Name is string name &&
-                    name.StartsWith("Dapr.", StringComparison.OrdinalIgnoreCase))];
-                foreach (ServiceDescriptor descriptor in hostedToRemove)
-                {
-                    services.Remove(descriptor);
-                }
+                // Endpoint tests drive services directly; infrastructure services would resolve DAPR/backends at startup.
+                services.RemoveInfrastructureHostedServices();
 
                 services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(AuditLogs);
             });

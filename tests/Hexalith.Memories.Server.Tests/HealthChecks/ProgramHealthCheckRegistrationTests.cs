@@ -12,6 +12,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 using Shouldly;
@@ -42,6 +43,19 @@ public class ProgramHealthCheckRegistrationTests
         registeredNames.ShouldContain("redisearch");
         registeredNames.ShouldContain("redis-vector");
         registeredNames.ShouldContain("falkordb");
+    }
+
+    [Fact]
+    public void HealthCheckFactory_RemovesInfrastructureHostedServices()
+    {
+        using HealthCheckWebAppFactory factory = new();
+        _ = factory.Server;
+
+        string[] hostedServiceTypes = [.. factory.Services.GetServices<IHostedService>().Select(s => s.GetType().FullName!)];
+        hostedServiceTypes.ShouldContain("Hexalith.Memories.Server.Telemetry.RollingCounterStore");
+        hostedServiceTypes.ShouldContain("Microsoft.AspNetCore.Hosting.GenericWebHostService");
+        hostedServiceTypes.ShouldNotContain("Hexalith.Memories.Server.Hosting.WorkflowReplaySafetyHostedService");
+        hostedServiceTypes.ShouldNotContain("Hexalith.Memories.Server.NaturalLanguage.NaturalLanguageEmbeddingRetryHostedService");
     }
 
     [Fact]

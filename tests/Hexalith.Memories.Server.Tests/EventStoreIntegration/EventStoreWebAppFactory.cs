@@ -5,12 +5,10 @@
 
 namespace Hexalith.Memories.Server.Tests.EventStoreIntegration;
 
-using System.Collections.Generic;
-using System.Linq;
-
 using Dapr.Client;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
 using Microsoft.AspNetCore.Hosting;
@@ -18,7 +16,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -89,31 +86,11 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             services.AddSingleton(Telemetry);
             services.AddSingleton(PreflightDedup);
 
-            List<ServiceDescriptor> hostedToRemove = [.. services.Where(s =>
-                s.ServiceType == typeof(IHostedService)
-                && s.ImplementationType is not null
-                && IsDaprAssembly(s.ImplementationType.Assembly.GetName().Name))];
-            foreach (ServiceDescriptor descriptor in hostedToRemove)
-            {
-                services.Remove(descriptor);
-            }
-
-            // Also remove the EventStore routing-config validator — it would try to enumerate the tenant
-            // registry through the fake DaprClient and either hang or throw. Tests wire the router fake
-            // directly and do not need startup validation.
-            List<ServiceDescriptor> validatorToRemove = [.. services.Where(s =>
-                s.ServiceType == typeof(IHostedService)
-                && s.ImplementationType?.Name == "EventStoreRoutingConfigValidator")];
-            foreach (ServiceDescriptor descriptor in validatorToRemove)
-            {
-                services.Remove(descriptor);
-            }
+            // Endpoint tests drive adapters directly; infrastructure services would resolve DAPR/backends at startup.
+            services.RemoveInfrastructureHostedServices();
 
             services.AddSingleton<ILoggerProvider>(AuditLogs);
             services.AddSingleton<ILoggerProvider>(EventStoreLogs);
         });
     }
-
-    private static bool IsDaprAssembly(string? assemblyName)
-        => assemblyName is not null && assemblyName.StartsWith("Dapr.", System.StringComparison.OrdinalIgnoreCase);
 }

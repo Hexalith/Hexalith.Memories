@@ -5,10 +5,9 @@
 
 namespace Hexalith.Memories.Server.Tests.HealthChecks;
 
-using System.Collections.Generic;
-using System.Linq;
-
 using Dapr.Client;
+
+using Hexalith.Memories.Server.Tests.Infrastructure;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -16,7 +15,6 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Hosting;
 
 using NSubstitute;
 
@@ -26,8 +24,8 @@ using StackExchange.Redis;
 /// Story 8.1 — in-memory <see cref="WebApplicationFactory{TEntryPoint}"/> used by both
 /// <see cref="ProgramHealthCheckRegistrationTests"/> (Task 4.4) and
 /// <see cref="ReadyEndpointAggregationTests"/> (Task AC #9). Replaces DAPR + Redis +
-/// FalkorDB dependencies with NSubstitute fakes and strips the DAPR hosted services
-/// that otherwise attempt gRPC dialing on <see cref="IHostedService.StartAsync"/>.
+/// FalkorDB dependencies with NSubstitute fakes and strips infrastructure services
+/// that are unrelated to health endpoint behavior.
 /// </summary>
 internal sealed class HealthCheckWebAppFactory : WebApplicationFactory<Program>
 {
@@ -59,19 +57,9 @@ internal sealed class HealthCheckWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<DaprClient>();
             services.AddSingleton<DaprClient>(DaprClient);
 
-            List<ServiceDescriptor> hostedToRemove = [.. services.Where(s =>
-                s.ServiceType == typeof(IHostedService) &&
-                s.ImplementationType is not null &&
-                IsDaprAssembly(s.ImplementationType.Assembly.GetName().Name))];
-            foreach (ServiceDescriptor descriptor in hostedToRemove)
-            {
-                services.Remove(descriptor);
-            }
+            services.RemoveInfrastructureHostedServices();
 
             _extraConfiguration?.Invoke(services);
         });
     }
-
-    private static bool IsDaprAssembly(string? assemblyName)
-        => assemblyName is not null && assemblyName.StartsWith("Dapr.", StringComparison.OrdinalIgnoreCase);
 }
