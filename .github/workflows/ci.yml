@@ -152,11 +152,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 
@@ -173,11 +174,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 
@@ -206,11 +208,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          submodules: true
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v5
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 

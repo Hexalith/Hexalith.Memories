@@ -21,12 +21,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
+        uses: actions/checkout@v6
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 
@@ -51,7 +52,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nightly-integration-fast-artifacts
           path: |
@@ -65,12 +66,13 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
+        uses: actions/checkout@v6
 
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 
@@ -95,7 +97,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: nightly-integration-slow-artifacts
           path: |
