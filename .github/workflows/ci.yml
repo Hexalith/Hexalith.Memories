@@ -22,6 +22,7 @@ concurrency:
 jobs:
   story-file-scope:
     name: story-file-scope
+    if: ${{ github.event_name != 'push' || github.ref_name != 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
