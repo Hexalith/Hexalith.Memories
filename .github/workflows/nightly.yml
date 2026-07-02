@@ -21,23 +21,22 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: false
 
       - name: Initialize build submodules
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@e3be295557d7d7d6009ea2dc207084b20384e740
 
       - name: Initialize .NET
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@e3be295557d7d7d6009ea2dc207084b20384e740
         with:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          installer="${RUNNER_TEMP}/install-dapr-cli.sh"
-          curl -fsSL "https://raw.githubusercontent.com/dapr/cli/v${DAPR_CLI_VERSION}/install/install.sh" -o "$installer"
-          /bin/bash "$installer" "$DAPR_CLI_VERSION"
+        uses: dapr/setup-dapr@8d980918fd43a2765c143ce7f687665b2d46a6b9 # v2
+        with:
+          version: ${{ env.DAPR_CLI_VERSION }}
 
       - name: Initialize Dapr runtime
         run: |
@@ -55,7 +54,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-integration-fast-artifacts
           path: |
@@ -69,23 +68,22 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: false
 
       - name: Initialize build submodules
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@e3be295557d7d7d6009ea2dc207084b20384e740
 
       - name: Initialize .NET
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@e3be295557d7d7d6009ea2dc207084b20384e740
         with:
           global-json-file: global.json
 
       - name: Install Dapr CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          installer="${RUNNER_TEMP}/install-dapr-cli.sh"
-          curl -fsSL "https://raw.githubusercontent.com/dapr/cli/v${DAPR_CLI_VERSION}/install/install.sh" -o "$installer"
-          /bin/bash "$installer" "$DAPR_CLI_VERSION"
+        uses: dapr/setup-dapr@8d980918fd43a2765c143ce7f687665b2d46a6b9 # v2
+        with:
+          version: ${{ env.DAPR_CLI_VERSION }}
 
       - name: Initialize Dapr runtime
         run: |
@@ -103,7 +101,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-integration-slow-artifacts
           path: |
