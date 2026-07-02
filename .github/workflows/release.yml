@@ -37,10 +37,10 @@ jobs:
           submodules: false
 
       - name: Initialize build submodules
-        uses: Hexalith/Hexalith.Builds/Github/initialize-build@e3be295557d7d7d6009ea2dc207084b20384e740
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
 
       - name: Initialize .NET
-        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@e3be295557d7d7d6009ea2dc207084b20384e740
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
 
