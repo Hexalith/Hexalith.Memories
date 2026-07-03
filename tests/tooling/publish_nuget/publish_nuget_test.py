@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "publish-nuget.ps1"
 PACKAGE_IDS = [
+    "Hexalith.Memories.Aspire",
     "Hexalith.Memories.Contracts",
     "Hexalith.Memories.Client.Rest",
     "Hexalith.Memories.Redis",
@@ -60,6 +62,10 @@ def write_fake_dotnet(directory: Path) -> None:
             import sys
 
             args = sys.argv[1:]
+            if args and args[0].endswith("pwsh.dll"):
+                real_dotnet = os.environ["REAL_DOTNET"]
+                os.execv(real_dotnet, [real_dotnet] + args)
+
             plan_path = os.environ["FAKE_DOTNET_PLAN"]
             log_path = os.environ["FAKE_DOTNET_LOG"]
             package = None
@@ -161,6 +167,7 @@ def run_publish(
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
 
     env = os.environ.copy()
+    env["REAL_DOTNET"] = shutil.which("dotnet") or "dotnet"
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
     env["FAKE_DOTNET_PLAN"] = str(plan_path)
     env["FAKE_DOTNET_LOG"] = str(log_path)

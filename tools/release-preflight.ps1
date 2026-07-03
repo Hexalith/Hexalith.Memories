@@ -188,6 +188,6 @@ try {
     exit 0
 }
 catch {
-    Write-Error -Message $_.Exception.Message
+    [Console]::Error.WriteLine($_.Exception.Message)
     exit 1
 }

@@ -28,7 +28,7 @@ using Shouldly;
 public sealed class Epic17ConformanceHardeningTests
 {
     /// <summary>The Fluent UI Blazor V5 version centrally pinned and validated for Epic 17 (AC6).</summary>
-    private const string PinnedFluentVersion = "5.0.0-rc.3-26138.1";
+    private const string PinnedFluentVersion = "5.0.0-rc.4-26180.1";
 
     private const string FluentPackageId = "Microsoft.FluentUI.AspNetCore.Components";
 
@@ -55,13 +55,13 @@ public sealed class Epic17ConformanceHardeningTests
     [Fact]
     public void PackageLock_DirectoryPackagesProps_PinsTheAuthoritativeFluentUiVersion()
     {
-        // AC6: component API choices follow the centrally pinned 5.0.0-rc.3-26138.1, not the incompatible
+        // AC6: component API choices follow the centrally pinned Fluent UI V5 RC, not the incompatible
         // Fluent UI MCP documentation target. The pin lives in Directory.Packages.props, never per-project.
         string props = File.ReadAllText(Path.Combine(RepositoryRoot(), "Directory.Packages.props"));
 
         Regex.IsMatch(
             props,
-            $@"<PackageVersion\s+Include=""{Regex.Escape(FluentPackageId)}""\s+Version=""{Regex.Escape(PinnedFluentVersion)}""")
+            $@"<PackageVersion\s+(?:Include|Update)=""{Regex.Escape(FluentPackageId)}""\s+Version=""{Regex.Escape(PinnedFluentVersion)}""")
             .ShouldBeTrue(
                 $"Directory.Packages.props must pin {FluentPackageId} to {PinnedFluentVersion} (the Epic 17 authoritative version).");
     }
