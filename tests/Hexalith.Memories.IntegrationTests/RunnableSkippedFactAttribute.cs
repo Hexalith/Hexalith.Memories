@@ -7,12 +7,12 @@ using Xunit;
 
 using System.Runtime.CompilerServices;
 
-/// <summary>Fact attribute for tests that are skipped by default but can be run explicitly by environment.</summary>
+/// <summary>Legacy fact attribute for integration tests that now run by default.</summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class RunnableSkippedFactAttribute : FactAttribute
 {
-    /// <summary>Environment variable used to opt in to default-skipped tests.</summary>
-    public const string EnvironmentVariableName = "HEXALITH_RUN_SKIPPED_TESTS";
+    /// <summary>Environment variable used to temporarily opt out of legacy runnable tests.</summary>
+    public const string EnvironmentVariableName = "HEXALITH_SKIP_RUNNABLE_TESTS";
 
     /// <summary>Initializes a new instance of the <see cref="RunnableSkippedFactAttribute"/> class.</summary>
     /// <param name="reason">Default skip reason.</param>
@@ -26,13 +26,13 @@ public sealed class RunnableSkippedFactAttribute : FactAttribute
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
-        if (!IsEnabled())
+        if (IsDisabled())
         {
             Skip = reason;
         }
     }
 
-    private static bool IsEnabled()
+    private static bool IsDisabled()
     {
         string? value = Environment.GetEnvironmentVariable(EnvironmentVariableName);
         return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)

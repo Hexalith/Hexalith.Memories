@@ -22,6 +22,7 @@ using Dapr.Actors.Client;
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
 using Hexalith.Memories.TestHelpers.Process;
@@ -36,6 +37,9 @@ using StackExchange.Redis;
 /// <summary>Starts the full Aspire topology for end-to-end ingestion workflow tests.</summary>
 public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
+    private const string StateStoreName = "statestore";
+    private const string TenantRegistryIndexKey = "tenant-registry-index";
+
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
@@ -50,6 +54,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
     private HttpClientHandler? _actorHttpMessageHandler;
+    private HttpClient? _daprStateClient;
     private EnvVarScope? _aspNetCoreEnvironmentScope;
     private EnvVarScope? _dotNetEnvironmentScope;
     private EnvVarScope? _fakeEmbeddingScope;
@@ -324,6 +329,51 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         await WaitForTenantActiveAsync(id, activationTimeout ?? DefaultTenantActivationTimeout, cancellationToken).ConfigureAwait(false);
         return id;
+    }
+
+    /// <summary>
+    /// Seeds a tenant registry entry without provisioning backend indexes. Use this for endpoint
+    /// tests that need a specific lifecycle state such as Provisioning or Failed.
+    /// </summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="status">Lifecycle status to write.</param>
+    /// <param name="workflowInstanceId">Optional workflow instance id associated with the state.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    public async Task SeedTenantRegistryEntryAsync(
+        string tenantId,
+        TenantStatus status,
+        string? workflowInstanceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("DAPR state client is unavailable before the topology has started.");
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        TenantRegistryEntry entry = new(
+            new TenantInfo(tenantId, $"Tenant {tenantId}", status, now),
+            workflowInstanceId,
+            now);
+
+        await SaveDaprStateAsync(
+            client,
+            $"tenant-registry-{tenantId}",
+            entry,
+            cancellationToken).ConfigureAwait(false);
+
+        List<string> index = await GetDaprStateAsync<List<string>>(
+            client,
+            TenantRegistryIndexKey,
+            cancellationToken).ConfigureAwait(false) ?? [];
+        if (!index.Contains(tenantId, StringComparer.Ordinal))
+        {
+            index.Add(tenantId);
+            await SaveDaprStateAsync(
+                client,
+                TenantRegistryIndexKey,
+                index,
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Polls <c>GET /api/tenants/{tenantId}</c> until the tenant reports <see cref="TenantStatus.Active"/>.</summary>
@@ -643,6 +693,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             cancellationToken).ConfigureAwait(false);
 
         DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
+        _daprStateClient = new HttpClient
+        {
+            BaseAddress = DaprSidecarHttpEndpoint,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(daprApiToken))
+        {
+            _daprStateClient.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
+        }
 
         Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("memories-graphs", "falkordb");
@@ -765,6 +825,53 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             "Could not determine the Memories Server Dapr sidecar HTTP endpoint from the captured Aspire logs.");
     }
 
+    private static async Task SaveDaprStateAsync<T>(
+        HttpClient client,
+        string key,
+        T value,
+        CancellationToken cancellationToken)
+    {
+        using MemoryStream stream = new();
+        await using (Utf8JsonWriter writer = new(stream))
+        {
+            writer.WriteStartArray();
+            writer.WriteStartObject();
+            writer.WriteString("key", key);
+            writer.WritePropertyName("value");
+            JsonSerializer.Serialize(writer, value, MemoriesJsonContext.Options);
+            writer.WriteEndObject();
+            writer.WriteEndArray();
+        }
+
+        using ByteArrayContent content = new(stream.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/v1.0/state/{StateStoreName}",
+            content,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static async Task<T?> GetDaprStateAsync<T>(
+        HttpClient client,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/v1.0/state/{StateStoreName}/{Uri.EscapeDataString(key)}",
+            cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NoContent || response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return default;
+        }
+
+        response.EnsureSuccessStatusCode();
+        string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(json)
+            ? default
+            : JsonSerializer.Deserialize<T>(json, MemoriesJsonContext.Options);
+    }
+
     private async Task DisposeTopologyAsync(CancellationToken cancellationToken)
     {
         if (MemoriesClient is not null)
@@ -786,6 +893,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             FalkorDbConnection.Dispose();
             FalkorDbConnection = null!;
         }
+
+        _daprStateClient?.Dispose();
+        _daprStateClient = null;
 
         cancellationToken.ThrowIfCancellationRequested();
 

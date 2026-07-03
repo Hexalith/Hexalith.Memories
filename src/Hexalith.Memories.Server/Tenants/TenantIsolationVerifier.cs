@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tenants;
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -185,8 +186,11 @@ public sealed partial class TenantIsolationVerifier
 
             IDatabase db = _redis.GetDatabase();
             string targetIndex = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
+            string targetPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
             int? targetDocumentCount = await GetIndexDocumentCountAsync(db, targetIndex).ConfigureAwait(false);
             List<string> leaks = [];
+            leaks.AddRange(await ScanHashPrefixForTenantFieldMismatchesAsync(targetPrefix, tenantId, ct).ConfigureAwait(false));
+            leaks.AddRange(await SearchIndexForTenantFieldMismatchesAsync(db, targetIndex, tenantId, ct).ConfigureAwait(false));
 
             foreach (TenantInfo other in otherActiveTenants)
             {
@@ -256,8 +260,11 @@ public sealed partial class TenantIsolationVerifier
 
             IDatabase db = _redis.GetDatabase();
             string targetIndex = IndexSchemaDefinitions.GetSemanticIndexName(tenantId);
+            string targetPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
             int? targetDocumentCount = await GetIndexDocumentCountAsync(db, targetIndex).ConfigureAwait(false);
             List<string> leaks = [];
+            leaks.AddRange(await ScanHashPrefixForTenantFieldMismatchesAsync(targetPrefix, tenantId, ct).ConfigureAwait(false));
+            leaks.AddRange(await SearchIndexForTenantFieldMismatchesAsync(db, targetIndex, tenantId, ct).ConfigureAwait(false));
 
             foreach (TenantInfo other in otherActiveTenants)
             {
@@ -467,6 +474,38 @@ public sealed partial class TenantIsolationVerifier
     }
 
     /// <summary>Checks if a RediSearch index contains documents with a foreign key prefix by scanning all indexed keys.</summary>
+    private async Task<IReadOnlyList<string>> ScanHashPrefixForTenantFieldMismatchesAsync(
+        string keyPrefix,
+        string tenantId,
+        CancellationToken ct)
+    {
+        IServer? server = GetAnyServer(_redis);
+        if (server is null)
+        {
+            return [];
+        }
+
+        IDatabase db = _redis.GetDatabase();
+        List<string> mismatches = [];
+        await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
+        {
+            RedisValue storedTenantId = await db.HashGetAsync(key, "tenantId").ConfigureAwait(false);
+            if (storedTenantId.IsNullOrEmpty)
+            {
+                continue;
+            }
+
+            string actualTenantId = storedTenantId.ToString();
+            if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
+            {
+                mismatches.Add(
+                    $"Tenant '{tenantId}' physical key '{key}' has tenantId field '{actualTenantId}'");
+            }
+        }
+
+        return mismatches;
+    }
+
     private static async Task<long> SearchIndexForForeignKeysAsync(IDatabase db, string indexName, string foreignKeyPrefix, CancellationToken ct)
     {
         const int PageSize = 250;
@@ -516,12 +555,91 @@ public sealed partial class TenantIsolationVerifier
         return foreignCount;
     }
 
+    private static async Task<IReadOnlyList<string>> SearchIndexForTenantFieldMismatchesAsync(
+        IDatabase db,
+        string indexName,
+        string tenantId,
+        CancellationToken ct)
+    {
+        const int PageSize = 250;
+        List<string> mismatches = [];
+        long offset = 0;
+        long totalCount;
+
+        do
+        {
+            ct.ThrowIfCancellationRequested();
+
+            RedisResult result = await db.ExecuteAsync(
+                "FT.SEARCH",
+                indexName,
+                "*",
+                "NOCONTENT",
+                "LIMIT",
+                offset.ToString(CultureInfo.InvariantCulture),
+                PageSize.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            RedisResult[]? results = (RedisResult[]?)result;
+            if (results is null || results.Length == 0)
+            {
+                return mismatches;
+            }
+
+            totalCount = ParseRedisLong(results[0]);
+            if (results.Length == 1 || totalCount == 0)
+            {
+                return mismatches;
+            }
+
+            for (int i = 1; i < results.Length; i++)
+            {
+                string? key = results[i].ToString();
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                RedisValue storedTenantId = await db.HashGetAsync(key, "tenantId").ConfigureAwait(false);
+                if (storedTenantId.IsNullOrEmpty)
+                {
+                    continue;
+                }
+
+                string actualTenantId = storedTenantId.ToString();
+                if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
+                {
+                    mismatches.Add(
+                        $"Tenant '{tenantId}' index contains key '{key}' whose tenantId field is '{actualTenantId}'");
+                }
+            }
+
+            offset += results.Length - 1;
+        }
+
+        while (offset < totalCount);
+
+        return mismatches;
+    }
+
     private static async Task<int?> GetIndexDocumentCountAsync(IDatabase db, string indexName)
     {
         RedisResult info = await db.ExecuteAsync("FT.INFO", indexName).ConfigureAwait(false);
         return IndexSchemaDefinitions.TryGetDocumentCount(info, out int documentCount)
             ? documentCount
             : null;
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 
     private static HashSet<string> ParseGraphList(RedisResult result)
