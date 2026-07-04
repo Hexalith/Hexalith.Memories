@@ -7,7 +7,10 @@ namespace Hexalith.Memories.Mcp.Tests;
 
 using Hexalith.Memories.Mcp.Authentication;
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -16,7 +19,7 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
     [Fact]
     public void Validate_Fails_WhenNeitherAuthorityNorSigningKeyConfigured()
     {
-        var validator = new ValidateMcpAuthenticationOptions();
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Development");
 
         ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
         {
@@ -32,7 +35,7 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
     [Fact]
     public void Validate_Fails_WhenSigningKeyHasLessThanThirtyTwoBytes()
     {
-        var validator = new ValidateMcpAuthenticationOptions();
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Development");
 
         ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
         {
@@ -48,7 +51,7 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
     [Fact]
     public void Validate_Fails_WhenBase64SigningKeyDecodesBelowThirtyTwoBytes()
     {
-        var validator = new ValidateMcpAuthenticationOptions();
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Development");
         string weakBase64Key = Convert.ToBase64String(new byte[24]);
 
         ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
@@ -65,7 +68,7 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
     [Fact]
     public void Validate_Fails_WhenValidAlgorithmsEmpty()
     {
-        var validator = new ValidateMcpAuthenticationOptions();
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Development");
 
         ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
         {
@@ -80,9 +83,9 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
     }
 
     [Fact]
-    public void Validate_Succeeds_WithSymmetricDevelopmentConfiguration()
+    public void DevelopmentWithSigningKey_Succeeds()
     {
-        var validator = new ValidateMcpAuthenticationOptions();
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Development");
 
         ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
         {
@@ -92,5 +95,67 @@ public sealed class MemoriesMcpAuthenticationOptionsTests
         });
 
         result.Succeeded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ProductionWithSigningKey_Fails()
+    {
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Production");
+        const string SecretSigningKey = "production-static-signing-key-32-bytes";
+
+        ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
+        {
+            Issuer = "issuer",
+            Audience = "audience",
+            Authority = "https://login.example.test",
+            SigningKey = SecretSigningKey,
+        });
+
+        result.Failed.ShouldBeTrue();
+        result.FailureMessage.ShouldContain("Production");
+        result.FailureMessage.ShouldContain("SigningKey");
+        result.FailureMessage.ShouldNotContain(SecretSigningKey);
+    }
+
+    [Fact]
+    public void ProductionWithAuthorityAndRequireHttpsMetadataFalse_Fails()
+    {
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Production");
+
+        ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
+        {
+            Issuer = "issuer",
+            Audience = "audience",
+            Authority = "https://login.example.test",
+            RequireHttpsMetadata = false,
+        });
+
+        result.Failed.ShouldBeTrue();
+        result.FailureMessage.ShouldContain("Production");
+        result.FailureMessage.ShouldContain("RequireHttpsMetadata");
+    }
+
+    [Fact]
+    public void ProductionWithAuthorityAndRequireHttpsMetadataTrue_Succeeds()
+    {
+        ValidateMcpAuthenticationOptions validator = BuildValidator("Production");
+
+        ValidateOptionsResult result = validator.Validate(null, new MemoriesMcpAuthenticationOptions
+        {
+            Issuer = "issuer",
+            Audience = "audience",
+            Authority = "https://login.example.test",
+            RequireHttpsMetadata = true,
+        });
+
+        result.Succeeded.ShouldBeTrue();
+    }
+
+    private static ValidateMcpAuthenticationOptions BuildValidator(string environmentName)
+    {
+        IHostEnvironment environment = Substitute.For<IHostEnvironment>();
+        environment.EnvironmentName.Returns(environmentName);
+
+        return new ValidateMcpAuthenticationOptions(environment);
     }
 }

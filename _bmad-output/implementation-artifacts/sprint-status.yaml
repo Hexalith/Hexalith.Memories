@@ -59,6 +59,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 20.1 senior developer review completed with automatic fixes (Dapr actor runtime anonymous route guard). 20.1 -> done.
 # 2026-07-04: Story 20.2 created (20.2 -> ready-for-dev) via create-story. Tenant authorization filter and principal-derived audit identity; closes A2 and cross-links D8 TenantAuthorizationMiddleware.
 # 2026-07-04: Story 20.3 created (20.3 -> ready-for-dev) via create-story. Tenant-scoped workflow and batch status endpoints; closes A6 raw WorkflowState/status leakage.
+# 2026-07-04: Story 20.4 created (20.4 -> ready-for-dev) via create-story. MCP production signing-key hardening; closes A20 static HS256 production risk.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -340,7 +341,7 @@ development_status:
   20-1-server-authentication-foundation: done
   20-2-tenant-authorization-filter-and-principal-derived-audit-identity: done
   20-3-tenant-scope-workflow-and-batch-status-endpoints: done
-  20-4-mcp-production-signing-key-hardening: backlog
+  20-4-mcp-production-signing-key-hardening: done
   20-5-inbound-rate-limiting-quotas-and-audit-completeness: backlog
   20-6-redisearch-query-injection-hardening: backlog
   epic-20-retrospective: optional

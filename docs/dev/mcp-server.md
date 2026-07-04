@@ -26,17 +26,21 @@ Configuration is read from `Authentication:JwtBearer`:
 
 | Key | Notes |
 |---|---|
-| `Authority` | OIDC discovery endpoint for production IdPs. |
+| `Authority` | OIDC discovery endpoint for production IdPs; required for production MCP authentication. |
 | `Issuer` | Required expected `iss`. |
 | `Audience` | Required expected `aud`. |
-| `SigningKey` | Development/test HS256 key when `Authority` is unset; must provide at least 32 bytes of effective key material. |
-| `RequireHttpsMetadata` | Keep `true` outside local development. |
+| `SigningKey` | Development/test-only HS256 key when `Authority` is unset; forbidden in production and must provide at least 32 bytes of effective key material outside production. |
+| `RequireHttpsMetadata` | Must be `true` in production authority mode; only local development/test hosts may disable it. |
 | `TenantClaimName` | Defaults to `tenant_id`; common alternatives are `tid` for Entra, a namespaced Auth0 claim, or `tenant` for Okta. |
 
 JWT validation preserves original claim names, validates issuer/audience/signature/lifetime, requires
 signed tokens and expiration, uses a 1-minute clock skew, and allows `HS256`, `RS256`, and `ES256`
 by default. Failed authentication returns a sanitized RFC 6750 `WWW-Authenticate` header plus
 `application/problem+json`; token values are never logged.
+
+Production MCP hosts must use OIDC `Authority` metadata. Startup validation rejects any production
+configuration that includes `SigningKey`, even when `Authority` is also present, and rejects
+production authority mode when `RequireHttpsMetadata=false`.
 
 Each tool cross-checks its `tenantId` argument against normalized `memories:tenant` claims before
 calling the Memories Server. Mismatches return MCP `CallToolResult { IsError = true }` with code

@@ -5,8 +5,10 @@ tools so LLM agents (Claude Desktop, custom MCP clients, etc.) can search, inges
 case information programmatically.
 
 The `/mcp` endpoint requires JWT bearer authentication. Configure `Authentication:JwtBearer`
-with either OIDC `Authority` metadata or a development `SigningKey`; each tool also checks its
-`tenantId` argument against the token's normalized tenant claims before calling the Memories Server.
+with OIDC `Authority` metadata in production; development and test hosts may use a symmetric
+`SigningKey`. Production startup validation rejects `SigningKey` and requires HTTPS metadata
+discovery for authority mode. Each tool also checks its `tenantId` argument against the token's
+normalized tenant claims before calling the Memories Server.
 
 The server runs as its own ASP.NET Core / DAPR-sided service (app-id `memories-mcp`) and reaches the
 Memories Server exclusively via DAPR service invocation — no direct Redis, FalkorDB, or secret-store

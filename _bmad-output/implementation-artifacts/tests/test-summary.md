@@ -667,3 +667,43 @@ explicit rather than implied as covered.
 - Run the new tests in CI alongside the existing suites.
 - When an Aspire/Testcontainers Redis+Dapr fixture lands, promote the `/api/ingest` reservation wiring and a true
   two-thread race to `Hexalith.Memories.IntegrationTests` (the deferred boundary above).
+
+---
+
+# Test Automation Summary
+
+## Generated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointChallengeBodyTests.cs` - MCP `/mcp` missing bearer challenge returns sanitized ProblemDetails.
+- [x] `tests/Hexalith.Memories.Mcp.Tests/Authentication/McpEndpointChallengeBodyTests.cs` - MCP `/mcp` malformed bearer challenge returns sanitized invalid-token ProblemDetails and does not echo raw bearer material.
+
+### E2E Tests
+
+- [x] Existing `WebApplicationFactory<Program>` MCP endpoint tests exercise the HTTP request/response path in-process. No browser UI exists for Story 20.4.
+
+## Coverage
+
+- API/startup auth features: 6/6 story-required areas covered.
+- UI features: 0/0 applicable; Story 20.4 has no module UI.
+- Added gap coverage: sanitized challenge response body for missing and malformed bearer tokens.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj --disable-build-servers -m:1 /nr:false`
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Mcp.Tests/bin/Debug/net10.0/Hexalith.Memories.Mcp.Tests.dll -class Hexalith.Memories.Mcp.Tests.Authentication.McpEndpointChallengeBodyTests -class Hexalith.Memories.Mcp.Tests.Authentication.McpEndpointAllowAnonymousPathsTests`
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Mcp.Tests/bin/Debug/net10.0/Hexalith.Memories.Mcp.Tests.dll -class Hexalith.Memories.Mcp.Tests.MemoriesMcpAuthenticationOptionsTests -class Hexalith.Memories.Mcp.Tests.ConfigureJwtBearerOptionsTests`
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Mcp.Tests/bin/Debug/net10.0/Hexalith.Memories.Mcp.Tests.dll -class Hexalith.Memories.Mcp.Tests.McpCompositionRootTests`
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Mcp.Tests/bin/Debug/net10.0/Hexalith.Memories.Mcp.Tests.dll -class Hexalith.Memories.Mcp.Tests.Authentication.McpEndpointAllowAnonymousPathsTests -class Hexalith.Memories.Mcp.Tests.TenantClaimAuthorizationTests`
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: not applicable; no UI exists for this story.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.
+
+## Next Steps
+
+- Keep these checks in the focused MCP auth regression set for Story 20.4.

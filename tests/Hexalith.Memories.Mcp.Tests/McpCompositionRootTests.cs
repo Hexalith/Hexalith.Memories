@@ -7,6 +7,11 @@ namespace Hexalith.Memories.Mcp.Tests;
 
 using Hexalith.Memories.Mcp;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+
 using Shouldly;
 
 /// <summary>Disables xUnit cross-collection parallelism for env-var-mutating tests.</summary>
@@ -39,6 +44,34 @@ public sealed class McpCompositionRootTests
         string appId = McpCompositionRoot.ResolveMemoriesServerAppId();
 
         appId.ShouldBe("memories-it-123");
+    }
+
+    [Fact]
+    public async Task StartAsync_InvalidProductionMcpAuthenticationOptions_FailsDuringStartupValidation()
+    {
+        using IHost host = Host.CreateDefaultBuilder()
+            .UseEnvironment("Production")
+            .ConfigureAppConfiguration(configuration =>
+            {
+                Dictionary<string, string?> settings = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Authentication:JwtBearer:Issuer"] = "issuer",
+                    ["Authentication:JwtBearer:Audience"] = "audience",
+                    ["Authentication:JwtBearer:Authority"] = "https://login.example.test",
+                    ["Authentication:JwtBearer:SigningKey"] = "production-static-signing-key-32-bytes",
+                };
+
+                _ = configuration.AddInMemoryCollection(settings);
+            })
+            .ConfigureServices(services => McpCompositionRoot.ConfigureServices(services))
+            .Build();
+
+        OptionsValidationException exception = await Should.ThrowAsync<OptionsValidationException>(
+            () => host.StartAsync(TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("Production");
+        exception.Message.ShouldContain("SigningKey");
+        exception.Message.ShouldNotContain("production-static-signing-key-32-bytes");
     }
 
     private sealed class EnvScope : IDisposable

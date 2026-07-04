@@ -7,10 +7,12 @@ namespace Hexalith.Memories.Mcp.Authentication;
 
 using System.Text;
 
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 /// <summary>Validates <see cref="MemoriesMcpAuthenticationOptions"/> at startup.</summary>
-public sealed class ValidateMcpAuthenticationOptions : IValidateOptions<MemoriesMcpAuthenticationOptions>
+public sealed class ValidateMcpAuthenticationOptions(IHostEnvironment environment)
+    : IValidateOptions<MemoriesMcpAuthenticationOptions>
 {
     /// <inheritdoc />
     public ValidateOptionsResult Validate(string? name, MemoriesMcpAuthenticationOptions options)
@@ -21,6 +23,20 @@ public sealed class ValidateMcpAuthenticationOptions : IValidateOptions<Memories
         {
             return ValidateOptionsResult.Fail(
                 "Authentication:JwtBearer requires either 'Authority' (production OIDC) or 'SigningKey' (development symmetric key) to be configured.");
+        }
+
+        if (environment.IsProduction() && !string.IsNullOrWhiteSpace(options.SigningKey))
+        {
+            return ValidateOptionsResult.Fail(
+                "Authentication:JwtBearer:SigningKey is forbidden in Production. Configure OIDC Authority metadata for production MCP authentication instead.");
+        }
+
+        if (environment.IsProduction()
+            && !string.IsNullOrWhiteSpace(options.Authority)
+            && !options.RequireHttpsMetadata)
+        {
+            return ValidateOptionsResult.Fail(
+                "Authentication:JwtBearer:RequireHttpsMetadata must be true in Production when Authority is configured because production OIDC metadata discovery must use HTTPS.");
         }
 
         if (string.IsNullOrWhiteSpace(options.Issuer))
