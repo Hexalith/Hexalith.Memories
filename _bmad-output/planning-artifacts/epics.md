@@ -3891,6 +3891,8 @@ So that embedding-provider expansion and live migration do not inherit stale ass
 
 Epics 20-26 are added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation), driven by the audit evidence file `research/architecture-audit-2026-07-04.md` (findings A1-A51). They are remediation epics: each story closes one or more audit findings and must preserve the strengths the audit recorded (health-check depth, contract serialization sweep, Testcontainers/Aspire end-state fixtures, ingestion compensation skeleton, disciplined secrets handling) rather than regress them. No completed epic is reopened. Two stories are decision-first (21.1 consistency model, 24.3 physical isolation) and gate their epic's implementation until the architecture decision is ratified.
 
+**Audit-anchor preflight:** Before any Epic 20-26 story is selected, created, or implemented, re-verify the current code anchors and implementation-state assumptions cited by that story against the repository. Story files must record the re-verification date, moved or renamed anchors, and how the implementation adapts. If an anchor is stale enough to change scope or acceptance evidence, update the story from current code evidence before development begins.
+
 ## Epic 20: API Security & Tenant Authorization
 Operator and downstream consumers get an authenticated, tenant-authorized server boundary: every endpoint requires an authenticated principal, tenant access is verified against principal claims (not caller-supplied parameters), the audit identity is trustworthy, MCP cannot run on a development signing key in production, inbound load is bounded per tenant, and audit coverage spans all mutating operations.
 **Lifecycle label:** Operational Readiness / Security Hardening

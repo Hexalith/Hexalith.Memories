@@ -30,6 +30,7 @@ ORDERED_STORIES = {
         "23-1-content-chunking-and-batch-embedding",
     ],
 }
+AUDIT_ANCHOR_PREFLIGHT = "**Audit-anchor preflight:**"
 
 
 def read_text(path: Path) -> str:
@@ -140,6 +141,8 @@ def validate_epics(epics_text: str) -> list[str]:
     for pattern in forbidden_patterns:
         if re.search(pattern, mvp_text):
             errors.append(f"forbidden product-story acceptance phrase found: {pattern}")
+    if AUDIT_ANCHOR_PREFLIGHT not in epics_text:
+        errors.append("Epics 20-26 audit-anchor preflight is missing")
     return errors
 
 

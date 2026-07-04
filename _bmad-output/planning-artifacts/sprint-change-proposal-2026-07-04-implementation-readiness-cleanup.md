@@ -38,7 +38,8 @@ Concrete evidence from the readiness report:
 2. Operational and technical epics are mixed into the same epic list as product capability epics. The document labels them, but readiness accounting is not yet machine-readable enough to prevent accidental MVP-count inflation.
 3. Future web UX implementation must treat Story 17.6 as a hard preflight before any further Epic 17 expansion.
 4. Historical broad stories and checkpoint-heavy operational stories need guardrails before they are reopened or selected for new implementation.
-5. Epics frontmatter currently names only the latest sprint change proposals even though older approved proposals are materially incorporated.
+5. Epics 20-26 cite concrete code anchors from the 2026-07-04 architecture audit, but those anchors can move before the stories are implemented.
+6. Epics frontmatter currently names only the latest sprint change proposals even though older approved proposals are materially incorporated.
 
 ## 2. Impact Analysis
 
@@ -63,6 +64,7 @@ Affected stories:
 - `23.9` must be declared as the prerequisite for `23.1`.
 - Historical `1.2`, `1.5`, and `1.6` must not be reopened as broad implementation units.
 - Checkpoint-heavy stories such as `21.9` and `26.5` need separately evidenced implementation slices before they can be accepted as done.
+- Epics `20` through `26` need a shared audit-anchor preflight before any story file is created or implemented.
 
 ### Artifact Conflicts
 
@@ -72,7 +74,7 @@ Affected stories:
 
 **UX Design:** No UX spec rewrite. The UX document already requires FrontComposer + Fluent UI Blazor V5 and states future web work is not MVP unless sprint-selected. The proposed change makes Story 17.6 an enforceable gate in epics and sprint status.
 
-**Epics:** Changes required. Add machine-readable readiness metadata, sequencing metadata, and provenance context.
+**Epics:** Changes required. Add machine-readable readiness metadata, sequencing metadata, provenance context, and an Epic 20-26 audit-anchor preflight.
 
 **Sprint status:** Changes required. Add machine-readable readiness accounting and story execution order; reorder or annotate affected story rows so tooling does not choose numeric order where dependencies disagree.
 
@@ -403,7 +405,21 @@ When checkpoint-heavy stories are selected for implementation, the story file mu
 
 Rationale: Prevents a large umbrella story from reaching done without independently reviewable evidence.
 
-### 4.10 Optional Validation Script
+### 4.10 Epics 20-26: Audit-Anchor Preflight
+
+Artifact: `_bmad-output/planning-artifacts/epics.md`
+
+Section: `## Phase: Post-MVP — Audit Remediation (2026-07-04)`
+
+NEW:
+
+```markdown
+**Audit-anchor preflight:** Before any Epic 20-26 story is selected, created, or implemented, re-verify the current code anchors and implementation-state assumptions cited by that story against the repository. Story files must record the re-verification date, moved or renamed anchors, and how the implementation adapts. If an anchor is stale enough to change scope or acceptance evidence, update the story from current code evidence before development begins.
+```
+
+Rationale: The architecture-audit remediation stories cite line numbers, files, and current implementation states. This prevents stale anchors from sending implementation work to the wrong code path.
+
+### 4.11 Optional Validation Script
 
 Artifact: `_bmad/scripts/validate_readiness_accounting.py` or equivalent
 
@@ -416,6 +432,7 @@ Validate that:
 3. Product MVP stories do not contain "accepted or carried forward" completion language.
 4. `story_execution_order` prerequisites are complete before later stories are selected for `ready-for-dev`.
 5. Reserved non-MVP items such as Story 8.3 are not reported as missing active MVP stories.
+6. The Epics 20-26 audit-anchor preflight is present.
 ```
 
 Rationale: Metadata is useful only if readiness checks consume it. This script can be added now or tracked as a follow-up in Epic 26.
@@ -429,7 +446,7 @@ Rationale: Metadata is useful only if readiness checks consume it. This script c
 | 1.3 Evidence gathered | [x] | Readiness report, PRD, architecture, UX spec, epics, sprint status, prior sprint change proposals, and Hexalith UX rules reviewed. |
 | 2.1 Current epic impact | [x] | Active MVP Epic 0-8 remains viable; post-MVP and future UI tracks need enforceable boundaries. |
 | 2.2 Epic-level changes | [x] | Add readiness metadata, sequencing metadata, and guardrails. |
-| 2.3 Remaining epics impact | [x] | Epic 17, 18, 23 directly impacted; operational/remediation epics impacted by accounting metadata. |
+| 2.3 Remaining epics impact | [x] | Epic 17, 18, 23 directly impacted; operational/remediation epics impacted by accounting metadata and audit-anchor preflight. |
 | 2.4 New or obsolete epics | [N/A] | No new epic required. Optional validation can be absorbed into Epic 26 or direct tooling cleanup. |
 | 2.5 Priority/order | [x] | Apply metadata cleanup before broad implementation resumes. |
 | 3.1 PRD conflicts | [x] | No PRD change; FR71 scope caveat preserved. |
@@ -468,6 +485,7 @@ Success criteria:
 3. Operational/remediation/future-ui work can remain in the same epics file without inflating product readiness.
 4. Future web work cannot bypass Story 17.6 conformance evidence.
 5. Reopened broad historical stories and selected checkpoint-heavy operational stories require split/evidenced implementation slices.
+6. Epics 20-26 cannot start from stale audit anchors without current-code re-verification.
 
 ## 7. Approval
 
@@ -475,5 +493,6 @@ Success criteria:
 - [x] `epics.md` metadata and guardrail edits applied
 - [x] `sprint-status.yaml` readiness metadata and execution-order edits applied
 - [x] Optional readiness validation script added: `_bmad/scripts/validate_readiness_accounting.py`
+- [x] Epic 20-26 audit-anchor preflight applied and covered by the readiness validation script
 
 Routed to Product Owner / Developer agents for future planning-artifact governance. The implementation-readiness metadata update pass is complete.
