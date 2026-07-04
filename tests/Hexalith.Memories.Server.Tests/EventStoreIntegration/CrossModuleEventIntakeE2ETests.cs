@@ -115,6 +115,62 @@ public sealed class CrossModuleEventIntakeE2ETests : System.IDisposable
     }
 
     [Fact]
+    public async Task TenantNotFoundRouteFailure_Returns500ForDaprRetryWithoutScheduling()
+    {
+        // Story 21.6: missing tenants can be rollout-ordering or registry-lag conditions, so the endpoint
+        // must return non-2xx to drive DAPR retry rather than ACK/drop. The event must not reserve a dedup
+        // key or schedule a workflow until a later retry resolves an active tenant route.
+        _factory.Router
+            .ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<CancellationToken>())
+            .Returns(TenantEventRouteResolution.TenantNotFound("tenant-events"));
+
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await PostAsync(
+            client, ModuleEnvelope("evt-missing-tenant-1", "hexalith/tenants/events", "Hexalith.Tenants.TenantCreatedV1"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+
+        EventIngestionResponse? body = await response.Content.ReadFromJsonAsync<EventIngestionResponse>();
+        body.ShouldNotBeNull();
+        body!.Status.ShouldBe(EventIngestionResponse.StatusTenantNotFound);
+        body.InstanceId.ShouldBeNull();
+        body.WasDuplicate.ShouldBeFalse();
+
+        await _factory.PreflightDedup.DidNotReceive().TryReserveAsync(
+            Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await _factory.Scheduler.DidNotReceive().ScheduleAsync(
+            Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TenantDeletingOrUnavailableRouteFailure_Returns500ForDaprRetryWithoutScheduling()
+    {
+        // Story 21.6: deleting and unavailable tenant states share the TenantDeleting route-resolution path.
+        // The HTTP boundary must therefore retry both lifecycle failures while preserving no-schedule/no-dedup
+        // behavior before tenant routing is accepted.
+        _factory.Router
+            .ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<CancellationToken>())
+            .Returns(TenantEventRouteResolution.TenantDeleting("tenant-events"));
+
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await PostAsync(
+            client, ModuleEnvelope("evt-unavailable-tenant-1", "hexalith/tenants/events", "Hexalith.Tenants.TenantCreatedV1"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+
+        EventIngestionResponse? body = await response.Content.ReadFromJsonAsync<EventIngestionResponse>();
+        body.ShouldNotBeNull();
+        body!.Status.ShouldBe(EventIngestionResponse.StatusTenantDeleting);
+        body.InstanceId.ShouldBeNull();
+        body.WasDuplicate.ShouldBeFalse();
+
+        await _factory.PreflightDedup.DidNotReceive().TryReserveAsync(
+            Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await _factory.Scheduler.DidNotReceive().ScheduleAsync(
+            Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task DuplicateDelivery_ToSharedTopic_IsIdempotent_SecondDeliveryReturnsDuplicateWithoutRescheduling()
     {
         // AC4 + AC7: DAPR pub/sub is at-least-once, so the SAME CloudEvent can be delivered twice. The second

@@ -214,7 +214,7 @@ public sealed class TenantEventRouterTests
     }
 
     [Fact]
-    public async Task ResolveAsync_DeletingTenant_ReturnsDropOutcome()
+    public async Task ResolveAsync_DeletingTenant_ReturnsTenantDeleting()
     {
         TenantEventRoutingOptions options = new() { Topic = "t" };
         options.SourceToTenantMap["/hr"] = "hr-tenant";
@@ -228,6 +228,24 @@ public sealed class TenantEventRouterTests
             .ResolveAsync(Envelope("/hr", "a.b.c"), CancellationToken.None);
 
         resolution.Status.ShouldBe(TenantEventRouteResolutionStatus.TenantDeleting);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_UnavailableTenant_ReturnsTenantDeletingForRetryAtControllerBoundary()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "t" };
+        options.SourceToTenantMap["/hr"] = "hr-tenant";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("hr-tenant", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Unavailable);
+
+        TenantEventRouter router = BuildRouter(options, statusAccessor, Substitute.For<ICaseCreationService>());
+        TenantEventRouteResolution resolution = await router
+            .ResolveAsync(Envelope("/hr", "a.b.c"), CancellationToken.None);
+
+        resolution.Status.ShouldBe(TenantEventRouteResolutionStatus.TenantDeleting);
+        resolution.TenantId.ShouldBe("hr-tenant");
     }
 
     [Fact]

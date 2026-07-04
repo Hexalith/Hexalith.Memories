@@ -255,6 +255,21 @@ public sealed class EventIngestionServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_TenantNotFound_ReturnsRetryableOutcomeWithoutDedupOrScheduling()
+    {
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, IPreflightDedupStore dedup, _, _) =
+            Build(TenantEventRouteResolution.TenantNotFound("hr-tenant"));
+
+        EventIngestionProcessResult result = await service.ProcessAsync(Envelope(), CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.TenantNotFound);
+        result.Response.Status.ShouldBe(EventIngestionResponse.StatusTenantNotFound);
+        result.Response.InstanceId.ShouldBeNull();
+        await dedup.DidNotReceive().TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ProcessAsync_RouteResolutionThrows_ReturnsRetryableScheduleFailedOutcome()
     {
         (EventIngestionService service, ITenantEventRouter router, IEventIngestionWorkflowScheduler scheduler, _, _, _) = Build();
@@ -269,14 +284,18 @@ public sealed class EventIngestionServiceTests
     }
 
     [Fact]
-    public async Task ProcessAsync_TenantDeleting_ReturnsDropOutcome()
+    public async Task ProcessAsync_TenantDeleting_ReturnsRetryableOutcomeWithoutDedupOrScheduling()
     {
-        (EventIngestionService service, _, _, _, _, _) =
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, IPreflightDedupStore dedup, _, _) =
             Build(TenantEventRouteResolution.TenantDeleting("hr-tenant"));
 
         EventIngestionProcessResult result = await service.ProcessAsync(Envelope(), CancellationToken.None);
 
         result.Outcome.ShouldBe(EventIngestionOutcome.TenantDeleting);
+        result.Response.Status.ShouldBe(EventIngestionResponse.StatusTenantDeleting);
+        result.Response.InstanceId.ShouldBeNull();
+        await dedup.DidNotReceive().TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

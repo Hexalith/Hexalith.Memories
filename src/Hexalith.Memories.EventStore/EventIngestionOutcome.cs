@@ -21,13 +21,13 @@ public enum EventIngestionOutcome
     /// <summary>Source matched no entry in the tenant map. Drop with 200 — no DAPR retry.</summary>
     UnknownSource,
 
-    /// <summary>Resolved tenant does not exist. Drop with 200.</summary>
+    /// <summary>Resolved tenant does not exist. Return 500 so DAPR retries or reaches a configured dead-letter topic.</summary>
     TenantNotFound,
 
     /// <summary>Tenant is provisioning. Return 500 so DAPR retries until tenant becomes active.</summary>
     TenantProvisioning,
 
-    /// <summary>Tenant is deleting (or otherwise non-operational). Drop with 200.</summary>
+    /// <summary>Tenant is deleting (or otherwise non-operational). Return 500 so DAPR retries or reaches a configured dead-letter topic.</summary>
     TenantDeleting,
 
     /// <summary>Auto-create disabled and no case exists. Drop with 200.</summary>

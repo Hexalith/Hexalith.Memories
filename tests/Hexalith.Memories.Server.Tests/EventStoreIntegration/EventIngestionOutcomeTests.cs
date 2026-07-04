@@ -57,7 +57,7 @@ public sealed class EventIngestionOutcomeTests : System.IDisposable
     }
 
     [Fact]
-    public async Task DeletingTenant_Returns200_LogsWarning()
+    public async Task DeletingTenant_Returns500_LogsWarning()
     {
         const string tenantId = "acme-deleting";
         _factory.Router
@@ -66,12 +66,31 @@ public sealed class EventIngestionOutcomeTests : System.IDisposable
 
         HttpResponseMessage response = await PostCloudEventAsync(BuildValidEnvelope());
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
         EventIngestionResponse body = await ReadResponseAsync(response);
         body.Status.ShouldBe(EventIngestionResponse.StatusTenantDeleting);
         body.InstanceId.ShouldBeNull();
         _factory.EventStoreLogs.EventStoreCaptures
             .Any(c => c.EventId == 9111 && c.Level == LogLevel.Warning)
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task TenantNotFound_Returns500_LogsWarning()
+    {
+        const string tenantId = "acme-missing";
+        _factory.Router
+            .ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<System.Threading.CancellationToken>())
+            .Returns(TenantEventRouteResolution.TenantNotFound(tenantId));
+
+        HttpResponseMessage response = await PostCloudEventAsync(BuildValidEnvelope());
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        EventIngestionResponse body = await ReadResponseAsync(response);
+        body.Status.ShouldBe(EventIngestionResponse.StatusTenantNotFound);
+        body.InstanceId.ShouldBeNull();
+        _factory.EventStoreLogs.EventStoreCaptures
+            .Any(c => c.EventId == 9112 && c.Level == LogLevel.Warning)
             .ShouldBeTrue();
     }
 

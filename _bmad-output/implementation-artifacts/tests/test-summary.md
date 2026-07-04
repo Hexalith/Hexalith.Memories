@@ -1,3 +1,46 @@
+# Test Automation Summary - Story 21.6 (Event Routing for Unknown/Unavailable Tenants)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-6-event-routing-for-unknown-unavailable-tenants.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with in-process `WebApplicationFactory<Program>` API/E2E coverage; no new framework introduced.
+- **Feature under test:** DAPR pub/sub `/events/ingest` retry posture for tenant lifecycle route failures.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] Existing Story 21.6 API/controller coverage reviewed: `EventIngestionOutcomeTests` and `EventIngestionControllerTests` already prove `TenantNotFound` and `TenantDeleting` map to HTTP 500 while `UnknownSource`, `AutoCreateDisabled`, and `CaseCapExceeded` remain HTTP 200.
+
+### E2E Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CrossModuleEventIntakeE2ETests.cs` - added `TenantNotFoundRouteFailure_Returns500ForDaprRetryWithoutScheduling`, driving a structured CloudEvent through the real `/events/ingest` HTTP pipeline and asserting HTTP 500, `tenant-not-found`, no instance id, no duplicate flag, no preflight dedup reservation, and no workflow scheduling.
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CrossModuleEventIntakeE2ETests.cs` - added `TenantDeletingOrUnavailableRouteFailure_Returns500ForDaprRetryWithoutScheduling`, covering the controller-boundary path shared by deleting and unavailable tenants, with the same no-dedup/no-schedule guarantees.
+- [x] UI E2E is not applicable. Story 21.6 has no module UI.
+
+## Coverage
+
+- API endpoints: `/events/ingest` lifecycle route failures covered through unit/controller tests and in-process HTTP E2E tests.
+- Happy path: existing cross-module shared-topic E2E still covers accepted module events and duplicate delivery.
+- Critical error cases: tenant not found and deleting/unavailable now return non-2xx through the HTTP surface for DAPR retry; unknown source remains the intentional 200 non-retry drop.
+- Duplicate safety: new lifecycle tests assert no dedup reservation or workflow scheduling occurs before a tenant route is accepted.
+
+## Validation
+
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~CrossModuleEventIntakeE2ETests|FullyQualifiedName~EventIngestionOutcomeTests" --no-restore -m:1 /nodeReuse:false` - build succeeded, then VSTest aborted on sandbox TCP listener permission (`SocketException (13): Permission denied`).
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.EventStoreIntegration.CrossModuleEventIntakeE2ETests -class Hexalith.Memories.Server.Tests.EventStoreIntegration.EventIngestionOutcomeTests` - 13 total, 0 failed, 0 skipped.
+- [x] `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `git diff --check -- tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CrossModuleEventIntakeE2ETests.cs _bmad-output/implementation-artifacts/tests/test-summary.md` - passed.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass; two in-process HTTP E2E tests added for the discovered Story 21.6 gap.
+- Standard framework APIs, happy path, 1-2 critical error cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.5 (Deletion Completeness)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

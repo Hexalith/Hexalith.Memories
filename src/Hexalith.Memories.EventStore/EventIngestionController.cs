@@ -25,8 +25,8 @@ using Microsoft.AspNetCore.Mvc;
 ///   <item><description><see cref="EventIngestionOutcome.Accepted"/> → 200 + <see cref="EventIngestionResponse"/> with instanceId.</description></item>
 ///   <item><description><see cref="EventIngestionOutcome.Duplicate"/> → 200 + <c>wasDuplicate = true</c>.</description></item>
 ///   <item><description><see cref="EventIngestionOutcome.InvalidCloudEvent"/> → 400 + <see cref="ErrorResponse"/>. DAPR does NOT retry.</description></item>
-///   <item><description><see cref="EventIngestionOutcome.UnknownSource"/> / <see cref="EventIngestionOutcome.TenantNotFound"/> / <see cref="EventIngestionOutcome.TenantDeleting"/> / <see cref="EventIngestionOutcome.AutoCreateDisabled"/> / <see cref="EventIngestionOutcome.CaseCapExceeded"/> → 200 + warning log (intentional drop).</description></item>
-///   <item><description><see cref="EventIngestionOutcome.TenantProvisioning"/> / <see cref="EventIngestionOutcome.ScheduleFailed"/> → 500. DAPR retries.</description></item>
+///   <item><description><see cref="EventIngestionOutcome.UnknownSource"/> / <see cref="EventIngestionOutcome.AutoCreateDisabled"/> / <see cref="EventIngestionOutcome.CaseCapExceeded"/> → 200 + warning log (intentional drop).</description></item>
+///   <item><description><see cref="EventIngestionOutcome.TenantNotFound"/> / <see cref="EventIngestionOutcome.TenantDeleting"/> / <see cref="EventIngestionOutcome.TenantProvisioning"/> / <see cref="EventIngestionOutcome.ScheduleFailed"/> → 500. DAPR retries.</description></item>
 /// </list>
 /// </summary>
 [ApiController]
@@ -91,8 +91,8 @@ public sealed class EventIngestionController : ControllerBase
             EventIngestionOutcome.Accepted => Ok(result.Response),
             EventIngestionOutcome.Duplicate => Ok(result.Response),
             EventIngestionOutcome.UnknownSource => Ok(result.Response),
-            EventIngestionOutcome.TenantNotFound => Ok(result.Response),
-            EventIngestionOutcome.TenantDeleting => Ok(result.Response),
+            EventIngestionOutcome.TenantNotFound => StatusCode(StatusCodes.Status500InternalServerError, result.Response),
+            EventIngestionOutcome.TenantDeleting => StatusCode(StatusCodes.Status500InternalServerError, result.Response),
             EventIngestionOutcome.AutoCreateDisabled => Ok(result.Response),
             EventIngestionOutcome.CaseCapExceeded => Ok(result.Response),
             EventIngestionOutcome.InvalidCloudEvent => BadRequest(new ErrorResponse(

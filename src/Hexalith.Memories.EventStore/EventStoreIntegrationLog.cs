@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 /// is pinned for this sub-system. Ranges:
 /// <list type="bullet">
 ///   <item><description>9100-9109 — Information / startup (Story 9.1)</description></item>
-///   <item><description>9110-9119 — Warning (drops, unknown-source, tenant-deleting, case cap) (Story 9.1)</description></item>
+///   <item><description>9110-9119 — Warning (route rejection visibility: unknown-source drops, tenant lifecycle retries, case cap) (Story 9.1)</description></item>
 ///   <item><description>9120-9129 — Error (workflow scheduling failures, envelope parse) (Story 9.1)</description></item>
 ///   <item><description>9130-9139 — Story 9.3 happy-path information (observations recorded, snapshots served)</description></item>
 ///   <item><description>9140-9149 — Story 9.3 Warning / Debug (observation-store write failures, regex bypass, config change, drops)</description></item>
@@ -35,13 +35,13 @@ internal static partial class EventStoreIntegrationLog
     [LoggerMessage(
         EventId = 9111,
         Level = LogLevel.Warning,
-        Message = "EventStore ingestion: tenant {TenantId} is deleting, event {CloudEventId} dropped.")]
+        Message = "EventStore ingestion: tenant {TenantId} is deleting or unavailable, event {CloudEventId} will be retried.")]
     public static partial void TenantDeleting(ILogger logger, string tenantId, string cloudEventId);
 
     [LoggerMessage(
         EventId = 9112,
         Level = LogLevel.Warning,
-        Message = "EventStore ingestion: tenant {TenantId} not found, event {CloudEventId} dropped.")]
+        Message = "EventStore ingestion: tenant {TenantId} not found, event {CloudEventId} will be retried.")]
     public static partial void TenantNotFound(ILogger logger, string tenantId, string cloudEventId);
 
     [LoggerMessage(

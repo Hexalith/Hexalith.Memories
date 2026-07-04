@@ -117,11 +117,9 @@ public sealed class EventIngestionControllerTests
 
     [Theory]
     [InlineData(EventIngestionOutcome.UnknownSource)]
-    [InlineData(EventIngestionOutcome.TenantNotFound)]
-    [InlineData(EventIngestionOutcome.TenantDeleting)]
     [InlineData(EventIngestionOutcome.AutoCreateDisabled)]
     [InlineData(EventIngestionOutcome.CaseCapExceeded)]
-    public async Task OnEvent_DropOutcomes_Return200(EventIngestionOutcome outcome)
+    public async Task OnEvent_PermanentDropOutcomes_Return200(EventIngestionOutcome outcome)
     {
         EventIngestionController controller = BuildController(
             new EventIngestionProcessResult(outcome, EventIngestionResponse.Drop("drop", "reason")));
@@ -129,6 +127,20 @@ public sealed class EventIngestionControllerTests
         IActionResult actionResult = await controller.OnEvent(CancellationToken.None);
 
         actionResult.ShouldBeOfType<OkObjectResult>();
+    }
+
+    [Theory]
+    [InlineData(EventIngestionOutcome.TenantNotFound)]
+    [InlineData(EventIngestionOutcome.TenantDeleting)]
+    public async Task OnEvent_TenantLifecycleRouteFailures_Return500ForRetry(EventIngestionOutcome outcome)
+    {
+        EventIngestionController controller = BuildController(
+            new EventIngestionProcessResult(outcome, EventIngestionResponse.Drop("drop", "reason")));
+
+        IActionResult actionResult = await controller.OnEvent(CancellationToken.None);
+
+        ObjectResult status = actionResult.ShouldBeOfType<ObjectResult>();
+        status.StatusCode.ShouldBe(StatusCodes.Status500InternalServerError);
     }
 
     [Fact]

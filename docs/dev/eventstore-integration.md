@@ -219,8 +219,8 @@ DAPR expects:
 | Accepted — workflow scheduled                            | 200 + `accepted`                        | No retry.                                                     |
 | Duplicate — preflight or workflow-level dedup rejected   | 200 + `duplicate`                       | No retry.                                                     |
 | Unknown source                                           | 200 + `unknown-source` + Warning log    | No retry (publisher never mapped).                            |
-| Tenant not found                                         | 200 + `tenant-not-found`                | No retry.                                                     |
-| Tenant deleting                                          | 200 + `tenant-deleting` + Warning log   | No retry (tenant exiting).                                    |
+| Tenant not found                                         | 500 + `tenant-not-found` + Warning log  | Retry; reaches DLT only if operators configure DAPR retry + dead-letter topics. |
+| Tenant deleting or unavailable                          | 500 + `tenant-deleting` + Warning log   | Retry; reaches DLT only if operators configure DAPR retry + dead-letter topics. |
 | Auto-create disabled                                     | 200 + `auto-create-disabled`            | No retry (operator opted out).                                |
 | Case cap exceeded                                        | 200 + `case-cap-exceeded` + Warning log | No retry.                                                     |
 | Tenant provisioning                                      | 500                                     | Retries until tenant becomes active or retry budget exhausts. |
@@ -289,6 +289,7 @@ breaks longest-prefix matching and causes events to be silently dropped as `Unkn
 | Signal                                                | Source            | Recommended alert                                                                                                           |
 | ----------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `memories_eventstore_unknownsource_total{source=...}` | EventId 9110      | Rate of increase > 0 for 5 min pages the subscriber team. Indicates publisher drift or a misconfigured `SourceToTenantMap`. |
+| EventId 9111 / 9112 (tenant deleting/unavailable or missing) | Warning      | Rate > 0 for 5 min warns operators to fix tenant rollout/registry state or inspect DAPR retry/DLT.                         |
 | EventId 9121 (invalid-envelope)                       | Error             | Rate > 5/min pages. Indicates a publisher is emitting malformed CloudEvents.                                                |
 | EventId 9120 (schedule-failed)                        | Error             | Rate > 1/min pages. Transient DAPR sidecar / workflow runtime problem.                                                      |
 | EventId 9105 (routing-config-unknown-tenant)          | Critical, startup | Fail-fast crash — do not restart the pod without fixing config.                                                             |
@@ -337,8 +338,9 @@ resiliency policy's `max-duration` at `23h` so the default 24h TTL covers it.
    not set or does not match `EventStoreIntegration:Routing:Topic`.
 2. **Check source mapping.** If you see EventId 9110 (`UnknownSource`) for your event, the `source`
    field does not match any `SourceToTenantMap` prefix. Matching is case-insensitive longest-prefix.
-3. **Check tenant status.** EventId 9111 → tenant is deleting (drop); 9102 → tenant is provisioning
-   (retry); 9112 → tenant does not exist (drop). Register the tenant first.
+3. **Check tenant status.** EventId 9111 → tenant is deleting or unavailable (retry); 9102 → tenant
+   is provisioning (retry); 9112 → tenant does not exist (retry). Fix the tenant rollout/registry
+   state first, then inspect DAPR retry/DLT if the event remains undelivered.
 4. **Check malformed envelope.** EventId 9121 → the envelope is missing `id`/`source`/`type`/`data`.
    Review the publisher to ensure all required fields are present and non-empty.
 5. **Check workflow scheduling.** EventId 9120 → DAPR workflow scheduling threw. Check the DAPR
