@@ -7,7 +7,6 @@ namespace Hexalith.Memories.Server.Search;
 
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -95,7 +94,7 @@ public sealed partial class SemanticSearchService
         {
             result = await ft.SearchAsync(indexName, redisQuery).ConfigureAwait(false);
         }
-        catch (RedisServerException ex) when (ex.Message.Contains("Unknown Index name") || ex.Message.Contains("No such index"))
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
         {
             LogMissingVectorIndex(_logger, indexName, query.TenantId);
             return new Contracts.V1.SearchResult
@@ -106,9 +105,20 @@ public sealed partial class SemanticSearchService
                 Query = query.Query,
             };
         }
-        catch (RedisServerException ex) when (!ex.Message.Contains("Unknown Index name") && !ex.Message.Contains("No such index"))
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsQuerySyntaxError(ex))
         {
-            LogDimensionMismatch(_logger, indexName, queryVector.Length, embeddingConfig.Dimensions, ex.Message);
+            LogQuerySyntaxRejected(_logger, query.TenantId, "semantic");
+            return new Contracts.V1.SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = true,
+                Query = query.Query,
+            };
+        }
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsVectorDimensionMismatchError(ex))
+        {
+            LogDimensionMismatch(_logger, indexName, queryVector.Length, embeddingConfig.Dimensions);
             throw new SemanticSearchDimensionMismatchException(queryVector.Length, embeddingConfig.Dimensions, ex);
         }
 
@@ -170,28 +180,22 @@ public sealed partial class SemanticSearchService
 
         if (!string.IsNullOrWhiteSpace(caseId))
         {
-            filterParts.Add($"@caseId:{{{EscapeTagValue(caseId)}}}");
+            filterParts.Add($"@caseId:{{{RediSearchQueryEscaper.EscapeTag(caseId)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
         {
-            filterParts.Add($"@sourceType:{{{EscapeTagValue(sourceTypeFilter)}}}");
+            filterParts.Add($"@sourceType:{{{RediSearchQueryEscaper.EscapeTag(sourceTypeFilter)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
         {
-            filterParts.Add($"@cloudeventSubject:{{{EscapeTagValue(cloudEventSubject)}}}");
+            filterParts.Add($"@cloudeventSubject:{{{RediSearchQueryEscaper.EscapeTag(cloudEventSubject)}}}");
         }
 
         string preFilter = filterParts.Count > 0 ? string.Join(" ", filterParts) : "*";
         return $"{preFilter}=>[KNN {maxResults} @embedding $query_vec AS __vector_score]";
     }
-
-    /// <summary>Escapes RediSearch TAG field special characters in a value.</summary>
-    /// <param name="input">The raw tag value.</param>
-    /// <returns>The escaped value safe for RediSearch TAG filters.</returns>
-    internal static string EscapeTagValue(string input)
-        => EscapeRegex().Replace(input, @"\$0");
 
     /// <summary>Checks whether the enrichment hash returned all required fields.</summary>
     /// <param name="fields">The Redis hash values returned for content, sourceUri, and sourceType.</param>
@@ -290,9 +294,6 @@ public sealed partial class SemanticSearchService
             .ThenBy(static r => r.MemoryUnitId, StringComparer.Ordinal)];
     }
 
-    [GeneratedRegex(@"[-@!{}()\[\]^~*?:\\""'|,]")]
-    private static partial Regex EscapeRegex();
-
     [LoggerMessage(Level = LogLevel.Information, Message = "Semantic search complete: {ResultCount} results in {LatencyMs}ms")]
     private static partial void LogSemanticSearchComplete(ILogger logger, int resultCount, long latencyMs);
 
@@ -305,6 +306,9 @@ public sealed partial class SemanticSearchService
     [LoggerMessage(Level = LogLevel.Warning, Message = "Redis Vector index {IndexName} not found for tenant {TenantId} — returning empty results")]
     private static partial void LogMissingVectorIndex(ILogger logger, string indexName, string tenantId);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Dimension mismatch on index {IndexName}: query has {QueryDimensions} dims, config expects {ConfigDimensions} dims. Redis error: {ErrorMessage}")]
-    private static partial void LogDimensionMismatch(ILogger logger, string indexName, int queryDimensions, int configDimensions, string errorMessage);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch rejected sanitized {Axis} query syntax for tenant {TenantId} — returning empty results")]
+    private static partial void LogQuerySyntaxRejected(ILogger logger, string tenantId, string axis);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Dimension mismatch on index {IndexName}: query has {QueryDimensions} dims, config expects {ConfigDimensions} dims")]
+    private static partial void LogDimensionMismatch(ILogger logger, string indexName, int queryDimensions, int configDimensions);
 }

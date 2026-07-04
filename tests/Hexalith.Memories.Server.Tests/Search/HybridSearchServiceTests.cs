@@ -115,6 +115,49 @@ public class HybridSearchServiceTests
         result.Degraded.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task SearchAsync_WithAdversarialFilters_ShouldPreserveQueryForInnerAxes()
+    {
+        var (service, syntactic, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic"];
+        SearchQuery query = MakeQuery() with
+        {
+            Query = "@content:{secret} | * -",
+            CaseId = "case} @sourceType:{event}",
+            SourceTypeFilter = "file=>[KNN 100 @embedding $query_vec]",
+            MetadataQuery = "metadata) @caseId:{other}",
+            CloudEventSubject = "subject} @content:{secret}",
+            AttributeFilters = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["role@field"] = "admin|*",
+            },
+        };
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult([], 0, false));
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult([], 0, false));
+
+        _ = await service.SearchAsync(
+            query, MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        await syntactic.Received(1)(Arg.Is<SearchQuery>(q =>
+            q.Query == query.Query
+            && q.CaseId == query.CaseId
+            && q.SourceTypeFilter == query.SourceTypeFilter
+            && q.MetadataQuery == query.MetadataQuery
+            && q.CloudEventSubject == query.CloudEventSubject
+            && q.AttributeFilters == query.AttributeFilters));
+        await semantic.Received(1)(Arg.Is<SearchQuery>(q =>
+                q.Query == query.Query
+                && q.CaseId == query.CaseId
+                && q.SourceTypeFilter == query.SourceTypeFilter
+                && q.MetadataQuery == query.MetadataQuery
+                && q.CloudEventSubject == query.CloudEventSubject
+                && q.AttributeFilters == query.AttributeFilters),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
     // 8.5: Syntactic throws -> degraded=true, unavailableAxes=["syntactic"]
     [Fact]
     public async Task SearchAsync_SyntacticThrows_ShouldReturnDegraded()

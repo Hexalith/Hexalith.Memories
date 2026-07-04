@@ -72,70 +72,6 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void EscapeTagValue_ShouldEscapeHyphens()
-    {
-        string result = SemanticSearchService.EscapeTagValue("case-1");
-
-        result.ShouldBe(@"case\-1");
-    }
-
-    [Fact]
-    public void EscapeTagValue_ShouldEscapeAtSymbol()
-    {
-        string result = SemanticSearchService.EscapeTagValue("@admin");
-
-        result.ShouldBe(@"\@admin");
-    }
-
-    [Fact]
-    public void EscapeTagValue_ShouldEscapeCurlyBraces()
-    {
-        string result = SemanticSearchService.EscapeTagValue("{value}");
-
-        result.ShouldBe(@"\{value\}");
-    }
-
-    [Fact]
-    public void EscapeTagValue_ShouldEscapePipe()
-    {
-        string result = SemanticSearchService.EscapeTagValue("a|b");
-
-        result.ShouldBe(@"a\|b");
-    }
-
-    [Fact]
-    public void EscapeTagValue_ShouldEscapeParentheses()
-    {
-        string result = SemanticSearchService.EscapeTagValue("(value)");
-
-        result.ShouldBe(@"\(value\)");
-    }
-
-    [Fact]
-    public void EscapeTagValue_ShouldEscapeExclamation()
-    {
-        string result = SemanticSearchService.EscapeTagValue("!important");
-
-        result.ShouldBe(@"\!important");
-    }
-
-    [Fact]
-    public void EscapeTagValue_PlainText_ShouldNotEscape()
-    {
-        string result = SemanticSearchService.EscapeTagValue("plainvalue");
-
-        result.ShouldBe("plainvalue");
-    }
-
-    [Fact]
-    public void EscapeTagValue_AllSpecialChars_ShouldEscapeAll()
-    {
-        string result = SemanticSearchService.EscapeTagValue("-@!{}()|");
-
-        result.ShouldBe(@"\-\@\!\{\}\(\)\|");
-    }
-
-    [Fact]
     public void HasRequiredEnrichmentFields_WithAllRequiredValues_ShouldReturnTrue()
     {
         bool result = SemanticSearchService.HasRequiredEnrichmentFields(
@@ -203,6 +139,55 @@ public class SemanticSearchServiceTests
         string result = SemanticSearchService.BuildKnnQueryString(10, null, "file-type");
 
         result.ShouldContain(@"@sourceType:{file\-type}");
+    }
+
+    [Fact]
+    public void BuildKnnQueryString_WithAdversarialSubject_ShouldEscapeTagOperatorsBeforeKnnClause()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(
+            10,
+            null,
+            null,
+            "claim} @content:{secret}|*");
+
+        result.ShouldBe(@"@cloudeventSubject:{claim\} \@content\:\{secret\}\|\*}=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Fact]
+    public void BuildKnnQueryString_WithAdversarialCaseAndSource_ShouldEscapeTagOperatorsBeforeKnnClause()
+    {
+        string result = SemanticSearchService.BuildKnnQueryString(
+            10,
+            "case} | @sourceType:{event}",
+            "file=>[KNN 100 @embedding $query_vec]");
+
+        result.ShouldContain(@"@caseId:{case\} \| \@sourceType\:\{event\}}");
+        result.ShouldContain(@"@sourceType:{file\=\>\[KNN 100 \@embedding \$query_vec\]}");
+        result.ShouldContain("=>[KNN 10 @embedding $query_vec AS __vector_score]");
+    }
+
+    [Theory]
+    [InlineData("ERR Syntax error at offset 12 near '@content:{secret}'")]
+    [InlineData("Syntax error")]
+    [InlineData("Could not parse query")]
+    public void IsQuerySyntaxError_WithParserMessages_ShouldReturnTrue(string message)
+    {
+        RediSearchErrorClassifier.IsQuerySyntaxError(new RedisServerException(message)).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("ERR blob size does not match index vector dimension")]
+    [InlineData("Vector dimension mismatch")]
+    public void IsVectorDimensionMismatchError_WithDimensionMessages_ShouldReturnTrue(string message)
+    {
+        RediSearchErrorClassifier.IsVectorDimensionMismatchError(new RedisServerException(message)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsVectorDimensionMismatchError_WithParserMessage_ShouldReturnFalse()
+    {
+        RediSearchErrorClassifier.IsVectorDimensionMismatchError(
+            new RedisServerException("ERR Syntax error at offset 12")).ShouldBeFalse();
     }
 
     [Fact]

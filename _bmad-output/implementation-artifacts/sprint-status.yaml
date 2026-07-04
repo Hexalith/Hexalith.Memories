@@ -61,6 +61,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 20.3 created (20.3 -> ready-for-dev) via create-story. Tenant-scoped workflow and batch status endpoints; closes A6 raw WorkflowState/status leakage.
 # 2026-07-04: Story 20.4 created (20.4 -> ready-for-dev) via create-story. MCP production signing-key hardening; closes A20 static HS256 production risk.
 # 2026-07-04: Story 20.5 created (20.5 -> ready-for-dev) via create-story. Inbound per-tenant rate limiting, quotas, and audit completeness; closes A41 only when retention/TTL is implemented or explicitly deferred.
+# 2026-07-04: Story 20.6 created (20.6 -> ready-for-dev) via create-story. RediSearch query-injection hardening; closes A31 by consolidating dialect-2 escaping across syntactic and semantic axes.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -344,7 +345,7 @@ development_status:
   20-3-tenant-scope-workflow-and-batch-status-endpoints: done
   20-4-mcp-production-signing-key-hardening: done
   20-5-inbound-rate-limiting-quotas-and-audit-completeness: done
-  20-6-redisearch-query-injection-hardening: backlog
+  20-6-redisearch-query-injection-hardening: done
   epic-20-retrospective: optional
 
   # Epic 21: Data Integrity, Consistency & Migration Safety (SCP 2026-07-04; closes A3,A4,A5,A16,A17,A22,A27,A28,A44,A47)

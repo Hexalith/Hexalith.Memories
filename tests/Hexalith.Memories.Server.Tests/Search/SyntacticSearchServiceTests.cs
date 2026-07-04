@@ -91,62 +91,6 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
-    public void EscapeRedisQuery_ShouldEscapeHyphens()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("claim-denied");
-
-        result.ShouldBe(@"claim\-denied");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_ShouldEscapeAtSymbol()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("@admin");
-
-        result.ShouldBe(@"\@admin");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_ShouldEscapeCurlyBraces()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("{value}");
-
-        result.ShouldBe(@"\{value\}");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_ShouldEscapePipe()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("a|b");
-
-        result.ShouldBe(@"a\|b");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_QueryInjection_ShouldEscapeFieldFilter()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("@sourceType:{file}");
-
-        result.ShouldBe(@"\@sourceType\:\{file\}");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_AllSpecialChars_ShouldEscapeAll()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("---");
-
-        result.ShouldBe(@"\-\-\-");
-    }
-
-    [Fact]
-    public void EscapeRedisQuery_PlainText_ShouldNotEscape()
-    {
-        string result = SyntacticSearchService.EscapeRedisQuery("hello world");
-
-        result.ShouldBe("hello world");
-    }
-
-    [Fact]
     public void BuildSearchTermsQuery_SingleTerm_ShouldReturnEscapedTerm()
     {
         string result = SyntacticSearchService.BuildSearchTermsQuery("claim-denied");
@@ -221,6 +165,17 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildQueryString_WithAdversarialSourceType_ShouldEscapeTagOperators()
+    {
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            null,
+            "file} @caseId:{other}|*");
+
+        result.ShouldBe(@"@sourceType:{file\} \@caseId\:\{other\}\|\*} terms");
+    }
+
+    [Fact]
     public void BuildQueryString_WithMetadataQuery_ShouldAddTextFilter()
     {
         string result = SyntacticSearchService.BuildQueryString("terms", null, null, "important");
@@ -251,6 +206,58 @@ public class SyntacticSearchServiceTests
         result.ShouldContain(@"@attributeTags:{status\=Active}");
         result.ShouldContain(@"@attributeTags:{tier\=Gold}");
         result.ShouldContain("terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithAdversarialMetadataQuery_ShouldEscapeTextOperators()
+    {
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            null,
+            metadataQuery: "@content:{secret} | * -");
+
+        result.ShouldBe(@"@metadataText:(\@content\:\{secret\} \| \* \-) terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithAdversarialAttributeFilters_ShouldEscapeTagComposite()
+    {
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            null,
+            attributeFilters: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["role@field"] = "admin|*",
+            });
+
+        result.ShouldBe(@"@attributeTags:{role\@field\=admin\|\*} terms");
+    }
+
+    [Fact]
+    public void BuildQueryString_WithAdversarialSubject_ShouldEscapeTagOperators()
+    {
+        string result = SyntacticSearchService.BuildQueryString(
+            "terms",
+            null,
+            cloudEventSubject: "claim} @content:{secret}");
+
+        result.ShouldBe(@"@cloudeventSubject:{claim\} \@content\:\{secret\}} terms");
+    }
+
+    [Fact]
+    public void BuildSearchTermsQuery_WithNegationOnlyText_ShouldNotEmitNegativeClause()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("-");
+
+        result.ShouldBe(@"\-");
+    }
+
+    [Fact]
+    public void BuildSearchTermsQuery_WithWildcardOnlyText_ShouldNotEmitWildcardClause()
+    {
+        string result = SyntacticSearchService.BuildSearchTermsQuery("*");
+
+        result.ShouldBe(@"\*");
     }
 
     [Fact]

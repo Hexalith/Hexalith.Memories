@@ -51,8 +51,7 @@ internal static partial class SearchEndpointDegradationLog
     private static string? GetTransientRedisReason(RedisServerException exception)
     {
         string message = exception.Message;
-        if (message.Contains("no such index", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("Unknown Index name", StringComparison.OrdinalIgnoreCase))
+        if (RediSearchErrorClassifier.IsMissingIndexError(exception))
         {
             return null;
         }

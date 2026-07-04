@@ -69,6 +69,16 @@ public class SearchEndpointDegradationTests
         SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("ERR Syntax error at offset 12 near '@content:{secret}'")]
+    [InlineData("Could not parse query")]
+    public void IsTransientRedisError_QueryParserErrors_ShouldReturnFalse(string message)
+    {
+        RedisServerException ex = new(message);
+
+        SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeFalse();
+    }
+
     [Fact]
     public void IsTransientRedisError_NullException_ShouldThrow()
     {

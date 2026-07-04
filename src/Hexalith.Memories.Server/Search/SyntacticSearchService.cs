@@ -5,8 +5,6 @@
 
 namespace Hexalith.Memories.Server.Search;
 
-using System.Text.RegularExpressions;
-
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 
@@ -95,7 +93,7 @@ public sealed partial class SyntacticSearchService
         {
             result = await ft.SearchAsync(indexName, redisQuery).ConfigureAwait(false);
         }
-        catch (RedisServerException ex) when (ex.Message.Contains("Unknown Index name") || ex.Message.Contains("No such index"))
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
         {
             LogMissingIndex(_logger, indexName, query.TenantId);
             return new Contracts.V1.SearchResult
@@ -103,6 +101,17 @@ public sealed partial class SyntacticSearchService
                 Results = [],
                 TotalCount = 0,
                 HasIndexedMemoryUnits = false,
+                Query = query.Query,
+            };
+        }
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsQuerySyntaxError(ex))
+        {
+            LogQuerySyntaxRejected(_logger, query.TenantId, "syntactic");
+            return new Contracts.V1.SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = true,
                 Query = query.Query,
             };
         }
@@ -183,17 +192,17 @@ public sealed partial class SyntacticSearchService
 
         if (!string.IsNullOrWhiteSpace(caseId))
         {
-            parts.Add($"@caseId:{{{EscapeRedisQuery(caseId)}}}");
+            parts.Add($"@caseId:{{{RediSearchQueryEscaper.EscapeTag(caseId)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
         {
-            parts.Add($"@sourceType:{{{EscapeRedisQuery(sourceTypeFilter)}}}");
+            parts.Add($"@sourceType:{{{RediSearchQueryEscaper.EscapeTag(sourceTypeFilter)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
         {
-            parts.Add($"@cloudeventSubject:{{{EscapeRedisQuery(cloudEventSubject)}}}");
+            parts.Add($"@cloudeventSubject:{{{RediSearchQueryEscaper.EscapeTag(cloudEventSubject)}}}");
         }
 
         if (attributeFilters is { Count: > 0 })
@@ -205,13 +214,13 @@ public sealed partial class SyntacticSearchService
                     continue;
                 }
 
-                parts.Add($"@attributeTags:{{{EscapeRedisQuery(BuildAttributeTag(key, value))}}}");
+                parts.Add($"@attributeTags:{{{RediSearchQueryEscaper.EscapeTagComposite(key, value)}}}");
             }
         }
 
         if (!string.IsNullOrWhiteSpace(metadataQuery))
         {
-            parts.Add($"@metadataText:({EscapeRedisQuery(metadataQuery)})");
+            parts.Add($"@metadataText:({RediSearchQueryEscaper.EscapeText(metadataQuery)})");
         }
 
         parts.Add(searchTerms);
@@ -235,34 +244,28 @@ public sealed partial class SyntacticSearchService
 
         if (!LooksLikeNaturalLanguageQuery(input, rawTerms))
         {
-            return EscapeRedisQuery(input);
+            return RediSearchQueryEscaper.EscapeText(input);
         }
 
         string[] terms = rawTerms
-            .Select(EscapeRedisQuery)
+            .Select(RediSearchQueryEscaper.EscapeText)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         return terms.Length switch
         {
-            0 => EscapeRedisQuery(input),
+            0 => RediSearchQueryEscaper.EscapeText(input),
             1 => terms[0],
             _ => $"({string.Join(" | ", terms)})",
         };
     }
 
+    internal static string BuildAttributeTag(string key, string value)
+        => $"{key.Trim()}={value.Trim()}";
+
     private static bool LooksLikeNaturalLanguageQuery(string input, IReadOnlyList<string> terms)
         => input.Contains('?')
         || (terms.Count >= 5 && s_naturalLanguageLeadingTerms.Contains(terms[0]));
-
-    /// <summary>Escapes RediSearch special characters in user input to prevent query injection.</summary>
-    /// <param name="input">The raw user input.</param>
-    /// <returns>The escaped input safe for RediSearch queries.</returns>
-    internal static string EscapeRedisQuery(string input)
-        => EscapeRegex().Replace(input, @"\$0");
-
-    internal static string BuildAttributeTag(string key, string value)
-        => $"{key.Trim()}={value.Trim()}";
 
     private static async Task<bool> HasIndexedMemoryUnitsAsync(IDatabase db, string indexName)
     {
@@ -299,11 +302,11 @@ public sealed partial class SyntacticSearchService
         return content[..cutoff] + "...";
     }
 
-    [GeneratedRegex(@"[-=@!{}()\[\]^~*?:\\""'|,]")]
-    private static partial Regex EscapeRegex();
-
     [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch index {IndexName} not found for tenant {TenantId} — returning empty results")]
     private static partial void LogMissingIndex(ILogger logger, string indexName, string tenantId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch rejected sanitized {Axis} query syntax for tenant {TenantId} — returning empty results")]
+    private static partial void LogQuerySyntaxRejected(ILogger logger, string tenantId, string axis);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping stale index entry {DocumentId} for tenant {TenantId} — missing required fields")]
     private static partial void LogStaleEntry(ILogger logger, string documentId, string tenantId);

@@ -749,3 +749,47 @@ explicit rather than implied as covered.
 - E2E tests generated if UI exists: TestServer API workflow coverage added; browser UI not applicable.
 - Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
 - Test summary created with coverage metrics: pass.
+
+---
+
+# Test Automation Summary - Story 20.6 (RediSearch Query-Injection Hardening)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/20-6-redisearch-query-injection-hardening.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** RediSearch query escaping and parser-error hardening across syntactic, semantic, hybrid, and graph-scoped search paths.
+
+## Generated / Updated Tests
+
+### API / Service Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/RediSearchQueryEscaperTests.cs` - extended dialect-2 operator escaping coverage for fuzzy, comma, ampersand, and backtick operators.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/SyntacticSearchServiceTests.cs` - added adversarial `sourceType` and wildcard-only query coverage.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs` - added hybrid adversarial filter propagation coverage.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/GraphScopedSearchTests.cs` - added graph-scoped inner-search adversarial filter propagation coverage.
+- [x] Existing Story 20.6 tests cover TEXT/free-text escaping, TAG filters, attribute TAG composites, semantic KNN pre-filters, parser-error classification, and endpoint degradation response builders.
+
+### E2E Tests
+
+- [x] Browser UI E2E not applicable. Story 20.6 is a Server API/security slice with no module UI.
+
+## Coverage
+
+- API/service search axes: syntactic, semantic, hybrid, graph-scoped syntactic, graph-scoped semantic.
+- RediSearch escaping contexts: TEXT/free-text, TAG filters, attribute TAG composites, semantic KNN pre-filters.
+- User-controlled values: `query`, `metadataQuery`, `subject`, `caseId`, `sourceType`, and `attributeFilters`.
+- Critical error cases: parser errors are non-transient, missing indexes return empty results, transient Redis conditions remain degraded 503 paths, vector dimension mismatch remains typed.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false` - passed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Search.RediSearchQueryEscaperTests -class Hexalith.Memories.Server.Tests.Search.SyntacticSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.SemanticSearchServiceTests -class Hexalith.Memories.Server.Tests.Endpoints.SearchEndpointDegradationTests -class Hexalith.Memories.Server.Tests.Search.HybridSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.GraphScopedSearchTests` - passed, 174 total, 0 failed, 0 skipped.
+- [x] `git diff --check -- src tests _bmad-output/implementation-artifacts/20-6-redisearch-query-injection-hardening.md _bmad-output/implementation-artifacts/sprint-status.yaml _bmad-output/implementation-artifacts/tests/test-summary.md` - passed.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: not applicable; no UI exists for this story.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.

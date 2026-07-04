@@ -1,9 +1,18 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
+using System.Reflection;
+
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Search;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
+
 using Shouldly;
+
+using StackExchange.Redis;
 
 public class GraphScopedSearchTests
 {
@@ -117,6 +126,73 @@ public class GraphScopedSearchTests
         List<ScoredResult> filtered = GraphScopedSearch.FilterToGraphScope(results, graphSet);
 
         filtered.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchWithinGraphScope_WithAdversarialFilters_ShouldPassQueryToInnerSearch()
+    {
+        GraphScopedSearch service = new(
+            Substitute.For<IConnectionMultiplexer>(),
+            Substitute.For<IConnectionMultiplexer>(),
+            Substitute.For<IGraphQueryBuilder>(),
+            NullLogger<GraphScopedSearch>.Instance);
+        SearchQuery query = new()
+        {
+            TenantId = "tenant-1",
+            Query = "@content:{secret} | * -",
+            CaseId = "case} @sourceType:{event}",
+            SourceTypeFilter = "file=>[KNN 100 @embedding $query_vec]",
+            MetadataQuery = "metadata) @caseId:{other}",
+            CloudEventSubject = "subject} @content:{secret}",
+            AttributeFilters = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["role@field"] = "admin|*",
+            },
+            Offset = 0,
+            MaxResults = 5,
+        };
+        List<SearchQuery> observedQueries = [];
+
+        SearchResult result = await InvokeSearchWithinGraphScopeAsync(
+            service,
+            query,
+            ["mu-1"],
+            innerQuery =>
+            {
+                observedQueries.Add(innerQuery);
+                return Task.FromResult(new SearchResult
+                {
+                    Results = [CreateScoredResult("mu-1", 0.9)],
+                    TotalCount = 1,
+                    HasIndexedMemoryUnits = true,
+                    Query = innerQuery.Query,
+                });
+            });
+
+        result.Results.Count.ShouldBe(1);
+        observedQueries.Count.ShouldBe(1);
+        observedQueries[0].Query.ShouldBe(query.Query);
+        observedQueries[0].CaseId.ShouldBe(query.CaseId);
+        observedQueries[0].SourceTypeFilter.ShouldBe(query.SourceTypeFilter);
+        observedQueries[0].MetadataQuery.ShouldBe(query.MetadataQuery);
+        observedQueries[0].CloudEventSubject.ShouldBe(query.CloudEventSubject);
+        observedQueries[0].AttributeFilters.ShouldBe(query.AttributeFilters);
+    }
+
+    private static Task<SearchResult> InvokeSearchWithinGraphScopeAsync(
+        GraphScopedSearch service,
+        SearchQuery query,
+        HashSet<string> graphSet,
+        Func<SearchQuery, Task<SearchResult>> innerSearch)
+    {
+        MethodInfo? method = typeof(GraphScopedSearch).GetMethod(
+            "SearchWithinGraphScopeAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        method.ShouldNotBeNull();
+
+        object? value = method.Invoke(service, [query, graphSet, innerSearch, CancellationToken.None]);
+        value.ShouldBeOfType<Task<SearchResult>>();
+        return (Task<SearchResult>)value;
     }
 
     private static ScoredResult CreateScoredResult(string id, double score) => new()
