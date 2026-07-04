@@ -8,12 +8,13 @@ namespace Hexalith.Memories.Server.Activities.Tenants;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
 
-/// <summary>Tenant deletion activity that cleans up Redis data keys not covered by FT.DROPINDEX DD (case and dedup keys).</summary>
+/// <summary>Tenant deletion activity that cleans up Redis data keys not covered by FT.DROPINDEX DD.</summary>
 public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<TenantDeletionInput, bool>
 {
     private readonly IConnectionMultiplexer _redis;
@@ -41,6 +42,12 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
         long totalDeleted = 0;
         totalDeleted += await ScanAndDeleteAsync(server, db, $"{input.TenantId}:case:*").ConfigureAwait(false);
         totalDeleted += await ScanAndDeleteAsync(server, db, $"dedup:{input.TenantId}:*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, $"{input.TenantId}:eventstore:*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, $"{input.TenantId}:embedding-migration:*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, IndexSchemaDefinitions.GetSyntacticKeyPrefix(input.TenantId) + "*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, IndexSchemaDefinitions.GetSemanticKeyPrefix(input.TenantId) + "*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(input.TenantId) + "*").ConfigureAwait(false);
+        totalDeleted += await ScanAndDeleteAsync(server, db, IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix(input.TenantId) + "*").ConfigureAwait(false);
 
         LogKeysDeleted(_logger, input.TenantId, totalDeleted);
         return true;

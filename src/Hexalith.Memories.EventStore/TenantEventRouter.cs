@@ -25,7 +25,7 @@ using Microsoft.Extensions.Options;
 /// <see cref="ConcurrentDictionary{TKey, TValue}"/> with <see cref="Lazy{T}"/> values, guaranteeing that
 /// concurrent first-time events for the same aggregate-type converge on a single case creation call.</para>
 /// </summary>
-internal sealed class TenantEventRouter : ITenantEventRouter
+internal sealed class TenantEventRouter : ITenantEventRouter, ITenantEventRouteCacheInvalidator
 {
     private static readonly TimeSpan SharedCaseCreationLeaseTtl = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SharedCaseCreationWaitTimeout = TimeSpan.FromSeconds(5);
@@ -106,8 +106,23 @@ internal sealed class TenantEventRouter : ITenantEventRouter
 
         if (tenantCache.TryGetValue(aggregateType, out string? cachedCaseId))
         {
-            return TenantEventRouteResolution.Accepted(
-                new TenantEventRoute(tenantId, cachedCaseId, aggregateType));
+            string? currentCaseId = await _caseMapStore
+                .GetCaseIdAsync(tenantId, aggregateType, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (string.Equals(currentCaseId, cachedCaseId, StringComparison.Ordinal))
+            {
+                return TenantEventRouteResolution.Accepted(
+                    new TenantEventRoute(tenantId, cachedCaseId, aggregateType));
+            }
+
+            _ = tenantCache.TryRemove(aggregateType, out _);
+            if (!string.IsNullOrWhiteSpace(currentCaseId))
+            {
+                tenantCache[aggregateType] = currentCaseId;
+                return TenantEventRouteResolution.Accepted(
+                    new TenantEventRoute(tenantId, currentCaseId, aggregateType));
+            }
         }
 
         string? persistedCaseId = await _caseMapStore
@@ -201,6 +216,25 @@ internal sealed class TenantEventRouter : ITenantEventRouter
             await _caseMapStore
                 .ReleaseCreationLockAsync(tenantId, aggregateType, cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    public void InvalidateCaseRoutes(string tenantId, string caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        if (!_caseCache.TryGetValue(tenantId, out ConcurrentDictionary<string, string>? tenantCache))
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<string, string> route in tenantCache)
+        {
+            if (string.Equals(route.Value, caseId, StringComparison.Ordinal))
+            {
+                _ = tenantCache.TryRemove(route.Key, out _);
+            }
         }
     }
 

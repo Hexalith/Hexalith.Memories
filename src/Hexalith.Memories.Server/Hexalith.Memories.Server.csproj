@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
     <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
@@ -38,4 +39,4 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
-</Project>
+</Project>

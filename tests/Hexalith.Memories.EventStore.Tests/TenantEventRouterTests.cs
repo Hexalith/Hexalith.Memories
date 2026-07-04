@@ -100,6 +100,28 @@ public sealed class TenantEventRouterTests
     }
 
     [Fact]
+    public async Task ResolveAsync_CuratedSearchIndexEvent_DoesNotConsultCaseMapCache()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "t" };
+        options.SourceToTenantMap["hexalith-tenants"] = "tenants-index";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("tenants-index", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        IAggregateCaseMappingStore caseMapStore = Substitute.For<IAggregateCaseMappingStore>();
+
+        TenantEventRouter router = BuildRouter(options, statusAccessor, Substitute.For<ICaseCreationService>(), caseMapStore);
+        TenantEventRouteResolution resolution = await router
+            .ResolveAsync(Envelope("hexalith-tenants", "SearchIndexEntryRemoved"), CancellationToken.None);
+
+        resolution.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        resolution.Route!.CaseId.ShouldBe(string.Empty);
+        await caseMapStore.DidNotReceive().GetCaseIdAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ResolveAsync_TwoHexalithModulePrefixes_RouteToConfiguredTenants()
     {
         TenantEventRoutingOptions options = new() { Topic = "memories-events" };
@@ -323,6 +345,58 @@ public sealed class TenantEventRouterTests
     }
 
     [Fact]
+    public async Task ResolveAsync_CachedCaseRouteRemovedFromStore_ShouldNotReturnDeletedCase()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "t", AutoCreateCases = false };
+        options.SourceToTenantMap["/hr"] = "hr-tenant";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("hr-tenant", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        InMemoryAggregateCaseMappingStore sharedStore = new();
+        _ = await sharedStore.TryStoreCaseIdAsync("hr-tenant", "Claims", "case-deleted", CancellationToken.None);
+        TenantEventRouter router = BuildRouter(options, statusAccessor, Substitute.For<ICaseCreationService>(), sharedStore);
+
+        TenantEventRouteResolution first = await router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None);
+        long deleted = await sharedStore.DeleteCaseMappingsAsync("hr-tenant", "case-deleted", CancellationToken.None);
+        TenantEventRouteResolution second = await router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None);
+
+        first.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        first.Route!.CaseId.ShouldBe("case-deleted");
+        deleted.ShouldBe(1);
+        second.Status.ShouldBe(TenantEventRouteResolutionStatus.AutoCreateDisabled);
+    }
+
+    [Fact]
+    public async Task InvalidateCaseRoutes_ShouldRemoveOnlyRoutesForDeletedCase()
+    {
+        TenantEventRoutingOptions options = new() { Topic = "t", AutoCreateCases = false };
+        options.SourceToTenantMap["/hr"] = "hr-tenant";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("hr-tenant", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        InMemoryAggregateCaseMappingStore sharedStore = new();
+        _ = await sharedStore.TryStoreCaseIdAsync("hr-tenant", "Claims", "case-deleted", CancellationToken.None);
+        _ = await sharedStore.TryStoreCaseIdAsync("hr-tenant", "Orders", "case-kept", CancellationToken.None);
+        TenantEventRouter router = BuildRouter(options, statusAccessor, Substitute.For<ICaseCreationService>(), sharedStore);
+
+        _ = await router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None);
+        _ = await router.ResolveAsync(Envelope("/hr", "a.Orders.X"), CancellationToken.None);
+        router.InvalidateCaseRoutes("hr-tenant", "case-deleted");
+        _ = await sharedStore.DeleteCaseMappingsAsync("hr-tenant", "case-deleted", CancellationToken.None);
+
+        TenantEventRouteResolution deleted = await router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None);
+        TenantEventRouteResolution kept = await router.ResolveAsync(Envelope("/hr", "a.Orders.X"), CancellationToken.None);
+
+        deleted.Status.ShouldBe(TenantEventRouteResolutionStatus.AutoCreateDisabled);
+        kept.Status.ShouldBe(TenantEventRouteResolutionStatus.Accepted);
+        kept.Route!.CaseId.ShouldBe("case-kept");
+    }
+
+    [Fact]
     public async Task ResolveAsync_CaseCreationFailure_EvictsReservation_SoRetrySucceeds()
     {
         TenantEventRoutingOptions options = new() { Topic = "t" };
@@ -398,6 +472,27 @@ public sealed class TenantEventRouterTests
                 tenantId,
                 static _ => new ConcurrentDictionary<string, string>(StringComparer.Ordinal));
             return Task.FromResult(map.TryAdd(aggregateType, caseId));
+        }
+
+        public Task<long> DeleteCaseMappingsAsync(string tenantId, string caseId, CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            if (!_maps.TryGetValue(tenantId, out ConcurrentDictionary<string, string>? map))
+            {
+                return Task.FromResult(0L);
+            }
+
+            long deleted = 0;
+            foreach (KeyValuePair<string, string> route in map)
+            {
+                if (string.Equals(route.Value, caseId, StringComparison.Ordinal)
+                    && map.TryRemove(route.Key, out _))
+                {
+                    deleted++;
+                }
+            }
+
+            return Task.FromResult(deleted);
         }
     }
 }

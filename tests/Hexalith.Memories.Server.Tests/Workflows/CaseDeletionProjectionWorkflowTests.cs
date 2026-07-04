@@ -32,6 +32,8 @@ public class CaseDeletionProjectionWorkflowTests
             .Returns(true);
         context.CallActivityAsync<bool>(nameof(DeleteCaseProjectionActivity), Arg.Any<CaseDeletionProjectionInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(true);
+        context.CallActivityAsync<bool>(nameof(DeleteCaseRouteMappingsActivity), Arg.Any<CaseProjectionCleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
         CaseDeletionProjectionWorkflow workflow = new();
 
         bool result = await workflow.RunAsync(context, Input);
@@ -44,6 +46,10 @@ public class CaseDeletionProjectionWorkflowTests
                 Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
                 Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(DeleteCaseProjectionActivity), Input, Arg.Any<WorkflowTaskOptions>());
+            context.CallActivityAsync<bool>(
+                nameof(DeleteCaseRouteMappingsActivity),
+                Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
+                Arg.Any<WorkflowTaskOptions>());
         });
     }
 
@@ -59,6 +65,8 @@ public class CaseDeletionProjectionWorkflowTests
 
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(DeleteCaseProjectionActivity), Arg.Any<CaseDeletionProjectionInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(DeleteCaseRouteMappingsActivity), Arg.Any<CaseProjectionCleanupInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
     [Fact]
@@ -77,6 +85,24 @@ public class CaseDeletionProjectionWorkflowTests
 
         await context.Received(1).CallActivityAsync<bool>(
             nameof(MarkCaseDeletingActivity), Arg.Any<CaseProjectionCleanupInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_RouteMappingDeleteFails_ShouldRethrowAfterProjectionDelete()
+    {
+        WorkflowContext context = CreateContext();
+        context.CallActivityAsync<bool>(nameof(MarkCaseDeletingActivity), Arg.Any<CaseProjectionCleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(DeleteCaseProjectionActivity), Arg.Any<CaseDeletionProjectionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(DeleteCaseRouteMappingsActivity), Arg.Any<CaseProjectionCleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<bool>(WorkflowTestHelpers.CreateTaskFailedException()));
+        CaseDeletionProjectionWorkflow workflow = new();
+
+        _ = await Should.ThrowAsync<WorkflowTaskFailedException>(() => workflow.RunAsync(context, Input));
+
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(DeleteCaseProjectionActivity), Input, Arg.Any<WorkflowTaskOptions>());
     }
 
     private static WorkflowContext CreateContext()

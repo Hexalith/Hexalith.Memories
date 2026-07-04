@@ -1,3 +1,55 @@
+# Test Automation Summary - Story 21.5 (Deletion Completeness)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-5-deletion-completeness.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute for unit/API integration coverage; no new framework introduced.
+- **Feature under test:** case and tenant deletion end-state cleanup for aggregate-case-map routes, event-router stale cache prevention, EventStore/embedding marker cleanup, and orphan memory/vector key cleanup.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantDeletionIntegrationTests.cs` - extended the tenant deletion API integration scenario to seed `eventstore:*`, `embedding-migration:*`, syntactic, raw semantic, current natural-language semantic, and legacy natural-language semantic keys, then assert Redis/FalkorDB end state after tenant deletion.
+- [x] Case route-map deletion is covered at the route-map store, workflow, and activity boundary because the HTTP case deletion route first submits an EventStore domain command; the story behavior under test is projection cleanup, not the command gateway.
+
+### E2E Tests
+
+- [x] Browser UI E2E is not applicable. Story 21.5 has no module UI.
+- [x] Existing Aspire tenant deletion integration coverage exercises the distributed API/backend cleanup path; focused route-map cleanup execution is covered without requiring the unrelated EventStore gateway runtime path.
+
+### Unit / Activity / Workflow Tests
+
+- [x] `tests/Hexalith.Memories.EventStore.Tests/RedisAggregateCaseMappingStoreTests.cs` - aggregate-case-map cleanup happy path, idempotent missing-map behavior, and invalid input guard coverage.
+- [x] `tests/Hexalith.Memories.EventStore.Tests/TenantEventRouterTests.cs` - persisted map revalidation, deleted cached route rejection, targeted invalidation, and curated search-index bypass coverage.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Cases/DeleteCaseRouteMappingsActivityTests.cs` - persisted cleanup before cache invalidation and failure surfacing.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Tenants/DeleteTenantDataKeysActivityTests.cs` - expected tenant-scoped scan patterns and bounded batched delete behavior.
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/CaseDeletionProjectionWorkflowTests.cs` - cleanup activity ordering and retry behavior.
+
+## Coverage
+
+- API deletion endpoints: tenant deletion cleanup coverage extended; case deletion projection cleanup covered below the endpoint at the workflow/activity boundary where the story-owned cleanup is executed.
+- Aggregate-case-map cleanup: deleted-case matching fields removed; unrelated case routes preserved; missing maps idempotent; invalid tenant/case input rejects before Redis calls.
+- Event-router stale route behavior: cache hit revalidates against persisted map; explicit invalidation removes only matching deleted-case routes; curated index events do not consult the case map.
+- Tenant cleanup key families: `{tenant}:case:*`, `dedup:{tenant}:*`, `{tenant}:eventstore:*`, `{tenant}:embedding-migration:*`, syntactic, raw semantic, current NL semantic, and legacy NL semantic prefixes.
+- Critical error cases: Redis cleanup failures surface for workflow retry; missing key families remain success states; no UI path exists for this story.
+
+## Validation
+
+- [x] `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `dotnet test tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj --no-build --no-restore --filter "FullyQualifiedName~TenantEventRouterTests|FullyQualifiedName~RedisAggregateCaseMappingStoreTests"` - 22 total, 0 failed.
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --no-restore --filter "FullyQualifiedName~DeleteCaseRouteMappingsActivityTests|FullyQualifiedName~DeleteTenantDataKeysActivityTests|FullyQualifiedName~CaseDeletionProjectionWorkflowTests"` - 8 total, 0 failed.
+- [!] Live Aspire tenant deletion integration was not executed in this pass; the solution build compiled the updated integration test, and focused executable tests validated the story-owned cleanup paths.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: UI not applicable; API/backend integration coverage extended and compiled, with route-map cleanup validated through focused store/activity/workflow tests.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, polling instead of blind sleeps, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.4 (Key-Schema Single Source of Truth)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

@@ -19,4 +19,6 @@ public interface IAggregateCaseMappingStore
     Task ReleaseCreationLockAsync(string tenantId, string aggregateType, CancellationToken cancellationToken);
 
     Task<bool> TryStoreCaseIdAsync(string tenantId, string aggregateType, string caseId, CancellationToken cancellationToken);
+
+    Task<long> DeleteCaseMappingsAsync(string tenantId, string caseId, CancellationToken cancellationToken);
 }

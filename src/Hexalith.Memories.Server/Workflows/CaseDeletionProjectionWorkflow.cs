@@ -21,6 +21,10 @@ internal sealed class CaseDeletionProjectionWorkflow : Workflow<CaseDeletionProj
             new CaseProjectionCleanupInput(input.TenantId, input.CaseId),
             retryOptions);
         await context.CallActivityAsync<bool>(nameof(DeleteCaseProjectionActivity), input, retryOptions);
+        await context.CallActivityAsync<bool>(
+            nameof(DeleteCaseRouteMappingsActivity),
+            new CaseProjectionCleanupInput(input.TenantId, input.CaseId),
+            retryOptions);
         return true;
     }
 

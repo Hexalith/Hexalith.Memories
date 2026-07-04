@@ -85,6 +85,8 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         services.TryAddSingleton<IPreflightDedupStore, RedisPreflightDedupStore>();
         services.TryAddSingleton<IAggregateCaseMappingStore, RedisAggregateCaseMappingStore>();
         services.TryAddSingleton<ITenantEventRouter, TenantEventRouter>();
+        services.TryAddSingleton<ITenantEventRouteCacheInvalidator>(
+            sp => (ITenantEventRouteCacheInvalidator)sp.GetRequiredService<ITenantEventRouter>());
         services.TryAddSingleton<IEventIngestionService, EventIngestionService>();
 
         // Story 9.3 — observation store + kill-switch options.

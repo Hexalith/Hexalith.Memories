@@ -68,6 +68,8 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 21.2 senior developer review completed with automatic fixes (annotation child workflow compensation, tenant lifecycle command boundary, File List hygiene). 21.2 -> done.
 # 2026-07-04: Story 21.3 created (21.3 -> ready-for-dev) via create-story. Natural-language vector namespace separation for A4; requires disjoint NL prefix, existing-data migration, raw index rebuild, and phantom consistency discrepancy regression coverage.
 # 2026-07-04: Story 21.4 created (21.4 -> ready-for-dev) via create-story. Key-schema single source of truth for A44; requires Build*Key helpers, production literal purge, parse helpers, and CI-visible guard.
+# 2026-07-04: Story 21.5 created (21.5 -> ready-for-dev) via create-story. Deletion completeness for A16/A17; requires aggregate-case-map cleanup, router cache invalidation/revalidation, and tenant deletion sweeps for eventstore, embedding-migration, and orphan memory/vector keys.
+# 2026-07-04: Story 21.5 senior developer review completed with automatic fix (registered DeleteCaseRouteMappingsActivity with Dapr workflow worker). 21.5 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -360,7 +362,7 @@ development_status:
   21-2-transactional-multi-backend-mutation: done
   21-3-natural-language-vector-namespace-separation: done
   21-4-key-schema-single-source-of-truth: done
-  21-5-deletion-completeness: backlog
+  21-5-deletion-completeness: done
   21-6-event-routing-for-unknown-unavailable-tenants: backlog
   21-7-dedup-race-and-duplicate-instance-handling: backlog
   21-8-tenant-registry-cas-and-rollback-integrity: backlog

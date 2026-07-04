@@ -14,6 +14,8 @@ using StackExchange.Redis;
 /// first-time creation across scaled instances with a short-lived distributed lock key.</summary>
 internal sealed class RedisAggregateCaseMappingStore : IAggregateCaseMappingStore
 {
+    private const int DeleteBatchSize = 1000;
+
     private readonly IConnectionMultiplexer _redis;
 
     public RedisAggregateCaseMappingStore([FromKeyedServices("redis")] IConnectionMultiplexer redis)
@@ -72,6 +74,40 @@ internal sealed class RedisAggregateCaseMappingStore : IAggregateCaseMappingStor
 
         IDatabase db = _redis.GetDatabase();
         return await db.HashSetAsync(GetMapKey(tenantId), aggregateType, caseId, When.NotExists).ConfigureAwait(false);
+    }
+
+    public async Task<long> DeleteCaseMappingsAsync(string tenantId, string caseId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IDatabase db = _redis.GetDatabase();
+        RedisKey mapKey = GetMapKey(tenantId);
+        List<RedisValue> fields = new(DeleteBatchSize);
+        long deleted = 0;
+
+        await foreach (HashEntry entry in db.HashScanAsync(mapKey, pageSize: DeleteBatchSize).ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!entry.Value.IsNullOrEmpty && string.Equals(entry.Value.ToString(), caseId, StringComparison.Ordinal))
+            {
+                fields.Add(entry.Name);
+            }
+
+            if (fields.Count >= DeleteBatchSize)
+            {
+                deleted += await db.HashDeleteAsync(mapKey, [.. fields]).ConfigureAwait(false);
+                fields.Clear();
+            }
+        }
+
+        if (fields.Count > 0)
+        {
+            deleted += await db.HashDeleteAsync(mapKey, [.. fields]).ConfigureAwait(false);
+        }
+
+        return deleted;
     }
 
     private static string GetMapKey(string tenantId) => $"{tenantId}:eventstore:aggregate-case-map";

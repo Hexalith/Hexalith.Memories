@@ -90,6 +90,21 @@ public sealed class TenantDeletionIntegrationTests
         string memoryUnitId = await IngestMemoryUnitAsync(tenantId, caseId, sourceUri, $"tenant-delete-{Guid.NewGuid():N}");
         string dedupKey = BuildDedupKey(tenantId, caseId, sourceUri);
         await WaitForRedisKeyAsync(dedupKey);
+        IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
+        string eventStoreMapKey = $"{tenantId}:eventstore:aggregate-case-map";
+        string eventStoreRouteKey = $"{tenantId}:eventstore:observed:Claims";
+        string migrationMarkerKey = $"{tenantId}:embedding-migration:active";
+        string orphanSyntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, $"orphan-mu-{Guid.NewGuid():N}");
+        string orphanSemanticKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, $"orphan-vec-{Guid.NewGuid():N}");
+        string orphanNaturalLanguageKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, $"orphan-vecnl-{Guid.NewGuid():N}");
+        string orphanLegacyNaturalLanguageKey = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, $"orphan-vecnl-legacy-{Guid.NewGuid():N}");
+        await redisDb.HashSetAsync(eventStoreMapKey, "events:Claims", caseId);
+        await redisDb.StringSetAsync(eventStoreRouteKey, "route-metadata");
+        await redisDb.StringSetAsync(migrationMarkerKey, "active");
+        await redisDb.HashSetAsync(orphanSyntacticKey, "caseId", caseId);
+        await redisDb.HashSetAsync(orphanSemanticKey, "caseId", caseId);
+        await redisDb.HashSetAsync(orphanNaturalLanguageKey, "caseId", caseId);
+        await redisDb.HashSetAsync(orphanLegacyNaturalLanguageKey, "caseId", caseId);
 
         using HttpResponseMessage memberResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
             $"/api/tenants/{tenantId}/cases/{caseId}/members/user-cleanup",
@@ -110,12 +125,18 @@ public sealed class TenantDeletionIntegrationTests
         tenants.ShouldNotBeNull();
         tenants.ShouldNotContain(t => t.Id == tenantId);
 
-        IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
         (await redisDb.KeyExistsAsync($"{tenantId}:case:{caseId}")).ShouldBeFalse();
         (await redisDb.KeyExistsAsync($"{tenantId}:case:{caseId}:members")).ShouldBeFalse();
         (await redisDb.KeyExistsAsync($"{tenantId}:mu:{memoryUnitId}")).ShouldBeFalse();
         (await redisDb.KeyExistsAsync($"{tenantId}:vec:{memoryUnitId}")).ShouldBeFalse();
         (await redisDb.KeyExistsAsync(dedupKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(eventStoreMapKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(eventStoreRouteKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(migrationMarkerKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(orphanSyntacticKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(orphanSemanticKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(orphanNaturalLanguageKey)).ShouldBeFalse();
+        (await redisDb.KeyExistsAsync(orphanLegacyNaturalLanguageKey)).ShouldBeFalse();
 
         await Should.ThrowAsync<RedisServerException>(async () => await redisDb.ExecuteAsync("FT.INFO", $"{tenantId}:memories:idx"));
         await Should.ThrowAsync<RedisServerException>(async () => await redisDb.ExecuteAsync("FT.INFO", $"{tenantId}:memories:vec"));

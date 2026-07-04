@@ -349,6 +349,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<DeleteMemoryUnitProjectionActivity>();
     options.RegisterActivity<MarkCaseDeletingActivity>();
     options.RegisterActivity<DeleteCaseProjectionActivity>();
+    options.RegisterActivity<DeleteCaseRouteMappingsActivity>();
 
     options.RegisterActivity<FetchUrlActivity>();
 
