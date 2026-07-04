@@ -1,3 +1,48 @@
+# Test Automation Summary - Story 21.7 (Dedup Race & Duplicate-Instance Handling)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-7-dedup-race-and-duplicate-instance-handling.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with in-process `WebApplicationFactory<Program>` API/E2E coverage; no new framework introduced.
+- **Feature under test:** race-safe permanent dedup writes, post-index duplicate loser compensation, token-race cleanup, and deterministic Dapr workflow duplicate-instance handling.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] Existing Story 21.7 API/controller coverage reviewed: `EventIngestionOutcomeTests`, `EventIngestionServiceTests`, `DaprWorkflowDuplicateInstanceDetectorTests`, `SaveDedupKeyActivityTests`, `IngestionWorkflowTests`, serialization guards, and docs drift guards already cover atomic `When.NotExists` saves, duplicate winner observation, source/token loser handling, duplicate scheduler mapping, and non-duplicate scheduler failure release.
+
+### E2E Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CrossModuleEventIntakeE2ETests.cs` - added `DuplicateWorkflowInstance_ToSharedTopic_ReturnsDuplicateWithoutPoisoningRedelivery`, driving a structured CloudEvent through the real `/events/ingest` HTTP pipeline and asserting HTTP 200, `status=duplicate`, `wasDuplicate=true`, no instance id, one scheduler call, and no preflight reservation release when deterministic workflow scheduling collides.
+- [x] UI E2E is not applicable. Story 21.7 has no module UI.
+
+## Coverage
+
+- API endpoints: `/events/ingest` duplicate workflow-instance collisions covered through controller/API tests and in-process HTTP E2E tests.
+- Happy path: existing shared-topic E2E still covers accepted module events; existing activity/workflow tests cover first-writer dedup saves and successful source/token permanent record paths.
+- Critical error cases: duplicate scheduler conflicts return HTTP 200 duplicate without reservation release; non-duplicate scheduler failures remain HTTP 500/retry-driving and release held reservations; atomic dedup losers compensate rather than persisting failed units.
+- Duplicate safety: permanent source-URI and token dedup saves use TTL-less `When.NotExists`, loser-owned source records are released only by ownership match, and duplicate workflow-instance collisions no longer poison Dapr pub/sub redelivery.
+
+## Validation
+
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-restore --filter "FullyQualifiedName~CrossModuleEventIntakeE2ETests|FullyQualifiedName~EventIngestionOutcomeTests" -v minimal` - blocked by sandbox MSBuild/VSTest socket permission (`SocketException (13): Permission denied`), before tests ran.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore -v minimal` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.EventStoreIntegration.CrossModuleEventIntakeE2ETests -class Hexalith.Memories.Server.Tests.EventStoreIntegration.EventIngestionOutcomeTests` - 15 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Activities.Ingestion.SaveDedupKeyActivityTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.IngestionActivityRecordSerializationTests -class Hexalith.Memories.Server.Tests.Ingestion.MemoryUnitIdStabilityContractTests -class Hexalith.Memories.Server.Tests.EventStoreIntegration.DocumentationCompletenessTests` - 67 total, 0 failed, 0 skipped.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj -m:1 /nodeReuse:false --no-restore -v minimal` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.EventStore.Tests/bin/Debug/net10.0/Hexalith.Memories.EventStore.Tests.dll -class Hexalith.Memories.EventStore.Tests.EventIngestionServiceTests -class Hexalith.Memories.EventStore.Tests.DaprWorkflowDuplicateInstanceDetectorTests -class Hexalith.Memories.EventStore.Tests.EventIngestionResponseTests` - 29 total, 0 failed, 0 skipped.
+- [x] `git diff --check -- tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/CrossModuleEventIntakeE2ETests.cs _bmad-output/implementation-artifacts/tests/test-summary.md` - passed.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass; one in-process HTTP E2E test added for the discovered Story 21.7 duplicate scheduler collision gap.
+- Standard framework APIs, happy path, 1-2 critical error cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.6 (Event Routing for Unknown/Unavailable Tenants)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

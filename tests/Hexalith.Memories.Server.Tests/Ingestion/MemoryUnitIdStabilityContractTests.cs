@@ -21,6 +21,7 @@ using Shouldly;
 public sealed class MemoryUnitIdStabilityContractTests
 {
     private const string DocRelativePath = "docs/dev/memory-unit-id-stability.md";
+    private const string IngestContractRelativePath = "docs/dev/ingest-contract.md";
 
     [Fact]
     public void StabilityContractDoc_Exists()
@@ -102,8 +103,23 @@ public sealed class MemoryUnitIdStabilityContractTests
         // Doc <-> code tie: SaveDedupKeyActivity must keep writing the source-URI record with expiry: null.
         string activity = ReadRepoFile("src", "Hexalith.Memories.Server", "Activities", "Ingestion", "SaveDedupKeyActivity.cs");
         activity.ShouldContain("expiry: null", Case.Sensitive, "SaveDedupKeyActivity must keep writing the permanent dedup record with expiry: null — a non-null TTL would silently weaken the MemoryUnitId stability guarantee.");
+        activity.ShouldContain("When.NotExists", Case.Sensitive, "SaveDedupKeyActivity must keep the permanent dedup record first-writer-wins so a race loser cannot overwrite the winning MemoryUnitId.");
 
-        ReadDoc().ShouldContain("expiry: null", Case.Sensitive, $"{DocRelativePath} must mirror the TTL-less write marker 'expiry: null'.");
+        string doc = ReadDoc();
+        doc.ShouldContain("expiry: null", Case.Sensitive, $"{DocRelativePath} must mirror the TTL-less write marker 'expiry: null'.");
+        doc.ShouldContain("When.NotExists", Case.Sensitive, $"{DocRelativePath} must mirror the first-writer-wins write marker 'When.NotExists'.");
+    }
+
+    [Fact]
+    public void IngestContract_MirrorsPermanentDedupFirstWriterWinsContract()
+    {
+        string ingestContract = ReadRepoFile("docs", "dev", "ingest-contract.md");
+
+        ingestContract.ShouldContain("TTL-less first-writer-wins", Case.Sensitive, $"{IngestContractRelativePath} must document permanent dedup records as TTL-less first-writer-wins.");
+        ingestContract.ShouldContain("expiry: null", Case.Sensitive, $"{IngestContractRelativePath} must mirror the TTL-less permanent dedup write marker.");
+        ingestContract.ShouldContain("When.NotExists", Case.Sensitive, $"{IngestContractRelativePath} must mirror the atomic first-writer-wins write marker.");
+        ingestContract.ShouldContain("dedup:{tenantId}:{caseId}:{sha256(sourceUri)}", Case.Sensitive, $"{IngestContractRelativePath} must keep the source-URI permanent dedup key contract.");
+        ingestContract.ShouldContain("dedup:{tenantId}:{caseId}:tok:{sha256(token)}", Case.Sensitive, $"{IngestContractRelativePath} must keep the token namespace contract.");
     }
 
     [Fact]

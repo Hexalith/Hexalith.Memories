@@ -53,8 +53,8 @@ workflow:
 
 If scheduling fails after a successful reservation, the reservation is released (`ReleaseAsync`); the
 reservation TTL is the backstop. The reservation key namespace is **distinct** from the permanent `dedup:`
-record, so `CheckIdempotencyActivity` / `SaveDedupKeyActivity` and the EventStore pub/sub preflight path are
-**unchanged**.
+record. `CheckIdempotencyActivity` remains the authoritative read path, and `SaveDedupKeyActivity` commits
+permanent records as TTL-less first-writer-wins writes (`expiry: null`, `When.NotExists`).
 
 ## 4. Idempotent under at-least-once, unordered delivery (AC4)
 

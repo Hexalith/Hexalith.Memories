@@ -422,10 +422,23 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 }
 
                 currentStage = "dedup";
-                await context.CallActivityAsync<bool>(
+                DedupKeySaveResult sourceSave = await context.CallActivityAsync<DedupKeySaveResult>(
                     nameof(SaveDedupKeyActivity),
                     new DedupKeyInput(dedupKey, memoryUnitId),
                     For(nameof(SaveDedupKeyActivity)));
+
+                if (IsDuplicateOwnedByAnother(sourceSave, memoryUnitId))
+                {
+                    return await CompletePostIndexDuplicateAsync(
+                        context,
+                        memoryUnitId,
+                        sourceSave.MemoryUnitId,
+                        nlSemanticTask,
+                        cleanupInput,
+                        compensationRetry,
+                        logger,
+                        UpdateCounter);
+                }
 
                 // Story 18.4 — when an explicit idempotency token was supplied, also persist a token-keyed
                 // permanent record pointing at the SAME MemoryUnitId. This augments (never replaces) the
@@ -434,10 +447,31 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 if (!string.IsNullOrWhiteSpace(input.IdempotencyToken))
                 {
                     string tokenDedupKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
-                    await context.CallActivityAsync<bool>(
+                    DedupKeySaveResult tokenSave = await context.CallActivityAsync<DedupKeySaveResult>(
                         nameof(SaveDedupKeyActivity),
                         new DedupKeyInput(tokenDedupKey, memoryUnitId),
                         For(nameof(SaveDedupKeyActivity)));
+
+                    if (IsDuplicateOwnedByAnother(tokenSave, memoryUnitId))
+                    {
+                        if (sourceSave.IsSaved)
+                        {
+                            await context.CallActivityAsync<bool>(
+                                nameof(ReleaseDedupKeyIfOwnedActivity),
+                                new DedupKeyInput(dedupKey, memoryUnitId),
+                                compensationRetry);
+                        }
+
+                        return await CompletePostIndexDuplicateAsync(
+                            context,
+                            memoryUnitId,
+                            tokenSave.MemoryUnitId,
+                            nlSemanticTask,
+                            cleanupInput,
+                            compensationRetry,
+                            logger,
+                            UpdateCounter);
+                    }
                 }
             }
             catch (Exception ex)
@@ -639,6 +673,52 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
             originalException?.Data["CompensationFailure"] = ex.Message;
         }
+    }
+
+    private static bool IsDuplicateOwnedByAnother(DedupKeySaveResult result, string memoryUnitId)
+        => result.Status == DedupKeySaveStatus.DuplicateExisting
+            && !string.Equals(result.MemoryUnitId, memoryUnitId, StringComparison.Ordinal);
+
+    private static async Task<IngestionResult> CompletePostIndexDuplicateAsync(
+        WorkflowContext context,
+        string loserMemoryUnitId,
+        string winnerMemoryUnitId,
+        Task<IndexResult>? nlSemanticTask,
+        CleanupInput cleanupInput,
+        WorkflowTaskOptions compensationRetry,
+        ILogger logger,
+        Func<string, string, Task<bool>> updateCounter)
+    {
+        HashSet<string> postIndexBackends = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
+        if (nlSemanticTask is { IsCompletedSuccessfully: true })
+        {
+            postIndexBackends.Add("semantic-nl");
+        }
+
+        await CompensateAsync(
+            context,
+            postIndexBackends,
+            cleanupInput,
+            compensationRetry,
+            logger);
+
+        logger.LogInformation(
+            "Post-index dedup race resolved for loser {LoserMemoryUnitId}; winner is {WinnerMemoryUnitId}.",
+            loserMemoryUnitId,
+            winnerMemoryUnitId);
+
+        try { await updateCounter("indexing", "none"); } catch { /* counter drift documented */ }
+        context.SetCustomStatus("duplicate");
+
+        return new IngestionResult(
+            winnerMemoryUnitId,
+            MemoryUnitStatus.Indexed,
+            new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
+            WasDuplicate: true,
+            ConsistencyNote: null)
+        {
+            NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable,
+        };
     }
 
     private static void AttachFailureDetails(

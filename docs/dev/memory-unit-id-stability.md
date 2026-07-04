@@ -39,13 +39,13 @@ dedup:{tenantId}:{caseId}:{sha256(sourceUri)}  ->  MemoryUnitId
 
 The id is **not derived from `sourceUri`**; it is the **stored value** of that dedup record. `CheckIdempotencyActivity` reads the record and the `IngestionWorkflow` duplicate short-circuit returns the existing `MemoryUnitId` **without re-indexing**, so a duplicate or out-of-order re-ingest resolves to the same unit.
 
-This record is **permanent (TTL-less)**: `SaveDedupKeyActivity` writes it with `expiry: null` (and `When.Always`). The stability guarantee is therefore exactly as durable as that record — no more, no less.
+This record is **permanent (TTL-less)** and first-writer-wins: `SaveDedupKeyActivity` writes it with `expiry: null` and `When.NotExists`. The stability guarantee is therefore exactly as durable as that record — no more, no less.
 
 ### Lifetime dependency (the load-bearing invariant)
 
 The guarantee depends on the source-URI dedup record being permanent. The following changes would **weaken or break** the guarantee and must only be made deliberately, with this contract updated in the same change:
 
-- Changing `SaveDedupKeyActivity` to write a non-null `expiry` (TTL-bound the record).
+- Changing `SaveDedupKeyActivity` to write a non-null `expiry` (TTL-bound the record) or to overwrite an existing winner.
 - Deleting `dedup:*` records during normal retention or cleanup.
 - Replacing the source-URI record with **token-only** dedup (see §4 — the token record augments, never replaces, this record).
 - A key-format change to `DedupKeyBuilder.BuildKey` that does not migrate existing records.
@@ -99,10 +99,10 @@ A content-asserting drift-guard test protects this contract:
 [`tests/Hexalith.Memories.Server.Tests/Ingestion/MemoryUnitIdStabilityContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Ingestion/MemoryUnitIdStabilityContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture, repo-root marker walk) and enforces:
 
 - **Doc presence + mandatory claims:** this document exists and contains the guarantee key form `dedup:{tenantId}:{caseId}:{sha256(sourceUri)}`, the TTL-less marker `expiry: null`, the lookup method `LookupMemoryUnitIdBySourceUriAsync`, the token-record form `dedup:{tenantId}:{caseId}:tok:{sha256(token)}`, and the opaque/not-source-derived/not-ULID claims.
-- **Doc ↔ code tie (the anti-drift guard):** `SaveDedupKeyActivity.cs` still writes `expiry: null`; `DedupKeyBuilder.cs` still builds `dedup:{tenantId}:{caseId}:` for the source-URI key and keeps the `:tok:` namespace for the token key; `SourceUriMemoryUnitLookup.cs` still resolves via `DedupKeyBuilder.BuildKey`. A code-side change to any of these fails the build unless this document is reconciled.
+- **Doc ↔ code tie (the anti-drift guard):** `SaveDedupKeyActivity.cs` still writes `expiry: null` with `When.NotExists`; `DedupKeyBuilder.cs` still builds `dedup:{tenantId}:{caseId}:` for the source-URI key and keeps the `:tok:` namespace for the token key; `SourceUriMemoryUnitLookup.cs` still resolves via `DedupKeyBuilder.BuildKey`. A code-side change to any of these fails the build unless this document is reconciled.
 - **D1 clarification tie:** this document keeps the statement that Parties "decision D1" is **not** Memories Architecture Decision D1 (FalkorDB for MVP).
 
-The id-generation, duplicate short-circuit, and dual permanent-record behaviors are additionally covered by `Workflows/IngestionWorkflowTests.cs`, the token-key shape by `Activities/Ingestion/DedupKeyBuilderTests.cs`, the TTL-less write by `Activities/Ingestion/SaveDedupKeyActivityTests.cs`, and the lookup read by `Ingestion/SourceUriMemoryUnitLookupTests.cs`.
+The id-generation, duplicate short-circuit, and dual permanent-record behaviors are additionally covered by `Workflows/IngestionWorkflowTests.cs`, the token-key shape by `Activities/Ingestion/DedupKeyBuilderTests.cs`, the TTL-less first-writer-wins write by `Activities/Ingestion/SaveDedupKeyActivityTests.cs`, and the lookup read by `Ingestion/SourceUriMemoryUnitLookupTests.cs`.
 
 ## References
 
@@ -114,6 +114,6 @@ The id-generation, duplicate short-circuit, and dual permanent-record behaviors 
 - `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` — `ResolveMemoryUnitId`; duplicate short-circuit; permanent source-URI and token-keyed dedup writes.
 - `src/Hexalith.Memories.Server/Activities/Ingestion/DedupKeyBuilder.cs` — `BuildKey` (`dedup:{tenantId}:{caseId}:{sha256(sourceUri)}`) and `BuildTokenKey` (`:tok:`).
 - `src/Hexalith.Memories.Server/Activities/Ingestion/CheckIdempotencyActivity.cs` — token precedence, source-URI fallback, transient-reservation exclusion.
-- `src/Hexalith.Memories.Server/Activities/Ingestion/SaveDedupKeyActivity.cs` — the TTL-less permanent dedup write (`expiry: null`).
+- `src/Hexalith.Memories.Server/Activities/Ingestion/SaveDedupKeyActivity.cs` — the TTL-less first-writer-wins permanent dedup write (`expiry: null`, `When.NotExists`).
 - `src/Hexalith.Memories.Server/Ingestion/SourceUriMemoryUnitLookup.cs` — exact source-URI lookup over the permanent dedup record.
 - `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` — `LookupMemoryUnitIdBySourceUriAsync`, the consumer-facing resolution path.

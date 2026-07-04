@@ -88,6 +88,8 @@ public sealed class DocumentationCompletenessTests
         content.ShouldContain("max-duration", Case.Sensitive, "TTL ↔ DAPR retry max-duration coupling must be documented.");
         content.ShouldContain("9110", Case.Sensitive, "Unknown-source alert event id must be documented.");
         content.ShouldContain("9120", Case.Sensitive, "Schedule-failed alert event id must be documented.");
+        content.ShouldContain("workflow instance already exists", Case.Sensitive, "Docs must document duplicate workflow-instance scheduling as a duplicate outcome.");
+        content.ShouldContain("200 + `duplicate`", Case.Sensitive, "Docs must document duplicate workflow-instance scheduling as non-retry-driving HTTP 200.");
 
         // Environment defaults table must contain both Development and Production columns.
         content.Contains("| Development |", System.StringComparison.Ordinal)

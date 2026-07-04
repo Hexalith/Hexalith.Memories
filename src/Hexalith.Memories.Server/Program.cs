@@ -336,6 +336,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<ValidateContentActivity>();
     options.RegisterActivity<CheckIdempotencyActivity>();
     options.RegisterActivity<SaveDedupKeyActivity>();
+    options.RegisterActivity<ReleaseDedupKeyIfOwnedActivity>();
     options.RegisterActivity<VerifyConsistencyActivity>();
     options.RegisterActivity<CleanupSyntacticActivity>();
     options.RegisterActivity<CleanupSemanticActivity>();

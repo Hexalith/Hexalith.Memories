@@ -101,7 +101,7 @@ public class IngestionWorkflowTests
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(index => index.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
-        await context.Received().CallActivityAsync<bool>(
+        await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
@@ -123,7 +123,7 @@ public class IngestionWorkflowTests
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(index => index.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
             Arg.Any<WorkflowTaskOptions>());
-        await context.Received().CallActivityAsync<bool>(
+        await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
             Arg.Any<WorkflowTaskOptions>());
@@ -151,7 +151,7 @@ public class IngestionWorkflowTests
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(index => index.MemoryUnitId == instanceId),
             Arg.Any<WorkflowTaskOptions>());
-        await context.Received().CallActivityAsync<bool>(
+        await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == instanceId),
             Arg.Any<WorkflowTaskOptions>());
@@ -176,7 +176,7 @@ public class IngestionWorkflowTests
 
         result.MemoryUnitId.ShouldBe(dedupInstanceId);
         result.MemoryUnitId.ShouldNotBe(TestGuid.ToString());
-        await context.Received().CallActivityAsync<bool>(
+        await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == dedupInstanceId),
             Arg.Any<WorkflowTaskOptions>());
@@ -223,12 +223,13 @@ public class IngestionWorkflowTests
                 callLog.Add(nameof(VerifyConsistencyActivity));
                 return Task.FromResult(new ConsistencyResult(true, true, true));
             });
-        context.CallActivityAsync<bool>(
+        string muId = TestGuid.ToString();
+        context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
                 callLog.Add(nameof(SaveDedupKeyActivity));
-                return Task.FromResult(true);
+                return Task.FromResult(DedupKeySaveResult.Saved(muId));
             });
 
         IngestionWorkflow workflow = new();
@@ -733,11 +734,11 @@ public class IngestionWorkflowTests
 
         // Augment, not replace: the sourceUri permanent record (18.5/18.6) AND a token-keyed record, both
         // pointing at the SAME MemoryUnitId.
-        await context.Received(1).CallActivityAsync<bool>(
+        await context.Received(1).CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(d => d.DedupKey == sourceKey && d.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
-        await context.Received(1).CallActivityAsync<bool>(
+        await context.Received(1).CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
             Arg.Is<DedupKeyInput>(d => d.DedupKey == tokenKey && d.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
@@ -754,8 +755,90 @@ public class IngestionWorkflowTests
         await workflow.RunAsync(context, input);
 
         // No token ⇒ exactly one SaveDedupKey call (sourceUri natural key) — behavior unchanged.
-        await context.Received(1).CallActivityAsync<bool>(
+        await context.Received(1).CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_SourceDedupLosesAfterIndexing_ShouldCompensateAndReturnDuplicate()
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///same-source.pdf");
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<DedupKeySaveResult>(
+                nameof(SaveDedupKeyActivity),
+                Arg.Any<DedupKeyInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(DedupKeySaveResult.DuplicateExisting("mu-winner"));
+        context.CallActivityAsync<bool>(nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.WasDuplicate.ShouldBeTrue();
+        result.MemoryUnitId.ShouldBe("mu-winner");
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.NotApplicable);
+        context.Received().SetCustomStatus("duplicate");
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSyntacticActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupSemanticActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupGraphActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(RecordCaseActivityActivity),
+            Arg.Is<CaseActivityInput>(i => i.EventType == CaseActivityEventType.MemoryUnitIngested));
+    }
+
+    [Fact]
+    public async Task RunAsync_TokenDedupLosesAfterSourceSave_ShouldReleaseLoserSourceKeyAndReturnDuplicate()
+    {
+        IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///different-source.pdf") with
+        {
+            IdempotencyToken = "idem-shared",
+        };
+        string sourceKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
+        string tokenKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, "idem-shared");
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<DedupKeySaveResult>(
+                nameof(SaveDedupKeyActivity),
+                Arg.Is<DedupKeyInput>(i => i.DedupKey == sourceKey),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(DedupKeySaveResult.Saved(TestGuid.ToString()));
+        context.CallActivityAsync<DedupKeySaveResult>(
+                nameof(SaveDedupKeyActivity),
+                Arg.Is<DedupKeyInput>(i => i.DedupKey == tokenKey),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(DedupKeySaveResult.DuplicateExisting("mu-token-winner"));
+        context.CallActivityAsync<bool>(nameof(ReleaseDedupKeyIfOwnedActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.WasDuplicate.ShouldBeTrue();
+        result.MemoryUnitId.ShouldBe("mu-token-winner");
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(ReleaseDedupKeyIfOwnedActivity),
+            Arg.Is<DedupKeyInput>(i => i.DedupKey == sourceKey && i.MemoryUnitId == TestGuid.ToString()),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
     [Fact]
@@ -768,7 +851,7 @@ public class IngestionWorkflowTests
 
         await workflow.RunAsync(context, input);
 
-        await context.Received().CallActivityAsync<bool>(
+        await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -820,9 +903,9 @@ public class IngestionWorkflowTests
         WorkflowContext context = CreateMockContext();
         SetupHappyPathActivities(context, input);
 
-        context.CallActivityAsync<bool>(
+        context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(Task.FromException<bool>(new InvalidOperationException("Dedup save failed")));
+            .Returns(Task.FromException<DedupKeySaveResult>(new InvalidOperationException("Dedup save failed")));
         context.CallActivityAsync<bool>(
                 nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(true);
@@ -1025,12 +1108,12 @@ public class IngestionWorkflowTests
             });
 
         // Save dedup key
-        context.CallActivityAsync<bool>(
+        context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
                 callLog?.Add(nameof(SaveDedupKeyActivity));
-                return Task.FromResult(true);
+                return Task.FromResult(DedupKeySaveResult.Saved(muId));
             });
 
         // Record activity (best-effort, no retry options)

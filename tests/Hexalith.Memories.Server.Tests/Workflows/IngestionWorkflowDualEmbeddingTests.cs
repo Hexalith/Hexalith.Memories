@@ -266,9 +266,9 @@ public class IngestionWorkflowDualEmbeddingTests
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity), Arg.Any<ConsistencyInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new ConsistencyResult(true, true, true)));
-        context.CallActivityAsync<bool>(
+        context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(_ => Task.FromResult(true));
+            .Returns(_ => Task.FromResult(DedupKeySaveResult.Saved(muId)));
         context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
             .Returns(_ => Task.FromResult(true));

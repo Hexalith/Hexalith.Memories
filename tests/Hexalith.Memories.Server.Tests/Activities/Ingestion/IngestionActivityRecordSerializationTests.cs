@@ -85,4 +85,16 @@ public class IngestionActivityRecordSerializationTests
         string json2 = JsonSerializer.Serialize(deserialized, MemoriesJsonContext.Options);
         json2.ShouldBe(json1);
     }
+
+    [Fact]
+    public void DedupKeySaveResult_RoundTrip_DuplicateExisting()
+    {
+        DedupKeySaveResult original = DedupKeySaveResult.DuplicateExisting("mu-winner");
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        DedupKeySaveResult? deserialized = JsonSerializer.Deserialize<DedupKeySaveResult>(json, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.Status.ShouldBe(DedupKeySaveStatus.DuplicateExisting);
+        deserialized.MemoryUnitId.ShouldBe("mu-winner");
+    }
 }

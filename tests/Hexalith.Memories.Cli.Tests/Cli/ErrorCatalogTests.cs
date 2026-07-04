@@ -31,6 +31,7 @@ public sealed class ErrorCatalogTests
         ["TENANT_PROVISIONING", 1, "memories tenant list"],
         ["TENANT_FAILED", 1, "memories tenant list"],
         ["TENANT_UNAVAILABLE", 1, "memories tenant list"],
+        ["RATE_LIMIT_EXCEEDED", 1, "rate-limit window"],
         ["MEMBER_NOT_FOUND", 1, "REST API"],
         ["MEMBER_LIMIT_EXCEEDED", 1, "Remove existing members"],
         ["INVALID_CASE_ID", 1, "REST API"],

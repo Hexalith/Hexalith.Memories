@@ -183,6 +183,10 @@ public static class ErrorMessageCatalog
                 CliMessage: null,
                 CliSuggestion: "Use a bearer token authorized for the requested tenant and retry.",
                 ExitCode: 1),
+            ["RATE_LIMIT_EXCEEDED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Reduce request rate or retry after the server's rate-limit window resets.",
+                ExitCode: 1),
 
             // member endpoints (not yet wired in CLI but reachable server-side for completeness).
             ["MEMBER_NOT_FOUND"] = new(

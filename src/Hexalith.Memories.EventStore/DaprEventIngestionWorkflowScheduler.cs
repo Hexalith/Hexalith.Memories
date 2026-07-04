@@ -30,8 +30,15 @@ internal sealed class DaprEventIngestionWorkflowScheduler : IEventIngestionWorkf
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await _workflowClient
-            .ScheduleNewWorkflowAsync(DefaultWorkflowName, instanceId, input)
-            .ConfigureAwait(false);
+        try
+        {
+            return await _workflowClient
+                .ScheduleNewWorkflowAsync(DefaultWorkflowName, instanceId, input)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (DaprWorkflowDuplicateInstanceDetector.IsDuplicateInstance(ex))
+        {
+            throw new DuplicateWorkflowInstanceException(instanceId, ex);
+        }
     }
 }

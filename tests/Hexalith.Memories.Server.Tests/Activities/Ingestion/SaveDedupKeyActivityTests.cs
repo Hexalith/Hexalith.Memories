@@ -38,9 +38,9 @@ public class SaveDedupKeyActivityTests
     [Fact]
     public async Task RunAsync_ShouldWritePermanentRecordWithNullExpiry()
     {
-        // Story 18.6 AC2 — the source-URI dedup record is the MemoryUnitId-stability authority and MUST stay
-        // TTL-less. A non-null expiry (or a When other than Always) would silently weaken the stability
-        // guarantee documented in docs/dev/memory-unit-id-stability.md, so pin both arguments here.
+        // Story 21.7 AC1 — the source-URI dedup record is the MemoryUnitId-stability authority and MUST stay
+        // TTL-less and first-writer-wins. A non-null expiry or a When other than NotExists would silently
+        // weaken the stability guarantee documented in docs/dev/memory-unit-id-stability.md.
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
         SaveDedupKeyActivity activity = new(redis);
 
@@ -50,20 +50,42 @@ public class SaveDedupKeyActivityTests
 
         var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
         call.GetArguments()[2].ShouldBeNull("the permanent dedup record must be written with expiry: null (TTL-less).");
-        call.GetArguments()[3].ShouldBe(When.Always);
+        call.GetArguments()[3].ShouldBe(When.NotExists);
     }
 
     [Fact]
-    public async Task RunAsync_ShouldReturnTrue()
+    public async Task RunAsync_FirstWriter_ShouldReturnSaved()
     {
         (IDatabase _, IConnectionMultiplexer redis) = CreateRedis();
         SaveDedupKeyActivity activity = new(redis);
 
-        bool result = await activity.RunAsync(
+        DedupKeySaveResult result = await activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
             new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
 
-        result.ShouldBeTrue();
+        result.Status.ShouldBe(DedupKeySaveStatus.Saved);
+        result.MemoryUnitId.ShouldBe("mu-001");
+    }
+
+    [Fact]
+    public async Task RunAsync_DuplicateExisting_ShouldReturnWinnerIdWithoutOverwrite()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(false));
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)"mu-winner");
+        SaveDedupKeyActivity activity = new(redis);
+
+        DedupKeySaveResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-loser"));
+
+        result.Status.ShouldBe(DedupKeySaveStatus.DuplicateExisting);
+        result.MemoryUnitId.ShouldBe("mu-winner");
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
+        call.GetArguments()[1].ShouldBe((RedisValue)"mu-loser");
+        call.GetArguments()[3].ShouldBe(When.NotExists);
     }
 
     [Fact]
@@ -86,6 +108,10 @@ public class SaveDedupKeyActivityTests
     private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(true));
+        db.StringSetAsync(default, default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(true));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Is<object?>(value => value == null)).Returns(db);

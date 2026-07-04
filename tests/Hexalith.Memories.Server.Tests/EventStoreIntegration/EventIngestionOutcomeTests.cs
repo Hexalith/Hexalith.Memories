@@ -161,6 +161,35 @@ public sealed class EventIngestionOutcomeTests : System.IDisposable
     }
 
     [Fact]
+    public async Task DuplicateWorkflowInstance_Returns200_WithWasDuplicateTrue()
+    {
+        const string tenantId = "acme";
+        const string caseId = "case-1";
+        TenantEventRoute route = new(tenantId, caseId, "Claims");
+        _factory.Router
+            .ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<System.Threading.CancellationToken>())
+            .Returns(TenantEventRouteResolution.Accepted(route));
+        _factory.PreflightDedup
+            .TryReserveAsync(Arg.Any<string>(), Arg.Any<System.TimeSpan>(), Arg.Any<System.Threading.CancellationToken>())
+            .Returns(PreflightReservationResult.Reserved);
+        _factory.Scheduler
+            .ScheduleAsync(Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<System.Threading.CancellationToken>())
+            .Returns<Task<string>>(ci => throw new DuplicateWorkflowInstanceException(
+                ci.ArgAt<string>(0),
+                new System.InvalidOperationException("workflow instance already exists")));
+
+        HttpResponseMessage response = await PostCloudEventAsync(BuildValidEnvelope());
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        EventIngestionResponse body = await ReadResponseAsync(response);
+        body.Status.ShouldBe(EventIngestionResponse.StatusDuplicate);
+        body.WasDuplicate.ShouldBeTrue();
+        body.InstanceId.ShouldBeNull();
+        await _factory.PreflightDedup.DidNotReceive()
+            .ReleaseAsync(Arg.Any<string>(), Arg.Any<System.Threading.CancellationToken>());
+    }
+
+    [Fact]
     public async Task ScheduleFailure_ReleasesReservation_AndReturns500()
     {
         const string tenantId = "acme";

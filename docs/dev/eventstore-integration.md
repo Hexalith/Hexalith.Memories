@@ -217,7 +217,7 @@ DAPR expects:
 | Situation                                                | HTTP                                    | DAPR behavior                                                 |
 | -------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------- |
 | Accepted — workflow scheduled                            | 200 + `accepted`                        | No retry.                                                     |
-| Duplicate — preflight or workflow-level dedup rejected   | 200 + `duplicate`                       | No retry.                                                     |
+| Duplicate — preflight, workflow-level dedup, or deterministic workflow instance already exists | 200 + `duplicate`                       | No retry.                                                     |
 | Unknown source                                           | 200 + `unknown-source` + Warning log    | No retry (publisher never mapped).                            |
 | Tenant not found                                         | 500 + `tenant-not-found` + Warning log  | Retry; reaches DLT only if operators configure DAPR retry + dead-letter topics. |
 | Tenant deleting or unavailable                          | 500 + `tenant-deleting` + Warning log   | Retry; reaches DLT only if operators configure DAPR retry + dead-letter topics. |

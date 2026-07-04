@@ -10,7 +10,7 @@ using Dapr.Workflow;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that persists a dedup key to Redis after successful ingestion.</summary>
-public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
+public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, DedupKeySaveResult>
 {
     private readonly IConnectionMultiplexer _redis;
 
@@ -20,7 +20,7 @@ public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    public override async Task<DedupKeySaveResult> RunAsync(
         WorkflowActivityContext context,
         DedupKeyInput input)
     {
@@ -29,12 +29,24 @@ public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, bool>
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
         IDatabase db = _redis.GetDatabase();
-        await db.StringSetAsync(
+        bool saved = await db.StringSetAsync(
             input.DedupKey,
             input.MemoryUnitId,
             expiry: null,
-            when: When.Always,
+            when: When.NotExists,
             flags: CommandFlags.None).ConfigureAwait(false);
-        return true;
+
+        if (saved)
+        {
+            return DedupKeySaveResult.Saved(input.MemoryUnitId);
+        }
+
+        RedisValue existing = await db.StringGetAsync(input.DedupKey).ConfigureAwait(false);
+        if (!existing.HasValue)
+        {
+            throw new InvalidOperationException($"Dedup key '{input.DedupKey}' already existed but no winner value could be read.");
+        }
+
+        return DedupKeySaveResult.DuplicateExisting(existing.ToString());
     }
 }

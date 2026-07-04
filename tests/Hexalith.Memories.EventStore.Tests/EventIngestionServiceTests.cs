@@ -177,6 +177,23 @@ public sealed class EventIngestionServiceTests
     }
 
     [Fact]
+    public async Task ProcessAsync_DuplicateWorkflowInstance_ReturnsDuplicateWithoutReservationRelease()
+    {
+        (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, IPreflightDedupStore dedup, _, _) = Build();
+        scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns<Task<string>>(callInfo => throw new DuplicateWorkflowInstanceException(
+                callInfo.ArgAt<string>(0),
+                new InvalidOperationException("workflow instance already exists")));
+
+        EventIngestionProcessResult result = await service.ProcessAsync(Envelope(), CancellationToken.None);
+
+        result.Outcome.ShouldBe(EventIngestionOutcome.Duplicate);
+        result.Response.Status.ShouldBe(EventIngestionResponse.StatusDuplicate);
+        result.Response.WasDuplicate.ShouldBeTrue();
+        await dedup.DidNotReceive().ReleaseAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ProcessAsync_PreflightFailOpen_StillSchedules()
     {
         (EventIngestionService service, _, IEventIngestionWorkflowScheduler scheduler, IPreflightDedupStore dedup, _, _) = Build();

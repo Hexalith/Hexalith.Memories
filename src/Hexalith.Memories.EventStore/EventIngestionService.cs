@@ -188,6 +188,16 @@ internal sealed class EventIngestionService : IEventIngestionService
                 cloudEventTypeForTelemetry, accepted.Outcome, ElapsedMs(startTicks));
             return accepted;
         }
+        catch (DuplicateWorkflowInstanceException)
+        {
+            EventIngestionProcessResult duplicate = new(
+                EventIngestionOutcome.Duplicate,
+                EventIngestionResponse.Duplicate());
+            _telemetry.RecordIngestion(
+                tenantIdForTelemetry, caseIdForTelemetry, cloudEventId, aggregateTypeForTelemetry,
+                cloudEventTypeForTelemetry, duplicate.Outcome, ElapsedMs(startTicks));
+            return duplicate;
+        }
         catch (Exception ex)
         {
             EventStoreIntegrationLog.WorkflowScheduleFailed(_logger, envelope.Id, ex.GetType().Name);

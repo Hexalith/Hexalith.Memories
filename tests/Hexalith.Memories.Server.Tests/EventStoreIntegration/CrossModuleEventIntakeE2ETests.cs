@@ -204,6 +204,41 @@ public sealed class CrossModuleEventIntakeE2ETests : System.IDisposable
             Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task DuplicateWorkflowInstance_ToSharedTopic_ReturnsDuplicateWithoutPoisoningRedelivery()
+    {
+        // Story 21.7 AC4/AC5: deterministic EventStore workflow instance ids can collide after preflight
+        // reservation succeeds. That scheduler conflict is an already-accepted duplicate, not a retry-driving
+        // failure, so the HTTP boundary must return 200 duplicate and leave the reservation intact.
+        _factory.Router
+            .ResolveAsync(Arg.Any<CloudEventEnvelope>(), Arg.Any<CancellationToken>())
+            .Returns(TenantEventRouteResolution.Accepted(new TenantEventRoute("tenant-events", "tenant-events:case", "Tenants")));
+        _factory.PreflightDedup
+            .TryReserveAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(PreflightReservationResult.Reserved);
+        _factory.Scheduler
+            .ScheduleAsync(Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns<Task<string>>(ci => throw new DuplicateWorkflowInstanceException(
+                ci.ArgAt<string>(0),
+                new InvalidOperationException("workflow instance already exists")));
+
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await PostAsync(
+            client, ModuleEnvelope("evt-scheduler-dup-1", "hexalith/tenants/events", "Hexalith.Tenants.TenantCreatedV1"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        EventIngestionResponse? body = await response.Content.ReadFromJsonAsync<EventIngestionResponse>();
+        body.ShouldNotBeNull();
+        body!.Status.ShouldBe(EventIngestionResponse.StatusDuplicate);
+        body.WasDuplicate.ShouldBeTrue();
+        body.InstanceId.ShouldBeNull();
+
+        await _factory.Scheduler.Received(1).ScheduleAsync(
+            Arg.Any<string>(), Arg.Any<Hexalith.Memories.Contracts.V1.IngestionInput>(), Arg.Any<CancellationToken>());
+        await _factory.PreflightDedup.DidNotReceive().ReleaseAsync(
+            Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private static async Task<EventIngestionResponse> PublishAsync(HttpClient client, string envelope)
     {
         using HttpResponseMessage response = await PostAsync(client, envelope);
