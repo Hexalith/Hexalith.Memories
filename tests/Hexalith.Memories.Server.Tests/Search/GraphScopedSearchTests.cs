@@ -157,6 +157,7 @@ public class GraphScopedSearchTests
             service,
             query,
             ["mu-1"],
+            5,
             innerQuery =>
             {
                 observedQueries.Add(innerQuery);
@@ -177,6 +178,46 @@ public class GraphScopedSearchTests
         observedQueries[0].MetadataQuery.ShouldBe(query.MetadataQuery);
         observedQueries[0].CloudEventSubject.ShouldBe(query.CloudEventSubject);
         observedQueries[0].AttributeFilters.ShouldBe(query.AttributeFilters);
+    }
+
+    [Fact]
+    public async Task SearchWithinGraphScope_ShouldRequestOneCandidateWindowWithoutGrowingOffsets()
+    {
+        GraphScopedSearch service = new(
+            Substitute.For<IConnectionMultiplexer>(),
+            Substitute.For<IConnectionMultiplexer>(),
+            Substitute.For<IGraphQueryBuilder>(),
+            NullLogger<GraphScopedSearch>.Instance);
+        SearchQuery query = new()
+        {
+            TenantId = "tenant-1",
+            Query = "outage",
+            Offset = 150,
+            MaxResults = 10,
+        };
+        List<SearchQuery> observedQueries = [];
+
+        SearchResult result = await InvokeSearchWithinGraphScopeAsync(
+            service,
+            query,
+            ["mu-160"],
+            160,
+            innerQuery =>
+            {
+                observedQueries.Add(innerQuery);
+                return Task.FromResult(new SearchResult
+                {
+                    Results = [CreateScoredResult("mu-160", 0.9)],
+                    TotalCount = 250,
+                    HasIndexedMemoryUnits = true,
+                    Query = innerQuery.Query,
+                });
+            });
+
+        result.Results.ShouldBeEmpty();
+        observedQueries.Count.ShouldBe(1);
+        observedQueries[0].Offset.ShouldBe(0);
+        observedQueries[0].MaxResults.ShouldBe(160);
     }
 
     [Fact]
@@ -216,14 +257,25 @@ public class GraphScopedSearchTests
         GraphScopedSearch service,
         SearchQuery query,
         HashSet<string> graphSet,
+        int candidateWindow,
         Func<SearchQuery, Task<SearchResult>> innerSearch)
     {
         MethodInfo? method = typeof(GraphScopedSearch).GetMethod(
             "SearchWithinGraphScopeAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic);
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types:
+            [
+                typeof(SearchQuery),
+                typeof(HashSet<string>),
+                typeof(Func<SearchQuery, Task<SearchResult>>),
+                typeof(int),
+                typeof(CancellationToken),
+            ],
+            modifiers: null);
         method.ShouldNotBeNull();
 
-        object? value = method.Invoke(service, [query, graphSet, innerSearch, CancellationToken.None]);
+        object? value = method.Invoke(service, [query, graphSet, innerSearch, candidateWindow, CancellationToken.None]);
         value.ShouldBeOfType<Task<SearchResult>>();
         return (Task<SearchResult>)value;
     }

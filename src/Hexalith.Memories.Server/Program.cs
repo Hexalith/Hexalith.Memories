@@ -23,6 +23,7 @@ using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.RateLimiting;
@@ -2980,6 +2981,12 @@ app.MapGet("/api/search", async (
                     searchQuery, startNodeId, clampedDepth,
                     innerSearch: null, cancellationToken);
             }
+            catch (SearchPaginationLimitExceededException ex)
+            {
+                return SearchError(
+                    "PAGINATION_LIMIT_EXCEEDED",
+                    Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
+            }
             catch (RedisConnectionException ex)
             {
                 return SearchError(
@@ -3110,15 +3117,25 @@ app.MapGet("/api/search", async (
             }
 
             int clampedDepth = Math.Clamp(depth, 0, 10);
-            HybridSearchResult hybridResult = await hybridSearchService.SearchAsync(
-                hybridQuery,
-                embeddingConfig,
-                effectiveGraphStartNodeId,
-                clampedDepth,
-                weights,
-                enabledAxes,
-                preUnavailableAxes,
-                cancellationToken);
+            HybridSearchResult hybridResult;
+            try
+            {
+                hybridResult = await hybridSearchService.SearchAsync(
+                    hybridQuery,
+                    embeddingConfig,
+                    effectiveGraphStartNodeId,
+                    clampedDepth,
+                    weights,
+                    enabledAxes,
+                    preUnavailableAxes,
+                    cancellationToken);
+            }
+            catch (SearchPaginationLimitExceededException ex)
+            {
+                return SearchError(
+                    "PAGINATION_LIMIT_EXCEEDED",
+                    Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
+            }
 
             if (hybridResult.AllEnabledAxesUnavailable == true)
             {
@@ -3220,12 +3237,20 @@ app.MapGet("/api/search", async (
                 {
                     result = await graphScopedSearch.SearchAsync(
                         mainSearchQuery, startNodeId, clampedDepth,
-                        q =>
+                        innerSearch: null,
+                        cancellationToken,
+                        scopedInnerSearch: (q, graphScopeKeys) =>
                         {
                             innerSearchStarted = true;
-                            return semanticService.SearchAsync(q, config, cancellationToken);
+                            return semanticService.SearchAsync(q, config, graphScopeKeys, cancellationToken);
                         },
-                        cancellationToken);
+                        graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSemanticKey);
+                }
+                catch (SearchPaginationLimitExceededException ex)
+                {
+                    return SearchError(
+                        "PAGINATION_LIMIT_EXCEEDED",
+                        Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
                 }
                 catch (EmbeddingApiException ex)
                 {
@@ -3308,12 +3333,20 @@ app.MapGet("/api/search", async (
             {
                 syntacticResult = await graphScopedSearch.SearchAsync(
                     mainSearchQuery, startNodeId, clampedDepth,
-                    q =>
+                    innerSearch: null,
+                    cancellationToken,
+                    scopedInnerSearch: (q, graphScopeKeys) =>
                     {
                         innerSyntacticStarted = true;
-                        return syntacticService.SearchAsync(q);
+                        return syntacticService.SearchAsync(q, graphScopeKeys);
                     },
-                    cancellationToken);
+                    graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
+            }
+            catch (SearchPaginationLimitExceededException ex)
+            {
+                return SearchError(
+                    "PAGINATION_LIMIT_EXCEEDED",
+                    Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
             }
             catch (RedisConnectionException ex)
             {
@@ -3399,6 +3432,12 @@ app.MapGet("/api/search", async (
             {
                 searchResult = await semanticService.SearchAsync(
                     mainSearchQuery, config, cancellationToken);
+            }
+            catch (SearchPaginationLimitExceededException ex)
+            {
+                return SearchError(
+                    "PAGINATION_LIMIT_EXCEEDED",
+                    Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
             }
             catch (EmbeddingApiException ex)
             {

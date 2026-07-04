@@ -6,6 +6,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
 
@@ -278,8 +279,8 @@ public class GraphScopedSearchIntegrationTests
             "mu-A",
             depth: 2);
 
-        // Assert — TotalCount reflects the filtered/enriched result count after offset
-        result.TotalCount.ShouldBe(1);
+        // Assert — TotalCount reflects the filtered/enriched result count before offset
+        result.TotalCount.ShouldBe(3);
         result.Results.Count.ShouldBe(1);
         result.Results[0].MemoryUnitId.ShouldBe("mu-B");
     }
@@ -325,46 +326,98 @@ public class GraphScopedSearchIntegrationTests
     }
 
     [Fact]
-    public async Task SearchAsync_GraphScopedInnerSearch_ShouldScanBeyondInitialWindowToReturnExactTotal()
+    public async Task SearchAsync_GraphScopedInnerSearch_ShouldPassTenantScopedKeysToInnerSearch()
     {
-        // Arrange — graph scope contains only the starting node; the in-graph hit lands beyond the first page
+        // Arrange — graph scope contains only the starting node.
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         string caseId = $"case-{Guid.NewGuid():N}";
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
         await CreateMemoryUnitNodeAsync(falkor, tenantId, "mu-target", caseId);
 
         GraphScopedSearch service = CreateService();
+        List<SearchQuery> observedQueries = [];
+        List<IReadOnlyCollection<RedisKey>> observedKeySets = [];
 
-        List<ScoredResult> globalResults =
-        [
-            CreateScoredResult("mu-out-1", 0.99, "semantic"),
-            CreateScoredResult("mu-out-2", 0.98, "semantic"),
-            CreateScoredResult("mu-out-3", 0.97, "semantic"),
-            CreateScoredResult("mu-out-4", 0.96, "semantic"),
-            CreateScoredResult("mu-target", 0.95, "semantic"),
-            CreateScoredResult("mu-out-5", 0.94, "semantic"),
-        ];
-
-        Task<SearchResult> InnerSearch(SearchQuery q) => Task.FromResult(new SearchResult
+        Task<SearchResult> InnerSearch(SearchQuery q, IReadOnlyCollection<RedisKey> graphScopeKeys)
         {
-            Results = globalResults.Skip(q.Offset).Take(q.MaxResults).ToList(),
-            TotalCount = globalResults.Count,
-            HasIndexedMemoryUnits = true,
-            Query = q.Query,
-        });
+            observedQueries.Add(q);
+            observedKeySets.Add(graphScopeKeys);
+            return Task.FromResult(new SearchResult
+            {
+                Results = [CreateScoredResult("mu-target", 0.95, "syntactic")],
+                TotalCount = 1,
+                HasIndexedMemoryUnits = true,
+                Query = q.Query,
+            });
+        }
 
-        // Act — exact graph-scoped counting should continue scanning until the in-graph hit is found
+        // Act
         SearchResult result = await service.SearchAsync(
             new SearchQuery { TenantId = tenantId, Query = "target", MaxResults = 1 },
             "mu-target",
             depth: 0,
-            InnerSearch);
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: InnerSearch,
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
 
         // Assert
+        observedQueries.Count.ShouldBe(1);
+        observedQueries[0].Offset.ShouldBe(0);
+        observedQueries[0].MaxResults.ShouldBe(1);
+        observedKeySets.Count.ShouldBe(1);
+        observedKeySets[0].ShouldContain((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(tenantId, "mu-target"));
         result.TotalCount.ShouldBe(1);
         result.Results.Count.ShouldBe(1);
         result.Results[0].MemoryUnitId.ShouldBe("mu-target");
-        result.Results[0].Axis.ShouldBe("semantic");
+        result.Results[0].Axis.ShouldBe("syntactic");
+    }
+
+    [Fact]
+    public async Task SearchAsync_GraphScopedInnerSearch_PagesShouldBeDisjointAndOrdered()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string caseId = $"case-{Guid.NewGuid():N}";
+        await SeedGraphChainAsync(tenantId, caseId, "mu-page-a", "mu-page-b", "mu-page-c");
+
+        GraphScopedSearch service = CreateService();
+        List<ScoredResult> scopedAxisResults =
+        [
+            CreateScoredResult("mu-page-a", 0.99, "syntactic"),
+            CreateScoredResult("mu-page-b", 0.98, "syntactic"),
+            CreateScoredResult("mu-page-c", 0.97, "syntactic"),
+        ];
+
+        Task<SearchResult> InnerSearch(SearchQuery q, IReadOnlyCollection<RedisKey> _) => Task.FromResult(new SearchResult
+        {
+            Results = scopedAxisResults.Take(q.MaxResults).ToList(),
+            TotalCount = scopedAxisResults.Count,
+            HasIndexedMemoryUnits = true,
+            Query = q.Query,
+        });
+
+        SearchResult page1 = await service.SearchAsync(
+            new SearchQuery { TenantId = tenantId, Query = "page", MaxResults = 2, Offset = 0 },
+            "mu-page-a",
+            depth: 2,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: InnerSearch,
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
+        SearchResult page2 = await service.SearchAsync(
+            new SearchQuery { TenantId = tenantId, Query = "page", MaxResults = 2, Offset = 2 },
+            "mu-page-a",
+            depth: 2,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: InnerSearch,
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
+
+        page1.TotalCount.ShouldBe(3);
+        page2.TotalCount.ShouldBe(3);
+        page1.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-page-a", "mu-page-b"]);
+        page2.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-page-c"]);
+        page1.Results.Select(r => r.MemoryUnitId).Intersect(page2.Results.Select(r => r.MemoryUnitId)).ShouldBeEmpty();
     }
 
     [Fact]

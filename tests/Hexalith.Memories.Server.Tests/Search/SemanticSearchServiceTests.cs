@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 
 using Shouldly;
@@ -194,6 +195,7 @@ public class SemanticSearchServiceTests
     [InlineData(0, 2, 2)]
     [InlineData(2, 2, 4)]
     [InlineData(-5, 2, 2)]
+    [InlineData(150, 10, 160)]
     [InlineData(900, 100, 1000)]
     public void CalculateKnnCandidateCount_WithOffset_ShouldReturnCandidateWindow(
         int offset,
@@ -208,15 +210,41 @@ public class SemanticSearchServiceTests
     [Fact]
     public void CalculateKnnCandidateCount_WhenWindowExceedsLimit_ShouldThrowArgumentOutOfRange()
     {
-        Should.Throw<ArgumentOutOfRangeException>(
+        Should.Throw<SearchPaginationLimitExceededException>(
             () => SemanticSearchService.CalculateKnnCandidateCount(901, 100));
     }
 
     [Fact]
     public void CalculateKnnCandidateCount_WhenOffsetAdditionOverflows_ShouldThrowArgumentOutOfRange()
     {
-        Should.Throw<ArgumentOutOfRangeException>(
+        Should.Throw<SearchPaginationLimitExceededException>(
             () => SemanticSearchService.CalculateKnnCandidateCount(int.MaxValue, 100));
+    }
+
+    [Fact]
+    public void ValidateGraphScopeKeys_WithTenantScopedSemanticKeys_ShouldReturnDistinctKeys()
+    {
+        RedisKey[] keys = SemanticSearchService.ValidateGraphScopeKeys(
+            "tenant-a",
+            [
+                IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1"),
+                IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1"),
+                IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-2"),
+            ]);
+
+        keys.ShouldBe(
+        [
+            IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1"),
+            IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-2"),
+        ]);
+    }
+
+    [Fact]
+    public void ValidateGraphScopeKeys_WithForeignTenantSemanticKey_ShouldThrow()
+    {
+        Should.Throw<ArgumentException>(() => SemanticSearchService.ValidateGraphScopeKeys(
+            "tenant-a",
+            [IndexSchemaDefinitions.BuildSemanticKey("tenant-b", "mu-1")]));
     }
 
     [Fact]

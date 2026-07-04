@@ -4,7 +4,11 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 using NRedisStack.Search;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -318,6 +322,72 @@ public class SyntacticSearchServiceTests
         result.CaseId.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task SearchAsync_WithGraphScopeKeys_ShouldApplyInKeysBeforeLimit()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        var service = new SyntacticSearchService(redis, NullLogger<SyntacticSearchService>.Instance);
+        List<IReadOnlyList<object>> observedArguments = [];
+
+        db.ExecuteAsync(
+                Arg.Is<string>(command => command == "FT.SEARCH"),
+                Arg.Do<ICollection<object>>(args => observedArguments.Add(args.ToArray())),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateRawSearchResult());
+
+        Hexalith.Memories.Contracts.V1.SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = "tenant1",
+                Query = "outage",
+                Offset = 25,
+                MaxResults = 150,
+            },
+            [
+                IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"),
+                IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"),
+            ]);
+
+        result.TotalCount.ShouldBe(1);
+        observedArguments.Count.ShouldBe(1);
+        IReadOnlyList<object> args = observedArguments[0];
+        int inKeysIndex = IndexOf(args, "INKEYS");
+        int limitIndex = IndexOf(args, "LIMIT");
+        inKeysIndex.ShouldBeGreaterThan(1);
+        limitIndex.ShouldBeGreaterThan(inKeysIndex);
+        args[inKeysIndex + 1].ShouldBe(2);
+        args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"));
+        args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"));
+        args[limitIndex + 1].ShouldBe(25);
+        args[limitIndex + 2].ShouldBe(150);
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithGraphScopeKeys_WhenKeyIsNotTenantScoped_ShouldThrowBeforeRedisCommand()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        var service = new SyntacticSearchService(redis, NullLogger<SyntacticSearchService>.Instance);
+
+        await Should.ThrowAsync<ArgumentException>(() => service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = "tenant1",
+                Query = "outage",
+                Offset = 0,
+                MaxResults = 10,
+            },
+            [(RedisKey)"tenant2:mu:mu-001"]));
+
+        await db.DidNotReceive().ExecuteAsync(
+            Arg.Any<string>(),
+            Arg.Any<ICollection<object>>(),
+            Arg.Any<CommandFlags>());
+    }
+
     private static Document CreateDocument(
         string id,
         double score,
@@ -342,5 +412,36 @@ public class SyntacticSearchServiceTests
         }
 
         return new Document(id, fields, score);
+    }
+
+    private static RedisResult CreateRawSearchResult() => RedisResult.Create(
+    [
+        RedisResult.Create(1),
+        RedisResult.Create((RedisValue)IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001")),
+        RedisResult.Create((RedisValue)"7.5"),
+        RedisResult.Create(
+        [
+            RedisResult.Create((RedisValue)"content"),
+            RedisResult.Create((RedisValue)"Outage report"),
+            RedisResult.Create((RedisValue)"sourceUri"),
+            RedisResult.Create((RedisValue)"file:///outage.md"),
+            RedisResult.Create((RedisValue)"sourceType"),
+            RedisResult.Create((RedisValue)"file"),
+            RedisResult.Create((RedisValue)"caseId"),
+            RedisResult.Create((RedisValue)"case-1"),
+        ]),
+    ]);
+
+    private static int IndexOf(IReadOnlyList<object> values, string expected)
+    {
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (string.Equals(values[i].ToString(), expected, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 }

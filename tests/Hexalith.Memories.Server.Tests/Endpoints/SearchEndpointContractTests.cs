@@ -101,6 +101,36 @@ public sealed class SearchEndpointContractTests : IDisposable
     }
 
     [Fact]
+    public async Task GraphSearch_WhenCandidateWindowExceeded_ReturnsPaginationLimitExceeded()
+    {
+        StubTenantActive("acme-search");
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&axis=graph&startNodeId=mu-1&offset=901&maxResults=100");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("PAGINATION_LIMIT_EXCEEDED");
+        error.Suggestion.ShouldContain("Reduce offset or maxResults");
+    }
+
+    [Fact]
+    public async Task HybridSearch_WhenCandidateWindowExceeded_ReturnsPaginationLimitExceeded()
+    {
+        StubTenantActive("acme-search");
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=hybrid&axes=syntactic&offset=901&maxResults=100");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("PAGINATION_LIMIT_EXCEEDED");
+        error.Suggestion.ShouldContain("Reduce offset or maxResults");
+    }
+
+    [Fact]
     public async Task Traverse_WhenGraphQueryTimesOut_ReturnsGraphTimeout()
     {
         StubTenantActive("acme-search");

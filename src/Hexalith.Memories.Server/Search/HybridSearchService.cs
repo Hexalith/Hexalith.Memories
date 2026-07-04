@@ -262,9 +262,10 @@ internal sealed partial class HybridSearchService(
 
     private static SearchQuery CreateAxisQuery(SearchQuery query)
     {
-        int requestedOffset = Math.Max(query.Offset, 0);
-        int requestedMaxResults = Math.Clamp(query.MaxResults, 1, 100);
-        int axisMaxResults = (int)Math.Clamp((long)requestedOffset + requestedMaxResults, 1L, 100L);
+        int axisMaxResults = SearchPaginationOptions.CalculateCandidateWindow(
+            "hybrid",
+            query.Offset,
+            query.MaxResults);
 
         return query with
         {
@@ -299,8 +300,8 @@ internal sealed partial class HybridSearchService(
 
         try
         {
-            int targetWindowSize = Math.Clamp(axisQuery.MaxResults, 1, 100);
-            int currentOffset = Math.Max(axisQuery.Offset, 0);
+            int targetWindowSize = SearchPaginationOptions.NormalizeCandidateSize(axisQuery.MaxResults);
+            int currentOffset = SearchPaginationOptions.NormalizeOffset(axisQuery.Offset);
             long totalCount = 0;
             bool hasIndexedMemoryUnits = false;
             SearchResult? firstPage = null;
@@ -353,6 +354,10 @@ internal sealed partial class HybridSearchService(
                 };
         }
         catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (SearchPaginationLimitExceededException)
         {
             throw;
         }

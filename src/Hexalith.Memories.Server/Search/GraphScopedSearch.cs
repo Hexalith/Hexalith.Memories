@@ -27,7 +27,6 @@ public sealed partial class GraphScopedSearch
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
     private static readonly long GraphOperationTimeoutMilliseconds =
         GraphQueryExecutionOptions.ToServerTimeoutMilliseconds(GraphOperationTimeout);
-    private const int MaxInnerSearchPageSize = 100;
     private const int MaxSnippetLength = 200;
 
     private readonly IConnectionMultiplexer _falkorDb;
@@ -62,16 +61,22 @@ public sealed partial class GraphScopedSearch
         string startNodeId,
         int depth,
         Func<SearchQuery, Task<SearchResult>>? innerSearch = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<SearchQuery, IReadOnlyCollection<RedisKey>, Task<SearchResult>>? scopedInnerSearch = null,
+        Func<string, string, string>? graphScopeKeyBuilder = null)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
 
         SearchQuery normalizedQuery = query with
         {
-            MaxResults = Math.Clamp(query.MaxResults, 1, 100),
-            Offset = Math.Max(query.Offset, 0),
+            MaxResults = SearchPaginationOptions.NormalizePageSize(query.MaxResults),
+            Offset = SearchPaginationOptions.NormalizeOffset(query.Offset),
         };
+        int candidateWindow = SearchPaginationOptions.CalculateCandidateWindow(
+            "graph-scoped",
+            normalizedQuery.Offset,
+            normalizedQuery.MaxResults);
 
         // Stage 1: Traverse FalkorDB graph
         FalkorDB falkor = new(_falkorDb.GetDatabase());
@@ -125,11 +130,11 @@ public sealed partial class GraphScopedSearch
                 Results = [],
                 TotalCount = 0,
                 HasIndexedMemoryUnits = await HasIndexedMemoryUnitsAsync(falkor, graphId, cancellationToken).ConfigureAwait(false),
-                Query = innerSearch is not null ? normalizedQuery.Query : startNodeId,
+                Query = innerSearch is not null || scopedInnerSearch is not null ? normalizedQuery.Query : startNodeId,
             };
         }
 
-        // Mode 2: Graph-scoped inner search (traverse + post-filter)
+        // Mode 2: Graph-scoped inner search.
         if (innerSearch is not null)
         {
             HashSet<string> graphSet = new(traversedNodes.Select(n => n.NodeId));
@@ -137,24 +142,41 @@ public sealed partial class GraphScopedSearch
                 normalizedQuery,
                 graphSet,
                 innerSearch,
+                candidateWindow,
                 cancellationToken).ConfigureAwait(false);
         }
 
-        // Mode 1: Pure graph traversal — sort by hop distance, clamp to MaxResults, enrich
+        if (scopedInnerSearch is not null)
+        {
+            ArgumentNullException.ThrowIfNull(graphScopeKeyBuilder);
+
+            RedisKey[] graphScopeKeys = [.. traversedNodes
+                .Select(n => (RedisKey)graphScopeKeyBuilder(normalizedQuery.TenantId, n.NodeId))
+                .Distinct()];
+
+            return await SearchWithinGraphScopeAsync(
+                normalizedQuery,
+                graphScopeKeys,
+                scopedInnerSearch,
+                candidateWindow,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // Mode 1: Pure graph traversal — sort by hop distance, enrich/filter, then paginate.
         List<(string NodeId, int HopDistance)> sorted = traversedNodes
             .OrderBy(n => n.HopDistance)
             .ThenBy(n => n.NodeId, StringComparer.Ordinal)
-            .Skip(normalizedQuery.Offset)
-            .Take(normalizedQuery.MaxResults)
             .ToList();
 
-        List<ScoredResult> results = await EnrichResultsAsync(
+        List<ScoredResult> enrichableResults = await EnrichResultsAsync(
             _redis.GetDatabase(), normalizedQuery.TenantId, sorted, normalizedQuery.SourceTypeFilter, normalizedQuery.MetadataQuery).ConfigureAwait(false);
 
         return new SearchResult
         {
-            Results = results,
-            TotalCount = results.Count,
+            Results = [.. enrichableResults
+                .Skip(normalizedQuery.Offset)
+                .Take(normalizedQuery.MaxResults)],
+            TotalCount = enrichableResults.Count,
             HasIndexedMemoryUnits = true,
             Query = startNodeId,
         };
@@ -200,58 +222,62 @@ public sealed partial class GraphScopedSearch
         SearchQuery query,
         HashSet<string> graphSet,
         Func<SearchQuery, Task<SearchResult>> innerSearch,
+        int candidateWindow,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(graphSet);
         ArgumentNullException.ThrowIfNull(innerSearch);
 
-        int targetWindowSize = query.Offset + query.MaxResults;
-        int innerOffset = 0;
-        long totalCount = 0;
-        bool hasIndexedMemoryUnits = false;
-        List<ScoredResult> windowedResults = [];
+        cancellationToken.ThrowIfCancellationRequested();
 
-        while (true)
+        SearchResult innerResult = await innerSearch(query with
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            Offset = 0,
+            MaxResults = candidateWindow,
+        }).ConfigureAwait(false);
 
-            SearchQuery innerQuery = query with
-            {
-                Offset = innerOffset,
-                MaxResults = MaxInnerSearchPageSize,
-            };
-
-            SearchResult innerResult = await innerSearch(innerQuery).ConfigureAwait(false);
-            hasIndexedMemoryUnits |= innerResult.HasIndexedMemoryUnits;
-
-            List<ScoredResult> filteredBatch = FilterToGraphScope(innerResult.Results, graphSet);
-            totalCount += filteredBatch.Count;
-
-            int remainingWindow = targetWindowSize - windowedResults.Count;
-            if (remainingWindow > 0)
-            {
-                windowedResults.AddRange(filteredBatch.Take(remainingWindow));
-            }
-
-            if (innerResult.TotalCount == 0 ||
-                innerOffset + MaxInnerSearchPageSize >= innerResult.TotalCount ||
-                totalCount >= graphSet.Count)
-            {
-                break;
-            }
-
-            innerOffset += MaxInnerSearchPageSize;
-        }
+        List<ScoredResult> filteredResults = FilterToGraphScope(innerResult.Results, graphSet);
 
         return new SearchResult
         {
-            Results = windowedResults
+            Results = filteredResults
                 .Skip(query.Offset)
                 .Take(query.MaxResults)
                 .ToList(),
-            TotalCount = totalCount,
-            HasIndexedMemoryUnits = hasIndexedMemoryUnits,
+            TotalCount = filteredResults.Count,
+            HasIndexedMemoryUnits = innerResult.HasIndexedMemoryUnits,
+            Query = query.Query,
+        };
+    }
+
+    private static async Task<SearchResult> SearchWithinGraphScopeAsync(
+        SearchQuery query,
+        IReadOnlyCollection<RedisKey> graphScopeKeys,
+        Func<SearchQuery, IReadOnlyCollection<RedisKey>, Task<SearchResult>> scopedInnerSearch,
+        int candidateWindow,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(graphScopeKeys);
+        ArgumentNullException.ThrowIfNull(scopedInnerSearch);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        SearchResult innerResult = await scopedInnerSearch(query with
+        {
+            Offset = 0,
+            MaxResults = candidateWindow,
+        }, graphScopeKeys).ConfigureAwait(false);
+
+        return new SearchResult
+        {
+            Results = innerResult.Results
+                .Skip(query.Offset)
+                .Take(query.MaxResults)
+                .ToList(),
+            TotalCount = innerResult.TotalCount,
+            HasIndexedMemoryUnits = innerResult.HasIndexedMemoryUnits,
             Query = query.Query,
         };
     }

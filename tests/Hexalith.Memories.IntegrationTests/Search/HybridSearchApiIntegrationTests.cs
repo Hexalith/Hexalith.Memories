@@ -5,9 +5,15 @@ using System.Net.Http.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.TestHelpers.Factories;
+
+using Microsoft.Extensions.Logging.Abstractions;
 
 using NFalkorDB;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -43,6 +49,50 @@ public sealed class HybridSearchApiIntegrationTests
         result.Results.Select(item => item.MemoryUnitId).ShouldContain("mu-hybrid-a");
         result.Results.Select(item => item.MemoryUnitId).ShouldContain("mu-hybrid-b");
         result.Results.All(item => item.GraphScore.HasValue).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GetSearch_HybridSyntacticOffsetBeyondOneHundredWithinWindow_ShouldReturnFusedPageAsync()
+    {
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
+
+        for (int i = 0; i < 130; i++)
+        {
+            await SeedIndexedDocumentAsync(
+                tenantId,
+                $"mu-hybrid-page-{i:D3}",
+                $"pagination common window document {i:D3}");
+        }
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={tenantId}&query=pagination%20common%20window%20document&axis=hybrid&axes=syntactic&maxResults=5&offset=120");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Degraded.ShouldBeFalse();
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results.Count.ShouldBe(5);
+        result.TotalCount.ShouldBe(125);
+        result.Results.ShouldAllBe(static item => item.SyntacticScore.HasValue);
+    }
+
+    [Fact]
+    public async Task GetSearch_HybridSyntacticOffsetBeyondCandidateWindow_ShouldReturnPaginationLimitExceededAsync()
+    {
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={tenantId}&query=pagination&axis=hybrid&axes=syntactic&maxResults=1&offset=1000");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("PAGINATION_LIMIT_EXCEEDED");
+        error.Message.ShouldContain("hybrid");
+        error.Suggestion.ShouldContain("offset + maxResults");
     }
 
     private async Task SeedGraphChainAsync(string tenantId, string caseId, params string[] nodeIds)
@@ -92,6 +142,22 @@ public sealed class HybridSearchApiIntegrationTests
             DateTimeOffset.UtcNow,
             "{}");
         await falkor.QueryAsync(tenantId, query, parameters);
+    }
+
+    private async Task SeedIndexedDocumentAsync(string tenantId, string memoryUnitId, string content)
+    {
+        IndexInput input = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: memoryUnitId,
+            content: content,
+            caseId: "case-hybrid-pagination");
+
+        var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        IndexSyntacticActivity activity = new(
+            _fixture.RedisConnection,
+            NullLogger<IndexSyntacticActivity>.Instance);
+
+        await activity.RunAsync(context, input);
     }
 
     private async Task SeedSyntacticHashAsync(string tenantId, string memoryUnitId, string content)

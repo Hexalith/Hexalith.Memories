@@ -376,6 +376,45 @@ public class HybridSearchServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_PaginationBeyondRank100WithinWindow_ShouldRequestFullCandidateWindow()
+    {
+        var (service, _, semantic, _, _) = CreateService();
+        HashSet<string> axes = ["semantic"];
+
+        ScoredResult[] results = Enumerable.Range(0, 160)
+            .Select(i => MakeResult($"mu-{i:D3}", 1.0 - (i * 0.001), "semantic"))
+            .ToArray();
+        semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult(results));
+
+        HybridSearchResult hybridResult = await service.SearchAsync(
+            MakeQuery(maxResults: 10, offset: 150), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        await semantic.Received(1)(
+            Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 160),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+        hybridResult.TotalCount.ShouldBe(160);
+        hybridResult.Results.Count.ShouldBe(10);
+        hybridResult.Results[0].MemoryUnitId.ShouldBe("mu-150");
+        hybridResult.Results[9].MemoryUnitId.ShouldBe("mu-159");
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenRequestedWindowExceedsLimit_ShouldThrowWithoutExecutingAxes()
+    {
+        var (service, syntactic, semantic, graph, _) = CreateService();
+        HashSet<string> axes = ["syntactic", "semantic", "graph"];
+
+        await Should.ThrowAsync<SearchPaginationLimitExceededException>(() => service.SearchAsync(
+            MakeQuery(maxResults: 100, offset: 901), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None));
+
+        await syntactic.DidNotReceive()(Arg.Any<SearchQuery>());
+        await semantic.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
+        await graph.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SearchAsync_PreUnavailableSemanticAxis_ShouldRemainDegraded()
     {
         var (service, syntactic, semantic, _, _) = CreateService();

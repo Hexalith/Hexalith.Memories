@@ -45,4 +45,16 @@ public class SearchEndpointErrorResponseFactoryTests
         response.Message.ShouldContain("768");
         response.Suggestion.ShouldBe("Align the tenant embedding configuration with the indexed vector dimensions, then reindex and retry.");
     }
+
+    [Fact]
+    public void CreatePaginationLimitExceeded_ShouldReturnStructuredError()
+    {
+        SearchPaginationLimitExceededException exception = new("hybrid", 901, 100, 1_000);
+
+        ErrorResponse response = SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(exception);
+
+        response.Code.ShouldBe("PAGINATION_LIMIT_EXCEEDED");
+        response.Message.ShouldContain("offset + maxResults up to 1000");
+        response.Suggestion.ShouldContain("Reduce offset or maxResults");
+    }
 }

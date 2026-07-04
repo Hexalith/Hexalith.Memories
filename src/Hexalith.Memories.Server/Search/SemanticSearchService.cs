@@ -26,8 +26,6 @@ using RedisSearchResult = NRedisStack.Search.SearchResult;
 public sealed partial class SemanticSearchService
 {
     private const int MaxSnippetLength = 200;
-    private const int MaxResultsUpperBound = 100;
-    private const int MaxKnnCandidateWindow = 1_000;
     private static readonly string[] _requiredEnrichmentFields = ["content", "sourceUri", "sourceType"];
 
     private readonly IConnectionMultiplexer _redis;
@@ -57,14 +55,27 @@ public sealed partial class SemanticSearchService
         SearchQuery query,
         TenantEmbeddingConfig embeddingConfig,
         CancellationToken cancellationToken)
+        => await SearchAsync(query, embeddingConfig, graphScopeKeys: null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Executes a semantic search using KNN vector similarity with an optional graph-scope key pre-filter.</summary>
+    /// <param name="query">The search query parameters.</param>
+    /// <param name="embeddingConfig">The tenant's embedding configuration.</param>
+    /// <param name="graphScopeKeys">Optional tenant-scoped semantic hash keys to apply with RediSearch <c>INKEYS</c>.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>Ranked search results with cosine similarity scores.</returns>
+    internal async Task<Contracts.V1.SearchResult> SearchAsync(
+        SearchQuery query,
+        TenantEmbeddingConfig embeddingConfig,
+        IReadOnlyCollection<RedisKey>? graphScopeKeys,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(embeddingConfig);
         TenantIdGuard.Validate(query.TenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Query);
 
-        int maxResults = Math.Clamp(query.MaxResults, 1, MaxResultsUpperBound);
-        int offset = Math.Max(query.Offset, 0);
+        int maxResults = SearchPaginationOptions.NormalizeCandidateSize(query.MaxResults);
+        int offset = SearchPaginationOptions.NormalizeOffset(query.Offset);
         int candidateCount = CalculateKnnCandidateCount(offset, maxResults);
 
         // Step 1: Embed the query text
@@ -98,6 +109,37 @@ public sealed partial class SemanticSearchService
         var ft = db.FT();
         string indexName = IndexSchemaDefinitions.GetSemanticActiveAliasName(query.TenantId);
         string fallbackIndexName = IndexSchemaDefinitions.GetSemanticIndexName(query.TenantId);
+
+        RedisKey[]? scopedKeys = graphScopeKeys is null
+            ? null
+            : ValidateGraphScopeKeys(query.TenantId, graphScopeKeys);
+
+        if (scopedKeys is not null)
+        {
+            if (scopedKeys.Length == 0)
+            {
+                return new Contracts.V1.SearchResult
+                {
+                    Results = [],
+                    TotalCount = 0,
+                    HasIndexedMemoryUnits = true,
+                    Query = query.Query,
+                };
+            }
+
+            return await SearchWithGraphScopeKeysAsync(
+                db,
+                query,
+                queryVectorBytes,
+                queryString,
+                indexName,
+                fallbackIndexName,
+                scopedKeys,
+                embeddingConfig.Dimensions,
+                candidateCount,
+                offset,
+                maxResults).ConfigureAwait(false);
+        }
 
         // Step 4: Execute KNN search
         long searchStart = Environment.TickCount64;
@@ -181,10 +223,153 @@ SearchSucceeded:
         return new Contracts.V1.SearchResult
         {
             Results = results,
-            TotalCount = results.Count,
+            TotalCount = candidateResults.Count,
             HasIndexedMemoryUnits = true,
             Query = query.Query,
         };
+    }
+
+    private async Task<Contracts.V1.SearchResult> SearchWithGraphScopeKeysAsync(
+        IDatabase db,
+        SearchQuery query,
+        byte[] queryVectorBytes,
+        string queryString,
+        string indexName,
+        string fallbackIndexName,
+        IReadOnlyList<RedisKey> graphScopeKeys,
+        int embeddingDimensions,
+        int candidateCount,
+        int offset,
+        int maxResults)
+    {
+        long searchStart = Environment.TickCount64;
+        RedisResult rawResult;
+        try
+        {
+            rawResult = await ExecuteScopedKnnSearchAsync(
+                db,
+                indexName,
+                queryString,
+                queryVectorBytes,
+                graphScopeKeys,
+                candidateCount).ConfigureAwait(false);
+        }
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
+        {
+            if (!string.Equals(indexName, fallbackIndexName, StringComparison.Ordinal))
+            {
+                indexName = fallbackIndexName;
+                try
+                {
+                    rawResult = await ExecuteScopedKnnSearchAsync(
+                        db,
+                        indexName,
+                        queryString,
+                        queryVectorBytes,
+                        graphScopeKeys,
+                        candidateCount).ConfigureAwait(false);
+                    goto SearchSucceeded;
+                }
+                catch (RedisServerException fallbackEx) when (RediSearchErrorClassifier.IsMissingIndexError(fallbackEx))
+                {
+                }
+            }
+
+            LogMissingVectorIndex(_logger, indexName, query.TenantId);
+            return new Contracts.V1.SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = false,
+                Query = query.Query,
+            };
+        }
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsQuerySyntaxError(ex))
+        {
+            LogQuerySyntaxRejected(_logger, query.TenantId, "semantic");
+            return new Contracts.V1.SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = true,
+                Query = query.Query,
+            };
+        }
+        catch (RedisServerException ex) when (RediSearchErrorClassifier.IsVectorDimensionMismatchError(ex))
+        {
+            LogDimensionMismatch(_logger, indexName, queryVectorBytes.Length / sizeof(float), embeddingDimensions);
+            throw new SemanticSearchDimensionMismatchException(queryVectorBytes.Length / sizeof(float), embeddingDimensions, ex);
+        }
+
+SearchSucceeded:
+
+        (long totalResults, List<(string MemoryUnitId, double Similarity)> knnResults) = ParseRawKnnSearchResult(rawResult, query.TenantId);
+        if (totalResults == 0)
+        {
+            return new Contracts.V1.SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = true,
+                Query = query.Query,
+            };
+        }
+
+        List<ScoredResult> candidateResults = await EnrichResultsAsync(
+            db, query.TenantId, knnResults, query.MetadataQuery).ConfigureAwait(false);
+        List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
+
+        long searchElapsed = Environment.TickCount64 - searchStart;
+        LogSemanticSearchComplete(_logger, results.Count, searchElapsed);
+
+        return new Contracts.V1.SearchResult
+        {
+            Results = results,
+            TotalCount = candidateResults.Count,
+            HasIndexedMemoryUnits = true,
+            Query = query.Query,
+        };
+    }
+
+    private static async Task<RedisResult> ExecuteScopedKnnSearchAsync(
+        IDatabase db,
+        string indexName,
+        string queryString,
+        byte[] queryVectorBytes,
+        IReadOnlyList<RedisKey> graphScopeKeys,
+        int candidateCount)
+    {
+        List<object> args =
+        [
+            indexName,
+            queryString,
+            "INKEYS",
+            graphScopeKeys.Count,
+        ];
+
+        foreach (RedisKey key in graphScopeKeys)
+        {
+            args.Add(key);
+        }
+
+        args.Add("PARAMS");
+        args.Add(2);
+        args.Add("query_vec");
+        args.Add(queryVectorBytes);
+        args.Add("RETURN");
+        args.Add(2);
+        args.Add("memoryUnitId");
+        args.Add("__vector_score");
+        args.Add("SORTBY");
+        args.Add("__vector_score");
+        args.Add("ASC");
+        args.Add("LIMIT");
+        args.Add(0);
+        args.Add(candidateCount);
+        args.Add("DIALECT");
+        args.Add(2);
+
+        return await db.ExecuteAsync("FT.SEARCH", args, CommandFlags.None).ConfigureAwait(false);
     }
 
     /// <summary>Converts Redis COSINE distance to similarity score, clamped to [0.0, 1.0].</summary>
@@ -193,39 +378,89 @@ SearchSucceeded:
     internal static double ConvertDistanceToSimilarity(double distance)
         => Math.Clamp(1.0 - distance, 0.0, 1.0);
 
+    internal static RedisKey[] ValidateGraphScopeKeys(string tenantId, IReadOnlyCollection<RedisKey> graphScopeKeys)
+    {
+        ArgumentNullException.ThrowIfNull(graphScopeKeys);
+
+        RedisKey[] keys = [.. graphScopeKeys.Distinct()];
+        foreach (RedisKey key in keys)
+        {
+            if (!IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, key, out _))
+            {
+                throw new ArgumentException(
+                    "Graph scope contains a key that is not a tenant-scoped semantic memory-unit key.",
+                    nameof(graphScopeKeys));
+            }
+        }
+
+        return keys;
+    }
+
+    private static (long TotalResults, List<(string MemoryUnitId, double Similarity)> Results) ParseRawKnnSearchResult(
+        RedisResult rawResult,
+        string tenantId)
+    {
+        RedisResult[] values = (RedisResult[]?)rawResult ?? [];
+        if (values.Length == 0)
+        {
+            return (0, []);
+        }
+
+        long totalResults = Convert.ToInt64(values[0].ToString(), CultureInfo.InvariantCulture);
+        List<(string MemoryUnitId, double Similarity)> results = [];
+
+        for (int i = 1; i < values.Length;)
+        {
+            RedisKey documentId = values[i++].ToString();
+            if (i >= values.Length)
+            {
+                break;
+            }
+
+            Dictionary<string, RedisValue> fields = ParseFieldMap(values[i++]);
+            string memoryUnitId = fields.TryGetValue("memoryUnitId", out RedisValue memoryUnitIdField) && !memoryUnitIdField.IsNullOrEmpty
+                ? memoryUnitIdField.ToString()
+                : IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, documentId, out string parsedMemoryUnitId)
+                    ? parsedMemoryUnitId
+                    : documentId.ToString();
+
+            if (!fields.TryGetValue("__vector_score", out RedisValue scoreField) || scoreField.IsNullOrEmpty)
+            {
+                continue;
+            }
+
+            double distance = double.Parse(scoreField.ToString(), CultureInfo.InvariantCulture);
+            results.Add((memoryUnitId, ConvertDistanceToSimilarity(distance)));
+        }
+
+        return (totalResults, results);
+    }
+
+    private static Dictionary<string, RedisValue> ParseFieldMap(RedisResult fieldResult)
+    {
+        RedisResult[] rawFields = (RedisResult[]?)fieldResult ?? [];
+        Dictionary<string, RedisValue> fields = new(StringComparer.Ordinal);
+        for (int i = 0; i < rawFields.Length - 1; i += 2)
+        {
+            string? fieldName = rawFields[i].ToString();
+            if (string.IsNullOrEmpty(fieldName))
+            {
+                continue;
+            }
+
+            fields[fieldName] = rawFields[i + 1].ToString();
+        }
+
+        return fields;
+    }
+
     /// <summary>Calculates how many nearest-neighbor candidates Redis must return to satisfy an offset page.</summary>
     /// <param name="offset">The requested result offset. Negative values are normalized to zero.</param>
     /// <param name="maxResults">The requested page size, already normalized to the public result bounds.</param>
     /// <returns>The number of KNN candidates to request from Redis.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when the resulting candidate window is too large.</exception>
+    /// <exception cref="SearchPaginationLimitExceededException">Thrown when the resulting candidate window is too large.</exception>
     internal static int CalculateKnnCandidateCount(int offset, int maxResults)
-    {
-        int normalizedOffset = Math.Max(offset, 0);
-        int normalizedMaxResults = Math.Clamp(maxResults, 1, MaxResultsUpperBound);
-
-        int candidateCount;
-        try
-        {
-            candidateCount = checked(normalizedOffset + normalizedMaxResults);
-        }
-        catch (OverflowException)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(offset),
-                offset,
-                $"Semantic search offset plus max results must not exceed {MaxKnnCandidateWindow}.");
-        }
-
-        if (candidateCount > MaxKnnCandidateWindow)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(offset),
-                offset,
-                $"Semantic search offset plus max results must not exceed {MaxKnnCandidateWindow}.");
-        }
-
-        return candidateCount;
-    }
+        => SearchPaginationOptions.CalculateCandidateWindow("semantic", offset, maxResults);
 
     /// <summary>Builds a KNN candidate query string with optional case and source type pre-filters.</summary>
     /// <param name="candidateCount">The number of nearest-neighbor candidates Redis should return before service-side pagination.</param>
