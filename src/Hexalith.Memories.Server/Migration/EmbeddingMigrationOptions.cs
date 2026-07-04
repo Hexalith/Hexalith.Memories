@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Server.Migration;
 
-/// <summary>Options for dry-run, live, resume, and rollback embedding vector migration.</summary>
+/// <summary>Options for dry-run, live, resume, rollback, and abort embedding vector migration.</summary>
 public sealed class EmbeddingMigrationOptions
 {
     /// <summary>Gets or sets the selected command mode.</summary>
@@ -34,6 +34,15 @@ public sealed class EmbeddingMigrationOptions
 
     /// <summary>Gets or sets a value indicating whether the migration is resuming a prior attempt.</summary>
     public bool Resume { get; set; }
+
+    /// <summary>Gets or sets the unique owner id for this operator run.</summary>
+    public string OwnerId { get; set; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>Gets or sets the owner-lock time-to-live renewed by migration heartbeats.</summary>
+    public TimeSpan MarkerLockTtl { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>Gets or sets a value indicating whether stale owner-lock recovery is allowed.</summary>
+    public bool RecoverStaleLock { get; set; }
 
     /// <summary>Gets or sets the output format requested by the command.</summary>
     public string Format { get; set; } = "human";

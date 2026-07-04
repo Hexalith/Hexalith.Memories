@@ -59,6 +59,7 @@ public sealed partial class ProvisionRedisVectorActivity : WorkflowActivity<Tena
         }
 
         LogIndexCreated(_logger, indexName, input.TenantId, input.VectorDimensions);
+        EnsureAlias(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(input.TenantId), indexName);
 
         // Story 9.2 Task 4.5: create the sibling natural-language semantic index. Same HNSW/FLOAT32/COSINE
         // schema shape at the same dimensions (Risk #5 — schema drift prevented by shared core helper).
@@ -79,6 +80,7 @@ public sealed partial class ProvisionRedisVectorActivity : WorkflowActivity<Tena
         }
 
         LogIndexCreated(_logger, nlIndexName, input.TenantId, input.VectorDimensions);
+        EnsureAlias(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(input.TenantId), nlIndexName);
 
         LogActivityAudit(
             _logger,
@@ -119,6 +121,18 @@ public sealed partial class ProvisionRedisVectorActivity : WorkflowActivity<Tena
         {
             throw new InvalidOperationException(
                 $"Existing Redis Vector index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
+        }
+    }
+
+    private static void EnsureAlias(IDatabase db, string aliasName, string indexName)
+    {
+        try
+        {
+            _ = db.Execute("FT.ALIASADD", aliasName, indexName);
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("alias already exists", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+        {
         }
     }
 

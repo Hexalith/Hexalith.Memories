@@ -1,3 +1,50 @@
+# Test Automation Summary - Story 21.9 (Blue/Green Embedding Migration)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-9-blue-green-embedding-migration.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with in-process xUnit execution; no new framework introduced.
+- **Feature under test:** operator-facing blue/green embedding migration ordering, staging verification, atomic cutover gating, marker completion, rollback/abort parser surface, Redis marker/store command behavior.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] Direct HTTP API tests are not applicable. Story 21.9 is an operator/backend migration path exposed through `tools/MigrateEmbeddingVectors`, Redis store operations, and migration service orchestration rather than a server endpoint.
+
+### E2E Tests
+
+- [x] Browser UI E2E is not applicable. Story 21.9 has no module UI.
+- [x] Backend E2E-style service coverage updated in `tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs`.
+
+### Unit / Service Tests
+
+- [x] `LiveMigrationSuccessShouldVerifyStagingBeforeCutoverAndCompleteAfterConfigUpdate` - proves a live migration starts the marker, prepares staging, writes staging vectors, verifies staging, cuts over, updates config, heartbeats, then completes the marker in that order.
+- [x] `LiveMigrationVerificationFailureShouldNotCutoverUpdateConfigOrCompleteMarker` - covers the critical verification failure path: staging writes can exist, but cutover, config update, and marker completion do not occur; the active marker remains protective and a tenant failure is recorded.
+- [x] Existing Story 21.9 coverage reviewed in `MigrateEmbeddingVectorsToolTests`, `RedisEmbeddingMigrationStoreTests`, `IndexSchemaDefinitionsTests`, and migration service tests for blue/green wording, `--abort`, `SET NX` owner locking, no active-index drop during staging, schema helpers, rollback/abort invocation, and secret redaction.
+
+## Coverage
+
+- API endpoints: 0 applicable.
+- UI features: 0 applicable.
+- Migration service happy path: staging-before-cutover, verification-before-cutover, config update through cutover, and marker completion ordering covered.
+- Critical error cases: staging verification failure, tenant-level failures, per-unit provider failures, cancellation, resume-without-marker, rollback without retained target, parser mode conflict, and owner-lock conflict covered by current tests.
+- Redis/store behavior: staging index creation, legacy NL migration before staging, owner lock `SET NX`, lock conflict, and schema helper coverage present.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2,194 total, 0 failed, 1 skipped.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass; no HTTP API exists for this story surface.
+- E2E tests generated where applicable: pass; no UI/browser surface exists, backend service E2E-style orchestration tests added for live migration ordering and verification failure.
+- Tests use standard xUnit v3/Shouldly APIs, cover happy path and critical error cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.8 (Tenant Registry CAS & Rollback Integrity)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

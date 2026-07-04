@@ -11,6 +11,7 @@ using Dapr.Actors.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
 using NSubstitute;
@@ -22,7 +23,7 @@ using StackExchange.Redis;
 public class RedisEmbeddingMigrationStoreTests
 {
     [Fact]
-    public async Task DropAndRecreateSemanticIndexesAsync_LegacyNaturalLanguageHashExists_MigratesBeforeRebuildingIndexes()
+    public async Task PrepareStagingSemanticIndexesAsync_LegacyNaturalLanguageHashExists_MigratesBeforeCreatingStagingIndexes()
     {
         List<string> operations = [];
         List<object[]> ftCreateCalls = [];
@@ -69,14 +70,21 @@ public class RedisEmbeddingMigrationStoreTests
 
         RedisEmbeddingMigrationStore store = new(redis, null!, Substitute.For<IActorProxyFactory>());
 
-        await store.DropAndRecreateSemanticIndexesAsync("tenant-a", 1536, CancellationToken.None);
+        TenantEmbeddingConfig targetConfig = new(
+            "openai",
+            "text-embedding-3-small",
+            1536,
+            60,
+            "embedding-secret");
+
+        await store.PrepareStagingSemanticIndexesAsync("tenant-a", targetConfig, "version-1", CancellationToken.None);
 
         operations.Take(2).ShouldBe(["migrate:write-target", "migrate:delete-legacy"]);
-        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:" + IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")));
-        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:" + IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")));
+        operations.ShouldNotContain("drop:" + IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"));
+        operations.ShouldNotContain("drop:" + IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"));
         ftCreateCalls.Count.ShouldBe(2);
-        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a")));
-        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")));
+        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetSemanticStagingKeyPrefix("tenant-a", "version-1")));
+        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingKeyPrefix("tenant-a", "version-1")));
         ftCreateCalls.ShouldNotContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix("tenant-a")));
     }
 
@@ -110,8 +118,136 @@ public class RedisEmbeddingMigrationStoreTests
         counts.NaturalLanguageStaleMetadataCount.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task StartMigrationMarkerAsync_UsesSetNxOwnerLockWithTtl()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        ITransaction transaction = Substitute.For<ITransaction>();
+        IConnectionMultiplexer redis = CreateRedis(db, CreateServer([]));
+        db.StringGetAsync((RedisKey)"tenant-a:embedding-migration:lock", Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        db.StringSetAsync(
+                Arg.Any<RedisKey>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<TimeSpan?>(),
+                Arg.Any<When>())
+            .Returns(Task.FromResult(true));
+        db.CreateTransaction(Arg.Any<object>()).Returns(transaction);
+        transaction.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(true));
+        transaction.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
+        RedisEmbeddingMigrationStore store = new(redis, null!, Substitute.For<IActorProxyFactory>());
+
+        EmbeddingMigrationLease lease = await store.StartMigrationMarkerAsync(
+            "tenant-a",
+            EmbeddingProviderDefaults.Google(),
+            EmbeddingProviderDefaults.Ollama(),
+            "owner-1",
+            TimeSpan.FromMinutes(5),
+            resume: false,
+            recoverStaleLock: false,
+            CancellationToken.None);
+
+        lease.ShouldBe(new EmbeddingMigrationLease("owner-1", "owner-1"));
+        await db.Received(1).StringSetAsync(
+            (RedisKey)"tenant-a:embedding-migration:lock",
+            (RedisValue)"owner-1",
+            TimeSpan.FromMinutes(5),
+            When.NotExists);
+    }
+
+    [Fact]
+    public async Task StartMigrationMarkerAsync_OtherOwnerLockExists_FailsClosed()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = CreateRedis(db, CreateServer([]));
+        db.StringGetAsync((RedisKey)"tenant-a:embedding-migration:lock", Arg.Any<CommandFlags>())
+            .Returns((RedisValue)"owner-2");
+        RedisEmbeddingMigrationStore store = new(redis, null!, Substitute.For<IActorProxyFactory>());
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            store.StartMigrationMarkerAsync(
+                "tenant-a",
+                EmbeddingProviderDefaults.Google(),
+                EmbeddingProviderDefaults.Ollama(),
+                "owner-1",
+                TimeSpan.FromMinutes(5),
+                resume: false,
+                recoverStaleLock: false,
+                CancellationToken.None));
+
+        ex.Message.ShouldContain("another active run");
+        await db.DidNotReceive().StringSetAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue>(),
+            Arg.Any<TimeSpan?>(),
+            Arg.Any<When>());
+    }
+
+    [Fact]
+    public async Task StartMigrationMarkerAsync_ResumePreservesPreviousRollbackFields()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        ITransaction transaction = Substitute.For<ITransaction>();
+        IConnectionMultiplexer redis = CreateRedis(db, CreateServer([]));
+        List<HashEntry[]> markerWrites = [];
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new("tenantId", "tenant-a"),
+                new("targetProvider", "ollama"),
+                new("targetModel", "qwen3-embedding:4b"),
+                new("targetDimensions", "2560"),
+                new("migrationVersion", "original-run"),
+                new("previousProvider", "google"),
+                new("previousModel", "models/text-embedding-004"),
+                new("previousDimensions", "768"),
+                new("previousRawTarget", IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")),
+                new("previousNaturalLanguageTarget", IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")),
+            ]);
+        db.StringGetAsync((RedisKey)"tenant-a:embedding-migration:lock", Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        db.StringSetAsync(
+                Arg.Any<RedisKey>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<TimeSpan?>(),
+                Arg.Any<When>())
+            .Returns(Task.FromResult(true));
+        db.CreateTransaction(Arg.Any<object>()).Returns(transaction);
+        transaction.HashSetAsync(
+                Arg.Any<RedisKey>(),
+                Arg.Do<HashEntry[]>(entries => markerWrites.Add(entries)),
+                Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(true));
+        transaction.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
+        RedisEmbeddingMigrationStore store = new(redis, null!, Substitute.For<IActorProxyFactory>());
+
+        EmbeddingMigrationLease lease = await store.StartMigrationMarkerAsync(
+            "tenant-a",
+            EmbeddingProviderDefaults.Ollama(),
+            EmbeddingProviderDefaults.Ollama(),
+            "resume-owner",
+            TimeSpan.FromMinutes(5),
+            resume: true,
+            recoverStaleLock: false,
+            CancellationToken.None);
+
+        lease.ShouldBe(new EmbeddingMigrationLease("resume-owner", "original-run"));
+        markerWrites.ShouldAllBe(entries => HasEntry(entries, "ownerId", "resume-owner"));
+        markerWrites.ShouldAllBe(entries => HasEntry(entries, "migrationVersion", "original-run"));
+        markerWrites.ShouldAllBe(entries => !HasField(entries, "previousProvider"));
+        markerWrites.ShouldAllBe(entries => !HasField(entries, "previousRawTarget"));
+    }
+
     private static bool ContainsArgument(IEnumerable<object?> args, string expected)
         => args.Any(arg => string.Equals(arg?.ToString(), expected, StringComparison.Ordinal));
+
+    private static bool HasField(IEnumerable<HashEntry> entries, string fieldName)
+        => entries.Any(entry => string.Equals(entry.Name.ToString(), fieldName, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasEntry(IEnumerable<HashEntry> entries, string fieldName, string value)
+        => entries.Any(entry => string.Equals(entry.Name.ToString(), fieldName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Value.ToString(), value, StringComparison.Ordinal));
 
     private static IConnectionMultiplexer CreateRedis(IDatabase db, IServer server)
     {

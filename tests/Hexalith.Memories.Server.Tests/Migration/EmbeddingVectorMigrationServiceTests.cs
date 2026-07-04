@@ -270,9 +270,10 @@ public sealed class EmbeddingVectorMigrationServiceTests
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
         store.MarkerStarted.ShouldBeTrue();
         store.MarkerCompleted.ShouldBeFalse();
-        store.SetConfigCalls.ShouldBe(1);
-        store.ForceReindexValues.ShouldBe([true]);
+        store.SetConfigCalls.ShouldBe(0);
+        store.ForceReindexValues.ShouldBeEmpty();
         store.DropAndRecreateCalls.ShouldBe(1);
+        store.CutoverCalls.ShouldBe(0);
         store.RawWrites.Select(w => w.MemoryUnitId).ShouldBe(["mu-process"]);
         store.NaturalLanguageWrites.Select(w => w.MemoryUnitId).ShouldBe(["mu-process"]);
         result.Tenants[0].Raw.ShouldBe(new EmbeddingMigrationUnitCounters(1, 1, 0, 1));
@@ -321,10 +322,93 @@ public sealed class EmbeddingVectorMigrationServiceTests
             CancellationToken.None);
 
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        store.CutoverCalls.ShouldBe(1);
         store.NaturalLanguageWrites.Count.ShouldBe(1);
         store.NaturalLanguageWrites[0].DescriptionOrigin.ShouldBeNull();
         store.NaturalLanguageWrites[0].DescriptionConfidence.ShouldBeNull();
         store.NaturalLanguageWrites[0].DescriptionConfidenceSource.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task LiveMigrationSuccessShouldVerifyStagingBeforeCutoverAndCompleteAfterConfigUpdate()
+    {
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(1, 0, 0, 0, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-1", "raw text", "case-1", null),
+        ];
+
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        store.SetConfigCalls.ShouldBe(1);
+        store.CutoverCalls.ShouldBe(1);
+        store.MarkerCompleted.ShouldBeTrue();
+        store.Operations.ShouldBe(
+            [
+                "marker:start",
+                "staging:prepare",
+                "marker:heartbeat",
+                "raw:write:mu-1",
+                "marker:heartbeat",
+                "marker:heartbeat",
+                "staging:verify",
+                "staging:cutover",
+                "config:set",
+                "marker:heartbeat",
+                "marker:complete",
+            ]);
+    }
+
+    [Fact]
+    public async Task LiveMigrationVerificationFailureShouldNotCutoverUpdateConfigOrCompleteMarker()
+    {
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(1, 0, 0, 0, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-1", "raw text", "case-1", null),
+        ];
+        store.VerifyException = new InvalidOperationException("staging raw dimension mismatch");
+
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        result.Message.ShouldContain("staging raw dimension mismatch");
+        store.RawWrites.Select(w => w.MemoryUnitId).ShouldBe(["mu-1"]);
+        store.Operations.ShouldContain("staging:verify");
+        store.Operations.ShouldNotContain("staging:cutover");
+        store.SetConfigCalls.ShouldBe(0);
+        store.CutoverCalls.ShouldBe(0);
+        store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
+        store.RecordedFailures.Count.ShouldBe(1);
+        store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
     }
 
     [Fact]
@@ -443,15 +527,16 @@ public sealed class EmbeddingVectorMigrationServiceTests
             CancellationToken.None);
 
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
-        result.Message.ShouldContain("Rollback is unavailable");
+        result.Message.ShouldContain("Rollback failed closed");
         store.DropAndRecreateCalls.ShouldBe(0);
     }
 
     [Fact]
-    public async Task RollbackWithRetainedPreviousIndexesShouldStillFailClosed()
+    public async Task RollbackWithRetainedPreviousIndexesShouldRestorePreviousTargets()
     {
         FakeStore store = new();
         store.RetainedPreviousIndexes.Add("tenant-a");
+        store.MigrationMarkers["tenant-a"] = true;
         EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
 
         EmbeddingMigrationResult result = await service.RunAsync(
@@ -463,9 +548,31 @@ public sealed class EmbeddingVectorMigrationServiceTests
             },
             CancellationToken.None);
 
-        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
-        result.Message.ShouldContain("retained previous-version indexes");
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        result.Message.ShouldContain("Rollback restored");
+        store.RollbackCalls.ShouldBe(1);
         store.DropAndRecreateCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AbortModeShouldInvokeStoreAbort()
+    {
+        FakeStore store = new();
+        store.MigrationMarkers["tenant-a"] = true;
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Abort,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
+        result.Message.ShouldContain("Abort completed");
+        store.AbortCalls.ShouldBe(1);
     }
 
     [Fact]
@@ -689,15 +796,24 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         public List<bool> ForceReindexValues { get; } = [];
 
+        public List<string> Operations { get; } = [];
+
         public Dictionary<string, bool> MigrationMarkers { get; } = [];
 
         public Dictionary<string, EmbeddingMigrationMarker> ActiveMarkers { get; } = [];
 
         public HashSet<string> RetainedPreviousIndexes { get; } = [];
-
         public Exception? DropAndRecreateException { get; set; }
 
+        public Exception? VerifyException { get; set; }
+
         public Exception? CompleteMarkerException { get; set; }
+
+        public int CutoverCalls { get; private set; }
+
+        public int RollbackCalls { get; private set; }
+
+        public int AbortCalls { get; private set; }
 
         public int SetConfigCalls { get; private set; }
 
@@ -715,6 +831,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         public Task SetEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config, bool forceReindex, CancellationToken ct)
         {
+            Operations.Add("config:set");
             Configs[tenantId] = config;
             SetConfigCalls++;
             ForceReindexValues.Add(forceReindex);
@@ -727,24 +844,33 @@ public sealed class EmbeddingVectorMigrationServiceTests
         public Task<EmbeddingMigrationIndexInfo> GetIndexInfoAsync(string tenantId, CancellationToken ct)
             => Task.FromResult(Indexes.GetValueOrDefault(tenantId) ?? new EmbeddingMigrationIndexInfo(null, null));
 
-        public Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct)
+        public Task PrepareStagingSemanticIndexesAsync(string tenantId, TenantEmbeddingConfig targetConfig, string version, CancellationToken ct)
         {
+            Operations.Add("staging:prepare");
             DropAndRecreateCalls++;
             if (DropAndRecreateException is not null)
             {
                 throw DropAndRecreateException;
             }
-
             return Task.CompletedTask;
         }
 
-        public Task StartMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, bool resume, CancellationToken ct)
+        public Task<EmbeddingMigrationLease> StartMigrationMarkerAsync(
+            string tenantId,
+            TenantEmbeddingConfig currentConfig,
+            TenantEmbeddingConfig targetConfig,
+            string ownerId,
+            TimeSpan lockTtl,
+            bool resume,
+            bool recoverStaleLock,
+            CancellationToken ct)
         {
             if (resume && !MigrationMarkers.GetValueOrDefault(tenantId))
             {
                 throw new InvalidOperationException("--resume specified but no prior migration marker exists.");
             }
 
+            Operations.Add("marker:start");
             MarkerStarted = true;
             MigrationMarkers[tenantId] = true;
             ActiveMarkers[tenantId] = new EmbeddingMigrationMarker(
@@ -753,7 +879,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
                 targetConfig.Model,
                 targetConfig.Dimensions,
                 resume ? MigrationMarkerStatus.Resumed : MigrationMarkerStatus.Started);
-            return Task.CompletedTask;
+            return Task.FromResult(new EmbeddingMigrationLease(ownerId, ownerId));
         }
 
         public Task<EmbeddingMigrationMarker?> GetActiveMigrationMarkerAsync(string tenantId, CancellationToken ct)
@@ -763,8 +889,38 @@ public sealed class EmbeddingVectorMigrationServiceTests
             return Task.FromResult(stored is null || !stored.IsActive ? null : stored);
         }
 
-        public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, CancellationToken ct)
+        public Task HeartbeatMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, TimeSpan lockTtl, CancellationToken ct)
         {
+            Operations.Add("marker:heartbeat");
+            return Task.CompletedTask;
+        }
+
+        public Task VerifyStagingSemanticIndexesAsync(string tenantId, TenantEmbeddingConfig targetConfig, string version, CancellationToken ct)
+        {
+            Operations.Add("staging:verify");
+            if (VerifyException is not null)
+            {
+                throw VerifyException;
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task CutoverStagingSemanticIndexesAsync(
+            string tenantId,
+            TenantEmbeddingConfig previousConfig,
+            TenantEmbeddingConfig targetConfig,
+            EmbeddingMigrationLease lease,
+            CancellationToken ct)
+        {
+            Operations.Add("staging:cutover");
+            CutoverCalls++;
+            return SetEmbeddingConfigAsync(tenantId, targetConfig, forceReindex: false, ct);
+        }
+
+        public Task CompleteMigrationMarkerAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, CancellationToken ct)
+        {
+            Operations.Add("marker:complete");
             if (CompleteMarkerException is not null)
             {
                 throw CompleteMarkerException;
@@ -777,6 +933,23 @@ public sealed class EmbeddingVectorMigrationServiceTests
                 targetConfig.Model,
                 targetConfig.Dimensions,
                 MigrationMarkerStatus.Completed);
+            return Task.CompletedTask;
+        }
+
+        public Task RollbackMigrationAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, CancellationToken ct)
+        {
+            RollbackCalls++;
+            if (!RetainedPreviousIndexes.Contains(tenantId))
+            {
+                throw new InvalidOperationException("No retained previous blue/green target is available.");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task AbortMigrationAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, CancellationToken ct)
+        {
+            AbortCalls++;
             return Task.CompletedTask;
         }
 
@@ -805,6 +978,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         public Task WriteRawSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, RawSemanticMigrationWrite write, CancellationToken ct)
         {
+            Operations.Add("raw:write:" + write.MemoryUnitId);
             RawWrites.Add(write);
             RawStates[(tenantId, write.MemoryUnitId)] = new SemanticMigrationState(targetConfig.Provider, targetConfig.Model, targetConfig.Dimensions);
             return Task.CompletedTask;
@@ -812,6 +986,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         public Task WriteNaturalLanguageSemanticAsync(string tenantId, TenantEmbeddingConfig targetConfig, NaturalLanguageSemanticMigrationWrite write, CancellationToken ct)
         {
+            Operations.Add("nl:write:" + write.MemoryUnitId);
             NaturalLanguageWrites.Add(write);
             return Task.CompletedTask;
         }

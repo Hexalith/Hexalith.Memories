@@ -47,7 +47,7 @@ options.Interactive = !Console.IsInputRedirected;
 if (options.Mode is not EmbeddingMigrationMode.DryRun && !options.Yes && options.Interactive)
 {
     await Console.Error.WriteAsync(
-        $"Migrate tenant '{options.TenantId}' now? This drops and recreates active semantic indexes. [y/N]: ").ConfigureAwait(false);
+        $"Run {options.Mode.ToString().ToLowerInvariant()} for tenant '{options.TenantId}' now? Blue/green staging keeps active semantic indexes queryable until cutover. [y/N]: ").ConfigureAwait(false);
     string? answer = Console.ReadLine();
     if (string.Equals(answer?.Trim(), "y", StringComparison.OrdinalIgnoreCase)
         || string.Equals(answer?.Trim(), "yes", StringComparison.OrdinalIgnoreCase))
@@ -241,6 +241,10 @@ internal sealed class ParsedCommand
                     options.Mode = EmbeddingMigrationMode.Rollback;
                     selectedModes++;
                     break;
+                case "--abort":
+                    options.Mode = EmbeddingMigrationMode.Abort;
+                    selectedModes++;
+                    break;
                 case "--tenant":
                     if (!TryReadValue(args, ref i, arg, out string? tenantValue, out string? tenantError))
                     {
@@ -328,7 +332,7 @@ internal sealed class ParsedCommand
 
         if (selectedModes != 1)
         {
-            return new ParsedCommand { Error = "Select exactly one mode: --dry-run, --live, or --rollback." };
+            return new ParsedCommand { Error = "Select exactly one mode: --dry-run, --live, --rollback, or --abort." };
         }
 
         if (!string.Equals(options.Format, "human", StringComparison.OrdinalIgnoreCase)
@@ -359,17 +363,19 @@ internal sealed class ParsedCommand
 internal static class ToolHelp
 {
     public const string Text = """
-    MigrateEmbeddingVectors --dry-run|--live|--rollback [options]
+    MigrateEmbeddingVectors --dry-run|--live|--rollback|--abort [options]
 
     Required mutation safety:
       --live --tenant <tenantId> --yes
       --rollback --tenant <tenantId> --yes
+      --abort --tenant <tenantId> --yes
 
     Options:
       --dry-run                 Inventory affected tenants without writes.
-      --live                    Execute Path A migration for one tenant.
-      --rollback                Fail closed unless retained previous-version indexes exist.
-      --tenant <tenantId>       Tenant for live/rollback, optional dry-run filter.
+      --live                    Execute blue/green migration for one tenant.
+      --rollback                Restore retained previous blue/green targets.
+      --abort                   Clean or restore an interrupted migration safely.
+      --tenant <tenantId>       Tenant for live/rollback/abort, optional dry-run filter.
       --target-provider <name>  Target provider, default ollama.
       --target-model <name>     Target model, default qwen3-embedding:4b.
       --target-dimensions <n>   Target dimensions, default 2560.

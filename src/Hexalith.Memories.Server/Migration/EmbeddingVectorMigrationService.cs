@@ -69,6 +69,7 @@ public sealed class EmbeddingVectorMigrationService(
                 EmbeddingMigrationMode.DryRun => await DryRunAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
                 EmbeddingMigrationMode.Live => await LiveAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
                 EmbeddingMigrationMode.Rollback => await RollbackAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
+                EmbeddingMigrationMode.Abort => await AbortAsync(options, targetConfig, stopwatch, reports, failures, progress, ct).ConfigureAwait(false),
                 _ => CreateInvalidModeResult(options, stopwatch, reports, failures, progress),
             };
         }
@@ -91,17 +92,13 @@ public sealed class EmbeddingVectorMigrationService(
     {
         if (options.Mode is EmbeddingMigrationMode.None)
         {
-            return "Select exactly one mode: --dry-run, --live, or --rollback.";
+            return "Select exactly one mode: --dry-run, --live, --rollback, or --abort.";
         }
 
-        if (options.Mode is EmbeddingMigrationMode.Live && string.IsNullOrWhiteSpace(options.TenantId))
+        if (options.Mode is (EmbeddingMigrationMode.Live or EmbeddingMigrationMode.Rollback or EmbeddingMigrationMode.Abort)
+            && string.IsNullOrWhiteSpace(options.TenantId))
         {
-            return "--live requires --tenant <tenantId>.";
-        }
-
-        if (options.Mode is EmbeddingMigrationMode.Rollback && string.IsNullOrWhiteSpace(options.TenantId))
-        {
-            return "--rollback requires --tenant <tenantId>.";
+            return $"--{options.Mode.ToString().ToLowerInvariant()} requires --tenant <tenantId>.";
         }
 
         if (options.Mode is not EmbeddingMigrationMode.DryRun && !options.Yes)
@@ -215,14 +212,23 @@ public sealed class EmbeddingVectorMigrationService(
         EmbeddingMigrationUnitCounters naturalLanguage = EmbeddingMigrationUnitCounters.Empty;
         string? tenantLevelError = null;
         bool markerStarted = false;
+        EmbeddingMigrationLease? lease = null;
 
         try
         {
-            await store.StartMigrationMarkerAsync(tenantId, targetConfig, options.Resume, ct).ConfigureAwait(false);
+            lease = await store.StartMigrationMarkerAsync(
+                tenantId,
+                currentConfig,
+                targetConfig,
+                options.OwnerId,
+                options.MarkerLockTtl,
+                options.Resume,
+                options.RecoverStaleLock,
+                ct).ConfigureAwait(false);
             markerStarted = true;
 
-            await store.DropAndRecreateSemanticIndexesAsync(tenantId, targetConfig.Dimensions, ct).ConfigureAwait(false);
-            await store.SetEmbeddingConfigAsync(tenantId, targetConfig, forceReindex: true, ct).ConfigureAwait(false);
+            await store.PrepareStagingSemanticIndexesAsync(tenantId, targetConfig, lease.Version, ct).ConfigureAwait(false);
+            await store.HeartbeatMigrationMarkerAsync(tenantId, targetConfig, lease, options.MarkerLockTtl, ct).ConfigureAwait(false);
 
             raw = await MigrateRawAsync(
                 options,
@@ -233,6 +239,8 @@ public sealed class EmbeddingVectorMigrationService(
                 progress,
                 ct).ConfigureAwait(false);
 
+            await store.HeartbeatMigrationMarkerAsync(tenantId, targetConfig, lease, options.MarkerLockTtl, ct).ConfigureAwait(false);
+
             naturalLanguage = await MigrateNaturalLanguageAsync(
                 options,
                 targetConfig,
@@ -241,6 +249,13 @@ public sealed class EmbeddingVectorMigrationService(
                 failures,
                 progress,
                 ct).ConfigureAwait(false);
+
+            if (raw.Failed == 0 && naturalLanguage.Failed == 0)
+            {
+                await store.HeartbeatMigrationMarkerAsync(tenantId, targetConfig, lease, options.MarkerLockTtl, ct).ConfigureAwait(false);
+                await store.VerifyStagingSemanticIndexesAsync(tenantId, targetConfig, lease.Version, ct).ConfigureAwait(false);
+                await store.CutoverStagingSemanticIndexesAsync(tenantId, currentConfig, targetConfig, lease, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -252,11 +267,12 @@ public sealed class EmbeddingVectorMigrationService(
         // marker), tenant-level work failed, or per-unit failures require resume. The marker is
         // only "completed" after a clean live run.
         bool hasUnitFailures = raw.Failed > 0 || naturalLanguage.Failed > 0;
-        if (markerStarted && tenantLevelError is null && !hasUnitFailures)
+        if (markerStarted && lease is not null && tenantLevelError is null && !hasUnitFailures)
         {
             try
             {
-                await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, ct).ConfigureAwait(false);
+                await store.HeartbeatMigrationMarkerAsync(tenantId, targetConfig, lease, options.MarkerLockTtl, ct).ConfigureAwait(false);
+                await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -282,8 +298,8 @@ public sealed class EmbeddingVectorMigrationService(
         string message = tenantLevelError is not null
             ? $"Live migration aborted on tenant-level error: {tenantLevelError}"
             : manualFollowUp
-                ? "Live migration completed with failed units; rerun with --resume after resolving failures."
-                : "Live migration completed successfully.";
+                ? "Live migration completed staging with failed units; active indexes were not cut over. Rerun with --resume after resolving failures."
+                : "Live blue/green migration completed successfully.";
 
         return new EmbeddingMigrationResult(
             EmbeddingMigrationMode.Live,
@@ -305,19 +321,91 @@ public sealed class EmbeddingVectorMigrationService(
         CancellationToken ct)
     {
         string tenantId = options.TenantId!;
-        bool retainedIndexesExist = await store.HasRetainedPreviousVersionIndexesAsync(tenantId, ct).ConfigureAwait(false);
-        string message = retainedIndexesExist
-            ? "Rollback detected retained previous-version indexes, but no committed Path B restore convention is available in this story."
-            : "Rollback is unavailable for this Path A migration because no retained previous-version indexes were detected.";
+        try
+        {
+            EmbeddingMigrationLease lease = await store.StartMigrationMarkerAsync(
+                tenantId,
+                await store.GetEmbeddingConfigAsync(tenantId, ct).ConfigureAwait(false),
+                targetConfig,
+                options.OwnerId,
+                options.MarkerLockTtl,
+                resume: true,
+                recoverStaleLock: options.RecoverStaleLock,
+                ct).ConfigureAwait(false);
+            await store.RollbackMigrationAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
+            await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
 
-        return new EmbeddingMigrationResult(
-            EmbeddingMigrationMode.Rollback,
-            EmbeddingMigrationExitCodes.DomainError,
-            message,
-            stopwatch.Elapsed,
-            reports,
-            failures,
-            progress);
+            return new EmbeddingMigrationResult(
+                EmbeddingMigrationMode.Rollback,
+                EmbeddingMigrationExitCodes.Success,
+                "Rollback restored the previous blue/green embedding search targets and tenant embedding configuration.",
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string message = EmbeddingMigrationRedactor.Redact(ex.Message);
+            await AddFailureAsync(tenantId, string.Empty, "tenant", NormalizeErrorCategory(ex), ex.Message, failures, ct).ConfigureAwait(false);
+
+            return new EmbeddingMigrationResult(
+                EmbeddingMigrationMode.Rollback,
+                EmbeddingMigrationExitCodes.DomainError,
+                $"Rollback failed closed: {message}",
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
+    }
+
+    private async Task<EmbeddingMigrationResult> AbortAsync(
+        EmbeddingMigrationOptions options,
+        TenantEmbeddingConfig targetConfig,
+        Stopwatch stopwatch,
+        List<EmbeddingMigrationTenantReport> reports,
+        List<EmbeddingMigrationUnitFailure> failures,
+        List<EmbeddingMigrationProgress> progress,
+        CancellationToken ct)
+    {
+        string tenantId = options.TenantId!;
+        try
+        {
+            EmbeddingMigrationLease lease = await store.StartMigrationMarkerAsync(
+                tenantId,
+                await store.GetEmbeddingConfigAsync(tenantId, ct).ConfigureAwait(false),
+                targetConfig,
+                options.OwnerId,
+                options.MarkerLockTtl,
+                resume: true,
+                recoverStaleLock: true,
+                ct).ConfigureAwait(false);
+            await store.AbortMigrationAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
+
+            return new EmbeddingMigrationResult(
+                EmbeddingMigrationMode.Abort,
+                EmbeddingMigrationExitCodes.Success,
+                "Abort completed. Staging state was cleaned or previous active targets were restored when cutover had begun.",
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string message = EmbeddingMigrationRedactor.Redact(ex.Message);
+            await AddFailureAsync(tenantId, string.Empty, "tenant", NormalizeErrorCategory(ex), ex.Message, failures, ct).ConfigureAwait(false);
+
+            return new EmbeddingMigrationResult(
+                EmbeddingMigrationMode.Abort,
+                EmbeddingMigrationExitCodes.DomainError,
+                $"Abort failed closed: {message}",
+                stopwatch.Elapsed,
+                reports,
+                failures,
+                progress);
+        }
     }
 
     private static EmbeddingMigrationResult CreateInvalidModeResult(

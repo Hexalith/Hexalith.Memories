@@ -82,6 +82,28 @@ public class IndexSchemaDefinitionsTests
             .ShouldBe("tenant-a:memories:vec:nl");
 
     [Fact]
+    public void ActiveAliasHelpers_ReturnTenantScopedSearchAliases()
+    {
+        IndexSchemaDefinitions.GetSemanticActiveAliasName("tenant-a")
+            .ShouldBe("tenant-a:memories:vec:active");
+        IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName("tenant-a")
+            .ShouldBe("tenant-a:memories:vec:nl:active");
+    }
+
+    [Fact]
+    public void StagingHelpers_ReturnVersionedTenantScopedNames()
+    {
+        IndexSchemaDefinitions.GetSemanticStagingIndexName("tenant-a", "run-1")
+            .ShouldBe("tenant-a:memories:vec:staging:run-1");
+        IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingIndexName("tenant-a", "run-1")
+            .ShouldBe("tenant-a:memories:vec:nl:staging:run-1");
+        IndexSchemaDefinitions.BuildSemanticStagingKey("tenant-a", "run-1", "mu-1")
+            .ShouldBe("tenant-a:vec:staging:run-1:mu-1");
+        IndexSchemaDefinitions.BuildNaturalLanguageSemanticStagingKey("tenant-a", "run-1", "mu-1")
+            .ShouldBe("tenant-a:vecnl:staging:run-1:mu-1");
+    }
+
+    [Fact]
     public void GetNaturalLanguageSemanticKeyPrefix_AppendsSuffix()
         => IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")
             .ShouldBe("tenant-a:vecnl:");

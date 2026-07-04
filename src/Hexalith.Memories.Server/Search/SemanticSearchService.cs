@@ -86,7 +86,8 @@ public sealed partial class SemanticSearchService
 
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
-        string indexName = IndexSchemaDefinitions.GetSemanticIndexName(query.TenantId);
+        string indexName = IndexSchemaDefinitions.GetSemanticActiveAliasName(query.TenantId);
+        string fallbackIndexName = IndexSchemaDefinitions.GetSemanticIndexName(query.TenantId);
 
         // Step 4: Execute KNN search
         long searchStart = Environment.TickCount64;
@@ -97,6 +98,19 @@ public sealed partial class SemanticSearchService
         }
         catch (RedisServerException ex) when (RediSearchErrorClassifier.IsMissingIndexError(ex))
         {
+            if (!string.Equals(indexName, fallbackIndexName, StringComparison.Ordinal))
+            {
+                indexName = fallbackIndexName;
+                try
+                {
+                    result = await ft.SearchAsync(indexName, redisQuery).ConfigureAwait(false);
+                    goto SearchSucceeded;
+                }
+                catch (RedisServerException fallbackEx) when (RediSearchErrorClassifier.IsMissingIndexError(fallbackEx))
+                {
+                }
+            }
+
             LogMissingVectorIndex(_logger, indexName, query.TenantId);
             return new Contracts.V1.SearchResult
             {
@@ -122,6 +136,8 @@ public sealed partial class SemanticSearchService
             LogDimensionMismatch(_logger, indexName, queryVector.Length, embeddingConfig.Dimensions);
             throw new SemanticSearchDimensionMismatchException(queryVector.Length, embeddingConfig.Dimensions, ex);
         }
+
+SearchSucceeded:
 
         if (result.TotalResults == 0)
         {

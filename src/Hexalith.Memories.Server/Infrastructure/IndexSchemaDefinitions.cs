@@ -56,6 +56,24 @@ internal static class IndexSchemaDefinitions
     /// <summary>Story 9.2: key prefix suffix for natural-language semantic hash entries.</summary>
     public const string NaturalLanguageSemanticKeyPrefixSuffix = ":vecnl:";
 
+    /// <summary>Gets the active raw semantic search alias suffix.</summary>
+    public const string ActiveSemanticAliasSuffix = ":memories:vec:active";
+
+    /// <summary>Gets the active natural-language semantic search alias suffix.</summary>
+    public const string ActiveNaturalLanguageSemanticAliasSuffix = ":memories:vec:nl:active";
+
+    /// <summary>Gets the staging raw semantic index suffix prefix.</summary>
+    public const string StagingSemanticIndexSuffixPrefix = ":memories:vec:staging:";
+
+    /// <summary>Gets the staging natural-language semantic index suffix prefix.</summary>
+    public const string StagingNaturalLanguageSemanticIndexSuffixPrefix = ":memories:vec:nl:staging:";
+
+    /// <summary>Gets the staging raw semantic key prefix suffix prefix.</summary>
+    public const string StagingSemanticKeyPrefixSuffixPrefix = ":vec:staging:";
+
+    /// <summary>Gets the staging natural-language semantic key prefix suffix prefix.</summary>
+    public const string StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix = ":vecnl:staging:";
+
     /// <summary>Gets the RediSearch syntactic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
@@ -67,6 +85,26 @@ internal static class IndexSchemaDefinitions
     /// <returns>The full index name.</returns>
     public static string GetSemanticIndexName(string tenantId)
         => ValidateTenantId(tenantId) + SemanticIndexSuffix;
+
+    /// <summary>Gets the Redis Vector semantic active search alias for a tenant.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The full active alias name.</returns>
+    public static string GetSemanticActiveAliasName(string tenantId)
+        => ValidateTenantId(tenantId) + ActiveSemanticAliasSuffix;
+
+    /// <summary>Gets the previous semantic search alias for a retained migration version.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The full previous alias name.</returns>
+    public static string GetSemanticPreviousAliasName(string tenantId, string version)
+        => GetSemanticActiveAliasName(tenantId) + ":previous:" + ValidateMigrationVersion(version);
+
+    /// <summary>Gets the staging Redis Vector semantic index name for a tenant migration version.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The full staging index name.</returns>
+    public static string GetSemanticStagingIndexName(string tenantId, string version)
+        => ValidateTenantId(tenantId) + StagingSemanticIndexSuffixPrefix + ValidateMigrationVersion(version);
 
     /// <summary>Gets the key prefix for syntactic hash entries.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -87,6 +125,21 @@ internal static class IndexSchemaDefinitions
     public static string GetSemanticKeyPrefix(string tenantId)
         => ValidateTenantId(tenantId) + SemanticKeyPrefixSuffix;
 
+    /// <summary>Gets the key prefix for staging semantic hash entries.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The staging key prefix.</returns>
+    public static string GetSemanticStagingKeyPrefix(string tenantId, string version)
+        => ValidateTenantId(tenantId) + StagingSemanticKeyPrefixSuffixPrefix + ValidateMigrationVersion(version) + ":";
+
+    /// <summary>Builds a tenant-scoped staging semantic vector hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildSemanticStagingKey(string tenantId, string version, string memoryUnitId)
+        => GetSemanticStagingKeyPrefix(tenantId, version) + ValidateMemoryUnitId(memoryUnitId);
+
     /// <summary>Builds a tenant-scoped semantic memory-unit vector hash key.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="memoryUnitId">The memory-unit identifier.</param>
@@ -100,11 +153,46 @@ internal static class IndexSchemaDefinitions
     public static string GetNaturalLanguageSemanticIndexName(string tenantId)
         => ValidateTenantId(tenantId) + NaturalLanguageSemanticIndexSuffix;
 
+    /// <summary>Gets the natural-language Redis Vector active search alias for a tenant.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The full active alias name.</returns>
+    public static string GetNaturalLanguageSemanticActiveAliasName(string tenantId)
+        => ValidateTenantId(tenantId) + ActiveNaturalLanguageSemanticAliasSuffix;
+
+    /// <summary>Gets the previous natural-language semantic search alias for a retained migration version.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The full previous alias name.</returns>
+    public static string GetNaturalLanguageSemanticPreviousAliasName(string tenantId, string version)
+        => GetNaturalLanguageSemanticActiveAliasName(tenantId) + ":previous:" + ValidateMigrationVersion(version);
+
+    /// <summary>Gets the staging natural-language Redis Vector semantic index name for a tenant migration version.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The full staging index name.</returns>
+    public static string GetNaturalLanguageSemanticStagingIndexName(string tenantId, string version)
+        => ValidateTenantId(tenantId) + StagingNaturalLanguageSemanticIndexSuffixPrefix + ValidateMigrationVersion(version);
+
     /// <summary>Story 9.2: Gets the key prefix for natural-language semantic hash entries.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The key prefix.</returns>
     public static string GetNaturalLanguageSemanticKeyPrefix(string tenantId)
         => ValidateTenantId(tenantId) + NaturalLanguageSemanticKeyPrefixSuffix;
+
+    /// <summary>Gets the key prefix for staging natural-language semantic hash entries.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The staging key prefix.</returns>
+    public static string GetNaturalLanguageSemanticStagingKeyPrefix(string tenantId, string version)
+        => ValidateTenantId(tenantId) + StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix + ValidateMigrationVersion(version) + ":";
+
+    /// <summary>Builds a tenant-scoped staging natural-language semantic vector hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildNaturalLanguageSemanticStagingKey(string tenantId, string version, string memoryUnitId)
+        => GetNaturalLanguageSemanticStagingKeyPrefix(tenantId, version) + ValidateMemoryUnitId(memoryUnitId);
 
     /// <summary>Builds a tenant-scoped natural-language semantic vector hash key.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -201,6 +289,15 @@ internal static class IndexSchemaDefinitions
             .On(IndexDataType.HASH)
             .Prefix(GetSemanticKeyPrefix(tenantId));
 
+    /// <summary>Creates the FTCreateParams for a staging Redis Vector semantic index.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The FTCreateParams configured for the staging semantic index.</returns>
+    public static FTCreateParams CreateSemanticStagingParams(string tenantId, string version)
+        => new FTCreateParams()
+            .On(IndexDataType.HASH)
+            .Prefix(GetSemanticStagingKeyPrefix(tenantId, version));
+
     /// <summary>Creates the schema for a Redis Vector semantic index.</summary>
     /// <param name="dimensions">The number of embedding dimensions.</param>
     /// <returns>The schema with vector and tag fields.</returns>
@@ -214,6 +311,15 @@ internal static class IndexSchemaDefinitions
         => new FTCreateParams()
             .On(IndexDataType.HASH)
             .Prefix(GetNaturalLanguageSemanticKeyPrefix(tenantId));
+
+    /// <summary>Creates the FTCreateParams for a staging natural-language Redis Vector semantic index.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="version">The migration version.</param>
+    /// <returns>The FTCreateParams configured for the staging NL semantic index.</returns>
+    public static FTCreateParams CreateNaturalLanguageSemanticStagingParams(string tenantId, string version)
+        => new FTCreateParams()
+            .On(IndexDataType.HASH)
+            .Prefix(GetNaturalLanguageSemanticStagingKeyPrefix(tenantId, version));
 
     /// <summary>Story 9.2: Creates the schema for the natural-language Redis Vector semantic index.
     /// Mirrors <see cref="CreateSemanticSchema"/> (same HNSW/FLOAT32/COSINE shape at the same dimensions)
@@ -553,6 +659,23 @@ internal static class IndexSchemaDefinitions
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         return memoryUnitId;
+    }
+
+    private static string ValidateMigrationVersion(string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        foreach (char c in version)
+        {
+            bool allowed = char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.';
+            if (!allowed)
+            {
+                throw new ArgumentException(
+                    "Migration version may contain only ASCII letters, digits, dash, underscore, or dot.",
+                    nameof(version));
+            }
+        }
+
+        return version;
     }
 
     private static bool TryParseMemoryUnitId(string expectedPrefix, RedisKey key, out string memoryUnitId)

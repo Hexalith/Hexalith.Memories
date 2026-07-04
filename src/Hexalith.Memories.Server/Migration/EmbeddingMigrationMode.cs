@@ -19,4 +19,7 @@ public enum EmbeddingMigrationMode
 
     /// <summary>Attempt guarded rollback to retained previous-version indexes.</summary>
     Rollback,
+
+    /// <summary>Abort or clean up an interrupted blue/green migration.</summary>
+    Abort,
 }

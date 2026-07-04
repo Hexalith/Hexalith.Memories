@@ -68,7 +68,8 @@ public sealed partial class NaturalLanguageSemanticSearchService
         int clamped = Math.Clamp(topK, 1, 100);
         byte[] queryVectorBytes = MemoryMarshal.AsBytes(queryVector.Span).ToArray();
 
-        string indexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
+        string indexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(tenantId);
+        string fallbackIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
         string queryString = $"*=>[KNN {clamped} @embedding $query_vec AS __vector_score]";
 
         var redisQuery = new Query(queryString)
@@ -86,9 +87,24 @@ public sealed partial class NaturalLanguageSemanticSearchService
         }
         catch (RedisServerException ex) when (ex.Message.Contains("Unknown Index name") || ex.Message.Contains("No such index"))
         {
+            if (!string.Equals(indexName, fallbackIndexName, StringComparison.Ordinal))
+            {
+                indexName = fallbackIndexName;
+                try
+                {
+                    result = await ft.SearchAsync(indexName, redisQuery).ConfigureAwait(false);
+                    goto SearchSucceeded;
+                }
+                catch (RedisServerException fallbackEx) when (fallbackEx.Message.Contains("Unknown Index name") || fallbackEx.Message.Contains("No such index"))
+                {
+                }
+            }
+
             LogMissingNlIndex(_logger, indexName, tenantId);
             return [];
         }
+
+SearchSucceeded:
 
         if (result.TotalResults == 0)
         {

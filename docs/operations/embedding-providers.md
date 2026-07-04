@@ -221,24 +221,26 @@ Dry-run all tenants for automation:
 dotnet run --project tools\MigrateEmbeddingVectors -- --dry-run --format json --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
 ```
 
-Live Path A migration:
+Live blue/green migration:
 
 ```powershell
 dotnet run --project tools\MigrateEmbeddingVectors -- --live --tenant {TENANT_ID} --target-provider ollama --target-model qwen3-embedding:4b --target-dimensions 2560 --batch-size 100 --yes --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
 ```
 
-Live migration also performs the Story 21.3 NL namespace migration for the tenant before semantic
-index rebuild: legacy `{tenant}:vec:nl:*` hashes are copied to `{tenant}:vecnl:*`, verified, then the
-legacy copy is deleted. The raw and NL RediSearch indexes are dropped without `DD` and recreated so
-the raw semantic index no longer matches NL-only hashes.
+Live migration performs the Story 21.3 NL namespace migration before staging writes: legacy
+`{tenant}:vec:nl:*` hashes are copied to `{tenant}:vecnl:*`, verified, then the legacy copy is
+deleted. New raw and natural-language vectors are generated under versioned staging prefixes and
+staging RediSearch indexes. Active raw and NL search aliases remain queryable until staging
+verification succeeds, then cutover switches both aliases together.
 
 ### Live Migration Coordination
 
-Live migration uses a durable tenant-scoped migration marker. The cutover point begins after the
-marker is written and before semantic indexes are dropped or tenant embedding configuration is changed.
-While the marker is active, ingestion for that tenant may continue only when its provider, model, and
-dimensions match the marker target. Stale in-flight work that still carries the old provider/model is
-blocked at the raw and natural-language semantic write boundaries before Redis hash persistence.
+Live migration uses a durable tenant-scoped migration marker plus a Redis owner lock acquired with
+`SET`/`NX` and a TTL. The marker records owner id, target provider/model/dimensions, migration
+version, active targets, staging targets, previous targets, timestamps, and heartbeat. While the marker
+is active, ingestion for that tenant may continue only when its provider, model, and dimensions match
+the marker target. Stale in-flight work that still carries the old provider/model is blocked at the raw
+and natural-language semantic write boundaries before Redis hash persistence.
 
 The marker is tenant-scoped; unrelated tenants are not paused. Tenant-specific ingestion downtime is not
 required for the committed policy, but operators should expect stale in-flight workflows for the migrating
@@ -249,8 +251,9 @@ they run with the target configuration.
 |-------|------------------|----------------------|
 | Marker active, new ingestion reads target config | Provider call and semantic writes proceed with target provider/model/dimensions. | Normal operation for the migrating tenant. |
 | Marker active, stale ingestion has old config or old embedding result | Generation is blocked before the provider call when observed in time; raw/NL semantic writes are always blocked before Redis persistence. | Let workflow retry after target config is visible, or rerun ingestion after migration if retries are exhausted. |
-| Live migration aborts, is cancelled, or records tenant/unit failures | Marker remains active and protective. | Fix the underlying failure and resume; do not manually clear the marker unless you have independently verified no mixed-provider vectors can be written. |
-| Resume succeeds and migration finishes cleanly | Marker is stamped completed after raw and natural-language re-embedding finish without failures. | Run dry-run verification and canary ingestion. |
+| Live migration aborts, is cancelled, or records tenant/unit failures before cutover | Marker and owner lock remain protective; active search aliases still point at the old vector set. | Fix the underlying failure and resume, or run `--abort` to clean staging state. |
+| Cutover begins and then fails | Marker remains protective and previous active targets are retained. | Run `--rollback` or `--abort`; both are owner-checked and fail closed on owner mismatch. |
+| Resume succeeds and migration finishes cleanly | Staging is verified, raw and NL aliases switch together, tenant config is updated, marker is stamped completed, and the lock is cleared. | Run dry-run verification and canary ingestion. |
 
 Resume after an interruption:
 
@@ -287,10 +290,21 @@ Rollback:
 dotnet run --project tools\MigrateEmbeddingVectors -- --rollback --tenant {TENANT_ID} --yes --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
 ```
 
-Rollback is fail-closed for Path A unless retained previous-version indexes exist. Path B coexistence or
-restore is only available when retained previous-version indexes were intentionally kept by a later
-deployment convention; this tool does not invent previous index contents after Path A has dropped active
-indexes.
+Rollback restores the previous raw and natural-language active targets and the previous tenant
+embedding configuration from the owner-checked marker. It fails closed if the previous targets are not
+recorded, the marker target does not match the requested provider/model/dimensions, or another owner
+still holds the tenant lock.
+
+Abort:
+
+```powershell
+dotnet run --project tools\MigrateEmbeddingVectors -- --abort --tenant {TENANT_ID} --yes --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
+```
+
+Abort is the operator recovery path for interrupted runs. Before cutover it clears owned or stale staging
+state and stamps the marker aborted. If cutover had begun, abort first restores the retained previous
+active targets, then cleans staging. Deleted tenants sweep marker, lock, staging, previous, and vector
+keys through the tenant-scoped cleanup patterns.
 
 ## Troubleshooting
 
@@ -302,7 +316,7 @@ indexes.
 | Missing DAPR secret | Confirm the secret exists and is listed in DAPR `allowedSecrets` for `secretstore`. |
 | 401/403 after token refresh | Check gateway issuer, audience, JWKS, clock skew, and token lifespan. |
 | Empty hybrid search after migration | Verify migration failures, Redis raw/NL counts, tenant active status, and that a fresh canary ingestion can write/search one unit. |
-| Unexpected rollback expectation | Confirm whether retained previous-version indexes exist. Path A alone cannot restore dropped active indexes. |
+| Unexpected rollback expectation | Confirm the marker still records previous raw/NL targets and that the current run owns or can recover the tenant lock. |
 
 ## References
 

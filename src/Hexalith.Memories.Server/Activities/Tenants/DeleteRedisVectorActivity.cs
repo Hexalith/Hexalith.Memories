@@ -63,7 +63,47 @@ public sealed partial class DeleteRedisVectorActivity : WorkflowActivity<TenantD
             LogIndexNotFound(_logger, nlIndexName, input.TenantId);
         }
 
+        foreach (string stagingIndexName in await ListTenantStagingIndexesAsync(db, input.TenantId).ConfigureAwait(false))
+        {
+            try
+            {
+                await db.ExecuteAsync("FT.DROPINDEX", stagingIndexName, "DD").ConfigureAwait(false);
+                LogIndexDropped(_logger, stagingIndexName, input.TenantId);
+            }
+            catch (RedisServerException ex) when (ex.Message.Contains("Unknown index", StringComparison.OrdinalIgnoreCase))
+            {
+                LogIndexNotFound(_logger, stagingIndexName, input.TenantId);
+            }
+        }
+
         return true;
+    }
+
+    private static async Task<IReadOnlyList<string>> ListTenantStagingIndexesAsync(IDatabase db, string tenantId)
+    {
+        RedisResult listResult = await db.ExecuteAsync("FT._LIST").ConfigureAwait(false);
+        RedisResult[]? items;
+        try
+        {
+            items = (RedisResult[]?)listResult;
+        }
+        catch (InvalidCastException)
+        {
+            return [];
+        }
+
+        if (items is null || items.Length == 0)
+        {
+            return [];
+        }
+
+        string rawPrefix = tenantId + IndexSchemaDefinitions.StagingSemanticIndexSuffixPrefix;
+        string nlPrefix = tenantId + IndexSchemaDefinitions.StagingNaturalLanguageSemanticIndexSuffixPrefix;
+        return items
+            .Select(static item => item.ToString() ?? string.Empty)
+            .Where(name => name.StartsWith(rawPrefix, StringComparison.Ordinal) || name.StartsWith(nlPrefix, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Redis Vector index '{IndexName}' dropped with DD for tenant '{TenantId}'")]

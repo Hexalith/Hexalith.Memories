@@ -5,19 +5,6 @@
 
 namespace Hexalith.Memories.Server.Migration;
 
-/// <summary>Durable status values for the tenant-scoped embedding migration marker.</summary>
-public static class MigrationMarkerStatus
-{
-    /// <summary>Migration cutover began with a fresh start.</summary>
-    public const string Started = "started";
-
-    /// <summary>Migration cutover was resumed from a prior interrupted run.</summary>
-    public const string Resumed = "resumed";
-
-    /// <summary>Migration completed cleanly; the marker no longer protects writes.</summary>
-    public const string Completed = "completed";
-}
-
 /// <summary>Durable tenant-scoped embedding migration marker visible to runtime ingestion guards.</summary>
 /// <param name="TenantId">The tenant currently under embedding vector migration.</param>
 /// <param name="TargetProvider">The provider that semantic vector writes must use while the marker is active.</param>
