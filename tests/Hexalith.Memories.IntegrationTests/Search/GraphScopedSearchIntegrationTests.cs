@@ -202,9 +202,9 @@ public class GraphScopedSearchIntegrationTests
     }
 
     [Fact]
-    public async Task SearchAsync_ContainsOnlyEdges_ShouldDiscoverSiblingsViaCase()
+    public async Task SearchAsync_DefaultTraversal_ShouldNotDiscoverSiblingsViaContainsCaseHub()
     {
-        // Arrange — 3 MUs in same case (no CAUSED_BY/CORRELATED_WITH), connected via Case node
+        // Arrange — case hub contains siblings, while the start node also has one semantic neighbor.
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         string caseId = $"case-{Guid.NewGuid():N}";
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
@@ -223,16 +223,22 @@ public class GraphScopedSearchIntegrationTests
             await SeedSyntacticHashAsync(tenantId, muId, $"Content for {muId}");
         }
 
+        await CreateMemoryUnitNodeAsync(falkor, tenantId, "mu-semantic", caseId);
+        await CreateCausedByEdgeAsync(falkor, tenantId, "mu-sibling-1", "mu-semantic");
+        await SeedSyntacticHashAsync(tenantId, "mu-semantic", "Semantic neighbor");
+
         GraphScopedSearch service = CreateService();
 
-        // Act — traverse from sibling-1 at depth 2 (MU→Case→MU)
+        // Act — default graph-scoped traversal uses semantic edges, not structural CONTAINS edges.
         SearchResult result = await service.SearchAsync(
             new SearchQuery { TenantId = tenantId, Query = string.Empty, MaxResults = 10 },
             "mu-sibling-1", depth: 2);
 
-        // Assert — siblings discovered via shared Case node
-        result.Results.Select(r => r.MemoryUnitId).ShouldContain("mu-sibling-2");
-        result.Results.Select(r => r.MemoryUnitId).ShouldContain("mu-sibling-3");
+        // Assert — semantic neighbor is reachable, structural siblings are not.
+        result.Results.Select(r => r.MemoryUnitId).ShouldContain("mu-sibling-1");
+        result.Results.Select(r => r.MemoryUnitId).ShouldContain("mu-semantic");
+        result.Results.Select(r => r.MemoryUnitId).ShouldNotContain("mu-sibling-2");
+        result.Results.Select(r => r.MemoryUnitId).ShouldNotContain("mu-sibling-3");
     }
 
     [Fact]

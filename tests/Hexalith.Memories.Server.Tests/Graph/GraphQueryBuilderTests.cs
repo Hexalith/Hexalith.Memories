@@ -402,10 +402,13 @@ public class GraphQueryBuilderTests
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3);
 
         query.ShouldContain("$startId");
-        query.ShouldContain("[*0..3]");
-        query.ShouldContain("DISTINCT");
+        query.ShouldContain("[:CAUSED_BY|CORRELATED_WITH|REFERENCES*0..3]");
+        query.ShouldNotContain("CONTAINS");
+        query.ShouldNotContain("ANNOTATES");
         query.ShouldContain("nodeId");
         query.ShouldContain("hopDistance");
+        query.ShouldContain("ORDER BY hopDistance ASC, nodeId ASC");
+        query.ShouldContain("LIMIT 1000");
         parameters["startId"].ShouldBe("mu-start-001");
     }
 
@@ -414,7 +417,26 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> _) = _builder.BuildTraverseFromNode("mu-001", 0);
 
-        query.ShouldContain("[*0..0]");
+        query.ShouldContain("[:CAUSED_BY|CORRELATED_WITH|REFERENCES*0..0]");
+    }
+
+    [Fact]
+    public void BuildTraverseFromNode_WithExplicitLimit_ShouldUseValidatedLimit()
+    {
+        (string query, IDictionary<string, object> parameters) =
+            _builder.BuildTraverseFromNode("mu-001", 2, null, 25);
+
+        query.ShouldContain("LIMIT 25");
+        query.ShouldNotContain("$limit");
+        parameters.ShouldNotContainKey("limit");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildTraverseFromNode_NonPositiveLimit_ShouldThrowArgumentOutOfRangeException(int limit)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseFromNode("mu-001", 2, null, limit));
     }
 
     [Theory]
@@ -471,7 +493,7 @@ public class GraphQueryBuilderTests
 
         query.ShouldContain("WHERE n.caseId = $caseId");
         query.ShouldContain("$startId");
-        query.ShouldContain("[*0..3]");
+        query.ShouldContain("[:CAUSED_BY|CORRELATED_WITH|REFERENCES*0..3]");
         parameters["startId"].ShouldBe("mu-start-001");
         parameters["caseId"].ShouldBe("case-abc");
     }
@@ -736,6 +758,8 @@ public class GraphQueryBuilderTests
         query.ShouldContain("content");
         query.ShouldContain("sourceUri");
         query.ShouldContain("sourceType");
+        query.ShouldContain("ORDER BY coalesce(n.ingestedAt, ''), nodeId ASC");
+        query.ShouldContain("LIMIT 1000");
         parameters["startId"].ShouldBe("mu-start-001");
     }
 
@@ -754,6 +778,25 @@ public class GraphQueryBuilderTests
     public void BuildTraverseWithEdges_InvalidDepth_ThrowsArgumentOutOfRange(int depth)
     {
         Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseWithEdges("mu-001", depth));
+    }
+
+    [Fact]
+    public void BuildTraverseWithEdges_WithExplicitLimit_ShouldUseValidatedLimit()
+    {
+        (string query, IDictionary<string, object> parameters) =
+            _builder.BuildTraverseWithEdges("mu-001", 3, null, [EdgeType.CausedBy], 10);
+
+        query.ShouldContain("LIMIT 10");
+        query.ShouldNotContain("$limit");
+        parameters.ShouldNotContainKey("limit");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildTraverseWithEdges_NonPositiveLimit_ShouldThrowArgumentOutOfRange(int limit)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => _builder.BuildTraverseWithEdges("mu-001", 3, null, null, limit));
     }
 
     [Fact]

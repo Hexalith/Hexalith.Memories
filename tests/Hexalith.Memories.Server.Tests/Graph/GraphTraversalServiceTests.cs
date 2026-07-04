@@ -63,6 +63,54 @@ public class GraphTraversalServiceTests
     }
 
     [Fact]
+    public async Task TraverseAsync_PassesServerSideTimeoutToFalkorDbQuery()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = new GraphQueryBuilder();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+        List<IReadOnlyList<object>> commandArguments = [];
+
+        db.ExecuteAsync(
+                Arg.Is<string>(command => string.Equals(command, "graph.QUERY", StringComparison.OrdinalIgnoreCase)),
+                Arg.Do<ICollection<object>>(args => commandArguments.Add(args.ToArray())),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateEmptyFalkorDbResult());
+
+        // Act
+        _ = await service.TraverseAsync("tenant-1", "mu-001", 0, null, null, CancellationToken.None);
+
+        // Assert
+        commandArguments.Count.ShouldBe(1);
+        CommandArgumentsContainTimeout(commandArguments[0], 10_000).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task TraverseAsync_WhenCallerCancellationRequested_ThrowsOperationCanceledException()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = new GraphQueryBuilder();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        ILogger<GraphTraversalService> logger = NullLogger<GraphTraversalService>.Instance;
+        GraphTraversalService service = new(falkorDb, redis, builder, logger);
+        TaskCompletionSource<RedisResult> pendingQuery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource cts = new();
+
+        db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(pendingQuery.Task);
+
+        // Act
+        Task<TraversalResult> traversal = service.TraverseAsync("tenant-1", "mu-001", 0, null, null, cts.Token);
+        await cts.CancelAsync();
+
+        // Assert
+        _ = await Should.ThrowAsync<OperationCanceledException>(traversal);
+    }
+
+    [Fact]
     public async Task TraverseAsync_WhenGraphQueryTimesOut_ShouldBubbleTimeoutException()
     {
         // Arrange
@@ -369,6 +417,20 @@ public class GraphTraversalServiceTests
             .Returns(emptyResult);
 
         return (falkorDb, db);
+    }
+
+    private static bool CommandArgumentsContainTimeout(IReadOnlyList<object> arguments, long expectedMilliseconds)
+    {
+        for (int i = 0; i < arguments.Count - 1; i++)
+        {
+            if (string.Equals(arguments[i]?.ToString(), "timeout", StringComparison.OrdinalIgnoreCase)
+                && Convert.ToInt64(arguments[i + 1], System.Globalization.CultureInfo.InvariantCulture) == expectedMilliseconds)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static RedisResult CreateEmptyFalkorDbResult() => RedisResult.Create(

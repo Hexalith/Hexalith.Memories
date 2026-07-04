@@ -25,6 +25,8 @@ using StackExchange.Redis;
 public sealed partial class GraphScopedSearch
 {
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly long GraphOperationTimeoutMilliseconds =
+        GraphQueryExecutionOptions.ToServerTimeoutMilliseconds(GraphOperationTimeout);
     private const int MaxInnerSearchPageSize = 100;
     private const int MaxSnippetLength = 200;
 
@@ -83,10 +85,10 @@ public sealed partial class GraphScopedSearch
         try
         {
             long traversalStart = Stopwatch.GetTimestamp();
-            ResultSet resultSet = await falkor.QueryAsync(graphId, cypherQuery, parameters)
+            ResultSet resultSet = await falkor.QueryAsync(graphId, cypherQuery, parameters, timeout: GraphOperationTimeoutMilliseconds)
                 .WaitAsync(GraphOperationTimeout, cancellationToken)
                 .ConfigureAwait(false);
-            traversalElapsedMs = Stopwatch.GetElapsedTime(traversalStart).Milliseconds;
+            traversalElapsedMs = (long)Stopwatch.GetElapsedTime(traversalStart).TotalMilliseconds;
 
             traversedNodes = [];
             foreach (Record record in resultSet)
@@ -182,7 +184,7 @@ public sealed partial class GraphScopedSearch
         CancellationToken cancellationToken)
     {
         (string countQuery, IDictionary<string, object> countParameters) = _graphQueryBuilder.BuildCountMemoryUnits();
-        ResultSet resultSet = await falkor.QueryAsync(graphId, countQuery, countParameters)
+        ResultSet resultSet = await falkor.QueryAsync(graphId, countQuery, countParameters, timeout: GraphOperationTimeoutMilliseconds)
             .WaitAsync(GraphOperationTimeout, cancellationToken)
             .ConfigureAwait(false);
 

@@ -78,6 +78,8 @@ last_updated: 2026-07-05
 # 2026-07-04: Story 21.9 senior developer review completed with automatic fixes (resume preserves rollback marker fields, tenant deletion drops staging RediSearch indexes). 21.9 -> done.
 # 2026-07-04: Story 21.10 created (21.10 -> ready-for-dev) via create-story. Migration subsystem test coverage; closes A22 with unit/store/tool coverage plus Redis-backed 768-to-1024 real-vector migration, marker end-state, rollback-unavailable, and abort-path proof.
 # 2026-07-05: Story 22.1 created (epic-22 -> in-progress, 22.1 -> ready-for-dev) via create-story. Semantic-axis pagination; closes A8 by requiring axis=semantic to honor Offset with offset+max KNN candidate fetch and Redis-backed pagination proof.
+# 2026-07-05: Story 22.2 created (22.2 -> ready-for-dev) via create-story. Bounded, cancellable graph traversal; closes A9 by requiring server-side FalkorDB timeout propagation, query limits, and semantic-only default graph-scoped traversal.
+# 2026-07-05: Story 22.2 senior developer review completed with automatic fixes (graph-scoped count-query timeout, latency logging, File List/test-summary hygiene). 22.2 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -381,7 +383,7 @@ development_status:
   # Epic 22: RAG Retrieval Quality & Correctness (SCP 2026-07-04; closes A8,A9,A29,A30,A48,A49,A50)
   epic-22: in-progress
   22-1-semantic-axis-pagination: done
-  22-2-bounded-cancellable-graph-traversal: backlog
+  22-2-bounded-cancellable-graph-traversal: done
   22-3-graph-scoped-and-hybrid-pagination-correctness: backlog
   22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: backlog
   22-5-case-scoped-traversal-path-integrity: backlog

@@ -22,6 +22,8 @@ using StackExchange.Redis;
 public sealed partial class GraphTraversalService
 {
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
+    private static readonly long GraphOperationTimeoutMilliseconds =
+        GraphQueryExecutionOptions.ToServerTimeoutMilliseconds(GraphOperationTimeout);
     private const int MaxSnippetLength = 200;
 
     private readonly IConnectionMultiplexer _falkorDb;
@@ -66,7 +68,7 @@ public sealed partial class GraphTraversalService
         List<TraversalGapMarker> gapMarkers;
         try
         {
-            ResultSet resultSet = await falkor.QueryAsync(graphId, query, parameters)
+            ResultSet resultSet = await falkor.QueryAsync(graphId, query, parameters, timeout: GraphOperationTimeoutMilliseconds)
                 .WaitAsync(GraphOperationTimeout, cancellationToken)
                 .ConfigureAwait(false);
 

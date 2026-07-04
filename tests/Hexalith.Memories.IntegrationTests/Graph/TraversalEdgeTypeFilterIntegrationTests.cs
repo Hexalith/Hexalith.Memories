@@ -269,6 +269,65 @@ public class TraversalEdgeTypeFilterIntegrationTests
         correlatedNodes.ShouldNotContain("mu-b");
     }
 
+    [Fact]
+    public async Task TraverseFromNode_DefaultSemanticTraversal_DoesNotReachDenseContainsHub()
+    {
+        // Arrange: case contains A plus dense siblings, while A has one semantic chain.
+        string graphId = $"test-{Guid.NewGuid():N}";
+        FalkorDB falkor = new(_falkorDb.Connection.GetDatabase());
+
+        await CreateMemoryUnit(falkor, graphId, "mu-a", "case-1");
+        await CreateMemoryUnit(falkor, graphId, "mu-semantic", "case-1");
+        await CreateMemoryUnit(falkor, graphId, "mu-sibling-1", "case-1");
+        await CreateMemoryUnit(falkor, graphId, "mu-sibling-2", "case-1");
+        await CreateMemoryUnit(falkor, graphId, "mu-sibling-3", "case-1");
+
+        (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-1");
+        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await CreateEdge(falkor, graphId, "case-1", "mu-a", EdgeType.Contains);
+        await CreateEdge(falkor, graphId, "case-1", "mu-sibling-1", EdgeType.Contains);
+        await CreateEdge(falkor, graphId, "case-1", "mu-sibling-2", EdgeType.Contains);
+        await CreateEdge(falkor, graphId, "case-1", "mu-sibling-3", EdgeType.Contains);
+        await CreateEdge(falkor, graphId, "mu-a", "mu-semantic", EdgeType.CausedBy);
+
+        // Act
+        (string query, IDictionary<string, object> parameters) =
+            _builder.BuildTraverseFromNode("mu-a", 2);
+        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+
+        // Assert: semantic chain is reachable, structural siblings are not.
+        List<string> nodeIds = ReadNodeIds(result);
+        nodeIds.ShouldContain("mu-a");
+        nodeIds.ShouldContain("mu-semantic");
+        nodeIds.ShouldNotContain("mu-sibling-1");
+        nodeIds.ShouldNotContain("mu-sibling-2");
+        nodeIds.ShouldNotContain("mu-sibling-3");
+    }
+
+    [Fact]
+    public async Task TraverseFromNode_LimitCapsRowsDeterministically()
+    {
+        // Arrange: A reaches three hop-1 semantic neighbors; limit should keep the stable first two rows.
+        string graphId = $"test-{Guid.NewGuid():N}";
+        FalkorDB falkor = new(_falkorDb.Connection.GetDatabase());
+
+        await CreateMemoryUnit(falkor, graphId, "mu-a");
+        await CreateMemoryUnit(falkor, graphId, "mu-b");
+        await CreateMemoryUnit(falkor, graphId, "mu-c");
+        await CreateMemoryUnit(falkor, graphId, "mu-d");
+        await CreateEdge(falkor, graphId, "mu-a", "mu-b", EdgeType.CausedBy);
+        await CreateEdge(falkor, graphId, "mu-a", "mu-c", EdgeType.CausedBy);
+        await CreateEdge(falkor, graphId, "mu-a", "mu-d", EdgeType.CausedBy);
+
+        // Act
+        (string query, IDictionary<string, object> parameters) =
+            _builder.BuildTraverseFromNode("mu-a", 1, null, 2);
+        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+
+        // Assert: hop distance then node id ordering gives start node, then mu-b.
+        ReadNodeIds(result).ShouldBe(["mu-a", "mu-b"]);
+    }
+
     // --- Helpers ---
 
     private async Task CreateMemoryUnit(FalkorDB falkor, string graphId, string id, string? caseId = null)

@@ -91,6 +91,10 @@ public interface IGraphQueryBuilder
     (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth, string? caseId);
 
+    /// <summary>Builds a bounded bidirectional graph traversal query with optional case scoping.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth, string? caseId, int limit);
+
     /// <summary>Builds a traversal query that returns both node properties and edge metadata.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
         string startNodeId, int depth);
@@ -102,6 +106,10 @@ public interface IGraphQueryBuilder
     /// <summary>Builds a traversal query filtered by edge types, with optional case scoping.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
         string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes);
+
+    /// <summary>Builds a bounded traversal query filtered by edge types, with optional case scoping.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes, int limit);
 
     /// <summary>Builds a query to update an edge's confidence and record the promotion audit trail.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildUpdateEdgeConfidence(

@@ -179,6 +179,39 @@ public class GraphScopedSearchTests
         observedQueries[0].AttributeFilters.ShouldBe(query.AttributeFilters);
     }
 
+    [Fact]
+    public async Task SearchAsync_PassesServerSideTimeoutToTraversalQuery()
+    {
+        // Arrange
+        (IConnectionMultiplexer falkorDb, IDatabase db) = CreateMockFalkorDb();
+        GraphScopedSearch service = new(
+            falkorDb,
+            Substitute.For<IConnectionMultiplexer>(),
+            new GraphQueryBuilder(),
+            NullLogger<GraphScopedSearch>.Instance);
+        SearchQuery query = new()
+        {
+            TenantId = "tenant-1",
+            Query = "graph",
+            MaxResults = 5,
+        };
+        List<IReadOnlyList<object>> commandArguments = [];
+
+        db.ExecuteAsync(
+                Arg.Is<string>(command => string.Equals(command, "graph.QUERY", StringComparison.OrdinalIgnoreCase)),
+                Arg.Do<ICollection<object>>(args => commandArguments.Add(args.ToArray())),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateEmptyFalkorDbResult());
+
+        // Act
+        _ = await service.SearchAsync(query, "mu-001", 0, cancellationToken: CancellationToken.None);
+
+        // Assert
+        commandArguments.Count.ShouldBeGreaterThanOrEqualTo(2);
+        CommandArgumentsContainTimeout(commandArguments[0], 10_000).ShouldBeTrue();
+        CommandArgumentsContainTimeout(commandArguments[1], 10_000).ShouldBeTrue();
+    }
+
     private static Task<SearchResult> InvokeSearchWithinGraphScopeAsync(
         GraphScopedSearch service,
         SearchQuery query,
@@ -194,6 +227,42 @@ public class GraphScopedSearchTests
         value.ShouldBeOfType<Task<SearchResult>>();
         return (Task<SearchResult>)value;
     }
+
+    private static (IConnectionMultiplexer, IDatabase) CreateMockFalkorDb()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
+        falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        return (falkorDb, db);
+    }
+
+    private static bool CommandArgumentsContainTimeout(IReadOnlyList<object> arguments, long expectedMilliseconds)
+    {
+        for (int i = 0; i < arguments.Count - 1; i++)
+        {
+            if (string.Equals(arguments[i]?.ToString(), "timeout", StringComparison.OrdinalIgnoreCase)
+                && Convert.ToInt64(arguments[i + 1], System.Globalization.CultureInfo.InvariantCulture) == expectedMilliseconds)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static RedisResult CreateEmptyFalkorDbResult() => RedisResult.Create(
+    [
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(Array.Empty<RedisResult>()),
+        RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("Nodes created: 0")),
+            RedisResult.Create(new RedisValue("Properties set: 0")),
+            RedisResult.Create(new RedisValue("Relationships created: 0")),
+            RedisResult.Create(new RedisValue("Cached execution: 0")),
+            RedisResult.Create(new RedisValue("Query internal execution time: 0.1 milliseconds")),
+        ]),
+    ]);
 
     private static ScoredResult CreateScoredResult(string id, double score) => new()
     {

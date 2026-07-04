@@ -319,15 +319,24 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
         string startNodeId, int depth, string? caseId)
+        => BuildTraverseFromNode(startNodeId, depth, caseId, GraphQueryExecutionOptions.DefaultTraversalResultLimit);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseFromNode(
+        string startNodeId, int depth, string? caseId, int limit)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
         ArgumentOutOfRangeException.ThrowIfNegative(depth);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
+        ValidateTraversalLimit(limit);
 
+        string edgeLabels = string.Join("|", EdgeTypeTaxonomy.SemanticTypes.Select(ToUpperSnakeCase));
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
-        // Same pattern as edge type labels in BuildMergeEdge: validated closed set.
+        // Edge labels are also interpolated as literals from the closed EdgeType enum.
+        // LIMIT cannot be parameterized reliably in FalkorDB Cypher, so only a validated
+        // positive integer is interpolated.
         string whereClause = string.IsNullOrWhiteSpace(caseId) ? "" : " WHERE n.caseId = $caseId";
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[*0..{depth}]-(n:MemoryUnit){whereClause} RETURN DISTINCT n.id AS nodeId, min(length(p)) AS hopDistance";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH n, min(length(p)) AS hopDistance RETURN n.id AS nodeId, hopDistance ORDER BY hopDistance ASC, nodeId ASC LIMIT {limit}";
 
         Dictionary<string, object> parameters = new()
         {
@@ -355,10 +364,16 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
         string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes)
+        => BuildTraverseWithEdges(startNodeId, depth, caseId, edgeTypes, GraphQueryExecutionOptions.DefaultTraversalResultLimit);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildTraverseWithEdges(
+        string startNodeId, int depth, string? caseId, IReadOnlyList<EdgeType>? edgeTypes, int limit)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
         ArgumentOutOfRangeException.ThrowIfNegative(depth);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(depth, 10);
+        ValidateTraversalLimit(limit);
 
         // Default to semantic types when no filter specified (AC #4).
         IReadOnlyList<EdgeType> effectiveTypes = (edgeTypes is null || edgeTypes.Count == 0)
@@ -371,6 +386,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         string edgeLabels = string.Join("|", effectiveTypes.Select(ToUpperSnakeCase));
 
         // Depth is interpolated as literal — Cypher does not support parameterized path length.
+        // LIMIT is interpolated only after positive integer validation above.
         string whereClause = string.IsNullOrWhiteSpace(caseId)
             ? string.Empty
             : " WHERE (n.caseId = $caseId OR n.content IS NULL) AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId))";
@@ -379,7 +395,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
             : " WHERE m.id <> n.id AND ((m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL)) OR (m:Case AND m.id = $caseId))";
         // Story 9.2 Task 7.4 — include n.isStub so the traversal service can upgrade gap-marker
         // detection from the "content absent" heuristic to an explicit flag check (Risk #4).
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, n.isStub AS isStub, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END, verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence}}) AS edges ORDER BY n.ingestedAt ASC";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, n.isStub AS isStub, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END, verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence}}) AS edges ORDER BY coalesce(n.ingestedAt, ''), nodeId ASC LIMIT {limit}";
 
         Dictionary<string, object> parameters = new()
         {
@@ -393,6 +409,9 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
 
         return (query, parameters);
     }
+
+    private static void ValidateTraversalLimit(int limit)
+        => ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(limit, 0);
 
     /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildUpdateEdgeConfidence(
