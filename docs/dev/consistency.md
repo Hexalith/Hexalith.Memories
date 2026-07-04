@@ -19,8 +19,8 @@ state.
 
 - Presence divergence across the three backends (`(syntactic, semantic, graph)` →
   anything other than `(true, true, true)`).
-- Orphans in a non-authoritative backend (semantic or graph) without the
-  authoritative syntactic record.
+- Orphans in a projection backend (semantic or graph) without the current
+  repair-source syntactic record.
 
 **What verification does NOT detect:**
 
@@ -119,11 +119,19 @@ function:
 - **No auto-repair.** Repair MUST be an explicit operator action; verification
   emits recommendations but never writes.
 
-## Authoritative source
+## Current repair source and target model
 
-The syntactic hash `{tenantId}:mu:{memoryUnitId}` is the authoritative source of
-truth because it stores the full content + metadata required to rebuild the
-non-authoritative backends. When syntactic is absent:
+The syntactic hash `{tenantId}:mu:{memoryUnitId}` is the current pre-Story 21.2
+repair source because it stores the full content + metadata required to rebuild
+the non-authoritative backends. Story 21.1 ratifies the target model: `Case`,
+`MemoryUnit`, and `Tenant` domain state is sourced from Hexalith.EventStore
+events, while RediSearch syntactic hashes, Redis Vector entries, FalkorDB
+nodes/edges, case activity streams, and tenant registry/read records are
+rebuildable projections/read models. Until Story 21.2 changes the mutation path,
+the repair workflow continues to use the syntactic hash as its operational input
+for memory-unit projection repair.
+
+When syntactic is absent in the current repair implementation:
 
 - Non-authoritative backends holding the unit → orphans — delete them.
 - Nothing anywhere → classified `Unrepairable` (content is lost — the operator

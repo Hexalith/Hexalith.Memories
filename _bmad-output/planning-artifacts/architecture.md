@@ -93,7 +93,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 8. **Fusion Algorithm (FR17, FR19, NFR24-26) [MVP-critical]:** The architectural center of gravity — depends on all 3 backends producing results, all 3 normalization strategies being correct, and feeds all 4 interface layers. **BM25 normalization is corpus-dependent** — the architecture must support per-tenant corpus statistics or a corpus-invariant normalization strategy (e.g., rank-based instead of score-based). Three-axis retrieval is a hypothesis, not a given — the graph axis must be architecturally optional so the system degrades gracefully to two-axis if the hypothesis fails.
 
-9. **Multi-Backend Consistency (FR6, FR13) [MVP-critical]:** "Atomic write across all three backends" is not achievable — no distributed transaction across Redis + FalkorDB. Replace with **eventual consistency + DAPR Workflow saga/compensation**. The `IngestionWorkflow` writes to each backend as separate activities — `IndexSyntacticActivity` (RediSearch), `IndexSemanticActivity` (Redis Vector), `IndexGraphActivity` (FalkorDB) — each with its own `WorkflowRetryPolicy` (exponential backoff). If any activity fails after retries, the workflow executes compensation activities to clean up partially-written state. `VerifyConsistencyActivity` runs after all writes succeed. `memories tenant verify` triggers `ConsistencyVerificationWorkflow` for operator-initiated audits. Per-memory-unit consistency inspection (`memories consistency inspect --tenant <tenant-id> --id <unit-id>`) queries all three backends for a single unit's state — essential for operator and developer debugging. This command is owned by Epic 8 operational consistency work, not by the root MVP CLI essentials list in Epic 7.
+9. **Multi-Backend Consistency (FR6, FR13) [MVP-critical]:** "Atomic write across all three backends" is not achievable — no distributed transaction exists across Redis + FalkorDB. **Story 21.1 ratifies the EventStore aggregate model as the consistency target for `Case`, `MemoryUnit`, and `Tenant`: domain state is sourced from Hexalith.EventStore events, while RediSearch syntactic hashes, Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant registry/read records are rebuildable projections/read models.** DAPR Workflow saga/compensation remains the required delivery mechanism for projection fan-out and tenant infrastructure side effects, not the domain source of truth. `Case` and `MemoryUnit` commands must first append/accept EventStore events, then project to Redis/FalkorDB with idempotent activity retries and compensation for partial projection writes. `Tenant` lifecycle commands must use EventStore events for registry/status semantics; backend provisioning/deletion remains workflow-owned because those are infrastructure side effects. Until Story 21.2 implements the target mutation path, existing direct case and tenant registry writes are transitional debt and must not be copied. `IngestionWorkflow` writes to each backend as separate activities — `IndexSyntacticActivity` (RediSearch), `IndexSemanticActivity` (Redis Vector), `IndexGraphActivity` (FalkorDB) — each with its own `WorkflowRetryPolicy` (exponential backoff). If any activity fails after retries, the workflow executes compensation activities to clean up partially-written projection state. `VerifyConsistencyActivity` runs after all writes succeed. `memories tenant verify` triggers `ConsistencyVerificationWorkflow` for operator-initiated audits. Per-memory-unit consistency inspection (`memories consistency inspect --tenant <tenant-id> --id <unit-id>`) queries all three backends for a single unit's state — essential for operator and developer debugging. This command is owned by Epic 8 operational consistency work, not by the root MVP CLI essentials list in Epic 7.
 
 ### Memory Unit Field Inventory (Draft)
 
@@ -284,7 +284,7 @@ Where the architecture overrides or clarifies PRD language, documented here for 
 
 | PRD Statement | Architecture Position | Rationale |
 |---|---|---|
-| "Atomic write across all three backends" (pipeline stage) | Eventual consistency + compensation + reconciliation | No distributed transaction across Redis + FalkorDB. FR6 intent preserved: unit fully searchable after ingestion completes. |
+| "Atomic write across all three backends" (pipeline stage) | EventStore aggregate source of truth + rebuildable projections + workflow compensation for projection delivery | No distributed transaction across Redis + FalkorDB. FR6 intent preserved: unit fully searchable after ingestion completes, with EventStore replay as the durable rebuild path. |
 | "All major [embedding] providers supported from MVP" | Google runtime embedding provider only in MVP. OpenAI/Mistral are post-MVP provider expansion candidates; Ollama is covered by Epic 13 provider migration work. | Solo developer scope. The provider configuration shape and embedding provider pattern preserve extensibility without making every provider an MVP blocker. |
 | REST API in Server (deployment topology) vs REST API Phase 2 (scope) | MVP REST is minimal ingress routing for CLI. Full REST API (pagination, facets) is Phase 2. | PRD contradicts itself; architecture clarifies. |
 
@@ -300,7 +300,7 @@ When embedding model changes (e.g., `text-embedding-004` → `text-embedding-005
 | Decision | Blocks Gate | Phase |
 |---|---|---|
 | Fusion algorithm (pure function, normalization) | Gate 1 (three-axis validation) | MVP |
-| Eventual consistency + compensation | Gate 1 | MVP |
+| EventStore source of truth + projection compensation | Gate 1 | MVP |
 | Physical FalkorDB isolation at database level | Gate 2 (zero cross-tenant leaks) | MVP |
 | `IGraphQueryBuilder` (injection prevention) | Gate 2 | MVP |
 | Provisioning rollback | Gate 2 | MVP |
@@ -390,7 +390,7 @@ Decisions made during context analysis, extracted for quick reference:
 |---|---|---|---|
 | D1 | FalkorDB for MVP (with escape hatch) | Native Cypher for graph-scoped search; IGraphQueryBuilder provides extraction boundary | FalkorDB Decision |
 | D2 | Graph axis: dual-role (traversal + optional fusion scorer) | Preserves graph value regardless of benchmark outcome; kill switch is config change | Graph Axis Architecture |
-| D3 | Eventual consistency + DAPR Workflow saga/compensation | No distributed transaction across Redis + FalkorDB; workflow activities with retry/compensation preserve PRD intent | Cross-Cutting Concern #9 |
+| D3 | EventStore aggregate source of truth + rebuildable projections + DAPR Workflow projection compensation | No distributed transaction across Redis + FalkorDB; Hexalith domain state belongs in EventStore while workflow activities with retry/compensation preserve PRD intent for projection and infrastructure side effects | Cross-Cutting Concern #9 |
 | D4 | Google embedding only in MVP | Solo developer scope; IEmbeddingProvider abstraction makes additions trivial | PRD Deviations |
 | D5 | MVP REST is minimal (CLI routing only) | Full REST API is Phase 2; PRD self-contradicted | PRD Deviations |
 | D6 | Error format: code + message + suggestion (not full Hexalith.Commons envelope) | Simpler for MVP; full envelope in Phase 1.5 for MCP | Cross-Cutting Concern #3 |
@@ -572,7 +572,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 |---|---|---|---|
 | D1 | FalkorDB for MVP (with escape hatch) | Native Cypher; IGraphQueryBuilder extraction boundary | MVP |
 | D2 | Graph axis: dual-role (traversal + optional scorer) | Kill switch is config change | MVP |
-| D3 | Eventual consistency + DAPR Workflow saga/compensation | Workflow activities with retry/rollback; no distributed transaction | MVP |
+| D3 | EventStore aggregate source of truth + rebuildable projections + DAPR Workflow projection compensation | EventStore replay is the durable rebuild path; workflow activities with retry/rollback handle projection and infrastructure side effects where no distributed transaction exists | MVP |
 | D4 | Google embedding only in MVP | Solo developer scope | MVP |
 | D5 | MVP REST is minimal (CLI routing only) | Full REST API Phase 2 | MVP |
 | D6 | Error format: code + message + suggestion | Full envelope Phase 1.5 | MVP |

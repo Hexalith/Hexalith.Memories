@@ -1,3 +1,42 @@
+# Test Automation Summary - Story 21.1 (Consistency Model Decision)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-1-consistency-model-decision.md`
+- **Framework detected:** xUnit v3 + Shouldly through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** Architecture and operator-documentation guardrails for the Story 21.1 consistency model decision.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] Direct API tests are not applicable. Story 21.1 is documentation/architecture scope and adds no endpoint or runtime command behavior.
+
+### E2E Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Architecture/ConsistencyModelDecisionTests.cs` - added an end-to-end documentation guard tying `architecture.md` D3, `docs/dev/consistency.md`, and the Story 21.1 record together.
+- [x] UI E2E is not applicable. Story 21.1 has no module UI change.
+
+## Coverage
+
+- Architecture D3: verifies EventStore aggregate source of truth, rebuildable projections, DAPR Workflow projection compensation, transitional direct-write debt, and the Story 21.2 implementation gate.
+- Operator consistency guide: verifies syntactic hash repair remains current pre-21.2 operational input while EventStore is the target source of truth.
+- Story record: verifies the rejected workflow-wrapped compensated multi-write alternative, A3 closure requirements, failure-injection test requirement, and 21.3-21.10 source-of-truth dependency gate.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.ConsistencyModelDecisionTests` - 3 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2101 total, 0 failed, 1 intentionally skipped submodule mutation guard.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 DiffEngine_Disabled=true dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false --filter FullyQualifiedName~ConsistencyModelDecisionTests` - build passed, then VSTest aborted on local socket permission; xUnit v3 executable fallback above passed.
+
+## Checklist Result
+
+- API tests generated if applicable: not applicable.
+- E2E tests generated if UI exists: documentation E2E guard generated; UI not applicable.
+- Standard framework APIs, happy path, critical guardrail cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 20.3 (Tenant-Scope Workflow & Batch Status Endpoints)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`
