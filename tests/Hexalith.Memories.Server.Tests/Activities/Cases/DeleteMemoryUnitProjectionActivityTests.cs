@@ -44,10 +44,10 @@ public class DeleteMemoryUnitProjectionActivityTests
         Received.InOrder(() =>
         {
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:ann-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:nl:ann-001"), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vecnl:ann-001"), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:ann-001"), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:nl:mu-001"), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vecnl:mu-001"), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
         });
     }

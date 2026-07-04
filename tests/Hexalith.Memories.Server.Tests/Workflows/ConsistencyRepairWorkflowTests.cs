@@ -52,6 +52,32 @@ public class ConsistencyRepairWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_NaturalLanguageHashesPresentButNoPhantomId_DoesNotDispatchRepair()
+    {
+        WorkflowContext context = CreateContext();
+        SetEnumeration(context, ["mu-1"]);
+        SetProbe(context, "mu-1", new ConsistencyResult(true, true, true)
+        {
+            NaturalLanguageSemanticExists = true,
+            NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.Indexed,
+        });
+
+        ConsistencyRepairResult result = await new ConsistencyRepairWorkflow()
+            .RunAsync(context, new ConsistencyRepairInput(TestTenantId));
+
+        result.TotalDiscrepancies.ShouldBe(0);
+        result.RepairedCount.ShouldBe(0);
+        await context.DidNotReceive().CallActivityAsync<ConsistencyResult>(
+            nameof(VerifyConsistencyActivity),
+            Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "nl:mu-1"),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<RepairActionRecord>(
+            nameof(RepairUnitActivity),
+            Arg.Any<RepairUnitInput>(),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_ThreePassesFail_RemainingMarkedUnrepairable()
     {
         WorkflowContext context = CreateContext();

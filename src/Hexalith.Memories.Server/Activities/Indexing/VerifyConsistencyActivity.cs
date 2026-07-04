@@ -10,6 +10,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -51,15 +52,15 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
         IDatabase redisDb = _redis.GetDatabase();
 
         // Check syntactic (RediSearch hash key)
-        string syntacticKey = $"{input.TenantId}:mu:{input.MemoryUnitId}";
+        string syntacticKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(input.TenantId) + input.MemoryUnitId;
         bool syntacticExists = await redisDb.KeyExistsAsync(syntacticKey).ConfigureAwait(false);
 
         // Check semantic (Redis Vector hash key)
-        string semanticKey = $"{input.TenantId}:vec:{input.MemoryUnitId}";
+        string semanticKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(input.TenantId) + input.MemoryUnitId;
         bool semanticExists = await redisDb.KeyExistsAsync(semanticKey).ConfigureAwait(false);
 
         // Check natural-language semantic sibling (Redis Vector hash key)
-        string naturalLanguageSemanticKey = $"{input.TenantId}:vec:nl:{input.MemoryUnitId}";
+        string naturalLanguageSemanticKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(input.TenantId) + input.MemoryUnitId;
         bool naturalLanguageSemanticExists = await redisDb.KeyExistsAsync(naturalLanguageSemanticKey).ConfigureAwait(false);
 
         NaturalLanguageEmbeddingStatus naturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable;

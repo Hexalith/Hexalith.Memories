@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Activities.Cases;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using StackExchange.Redis;
 
@@ -26,9 +27,9 @@ internal sealed class DeleteCaseProjectionActivity(
 
         foreach (string memoryUnitId in input.MemoryUnitIds)
         {
-            string muKey = $"{input.TenantId}:mu:{memoryUnitId}";
-            string vecKey = $"{input.TenantId}:vec:{memoryUnitId}";
-            string nlVecKey = $"{input.TenantId}:vec:nl:{memoryUnitId}";
+            string muKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(input.TenantId) + memoryUnitId;
+            string vecKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(input.TenantId) + memoryUnitId;
+            string nlVecKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(input.TenantId) + memoryUnitId;
             (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
             await Task.WhenAll(
                 db.KeyDeleteAsync(muKey),

@@ -23,7 +23,7 @@ public class IndexSchemaDefinitionsTests
     [Fact]
     public void GetNaturalLanguageSemanticKeyPrefix_AppendsSuffix()
         => IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")
-            .ShouldBe("tenant-a:vec:nl:");
+            .ShouldBe("tenant-a:vecnl:");
 
     [Fact]
     public void NaturalLanguageKeyPrefix_DoesNotCollideWithSemanticKeyPrefix()
@@ -31,10 +31,27 @@ public class IndexSchemaDefinitionsTests
         string raw = IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
         string nl = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a");
 
-        nl.ShouldStartWith(raw);
+        nl.ShouldNotStartWith(raw);
         nl.ShouldNotBe(raw);
         (raw + "memory-id").ShouldNotStartWith(nl);
+        (nl + "memory-id").ShouldNotStartWith(raw);
     }
+
+    [Fact]
+    public void RawSemanticIndexPrefix_DoesNotMatchNaturalLanguageHashesAfterRebuild()
+    {
+        string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
+        string nlHashKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a") + "mu-1";
+
+        // RediSearch FT.CREATE PREFIX uses string-prefix matching; this pins that the rebuilt raw
+        // semantic index cannot select NL-only hashes.
+        nlHashKey.ShouldNotStartWith(rawPrefix);
+    }
+
+    [Fact]
+    public void GetLegacyNaturalLanguageSemanticKeyPrefix_AppendsNestedSuffixForMigrationOnly()
+        => IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix("tenant-a")
+            .ShouldBe("tenant-a:vec:nl:");
 
     [Fact]
     public void BothSemanticSchemas_HaveIdenticalVectorFieldShape()

@@ -104,7 +104,7 @@ public class VerifyConsistencyActivityTests
 
         await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
         await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
-        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:nl:mu-001", Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vecnl:mu-001", Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -188,9 +188,9 @@ public class VerifyConsistencyActivityTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), Arg.Any<CommandFlags>())
             .Returns(syntacticExists);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:nl:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vecnl:")), Arg.Any<CommandFlags>())
             .Returns(naturalLanguageSemanticExists);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:") && !k.ToString()!.Contains(":vec:nl:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")), Arg.Any<CommandFlags>())
             .Returns(semanticExists);
 
         Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)

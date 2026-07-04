@@ -266,11 +266,11 @@ public class ConsistencyInspectionServiceTests
                 Arg.Any<CommandFlags>())
             .Returns(syntacticEntries);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:nl:")),
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vecnl:")),
                 Arg.Any<CommandFlags>())
             .Returns(naturalLanguageSemanticEntries);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:") && !k.ToString()!.Contains(":vec:nl:")),
+                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")),
                 Arg.Any<CommandFlags>())
             .Returns(semanticEntries);
 

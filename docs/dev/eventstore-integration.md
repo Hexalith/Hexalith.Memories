@@ -389,7 +389,7 @@ embedding come in Story 9.2.
 With Story 9.2 shipped, the same event now produces **two** Redis Vector hashes:
 
 1. `acme-claims:vec:<memoryUnitId>` — raw JSON payload embedding (unchanged from 9.1).
-2. `acme-claims:vec:nl:<memoryUnitId>` — LLM-authored natural-language description embedding, plus a
+2. `acme-claims:vecnl:<memoryUnitId>` — LLM-authored natural-language description embedding, plus a
    `naturalLanguageDescription` field for operator inspection. See "Dual embedding pipeline" below.
 
 FalkorDB gains `caused_by` and `correlated_with` edges when CloudEvent extensions supply
@@ -402,6 +402,12 @@ Story 9.2 adds a second embedding axis scoped to `SourceType.Event` memory units
 `GenerateNaturalLanguageDescriptionActivity` (DAPR Conversation API), re-runs
 `GenerateEmbeddingActivity` with `ContentKind = NaturalLanguageDescription`, and writes the result to
 the new per-tenant vector index `{tenant}:memories:vec:nl`.
+
+Story 21.3 moved NL hashes from the legacy nested `{tenant}:vec:nl:*` prefix to the disjoint
+`{tenant}:vecnl:*` prefix. The public NL index name remains `{tenant}:memories:vec:nl`. Running the
+embedding vector live migration copies verified legacy NL hashes to the disjoint prefix, deletes the
+legacy copy only after target verification, and drops/recreates the raw and NL RediSearch indexes
+without `DD` so raw KNN no longer indexes NL-only hashes.
 
 **Why NL:** the raw JSON embedding captures schema structure (field names, data types). A technical
 event like `CounterIncrementedV1 {"counterId": "cart", "delta": 1}` embeds similarly across all counter

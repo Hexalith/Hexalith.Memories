@@ -27,7 +27,7 @@ Information (PII), Protected Health Information (PHI), or other regulated data s
    `GenerateNaturalLanguageDescriptionActivityTests.PayloadWithCustomerPii_SummaryMayContainPii_DocumentedBehavior`
    documents this behavior in code.
 2. **Within-tenant PII propagation.** The NL description is persisted in the tenant's own Redis
-   Vector store (`{tenant}:vec:nl:*`). It does NOT leak across tenants via the store itself — tenant
+   Vector store (`{tenant}:vecnl:*`). It does NOT leak across tenants via the store itself — tenant
    isolation boundaries from Epic 5 apply unchanged.
 3. **Cross-tenant response cache at the sidecar level.** DAPR's response cache is shared across
    tenants. `deploy/dapr/components/conversation-llm.yaml` ships with `responseCacheTTL: 0s` and the
@@ -54,7 +54,7 @@ acknowledges these controls exist and commits to the posture chosen per deployme
 | Response cache TTL                                    | `deploy/dapr/components/conversation-llm.yaml` `metadata[responseCacheTTL]` | `0s`                      | YAML edit, gated by startup validator                                        |
 | Cross-tenant cache acknowledgment                     | `NaturalLanguage:AcceptCrossTenantCacheSharing` or env var                  | `false` / unset           | Config edit; required when cache TTL > 0                                     |
 | LLM provider swap                                     | `deploy/dapr/components/conversation-llm.yaml` `type`                       | `conversation.echo` (dev) | YAML edit + secrets; no code change                                          |
-| Disable duplicate metadata copy of the NL description | `NaturalLanguage:PersistInMetadata`                                         | `false`                   | Config edit; does **not** remove the NL description from `{tenant}:vec:nl:*` |
+| Disable duplicate metadata copy of the NL description | `NaturalLanguage:PersistInMetadata`                                         | `false`                   | Config edit; does **not** remove the NL description from `{tenant}:vecnl:*` |
 | Per-tenant LLM provider                               | _Not shipped in 9.2_                                                        | —                         | Phase 2 follow-up                                                            |
 
 ## 4. Operator checklist — before enabling NL on a PII-bearing tenant

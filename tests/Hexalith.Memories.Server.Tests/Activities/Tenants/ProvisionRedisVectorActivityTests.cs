@@ -182,7 +182,7 @@ public class ProvisionRedisVectorActivityTests
         RedisResult.Create(
         [
             RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vec:nl:"))]),
+            RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vecnl:"))]),
         ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(

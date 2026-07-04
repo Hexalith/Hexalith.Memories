@@ -50,7 +50,7 @@ public sealed partial class DeleteRedisVectorActivity : WorkflowActivity<TenantD
         }
 
         // Story 9.2 Task 4.6: drop the sibling natural-language semantic index and all associated
-        // {tenant}:vec:nl:* hashes so tenant deletion leaves no orphan NL vectors behind.
+        // {tenant}:vecnl:* hashes so tenant deletion leaves no orphan NL vectors behind.
         string nlIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
 
         try

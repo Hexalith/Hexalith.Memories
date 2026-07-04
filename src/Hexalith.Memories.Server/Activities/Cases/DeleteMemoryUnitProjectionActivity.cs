@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Activities.Cases;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using StackExchange.Redis;
 
@@ -35,9 +36,9 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
 
     private async Task DeleteOneAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, string memoryUnitId)
     {
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
-        string vecKey = $"{tenantId}:vec:{memoryUnitId}";
-        string nlVecKey = $"{tenantId}:vec:nl:{memoryUnitId}";
+        string muKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + memoryUnitId;
+        string vecKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + memoryUnitId;
+        string nlVecKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + memoryUnitId;
         (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
 
         await Task.WhenAll(

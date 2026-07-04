@@ -88,7 +88,7 @@ public class CleanupActivityTests
             new CleanupInput("mu-001", "tenant-1"));
 
         await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
-        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:nl:mu-001", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vecnl:mu-001", Arg.Any<CommandFlags>());
     }
 
     [Fact]

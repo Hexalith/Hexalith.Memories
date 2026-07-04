@@ -127,13 +127,17 @@ public sealed partial class RedisEmbeddingMigrationStore(
     }
 
     /// <inheritdoc/>
-    public Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct)
+    public async Task DropAndRecreateSemanticIndexesAsync(string tenantId, int dimensions, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ct.ThrowIfCancellationRequested();
         IDatabase db = redis.GetDatabase();
         string rawIndex = IndexSchemaDefinitions.GetSemanticIndexName(tenantId);
         string nlIndex = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
+
+        await RedisNaturalLanguageNamespaceMigrator
+            .MigrateAsync(db, GetAnyServer(), tenantId, ct)
+            .ConfigureAwait(false);
 
         DropIndexIfExists(db, rawIndex);
         DropIndexIfExists(db, nlIndex);
@@ -165,7 +169,6 @@ public sealed partial class RedisEmbeddingMigrationStore(
             throw;
         }
 
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc/>

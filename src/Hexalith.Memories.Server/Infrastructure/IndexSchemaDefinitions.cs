@@ -48,8 +48,11 @@ internal static class IndexSchemaDefinitions
     /// <summary>Story 9.2: index name suffix for the natural-language (LLM-authored) semantic index.</summary>
     public const string NaturalLanguageSemanticIndexSuffix = ":memories:vec:nl";
 
+    /// <summary>Story 21.3: legacy nested key prefix suffix for natural-language semantic hash entries.</summary>
+    public const string LegacyNaturalLanguageSemanticKeyPrefixSuffix = ":vec:nl:";
+
     /// <summary>Story 9.2: key prefix suffix for natural-language semantic hash entries.</summary>
-    public const string NaturalLanguageSemanticKeyPrefixSuffix = ":vec:nl:";
+    public const string NaturalLanguageSemanticKeyPrefixSuffix = ":vecnl:";
 
     /// <summary>Gets the RediSearch syntactic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -86,6 +89,12 @@ internal static class IndexSchemaDefinitions
     /// <returns>The key prefix.</returns>
     public static string GetNaturalLanguageSemanticKeyPrefix(string tenantId)
         => tenantId + NaturalLanguageSemanticKeyPrefixSuffix;
+
+    /// <summary>Story 21.3: Gets the legacy nested key prefix for natural-language semantic hash migration.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The legacy key prefix.</returns>
+    public static string GetLegacyNaturalLanguageSemanticKeyPrefix(string tenantId)
+        => tenantId + LegacyNaturalLanguageSemanticKeyPrefixSuffix;
 
     /// <summary>Creates the FTCreateParams for a RediSearch syntactic index.</summary>
     /// <param name="tenantId">The tenant identifier.</param>

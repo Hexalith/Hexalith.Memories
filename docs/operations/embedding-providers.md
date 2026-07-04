@@ -227,6 +227,11 @@ Live Path A migration:
 dotnet run --project tools\MigrateEmbeddingVectors -- --live --tenant {TENANT_ID} --target-provider ollama --target-model qwen3-embedding:4b --target-dimensions 2560 --batch-size 100 --yes --redis {REDIS_CONNECTION} --dapr-http {DAPR_HTTP_ENDPOINT}
 ```
 
+Live migration also performs the Story 21.3 NL namespace migration for the tenant before semantic
+index rebuild: legacy `{tenant}:vec:nl:*` hashes are copied to `{tenant}:vecnl:*`, verified, then the
+legacy copy is deleted. The raw and NL RediSearch indexes are dropped without `DD` and recreated so
+the raw semantic index no longer matches NL-only hashes.
+
 ### Live Migration Coordination
 
 Live migration uses a durable tenant-scoped migration marker. The cutover point begins after the

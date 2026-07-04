@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -82,9 +83,9 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         IDatabase redisDb = _redis.GetDatabase();
 
-        string syntacticKey = $"{tenantId}:mu:{normalizedMemoryUnitId}";
-        string vectorKey = $"{tenantId}:vec:{normalizedMemoryUnitId}";
-        string naturalLanguageVectorKey = $"{tenantId}:vec:nl:{normalizedMemoryUnitId}";
+        string syntacticKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + normalizedMemoryUnitId;
+        string vectorKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + normalizedMemoryUnitId;
+        string naturalLanguageVectorKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + normalizedMemoryUnitId;
 
         Task<HashEntry[]> syntacticTask = redisDb.HashGetAllAsync(syntacticKey);
         Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(vectorKey);

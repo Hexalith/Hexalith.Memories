@@ -62,6 +62,25 @@ public class EnumerateMemoryUnitIdsActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_NaturalLanguageSemanticKeyUnderDisjointPrefix_DoesNotCreatePhantomId()
+    {
+        RedisKey[] redisKeys =
+        [
+            $"{TestTenantId}:vec:mu-1",
+            $"{TestTenantId}:vecnl:mu-1",
+        ];
+        EnumerateMemoryUnitIdsActivity activity = CreateActivityFromRedisKeys(redisKeys, graphIds: []);
+
+        EnumerateMemoryUnitIdsResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EnumerateMemoryUnitIdsInput(TestTenantId));
+
+        result.MemoryUnitIds.ShouldBe(["mu-1"]);
+        result.TotalUnionCount.ShouldBe(1);
+        result.MemoryUnitIds.ShouldNotContain("nl:mu-1");
+    }
+
+    [Fact]
     public async Task RunAsync_OrphanInGraphOnly_IsReturnedInUnion()
     {
         EnumerateMemoryUnitIdsActivity activity = CreateActivity(
@@ -272,6 +291,41 @@ public class EnumerateMemoryUnitIdsActivityTests
         redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
 
         return redis;
+    }
+
+    private static EnumerateMemoryUnitIdsActivity CreateActivityFromRedisKeys(
+        RedisKey[] keys,
+        IReadOnlyList<string> graphIds)
+    {
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(callInfo =>
+            {
+                string pattern = callInfo.ArgAt<RedisValue>(1).ToString()!;
+                string prefix = pattern.EndsWith('*') ? pattern[..^1] : pattern;
+                RedisKey[] matched = keys
+                    .Where(key => key.ToString().StartsWith(prefix, StringComparison.Ordinal))
+                    .ToArray();
+                return ToAsyncEnumerable(matched);
+            });
+
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        EndPoint endpoint = new DnsEndPoint("localhost", 6379);
+        redis.GetEndPoints(Arg.Any<bool>()).Returns([endpoint]);
+        redis.GetServer(Arg.Any<EndPoint>(), Arg.Any<object>()).Returns(server);
+
+        return new EnumerateMemoryUnitIdsActivity(
+            redis,
+            VerifyConsistencyActivityTestsFactory.CreateFalkorMultiplexer(graphIds),
+            CreateBuilder(),
+            Substitute.For<ILogger<EnumerateMemoryUnitIdsActivity>>());
     }
 
     private static IGraphQueryBuilder CreateBuilder()
