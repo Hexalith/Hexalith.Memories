@@ -1,3 +1,44 @@
+# Test Automation Summary — Story 20.2 (Tenant Authorization Filter & Principal-Derived Audit Identity)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/20-2-tenant-authorization-filter-and-principal-derived-audit-identity.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** Server tenant authorization from authenticated principal claims, body/query/path tenant denials, and principal-derived audit identity.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs` — added authorized tenant-route pass-through coverage and expanded cross-tenant plus malformed tenant denial coverage across path routes, `/api/search`, `/api/ingest`, `/api/ingest/url`, and `/api/ingest/directory`.
+- [x] Existing Story 20.2 tests validated claims normalization, tenant authorization filter behavior, tenant path denial, search-axis denial (`syntactic`, `semantic`, `graph`, `hybrid`), and `x-user-id` audit spoofing regression.
+- [x] Review regression coverage added for MCP-compatible underscore tenant IDs and extracted by-source-URI case-access audit identity.
+
+### E2E Tests
+- [x] UI E2E not applicable. Story 20.2 is a Server API/security slice with no module UI change.
+
+## Coverage
+
+- API tenant path representative denial routes: 3/3 covered.
+- Search cross-tenant denial axes: 4/4 covered.
+- Body-tenant ingest scheduling denial endpoints: 3/3 covered.
+- Principal-derived audit identity regression: covered for search and by-source-URI case-access `x-user-id` spoofing; existing audit tests cover search, ingest, traverse, and case-access audit event emission.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false` — passed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Authentication.ServerTenantClaimsTransformationTests -class Hexalith.Memories.Server.Tests.Authentication.TenantAuthorizationEndpointFilterTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests -class Hexalith.Memories.Server.Tests.Telemetry.AuditLogStreamTests` — 56 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` — 2000 total, 0 failed, 1 intentionally skipped submodule mutation guard.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build Hexalith.Memories.slnx --disable-build-servers -m:1 /nr:false` — passed.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: not applicable.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.
+
+---
+
 # Test Automation Summary — Story 17.2 (Recovery and Feedback State Grammar)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

@@ -45,6 +45,10 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
 
     public IConnectionMultiplexer FalkorDbMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
 
+    public IDatabase RedisDatabase { get; } = Substitute.For<IDatabase>();
+
+    public IDatabase FalkorDbDatabase { get; } = Substitute.For<IDatabase>();
+
     public DaprClient DaprClient { get; } = Substitute.For<DaprClient>();
 
     public Dapr.Actors.Client.IActorProxyFactory ActorProxyFactory { get; } = Substitute.For<Dapr.Actors.Client.IActorProxyFactory>();
@@ -52,6 +56,12 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
     public CapturingAuditLoggerProvider AuditLogs { get; } = new();
 
     public CapturingEventStoreLogProvider EventStoreLogs { get; } = new();
+
+    public EventStoreWebAppFactory()
+    {
+        RedisMultiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(RedisDatabase);
+        FalkorDbMultiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(FalkorDbDatabase);
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

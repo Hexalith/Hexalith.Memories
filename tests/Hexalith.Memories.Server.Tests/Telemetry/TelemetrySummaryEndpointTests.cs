@@ -57,14 +57,13 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task GetTelemetrySummary_InvalidTenantIdFormat_Returns400()
+    public async Task GetTelemetrySummary_MalformedTenantIdFormat_Returns403()
     {
         using HttpClient client = _factory.CreateClient();
 
-        // The ValidateTenantId guard rejects whitespace / underscore before the registry lookup.
-        HttpResponseMessage response = await client.GetAsync("/api/tenants/invalid_tenant_id/telemetry/summary", CancellationToken.None);
+        HttpResponseMessage response = await client.GetAsync("/api/tenants/bad~tenant/telemetry/summary", CancellationToken.None);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     [Fact]

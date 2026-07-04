@@ -68,20 +68,20 @@ public sealed class ConsistencyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task PostVerify_InvalidTenantIdFormat_Returns400()
+    public async Task PostVerify_MalformedTenantIdFormat_Returns403BeforeEndpoint()
     {
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/invalid_tenant/consistency/verify",
+            "/api/tenants/bad~tenant/consistency/verify",
             new { },
             CancellationToken.None);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         ErrorResponse? error = await response.Content
             .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
         error.ShouldNotBeNull();
-        error.Code.ShouldBe("INVALID_TENANT_ID");
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
     }
 
     [Fact]
@@ -467,7 +467,13 @@ public sealed class ConsistencyEndpointTests : IDisposable
         {
             ArgumentNullException.ThrowIfNull(client);
             base.ConfigureClient(client);
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                ServerTestBearerToken.Create(tenants:
+                [
+                    "acme-consistency",
+                    "unknown-tenant",
+                ]));
         }
     }
 }

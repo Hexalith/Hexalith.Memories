@@ -124,6 +124,15 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
     {
         ArgumentNullException.ThrowIfNull(client);
         base.ConfigureClient(client);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants:
+            [
+                "acme",
+                "acme-search",
+                "acme-telemetry",
+                "tenant-deleting",
+                "unknown-tenant",
+            ]));
     }
 }

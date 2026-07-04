@@ -57,6 +57,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Implementation-readiness cleanup approved by Jerome and applied. Added readiness_accounting metadata and story_execution_order for Epic 17, Epic 18, and Epic 23.
 # 2026-07-04: Story 20.1 created (epic-20 -> in-progress, 20.1 -> ready-for-dev) via create-story. Server authentication foundation; closes A1 and cross-links Story-9.3-MemoriesServerAuthN.
 # 2026-07-04: Story 20.1 senior developer review completed with automatic fixes (Dapr actor runtime anonymous route guard). 20.1 -> done.
+# 2026-07-04: Story 20.2 created (20.2 -> ready-for-dev) via create-story. Tenant authorization filter and principal-derived audit identity; closes A2 and cross-links D8 TenantAuthorizationMiddleware.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -336,7 +337,7 @@ development_status:
   # Epic 20: API Security & Tenant Authorization (Sprint Change Proposal 2026-07-04; closes A1,A2,A6,A20,A31,A41)
   epic-20: in-progress
   20-1-server-authentication-foundation: done
-  20-2-tenant-authorization-filter-and-principal-derived-audit-identity: backlog
+  20-2-tenant-authorization-filter-and-principal-derived-audit-identity: done
   20-3-tenant-scope-workflow-and-batch-status-endpoints: backlog
   20-4-mcp-production-signing-key-hardening: backlog
   20-5-inbound-rate-limiting-quotas-and-audit-completeness: backlog

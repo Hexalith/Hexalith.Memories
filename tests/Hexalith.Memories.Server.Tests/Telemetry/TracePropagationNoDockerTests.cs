@@ -180,7 +180,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         using HttpClient client = _factory.CreateClient();
         using TestRootScope root = new();
 
-        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/tenants/bad~id/traverse?startNodeId=s1&caseId=case-42", root.TraceId);
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/tenants/acme/traverse?caseId=case-42", root.TraceId);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         Activity traverseActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.TraverseRequest);

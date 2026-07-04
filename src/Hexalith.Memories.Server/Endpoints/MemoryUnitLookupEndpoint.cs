@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Endpoints;
 
 using System.Collections.Generic;
+using System.Security.Claims;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -136,7 +137,15 @@ internal static class MemoryUnitLookupEndpoint
 
     private static string ResolveUser(HttpContext httpContext, System.Diagnostics.Activity? activity)
     {
-        string? user = httpContext.Request.Headers["x-user-id"].ToString();
+        if (httpContext.User.Identity?.IsAuthenticated != true)
+        {
+            return AccessTelemetryLog.UserAnonymous;
+        }
+
+        string? user = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? httpContext.User.FindFirst("sub")?.Value
+            ?? httpContext.User.FindFirst("preferred_username")?.Value
+            ?? httpContext.User.FindFirst("name")?.Value;
         if (string.IsNullOrWhiteSpace(user))
         {
             return AccessTelemetryLog.UserAnonymous;

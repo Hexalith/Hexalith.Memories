@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Authentication;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 
 using Microsoft.IdentityModel.Tokens;
 
@@ -24,9 +25,25 @@ internal static class ServerTestBearerToken
     public const string SigningKey = "hexalith-memories-test-signing-key-32b";
 
     /// <summary>Creates an encoded JWT matching <c>appsettings.Development.json</c>.</summary>
+    /// <param name="subject">The token subject.</param>
+    /// <param name="tenants">The tenant ids carried by the configured tenant claim.</param>
+    /// <param name="additionalClaims">Additional claims to include in the token.</param>
     /// <returns>A signed bearer token.</returns>
-    public static string Create()
+    public static string Create(
+        string subject = "operator-1",
+        IEnumerable<string>? tenants = null,
+        IEnumerable<Claim>? additionalClaims = null)
     {
+        string[] tenantValues = [.. tenants ?? ["acme"]];
+        Claim[] tenantClaims = tenantValues.Length == 1
+            ? [new Claim("tenant_id", tenantValues[0])]
+            : [new Claim("tenants", JsonSerializer.Serialize(tenantValues))];
+        Claim[] claims =
+        [
+            new Claim("sub", subject),
+            .. tenantClaims,
+            .. additionalClaims ?? [],
+        ];
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SigningKey)),
             SecurityAlgorithms.HmacSha256);
@@ -34,11 +51,7 @@ internal static class ServerTestBearerToken
         {
             Issuer = Issuer,
             Audience = Audience,
-            Subject = new ClaimsIdentity(
-            [
-                new Claim("sub", "operator-1"),
-                new Claim("tenant_id", "acme"),
-            ]),
+            Subject = new ClaimsIdentity(claims),
             Expires = DateTime.UtcNow.AddMinutes(15),
             SigningCredentials = credentials,
         };

@@ -49,6 +49,9 @@ builder.Services.AddOptions<MemoriesServerAuthenticationOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<MemoriesServerAuthenticationOptions>, ValidateServerAuthenticationOptions>();
 builder.Services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureServerJwtBearerOptions>();
+builder.Services.AddTransient<Microsoft.AspNetCore.Authentication.IClaimsTransformation, ServerTenantClaimsTransformation>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 builder.Services.AddAuthorizationBuilder()
@@ -371,6 +374,7 @@ app.UseMiddleware<Hexalith.Memories.EventStore.CloudEventEnvelopeCaptureMiddlewa
 app.UseCloudEvents();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseMiddleware<TenantAuthorizationMiddleware>();
 app.MapControllers();
 app.MapSubscribeHandler().AllowAnonymous();
 
@@ -403,6 +407,7 @@ app.MapPost("/api/ingest", async (
     IngestDedupReservation ingestReservation,
     IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
     ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     IngestionInput input) =>
 {
     using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
@@ -428,7 +433,7 @@ app.MapPost("/api/ingest", async (
             }
         });
     scope.CaseId = input.CaseId;
-    scope.User = string.IsNullOrWhiteSpace(input.IngestedBy) ? AccessTelemetryLog.UserAnonymous : input.IngestedBy;
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
     scope.QueryParams = CreateIngestAuditQueryParams(input.SourceType, input.ContentType, input.ContentBytes?.Length ?? 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
@@ -501,7 +506,8 @@ app.MapPost("/api/ingest", async (
         scope.MarkUnhandledException(ex);
         throw;
     }
-}).WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024));
+}).WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024))
+    .AddEndpointFilter<TenantAuthorizationEndpointFilter>();
 
 app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient, string instanceId) =>
 {
@@ -515,6 +521,7 @@ app.MapPost("/api/ingest/url", async (
     Microsoft.Extensions.Options.IOptions<UrlFetcherOptions> urlFetcherOptions,
     ILoggerFactory loggerFactory,
     ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     UrlIngestionRequest request,
     CancellationToken cancellationToken) =>
 {
@@ -541,7 +548,7 @@ app.MapPost("/api/ingest/url", async (
             }
         });
     scope.CaseId = request.CaseId;
-    scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
     scope.QueryParams = CreateIngestAuditQueryParams(SourceType.Url, contentType: null, bytes: 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
@@ -609,13 +616,14 @@ app.MapPost("/api/ingest/url", async (
         scope.MarkUnhandledException(ex);
         throw;
     }
-});
+}).AddEndpointFilter<TenantAuthorizationEndpointFilter>();
 
 app.MapPost("/api/ingest/directory", async (
     DirectoryIngestionService directoryService,
     TenantStatusGuard tenantGuard,
     ILoggerFactory loggerFactory,
     ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     DirectoryIngestionRequest request,
     CancellationToken cancellationToken) =>
 {
@@ -642,7 +650,7 @@ app.MapPost("/api/ingest/directory", async (
             }
         });
     scope.CaseId = request.CaseId;
-    scope.User = string.IsNullOrWhiteSpace(request.IngestedBy) ? AccessTelemetryLog.UserAnonymous : request.IngestedBy;
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
     scope.QueryParams = CreateIngestAuditQueryParams(SourceType.File, contentType: null, bytes: 0);
     activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
@@ -753,7 +761,7 @@ app.MapPost("/api/ingest/directory", async (
         scope.MarkUnhandledException(ex);
         throw;
     }
-});
+}).AddEndpointFilter<TenantAuthorizationEndpointFilter>();
 
 app.MapGet("/api/ingest/batches/{batchId}", async (
     DaprClient daprClient,
@@ -1733,7 +1741,7 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}",
         successEventId: 7504,
         errorEventId: 7514,
         tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
-    scope.User = ResolveReadOperationUser(httpContext, activity);
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
     scope.CaseId = caseId;
     scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
     {
@@ -2307,7 +2315,7 @@ app.MapGet("/api/search", async (
                 }
             }
     });
-    searchScope.User = ResolveReadOperationUser(httpContext, searchActivity);
+    searchScope.User = ResolvePrincipalAuditUser(httpContext, searchActivity);
     searchScope.CaseId = caseId;
     IReadOnlyDictionary<string, string>? attributeFilters = ReadAttributeFilters(httpContext.Request.Query);
     Dictionary<string, object?> searchQueryParams = new(System.StringComparer.Ordinal)
@@ -3000,7 +3008,7 @@ app.MapGet("/api/tenants/{tenantId}/traverse", async (
         successEventId: 7503,
         errorEventId: 7513,
         tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
-    scope.User = ResolveReadOperationUser(httpContext, activity);
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
     scope.CaseId = caseId;
     scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
     {
@@ -3260,11 +3268,19 @@ static IReadOnlyDictionary<string, object?> CreateIngestAuditQueryParams(
         ["bytes"] = bytes ?? 0,
     };
 
-static string ResolveReadOperationUser(HttpContext httpContext, System.Diagnostics.Activity? activity)
+static string ResolvePrincipalAuditUser(HttpContext httpContext, System.Diagnostics.Activity? activity)
 {
     ArgumentNullException.ThrowIfNull(httpContext);
 
-    string? user = httpContext.Request.Headers["x-user-id"].ToString();
+    if (httpContext.User.Identity?.IsAuthenticated != true)
+    {
+        return AccessTelemetryLog.UserAnonymous;
+    }
+
+    string? user = httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+        ?? httpContext.User.FindFirst("sub")?.Value
+        ?? httpContext.User.FindFirst("preferred_username")?.Value
+        ?? httpContext.User.FindFirst("name")?.Value;
     if (string.IsNullOrWhiteSpace(user))
     {
         return AccessTelemetryLog.UserAnonymous;

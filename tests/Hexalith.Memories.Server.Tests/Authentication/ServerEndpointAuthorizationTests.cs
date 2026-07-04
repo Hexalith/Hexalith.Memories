@@ -7,14 +7,19 @@ namespace Hexalith.Memories.Server.Tests.Authentication;
 
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
+using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Shouldly;
 
 /// <summary>Endpoint-level guards for the Memories Server fallback authorization policy.</summary>
@@ -46,6 +51,170 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         response.Headers.TryGetValues("X-Memories-API-Experimental", out IEnumerable<string>? values).ShouldBeTrue();
         values.ShouldContain("HXL002");
+    }
+
+    [Fact]
+    public async Task TenantPathEndpoint_WithMatchingTenant_ReachesEndpointBusinessLogic()
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/tenant-a",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_NOT_FOUND");
+        error.Code.ShouldNotBe("TENANT_FORBIDDEN");
+    }
+
+    [Theory]
+    [InlineData("/api/tenants/tenant-b/handlers/mismatches")]
+    [InlineData("/api/tenants/tenant-b/telemetry/summary")]
+    [InlineData("/api/tenants/tenant-b/cases/case-1/memory-units/memory-1")]
+    public async Task TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState(string path)
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.ActorProxyFactory.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task TenantPathEndpoint_WithMalformedTenant_ReturnsTenantForbiddenBeforeTenantState()
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/tenants/bad~tenant/handlers/mismatches",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.ActorProxyFactory.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("syntactic")]
+    [InlineData("semantic")]
+    [InlineData("graph")]
+    [InlineData("hybrid")]
+    public async Task SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies(string axis)
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+        string startNode = axis == "graph" ? "&startNodeId=memory-1" : string.Empty;
+
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/api/search?tenantId=tenant-b&query=fraud&axis={axis}{startNode}",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.ActorProxyFactory.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task SearchEndpoint_WithMalformedTenant_ReturnsTenantForbiddenBeforeSearchDependencies()
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/search?tenantId=bad~tenant&query=fraud&axis=syntactic",
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.ActorProxyFactory.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/api/ingest", "document")]
+    [InlineData("/api/ingest/url", "url")]
+    [InlineData("/api/ingest/directory", "directory")]
+    public async Task TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies(
+        string path,
+        string requestKind)
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpContent content = CreateMismatchedTenantSchedulingContent(requestKind);
+        using HttpResponseMessage response = await client.PostAsync(
+            path,
+            content,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.PreflightDedup.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/api/ingest", "document")]
+    [InlineData("/api/ingest/url", "url")]
+    [InlineData("/api/ingest/directory", "directory")]
+    public async Task TenantScopedIngestSchedulingEndpoint_WithMalformedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies(
+        string path,
+        string requestKind)
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+
+        using HttpContent content = CreateSchedulingContent(requestKind, "bad~tenant");
+        using HttpResponseMessage response = await client.PostAsync(
+            path,
+            content,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.PreflightDedup.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
     }
 
     [Fact]
@@ -150,6 +319,52 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         || string.Equals(route, "dapr/config", StringComparison.OrdinalIgnoreCase)
         || string.Equals(route, "/healthz", StringComparison.OrdinalIgnoreCase)
         || route.Contains("{actorType}", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<ErrorResponse> ReadErrorResponseAsync(HttpResponseMessage response)
+    {
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        ErrorResponse? error = JsonSerializer.Deserialize<ErrorResponse>(body, MemoriesJsonContext.Options);
+        error.ShouldNotBeNull();
+        return error;
+    }
+
+    private static HttpContent CreateMismatchedTenantSchedulingContent(string requestKind)
+        => CreateSchedulingContent(requestKind, "tenant-b");
+
+    private static HttpContent CreateSchedulingContent(string requestKind, string tenantId)
+        => requestKind switch
+        {
+            "document" => JsonContent.Create(
+                new IngestionInput
+                {
+                    TenantId = tenantId,
+                    CaseId = "case-1",
+                    SourceUri = "test://source",
+                    ContentType = "text/plain",
+                    SourceType = SourceType.Event,
+                    IngestedBy = "spoofed-user",
+                },
+                options: MemoriesJsonContext.Options),
+            "url" => JsonContent.Create(
+                new UrlIngestionRequest
+                {
+                    TenantId = tenantId,
+                    CaseId = "case-1",
+                    Url = "https://example.com/evidence.txt",
+                    IngestedBy = "spoofed-user",
+                },
+                options: MemoriesJsonContext.Options),
+            "directory" => JsonContent.Create(
+                new DirectoryIngestionRequest
+                {
+                    TenantId = tenantId,
+                    CaseId = "case-1",
+                    DirectoryPath = "/tmp/hexalith-memories-fixture",
+                    IngestedBy = "spoofed-user",
+                },
+                options: MemoriesJsonContext.Options),
+            _ => throw new ArgumentOutOfRangeException(nameof(requestKind), requestKind, "Unknown scheduling request kind."),
+        };
 
     public void Dispose() => _factory.Dispose();
 }

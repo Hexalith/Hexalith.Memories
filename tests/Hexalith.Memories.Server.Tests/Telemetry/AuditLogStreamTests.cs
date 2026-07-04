@@ -66,7 +66,7 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("INVALID_INPUT");
         auditEvent.TenantId.ShouldBe(MemoriesMeter.RejectedTenantTag);
-        auditEvent.User.ShouldBe(AccessTelemetryLog.UserAnonymous);
+        auditEvent.User.ShouldBe("operator-1");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
         auditEvent.SpanId.ShouldNotBeNullOrWhiteSpace();
         auditEvent.DurationMs.ShouldBeGreaterThanOrEqualTo(0);
@@ -129,7 +129,7 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
         auditEvent.ErrorCode.ShouldBe("INVALID_INPUT");
         auditEvent.TenantId.ShouldBe(MemoriesMeter.RejectedTenantTag);
-        auditEvent.User.ShouldBe("tests");
+        auditEvent.User.ShouldBe("operator-1");
         auditEvent.CaseId.ShouldBe("case-1");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
         auditEvent.ResultCount.ShouldBeNull();
@@ -150,7 +150,7 @@ public sealed class AuditLogStreamTests : IDisposable
     }
 
     [Fact]
-    public async Task SearchEndpoint_XUserIdHeader_EmitsHeaderValueAsAuditUser()
+    public async Task SearchEndpoint_XUserIdHeader_IgnoresHeaderAndUsesPrincipalSubject()
     {
         using HttpClient client = _factory.CreateClient();
         using Activity? root = TestRootSource.StartActivity("search-user-header-test");
@@ -163,19 +163,17 @@ public sealed class AuditLogStreamTests : IDisposable
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
-        auditEvent.User.ShouldBe("reader-42");
+        auditEvent.User.ShouldBe("operator-1");
     }
 
     [Fact]
-    public async Task TraverseEndpoint_InvalidTenantIdPath_EmitsExactlyOneAuditEventWithSchema()
+    public async Task TraverseEndpoint_MissingStartNodePath_EmitsExactlyOneAuditEventWithSchema()
     {
         using HttpClient client = _factory.CreateClient();
         using Activity? root = TestRootSource.StartActivity("traverse-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        // Bad tenant id (contains invalid chars) — ValidateTenantId returns INVALID_TENANT_ID → scope.MarkValidationError
-        // recognizes the code as a rejected-tenant code and switches tenant tag to __rejected__.
-        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/bad~id/traverse?startNodeId=s1", traceId));
+        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/traverse", traceId));
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
@@ -183,19 +181,19 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.SchemaVersion.ShouldBe(1);
         auditEvent.OperationType.ShouldBe(AccessTelemetryLog.OperationTraverse);
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
-        auditEvent.ErrorCode.ShouldBe("INVALID_TENANT_ID");
-        auditEvent.TenantId.ShouldBe(MemoriesMeter.RejectedTenantTag);
+        auditEvent.ErrorCode.ShouldBe("MISSING_START_NODE");
+        auditEvent.TenantId.ShouldBe("acme");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
     }
 
     [Fact]
-    public async Task CaseAccessEndpoint_InvalidTenantIdPath_EmitsExactlyOneAuditEventWithSchema()
+    public async Task CaseAccessEndpoint_MissingSourceUriPath_EmitsExactlyOneAuditEventWithSchema()
     {
         using HttpClient client = _factory.CreateClient();
         using Activity? root = TestRootSource.StartActivity("case-access-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/bad~id/cases/c1/memory-units/m1", traceId));
+        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId));
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
@@ -203,11 +201,28 @@ public sealed class AuditLogStreamTests : IDisposable
         auditEvent.SchemaVersion.ShouldBe(1);
         auditEvent.OperationType.ShouldBe(AccessTelemetryLog.OperationCaseAccess);
         auditEvent.Outcome.ShouldBe(AccessTelemetryLog.OutcomeError);
-        auditEvent.ErrorCode.ShouldBe("INVALID_TENANT_ID");
-        auditEvent.TenantId.ShouldBe(MemoriesMeter.RejectedTenantTag);
+        auditEvent.ErrorCode.ShouldBe("INVALID_SOURCE_URI");
+        auditEvent.TenantId.ShouldBe("acme");
         auditEvent.CaseId.ShouldBe("c1");
         auditEvent.TraceId.ShouldNotBeNullOrWhiteSpace();
-        auditEvent.QueryParams.ShouldContainKey("memoryUnitId");
+        auditEvent.QueryParams.ShouldContainKey("sourceUri");
+    }
+
+    [Fact]
+    public async Task CaseAccessBySourceUriEndpoint_XUserIdHeader_IgnoresHeaderAndUsesPrincipalSubject()
+    {
+        using HttpClient client = _factory.CreateClient();
+        using Activity? root = TestRootSource.StartActivity("case-access-user-header-test");
+        string traceId = root?.TraceId.ToString() ?? string.Empty;
+
+        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId);
+        request.Headers.Add("x-user-id", "reader-42");
+
+        HttpResponseMessage response = await client.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+
+        AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
+        auditEvent.User.ShouldBe("operator-1");
     }
 
     [Fact]
@@ -244,7 +259,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using (Activity? root2 = TestRootSource.StartActivity("traverse-leg"))
         {
             traverseTraceId = root2?.TraceId.ToString() ?? string.Empty;
-            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/bad~/traverse?startNodeId=s1", traverseTraceId));
+            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/traverse", traverseTraceId));
         }
 
         AccessTelemetryEvent searchEvent = GetSingleAuditEvent(searchTraceId);
