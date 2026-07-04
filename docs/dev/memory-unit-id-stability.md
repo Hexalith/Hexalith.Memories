@@ -23,7 +23,7 @@ This document is the authoritative description of **when a `MemoryUnitId` is sta
 | Guaranteed ULID / time-sortable? | **No** — it is **not guaranteed to be a ULID** and carries no ordering guarantee | `IngestionWorkflow.ResolveMemoryUnitId` |
 | Today's concrete shape | The Dapr workflow instance id (a GUID/ULID-like string supplied by the host) for ordinary file/url ingests, or a fresh `context.NewGuid().ToString()` for `dedup:`-prefixed EventStore workflows | `IngestionWorkflow.ResolveMemoryUnitId` |
 
-> **Do not promise a ULID.** The stale `_bmad-output/planning-artifacts/architecture.md` projection still lists the memory unit `Id` as `string (ULID)`. Live code supersedes that wording: `ResolveMemoryUnitId` returns `context.InstanceId` (or a `NewGuid` string), neither of which is parsed, validated, or guaranteed to be a ULID. Treat `MemoryUnitId` as **opaque** and resolve it through the lookup below rather than reconstructing it.
+> **Do not promise a ULID.** Earlier architecture projections described the memory unit `Id` as a ULID, but live code and the current architecture supersede that wording: `ResolveMemoryUnitId` returns `context.InstanceId` (or a `NewGuid` string), neither of which is parsed, validated, or guaranteed to be a ULID. Treat `MemoryUnitId` as **opaque** and resolve it through the lookup below rather than reconstructing it.
 
 ### EventStore `dedup:`-prefixed workflow instance ids
 

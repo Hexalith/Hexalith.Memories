@@ -39,13 +39,13 @@ public sealed partial class ConsistencyModelDecisionTests
             Case.Sensitive,
             "Architecture must identify backend records as projections/read models.");
         architecture.ShouldContain(
-            "existing direct case and tenant registry writes are transitional debt and must not be copied",
+            "Story 21.2 implements the command-acceptance boundary for case, annotation, memory-unit deletion, case deletion, and tenant lifecycle mutation paths",
             Case.Sensitive,
-            "Architecture must preserve the decision-first gate for dependent Epic 21 code.");
+            "Architecture must describe the implemented Story 21.2 command boundary.");
         architecture.ShouldContain(
-            "Story 21.2 implements the target mutation path",
+            "new domain mutation paths must follow that boundary instead of treating direct Redis/FalkorDB or Dapr state writes as authoritative",
             Case.Sensitive,
-            "Architecture must keep the implementation closure assigned to Story 21.2.");
+            "Architecture must preserve the post-21.2 guard against authoritative direct projection writes.");
         architecture.ShouldContain(
             "| EventStore source of truth + projection compensation | Gate 1 | MVP |",
             Case.Sensitive,

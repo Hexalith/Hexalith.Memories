@@ -30,33 +30,33 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithoutCaseId_ShouldReturnWildcardKnn()
+    public void BuildKnnCandidateQueryString_WithoutCaseId_ShouldReturnWildcardKnn()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, null);
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null);
 
         result.ShouldBe("*=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithEmptyCaseId_ShouldReturnWildcardKnn()
+    public void BuildKnnCandidateQueryString_WithEmptyCaseId_ShouldReturnWildcardKnn()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, "");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "");
 
         result.ShouldBe("*=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithCaseId_ShouldAddTagFilter()
+    public void BuildKnnCandidateQueryString_WithCaseId_ShouldAddTagFilter()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, "case-1");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "case-1");
 
         result.ShouldBe(@"@caseId:{case\-1}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithCaseIdContainingSpecialChars_ShouldEscapeProperly()
+    public void BuildKnnCandidateQueryString_WithCaseIdContainingSpecialChars_ShouldEscapeProperly()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(5, "case@special|value");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(5, "case@special|value");
 
         result.ShouldContain(@"\@");
         result.ShouldContain(@"\|");
@@ -64,9 +64,9 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnQueryString_DifferentMaxResults_ShouldReflectInQuery()
+    public void BuildKnnCandidateQueryString_DifferentCandidateCount_ShouldReflectInQuery()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(25, null);
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(25, null);
 
         result.ShouldBe("*=>[KNN 25 @embedding $query_vec AS __vector_score]");
     }
@@ -99,25 +99,25 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithSourceTypeFilter_ShouldAddTagFilter()
+    public void BuildKnnCandidateQueryString_WithSourceTypeFilter_ShouldAddTagFilter()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, null, "file");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "file");
 
         result.ShouldBe("@sourceType:{file}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithCloudEventSubject_ShouldAddTagFilter()
+    public void BuildKnnCandidateQueryString_WithCloudEventSubject_ShouldAddTagFilter()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, null, null, "claim-42");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, null, "claim-42");
 
         result.ShouldBe(@"@cloudeventSubject:{claim\-42}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithCaseIdAndSourceType_ShouldCombineFilters()
+    public void BuildKnnCandidateQueryString_WithCaseIdAndSourceType_ShouldCombineFilters()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, "case-1", "file", "claim-42");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "case-1", "file", "claim-42");
 
         result.ShouldContain(@"@caseId:{case\-1}");
         result.ShouldContain("@sourceType:{file}");
@@ -126,25 +126,25 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithEmptySourceType_ShouldIgnore()
+    public void BuildKnnCandidateQueryString_WithEmptySourceType_ShouldIgnore()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, null, "");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "");
 
         result.ShouldBe("*=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithSourceTypeContainingSpecialChars_ShouldEscape()
+    public void BuildKnnCandidateQueryString_WithSourceTypeContainingSpecialChars_ShouldEscape()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(10, null, "file-type");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "file-type");
 
         result.ShouldContain(@"@sourceType:{file\-type}");
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithAdversarialSubject_ShouldEscapeTagOperatorsBeforeKnnClause()
+    public void BuildKnnCandidateQueryString_WithAdversarialSubject_ShouldEscapeTagOperatorsBeforeKnnClause()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(
             10,
             null,
             null,
@@ -154,9 +154,9 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnQueryString_WithAdversarialCaseAndSource_ShouldEscapeTagOperatorsBeforeKnnClause()
+    public void BuildKnnCandidateQueryString_WithAdversarialCaseAndSource_ShouldEscapeTagOperatorsBeforeKnnClause()
     {
-        string result = SemanticSearchService.BuildKnnQueryString(
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(
             10,
             "case} | @sourceType:{event}",
             "file=>[KNN 100 @embedding $query_vec]");
@@ -188,6 +188,35 @@ public class SemanticSearchServiceTests
     {
         RediSearchErrorClassifier.IsVectorDimensionMismatchError(
             new RedisServerException("ERR Syntax error at offset 12")).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(0, 2, 2)]
+    [InlineData(2, 2, 4)]
+    [InlineData(-5, 2, 2)]
+    [InlineData(900, 100, 1000)]
+    public void CalculateKnnCandidateCount_WithOffset_ShouldReturnCandidateWindow(
+        int offset,
+        int maxResults,
+        int expectedCandidateCount)
+    {
+        int result = SemanticSearchService.CalculateKnnCandidateCount(offset, maxResults);
+
+        result.ShouldBe(expectedCandidateCount);
+    }
+
+    [Fact]
+    public void CalculateKnnCandidateCount_WhenWindowExceedsLimit_ShouldThrowArgumentOutOfRange()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(
+            () => SemanticSearchService.CalculateKnnCandidateCount(901, 100));
+    }
+
+    [Fact]
+    public void CalculateKnnCandidateCount_WhenOffsetAdditionOverflows_ShouldThrowArgumentOutOfRange()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(
+            () => SemanticSearchService.CalculateKnnCandidateCount(int.MaxValue, 100));
     }
 
     [Fact]

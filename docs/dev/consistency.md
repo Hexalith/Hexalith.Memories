@@ -36,7 +36,7 @@ state.
 | --- | --- | --- | --- | --- |
 | Verify | `POST /api/tenants/{tenantId}/consistency/verify` | Accepts optional `batchSize` in [10, 5000] | `memories consistency verify` CLI; operator scripts | `202 Accepted` with `workflowInstanceId` |
 | Verify status | `GET /api/tenants/{tenantId}/consistency/verify/{instanceId}` | Instance id must start with `verify-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
-| Inspect | `GET /api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}` | Memory unit id must be a 26-char Crockford-base32 ULID | `memories consistency inspect` CLI | `200 OK` with `ConsistencyInspectionResult` |
+| Inspect | `GET /api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}` | Memory unit id is an opaque, non-blank identifier; it is not ULID-only | `memories consistency inspect` CLI | `200 OK` with `ConsistencyInspectionResult` |
 | Repair | `POST /api/tenants/{tenantId}/consistency/repair` | Accepts optional `batchSize` + `includeUnrepairable` | `memories consistency repair --yes` CLI | `202 Accepted` with `workflowInstanceId` |
 | Repair status | `GET /api/tenants/{tenantId}/consistency/repair/{instanceId}` | Instance id must start with `repair-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
 
@@ -194,7 +194,7 @@ memories consistency verify --tenant acme --wait
 memories consistency verify --tenant acme --format json > verify.json
 
 # 3. Per-unit diagnosis (optional)
-memories consistency inspect --tenant acme --id 01HM5Q9WXGK6T8Q4Z5Y6V7W8X9
+memories consistency inspect --tenant acme --id wf-file-instance-7
 
 # 4. Repair (MUTATING — requires --yes)
 memories consistency repair --tenant acme --yes --wait

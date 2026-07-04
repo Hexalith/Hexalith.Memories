@@ -89,6 +89,44 @@ public sealed class SemanticSearchApiIntegrationTests
         result.Results[0].Axis.ShouldBe("semantic");
     }
 
+    [Fact]
+    public async Task GetSearch_WithSemanticAxisAndOffset_ShouldReturnDisjointStablePages()
+    {
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
+        const string Query = "story 22 semantic api pagination query";
+
+        await SeedDocumentAsync(tenantId, "mu-api-page-01", "story 22 semantic api pagination rank 32");
+        await SeedDocumentAsync(tenantId, "mu-api-page-02", "story 22 semantic api pagination rank 99");
+        await SeedDocumentAsync(tenantId, "mu-api-page-03", "story 22 semantic api pagination rank 90");
+        await SeedDocumentAsync(tenantId, "mu-api-page-04", "story 22 semantic api pagination rank 62");
+
+        string path = $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&maxResults=2";
+
+        using HttpResponseMessage firstResponse = await _fixture.MemoriesClient.GetAsync(path);
+        using HttpResponseMessage secondResponse = await _fixture.MemoriesClient.GetAsync($"{path}&offset=2");
+        using HttpResponseMessage secondRepeatResponse = await _fixture.MemoriesClient.GetAsync($"{path}&offset=2");
+
+        firstResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        secondResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        secondRepeatResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        SearchResult? firstPage = await firstResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+        SearchResult? secondPage = await secondResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+        SearchResult? secondRepeatPage = await secondRepeatResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+
+        firstPage.ShouldNotBeNull();
+        secondPage.ShouldNotBeNull();
+        secondRepeatPage.ShouldNotBeNull();
+        firstPage.Results.Count.ShouldBe(2);
+        secondPage.Results.Count.ShouldBe(2);
+        firstPage.Results.Select(static r => r.MemoryUnitId)
+            .Intersect(secondPage.Results.Select(static r => r.MemoryUnitId))
+            .ShouldBeEmpty();
+        secondRepeatPage.Results.Select(static r => r.MemoryUnitId)
+            .ShouldBe(secondPage.Results.Select(static r => r.MemoryUnitId));
+        firstPage.Results.Concat(secondPage.Results).ShouldAllBe(static r => r.Axis == "semantic");
+    }
+
     private async Task SeedDocumentAsync(string tenantId, string memoryUnitId, string content)
     {
         float[] vector = await _embeddingClient.GenerateAsync(

@@ -375,6 +375,58 @@ public class SemanticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_WithOffset_ShouldReturnDisjointStableSemanticPages()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        const string CaseId = "case-alpha";
+        OverrideEmbeddingClient embeddingClient = new();
+
+        embeddingClient.SetVector("pagination query", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("pagination rank 1", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("pagination rank 2", CreateVector(0.9f, 0.1f, 0.0f));
+        embeddingClient.SetVector("pagination rank 3", CreateVector(0.8f, 0.2f, 0.0f));
+        embeddingClient.SetVector("pagination rank 4", CreateVector(0.8f, 0.2f, 0.0f));
+        embeddingClient.SetVector("pagination other case", CreateVector(1.0f, 0.0f, 0.0f));
+
+        await SeedDocumentAsync(tenantId, "mu-page-01", "pagination rank 1", caseId: CaseId, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-page-02", "pagination rank 2", caseId: CaseId, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-page-03", "pagination rank 3", caseId: CaseId, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-page-04", "pagination rank 4", caseId: CaseId, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-page-other-case", "pagination other case", caseId: "case-beta", embeddingClient: embeddingClient);
+
+        SemanticSearchService service = new(
+            _redis.Connection,
+            embeddingClient,
+            NullLogger<SemanticSearchService>.Instance);
+
+        SearchQuery firstPageQuery = new()
+        {
+            TenantId = tenantId,
+            Query = "pagination query",
+            CaseId = CaseId,
+            MaxResults = 2,
+            Offset = 0,
+        };
+
+        SearchResult firstPage = await service.SearchAsync(
+            firstPageQuery,
+            _embeddingConfig,
+            CancellationToken.None);
+        SearchResult secondPage = await service.SearchAsync(
+            firstPageQuery with { Offset = 2 },
+            _embeddingConfig,
+            CancellationToken.None);
+
+        firstPage.Results.Select(static r => r.MemoryUnitId).ShouldBe(["mu-page-01", "mu-page-02"]);
+        secondPage.Results.Select(static r => r.MemoryUnitId).ShouldBe(["mu-page-03", "mu-page-04"]);
+        firstPage.Results.Select(static r => r.MemoryUnitId).Intersect(secondPage.Results.Select(static r => r.MemoryUnitId)).ShouldBeEmpty();
+        secondPage.Results.ShouldAllBe(static r => r.CaseId == CaseId);
+        firstPage.Results.Concat(secondPage.Results).ShouldNotContain(static r => r.MemoryUnitId == "mu-page-other-case");
+        AssertDescendingScoreThenId(firstPage.Results);
+        AssertDescendingScoreThenId(secondPage.Results);
+    }
+
+    [Fact]
     [Trait("Category", "Performance")]
     public async Task SearchAsync_LatencySmokeTest_10ConcurrentQueries_ShouldBeFast()
     {
@@ -611,6 +663,14 @@ public class SemanticSearchIntegrationTests
         float[] vector = new float[TestDimensions];
         Array.Copy(leadingValues, vector, leadingValues.Length);
         return vector;
+    }
+
+    private static void AssertDescendingScoreThenId(IReadOnlyList<ScoredResult> results)
+    {
+        results.ShouldBe(
+            [.. results
+                .OrderByDescending(static r => r.Score)
+                .ThenBy(static r => r.MemoryUnitId, StringComparer.Ordinal)]);
     }
 
     private static Task SetSyntacticHashAsync(

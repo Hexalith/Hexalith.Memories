@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-07-04
+last_updated: 2026-07-05
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
 # 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
@@ -77,6 +77,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 21.9 created (21.9 -> ready-for-dev) via create-story. Blue/green embedding migration; closes A5 with non-destructive staging, atomic cutover, real rollback, SET NX ownership, TTL/heartbeat marker, and abort path.
 # 2026-07-04: Story 21.9 senior developer review completed with automatic fixes (resume preserves rollback marker fields, tenant deletion drops staging RediSearch indexes). 21.9 -> done.
 # 2026-07-04: Story 21.10 created (21.10 -> ready-for-dev) via create-story. Migration subsystem test coverage; closes A22 with unit/store/tool coverage plus Redis-backed 768-to-1024 real-vector migration, marker end-state, rollback-unavailable, and abort-path proof.
+# 2026-07-05: Story 22.1 created (epic-22 -> in-progress, 22.1 -> ready-for-dev) via create-story. Semantic-axis pagination; closes A8 by requiring axis=semantic to honor Offset with offset+max KNN candidate fetch and Redis-backed pagination proof.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -364,7 +365,7 @@ development_status:
   epic-20-retrospective: done
 
   # Epic 21: Data Integrity, Consistency & Migration Safety (SCP 2026-07-04; closes A3,A4,A5,A16,A17,A22,A27,A28,A44,A47)
-  epic-21: in-progress
+  epic-21: done
   21-1-consistency-model-decision: done
   21-2-transactional-multi-backend-mutation: done
   21-3-natural-language-vector-namespace-separation: done
@@ -375,11 +376,11 @@ development_status:
   21-8-tenant-registry-cas-and-rollback-integrity: done
   21-9-blue-green-embedding-migration: done
   21-10-migration-subsystem-test-coverage: done
-  epic-21-retrospective: optional
+  epic-21-retrospective: done
 
   # Epic 22: RAG Retrieval Quality & Correctness (SCP 2026-07-04; closes A8,A9,A29,A30,A48,A49,A50)
-  epic-22: backlog
-  22-1-semantic-axis-pagination: backlog
+  epic-22: in-progress
+  22-1-semantic-axis-pagination: done
   22-2-bounded-cancellable-graph-traversal: backlog
   22-3-graph-scoped-and-hybrid-pagination-correctness: backlog
   22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: backlog
@@ -508,16 +509,36 @@ action_items:
   - epic: 20
     action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 story creation, especially 21.9 and 21.10"
     owner: "Winston, Amelia, Murat"
-    status: open
+    status: done  # 2026-07-05 (Epic 21): Stories 21.9 and 21.10 carried the migration-marker ownership, rollback, abort, and target-consistency cluster into implementation and coverage.
   - epic: 20
     action: "Preserve Epic 20 security regression guards during Epic 21 data-path changes"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-07-05 (Epic 21): data-path stories preserved auth, tenant authorization, audit, rate-limit, and RediSearch/key-schema guardrails in focused validation.
   - epic: 20
     action: "Treat remediation documentation as a first-class close-out gate for security/data-integrity stories"
     owner: "Paige, Winston"
-    status: open
+    status: done  # 2026-07-05 (Epic 21 retro): documentation candidates were verified against code; confirmed discrepancies were patched.
   - epic: 20
     action: "Define a tracking convention for one-shot or story-automator artifacts that sit outside registered story rows"
+    owner: "Amelia"
+    status: open
+  - epic: 21
+    action: "Reconcile the consistency inspect opaque-ID contract across docs and API messaging"
+    owner: "Paige, Amelia"
+    status: open
+  - epic: 21
+    action: "Preserve EventStore command-boundary and projection workflow guards while Epic 22 changes retrieval and case attribution code"
+    owner: "Amelia, Winston, Murat"
+    status: open
+  - epic: 21
+    action: "Keep key-schema literal guards in the Epic 22 close-out checklist"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 21
+    action: "Provide a runnable or explicitly accepted infrastructure lane for RedisStack migration integration tests"
+    owner: "Murat, Amelia"
+    status: open
+  - epic: 21
+    action: "Add review-found workflow/runtime defects to future remediation story checklists"
     owner: "Amelia"
     status: open

@@ -26,6 +26,8 @@ using RedisSearchResult = NRedisStack.Search.SearchResult;
 public sealed partial class SemanticSearchService
 {
     private const int MaxSnippetLength = 200;
+    private const int MaxResultsUpperBound = 100;
+    private const int MaxKnnCandidateWindow = 1_000;
     private static readonly string[] _requiredEnrichmentFields = ["content", "sourceUri", "sourceType"];
 
     private readonly IConnectionMultiplexer _redis;
@@ -61,7 +63,9 @@ public sealed partial class SemanticSearchService
         TenantIdGuard.Validate(query.TenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Query);
 
-        int maxResults = Math.Clamp(query.MaxResults, 1, 100);
+        int maxResults = Math.Clamp(query.MaxResults, 1, MaxResultsUpperBound);
+        int offset = Math.Max(query.Offset, 0);
+        int candidateCount = CalculateKnnCandidateCount(offset, maxResults);
 
         // Step 1: Embed the query text
         long embeddingStart = Environment.TickCount64;
@@ -78,10 +82,16 @@ public sealed partial class SemanticSearchService
 
         // Step 3: Convert vector to bytes and build KNN query
         byte[] queryVectorBytes = MemoryMarshal.AsBytes(queryVector.AsSpan()).ToArray();
-        string queryString = BuildKnnQueryString(maxResults, query.CaseId, query.SourceTypeFilter, query.CloudEventSubject);
+        string queryString = BuildKnnCandidateQueryString(
+            candidateCount,
+            query.CaseId,
+            query.SourceTypeFilter,
+            query.CloudEventSubject);
 
         var redisQuery = new Query(queryString)
             .AddParam("query_vec", queryVectorBytes)
+            .SetSortBy("__vector_score", true)
+            .Limit(0, candidateCount)
             .Dialect(2);
 
         IDatabase db = _redis.GetDatabase();
@@ -161,8 +171,9 @@ SearchSucceeded:
         }
 
         // Step 6: Enrich from syntactic hashes via pipeline batch (metadataQuery post-filtered here)
-        List<ScoredResult> results = await EnrichResultsAsync(
+        List<ScoredResult> candidateResults = await EnrichResultsAsync(
             db, query.TenantId, knnResults, query.MetadataQuery).ConfigureAwait(false);
+        List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
 
         long searchElapsed = Environment.TickCount64 - searchStart;
         LogSemanticSearchComplete(_logger, results.Count, searchElapsed);
@@ -182,13 +193,48 @@ SearchSucceeded:
     internal static double ConvertDistanceToSimilarity(double distance)
         => Math.Clamp(1.0 - distance, 0.0, 1.0);
 
-    /// <summary>Builds a KNN query string with optional case and source type pre-filters.</summary>
-    /// <param name="maxResults">The number of nearest neighbors to return.</param>
+    /// <summary>Calculates how many nearest-neighbor candidates Redis must return to satisfy an offset page.</summary>
+    /// <param name="offset">The requested result offset. Negative values are normalized to zero.</param>
+    /// <param name="maxResults">The requested page size, already normalized to the public result bounds.</param>
+    /// <returns>The number of KNN candidates to request from Redis.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the resulting candidate window is too large.</exception>
+    internal static int CalculateKnnCandidateCount(int offset, int maxResults)
+    {
+        int normalizedOffset = Math.Max(offset, 0);
+        int normalizedMaxResults = Math.Clamp(maxResults, 1, MaxResultsUpperBound);
+
+        int candidateCount;
+        try
+        {
+            candidateCount = checked(normalizedOffset + normalizedMaxResults);
+        }
+        catch (OverflowException)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(offset),
+                offset,
+                $"Semantic search offset plus max results must not exceed {MaxKnnCandidateWindow}.");
+        }
+
+        if (candidateCount > MaxKnnCandidateWindow)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(offset),
+                offset,
+                $"Semantic search offset plus max results must not exceed {MaxKnnCandidateWindow}.");
+        }
+
+        return candidateCount;
+    }
+
+    /// <summary>Builds a KNN candidate query string with optional case and source type pre-filters.</summary>
+    /// <param name="candidateCount">The number of nearest-neighbor candidates Redis should return before service-side pagination.</param>
     /// <param name="caseId">An optional case identifier for TAG filtering.</param>
     /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
+    /// <param name="cloudEventSubject">An optional CloudEvent subject for TAG filtering.</param>
     /// <returns>The KNN query string for FT.SEARCH.</returns>
-    internal static string BuildKnnQueryString(
-        int maxResults,
+    internal static string BuildKnnCandidateQueryString(
+        int candidateCount,
         string? caseId,
         string? sourceTypeFilter = null,
         string? cloudEventSubject = null)
@@ -211,7 +257,7 @@ SearchSucceeded:
         }
 
         string preFilter = filterParts.Count > 0 ? string.Join(" ", filterParts) : "*";
-        return $"{preFilter}=>[KNN {maxResults} @embedding $query_vec AS __vector_score]";
+        return $"{preFilter}=>[KNN {candidateCount} @embedding $query_vec AS __vector_score]";
     }
 
     /// <summary>Checks whether the enrichment hash returned all required fields.</summary>
