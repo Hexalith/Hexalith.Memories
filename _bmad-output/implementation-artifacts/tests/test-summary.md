@@ -1,3 +1,44 @@
+# Test Automation Summary - Story 21.3 (Natural-Language Vector Namespace Separation)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-3-natural-language-vector-namespace-separation.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** Natural-language vector key namespace migration and raw/NL RediSearch index rebuild behavior for Story 21.3.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Migration/RedisEmbeddingMigrationStoreTests.cs` - added migration-store boundary coverage proving live semantic index rebuild migrates legacy `{tenant}:vec:nl:*` hashes to `{tenant}:vecnl:*` before dropping/recreating raw and NL indexes, and review coverage proving legacy NL hashes are counted as NL data rather than raw semantic data.
+
+### E2E Tests
+- [x] Backend E2E-style coverage through the migration store boundary validates Redis scan/copy/delete orchestration plus RediSearch rebuild command shape without Docker.
+- [x] UI E2E is not applicable. Story 21.3 has no module UI change.
+
+## Coverage
+
+- Legacy NL hash migration trigger: covered at the `RedisEmbeddingMigrationStore.DropAndRecreateSemanticIndexesAsync` boundary.
+- Happy path: legacy NL hash is copied to the disjoint prefix, verified, and deleted before index rebuild.
+- Migration inventory regression: legacy `{tenant}:vec:nl:*` hashes are excluded from raw semantic counts and included in natural-language semantic counts before migration converges.
+- Critical regression cases: raw index recreation uses `{tenant}:vec:`; NL index recreation uses `{tenant}:vecnl:`; recreated indexes do not use the legacy nested `{tenant}:vec:nl:` prefix.
+- Existing Story 21.3 focused coverage rerun: prefix non-containment, phantom ID prevention, consistency verification/inspection, tenant vector provisioning, namespace migrator idempotency, and repair workflow stability.
+
+## Validation
+
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~RedisEmbeddingMigrationStoreTests" -m:1 /nodeReuse:false` - build passed; VSTest aborted on sandbox TCP listener permission (`SocketException (13): Permission denied`).
+- [x] `dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Migration.RedisEmbeddingMigrationStoreTests` - 2 total, 0 failed.
+- [x] `dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Migration.RedisEmbeddingMigrationStoreTests -class Hexalith.Memories.Server.Tests.Migration.RedisNaturalLanguageNamespaceMigratorTests -class Hexalith.Memories.Server.Tests.Infrastructure.IndexSchemaDefinitionsTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.EnumerateMemoryUnitIdsActivityTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.VerifyConsistencyActivityTests -class Hexalith.Memories.Server.Tests.Consistency.ConsistencyInspectionServiceTests -class Hexalith.Memories.Server.Tests.Activities.Tenants.ProvisionRedisVectorActivityTests -class Hexalith.Memories.Server.Tests.Workflows.ConsistencyRepairWorkflowTests` - 66 total, 0 failed.
+- [x] `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false` - passed, 0 warnings, 0 errors.
+
+## Checklist Result
+
+- API tests generated: pass.
+- E2E tests generated if UI exists: UI not applicable; backend migration boundary E2E-style coverage pass.
+- Standard framework APIs, happy path, critical error/regression cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.2 (Transactional Multi-Backend Mutation)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

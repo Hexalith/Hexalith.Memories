@@ -357,7 +357,7 @@ development_status:
   epic-21: in-progress
   21-1-consistency-model-decision: done
   21-2-transactional-multi-backend-mutation: done
-  21-3-natural-language-vector-namespace-separation: review
+  21-3-natural-language-vector-namespace-separation: done
   21-4-key-schema-single-source-of-truth: backlog
   21-5-deletion-completeness: backlog
   21-6-event-routing-for-unknown-unavailable-tenants: backlog

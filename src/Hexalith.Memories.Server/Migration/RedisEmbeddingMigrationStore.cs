@@ -73,6 +73,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         string syntacticPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
         string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
         string nlPrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId);
+        string legacyNlPrefix = IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix(tenantId);
 
         long syntactic = 0;
         await foreach (RedisKey _ in ScanKeysAsync(syntacticPrefix, ct).ConfigureAwait(false))
@@ -86,7 +87,9 @@ public sealed partial class RedisEmbeddingMigrationStore(
         await foreach (RedisKey key in ScanKeysAsync(rawPrefix, ct).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            if (key.ToString().StartsWith(nlPrefix, StringComparison.Ordinal))
+            string keyText = key.ToString();
+            if (keyText.StartsWith(nlPrefix, StringComparison.Ordinal)
+                || keyText.StartsWith(legacyNlPrefix, StringComparison.Ordinal))
             {
                 continue;
             }
@@ -99,12 +102,24 @@ public sealed partial class RedisEmbeddingMigrationStore(
             }
         }
 
-        long nl = 0;
-        long nlStale = 0;
+        Dictionary<string, RedisKey> nlKeysByUnitId = new(StringComparer.Ordinal);
+        await foreach (RedisKey key in ScanKeysAsync(legacyNlPrefix, ct).ConfigureAwait(false))
+        {
+            ct.ThrowIfCancellationRequested();
+            AddScannedKey(nlKeysByUnitId, key, legacyNlPrefix);
+        }
+
         await foreach (RedisKey key in ScanKeysAsync(nlPrefix, ct).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            nl++;
+            AddScannedKey(nlKeysByUnitId, key, nlPrefix);
+        }
+
+        long nl = nlKeysByUnitId.Count;
+        long nlStale = 0;
+        foreach (RedisKey key in nlKeysByUnitId.Values)
+        {
+            ct.ThrowIfCancellationRequested();
             SemanticMigrationState? state = await ReadSemanticStateAsync(db, key, ct).ConfigureAwait(false);
             if (!IsTargetState(state, targetConfig))
             {
@@ -113,6 +128,17 @@ public sealed partial class RedisEmbeddingMigrationStore(
         }
 
         return new EmbeddingMigrationTenantCounts(syntactic, raw, nl, rawStale, nlStale);
+    }
+
+    private static void AddScannedKey(Dictionary<string, RedisKey> keysByUnitId, RedisKey key, string prefix)
+    {
+        string? keyText = key.ToString();
+        if (string.IsNullOrEmpty(keyText) || keyText.Length <= prefix.Length)
+        {
+            return;
+        }
+
+        keysByUnitId[keyText[prefix.Length..]] = key;
     }
 
     /// <inheritdoc/>

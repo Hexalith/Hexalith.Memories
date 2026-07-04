@@ -4,7 +4,7 @@ baseline_commit: c350b7ab420d
 
 # Story 21.3: Natural-Language Vector Namespace Separation
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -223,6 +223,7 @@ GPT-5 Codex
 - 2026-07-04: added `RedisNaturalLanguageNamespaceMigrator` and wired it into embedding migration index rebuild. It scans only a single tenant's legacy NL prefix, copies required hash fields to the disjoint prefix, verifies the target hash, then deletes the legacy key. Existing verified target hashes are not overwritten.
 - 2026-07-04: updated A4-owned consistency, inspection, projection cleanup, tenant deletion comments, and schema validation tests to use the new prefix through `IndexSchemaDefinitions`.
 - 2026-07-04: validation used in-process xUnit runner because `dotnet test`/VSTest starts a TCP listener blocked by this sandbox (`SocketException 13`).
+- 2026-07-04: senior developer review loaded the story, sprint status, project context, Hexalith LLM/state instructions, Epic 21/A4 planning anchors, and changed implementation/test files. Review found and fixed a migration inventory bug where legacy `{tenant}:vec:nl:*` hashes were still counted as raw semantic hashes after the prefix change.
 
 ### Completion Notes List
 
@@ -234,9 +235,29 @@ GPT-5 Codex
 - Existing direct NL key reads/deletes now route through `IndexSchemaDefinitions`; raw and NL prefixes are explicitly non-overlapping.
 - Live embedding migration now migrates legacy `{tenant}:vec:nl:*` hashes before dropping/recreating raw and NL indexes without `DD`, preserving hash fields and avoiding deletion before target verification.
 - Added regression coverage for prefix non-containment, phantom-ID prevention, repair workflow stability, migration idempotency/field preservation, and raw-index prefix exclusion.
+- Senior review fixed migration inventory counting so legacy `{tenant}:vec:nl:*` hashes are excluded from raw semantic counts and included in natural-language semantic counts until namespace migration converges.
 - Updated developer, governance, and operations docs to publish `{tenant}:vecnl:*` and the migration trigger.
 - Validation passed for focused A4 tests, the full Server test assembly, Contracts, EventStore, MCP, Web tests, and `dotnet build Hexalith.Memories.slnx`.
+- Senior review validation passed: migration-store focused tests (2 total), A4 focused server test set (66 total), and `dotnet build Hexalith.Memories.slnx`.
 - Broader CLI test assembly has unrelated pre-existing failures: `RATE_LIMIT_EXCEEDED` is missing from the CLI error catalog, and quickstart port checks cannot bind sockets in this sandbox (`SocketException 13`).
+
+### Senior Developer Review (AI)
+
+Reviewer: GPT-5 Codex on 2026-07-04
+
+Outcome: Approved after automatic fixes. Story 21.3 status set to `done`; sprint status synced to `done`.
+
+Findings fixed:
+
+- [x] [AI-Review][High] `RedisEmbeddingMigrationStore.GetCountsAsync` only skipped the new `:vecnl:` prefix after the namespace change. Legacy `{tenant}:vec:nl:*` hashes still matched the raw `{tenant}:vec:*` scan, so dry-run/live inventory could count old NL hashes as raw semantic data and miss them in NL counts. Fixed by skipping the legacy prefix during raw counting and counting both legacy and new NL prefixes by memory-unit ID. [`src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`]
+- [x] [AI-Review][Medium] The story File List did not include the new `RedisEmbeddingMigrationStoreTests.cs` regression coverage referenced by the test summary. Fixed by adding the test file to the File List. [`tests/Hexalith.Memories.Server.Tests/Migration/RedisEmbeddingMigrationStoreTests.cs`]
+
+Review validation:
+
+- `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~RedisEmbeddingMigrationStoreTests" -m:1 /nodeReuse:false` built successfully, then VSTest aborted on sandbox TCP listener permission (`SocketException 13`).
+- `dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Migration.RedisEmbeddingMigrationStoreTests` - 2 total, 0 failed.
+- `dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Migration.RedisEmbeddingMigrationStoreTests -class Hexalith.Memories.Server.Tests.Migration.RedisNaturalLanguageNamespaceMigratorTests -class Hexalith.Memories.Server.Tests.Infrastructure.IndexSchemaDefinitionsTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.EnumerateMemoryUnitIdsActivityTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.VerifyConsistencyActivityTests -class Hexalith.Memories.Server.Tests.Consistency.ConsistencyInspectionServiceTests -class Hexalith.Memories.Server.Tests.Activities.Tenants.ProvisionRedisVectorActivityTests -class Hexalith.Memories.Server.Tests.Workflows.ConsistencyRepairWorkflowTests` - 66 total, 0 failed.
+- `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false` - passed, 0 warnings, 0 errors.
 
 ### File List
 
@@ -254,6 +275,7 @@ GPT-5 Codex
 - `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs`
 - `src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs`
 - `src/Hexalith.Memories.Server/Migration/RedisNaturalLanguageNamespaceMigrator.cs`
+- `tests/Hexalith.Memories.Server.Tests/Migration/RedisEmbeddingMigrationStoreTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Activities/Cases/DeleteMemoryUnitProjectionActivityTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/CleanupActivityTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/EnumerateMemoryUnitIdsActivityTests.cs`
@@ -268,3 +290,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-07-04: Implemented Story 21.3 natural-language vector namespace separation, legacy NL hash migration, raw/NL index rebuild safety, regression coverage, docs updates, and validation.
+- 2026-07-04: Senior developer review auto-fixed legacy NL migration inventory counting, added focused regression coverage, updated File List, validated focused tests/build, and marked the story done.
