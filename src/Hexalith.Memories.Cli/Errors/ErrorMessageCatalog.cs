@@ -179,6 +179,10 @@ public static class ErrorMessageCatalog
                 CliMessage: null,
                 CliSuggestion: "Tenant is temporarily unavailable. Re-list tenants with 'memories tenant list' in a few seconds.",
                 ExitCode: 1),
+            ["TENANT_FORBIDDEN"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use a bearer token authorized for the requested tenant and retry.",
+                ExitCode: 1),
 
             // member endpoints (not yet wired in CLI but reachable server-side for completeness).
             ["MEMBER_NOT_FOUND"] = new(
@@ -288,6 +292,14 @@ public static class ErrorMessageCatalog
             ["BATCH_NOT_FOUND"] = new(
                 CliMessage: null,
                 CliSuggestion: "Verify the batch id and retry. Use the server's REST API to inspect ingestion status until the CLI status surface is wired.",
+                ExitCode: 1),
+            ["INGESTION_STATUS_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Verify the ingestion workflow instance id returned by the scheduling endpoint and retry.",
+                ExitCode: 1),
+            ["INGESTION_STATUS_UNREADABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retry the status request later; if it remains unreadable, resubmit ingestion or inspect server logs.",
                 ExitCode: 1),
             ["BATCH_TOO_LARGE"] = new(
                 CliMessage: null,

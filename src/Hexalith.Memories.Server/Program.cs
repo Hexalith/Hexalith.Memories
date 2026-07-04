@@ -155,6 +155,7 @@ builder.Services.AddSingleton<CaseIngestionCounterLogic>();
 builder.Services.AddSingleton<FailedUnitsRegistry>();
 builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
+builder.Services.AddSingleton<IIngestionWorkflowStateReader, DaprIngestionWorkflowStateReader>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
 builder.Services.AddSingleton<IngestDedupReservation>();
 
@@ -509,10 +510,74 @@ app.MapPost("/api/ingest", async (
 }).WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024))
     .AddEndpointFilter<TenantAuthorizationEndpointFilter>();
 
-app.MapGet("/api/ingest/{instanceId}", async (DaprWorkflowClient workflowClient, string instanceId) =>
+app.MapGet("/api/ingest/{instanceId}", async (
+    IIngestionWorkflowStateReader workflowStateReader,
+    HttpContext httpContext,
+    ILogger<TenantAuthorizationEndpointFilter> authorizationLogger,
+    string instanceId,
+    CancellationToken cancellationToken) =>
 {
-    WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
-    return state is null ? Results.NotFound() : Results.Ok(state);
+    if (string.IsNullOrWhiteSpace(instanceId))
+    {
+        return Results.NotFound(new ErrorResponse(
+            "INGESTION_STATUS_NOT_FOUND",
+            "Ingestion workflow status was not found.",
+            "Use the instanceId returned by the ingestion scheduling endpoint."));
+    }
+
+    WorkflowState? state;
+    try
+    {
+        state = await workflowStateReader.GetWorkflowStateAsync(
+            instanceId,
+            includeInputsAndOutputs: true,
+            cancellationToken);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        state = null;
+    }
+
+    if (state is null || !state.Exists)
+    {
+        return Results.NotFound(new ErrorResponse(
+            "INGESTION_STATUS_NOT_FOUND",
+            "Ingestion workflow status was not found or has expired.",
+            "Use the instanceId returned by the ingestion scheduling endpoint."));
+    }
+
+    if (!IngestionWorkflowStatusMapper.TryReadStoredTenantId(state, out string? storedTenantId))
+    {
+        _ = TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
+            httpContext,
+            null,
+            "/api/ingest/{instanceId}",
+            authorizationLogger,
+            out IResult? unreadableTenantResult);
+        return unreadableTenantResult!;
+    }
+
+    if (!TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
+            httpContext,
+            storedTenantId,
+            "/api/ingest/{instanceId}",
+            authorizationLogger,
+            out IResult? authorizationResult))
+    {
+        return authorizationResult!;
+    }
+
+    if (!IngestionWorkflowStatusMapper.TryMap(instanceId, state, out IngestionWorkflowStatus? status))
+    {
+        return Results.Json(
+            new ErrorResponse(
+                "INGESTION_STATUS_UNREADABLE",
+                "Ingestion workflow status could not be projected safely.",
+                "Retry later or resubmit the ingestion request if the status remains unavailable."),
+            statusCode: StatusCodes.Status404NotFound);
+    }
+
+    return Results.Ok(status);
 });
 
 app.MapPost("/api/ingest/url", async (
@@ -765,7 +830,9 @@ app.MapPost("/api/ingest/directory", async (
 
 app.MapGet("/api/ingest/batches/{batchId}", async (
     DaprClient daprClient,
-    DaprWorkflowClient workflowClient,
+    IIngestionWorkflowStateReader workflowStateReader,
+    HttpContext httpContext,
+    ILogger<TenantAuthorizationEndpointFilter> authorizationLogger,
     string batchId,
     CancellationToken cancellationToken) =>
 {
@@ -782,7 +849,7 @@ app.MapGet("/api/ingest/batches/{batchId}", async (
             DirectoryIngestionService.BatchStateKeyPrefix + batchId,
             cancellationToken: cancellationToken);
     }
-    catch (Exception)
+    catch (Exception ex) when (ex is not OperationCanceledException)
     {
         state = null;
     }
@@ -795,18 +862,28 @@ app.MapGet("/api/ingest/batches/{batchId}", async (
             "Verify the batchId returned by POST /api/ingest/directory."));
     }
 
+    if (!TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
+        httpContext,
+        state.TenantId,
+        "/api/ingest/batches/{batchId}",
+        authorizationLogger,
+        out IResult? authorizationResult))
+    {
+        return authorizationResult!;
+    }
+
     using SemaphoreSlim gate = new(50);
     Task<BatchInstanceStatus>[] statusTasks = state.Files.Select(async file =>
     {
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            WorkflowState? wfState = await workflowClient
-                .GetWorkflowStateAsync(file.InstanceId)
+            WorkflowState? wfState = await workflowStateReader
+                .GetWorkflowStateAsync(file.InstanceId, includeInputsAndOutputs: true, cancellationToken)
                 .ConfigureAwait(false);
             return DirectoryBatchStatusMapper.MapInstance(file, wfState);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return DirectoryBatchStatusMapper.MapInstance(file, null);
         }

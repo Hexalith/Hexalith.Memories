@@ -1,3 +1,46 @@
+# Test Automation Summary - Story 20.3 (Tenant-Scope Workflow & Batch Status Endpoints)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/20-3-tenant-scope-workflow-and-batch-status-endpoints.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests` and `Hexalith.Memories.Contracts.Tests`; no new framework introduced.
+- **Feature under test:** Tenant-scoped ingestion workflow and directory batch status APIs, safe single-workflow DTO projection, batch fan-out authorization ordering, and raw workflow-state leakage prevention.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Authentication/IngestionStatusEndpointAuthorizationTests.cs` - added fail-closed endpoint coverage for unreadable workflow input, missing batch state, and malformed stored batch tenant.
+- [x] Existing Story 20.3 API tests validate cross-tenant single-workflow denial, matching-tenant projected status success, missing workflow status, cross-tenant batch denial before fan-out, and matching-tenant `BatchStatusResponse` preservation.
+- [x] Existing mapper and contract tests validate safe workflow-state projection, output deserialization degradation, source-generated JSON registration, and no raw workflow contract fields.
+
+### E2E Tests
+- [x] UI E2E not applicable. Story 20.3 is a Server API/security slice with no module UI change.
+
+## Coverage
+
+- Single workflow status endpoint: matching tenant, mismatched tenant, missing state, unreadable input, raw-state non-leakage.
+- Batch status endpoint: matching tenant, mismatched tenant, missing state, malformed stored tenant, no per-file workflow fan-out before batch tenant authorization.
+- Public contract: `IngestionWorkflowStatus` serialization and safe-field registration.
+- Route authorization guardrails: existing Story 20.1/20.2 route authorization tests rerun.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false` - passed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Authentication.IngestionStatusEndpointAuthorizationTests` - 8 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Ingestion.IngestionWorkflowStatusMapperTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests` - 32 total, 0 failed.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --disable-build-servers -m:1 /nr:false` - passed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Contracts.Tests/bin/Debug/net10.0/Hexalith.Memories.Contracts.Tests.dll -class Hexalith.Memories.Contracts.Tests.V1.IngestionWorkflowStatusSerializationTests` - 2 total, 0 failed.
+- [x] `git diff --check -- src tests _bmad-output/implementation-artifacts/20-3-tenant-scope-workflow-and-batch-status-endpoints.md` - passed.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: not applicable.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.
+
+---
+
 # Test Automation Summary — Story 20.2 (Tenant Authorization Filter & Principal-Derived Audit Identity)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

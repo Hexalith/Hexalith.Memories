@@ -68,6 +68,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IndexResult))]
 [JsonSerializable(typeof(IngestionInput))]
 [JsonSerializable(typeof(IngestionResult))]
+[JsonSerializable(typeof(IngestionWorkflowStatus))]
 [JsonSerializable(typeof(MemoryUnit))]
 [JsonSerializable(typeof(MemoryUnitIdLookupResponse))]
 [JsonSerializable(typeof(MetadataField))]

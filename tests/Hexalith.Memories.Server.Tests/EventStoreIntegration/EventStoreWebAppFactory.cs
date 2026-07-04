@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Dapr.Client;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
@@ -40,6 +41,8 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
     public IEventIngestionTelemetry Telemetry { get; } = Substitute.For<IEventIngestionTelemetry>();
 
     public IPreflightDedupStore PreflightDedup { get; } = Substitute.For<IPreflightDedupStore>();
+
+    public IIngestionWorkflowStateReader IngestionWorkflowStateReader { get; } = Substitute.For<IIngestionWorkflowStateReader>();
 
     public IConnectionMultiplexer RedisMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
 
@@ -103,12 +106,14 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICaseCreationService>();
             services.RemoveAll<IEventIngestionTelemetry>();
             services.RemoveAll<IPreflightDedupStore>();
+            services.RemoveAll<IIngestionWorkflowStateReader>();
             services.AddSingleton(Router);
             services.AddSingleton(Scheduler);
             services.AddSingleton(TenantStatus);
             services.AddSingleton(CaseCreator);
             services.AddSingleton(Telemetry);
             services.AddSingleton(PreflightDedup);
+            services.AddSingleton(IngestionWorkflowStateReader);
 
             // Endpoint tests drive adapters directly; infrastructure services would resolve DAPR/backends at startup.
             services.RemoveInfrastructureHostedServices();
