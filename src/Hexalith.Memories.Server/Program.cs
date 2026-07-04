@@ -1475,7 +1475,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
                     tenantId,
                     tenantEntry.Tenant.Status,
                     CancellationToken.None,
-                    tenantEntry.WorkflowInstanceId);
+                    instanceId);
             }
             catch (InvalidOperationException)
             {

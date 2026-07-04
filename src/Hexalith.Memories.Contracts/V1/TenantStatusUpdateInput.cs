@@ -6,4 +6,4 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>Input for the update-tenant-status activity.</summary>
-public sealed record TenantStatusUpdateInput(string TenantId, TenantStatus Status);
+public sealed record TenantStatusUpdateInput(string TenantId, TenantStatus Status, string? WorkflowInstanceId = null);

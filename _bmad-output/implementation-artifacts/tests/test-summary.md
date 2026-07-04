@@ -1,3 +1,52 @@
+# Test Automation Summary - Story 21.8 (Tenant Registry CAS & Rollback Integrity)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-8-tenant-registry-cas-and-rollback-integrity.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with Dapr client substitutes and in-process xUnit execution; no new framework introduced.
+- **Feature under test:** tenant registry CAS status updates, transactional entry/index writes, rollback/end-state integrity, and workflow owner propagation.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] Direct public API route shape changes are not applicable in this QA pass; Story 21.8 behavior is exercised through existing endpoint rollback coverage plus service/workflow tests at the registry boundary.
+
+### E2E Tests
+
+- [x] UI/browser E2E is not applicable. Story 21.8 has no module UI.
+- [x] Backend workflow E2E-style coverage updated in `tests/Hexalith.Memories.Server.Tests/Workflows/TenantProvisioningWorkflowTests.cs` and `tests/Hexalith.Memories.Server.Tests/Workflows/TenantDeletionWorkflowTests.cs` to assert status activities carry the owning workflow instance on happy and failure paths.
+
+### Unit / Service Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Tenants/TenantRegistryServiceTests.cs` - strengthened registration transaction assertions to include entry/index ETags and added post-conflict consistent end-state coverage.
+- [x] `tests/Hexalith.Memories.Server.Tests/Tenants/TenantRegistryServiceTests.cs` - added removal conflict exhaustion coverage proving inconsistent end state fails clearly and does not fall back to direct `DeleteStateAsync`.
+
+## Coverage
+
+- Registry service tests: 29/29 focused tenant registry tests passed.
+- Workflow tests: 11/11 focused provisioning/deletion workflow tests passed.
+- Happy path: registration transaction shape, CAS status update, deletion removal transaction, and owner propagation covered.
+- Critical error cases: CAS retry/exhaustion, missing tenant, stale deletion-owner rollback block, transaction conflict with consistent end state, transaction conflict with inconsistent end state, and deletion/provisioning failure owner propagation covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter "FullyQualifiedName~TenantRegistryServiceTests|FullyQualifiedName~TenantProvisioningWorkflowTests|FullyQualifiedName~TenantDeletionWorkflowTests" --no-restore --logger "console;verbosity=normal"` - blocked before test execution by sandbox MSBuild named-pipe/socket permission (`SocketException (13): Permission denied`).
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Tenants.TenantRegistryServiceTests -class Hexalith.Memories.Server.Tests.Workflows.TenantProvisioningWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.TenantDeletionWorkflowTests` - 40 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2,184 total, 0 failed, 1 pre-existing skipped submodule mutation guard.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass; no browser UI exists, backend workflow tests cover owner-sensitive end-to-end behavior.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.7 (Dedup Race & Duplicate-Instance Handling)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

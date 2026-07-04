@@ -14,15 +14,15 @@ using Hexalith.Memories.Server.Workflows;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
-
 public class TenantProvisioningWorkflowTests
 {
     private const string TestInstanceId = "provision-tenant-1-123456";
 
     [Fact]
-    public async Task RunAsync_HappyPath_ShouldPassWorkflowInstanceIdToInitializeActivity()
+    public async Task RunAsync_HappyPath_ShouldPassWorkflowInstanceIdToRegistryActivities()
     {
         TenantProvisioningInput input = new("tenant-1", "Tenant One") { VectorDimensions = 768 };
         WorkflowContext context = CreateContext();
@@ -44,7 +44,43 @@ public class TenantProvisioningWorkflowTests
 
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
-            Arg.Is<TenantStatusUpdateInput>(i => i.TenantId == input.TenantId && i.Status == TenantStatus.Active),
+            Arg.Is<TenantStatusUpdateInput>(i =>
+                i.TenantId == input.TenantId
+                && i.Status == TenantStatus.Active
+                && i.WorkflowInstanceId == TestInstanceId),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenProvisioningFails_ShouldMarkFailedWithWorkflowInstanceId()
+    {
+        TenantProvisioningInput input = new("tenant-1", "Tenant One") { VectorDimensions = 768 };
+        WorkflowContext context = CreateContext();
+        TenantInfo tenantInfo = new(input.TenantId, input.DisplayName, TenantStatus.Provisioning, DateTimeOffset.UtcNow);
+        context.CallActivityAsync<TenantInfo>(
+                nameof(InitializeTenantRegistryActivity),
+                Arg.Any<InitializeTenantRegistryInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(tenantInfo);
+        context.CallActivityAsync<bool>(nameof(ProvisionRediSearchActivity), Arg.Any<TenantProvisioningInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(ProvisionRedisVectorActivity), Arg.Any<TenantProvisioningInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Throws(CreateTaskFailedException());
+        context.CallActivityAsync<bool>(nameof(DeleteRediSearchIndexActivity), Arg.Any<TenantProvisioningInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(nameof(UpdateTenantStatusActivity), Arg.Any<TenantStatusUpdateInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        TenantProvisioningWorkflow workflow = new();
+
+        TenantProvisioningResult result = await workflow.RunAsync(context, input);
+
+        result.Status.ShouldBe(TenantStatus.Failed);
+        await context.Received().CallActivityAsync<bool>(
+            nameof(UpdateTenantStatusActivity),
+            Arg.Is<TenantStatusUpdateInput>(i =>
+                i.TenantId == input.TenantId
+                && i.Status == TenantStatus.Failed
+                && i.WorkflowInstanceId == TestInstanceId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -86,6 +122,12 @@ public class TenantProvisioningWorkflowTests
             .Returns(Substitute.For<ILogger>());
         context.NewGuid().Returns(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         return context;
+    }
+
+    private static WorkflowTaskFailedException CreateTaskFailedException()
+    {
+        var ex = (WorkflowTaskFailedException)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(WorkflowTaskFailedException));
+        return ex;
     }
 
     private static void SetupHappyPath(WorkflowContext context, TenantProvisioningInput input)

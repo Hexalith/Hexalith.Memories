@@ -26,7 +26,12 @@ public sealed class UpdateTenantStatusActivity : WorkflowActivity<TenantStatusUp
     public override async Task<bool> RunAsync(WorkflowActivityContext context, TenantStatusUpdateInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
-        await _registry.UpdateTenantStatusAsync(input.TenantId, input.Status, CancellationToken.None).ConfigureAwait(false);
+        await _registry.UpdateTenantStatusAsync(
+                input.TenantId,
+                input.Status,
+                CancellationToken.None,
+                input.WorkflowInstanceId)
+            .ConfigureAwait(false);
         return true;
     }
 }

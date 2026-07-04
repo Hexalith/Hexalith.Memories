@@ -7,6 +7,9 @@
 
 namespace Hexalith.Memories.Server.Tests.Tenants;
 
+using System.Text.Json;
+
+using Dapr;
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
@@ -30,16 +33,18 @@ public class TenantRegistryServiceTests
         CapturingCommandStore commandStore = new(operationLog);
         daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
-        daprClient.TrySaveStateAsync("statestore", "tenant-registry-acme", Arg.Any<TenantRegistryEntry>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (new List<string>(), string.Empty));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
-                operationLog.Add("save:tenant-registry");
-                return true;
+                operationLog.Add("transaction:registry");
+                return Task.CompletedTask;
             });
-        daprClient.GetStateAndETagAsync<List<string>>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(_ => (new List<string>(), string.Empty));
-        daprClient.TrySaveStateAsync("statestore", "tenant-registry-index", Arg.Any<List<string>>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(true);
 
         TenantRegistryService service = CreateService(daprClient, commandStore);
 
@@ -52,38 +57,87 @@ public class TenantRegistryServiceTests
         command.TenantId.ShouldBe("acme");
         command.DisplayName.ShouldBe("Acme Corp");
         operationLog[0].ShouldBe($"accept:{RegisterTenantCommand.CommandType}");
+        operationLog[1].ShouldBe("transaction:registry");
 
-        await daprClient.Received(1).TrySaveStateAsync(
+        await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
-            "tenant-registry-acme",
-            Arg.Is<TenantRegistryEntry>(t =>
-                t.Tenant.Id == "acme"
-                && t.Tenant.DisplayName == "Acme Corp"
-                && t.Tenant.Status == TenantStatus.Provisioning
-                && t.LastUpdated != default
-                && t.WorkflowInstanceId == null),
-            Arg.Any<string>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+            Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
+                ops.Count == 2
+                && ops[0].Key == "tenant-registry-acme"
+                && ops[0].OperationType == StateOperationType.Upsert
+                && ops[0].ETag == string.Empty
+                && Deserialize<TenantRegistryEntry>(ops[0]).Tenant.Status == TenantStatus.Provisioning
+                && Deserialize<TenantRegistryEntry>(ops[0]).WorkflowInstanceId == null
+                && ops[1].Key == "tenant-registry-index"
+                && ops[1].OperationType == StateOperationType.Upsert
+                && ops[1].ETag == string.Empty
+                && Deserialize<List<string>>(ops[1]).SequenceEqual(new[] { "acme" })),
+            null!,
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task RegisterTenantAsync_WhenIndexUpdateFails_DeletesTenantEntry()
+    public async Task RegisterTenantAsync_WhenTransactionFails_DoesNotDeleteTenantEntry()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
         daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
-        daprClient.TrySaveStateAsync("statestore", "tenant-registry-acme", Arg.Any<TenantRegistryEntry>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(true);
-        daprClient.GetStateAndETagAsync<List<string>>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(_ => (new List<string>(), string.Empty));
-        daprClient.TrySaveStateAsync("statestore", "tenant-registry-index", Arg.Any<List<string>>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(false);
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new DaprException("transaction conflict"));
+        daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (TenantRegistryEntry?)null);
+        daprClient.GetStateAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => []);
 
         TenantRegistryService service = CreateService(daprClient);
 
         await Should.ThrowAsync<InvalidOperationException>(() => service.RegisterTenantAsync("acme", "Acme Corp", CancellationToken.None));
 
-        await daprClient.Received(1).DeleteStateAsync(
+        await daprClient.DidNotReceive().DeleteStateAsync(
+            "statestore",
+            "tenant-registry-acme",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisterTenantAsync_WhenTransactionConflictsButEndStateIsConsistent_ReturnsCurrentEntry()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
+        TenantRegistryEntry current = CreateEntry("acme", "Acme Corp", TenantStatus.Provisioning);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (new List<string>(), string.Empty));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new DaprException("transaction conflict"));
+        daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => current);
+        daprClient.GetStateAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ["acme"]);
+
+        TenantRegistryService service = CreateService(daprClient, commandStore);
+
+        TenantInfo result = await service.RegisterTenantAsync("acme", "Acme Corp", CancellationToken.None);
+
+        result.ShouldBe(current.Tenant);
+        commandStore.AcceptedCommands.ShouldHaveSingleItem();
+        await daprClient.Received(3).ExecuteStateTransactionAsync(
+            "statestore",
+            Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+            null!,
+            Arg.Any<CancellationToken>());
+        await daprClient.DidNotReceive().DeleteStateAsync(
             "statestore",
             "tenant-registry-acme",
             cancellationToken: Arg.Any<CancellationToken>());
@@ -160,25 +214,205 @@ public class TenantRegistryServiceTests
             TenantStatus.Provisioning,
             "workflow-123",
             new DateTimeOffset(2026, 4, 20, 8, 0, 0, TimeSpan.Zero));
-        daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(existing);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+        daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(true);
 
         TenantRegistryService service = CreateService(daprClient, commandStore);
 
-        await service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None);
+        await service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None, "workflow-123");
 
         UpdateTenantLifecycleStatusCommand command = commandStore.AcceptedCommands
             .ShouldHaveSingleItem()
             .ShouldBeOfType<UpdateTenantLifecycleStatusCommand>();
         command.TenantId.ShouldBe("tenant-1");
         command.Status.ShouldBe(TenantStatus.Active);
-        await daprClient.Received(1).SaveStateAsync(
+        await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
             Arg.Is<TenantRegistryEntry>(t =>
                 t.Tenant.Status == TenantStatus.Active
                 && t.WorkflowInstanceId == null
                 && t.LastUpdated > existing.LastUpdated),
+            "etag-1",
+            cancellationToken: Arg.Any<CancellationToken>());
+        await daprClient.DidNotReceive().SaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisterTenantAsync_WhenEntryAlreadyExists_ReturnsExistingWithoutAppendingDuplicateIndex()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("acme", "Acme Corp", TenantStatus.Active);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-entry"));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((new List<string>(["acme"]), "etag-index"));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        TenantInfo result = await service.RegisterTenantAsync("acme", "New Name Ignored", CancellationToken.None);
+
+        result.ShouldBe(existing.Tenant);
+        await daprClient.DidNotReceive().ExecuteStateTransactionAsync(
+            "statestore",
+            Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+            null!,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisterTenantAsync_WhenEntryAlreadyExistsButIndexMissing_RepairsIndexInTransaction()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
+        TenantRegistryEntry existing = CreateEntry("acme", "Acme Corp", TenantStatus.Active);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-entry"));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((new List<string>(["other"]), "etag-index"));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        TenantRegistryService service = CreateService(daprClient, commandStore);
+
+        TenantInfo result = await service.RegisterTenantAsync("acme", "New Name Ignored", CancellationToken.None);
+
+        result.ShouldBe(existing.Tenant);
+        commandStore.AcceptedCommands.ShouldBeEmpty();
+        await daprClient.Received(1).ExecuteStateTransactionAsync(
+            "statestore",
+            Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
+                ops.Count == 2
+                && ops[0].Key == "tenant-registry-acme"
+                && ops[0].OperationType == StateOperationType.Upsert
+                && ops[0].ETag == "etag-entry"
+                && Deserialize<TenantRegistryEntry>(ops[0]).Tenant.Id == "acme"
+                && ops[1].Key == "tenant-registry-index"
+                && ops[1].OperationType == StateOperationType.Upsert
+                && ops[1].ETag == "etag-index"
+                && Deserialize<List<string>>(ops[1]).SequenceEqual(new[] { "other", "acme" })),
+            null!,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateTenantStatusAsync_WhenFirstCasConflicts_RetriesWithoutAcceptingCommandAgain()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
+        TenantRegistryEntry first = CreateEntry("tenant-1", "Test", TenantStatus.Provisioning, "workflow-123");
+        TenantRegistryEntry second = first with { LastUpdated = DateTimeOffset.UtcNow.AddSeconds(1) };
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((first, "etag-1"), (second, "etag-2"));
+        daprClient.TrySaveStateAsync(
+                "statestore",
+                "tenant-registry-tenant-1",
+                Arg.Any<TenantRegistryEntry>(),
+                Arg.Any<string>(),
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(false, true);
+
+        TenantRegistryService service = CreateService(daprClient, commandStore);
+
+        await service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None, "workflow-123");
+
+        commandStore.AcceptedCommands.ShouldHaveSingleItem();
+        await daprClient.Received(2).GetStateAndETagAsync<TenantRegistryEntry?>(
+            "statestore",
+            "tenant-registry-tenant-1",
+            cancellationToken: Arg.Any<CancellationToken>());
+        await daprClient.Received(1).TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            "etag-2",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateTenantStatusAsync_WhenCasBudgetExhausted_ThrowsPreciseError()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Provisioning, "workflow-123");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+        daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None, "workflow-123"));
+
+        ex.Message.ShouldContain("after 3 attempts");
+    }
+
+    [Fact]
+    public async Task UpdateTenantStatusAsync_WhenTenantMissing_Throws()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-missing", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.UpdateTenantStatusAsync("missing", TenantStatus.Active, CancellationToken.None, "workflow-123"));
+    }
+
+    [Fact]
+    public async Task UpdateTenantStatusAsync_ProvisioningTransition_PreservesWorkflowOwnership()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Failed, "workflow-old");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-1"));
+        daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(true);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Provisioning, CancellationToken.None, "workflow-new");
+
+        await daprClient.Received(1).TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Is<TenantRegistryEntry>(entry => entry.WorkflowInstanceId == "workflow-new"),
+            "etag-1",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateTenantStatusAsync_StaleRollbackAgainstNewerDeletingOwner_IsBlocked()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
+        TenantRegistryEntry deleting = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-newer");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((deleting, "etag-1"));
+
+        TenantRegistryService service = CreateService(daprClient, commandStore);
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None, "delete-older"));
+
+        ex.Message.ShouldContain("cannot be overwritten");
+        commandStore.AcceptedCommands.ShouldBeEmpty();
+        await daprClient.DidNotReceive().TrySaveStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
+            Arg.Any<TenantRegistryEntry>(),
+            Arg.Any<string>(),
             cancellationToken: Arg.Any<CancellationToken>());
     }
 
@@ -323,24 +557,129 @@ public class TenantRegistryServiceTests
     public async Task RemoveTenantAsync_DeletesEntryAndUpdatesIndex()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAndETagAsync<List<string>>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(_ => (new List<string>(["tenant-1", "tenant-2"]), "etag-1"));
-        daprClient.TrySaveStateAsync("statestore", "tenant-registry-index", Arg.Any<List<string>>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(true);
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-1");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-entry"));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (new List<string>(["tenant-1", "tenant-2"]), "etag-index"));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
 
         TenantRegistryService service = CreateService(daprClient);
 
         await service.RemoveTenantAsync("tenant-1", CancellationToken.None);
 
-        await daprClient.Received(1).DeleteStateAsync(
+        await daprClient.Received(1).ExecuteStateTransactionAsync(
+            "statestore",
+            Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
+                ops.Count == 2
+                && ops[0].Key == "tenant-registry-tenant-1"
+                && ops[0].OperationType == StateOperationType.Delete
+                && ops[0].ETag == "etag-entry"
+                && ops[1].Key == "tenant-registry-index"
+                && ops[1].OperationType == StateOperationType.Upsert
+                && ops[1].ETag == "etag-index"
+                && Deserialize<List<string>>(ops[1]).SequenceEqual(new[] { "tenant-2" })),
+            null!,
+            Arg.Any<CancellationToken>());
+        await daprClient.DidNotReceive().DeleteStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
             cancellationToken: Arg.Any<CancellationToken>());
-        await daprClient.Received(1).TrySaveStateAsync(
+    }
+
+    [Fact]
+    public async Task RemoveTenantAsync_WhenEntryMissingButIndexStale_CleansIndexInTransaction()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (new List<string>(["tenant-1", "tenant-2"]), "etag-index"));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await service.RemoveTenantAsync("tenant-1", CancellationToken.None);
+
+        await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
-            "tenant-registry-index",
-            Arg.Is<List<string>>(list => list.Count == 1 && list[0] == "tenant-2"),
-            "etag-1",
+            Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
+                ops.Count == 1
+                && ops[0].Key == "tenant-registry-index"
+                && Deserialize<List<string>>(ops[0]).SequenceEqual(new[] { "tenant-2" })),
+            null!,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveTenantAsync_WhenTransactionConflictsAndEndStateConsistent_ReturnsSuccess()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-1");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-entry"));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((new List<string>(["tenant-1"]), "etag-index"));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new DaprException("transaction conflict"));
+        daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (TenantRegistryEntry?)null);
+        daprClient.GetStateAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => []);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        await service.RemoveTenantAsync("tenant-1", CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task RemoveTenantAsync_WhenTransactionConflictsAndEndStateIsInconsistent_ThrowsWithoutDirectDelete()
+    {
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Deleting, "delete-1");
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((existing, "etag-entry"));
+        daprClient.GetStateAndETagAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((new List<string>(["tenant-1"]), "etag-index"));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(_ => throw new DaprException("transaction conflict"));
+        daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => existing);
+        daprClient.GetStateAsync<List<string>?>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => []);
+
+        TenantRegistryService service = CreateService(daprClient);
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            service.RemoveTenantAsync("tenant-1", CancellationToken.None));
+
+        ex.Message.ShouldContain("Failed to remove tenant 'tenant-1' from registry after 3 attempts");
+        await daprClient.Received(3).ExecuteStateTransactionAsync(
+            "statestore",
+            Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+            null!,
+            Arg.Any<CancellationToken>());
+        await daprClient.DidNotReceive().DeleteStateAsync(
+            "statestore",
+            "tenant-registry-tenant-1",
             cancellationToken: Arg.Any<CancellationToken>());
     }
 
@@ -487,6 +826,9 @@ public class TenantRegistryServiceTests
             new TenantInfo(tenantId, displayName, status, DateTimeOffset.UtcNow),
             workflowInstanceId,
             lastUpdated ?? DateTimeOffset.UtcNow);
+
+    private static T Deserialize<T>(StateTransactionRequest request)
+        => JsonSerializer.Deserialize<T>(request.Value, MemoriesJsonContext.Options)!;
 
     private sealed class CapturingCommandStore(List<string>? operationLog = null) : IMemoriesCommandStore
     {

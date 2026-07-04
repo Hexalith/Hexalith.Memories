@@ -107,7 +107,7 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
             // Mark tenant as active
             await context.CallActivityAsync<bool>(
                 nameof(UpdateTenantStatusActivity),
-                new TenantStatusUpdateInput(input.TenantId, TenantStatus.Active),
+                new TenantStatusUpdateInput(input.TenantId, TenantStatus.Active, workflowInstanceId),
                 compensationRetryOptions);
 
             LogProvisioningCompleted(
@@ -154,7 +154,7 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
                 // Compensation succeeded — mark as Failed (retryable)
                 await context.CallActivityAsync<bool>(
                     nameof(UpdateTenantStatusActivity),
-                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed),
+                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed, workflowInstanceId),
                     compensationRetryOptions);
 
                 LogCompensationCompleted(
@@ -183,7 +183,7 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
                 {
                     await context.CallActivityAsync<bool>(
                         nameof(UpdateTenantStatusActivity),
-                        new TenantStatusUpdateInput(input.TenantId, TenantStatus.CompensationFailed),
+                        new TenantStatusUpdateInput(input.TenantId, TenantStatus.CompensationFailed, workflowInstanceId),
                         compensationRetryOptions);
                 }
                 catch (WorkflowTaskFailedException)

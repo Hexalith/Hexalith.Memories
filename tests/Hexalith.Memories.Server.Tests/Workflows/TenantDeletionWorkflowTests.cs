@@ -21,6 +21,7 @@ using Shouldly;
 public class TenantDeletionWorkflowTests
 {
     private const string TestTenantId = "tenant-1";
+    private const string TestWorkflowInstanceId = "delete-tenant-1-123456";
 
     [Fact]
     public async Task DeletionWorkflow_HappyPath_CallsAllActivitiesInOrder()
@@ -55,6 +56,13 @@ public class TenantDeletionWorkflowTests
         });
 
         logger.Messages.ShouldContain(message => message.Contains("GraphBatchCompleted", StringComparison.Ordinal));
+        await context.Received().CallActivityAsync<bool>(
+            nameof(UpdateTenantStatusActivity),
+            Arg.Is<TenantStatusUpdateInput>(i =>
+                i.TenantId == TestTenantId
+                && i.Status == TenantStatus.Deleting
+                && i.WorkflowInstanceId == TestWorkflowInstanceId),
+            Arg.Any<WorkflowTaskOptions>());
     }
 
     [Fact]
@@ -153,7 +161,9 @@ public class TenantDeletionWorkflowTests
         // Verify status was updated to Failed
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
-            Arg.Is<TenantStatusUpdateInput>(i => i.Status == TenantStatus.Failed),
+            Arg.Is<TenantStatusUpdateInput>(i =>
+                i.Status == TenantStatus.Failed
+                && i.WorkflowInstanceId == TestWorkflowInstanceId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -169,7 +179,9 @@ public class TenantDeletionWorkflowTests
             .Returns(tenant);
         context.CallActivityAsync<bool>(
                 nameof(UpdateTenantStatusActivity),
-                Arg.Is<TenantStatusUpdateInput>(i => i.Status == TenantStatus.Deleting),
+                Arg.Is<TenantStatusUpdateInput>(i =>
+                    i.Status == TenantStatus.Deleting
+                    && i.WorkflowInstanceId == TestWorkflowInstanceId),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(true);
         context.CallActivityAsync<bool>(nameof(DeleteRediSearchActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -178,7 +190,9 @@ public class TenantDeletionWorkflowTests
             .Throws(CreateTaskFailedException("Redis Vector deletion failed"));
         context.CallActivityAsync<bool>(
                 nameof(UpdateTenantStatusActivity),
-                Arg.Is<TenantStatusUpdateInput>(i => i.Status == TenantStatus.Failed),
+                Arg.Is<TenantStatusUpdateInput>(i =>
+                    i.Status == TenantStatus.Failed
+                    && i.WorkflowInstanceId == TestWorkflowInstanceId),
                 Arg.Any<WorkflowTaskOptions>())
             .Throws(CreateTaskFailedException("Status update failed"));
 
@@ -292,7 +306,9 @@ public class TenantDeletionWorkflowTests
         // Verify status was updated to Failed
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
-            Arg.Is<TenantStatusUpdateInput>(i => i.Status == TenantStatus.Failed),
+            Arg.Is<TenantStatusUpdateInput>(i =>
+                i.Status == TenantStatus.Failed
+                && i.WorkflowInstanceId == TestWorkflowInstanceId),
             Arg.Any<WorkflowTaskOptions>());
         logger.Messages.ShouldContain(message => message.Contains("DeletionFailed", StringComparison.Ordinal));
     }
@@ -300,7 +316,7 @@ public class TenantDeletionWorkflowTests
     private static WorkflowContext CreateContext(ILogger? logger = null)
     {
         WorkflowContext context = Substitute.For<WorkflowContext>();
-        context.InstanceId.Returns($"delete-{TestTenantId}-123456");
+        context.InstanceId.Returns(TestWorkflowInstanceId);
         context.CreateReplaySafeLogger<TenantDeletionWorkflow>()
             .Returns(logger ?? Substitute.For<ILogger>());
         return context;

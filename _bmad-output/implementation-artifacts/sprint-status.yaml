@@ -73,6 +73,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 21.6 created (21.6 -> ready-for-dev) via create-story. Event routing retry/dead-letter posture for tenant-not-found and deleting/unavailable tenants; closes A27 while preserving unknown-source non-retry behavior.
 # 2026-07-04: Story 21.7 created (21.7 -> ready-for-dev) via create-story. Dedup race and duplicate workflow-instance handling; closes A28 with atomic permanent dedup save, loser compensation, and duplicate scheduler mapping.
 # 2026-07-04: Story 21.7 senior developer review completed with automatic fixes (atomic owner-checked dedup release, duplicate detector false-positive guard, File List hygiene). 21.7 -> done.
+# 2026-07-04: Story 21.8 created (21.8 -> ready-for-dev) via create-story. Tenant registry CAS and rollback integrity; closes A47 with ETag status updates and atomic entry+index registry commits.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -368,7 +369,7 @@ development_status:
   21-5-deletion-completeness: done
   21-6-event-routing-for-unknown-unavailable-tenants: done
   21-7-dedup-race-and-duplicate-instance-handling: done
-  21-8-tenant-registry-cas-and-rollback-integrity: backlog
+  21-8-tenant-registry-cas-and-rollback-integrity: done
   21-9-blue-green-embedding-migration: backlog
   21-10-migration-subsystem-test-coverage: backlog
   epic-21-retrospective: optional

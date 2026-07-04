@@ -28,6 +28,9 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
         TenantDeletionInput input)
     {
         var logger = context.CreateReplaySafeLogger<TenantDeletionWorkflow>();
+        string workflowInstanceId = string.IsNullOrWhiteSpace(context.InstanceId)
+            ? context.NewGuid().ToString()
+            : context.InstanceId;
         long deletionStartedTimestamp = Stopwatch.GetTimestamp();
         bool resumedDeletion = false;
 
@@ -75,7 +78,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
                 // 3. Set status to Deleting
                 await context.CallActivityAsync<bool>(
                     nameof(UpdateTenantStatusActivity),
-                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Deleting),
+                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Deleting, workflowInstanceId),
                     retryOptions);
                 break;
         }
@@ -149,7 +152,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
 
                         await context.CallActivityAsync<bool>(
                             nameof(UpdateTenantStatusActivity),
-                            new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed),
+                            new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed, workflowInstanceId),
                             retryOptions);
 
                         LogDeletionFailed(
@@ -217,7 +220,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
             {
                 await context.CallActivityAsync<bool>(
                     nameof(UpdateTenantStatusActivity),
-                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed),
+                    new TenantStatusUpdateInput(input.TenantId, TenantStatus.Failed, workflowInstanceId),
                     retryOptions);
             }
             catch (WorkflowTaskFailedException statusUpdateException)

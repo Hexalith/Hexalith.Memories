@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tenants;
 
 using System.Diagnostics;
+using System.Text.Json;
 
 using Dapr.Client;
 
@@ -20,9 +21,10 @@ public sealed partial class TenantRegistryService
 {
     private const string StoreName = "statestore";
     private const string IndexKey = "tenant-registry-index";
-    private const int MaxIndexRetries = 3;
     private const int MaxTenantRegistrationRetries = 3;
     private const int MaxDeletionStartRetries = 3;
+    private const int MaxStatusUpdateRetries = 3;
+    private static readonly byte[] EmptyTransactionValue = [];
 
     private readonly DaprClient _daprClient;
     private readonly IMemoriesCommandStore _commandStore;
@@ -82,17 +84,44 @@ public sealed partial class TenantRegistryService
 
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
-            (TenantRegistryEntry? existing, string etag) = await _daprClient
+            (TenantRegistryEntry? existing, string entryEtag) = await _daprClient
                 .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
                 .ConfigureAwait(false);
+            (List<string>? existingIndex, string indexEtag) = await _daprClient
+                .GetStateAndETagAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
+                .ConfigureAwait(false);
 
+            List<string> index = NormalizeIndex(existingIndex);
             if (existing is not null)
             {
-                return existing;
+                if (index.Contains(tenantId, StringComparer.Ordinal))
+                {
+                    return existing;
+                }
+
+                index.Add(tenantId);
+                try
+                {
+                    await _daprClient.ExecuteStateTransactionAsync(
+                            StoreName,
+                            [
+                                CreateUpsertRequest(stateKey, existing, entryEtag),
+                                CreateUpsertRequest(IndexKey, index, indexEtag),
+                            ],
+                            metadata: null!,
+                            cancellationToken: ct)
+                        .ConfigureAwait(false);
+                    return existing;
+                }
+                catch (Dapr.DaprException)
+                {
+                    continue;
+                }
             }
 
             if (!commandAccepted)
             {
+                // Registry rows are Dapr read-model state; tenant lifecycle command acceptance remains EventStore-backed.
                 await _commandStore.AcceptAsync(
                     tenantId,
                     new RegisterTenantCommand(tenantId, displayName, now),
@@ -101,23 +130,26 @@ public sealed partial class TenantRegistryService
                 commandAccepted = true;
             }
 
-            bool saved = await _daprClient
-                .TrySaveStateAsync(StoreName, stateKey, entry, etag, cancellationToken: ct)
-                .ConfigureAwait(false);
-
-            if (!saved)
+            if (!index.Contains(tenantId, StringComparer.Ordinal))
             {
-                continue;
+                index.Add(tenantId);
             }
 
             try
             {
-                await AddToIndexAsync(tenantId, ct).ConfigureAwait(false);
+                await _daprClient.ExecuteStateTransactionAsync(
+                        StoreName,
+                        [
+                            CreateUpsertRequest(stateKey, entry, entryEtag),
+                            CreateUpsertRequest(IndexKey, index, indexEtag),
+                        ],
+                        metadata: null!,
+                        cancellationToken: ct)
+                    .ConfigureAwait(false);
             }
-            catch
+            catch (Dapr.DaprException)
             {
-                await _daprClient.DeleteStateAsync(StoreName, stateKey, cancellationToken: ct).ConfigureAwait(false);
-                throw;
+                continue;
             }
 
             LogTenantRegistered(_logger, tenantId, displayName);
@@ -127,10 +159,17 @@ public sealed partial class TenantRegistryService
         TenantRegistryEntry? current = await _daprClient
             .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
             .ConfigureAwait(false);
+        List<string>? currentIndex = await _daprClient
+            .GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
+            .ConfigureAwait(false);
 
-        return current
-            ?? throw new InvalidOperationException(
-                $"Failed to register tenant '{tenantId}' after {MaxTenantRegistrationRetries} attempts due to concurrent updates.");
+        if (current is not null && currentIndex?.Contains(tenantId, StringComparer.Ordinal) == true)
+        {
+            return current;
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to register tenant '{tenantId}' after {MaxTenantRegistrationRetries} attempts due to concurrent registry transaction conflicts.");
     }
 
     /// <summary>Gets the full tenant registry entry by its identifier.</summary>
@@ -169,33 +208,53 @@ public sealed partial class TenantRegistryService
     public async Task UpdateTenantStatusAsync(string tenantId, TenantStatus status, CancellationToken ct, string? workflowInstanceId = null)
     {
         string stateKey = GetTenantStateKey(tenantId);
-        TenantRegistryEntry? entry = await _daprClient
-            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-            .ConfigureAwait(false);
+        bool commandAccepted = false;
 
-        if (entry is null)
+        for (int attempt = 0; attempt < MaxStatusUpdateRetries; attempt++)
         {
-            LogTenantNotFound(_logger, tenantId);
-            throw new InvalidOperationException($"Tenant '{tenantId}' not found in registry.");
+            (TenantRegistryEntry? entry, string etag) = await _daprClient
+                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (entry is null)
+            {
+                LogTenantNotFound(_logger, tenantId);
+                throw new InvalidOperationException($"Tenant '{tenantId}' not found in registry.");
+            }
+
+            ThrowIfDeletingClaimWouldBeClobbered(tenantId, status, workflowInstanceId, entry);
+
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (!commandAccepted)
+            {
+                // Registry rows are Dapr read-model state; tenant lifecycle command acceptance remains EventStore-backed.
+                await _commandStore.AcceptAsync(
+                    tenantId,
+                    new UpdateTenantLifecycleStatusCommand(tenantId, status, now),
+                    workflowInstanceId ?? "system",
+                    ct).ConfigureAwait(false);
+                commandAccepted = true;
+            }
+
+            TenantRegistryEntry updatedEntry = entry with
+            {
+                Tenant = entry.Tenant with { Status = status },
+                LastUpdated = now,
+                WorkflowInstanceId = ResolveWorkflowInstanceId(status, workflowInstanceId, entry.WorkflowInstanceId),
+            };
+            bool saved = await _daprClient
+                .TrySaveStateAsync(StoreName, stateKey, updatedEntry, etag, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            if (saved)
+            {
+                LogTenantStatusUpdated(_logger, tenantId, status);
+                return;
+            }
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        await _commandStore.AcceptAsync(
-            tenantId,
-            new UpdateTenantLifecycleStatusCommand(tenantId, status, now),
-            workflowInstanceId ?? "system",
-            ct).ConfigureAwait(false);
-
-        TenantInfo updated = entry.Tenant with { Status = status };
-        TenantRegistryEntry updatedEntry = entry with
-        {
-            Tenant = updated,
-            LastUpdated = now,
-            WorkflowInstanceId = status == TenantStatus.Provisioning ? workflowInstanceId ?? entry.WorkflowInstanceId : null,
-        };
-        await _daprClient.SaveStateAsync(StoreName, stateKey, updatedEntry, cancellationToken: ct).ConfigureAwait(false);
-
-        LogTenantStatusUpdated(_logger, tenantId, status);
+        throw new InvalidOperationException(
+            $"Failed to update tenant '{tenantId}' status to {status} after {MaxStatusUpdateRetries} attempts due to concurrent registry updates.");
     }
 
     /// <summary>Claims deletion ownership for a tenant and marks it as deleting.</summary>
@@ -413,55 +472,114 @@ public sealed partial class TenantRegistryService
     public async Task RemoveTenantAsync(string tenantId, CancellationToken ct)
     {
         string stateKey = GetTenantStateKey(tenantId);
-        await _daprClient.DeleteStateAsync(StoreName, stateKey, cancellationToken: ct).ConfigureAwait(false);
-        await RemoveFromIndexAsync(tenantId, ct).ConfigureAwait(false);
+        for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
+        {
+            (TenantRegistryEntry? existing, string entryEtag) = await _daprClient
+                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+                .ConfigureAwait(false);
+            (List<string>? existingIndex, string indexEtag) = await _daprClient
+                .GetStateAndETagAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
+                .ConfigureAwait(false);
+
+            List<string> index = NormalizeIndex(existingIndex);
+            bool removedFromIndex = index.Remove(tenantId);
+            if (existing is null && !removedFromIndex)
+            {
+                return;
+            }
+
+            List<StateTransactionRequest> operations = [];
+            if (existing is not null)
+            {
+                operations.Add(CreateDeleteRequest(stateKey, entryEtag));
+            }
+
+            operations.Add(CreateUpsertRequest(IndexKey, index, indexEtag));
+
+            try
+            {
+                await _daprClient.ExecuteStateTransactionAsync(
+                        StoreName,
+                        operations,
+                        metadata: null!,
+                        cancellationToken: ct)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (Dapr.DaprException)
+            {
+                continue;
+            }
+        }
+
+        TenantRegistryEntry? current = await _daprClient
+            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
+            .ConfigureAwait(false);
+        List<string>? currentIndex = await _daprClient
+            .GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
+            .ConfigureAwait(false);
+
+        if (current is null && currentIndex?.Contains(tenantId, StringComparer.Ordinal) != true)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to remove tenant '{tenantId}' from registry after {MaxTenantRegistrationRetries} attempts due to concurrent registry transaction conflicts.");
     }
 
     private static string GetTenantStateKey(string tenantId)
         => $"tenant-registry-{tenantId}";
 
-    private async Task AddToIndexAsync(string tenantId, CancellationToken ct)
-    {
-        for (int attempt = 0; attempt < MaxIndexRetries; attempt++)
+    private static List<string> NormalizeIndex(List<string>? index)
+        => index is null ? [] : [.. index.Distinct(StringComparer.Ordinal)];
+
+    private static StateTransactionRequest CreateUpsertRequest<T>(string key, T value, string etag)
+        => new(
+            key,
+            JsonSerializer.SerializeToUtf8Bytes(value, MemoriesJsonContext.Options),
+            StateOperationType.Upsert,
+            etag,
+            metadata: null!,
+            options: null!);
+
+    private static StateTransactionRequest CreateDeleteRequest(string key, string etag)
+        => new(
+            key,
+            EmptyTransactionValue,
+            StateOperationType.Delete,
+            etag,
+            metadata: null!,
+            options: null!);
+
+    private static string? ResolveWorkflowInstanceId(
+        TenantStatus status,
+        string? requestedWorkflowInstanceId,
+        string? currentWorkflowInstanceId)
+        => status switch
         {
-            (List<string> index, string etag) = await _daprClient.GetStateAndETagAsync<List<string>>(StoreName, IndexKey, cancellationToken: ct).ConfigureAwait(false);
-            index ??= [];
+            TenantStatus.Provisioning or TenantStatus.Deleting => requestedWorkflowInstanceId ?? currentWorkflowInstanceId,
+            _ => null,
+        };
 
-            if (!index.Contains(tenantId))
-            {
-                index.Add(tenantId);
-            }
-
-            bool saved = await _daprClient.TrySaveStateAsync(StoreName, IndexKey, index, etag, cancellationToken: ct).ConfigureAwait(false);
-            if (saved)
-            {
-                return;
-            }
+    private static void ThrowIfDeletingClaimWouldBeClobbered(
+        string tenantId,
+        TenantStatus requestedStatus,
+        string? requestedWorkflowInstanceId,
+        TenantRegistryEntry current)
+    {
+        if (current.Tenant.Status != TenantStatus.Deleting || requestedStatus == TenantStatus.Deleting)
+        {
+            return;
         }
 
-        throw new InvalidOperationException($"Failed to add tenant '{tenantId}' to registry index after {MaxIndexRetries} attempts due to concurrent updates.");
-    }
-
-    private async Task RemoveFromIndexAsync(string tenantId, CancellationToken ct)
-    {
-        for (int attempt = 0; attempt < MaxIndexRetries; attempt++)
+        if (string.Equals(current.WorkflowInstanceId, requestedWorkflowInstanceId, StringComparison.Ordinal))
         {
-            (List<string> index, string etag) = await _daprClient.GetStateAndETagAsync<List<string>>(StoreName, IndexKey, cancellationToken: ct).ConfigureAwait(false);
-            if (index is null)
-            {
-                return;
-            }
-
-            _ = index.Remove(tenantId);
-
-            bool saved = await _daprClient.TrySaveStateAsync(StoreName, IndexKey, index, etag, cancellationToken: ct).ConfigureAwait(false);
-            if (saved)
-            {
-                return;
-            }
+            return;
         }
 
-        throw new InvalidOperationException($"Failed to remove tenant '{tenantId}' from registry index after {MaxIndexRetries} attempts due to concurrent updates.");
+        throw new InvalidOperationException(
+            $"Tenant '{tenantId}' is owned by deletion workflow '{current.WorkflowInstanceId}' and cannot be overwritten by workflow '{requestedWorkflowInstanceId ?? "system"}'.");
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Tenant '{TenantId}' registered with display name '{DisplayName}'")]
