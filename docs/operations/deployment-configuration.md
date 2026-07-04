@@ -43,8 +43,10 @@ In a downstream Kubernetes overlay the AppHost is not present, so the operator s
 
 For local AppHost runs, the local identity provider appears in the Aspire dashboard as `security`.
 It is Keycloak-backed, but consumers should depend on the `security` resource name rather than a
-Keycloak-specific resource name. This initializes MCP authentication configuration only; full
-Memories Server endpoint authorization remains tracked separately in deferred work.
+Keycloak-specific resource name. The AppHost propagates JWT bearer security settings to both the
+Memories Server and the MCP host when `security` is enabled. When `EnableKeycloak=false`, the Server
+and MCP host use their `Authentication__JwtBearer__*` environment variables or development
+appsettings fallback.
 
 > **`MEMORIES_EVENTSTORE_TOPIC` has no runtime default.** The `memories-events` value above is injected only by the AppHost (`src/Hexalith.Memories.AppHost/Program.cs`), which is absent in a downstream overlay. At runtime the topic is resolved purely from this environment variable — `EnvironmentTopicAttribute` for the `/dapr/subscribe` discovery probe, and the `EventStoreIntegration:Routing:Topic` config key for routing — and both resolve to `null` when neither is set, silently stopping event intake. A downstream operator **must** set `MEMORIES_EVENTSTORE_TOPIC` (reusing `memories-events` keeps it consistent with the AppHost-orchestrated deployment) or set `EventStoreIntegration:Routing:Topic` in configuration.
 

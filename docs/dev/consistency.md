@@ -206,9 +206,10 @@ See [health-checks.md](./health-checks.md) for the `/ready` contract.
 ## Access telemetry (Story 7.5)
 
 Consistency endpoints are **not** in the `AccessTelemetryEvent` audited scope
-(which covers search / ingest / traverse / case-access — the four audited
-operation types). Adding them to the enricher would be a silent privacy
-regression — a regression guard lives in `ConsistencyEndpointTests`.
+(which covers search, ingest, traverse, case-access, delete, tenant-lifecycle,
+tenant-config, case-member, and annotation operations). Adding them to the
+enricher would be a silent privacy regression — a regression guard lives in
+`ConsistencyEndpointTests`.
 
 See [telemetry.md](./telemetry.md) for the audit-event contract.
 

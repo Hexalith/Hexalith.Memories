@@ -78,11 +78,12 @@ discoverable by operators, no attacker amplification.
 
 ## Audit event schema (FR67)
 
-Every search / ingest / traverse / case-access / delete operation emits **exactly one**
-`AccessTelemetryEvent` via `[LoggerMessage]` source-generated emitters. Dedicated logger category:
+Every audited search, ingest, traverse, case-access, delete, tenant-lifecycle, tenant-config,
+case-member, and annotation operation emits **exactly one** `AccessTelemetryEvent` via
+`[LoggerMessage]` source-generated emitters. Dedicated logger category:
 `Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory`.
 
-EventId bank: **7500–7599** (success 7501–7505, error 7511–7515).
+EventId bank: **7500-7599** (success 7501-7509, error 7511-7519).
 
 ```jsonc
 {
@@ -90,7 +91,7 @@ EventId bank: **7500–7599** (success 7501–7505, error 7511–7515).
     "eventId": 7501, // 7500-7599 bank
     "timestamp": "2026-04-17T12:34:56.789Z",
     "tenantId": "acme", // or "__rejected__" if guard rejected
-    "operationType": "search", // search | ingest | traverse | case-access | delete
+    "operationType": "search", // search | ingest | traverse | case-access | delete | tenant-lifecycle | tenant-config | case-member | annotation
     "caseId": null,
     "user": "anonymous", // ADR-7.5-004 resolution rules
     "queryParams": { "query": "...", "axis": "hybrid", "maxResults": 10 },
@@ -111,11 +112,13 @@ EventId bank: **7500–7599** (success 7501–7505, error 7511–7515).
 
 ### User-identity resolution (ADR-7.5-004)
 
-1. **Ingest paths** — `IngestionInput.IngestedBy` (always present; `required` contract field).
-2. **Search / traverse / case-access paths** — `x-user-id` HTTP header (Phase 1.5 contract) → else
+1. **Server API paths** — principal-derived identity from authenticated claims. Preferred sources are
+   stable subject/name claims; spoofable `x-user-id` headers and request-body attribution fields do
+   not supply the audit identity.
+2. **Fallback** — if an authenticated principal has no usable identity claim, the audit user is
    `"anonymous"`.
-3. **Wizard-originated operations** — `HEXALITH_MEMORIES_WIZARD_INVOCATION_ID` env set → user =
-   `"quickstart-wizard"`.
+3. **Wizard-originated operations** — any wizard tagging must come from trusted principal context or
+   external operator logging; the Server no longer trusts `x-user-id=quickstart-wizard`.
 
 ---
 
@@ -734,9 +737,10 @@ operator wants to split the backends in Grafana / Datadog.
   `/ready`, and `/health` contracts for orchestrator probes; health paths are deliberately excluded
   from this document's AspNetCore trace emission (see AC #5).
 - [consistency.md](consistency.md) — tenant-scoped consistency verification and repair workflows
-  (Story 8.2). The five consistency endpoints are NOT in the audited scope (the four audited
-  operation types are search / ingest / traverse / case-access); a regression guard in
-  `ConsistencyEndpointTests` pins this invariant.
+  (Story 8.2). The five consistency endpoints are NOT in the audited scope; a regression guard in
+  `ConsistencyEndpointTests` pins this invariant. Current audited operation types are search,
+  ingest, traverse, case-access, delete, tenant-lifecycle, tenant-config, case-member, and
+  annotation.
 - [export.md](export.md) — case and tenant data export (Story 8.3). Export endpoints are
   deliberately NOT in the `AccessTelemetryEvent` audited scope. A follow-up story will ship a
   dedicated `ExportTelemetryEvent` bank (EventId 8320-8329 reserved) so operators get a

@@ -212,8 +212,10 @@ Graph axis has **dual roles**:
 - **`IGraphQueryBuilder`** — Structural Cypher injection prevention. Only accepts parameterized queries. No raw Cypher string construction in any code path. Makes injection structurally difficult, not just policy-prohibited.
 - **DAPR Secrets scoping** — Configure DAPR secret scopes so only Memories Server app-id can access embedding keys. MCP Server does not have direct secret access. Documented in operator guide.
 
-**Phase 1.5 components:**
-- **`TenantAuthorizationMiddleware`** — Maps authenticated identity → authorized tenant set. Tenant ID from request payload is never trusted — always validated against auth context. **Not gate-blocking for MVP** — MVP tests tenant isolation via automated test suite with direct tenant IDs, not via authenticated external access. Required when CLI connects through ingress and external access matters.
+**Implemented remediation components:**
+- **Server JWT bearer authentication** — Story 20.1 added the Server fallback `RequireAuthenticatedUser` policy for `/api/**`; only health probes and Dapr infrastructure routes are explicitly anonymous.
+- **`TenantAuthorizationMiddleware` and endpoint filters** — Story 20.2 maps authenticated identity to authorized tenant sets. Tenant IDs from route, query, or body are never trusted until validated against principal claims. Story 20.3 applies the same stored-tenant check to ingestion workflow and batch status endpoints.
+- **Inbound request limiting** — Story 20.5 added ASP.NET Core inbound request quotas partitioned by authenticated tenant context, separate from the embedding-provider throttling actor.
 
 **Trust Boundary:**
 The Memories Server is a **trusted component** with access to all tenant embedding API keys via DAPR Secrets. MVP: acceptable to cache per actor lifetime. Growth: periodic re-read from secrets for rotation support.
@@ -351,7 +353,7 @@ When embedding model changes (e.g., `text-embedding-004` → `text-embedding-005
 
 | Component | Purpose | Phase |
 |---|---|---|
-| `TenantAuthorizationMiddleware` | Auth context → tenant validation | Phase 1.5 |
+| `TenantAuthorizationMiddleware` | Auth context → tenant validation | Implemented in Epic 20; keep as a required ingress guard |
 | Per-tenant score distribution monitor | Detect fusion score skew | Phase 2 |
 | Concurrent index versions | Model migration without degradation | Phase 2 |
 | `IndexRebuildWorkflow` | Long-running workflow for model migration with concurrent index versions | Phase 2 |
@@ -393,7 +395,7 @@ Decisions made during context analysis, extracted for quick reference:
 | D5 | MVP REST is minimal (CLI routing only) | Full REST API is Phase 2; PRD self-contradicted | PRD Deviations |
 | D6 | Error format: code + message + suggestion (not full Hexalith.Commons envelope) | Simpler for MVP; full envelope in Phase 1.5 for MCP | Cross-Cutting Concern #3 |
 | D7 | Capability alignment, not feature parity across interfaces | CLI is reference; others expose consumer-specific subsets | Interface Philosophy |
-| D8 | TenantAuthorizationMiddleware deferred to Phase 1.5 | Not gate-blocking; MVP uses direct tenant IDs in test suite | Security Architecture |
+| D8 | TenantAuthorizationMiddleware no longer deferred | Epic 20 implemented Server auth and tenant-claim authorization; preserve the guard on every tenant-scoped ingress path | Security Architecture |
 | D9 | Safety interfaces (IGraphQueryBuilder) are interfaces; extensibility points are concrete classes | Avoids abstraction tax; extract when second implementation arrives | Architectural Components |
 | D10 | Index rebuild: accept degradation in MVP, design naming for concurrent versions | Solo developer; no production tenants during thesis validation | Open Decision |
 
@@ -575,7 +577,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D5 | MVP REST is minimal (CLI routing only) | Full REST API Phase 2 | MVP |
 | D6 | Error format: code + message + suggestion | Full envelope Phase 1.5 | MVP |
 | D7 | Capability alignment, not feature parity | CLI is reference | MVP |
-| D8 | TenantAuthorizationMiddleware deferred | Not gate-blocking | Phase 1.5 |
+| D8 | TenantAuthorizationMiddleware implemented | Server auth and tenant-claim authorization landed in Epic 20 | Operational readiness |
 | D9 | Safety interfaces vs concrete classes | Avoid abstraction tax | MVP |
 | D10 | Index rebuild: accept degradation | Design naming for concurrent versions | MVP |
 | D11 | Synthetic benchmark dataset | Deterministic ground truth | MVP |
@@ -1422,7 +1424,7 @@ Hexalith.Memories/
 
 | Boundary | Entry Point | Validation | Auth (MVP) | Auth (Phase 1.5) |
 |---|---|---|---|---|
-| REST (external) | minimal-API endpoints in `Program.cs` (`app.MapGet/MapPost/...`) | `IngestionValidator` + FluentValidation | Direct tenant ID | `TenantAuthorizationMiddleware` |
+| REST (external) | minimal-API endpoints in `Program.cs` (`app.MapGet/MapPost/...`) | `IngestionValidator` + FluentValidation | JWT bearer fallback policy plus tenant authorization | `TenantAuthorizationMiddleware` and endpoint filters |
 | DAPR service invocation (internal) | DAPR endpoint mapping | Same validators | DAPR API token | DAPR API token |
 | MCP (Phase 1.5) | `Mcp/` project | Delegates to Server via Client | — | MCP-level auth |
 

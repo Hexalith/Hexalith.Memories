@@ -1,4 +1,4 @@
-<!-- Review cadence: update when an `app.MapX("/api/…")` route is added/removed/renamed, when the pub/sub delivery or subscription-discovery route changes, when a health-probe path changes, or when the MCP transport route changes; otherwise quarterly — whichever comes first. Last reviewed: 2026-06-25. -->
+<!-- Review cadence: update when an `app.MapX("/api/…")` route is added/removed/renamed, when the pub/sub delivery or subscription-discovery route changes, when a health-probe path changes, or when the MCP transport route changes; otherwise quarterly — whichever comes first. Last reviewed: 2026-07-04. -->
 
 # Invocable Route and Operation Surface Contract (Story 18.3)
 
@@ -17,6 +17,8 @@ The surface decomposes into two Dapr operation kinds, and an ACL must treat them
 - **Service invocation — the `/api/*` table.** A caller reaches a REST route through Dapr service invocation at `/v1.0/invoke/memories/method/<path>`. The ACL `operation` is the route path **without the leading slash** (the `method/…` segment), the `app` is `memories`, and `httpVerb` is the row's HTTP method. Translate each table row directly: `operation` = `method` joined with the path column, `httpVerb` = the method column. For example, the search row maps to operation `method/api/search` with verb `GET`, and the primary ingest row to operation `method/api/ingest` with verb `POST`.
 - **Pub/sub delivery — `POST /events/ingest`.** This route is **not** reached through service invocation. The Dapr sidecar delivers CloudEvents to it after discovering the subscription via `/dapr/subscribe`; a service-invocation `method/*` ACL rule does not gate pub/sub delivery. See [Pub/sub event-intake operation surface](#pubsub-event-intake-operation-surface).
 
+The Server also enforces application-layer security on `/api/*`: Story 20.1 added JWT bearer fallback authorization, Story 20.2 added principal-claim tenant authorization for tenant path/query/body routes, and Story 20.5 added inbound request limiting partitioned by authenticated tenant context. The health and Dapr infrastructure routes remain explicit anonymous exceptions for platform probes and sidecar delivery.
+
 This satisfies "method, path, and Dapr operation semantics" (AC2): the table gives method + path, and the two bullets above give the Dapr operation mapping for each.
 
 ## REST `/api/*` operation surface
@@ -26,10 +28,10 @@ All 46 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.S
 | Area | Method + path | Purpose |
 | :--- | :--- | :--- |
 | Ingestion | `POST /api/ingest` | Start a content-ingestion workflow. |
-| Ingestion | `GET /api/ingest/{instanceId}` | Read ingestion workflow status. |
+| Ingestion | `GET /api/ingest/{instanceId}` | Read a tenant-authorized safe ingestion workflow status projection (`IngestionWorkflowStatus`), not raw Dapr `WorkflowState`. |
 | Ingestion | `POST /api/ingest/url` | Ingest content from a URL. |
 | Ingestion | `POST /api/ingest/directory` | Ingest a directory batch. |
-| Ingestion | `GET /api/ingest/batches/{batchId}` | Read directory-batch ingestion status. |
+| Ingestion | `GET /api/ingest/batches/{batchId}` | Read directory-batch ingestion status after authorizing the stored batch tenant before per-file status fan-out. |
 | Tenants | `GET /api/tenants/{tenantId}/embedding-config` | Read the tenant embedding configuration. |
 | Tenants | `PUT /api/tenants/{tenantId}/embedding-config` | Replace the tenant embedding configuration. |
 | Tenants | `POST /api/tenants` | Provision a tenant. |

@@ -892,9 +892,11 @@ ingestion level, and `Error` severity would be interpreted by downstream paging 
 page-worthy (see Risk #2). Operator-facing enums pay a compounding cost per value; minimalism
 preserves clarity.
 
-### §11.9 Authentication/authorization (descoped per Spike 0.5)
+### §11.9 Authentication/authorization
 
-The handlers endpoints ship unauthenticated, matching the current posture of every other Memories
-Server endpoint (Story 7.5's `telemetry/summary` is the closest analogue and has no auth either). A
-cross-cutting auth story is tracked in `_bmad-output/implementation-artifacts/deferred-work.md` as
-`Story-9.3-MemoriesServerAuthN`.
+The handlers endpoints are now covered by the Server JWT bearer fallback authorization policy added
+in Story 20.1. Tenant-scoped handler mismatch inspection is also covered by the Story 20.2 tenant
+authorization guard. The Dapr pub/sub discovery and delivery paths (`/dapr/subscribe` and
+`POST /events/ingest`) remain explicit anonymous infrastructure exceptions so the sidecar can
+discover subscriptions and deliver CloudEvents; publisher trust is still controlled by Dapr
+component access, topic ACLs, and deployment topology rather than by the application bearer policy.

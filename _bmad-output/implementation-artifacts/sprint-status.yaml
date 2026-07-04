@@ -339,14 +339,14 @@ development_status:
   epic-19-retrospective: done
 
   # Epic 20: API Security & Tenant Authorization (Sprint Change Proposal 2026-07-04; closes A1,A2,A6,A20,A31,A41)
-  epic-20: in-progress
+  epic-20: done
   20-1-server-authentication-foundation: done
   20-2-tenant-authorization-filter-and-principal-derived-audit-identity: done
   20-3-tenant-scope-workflow-and-batch-status-endpoints: done
   20-4-mcp-production-signing-key-hardening: done
   20-5-inbound-rate-limiting-quotas-and-audit-completeness: done
   20-6-redisearch-query-injection-hardening: done
-  epic-20-retrospective: optional
+  epic-20-retrospective: done
 
   # Epic 21: Data Integrity, Consistency & Migration Safety (SCP 2026-07-04; closes A3,A4,A5,A16,A17,A22,A27,A28,A44,A47)
   epic-21: backlog
@@ -473,16 +473,36 @@ action_items:
   - epic: 19
     action: "Cross-link Epic 20 stories 20.1 and 20.2 to the existing auth and tenant-authorization deferred entries instead of creating duplicate backlog homes"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-07-04 (Stories 20.1/20.2): Story-9.3-MemoriesServerAuthN and D8/A2 tenant authorization were cross-linked/resolved by Epic 20 evidence.
   - epic: 19
     action: "Apply the Epic 19 accepted-debt review pattern during Epic 20 story creation: check whether any accepted-until-trigger entry is actually triggered before pulling it into implementation"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-07-04 (Epic 20): every story recorded audit-anchor preflight; 20.5 explicitly deferred the A41 retention slice instead of overstating closure.
   - epic: 19
     action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 planning when stories 21.9 and 21.10 are created"
     owner: "Winston, Amelia, Murat"
     status: open
   - epic: 19
     action: "Define the tracking convention for one-shot artifacts like 19-5-ci-submodule-metadata-cleanup.md"
+    owner: "Amelia"
+    status: open
+  - epic: 20
+    action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL mechanism or explicit accepted-debt disposition is implemented"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 20
+    action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 story creation, especially 21.9 and 21.10"
+    owner: "Winston, Amelia, Murat"
+    status: open
+  - epic: 20
+    action: "Preserve Epic 20 security regression guards during Epic 21 data-path changes"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 20
+    action: "Treat remediation documentation as a first-class close-out gate for security/data-integrity stories"
+    owner: "Paige, Winston"
+    status: open
+  - epic: 20
+    action: "Define a tracking convention for one-shot or story-automator artifacts that sit outside registered story rows"
     owner: "Amelia"
     status: open

@@ -12,7 +12,8 @@ service invocation.
 * Transport: Streamable HTTP (`MapMcp()` + `WithHttpTransport(o => o.Stateless = true)`).
 * Topology: separate DAPR-sided service (app-id `memories-mcp`) with its own sidecar pinned to
   ports 3600/50101.
-* Boundary: MCP → Memories Server via `DaprClient.CreateInvokeHttpClient("memories-server")`. No
+* Boundary: MCP -> Memories Server via `DaprClient.CreateInvokeHttpClient("memories")` by default
+  (override with `MEMORIES_SERVER_APP_ID`). No
   direct Redis / FalkorDB / secret-store access (NFR11 + architecture.md §Cross-Cutting Concerns
   #4).
 
@@ -58,9 +59,11 @@ For local smoke tests, mint a development token with:
 ## Server ingress inventory
 
 Current Memories Server ingress for MCP traffic is DAPR service invocation from `memories-mcp` to
-`memories-server`, secured by DAPR API token mode when `DAPR_API_TOKEN_MODE=enabled`. Adding any
-second direct Server ingress (admin UI, ops dashboard, direct REST client, public CLI endpoint) is a
-gated event: land a Server-level authentication story before exposing that ingress.
+the Server app-id `memories` by default, secured by DAPR API token mode when
+`DAPR_API_TOKEN_MODE=enabled`. The Server itself also requires JWT bearer authentication on `/api/**`
+and applies tenant authorization at tenant-scoped boundaries. Adding any second direct Server
+ingress (admin UI, ops dashboard, direct REST client, public CLI endpoint) must preserve those
+authentication and tenant-authorization guardrails.
 
 ## The four registered tools
 
@@ -121,8 +124,9 @@ MemoriesMcpDaprInvocationHandler.ApplyDaprApiToken(invokeClient);
 ```
 
 `CreateInvokeHttpClient` resolves the local sidecar URL via the `DAPR_HTTP_ENDPOINT` env var
-(defaults to `http://localhost:3500`), injects the `dapr-app-id: memories-server` header on every
-request, and routes the call through the local sidecar's service-invocation path. The handler
+(defaults to `http://localhost:3500`), injects the `dapr-app-id: memories` header on every request
+unless `MEMORIES_SERVER_APP_ID` overrides it, and routes the call through the local sidecar's
+service-invocation path. The handler
 adds `dapr-api-token` from the env when `DAPR_API_TOKEN_MODE=enabled` (Story 5.4 AC3 parity).
 
 `HttpClient`'s default OpenTelemetry instrumentation (registered via `ServiceDefaults`) auto-adds
@@ -146,16 +150,16 @@ Story 7.5 / 8.4 distributed-trace continuity with no extra wiring.
 dotnet run --project src/Hexalith.Memories.AppHost
 ```
 
-Both `memories-server` and `memories-mcp` boot under the Aspire AppHost with their own DAPR
+Both `memories` and `memories-mcp` boot under the Aspire AppHost with their own DAPR
 sidecars. The MCP endpoint is exposed at the Aspire-allocated HTTP port (open the Aspire Dashboard
 and click `memories-mcp` to see the live URL), with the MCP server itself listening on `/mcp` for
 Streamable HTTP traffic.
 
 By default the AppHost also initializes a local Keycloak-backed Aspire resource named `security`
-through `HexalithEventStoreSecurityExtensions`. When `security` is enabled, `memories-mcp` receives
-its JWT bearer authority, issuer, audience, and HTTPS-metadata settings from that shared resource.
-Set `EnableKeycloak=false` to keep the no-Keycloak fallback path, where MCP reads
-`Authentication__JwtBearer__*` environment variables or `appsettings.Development.json`.
+through `HexalithEventStoreSecurityExtensions`. When `security` is enabled, both `memories` and
+`memories-mcp` receive JWT bearer authority, issuer, audience, and HTTPS-metadata settings from that
+shared resource. Set `EnableKeycloak=false` to keep the no-Keycloak fallback path, where MCP and
+Server hosts read `Authentication__JwtBearer__*` environment variables or development appsettings.
 
 Connect any compliant MCP client (Claude Desktop, a custom `McpClient`, etc.) to
 `http://<host>:<port>/mcp` with `Authorization: Bearer <token>`. The four tools above will appear

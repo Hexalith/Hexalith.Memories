@@ -1,5 +1,25 @@
 # Rate Limiting — Per-Tenant and Shared Provider Quotas
 
+## Inbound HTTP request quotas (Story 20.5)
+
+The Memories Server registers ASP.NET Core inbound request limiting with the
+`InboundRateLimiting` configuration section:
+
+| Setting | Default | Production default | Description |
+|---------|---------|--------------------|-------------|
+| `InboundRateLimiting:PermitLimit` | `120` | `600` | Fixed-window permits per partition. |
+| `InboundRateLimiting:WindowSeconds` | `60` | `60` | Fixed-window duration. |
+| `InboundRateLimiting:QueueLimit` | `0` | `0` | Rejections are immediate; requests are not queued. |
+
+Route/query API traffic is partitioned by authenticated and authorized tenant context, not by raw
+caller-supplied route/query values. Body-bound ingest routes use the same tenant quota store after
+body binding and tenant authorization. Tenant creation uses an authenticated-principal partition
+because the target tenant may not exist yet. Health and Dapr infrastructure endpoints remain aligned
+with their explicit anonymous policy.
+
+Rejected requests return HTTP `429` with `ErrorResponse.Code = RATE_LIMIT_EXCEEDED` and emit the
+`memories.rate_limit.rejections` counter tagged only by `tenant_id` and `error_code`.
+
 ## Per-tenant ceilings (Story 6.2)
 
 Each tenant has an `EmbeddingRateLimiterActor` (Actor ID = tenant ID). It enforces
@@ -8,7 +28,7 @@ actor is independent per tenant; one tenant cannot consume another's budget.
 
 The ceiling is re-read from `TenantConfigurationActor.GetEmbeddingConfigAsync()` on
 every embedding activity invocation, so operator updates via
-`PATCH /api/tenants/{tenantId}/config` take effect on the next ingestion.
+`PUT /api/tenants/{tenantId}/embedding-config` take effect on the next ingestion.
 
 ## Shared provider quota (Known Limitation)
 
@@ -95,4 +115,6 @@ Structured log events (Story 6.2):
 | 6205 | Information | `ExtractionGateContended` | `tenantId`, `queueDepth` |
 | 6206 | Warning | `ExtractionGateTimeout` | `tenantId`, `timeoutSeconds` |
 
-OpenTelemetry metric counters are Epic 8 (Observability & System Health).
+OpenTelemetry metric counters for provider/extraction throttling are Epic 8 (Observability &
+System Health). Inbound HTTP request rejections use the Story 20.5
+`memories.rate_limit.rejections` counter described above.
