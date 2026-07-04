@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.Server.Infrastructure;
+
 using StackExchange.Redis;
 
 /// <summary>Workflow activity that checks whether the authoritative syntactic memory-unit hash
@@ -30,6 +32,6 @@ public sealed class CheckMemoryUnitExistsActivity : WorkflowActivity<Consistency
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
         IDatabase db = _redis.GetDatabase();
-        return db.KeyExistsAsync($"{input.TenantId}:mu:{input.MemoryUnitId}");
+        return db.KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId));
     }
 }

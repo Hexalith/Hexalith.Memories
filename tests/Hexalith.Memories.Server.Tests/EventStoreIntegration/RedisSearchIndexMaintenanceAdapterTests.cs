@@ -9,6 +9,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.EventStoreIntegration;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -41,7 +42,7 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         // Fields mirror the syntactic schema so the existing SyntacticSearchService returns it unchanged:
         // content is the BM25 surface, sourceUri is the verbatim cloudevent.id the BFF parses back.
         await db.Received(1).HashSetAsync(
-            "tenants-index:mu:t-1",
+            IndexSchemaDefinitions.BuildSyntacticKey("tenants-index", "t-1"),
             Arg.Is<HashEntry[]>(entries =>
                 HasEntry(entries, "id", "t-1")
                 && HasEntry(entries, "tenantId", "tenants-index")
@@ -69,7 +70,7 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
 
         await adapter.ApplyEntryRemovedAsync("tenants-index", entry, CancellationToken.None);
 
-        await db.Received(1).KeyDeleteAsync("tenants-index:mu:t-9", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync(IndexSchemaDefinitions.BuildSyntacticKey("tenants-index", "t-9"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -126,7 +127,7 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         RedisResult.Create(
         [
             RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("tenants-index:mu:"))]),
+            RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenants-index")))]),
         ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(

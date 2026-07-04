@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Logging;
@@ -85,7 +86,7 @@ public sealed partial class SemanticSearchService
 
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
-        string indexName = $"{query.TenantId}:memories:vec";
+        string indexName = IndexSchemaDefinitions.GetSemanticIndexName(query.TenantId);
 
         // Step 4: Execute KNN search
         long searchStart = Environment.TickCount64;
@@ -240,7 +241,7 @@ public sealed partial class SemanticSearchService
         IBatch batch = db.CreateBatch();
         Task<RedisValue[]>[] tasks = knnResults.Select(r =>
             batch.HashGetAsync(
-                $"{tenantId}:mu:{r.MemoryUnitId}",
+                IndexSchemaDefinitions.BuildSyntacticKey(tenantId, r.MemoryUnitId),
                 [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType"), new RedisValue("caseId"), new RedisValue("metadataText")])).ToArray();
         batch.Execute();
         RedisValue[][] hashResults = await Task.WhenAll(tasks).ConfigureAwait(false);

@@ -50,7 +50,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         string ingestedAt = input.IngestedAt.ToString("o");
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);
-        string hashKey = $"{input.TenantId}:mu:{input.MemoryUnitId}";
+        string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
 
         try
         {

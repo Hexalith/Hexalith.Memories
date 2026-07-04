@@ -87,9 +87,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         await foreach (RedisKey key in ScanKeysAsync(rawPrefix, ct).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            string keyText = key.ToString();
-            if (keyText.StartsWith(nlPrefix, StringComparison.Ordinal)
-                || keyText.StartsWith(legacyNlPrefix, StringComparison.Ordinal))
+            if (!IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, key, out _))
             {
                 continue;
             }
@@ -106,13 +104,19 @@ public sealed partial class RedisEmbeddingMigrationStore(
         await foreach (RedisKey key in ScanKeysAsync(legacyNlPrefix, ct).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            AddScannedKey(nlKeysByUnitId, key, legacyNlPrefix);
+            AddScannedKey(
+                nlKeysByUnitId,
+                key,
+                scannedKey => IndexSchemaDefinitions.TryParseLegacyNaturalLanguageSemanticMemoryUnitId(tenantId, scannedKey, out string id) ? id : null);
         }
 
         await foreach (RedisKey key in ScanKeysAsync(nlPrefix, ct).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            AddScannedKey(nlKeysByUnitId, key, nlPrefix);
+            AddScannedKey(
+                nlKeysByUnitId,
+                key,
+                scannedKey => IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(tenantId, scannedKey, out string id) ? id : null);
         }
 
         long nl = nlKeysByUnitId.Count;
@@ -130,15 +134,15 @@ public sealed partial class RedisEmbeddingMigrationStore(
         return new EmbeddingMigrationTenantCounts(syntactic, raw, nl, rawStale, nlStale);
     }
 
-    private static void AddScannedKey(Dictionary<string, RedisKey> keysByUnitId, RedisKey key, string prefix)
+    private static void AddScannedKey(Dictionary<string, RedisKey> keysByUnitId, RedisKey key, Func<RedisKey, string?> parseMemoryUnitId)
     {
-        string? keyText = key.ToString();
-        if (string.IsNullOrEmpty(keyText) || keyText.Length <= prefix.Length)
+        string? memoryUnitId = parseMemoryUnitId(key);
+        if (string.IsNullOrEmpty(memoryUnitId))
         {
             return;
         }
 
-        keysByUnitId[keyText[prefix.Length..]] = key;
+        keysByUnitId[memoryUnitId] = key;
     }
 
     /// <inheritdoc/>
@@ -319,13 +323,11 @@ public sealed partial class RedisEmbeddingMigrationStore(
         await foreach (RedisKey key in ScanKeysAsync(prefix, ct, pageSize).ConfigureAwait(false))
         {
             ct.ThrowIfCancellationRequested();
-            string? keyText = key.ToString();
-            if (string.IsNullOrEmpty(keyText) || keyText.Length <= prefix.Length)
+            if (!IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(tenantId, key, out string memoryUnitId))
             {
                 continue;
             }
 
-            string memoryUnitId = keyText[prefix.Length..];
             RedisValue[] values = await db.HashGetAsync(
                     key,
                     ["content", "caseId", "cloudeventSubject"])
@@ -346,7 +348,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         IDatabase db = redis.GetDatabase();
-        RedisKey key = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + memoryUnitId;
+        RedisKey key = IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId);
         if (!await db.KeyExistsAsync(key).WaitAsync(ct).ConfigureAwait(false))
         {
             return null;
@@ -364,7 +366,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         IDatabase db = redis.GetDatabase();
-        RedisKey key = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + memoryUnitId;
+        RedisKey key = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
         if (!await db.KeyExistsAsync(key).WaitAsync(ct).ConfigureAwait(false))
         {
             return null;
@@ -422,7 +424,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
             entries.Add(new HashEntry("cloudeventSubject", write.CloudEventSubject));
         }
 
-        RedisKey key = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + write.MemoryUnitId;
+        RedisKey key = IndexSchemaDefinitions.BuildSemanticKey(tenantId, write.MemoryUnitId);
         ITransaction transaction = db.CreateTransaction();
         _ = transaction.KeyDeleteAsync(key);
         _ = transaction.HashSetAsync(key, [.. entries]);
@@ -470,7 +472,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
             entries.Add(new HashEntry("descriptionConfidenceSource", write.DescriptionConfidenceSource));
         }
 
-        RedisKey key = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + write.MemoryUnitId;
+        RedisKey key = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, write.MemoryUnitId);
         ITransaction transaction = db.CreateTransaction();
         _ = transaction.KeyDeleteAsync(key);
         _ = transaction.HashSetAsync(key, [.. entries]);

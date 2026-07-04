@@ -83,9 +83,9 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         IDatabase redisDb = _redis.GetDatabase();
 
-        string syntacticKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + normalizedMemoryUnitId;
-        string vectorKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId) + normalizedMemoryUnitId;
-        string naturalLanguageVectorKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId) + normalizedMemoryUnitId;
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, normalizedMemoryUnitId);
+        string vectorKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, normalizedMemoryUnitId);
+        string naturalLanguageVectorKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, normalizedMemoryUnitId);
 
         Task<HashEntry[]> syntacticTask = redisDb.HashGetAllAsync(syntacticKey);
         Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(vectorKey);

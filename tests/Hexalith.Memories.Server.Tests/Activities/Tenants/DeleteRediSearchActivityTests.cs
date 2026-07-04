@@ -4,6 +4,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -32,7 +33,7 @@ public class DeleteRediSearchActivityTests
         bool result = await activity.RunAsync(context, input);
 
         result.ShouldBeTrue();
-        await db.Received().ExecuteAsync("FT.DROPINDEX", "test-tenant:memories:idx", "DD");
+        await db.Received().ExecuteAsync("FT.DROPINDEX", IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant"), "DD");
     }
 
     [Fact]

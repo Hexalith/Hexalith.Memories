@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
@@ -151,7 +152,7 @@ public class CaseServiceTests
             commandStore,
             workflowScheduler);
 
-        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
             .Returns(
             [
                 new HashEntry("id", "mu-001"),
@@ -164,7 +165,7 @@ public class CaseServiceTests
                 new HashEntry("ingestedAt", "2026-07-01T10:00:00+00:00"),
                 new HashEntry("lastUpdated", "2026-07-01T10:00:00+00:00"),
             ]);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
             .Returns(true);
 
         CreateAnnotationInput input = new("tenant-1", "case-001", "mu-001", "Correction text", "annotator@test.local", "correction");
@@ -1065,7 +1066,7 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
-        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
             .Returns(
             [
                 new HashEntry("id", "mu-001"),
@@ -1099,7 +1100,7 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
-        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:legacy-mu"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "legacy-mu")), Arg.Any<CommandFlags>())
             .Returns(
             [
                 new HashEntry("id", "legacy-mu"),
@@ -1132,7 +1133,7 @@ public class CaseServiceTests
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
         CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
 
-        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:annotation-001"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "annotation-001")), Arg.Any<CommandFlags>())
             .Returns(
             [
                 new HashEntry("caseId", "case-001"),
@@ -1181,7 +1182,7 @@ public class CaseServiceTests
             commandStore,
             workflowScheduler);
 
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
 
         // Act
@@ -1235,7 +1236,7 @@ public class CaseServiceTests
             new FailingCommandStore(),
             workflowScheduler);
 
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
 
         // Act / Assert — EventStore accept failure must surface and leave every projection intact.
@@ -1257,7 +1258,7 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-missing"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-missing")), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(RedisValue.Null);
 
         // Act
@@ -1277,7 +1278,7 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
 
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-OTHER"));
 
         // Act
@@ -1308,7 +1309,7 @@ public class CaseServiceTests
             commandStore,
             workflowScheduler);
 
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
 
         // Act

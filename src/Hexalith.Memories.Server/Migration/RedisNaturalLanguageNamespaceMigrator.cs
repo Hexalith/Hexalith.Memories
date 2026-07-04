@@ -27,20 +27,16 @@ internal static class RedisNaturalLanguageNamespaceMigrator
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
         string legacyPrefix = IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix(tenantId);
-        string targetPrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId);
 
         await foreach (RedisKey legacyKey in server.KeysAsync(pattern: legacyPrefix + "*", pageSize: ScanPageSize).WithCancellation(ct))
         {
             ct.ThrowIfCancellationRequested();
-
-            string? legacyKeyText = legacyKey.ToString();
-            if (string.IsNullOrEmpty(legacyKeyText) || legacyKeyText.Length <= legacyPrefix.Length)
+            if (!IndexSchemaDefinitions.TryParseLegacyNaturalLanguageSemanticMemoryUnitId(tenantId, legacyKey, out string memoryUnitId))
             {
                 continue;
             }
 
-            string memoryUnitId = legacyKeyText[legacyPrefix.Length..];
-            RedisKey targetKey = targetPrefix + memoryUnitId;
+            RedisKey targetKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
 
             HashEntry[] targetEntries = await db.HashGetAllAsync(targetKey).WaitAsync(ct).ConfigureAwait(false);
             if (!HasRequiredFields(targetEntries))

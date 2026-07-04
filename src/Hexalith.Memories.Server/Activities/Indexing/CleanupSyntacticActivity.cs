@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.Server.Infrastructure;
+
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
@@ -32,7 +34,7 @@ public sealed class CleanupSyntacticActivity : WorkflowActivity<CleanupInput, bo
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        string hashKey = $"{input.TenantId}:mu:{input.MemoryUnitId}";
+        string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
         IDatabase db = _redis.GetDatabase();
         bool deleted = await db.KeyDeleteAsync(hashKey).ConfigureAwait(false);
 

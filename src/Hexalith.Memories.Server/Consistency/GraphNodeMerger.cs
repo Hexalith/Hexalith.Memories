@@ -9,6 +9,7 @@ using System.Globalization;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -65,7 +66,7 @@ public partial class GraphNodeMerger : IGraphNodeMerger
         ct.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        string syntacticKey = $"{tenantId}:mu:{memoryUnitId}";
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
 
         HashEntry[] entries = await db.HashGetAllAsync(syntacticKey).WaitAsync(ct).ConfigureAwait(false);
         if (entries.Length == 0)

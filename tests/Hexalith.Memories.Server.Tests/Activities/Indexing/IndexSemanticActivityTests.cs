@@ -11,6 +11,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
@@ -43,7 +44,7 @@ public class IndexSemanticActivityTests
         result.TenantId.ShouldBe(input.TenantId);
 
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "test-tenant:vec:test-mu-001"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("test-tenant", "test-mu-001")),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -74,7 +75,7 @@ public class IndexSemanticActivityTests
         await activity.RunAsync(context, input);
 
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString().StartsWith("test-tenant:vec:")),
+            Arg.Is<RedisKey>(key => IsTestTenantSemanticKey(key)),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -205,7 +206,7 @@ public class IndexSemanticActivityTests
         db.Received().Execute(
             "FT.ALTER",
             Arg.Is<object[]>(args => args.Length == 5
-                && args[0].ToString() == "test-tenant:memories:vec"
+                && args[0].ToString() == IndexSchemaDefinitions.GetSemanticIndexName("test-tenant")
                 && args[1].ToString() == "SCHEMA"
                 && args[2].ToString() == "ADD"
                 && args[3].ToString() == "cloudeventSubject"
@@ -221,6 +222,9 @@ public class IndexSemanticActivityTests
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }
+
+    private static bool IsTestTenantSemanticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseSemanticMemoryUnitId("test-tenant", key, out string _);
 
     private static HashEntry[] CreateActiveMarkerEntries(string tenantId) =>
     [
@@ -289,7 +293,7 @@ public class IndexSemanticActivityTests
             RedisResult.Create(
             [
                 RedisResult.Create(new RedisValue("prefixes")),
-                RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vec:"))]),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSemanticKeyPrefix("test-tenant")))]),
             ]),
             RedisResult.Create(new RedisValue("attributes")),
             RedisResult.Create([.. attributes]),

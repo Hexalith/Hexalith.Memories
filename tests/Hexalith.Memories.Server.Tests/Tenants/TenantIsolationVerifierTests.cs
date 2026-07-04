@@ -10,6 +10,7 @@ namespace Hexalith.Memories.Server.Tests.Tenants;
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -58,8 +59,11 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb);
         // Simulate leakage: tenant-a's syntactic index contains a key with tenant-b's prefix
-        SetupSearchWithForeignKey(redisDb, "tenant-a:memories:idx", "tenant-b:mu:leaked-doc");
-        SetupEmptySearchExcept(redisDb, "tenant-a:memories:idx");
+        SetupSearchWithForeignKey(
+            redisDb,
+            IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"),
+            IndexSchemaDefinitions.BuildSyntacticKey("tenant-b", "leaked-doc"));
+        SetupEmptySearchExcept(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"));
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -85,7 +89,10 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb);
         SetupEmptySearch(redisDb); // syntactic clean
         // Override semantic search to simulate leakage in tenant-a's semantic index
-        SetupSearchWithForeignKeyForIndex(redisDb, "tenant-a:memories:vec", "tenant-b:vec:leaked-vec");
+        SetupSearchWithForeignKeyForIndex(
+            redisDb,
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.BuildSemanticKey("tenant-b", "leaked-vec"));
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 

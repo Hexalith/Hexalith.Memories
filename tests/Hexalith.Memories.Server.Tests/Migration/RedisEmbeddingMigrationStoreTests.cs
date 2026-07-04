@@ -10,6 +10,7 @@ using System.Net;
 using Dapr.Actors.Client;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Migration;
 
 using NSubstitute;
@@ -26,21 +27,21 @@ public class RedisEmbeddingMigrationStoreTests
         List<string> operations = [];
         List<object[]> ftCreateCalls = [];
         IDatabase db = Substitute.For<IDatabase>();
-        IServer server = CreateServer(["tenant-a:vec:nl:mu-1"]);
+        IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
         IConnectionMultiplexer redis = CreateRedis(db, server);
         HashEntry[] legacyEntries = CreateNaturalLanguageHashEntries();
 
-        db.HashGetAllAsync((RedisKey)"tenant-a:vecnl:mu-1", Arg.Any<CommandFlags>())
+        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
             .Returns([], legacyEntries);
-        db.HashGetAllAsync((RedisKey)"tenant-a:vec:nl:mu-1", Arg.Any<CommandFlags>())
+        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
             .Returns(legacyEntries);
-        db.HashSetAsync((RedisKey)"tenant-a:vecnl:mu-1", Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
+        db.HashSetAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
             .Returns(callInfo =>
             {
                 operations.Add("migrate:write-target");
                 return Task.FromResult(true);
             });
-        db.KeyDeleteAsync((RedisKey)"tenant-a:vec:nl:mu-1", Arg.Any<CommandFlags>())
+        db.KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
             .Returns(callInfo =>
             {
                 operations.Add("migrate:delete-legacy");
@@ -71,22 +72,22 @@ public class RedisEmbeddingMigrationStoreTests
         await store.DropAndRecreateSemanticIndexesAsync("tenant-a", 1536, CancellationToken.None);
 
         operations.Take(2).ShouldBe(["migrate:write-target", "migrate:delete-legacy"]);
-        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:tenant-a:memories:vec"));
-        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:tenant-a:memories:vec:nl"));
+        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:" + IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")));
+        operations.IndexOf("migrate:delete-legacy").ShouldBeLessThan(operations.IndexOf("drop:" + IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")));
         ftCreateCalls.Count.ShouldBe(2);
-        ftCreateCalls.ShouldContain(args => ContainsArgument(args, "tenant-a:vec:"));
-        ftCreateCalls.ShouldContain(args => ContainsArgument(args, "tenant-a:vecnl:"));
-        ftCreateCalls.ShouldNotContain(args => ContainsArgument(args, "tenant-a:vec:nl:"));
+        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a")));
+        ftCreateCalls.ShouldContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")));
+        ftCreateCalls.ShouldNotContain(args => ContainsArgument(args, IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix("tenant-a")));
     }
 
     [Fact]
     public async Task GetCountsAsync_LegacyNaturalLanguageHashExists_CountsItAsNaturalLanguageNotRaw()
     {
         IDatabase db = Substitute.For<IDatabase>();
-        IServer server = CreateServer(["tenant-a:vec:nl:mu-1"]);
+        IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
         IConnectionMultiplexer redis = CreateRedis(db, server);
         db.HashGetAsync(
-                (RedisKey)"tenant-a:vec:nl:mu-1",
+                (RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"),
                 Arg.Any<RedisValue[]>(),
                 Arg.Any<CommandFlags>())
             .Returns([new RedisValue("openai"), new RedisValue("text-embedding-3-small"), new RedisValue("1536")]);

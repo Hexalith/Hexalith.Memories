@@ -13,8 +13,69 @@ using NRedisStack.Search;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 public class IndexSchemaDefinitionsTests
 {
+    [Fact]
+    public void BuildSyntacticKey_ReturnsTenantScopedMemoryUnitHashKey()
+        => IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "mu-1")
+            .ShouldBe("tenant-a:mu:mu-1");
+
+    [Fact]
+    public void BuildSemanticKey_ReturnsTenantScopedVectorHashKey()
+        => IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1")
+            .ShouldBe("tenant-a:vec:mu-1");
+
+    [Fact]
+    public void BuildNaturalLanguageSemanticKey_ReturnsDisjointTenantScopedVectorHashKey()
+        => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1")
+            .ShouldBe("tenant-a:vecnl:mu-1");
+
+    [Fact]
+    public void BuildLegacyNaturalLanguageSemanticKey_ReturnsNestedMigrationOnlyHashKey()
+        => IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")
+            .ShouldBe("tenant-a:vec:nl:mu-1");
+
+    [Fact]
+    public void BuildKeys_NullMemoryUnitId_ThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", null!));
+        Should.Throw<ArgumentNullException>(() => IndexSchemaDefinitions.BuildSemanticKey("tenant-a", null!));
+        Should.Throw<ArgumentNullException>(() => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", null!));
+        Should.Throw<ArgumentNullException>(() => IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", null!));
+    }
+
+    [Fact]
+    public void BuildKeys_WhitespaceMemoryUnitId_ThrowsArgumentException()
+    {
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", " "));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildSemanticKey("tenant-a", " "));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", " "));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", " "));
+    }
+
+    [Fact]
+    public void BuildKeys_WhitespaceTenantId_ThrowsArgumentException()
+    {
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildSyntacticKey(" ", "mu-1"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildSemanticKey(" ", "mu-1"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(" ", "mu-1"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(" ", "mu-1"));
+    }
+
+    [Fact]
+    public void IndexAndPrefixHelpers_InvalidTenantId_ThrowArgumentException()
+    {
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetSyntacticIndexName("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetSemanticIndexName("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetSyntacticKeyPrefix("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetSemanticKeyPrefix("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("bad tenant"));
+        Should.Throw<ArgumentException>(() => IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix("bad tenant"));
+    }
+
     [Fact]
     public void GetNaturalLanguageSemanticIndexName_AppendsSuffix()
         => IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")
@@ -41,7 +102,7 @@ public class IndexSchemaDefinitionsTests
     public void RawSemanticIndexPrefix_DoesNotMatchNaturalLanguageHashesAfterRebuild()
     {
         string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
-        string nlHashKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a") + "mu-1";
+        string nlHashKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1");
 
         // RediSearch FT.CREATE PREFIX uses string-prefix matching; this pins that the rebuilt raw
         // semantic index cannot select NL-only hashes.
@@ -52,6 +113,138 @@ public class IndexSchemaDefinitionsTests
     public void GetLegacyNaturalLanguageSemanticKeyPrefix_AppendsNestedSuffixForMigrationOnly()
         => IndexSchemaDefinitions.GetLegacyNaturalLanguageSemanticKeyPrefix("tenant-a")
             .ShouldBe("tenant-a:vec:nl:");
+
+    [Fact]
+    public void TryParseSyntacticMemoryUnitId_MatchingTenantKey_ReturnsId()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:mu:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseSemanticMemoryUnitId_MatchingTenantKey_ReturnsId()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseSemanticMemoryUnitId_ForeignTenantKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-b:vec:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseSemanticMemoryUnitId_LegacyNaturalLanguageKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:nl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseSemanticMemoryUnitId_CurrentNaturalLanguageKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vecnl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseNaturalLanguageSemanticMemoryUnitId_CurrentKey_ReturnsId()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vecnl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseNaturalLanguageSemanticMemoryUnitId_LegacyKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:nl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseNaturalLanguageSemanticMemoryUnitId_ForeignTenantKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-b:vecnl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseNaturalLanguageSemanticMemoryUnitId_PrefixOnlyKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vecnl:",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
+
+    [Fact]
+    public void TryParseLegacyNaturalLanguageSemanticMemoryUnitId_LegacyKey_ReturnsId()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseLegacyNaturalLanguageSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:nl:mu-1",
+            out string memoryUnitId);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseSyntacticMemoryUnitId_PrefixOnlyKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:mu:",
+            out string memoryUnitId);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+    }
 
     [Fact]
     public void BothSemanticSchemas_HaveIdenticalVectorFieldShape()

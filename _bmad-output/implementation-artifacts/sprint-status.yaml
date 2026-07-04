@@ -67,6 +67,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 21.2 created (21.2 -> ready-for-dev) via create-story. Transactional multi-backend mutation implementation for A3; consumes Story 21.1 EventStore source-of-truth decision.
 # 2026-07-04: Story 21.2 senior developer review completed with automatic fixes (annotation child workflow compensation, tenant lifecycle command boundary, File List hygiene). 21.2 -> done.
 # 2026-07-04: Story 21.3 created (21.3 -> ready-for-dev) via create-story. Natural-language vector namespace separation for A4; requires disjoint NL prefix, existing-data migration, raw index rebuild, and phantom consistency discrepancy regression coverage.
+# 2026-07-04: Story 21.4 created (21.4 -> ready-for-dev) via create-story. Key-schema single source of truth for A44; requires Build*Key helpers, production literal purge, parse helpers, and CI-visible guard.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -358,7 +359,7 @@ development_status:
   21-1-consistency-model-decision: done
   21-2-transactional-multi-backend-mutation: done
   21-3-natural-language-vector-namespace-separation: done
-  21-4-key-schema-single-source-of-truth: backlog
+  21-4-key-schema-single-source-of-truth: done
   21-5-deletion-completeness: backlog
   21-6-event-routing-for-unknown-unavailable-tenants: backlog
   21-7-dedup-race-and-duplicate-instance-handling: backlog

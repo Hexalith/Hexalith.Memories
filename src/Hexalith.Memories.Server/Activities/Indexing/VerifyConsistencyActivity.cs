@@ -52,15 +52,15 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
         IDatabase redisDb = _redis.GetDatabase();
 
         // Check syntactic (RediSearch hash key)
-        string syntacticKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(input.TenantId) + input.MemoryUnitId;
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
         bool syntacticExists = await redisDb.KeyExistsAsync(syntacticKey).ConfigureAwait(false);
 
         // Check semantic (Redis Vector hash key)
-        string semanticKey = IndexSchemaDefinitions.GetSemanticKeyPrefix(input.TenantId) + input.MemoryUnitId;
+        string semanticKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId);
         bool semanticExists = await redisDb.KeyExistsAsync(semanticKey).ConfigureAwait(false);
 
         // Check natural-language semantic sibling (Redis Vector hash key)
-        string naturalLanguageSemanticKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(input.TenantId) + input.MemoryUnitId;
+        string naturalLanguageSemanticKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, input.MemoryUnitId);
         bool naturalLanguageSemanticExists = await redisDb.KeyExistsAsync(naturalLanguageSemanticKey).ConfigureAwait(false);
 
         NaturalLanguageEmbeddingStatus naturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable;

@@ -21,6 +21,7 @@ using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 
@@ -227,7 +228,7 @@ internal sealed class CaseService
         cancellationToken.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        string muKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
         HashEntry[] entries = await db.HashGetAllAsync(muKey).ConfigureAwait(false);
 
         if (entries.Length == 0)
@@ -626,7 +627,7 @@ internal sealed class CaseService
         string tenantId, string caseId, string memoryUnitId, CancellationToken cancellationToken)
     {
         IDatabase db = _redis.GetDatabase();
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        string muKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
 
         // Verify MU exists by checking the syntactic hash key
         RedisValue storedCaseId = await db.HashGetAsync(muKey, "caseId").ConfigureAwait(false);
@@ -847,7 +848,7 @@ internal sealed class CaseService
         cancellationToken.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        bool semanticExists = await db.KeyExistsAsync($"{tenantId}:vec:{memoryUnitId}").ConfigureAwait(false);
+        bool semanticExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)).ConfigureAwait(false);
         if (!semanticExists)
         {
             return false;

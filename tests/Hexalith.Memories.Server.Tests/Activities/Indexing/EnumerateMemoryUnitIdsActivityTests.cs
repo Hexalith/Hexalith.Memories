@@ -11,6 +11,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -66,8 +67,8 @@ public class EnumerateMemoryUnitIdsActivityTests
     {
         RedisKey[] redisKeys =
         [
-            $"{TestTenantId}:vec:mu-1",
-            $"{TestTenantId}:vecnl:mu-1",
+            IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, "mu-1"),
+            IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, "mu-1"),
         ];
         EnumerateMemoryUnitIdsActivity activity = CreateActivityFromRedisKeys(redisKeys, graphIds: []);
 
@@ -172,7 +173,7 @@ public class EnumerateMemoryUnitIdsActivityTests
         server.IsConnected.Returns(true);
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -180,7 +181,7 @@ public class EnumerateMemoryUnitIdsActivityTests
             .Returns(OperationCanceledAsyncEnumerable());
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -210,7 +211,7 @@ public class EnumerateMemoryUnitIdsActivityTests
         server.IsConnected.Returns(true);
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -218,7 +219,7 @@ public class EnumerateMemoryUnitIdsActivityTests
             .Returns(ThrowingAsyncEnumerable());
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -264,12 +265,12 @@ public class EnumerateMemoryUnitIdsActivityTests
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
 
-        RedisKey[] syntacticKeys = syntacticIds.Select(id => (RedisKey)$"{TestTenantId}:mu:{id}").ToArray();
-        RedisKey[] semanticKeys = semanticIds.Select(id => (RedisKey)$"{TestTenantId}:vec:{id}").ToArray();
+        RedisKey[] syntacticKeys = syntacticIds.Select(id => (RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, id)).ToArray();
+        RedisKey[] semanticKeys = semanticIds.Select(id => (RedisKey)IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, id)).ToArray();
 
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:mu:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -278,7 +279,7 @@ public class EnumerateMemoryUnitIdsActivityTests
 
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString()!.Contains($"{TestTenantId}:vec:", StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),

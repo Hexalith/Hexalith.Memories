@@ -10,6 +10,7 @@ using System.Net;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -79,10 +80,12 @@ public sealed partial class EnumerateMemoryUnitIdsActivity
         HashSet<string> union = new(StringComparer.Ordinal);
 
         Task<IReadOnlyList<string>> syntacticScan = ScanAsync(
-            pattern: $"{input.TenantId}:mu:",
+            pattern: IndexSchemaDefinitions.GetSyntacticKeyPrefix(input.TenantId),
+            parseMemoryUnitId: key => IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(input.TenantId, key, out string id) ? id : null,
             ct);
         Task<IReadOnlyList<string>> semanticScan = ScanAsync(
-            pattern: $"{input.TenantId}:vec:",
+            pattern: IndexSchemaDefinitions.GetSemanticKeyPrefix(input.TenantId),
+            parseMemoryUnitId: key => IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(input.TenantId, key, out string id) ? id : null,
             ct);
         Task<IReadOnlyList<string>> graphScan = EnumerateGraphIdsAsync(input.TenantId, ct);
 
@@ -116,8 +119,11 @@ public sealed partial class EnumerateMemoryUnitIdsActivity
 
     private async Task<IReadOnlyList<string>> ScanAsync(
         string pattern,
+        Func<RedisKey, string?> parseMemoryUnitId,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(parseMemoryUnitId);
+
         IServer? server = GetAnyServer(_redis);
         if (server is null)
         {
@@ -133,13 +139,7 @@ public sealed partial class EnumerateMemoryUnitIdsActivity
         {
             await foreach (RedisKey key in server.KeysAsync(pattern: fullPattern, pageSize: ScanPageSize).WithCancellation(ct))
             {
-                string? keyText = key.ToString();
-                if (string.IsNullOrEmpty(keyText) || keyText.Length <= prefixLength)
-                {
-                    continue;
-                }
-
-                string memoryUnitId = keyText[prefixLength..];
+                string? memoryUnitId = parseMemoryUnitId(key);
                 if (!string.IsNullOrEmpty(memoryUnitId))
                 {
                     ids.Add(memoryUnitId);

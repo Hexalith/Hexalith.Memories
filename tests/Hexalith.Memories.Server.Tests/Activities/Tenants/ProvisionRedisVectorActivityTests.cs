@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -26,7 +27,7 @@ public class ProvisionRedisVectorActivityTests
         IDatabase db = Substitute.For<IDatabase>();
         ConfigureIndexAlreadyExistsWithInfoResolver(
             db,
-            indexName => indexName.EndsWith(":memories:vec:nl", StringComparison.Ordinal)
+            indexName => indexName == IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("test-tenant")
                 ? CreateMatchingNaturalLanguageIndexInfo(768)
                 : CreateMatchingSemanticIndexInfo(768));
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
@@ -47,7 +48,7 @@ public class ProvisionRedisVectorActivityTests
         IDatabase db = Substitute.For<IDatabase>();
         ConfigureIndexAlreadyExistsWithInfoResolver(
             db,
-            indexName => indexName.EndsWith(":memories:vec:nl", StringComparison.Ordinal)
+            indexName => indexName == IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("test-tenant")
                 ? CreateMatchingNaturalLanguageIndexInfo(768)
                 : CreateMatchingSemanticIndexInfo(1536));
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
@@ -98,8 +99,8 @@ public class ProvisionRedisVectorActivityTests
 
         result.ShouldBeTrue();
         List<string> indexNames = [.. ftCreateCalls.Select(args => args.Length > 0 ? args[0]?.ToString() ?? string.Empty : string.Empty)];
-        indexNames.ShouldContain("test-tenant:memories:vec");
-        indexNames.ShouldContain("test-tenant:memories:vec:nl");
+        indexNames.ShouldContain(IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"));
+        indexNames.ShouldContain(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("test-tenant"));
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public class ProvisionRedisVectorActivityTests
         IDatabase db = Substitute.For<IDatabase>();
         ConfigureIndexAlreadyExistsWithInfoResolver(
             db,
-            indexName => indexName.EndsWith(":memories:vec:nl", StringComparison.Ordinal)
+            indexName => indexName == IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("test-tenant")
                 ? CreateMatchingNaturalLanguageIndexInfo(1536)
                 : CreateMatchingSemanticIndexInfo(768));
 
@@ -148,12 +149,12 @@ public class ProvisionRedisVectorActivityTests
     [
         RedisResult.Create(new RedisValue("num_docs")),
         RedisResult.Create(new RedisValue("0")),
-        RedisResult.Create(new RedisValue("index_definition")),
-        RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vec:"))]),
-        ]),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSemanticKeyPrefix("test-tenant")))]),
+            ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(
         [
@@ -178,12 +179,12 @@ public class ProvisionRedisVectorActivityTests
     [
         RedisResult.Create(new RedisValue("num_docs")),
         RedisResult.Create(new RedisValue("0")),
-        RedisResult.Create(new RedisValue("index_definition")),
-        RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:vecnl:"))]),
-        ]),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("test-tenant")))]),
+            ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(
         [

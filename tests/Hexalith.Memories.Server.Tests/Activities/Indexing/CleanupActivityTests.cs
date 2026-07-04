@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -35,7 +36,7 @@ public class CleanupActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new CleanupInput("mu-001", "tenant-1"));
 
-        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -69,7 +70,7 @@ public class CleanupActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new CleanupInput("mu-001", "tenant-1"));
 
-        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -87,8 +88,8 @@ public class CleanupActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new CleanupInput("mu-001", "tenant-1"));
 
-        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
-        await db.Received(1).KeyDeleteAsync((RedisKey)"tenant-1:vecnl:mu-001", Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
+        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
     }
 
     [Fact]

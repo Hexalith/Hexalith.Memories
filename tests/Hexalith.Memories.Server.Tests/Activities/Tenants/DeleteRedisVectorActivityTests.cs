@@ -4,6 +4,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -32,7 +33,7 @@ public class DeleteRedisVectorActivityTests
         bool result = await activity.RunAsync(context, input);
 
         result.ShouldBeTrue();
-        await db.Received().ExecuteAsync("FT.DROPINDEX", "test-tenant:memories:vec", "DD");
+        await db.Received().ExecuteAsync("FT.DROPINDEX", IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"), "DD");
     }
 
     [Fact]
@@ -53,8 +54,8 @@ public class DeleteRedisVectorActivityTests
 
         result.ShouldBeTrue();
         // Story 9.2 Task 4.6: both semantic indexes must be dropped so no orphan NL vectors remain.
-        await db.Received().ExecuteAsync("FT.DROPINDEX", "test-tenant:memories:vec", "DD");
-        await db.Received().ExecuteAsync("FT.DROPINDEX", "test-tenant:memories:vec:nl", "DD");
+        await db.Received().ExecuteAsync("FT.DROPINDEX", IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"), "DD");
+        await db.Received().ExecuteAsync("FT.DROPINDEX", IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("test-tenant"), "DD");
     }
 
     [Fact]

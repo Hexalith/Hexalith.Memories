@@ -6,6 +6,7 @@ using Dapr.Actors;
 using Dapr.Actors.Runtime;
 
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -80,7 +81,7 @@ public class CorpusStatisticsActorTests
         RedisResult raw = RedisResult.Create(
         [
             RedisResult.Create(new RedisValue("index_name")),
-            RedisResult.Create(new RedisValue("test-tenant:memories:idx")),
+            RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticIndexName(TenantId))),
             RedisResult.Create(new RedisValue("num_docs")),
             RedisResult.Create(new RedisValue("100")),
             RedisResult.Create(new RedisValue("doc_table_size_mb")),
@@ -126,7 +127,7 @@ public class CorpusStatisticsActorTests
         RedisResult raw = RedisResult.Create(
         [
             RedisResult.Create(new RedisValue("index_name")),
-            RedisResult.Create(new RedisValue("test-tenant:memories:idx")),
+            RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticIndexName(TenantId))),
             RedisResult.Create(new RedisValue("index_definition")),
             RedisResult.Create(Array.Empty<RedisResult>()), // nested array value — should be skipped
             RedisResult.Create(new RedisValue("num_docs")),

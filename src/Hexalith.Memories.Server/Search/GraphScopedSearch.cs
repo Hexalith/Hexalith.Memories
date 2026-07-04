@@ -9,6 +9,7 @@ using System.Diagnostics;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -285,7 +286,7 @@ public sealed partial class GraphScopedSearch
         IBatch batch = db.CreateBatch();
         Task<RedisValue[]>[] tasks = nodes.Select(n =>
             batch.HashGetAsync(
-                $"{tenantId}:mu:{n.NodeId}",
+                IndexSchemaDefinitions.BuildSyntacticKey(tenantId, n.NodeId),
                 [new RedisValue("content"), new RedisValue("sourceUri"), new RedisValue("sourceType"), new RedisValue("caseId"), new RedisValue("metadataText")])).ToArray();
         batch.Execute();
         RedisValue[][] hashResults = await Task.WhenAll(tasks).ConfigureAwait(false);

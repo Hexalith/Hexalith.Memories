@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
@@ -39,7 +40,7 @@ public class IndexNaturalLanguageSemanticActivityTests
         result.TenantId.ShouldBe("tenant-a");
 
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "tenant-a:vecnl:mu-001"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-001")),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -220,12 +221,12 @@ public class IndexNaturalLanguageSemanticActivityTests
     [
         RedisResult.Create(new RedisValue("num_docs")),
         RedisResult.Create(new RedisValue("0")),
-        RedisResult.Create(new RedisValue("index_definition")),
-        RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("tenant-a:vecnl:"))]),
-        ]),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")))]),
+            ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(
         [

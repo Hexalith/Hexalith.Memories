@@ -1,6 +1,7 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 
 using NRedisStack.Search;
@@ -14,7 +15,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_ShouldExtractMemoryUnitId()
     {
-        Document doc = CreateDocument("tenant1:mu:abc123", 5.0);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "abc123"), 5.0);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
 
@@ -24,7 +25,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_ShouldPreserveBm25Score()
     {
-        Document doc = CreateDocument("tenant1:mu:mu-001", 12.5);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"), 12.5);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
 
@@ -34,7 +35,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_ShouldSetAxisToSyntactic()
     {
-        Document doc = CreateDocument("tenant1:mu:mu-001", 1.0);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"), 1.0);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
 
@@ -49,7 +50,7 @@ public class SyntacticSearchServiceTests
     [InlineData("url", SourceType.Url)]
     public void MapDocumentToScoredResult_ShouldParseSourceTypeCaseInsensitive(string sourceTypeValue, SourceType expected)
     {
-        Document doc = CreateDocument("t:mu:id", 1.0, sourceType: sourceTypeValue);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("t", "id"), 1.0, sourceType: sourceTypeValue);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "t");
 
@@ -59,7 +60,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_UnknownSourceType_ShouldFallbackToFile()
     {
-        Document doc = CreateDocument("t:mu:id", 1.0, sourceType: "unknownType");
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("t", "id"), 1.0, sourceType: "unknownType");
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "t");
 
@@ -70,7 +71,7 @@ public class SyntacticSearchServiceTests
     public void MapDocumentToScoredResult_LongContent_ShouldTruncateAtWordBoundary()
     {
         string longContent = string.Join(' ', Enumerable.Repeat("word", 100));
-        Document doc = CreateDocument("t:mu:id", 1.0, content: longContent);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("t", "id"), 1.0, content: longContent);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "t");
 
@@ -82,7 +83,7 @@ public class SyntacticSearchServiceTests
     public void MapDocumentToScoredResult_ShortContent_ShouldNotTruncate()
     {
         string shortContent = "This is a short snippet.";
-        Document doc = CreateDocument("t:mu:id", 1.0, content: shortContent);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("t", "id"), 1.0, content: shortContent);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "t");
 
@@ -300,7 +301,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_WithCaseId_ShouldSetCaseIdProperty()
     {
-        Document doc = CreateDocument("tenant1:mu:abc123", 5.0, caseId: "case-abc");
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "abc123"), 5.0, caseId: "case-abc");
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
 
@@ -310,7 +311,7 @@ public class SyntacticSearchServiceTests
     [Fact]
     public void MapDocumentToScoredResult_WithoutCaseId_ShouldHaveNullCaseId()
     {
-        Document doc = CreateDocument("tenant1:mu:abc123", 5.0);
+        Document doc = CreateDocument(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "abc123"), 5.0);
 
         ScoredResult result = SyntacticSearchService.MapDocumentToScoredResult(doc, "tenant1");
 

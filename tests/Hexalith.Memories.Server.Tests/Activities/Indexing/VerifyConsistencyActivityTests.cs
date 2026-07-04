@@ -13,6 +13,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -102,9 +103,9 @@ public class VerifyConsistencyActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new ConsistencyInput("mu-001", "tenant-1"));
 
-        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:mu:mu-001", Arg.Any<CommandFlags>());
-        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vec:mu-001", Arg.Any<CommandFlags>());
-        await redisDb.Received(1).KeyExistsAsync((RedisKey)"tenant-1:vecnl:mu-001", Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
+        await redisDb.Received(1).KeyExistsAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -186,11 +187,11 @@ public class VerifyConsistencyActivityTests
         NaturalLanguageEmbeddingStatus? naturalLanguageEmbeddingStatus = null)
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => IsTenantOneSyntacticKey(k)), Arg.Any<CommandFlags>())
             .Returns(syntacticExists);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vecnl:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => IsTenantOneNaturalLanguageSemanticKey(k)), Arg.Any<CommandFlags>())
             .Returns(naturalLanguageSemanticExists);
-        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")), Arg.Any<CommandFlags>())
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => IsTenantOneSemanticKey(k)), Arg.Any<CommandFlags>())
             .Returns(semanticExists);
 
         Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)
@@ -200,7 +201,7 @@ public class VerifyConsistencyActivityTests
                 MetadataOrigin.Ai,
                 1.0f),
         };
-        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")), "metadataJson", Arg.Any<CommandFlags>())
+        redisDb.HashGetAsync(Arg.Is<RedisKey>(k => IsTenantOneSyntacticKey(k)), "metadataJson", Arg.Any<CommandFlags>())
             .Returns(JsonSerializer.Serialize(metadata, MemoriesJsonContext.Options));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
@@ -214,6 +215,15 @@ public class VerifyConsistencyActivityTests
 
         return (activity, redisDb, builder);
     }
+
+    private static bool IsTenantOneSyntacticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId("tenant-1", key, out _);
+
+    private static bool IsTenantOneSemanticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseSemanticMemoryUnitId("tenant-1", key, out _);
+
+    private static bool IsTenantOneNaturalLanguageSemanticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId("tenant-1", key, out _);
 
     private static IGraphQueryBuilder CreateMockBuilder()
     {

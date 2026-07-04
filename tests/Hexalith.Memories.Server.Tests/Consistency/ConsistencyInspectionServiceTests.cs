@@ -10,6 +10,7 @@ using System.Text.Json;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -98,11 +99,11 @@ public class ConsistencyInspectionServiceTests
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:mu:{storedGuid}"),
+                Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
                 Arg.Any<CommandFlags>())
             .Returns(CreateSyntacticEntries());
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{storedGuid}"),
+                Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, storedGuid)),
                 Arg.Any<CommandFlags>())
             .Returns([]);
 
@@ -120,7 +121,7 @@ public class ConsistencyInspectionServiceTests
 
         result.MemoryUnitId.ShouldBe(storedGuid);
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:mu:{storedGuid}"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
             Arg.Any<CommandFlags>());
         builder.Received(1).BuildCheckMemoryUnitExists(storedGuid);
     }
@@ -262,15 +263,15 @@ public class ConsistencyInspectionServiceTests
             : [];
 
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":mu:")),
+                Arg.Is<RedisKey>(key => IsTenantSyntacticKey(key)),
                 Arg.Any<CommandFlags>())
             .Returns(syntacticEntries);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vecnl:")),
+                Arg.Is<RedisKey>(key => IsTenantNaturalLanguageSemanticKey(key)),
                 Arg.Any<CommandFlags>())
             .Returns(naturalLanguageSemanticEntries);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString()!.Contains(":vec:")),
+                Arg.Is<RedisKey>(key => IsTenantSemanticKey(key)),
                 Arg.Any<CommandFlags>())
             .Returns(semanticEntries);
 
@@ -286,6 +287,15 @@ public class ConsistencyInspectionServiceTests
             effectiveBuilder,
             Substitute.For<ILogger<ConsistencyInspectionService>>());
     }
+
+    private static bool IsTenantSyntacticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(TestTenantId, key, out string _);
+
+    private static bool IsTenantSemanticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(TestTenantId, key, out string _);
+
+    private static bool IsTenantNaturalLanguageSemanticKey(RedisKey key)
+        => IndexSchemaDefinitions.TryParseNaturalLanguageSemanticMemoryUnitId(TestTenantId, key, out string _);
 
     private static IGraphQueryBuilder CreateMockBuilder()
     {

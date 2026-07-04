@@ -67,7 +67,7 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
 
         string indexName = IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId);
-        string hashKey = $"{input.TenantId}:vec:{input.MemoryUnitId}";
+        string hashKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId);
 
         try
         {

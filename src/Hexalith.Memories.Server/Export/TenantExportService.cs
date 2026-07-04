@@ -20,6 +20,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -418,19 +419,11 @@ internal partial class TenantExportService
                 $"Redis server unavailable while enumerating memory units for tenant '{tenantId}'.");
         }
 
-        string pattern = $"{tenantId}:mu:*";
+        string pattern = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + "*";
         await foreach (RedisKey key in server.KeysAsync(pattern: pattern, pageSize: MemoryUnitScanPageSize).WithCancellation(ct))
         {
             ct.ThrowIfCancellationRequested();
-            string keyStr = key.ToString();
-            int separator = keyStr.IndexOf(":mu:", StringComparison.Ordinal);
-            if (separator < 0)
-            {
-                continue;
-            }
-
-            string memoryUnitId = keyStr[(separator + ":mu:".Length)..];
-            if (!string.IsNullOrWhiteSpace(memoryUnitId))
+            if (IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(tenantId, key, out string memoryUnitId))
             {
                 yield return memoryUnitId;
             }
@@ -446,7 +439,7 @@ internal partial class TenantExportService
         ct.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
+        string muKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
         HashEntry[] entries = await db.HashGetAllAsync(muKey).ConfigureAwait(false);
         if (entries.Length == 0)
         {

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.Hosting;
 
 using Hexalith.Memories.Server.Hosting;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -21,22 +22,22 @@ public class OrphanSemanticIndexReconcilerTests
     public async Task NLIndexWithoutRawSibling_IsDropped()
     {
         RecordingReconciler rig = CreateReconciler(
-            "tenant-a:memories:vec",
-            "tenant-a:memories:vec:nl",
-            "orphan-tenant:memories:vec:nl");
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("orphan-tenant"));
 
         await rig.Reconciler.ReconcileAsync(CancellationToken.None);
 
-        rig.DropIndexCalls.ShouldContain("orphan-tenant:memories:vec:nl");
-        rig.DropIndexCalls.ShouldNotContain("tenant-a:memories:vec:nl"); // raw sibling exists — retained
+        rig.DropIndexCalls.ShouldContain(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("orphan-tenant"));
+        rig.DropIndexCalls.ShouldNotContain(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")); // raw sibling exists — retained
     }
 
     [Fact]
     public async Task RawIndexWithNLSibling_BothRetained()
     {
         RecordingReconciler rig = CreateReconciler(
-            "tenant-a:memories:vec",
-            "tenant-a:memories:vec:nl");
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"));
 
         await rig.Reconciler.ReconcileAsync(CancellationToken.None);
 
@@ -47,8 +48,8 @@ public class OrphanSemanticIndexReconcilerTests
     public async Task ReconcilerIdempotent_MultipleStartupsDoNotDoubleAct()
     {
         RecordingReconciler rig = CreateReconciler(
-            "tenant-a:memories:vec",
-            "tenant-a:memories:vec:nl");
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"));
 
         await rig.Reconciler.ReconcileAsync(CancellationToken.None);
         await rig.Reconciler.ReconcileAsync(CancellationToken.None);

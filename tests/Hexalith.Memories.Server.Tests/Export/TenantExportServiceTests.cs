@@ -15,6 +15,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Export;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tenants;
 
@@ -129,7 +130,7 @@ public class TenantExportServiceTests
 
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
-        server.KeysAsync(pattern: "acme:mu:*", pageSize: 1000).Returns(EmptyKeys());
+        server.KeysAsync(pattern: IndexSchemaDefinitions.GetSyntacticKeyPrefix("acme") + "*", pageSize: 1000).Returns(EmptyKeys());
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);

@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Search;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -86,7 +87,7 @@ public sealed partial class SyntacticSearchService
             .Dialect(2)
             .ReturnFields("content", "sourceUri", "sourceType", "caseId", "metadataJson", "ingestedBy", "ingestedAt");
 
-        string indexName = $"{query.TenantId}:memories:idx";
+        string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId);
         RedisSearchResult result;
 
         try
@@ -149,9 +150,8 @@ public sealed partial class SyntacticSearchService
     /// <returns>A scored result with extracted fields.</returns>
     internal static ScoredResult MapDocumentToScoredResult(Document doc, string tenantId)
     {
-        string prefix = $"{tenantId}:mu:";
-        string memoryUnitId = doc.Id.StartsWith(prefix, StringComparison.Ordinal)
-            ? doc.Id[prefix.Length..]
+        string memoryUnitId = IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(tenantId, (RedisKey)doc.Id, out string parsedMemoryUnitId)
+            ? parsedMemoryUnitId
             : doc.Id;
 
         string content = (string)doc["content"]!;

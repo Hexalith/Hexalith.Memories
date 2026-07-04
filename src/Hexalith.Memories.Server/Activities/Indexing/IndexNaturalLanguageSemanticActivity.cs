@@ -77,7 +77,7 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
         var ft = db.FT();
 
         string indexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
-        string hashKey = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(input.TenantId) + input.MemoryUnitId;
+        string hashKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, input.MemoryUnitId);
 
         try
         {

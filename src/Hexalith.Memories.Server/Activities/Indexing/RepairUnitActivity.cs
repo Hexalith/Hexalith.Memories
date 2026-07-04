@@ -12,6 +12,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -308,7 +309,7 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
     private async Task DeleteVectorAsync(string tenantId, string memoryUnitId, CancellationToken ct)
     {
         IDatabase db = _redis.GetDatabase();
-        await db.KeyDeleteAsync($"{tenantId}:vec:{memoryUnitId}").WaitAsync(ct).ConfigureAwait(false);
+        await db.KeyDeleteAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)).WaitAsync(ct).ConfigureAwait(false);
     }
 
     private async Task DeleteGraphNodeAsync(string tenantId, string memoryUnitId, CancellationToken ct)

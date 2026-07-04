@@ -11,6 +11,7 @@ using System.Globalization;
 using System.Net;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -50,8 +51,8 @@ public class TenantMetricsServiceTests
         bool falkorUp)
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
-        ConfigureRediSearchInfo(redisDb, $"{TenantId}:memories:idx", up: syntacticUp, docs: 10);
-        ConfigureRediSearchInfo(redisDb, $"{TenantId}:memories:vec", up: semanticUp, docs: 20);
+        ConfigureRediSearchInfo(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName(TenantId), up: syntacticUp, docs: 10);
+        ConfigureRediSearchInfo(redisDb, IndexSchemaDefinitions.GetSemanticIndexName(TenantId), up: semanticUp, docs: 20);
 
         IConnectionMultiplexer redis = CreateRedis(redisDb);
 
@@ -241,11 +242,11 @@ public class TenantMetricsServiceTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
-        server.KeysAsync(pattern: $"{TenantId}:mu:*", pageSize: 1000)
+        server.KeysAsync(pattern: IndexSchemaDefinitions.GetSyntacticKeyPrefix(TenantId) + "*", pageSize: 1000)
             .Returns(EnumerateKeys(
-                $"{TenantId}:mu:mu-001",
-                $"{TenantId}:mu:mu-002",
-                $"{TenantId}:mu:mu-003"));
+                IndexSchemaDefinitions.BuildSyntacticKey(TenantId, "mu-001"),
+                IndexSchemaDefinitions.BuildSyntacticKey(TenantId, "mu-002"),
+                IndexSchemaDefinitions.BuildSyntacticKey(TenantId, "mu-003")));
 
         IConnectionMultiplexer redis = CreateRedis(redisDb, server);
         IConnectionMultiplexer falkor = CreateFalkorDown();

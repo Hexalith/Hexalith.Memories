@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using NSubstitute;
 
@@ -43,12 +44,12 @@ public class DeleteMemoryUnitProjectionActivityTests
         builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
         Received.InOrder(() =>
         {
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:ann-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vecnl:ann-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:ann-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vecnl:mu-001"), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
         });
     }
 
@@ -62,7 +63,7 @@ public class DeleteMemoryUnitProjectionActivityTests
         DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder);
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", []);
 
-        redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>())
+        redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
             .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
 
         // Act / Assert — the failure surfaces for workflow retry and the syntactic hash survives,
@@ -71,7 +72,7 @@ public class DeleteMemoryUnitProjectionActivityTests
             () => activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input));
 
         await redisDb.DidNotReceive().KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")),
             Arg.Any<CommandFlags>());
     }
 

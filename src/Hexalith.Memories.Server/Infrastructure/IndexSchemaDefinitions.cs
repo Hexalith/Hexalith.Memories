@@ -7,6 +7,8 @@ namespace Hexalith.Memories.Server.Infrastructure;
 
 using System.Globalization;
 
+using Hexalith.Memories.Server.Activities.Indexing;
+
 using NRedisStack.Search;
 using NRedisStack.Search.Literals.Enums;
 
@@ -58,43 +60,114 @@ internal static class IndexSchemaDefinitions
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
     public static string GetSyntacticIndexName(string tenantId)
-        => tenantId + SyntacticIndexSuffix;
+        => ValidateTenantId(tenantId) + SyntacticIndexSuffix;
 
     /// <summary>Gets the Redis Vector semantic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
     public static string GetSemanticIndexName(string tenantId)
-        => tenantId + SemanticIndexSuffix;
+        => ValidateTenantId(tenantId) + SemanticIndexSuffix;
 
     /// <summary>Gets the key prefix for syntactic hash entries.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The key prefix.</returns>
     public static string GetSyntacticKeyPrefix(string tenantId)
-        => tenantId + SyntacticKeyPrefixSuffix;
+        => ValidateTenantId(tenantId) + SyntacticKeyPrefixSuffix;
+
+    /// <summary>Builds a tenant-scoped syntactic memory-unit hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildSyntacticKey(string tenantId, string memoryUnitId)
+        => GetSyntacticKeyPrefix(ValidateTenantId(tenantId)) + ValidateMemoryUnitId(memoryUnitId);
 
     /// <summary>Gets the key prefix for semantic hash entries.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The key prefix.</returns>
     public static string GetSemanticKeyPrefix(string tenantId)
-        => tenantId + SemanticKeyPrefixSuffix;
+        => ValidateTenantId(tenantId) + SemanticKeyPrefixSuffix;
+
+    /// <summary>Builds a tenant-scoped semantic memory-unit vector hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildSemanticKey(string tenantId, string memoryUnitId)
+        => GetSemanticKeyPrefix(ValidateTenantId(tenantId)) + ValidateMemoryUnitId(memoryUnitId);
 
     /// <summary>Story 9.2: Gets the Redis Vector natural-language semantic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
     public static string GetNaturalLanguageSemanticIndexName(string tenantId)
-        => tenantId + NaturalLanguageSemanticIndexSuffix;
+        => ValidateTenantId(tenantId) + NaturalLanguageSemanticIndexSuffix;
 
     /// <summary>Story 9.2: Gets the key prefix for natural-language semantic hash entries.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The key prefix.</returns>
     public static string GetNaturalLanguageSemanticKeyPrefix(string tenantId)
-        => tenantId + NaturalLanguageSemanticKeyPrefixSuffix;
+        => ValidateTenantId(tenantId) + NaturalLanguageSemanticKeyPrefixSuffix;
+
+    /// <summary>Builds a tenant-scoped natural-language semantic vector hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildNaturalLanguageSemanticKey(string tenantId, string memoryUnitId)
+        => GetNaturalLanguageSemanticKeyPrefix(ValidateTenantId(tenantId)) + ValidateMemoryUnitId(memoryUnitId);
 
     /// <summary>Story 21.3: Gets the legacy nested key prefix for natural-language semantic hash migration.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The legacy key prefix.</returns>
     public static string GetLegacyNaturalLanguageSemanticKeyPrefix(string tenantId)
-        => tenantId + LegacyNaturalLanguageSemanticKeyPrefixSuffix;
+        => ValidateTenantId(tenantId) + LegacyNaturalLanguageSemanticKeyPrefixSuffix;
+
+    /// <summary>Builds a legacy nested natural-language semantic vector hash key for migration reads only.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The memory-unit identifier.</param>
+    /// <returns>The full legacy Redis hash key.</returns>
+    public static string BuildLegacyNaturalLanguageSemanticKey(string tenantId, string memoryUnitId)
+        => GetLegacyNaturalLanguageSemanticKeyPrefix(ValidateTenantId(tenantId)) + ValidateMemoryUnitId(memoryUnitId);
+
+    /// <summary>Attempts to parse a memory-unit identifier from a tenant-scoped syntactic hash key.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to parse.</param>
+    /// <param name="memoryUnitId">The parsed memory-unit identifier, or an empty string when parsing fails.</param>
+    /// <returns><see langword="true"/> when the key belongs to the expected tenant and contains an identifier.</returns>
+    public static bool TryParseSyntacticMemoryUnitId(string tenantId, RedisKey key, out string memoryUnitId)
+        => TryParseMemoryUnitId(GetSyntacticKeyPrefix(ValidateTenantId(tenantId)), key, out memoryUnitId);
+
+    /// <summary>Attempts to parse a memory-unit identifier from a tenant-scoped semantic hash key.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to parse.</param>
+    /// <param name="memoryUnitId">The parsed memory-unit identifier, or an empty string when parsing fails.</param>
+    /// <returns><see langword="true"/> when the key belongs to the expected tenant and contains an identifier.</returns>
+    public static bool TryParseSemanticMemoryUnitId(string tenantId, RedisKey key, out string memoryUnitId)
+    {
+        tenantId = ValidateTenantId(tenantId);
+        string? keyText = key.ToString();
+        if (!string.IsNullOrEmpty(keyText)
+            && keyText.StartsWith(GetLegacyNaturalLanguageSemanticKeyPrefix(tenantId), StringComparison.Ordinal))
+        {
+            memoryUnitId = string.Empty;
+            return false;
+        }
+
+        return TryParseMemoryUnitId(GetSemanticKeyPrefix(tenantId), key, out memoryUnitId);
+    }
+
+    /// <summary>Attempts to parse a memory-unit identifier from a tenant-scoped natural-language semantic hash key.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to parse.</param>
+    /// <param name="memoryUnitId">The parsed memory-unit identifier, or an empty string when parsing fails.</param>
+    /// <returns><see langword="true"/> when the key belongs to the expected tenant and contains an identifier.</returns>
+    public static bool TryParseNaturalLanguageSemanticMemoryUnitId(string tenantId, RedisKey key, out string memoryUnitId)
+        => TryParseMemoryUnitId(GetNaturalLanguageSemanticKeyPrefix(ValidateTenantId(tenantId)), key, out memoryUnitId);
+
+    /// <summary>Attempts to parse a memory-unit identifier from a legacy nested natural-language semantic hash key.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to parse.</param>
+    /// <param name="memoryUnitId">The parsed memory-unit identifier, or an empty string when parsing fails.</param>
+    /// <returns><see langword="true"/> when the legacy migration key belongs to the expected tenant and contains an identifier.</returns>
+    public static bool TryParseLegacyNaturalLanguageSemanticMemoryUnitId(string tenantId, RedisKey key, out string memoryUnitId)
+        => TryParseMemoryUnitId(GetLegacyNaturalLanguageSemanticKeyPrefix(ValidateTenantId(tenantId)), key, out memoryUnitId);
 
     /// <summary>Creates the FTCreateParams for a RediSearch syntactic index.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -468,6 +541,33 @@ internal static class IndexSchemaDefinitions
         }
 
         return added;
+    }
+
+    private static string ValidateTenantId(string tenantId)
+    {
+        TenantIdGuard.Validate(tenantId);
+        return tenantId;
+    }
+
+    private static string ValidateMemoryUnitId(string memoryUnitId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+        return memoryUnitId;
+    }
+
+    private static bool TryParseMemoryUnitId(string expectedPrefix, RedisKey key, out string memoryUnitId)
+    {
+        string? keyText = key.ToString();
+        if (string.IsNullOrEmpty(keyText)
+            || keyText.Length <= expectedPrefix.Length
+            || !keyText.StartsWith(expectedPrefix, StringComparison.Ordinal))
+        {
+            memoryUnitId = string.Empty;
+            return false;
+        }
+
+        memoryUnitId = keyText[expectedPrefix.Length..];
+        return true;
     }
 
     private static Dictionary<string, string> ParseKeyValuePairs(RedisResult raw)

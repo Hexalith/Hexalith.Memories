@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -24,8 +25,8 @@ public class VerifyTenantActivityTests
     public async Task RunAsync_AllBackendsExistAndAreEmpty_ShouldReturnTrue()
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
-        ConfigureFtInfo(redisDb, "test-tenant:memories:idx", CreateFtInfoResult(0));
-        ConfigureFtInfo(redisDb, "test-tenant:memories:vec", CreateFtInfoResult(0));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant"), CreateFtInfoResult(0));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"), CreateFtInfoResult(0));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
@@ -50,8 +51,8 @@ public class VerifyTenantActivityTests
     public async Task RunAsync_UnreadableGraphCount_ShouldThrowInvalidOperationException()
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
-        ConfigureFtInfo(redisDb, "test-tenant:memories:idx", CreateFtInfoResult(0));
-        ConfigureFtInfo(redisDb, "test-tenant:memories:vec", CreateFtInfoResult(0));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant"), CreateFtInfoResult(0));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"), CreateFtInfoResult(0));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
@@ -76,8 +77,8 @@ public class VerifyTenantActivityTests
     public async Task RunAsync_NonEmptyRedisIndex_ShouldThrowInvalidOperationException()
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
-        ConfigureFtInfo(redisDb, "test-tenant:memories:idx", CreateFtInfoResult(1));
-        ConfigureFtInfo(redisDb, "test-tenant:memories:vec", CreateFtInfoResult(0));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant"), CreateFtInfoResult(1));
+        ConfigureFtInfo(redisDb, IndexSchemaDefinitions.GetSemanticIndexName("test-tenant"), CreateFtInfoResult(0));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
@@ -95,7 +96,7 @@ public class VerifyTenantActivityTests
 
         InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(context, input));
 
-        ex.Message.ShouldContain("RediSearch index 'test-tenant:memories:idx' is not empty");
+        ex.Message.ShouldContain($"RediSearch index '{IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant")}' is not empty");
     }
 
     private static void ConfigureFtInfo(IDatabase db, string indexName, RedisResult result)

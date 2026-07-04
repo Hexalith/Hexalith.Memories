@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -90,12 +91,12 @@ public class ProvisionRediSearchActivityTests
     [
         RedisResult.Create(new RedisValue("num_docs")),
         RedisResult.Create(new RedisValue("0")),
-        RedisResult.Create(new RedisValue("index_definition")),
-        RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:mu:"))]),
-        ]),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticKeyPrefix("test-tenant")))]),
+            ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(
         [
@@ -115,12 +116,12 @@ public class ProvisionRediSearchActivityTests
 
     private static RedisResult CreateMismatchedSyntacticIndexInfo() => RedisResult.Create(
     [
-        RedisResult.Create(new RedisValue("index_definition")),
-        RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("prefixes")),
-            RedisResult.Create([RedisResult.Create(new RedisValue("wrong-tenant:mu:"))]),
-        ]),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticKeyPrefix("wrong-tenant")))]),
+            ]),
         RedisResult.Create(new RedisValue("attributes")),
         RedisResult.Create(
         [

@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Reflection;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -311,7 +312,7 @@ public sealed partial class GraphTraversalService
         cancellationToken.ThrowIfCancellationRequested();
 
         HashEntry[] entries = await _redis.GetDatabase()
-            .HashGetAllAsync($"{tenantId}:mu:{nodeId}")
+            .HashGetAllAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenantId, nodeId))
             .ConfigureAwait(false);
 
         if (entries.Length == 0)

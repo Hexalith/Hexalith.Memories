@@ -19,6 +19,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
@@ -248,7 +249,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
             GraphPresent: true,
             SyntacticDetail: new ConsistencySyntacticDetail(
                 "hash", DateTimeOffset.UtcNow, "file:///sample.md", "file", "case-1", "gemini", "gemini-embedding-001"),
-            SemanticDetail: new ConsistencySemanticDetail(768, $"acme-consistency:vec:{ValidUlid}"),
+            SemanticDetail: new ConsistencySemanticDetail(768, IndexSchemaDefinitions.BuildSemanticKey("acme-consistency", ValidUlid)),
             GraphDetail: new ConsistencyGraphDetail(2, 1, 1),
             Recommendation: ConsistencyRepairRecommendation.NoOp,
             CheckedAt: DateTimeOffset.UtcNow);
@@ -379,7 +380,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
                 GraphPresent: true,
                 SyntacticDetail: new ConsistencySyntacticDetail(
                     "hash", DateTimeOffset.UtcNow, "file:///sample.md", "file", "case-1", "gemini", "gemini-embedding-001"),
-                SemanticDetail: new ConsistencySemanticDetail(768, $"acme-consistency:vec:{ValidUlid}"),
+                SemanticDetail: new ConsistencySemanticDetail(768, IndexSchemaDefinitions.BuildSemanticKey("acme-consistency", ValidUlid)),
                 GraphDetail: new ConsistencyGraphDetail(1, 2, 1),
                 Recommendation: ConsistencyRepairRecommendation.NoOp,
                 CheckedAt: DateTimeOffset.UtcNow));

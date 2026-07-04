@@ -1,3 +1,48 @@
+# Test Automation Summary - Story 21.4 (Key-Schema Single Source of Truth)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-4-key-schema-single-source-of-truth.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** Redis memory-unit/vector key schema builders and parsers centralized in `IndexSchemaDefinitions`.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] Direct API endpoint tests are not applicable. Story 21.4 is a backend key-schema refactor with no new HTTP route.
+
+### E2E Tests
+- [x] UI E2E is not applicable. Story 21.4 has no module UI change.
+- [x] Backend E2E-style regression coverage is provided through the full `Hexalith.Memories.Server.Tests` assembly, including the source-scanning architecture guard and key-schema call-site tests.
+
+### Unit / Guard Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Infrastructure/IndexSchemaDefinitionsTests.cs` - added 10 focused gap-fill tests for centralized key-builder validation, current natural-language semantic key parsing, legacy/current NL separation, foreign tenant rejection, and prefix-only rejection.
+- [x] Existing Story 21.4 coverage reviewed: key shape helpers, prefix non-collision, legacy migration helper, production literal guard, indexing cleanup/verification activities, syntactic search mapping, and related service call sites.
+
+## Coverage
+
+- Key builder happy paths: syntactic, semantic, current NL semantic, and legacy migration-only NL shapes covered.
+- Critical validation cases: null/whitespace memory-unit ids and whitespace tenant ids now covered for all four builder helpers.
+- Parser happy paths: syntactic, semantic, current NL semantic, and legacy NL migration helper covered.
+- Critical parser rejection cases: foreign tenant keys, prefix-only keys, current NL key rejected by raw semantic parser, and legacy NL key rejected by current NL parser.
+- CI guard: production `src/**/*.cs` raw memory/index key literal scan remains covered by `IndexSchemaLiteralGuardTests`.
+
+## Validation
+
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --filter FullyQualifiedName~IndexSchemaDefinitionsTests -m:1 /nodeReuse:false` - build passed; VSTest aborted on sandbox TCP listener permission (`SocketException (13): Permission denied`).
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Infrastructure.IndexSchemaDefinitionsTests` - 29 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2,151 total, 0 failed, 1 pre-existing skipped submodule mutation guard.
+- [x] `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+
+## Checklist Result
+
+- API tests generated if applicable: not applicable.
+- E2E tests generated if UI exists: not applicable; backend regression coverage pass.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.3 (Natural-Language Vector Namespace Separation)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

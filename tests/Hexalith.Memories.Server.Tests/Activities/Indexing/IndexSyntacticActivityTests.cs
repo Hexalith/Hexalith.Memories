@@ -6,6 +6,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -38,7 +39,7 @@ public class IndexSyntacticActivityTests
         result.TenantId.ShouldBe(input.TenantId);
 
         await db.Received(1).HashSetAsync(
-            $"{input.TenantId}:mu:{input.MemoryUnitId}",
+            IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Is<HashEntry[]>(entries =>
                 HasEntry(entries, "content", input.Content)
                 && HasEntry(entries, "sourceUri", input.SourceUri)
@@ -70,7 +71,7 @@ public class IndexSyntacticActivityTests
 
         // Assert
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "test-tenant:mu:test-mu-001"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("test-tenant", "test-mu-001")),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -127,7 +128,7 @@ public class IndexSyntacticActivityTests
         await activity.RunAsync(context, input);
 
         await db.Received(1).HashSetAsync(
-            $"{input.TenantId}:mu:{input.MemoryUnitId}",
+            IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Is<HashEntry[]>(entries =>
                 HasEntry(entries, "embeddingModel", "gemini-embedding-001")
                 && HasEntry(entries, "embeddingProvider", input.EmbeddingProvider)),
@@ -158,7 +159,7 @@ public class IndexSyntacticActivityTests
         db.Received().Execute(
             "FT.ALTER",
             Arg.Is<object[]>(args => args.Length == 5
-                && args[0].ToString() == "test-tenant:memories:idx"
+                && args[0].ToString() == IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant")
                 && args[1].ToString() == "SCHEMA"
                 && args[2].ToString() == "ADD"
                 && args[3].ToString() == "cloudeventSubject"
@@ -182,7 +183,7 @@ public class IndexSyntacticActivityTests
 
         infoCalls.ShouldBeGreaterThanOrEqualTo(2);
         await db.Received(1).HashSetAsync(
-            $"{input.TenantId}:mu:{input.MemoryUnitId}",
+            IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -303,7 +304,7 @@ public class IndexSyntacticActivityTests
             RedisResult.Create(
             [
                 RedisResult.Create(new RedisValue("prefixes")),
-                RedisResult.Create([RedisResult.Create(new RedisValue("test-tenant:mu:"))]),
+                RedisResult.Create([RedisResult.Create(new RedisValue(IndexSchemaDefinitions.GetSyntacticKeyPrefix("test-tenant")))]),
             ]),
             RedisResult.Create(new RedisValue("attributes")),
             RedisResult.Create([.. attributes]),

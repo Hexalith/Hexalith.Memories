@@ -11,6 +11,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
 
@@ -78,7 +79,7 @@ public class RepairUnitActivityTests
         record.AfterState["graph"].ShouldBe("absent");
 
         await harness.RedisDb.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId)),
             Arg.Any<CommandFlags>());
         harness.GraphQueryBuilder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
@@ -223,7 +224,7 @@ public class RepairUnitActivityTests
         record.Succeeded.ShouldBeTrue();
 
         await harness.RedisDb.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId)),
             Arg.Any<CommandFlags>());
         harness.GraphQueryBuilder.Received(1).BuildDeleteMemoryUnitNode(TestMemoryUnitId);
     }
@@ -322,7 +323,7 @@ public class RepairUnitActivityTests
                     SemanticPresent: true,
                     GraphPresent: false,
                     null,
-                    new ConsistencySemanticDetail(1536, $"{TestTenantId}:vec:{TestMemoryUnitId}"),
+                    new ConsistencySemanticDetail(1536, IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId)),
                     null,
                     ConsistencyRepairRecommendation.ReIndexGraph,
                     DateTimeOffset.UtcNow));

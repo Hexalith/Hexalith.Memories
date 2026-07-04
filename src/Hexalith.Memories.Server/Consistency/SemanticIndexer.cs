@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Consistency;
 
+using Hexalith.Memories.Server.Infrastructure;
+
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
@@ -65,7 +67,7 @@ public partial class SemanticIndexer : ISemanticIndexer
         ct.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        string syntacticKey = $"{tenantId}:mu:{memoryUnitId}";
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
 
         HashEntry[] entries = await db.HashGetAllAsync(syntacticKey).WaitAsync(ct).ConfigureAwait(false);
         if (entries.Length == 0)

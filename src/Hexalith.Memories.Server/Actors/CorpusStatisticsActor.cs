@@ -9,6 +9,8 @@ using System.Globalization;
 
 using Dapr.Actors.Runtime;
 
+using Hexalith.Memories.Server.Infrastructure;
+
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
@@ -142,7 +144,7 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
     internal async Task RefreshStatsCallbackAsync(byte[] state)
     {
         string tenantId = Id.GetId();
-        string indexName = $"{tenantId}:memories:idx";
+        string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
 
         try
         {

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.HealthChecks;
 
 using Hexalith.Memories.Server.HealthChecks;
+using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -34,8 +35,8 @@ public class RediSearchHealthCheckTests
 
         RedisResult list = RedisResult.Create(
         [
-            RedisResult.Create(new RedisValue("tenant-a:mu:syntactic")),
-            RedisResult.Create(new RedisValue("tenant-b:mu:syntactic")),
+            RedisResult.Create(new RedisValue(IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "syntactic"))),
+            RedisResult.Create(new RedisValue(IndexSchemaDefinitions.BuildSyntacticKey("tenant-b", "syntactic"))),
         ]);
         db.ExecuteAsync(Arg.Is("FT._LIST")).Returns(list);
 

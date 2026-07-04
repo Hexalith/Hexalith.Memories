@@ -70,7 +70,7 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         IDatabase db = _redis.GetDatabase();
         EnsureSyntacticIndexExists(db, indexTenantId);
 
-        string hashKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(indexTenantId) + entry.AggregateId;
+        string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(indexTenantId, entry.AggregateId);
         string now = DateTimeOffset.UtcNow.ToString("o");
         string metadataText = FlattenAttributes(entry.Attributes);
         string attributeTags = FlattenAttributeTags(entry.Attributes);
@@ -118,7 +118,7 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         ArgumentException.ThrowIfNullOrWhiteSpace(entry.AggregateId);
 
         IDatabase db = _redis.GetDatabase();
-        string hashKey = IndexSchemaDefinitions.GetSyntacticKeyPrefix(indexTenantId) + entry.AggregateId;
+        string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(indexTenantId, entry.AggregateId);
 
         // Deleting the hash drops it from the RediSearch index automatically. Idempotent: deleting a
         // non-existent key is a no-op.

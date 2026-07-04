@@ -66,7 +66,7 @@ public sealed partial class TenantMetricsService
             }
 
             long count = 0;
-            await foreach (RedisKey _ in server.KeysAsync(pattern: $"{tenantId}:mu:*", pageSize: ScanPageSize).WithCancellation(ct))
+            await foreach (RedisKey _ in server.KeysAsync(pattern: IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + "*", pageSize: ScanPageSize).WithCancellation(ct))
             {
                 count++;
             }
