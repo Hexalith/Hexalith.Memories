@@ -35,7 +35,7 @@
 # - Dev moves story to review, then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-05-17T08:56:54+02:00
-last_updated: 2026-06-30
+last_updated: 2026-07-04
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
 # 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
@@ -52,6 +52,8 @@ last_updated: 2026-06-30
 # 2026-06-30: Story 19.3 created (19.3 → ready-for-dev) via create-story. Release-quality decision sweep for 12.4-RV20 + 15.1-RV1..16 (17 entries; recommended: accept-until-trigger, zero implement-now per anti-over-promotion guardrail); no production code scope.
 # 2026-06-30: Story 19.4 created (19.4 → ready-for-dev) via create-story. Provider-registry / migration-marker residual decision sweep; recommended decision-only path unless a third-provider or next-provider-migration trigger exists.
 # 2026-07-04: Epics 20-26 backlog rows added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation). 50 stories closing audit findings A1-A51; no story files created yet. Decision-first stories: 21.1 (consistency model), 24.3 (physical isolation). Overlaps existing deferred entries Story-9.3-MemoriesServerAuthN (A1) and D8 TenantAuthorizationMiddleware (A2) — cross-linked, not duplicated.
+# 2026-07-04: Epic 19 retrospective completed (epic-19-retrospective -> done; epic-19 in-progress -> done). Retro: epic-19-retro-2026-07-04.md. 4 action items recorded; 19-5 is noted as a completed one-shot CI submodule metadata cleanup artifact outside the registered Epic 19 story rows.
+# 2026-07-04: Sprint planning reconcile completed against committed concrete epics inventory because working-tree epics.md is currently a placeholder/template. Epic 2 corrected from in-progress to done; 27 epics, 147 stories, and 27 retrospectives validated.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -78,7 +80,7 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Three-Axis Search, Fusion & Benchmark Validation
-  epic-2: in-progress
+  epic-2: done
   2-1-syntactic-search-bm25-via-redisearch: done
   2-2-semantic-search-vector-via-redis-vector: done
   2-3-graph-scoped-search: done
@@ -231,12 +233,12 @@ development_status:
   epic-18-retrospective: done
 
   # Epic 19: Deferred Register Backlog Home and Residual Hardening
-  epic-19: in-progress
+  epic-19: done
   19-1-deferred-register-active-entry-classification-sweep: done
   19-2-downstream-contract-artifact-generation-decisions: done
   19-3-release-preflight-and-baseline-evidence-residual-sweep: done
   19-4-provider-registry-and-migration-residual-sweep: done
-  epic-19-retrospective: optional
+  epic-19-retrospective: done
 
   # Epic 20: API Security & Tenant Authorization (Sprint Change Proposal 2026-07-04; closes A1,A2,A6,A20,A31,A41)
   epic-20: backlog
@@ -368,5 +370,21 @@ action_items:
     status: done  # 2026-07-01: canonical guidance added to CONTRIBUTING.md "Sandbox test runner workaround".
   - epic: 18
     action: "Remove the now-stale '#pragma warning disable HXL001' for IngestAsync in tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs (18.7 review finding L2, post-18.4 stabilization)"
+    owner: "Amelia"
+    status: open
+  - epic: 19
+    action: "Cross-link Epic 20 stories 20.1 and 20.2 to the existing auth and tenant-authorization deferred entries instead of creating duplicate backlog homes"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 19
+    action: "Apply the Epic 19 accepted-debt review pattern during Epic 20 story creation: check whether any accepted-until-trigger entry is actually triggered before pulling it into implementation"
+    owner: "Amelia"
+    status: open
+  - epic: 19
+    action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 planning when stories 21.9 and 21.10 are created"
+    owner: "Winston, Amelia, Murat"
+    status: open
+  - epic: 19
+    action: "Define the tracking convention for one-shot artifacts like 19-5-ci-submodule-metadata-cleanup.md"
     owner: "Amelia"
     status: open

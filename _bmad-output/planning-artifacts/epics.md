@@ -4,13 +4,15 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/planning-artifacts/ux-design-specification.md'
+  - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-04.md'
+  - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-01.md'
 ---
 
 # Hexalith.Memories - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD, UX Design Specification, and Architecture requirements into implementable stories.
+This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD, UX Design Specification, Architecture requirements, and approved sprint change proposals into implementable stories.
 
 ## Requirements Inventory
 
@@ -315,14 +317,14 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - FR3: Epic 6 — Batch-ingest from directory
 - FR4: Epic 1 — Text extraction (Kreuzberg)
 - FR5: Epic 1 — Generate embeddings
-- FR6: Epic 1 — Memory unit fully searchable after ingestion
+- FR6: Epic 1 — Memory unit fully searchable after ingestion; reinforced by Epic 23 for scalable chunking and batch embedding
 - FR7: Epic 1 — Metadata with origin tracking
 - FR8: Epic 6 — Per-tenant ingestion load management
 - FR9: Epic 6 — Auto-retry with configurable limits
 - FR10: Epic 6 — Ingestion status per case
 - FR11: Epic 6 — Failed unit visibility
-- FR12: Epic 6 — Re-ingestion of failed content
-- FR13: Epic 1 — Partial backend write failure recovery (IngestionWorkflow saga/compensation)
+- FR12: Epic 6 — Re-ingestion of failed content; reinforced by Epic 23 for non-URL re-ingestion correctness
+- FR13: Epic 1 — Partial backend write failure recovery (IngestionWorkflow saga/compensation); reinforced by Epic 21 for ratified consistency and migration safety
 - FR14: Epic 2 — Syntactic search
 - FR15: Epic 2 — Semantic search
 - FR16: Epic 2 — Graph search
@@ -331,7 +333,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - FR19: Epic 2 — Per-axis score breakdown (explain)
 - FR20: Epic 3 — Filter search by case
 - FR21: Epic 3 — Filter search by metadata
-- FR22: Epic 2 — Pagination (search concern)
+- FR22: Epic 2 — Pagination (search concern); reinforced by Epic 22 for semantic, graph-scoped, and hybrid pagination correctness
 - FR23: Epic 10 — Token budget (MCP), including deterministic omitted-detail expansion handles
 - FR24: Epic 2 — Origin identifier in results
 - FR25: Epic 2 — Benchmark comparisons
@@ -343,17 +345,17 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - FR31: Epic 3 — Case status
 - FR32: Epic 3 — Single-case ownership
 - FR33: Epic 3 — Case-scoped graph edges
-- FR34: Epic 3 — Cross-case tenant search
+- FR34: Epic 3 — Cross-case tenant search; reinforced by Epic 22 for fusion case attribution
 - FR35: Epic 3 — Delete memory unit
 - FR36: Epic 3 — Case activity
 - FR37: Epic 3 — Annotations/corrections
-- FR38: Epic 0 + Epic 5 — Tenant creation and isolated infrastructure provisioning
-- FR39: Epic 5 — Delete tenant
-- FR40: Epic 5 — Verify tenant isolation
+- FR38: Epic 0 + Epic 5 — Tenant creation and isolated infrastructure provisioning; reinforced by Epic 24 for physical isolation strategy
+- FR39: Epic 5 — Delete tenant; reinforced by Epic 21 for deletion completeness
+- FR40: Epic 5 — Verify tenant isolation; reinforced by Epic 24 for verifier scaling
 - FR41: Epic 5 — List tenants
 - FR42: Epic 5 — Update tenant config
 - FR43: Epic 5 — Prevent inconsistent config changes
-- FR44: Epic 0 + Epic 5 — Tenant context validation and enforcement
+- FR44: Epic 0 + Epic 5 — Tenant context validation and enforcement; reinforced by Epic 20 for authorization and Epic 24 for physical isolation
 - FR45: Epic 5 — View tenant configuration
 - FR46: Epic 1 — Index CausationId/CorrelationId as graph edges (creation during ingestion)
 - FR47: Epic 4 — Traverse causal chains
@@ -376,11 +378,11 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - FR64: Epic 7 — Metadata origin tracking display
 - FR65: Epic 1 — `ingested_by` field
 - FR66: Epic 5 — Partial results on backend failure
-- FR67: Epic 7 — Search/access telemetry
+- FR67: Epic 7 — Search/access telemetry; reinforced by Epic 20 for audit completeness
 - FR68: Epic 1 — Configure Google embedding provider for MVP with an extensible provider/model/dimensions/rate-limit shape. OpenAI, Mistral, Ollama, and custom runtime providers are post-MVP provider expansion work unless explicitly pulled forward by sprint change.
 - FR69: Epic 5 — Per-tenant rate limits
 - FR70: Epic 5 — Track embedding model per unit
-- FR71: Deferred to Phase 2 — Portable case/tenant export
+- FR71: Epic 26 — Portable export reinforced through backup/restore and operational readiness; broader application-facing export remains Phase 2 unless explicitly pulled forward
 - FR72: Epic 8 — Health checks
 - FR73: Epic 8 — Consistency check
 - FR74: Epic 8 — Consistency repair
@@ -554,26 +556,31 @@ Maintainers can convert active `open` and `carried-forward` deferred-work entrie
 Authenticated, tenant-authorized server boundary; trustworthy audit identity; MCP production-key hardening; inbound rate limiting; complete audit emission.
 **Lifecycle label:** Operational Readiness / Security Hardening
 **Driven by:** Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation) — closes A1, A2, A6, A20, A31, A41
+**FRs reinforced:** FR44, FR67
 
 ### Epic 21: Data Integrity, Consistency & Migration Safety
 Ratified consistency model, non-diverging multi-backend writes, disjoint key namespaces, complete deletion, safe blue/green embedding migration, and migration test coverage.
 **Lifecycle label:** Operational Readiness / Data Integrity
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A3, A4, A5, A16, A17, A22, A27, A28, A44, A47
+**FRs reinforced:** FR13, FR39
 
 ### Epic 22: RAG Retrieval Quality & Correctness
 Correct pagination, bounded graph traversal, calibrated fusion with case attribution, case-scoped path integrity, post-filter recall, and NL-axis/reranker completion.
 **Lifecycle label:** Product Capability / Retrieval Quality
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A8, A9, A29, A30, A48, A49, A50
+**FRs reinforced:** FR22, FR34
 
 ### Epic 23: Ingestion Pipeline Scalability & Resilience
 Chunking + batch embedding, claim-check payloads, Retry-After 429 handling, working non-URL re-ingestion, single-round-trip admission, efficient directory batches, and a provider strategy.
 **Lifecycle label:** Product Capability / Ingestion Scalability
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A11, A12, A13, A14, A15, A33, A34, A35, A51
+**FRs reinforced:** FR6, FR12
 
 ### Epic 24: Observability & Performance Hardening
 End-to-end workflow tracing, read-path caching, physical tenant isolation with a scalable verifier, unified metric naming with a committed dashboard, and hot-path write-amplification cleanup.
 **Lifecycle label:** Operational Readiness / Observability & Performance
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A19, A26, A36, A46
+**FRs reinforced:** FR38, FR40, FR44
 
 ### Epic 25: Architecture Factorization & Code Health
 Thin composition root, centralized error/telemetry handling, shared route table, contract/persistence separation, consolidated CLI/MCP, UX-conformant evidence cockpit, and clean project topology.
@@ -584,6 +591,7 @@ Thin composition root, centralized error/telemetry handling, shared route table,
 Production deployment artifacts, backup/restore, integration-stub closure, coverage gating, and the missing operational runbook set.
 **Lifecycle label:** Operational Readiness / Deploy & Test
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
+**FRs covered:** FR71
 
 ---
 
