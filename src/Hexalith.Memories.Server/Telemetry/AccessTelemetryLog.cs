@@ -24,7 +24,8 @@ using Microsoft.Extensions.Logging;
 ///   <item><description>7503 — LogTraverseAccess (Information)</description></item>
 ///   <item><description>7504 — LogCaseAccess (Information)</description></item>
 ///   <item><description>7505 — LogDeleteAccess (Information)</description></item>
-///   <item><description>7511-7515 — matching <c>*Error</c> variants at Warning level</description></item>
+///   <item><description>7506-7509 — tenant lifecycle/config, case-member, and annotation access</description></item>
+///   <item><description>7511-7519 — matching <c>*Error</c> variants at Warning level</description></item>
 /// </list>
 /// </para>
 /// <para>
@@ -48,6 +49,18 @@ internal static partial class AccessTelemetryLog
 
     /// <summary>Operation type constant: delete.</summary>
     public const string OperationDelete = "delete";
+
+    /// <summary>Operation type constant: tenant-lifecycle.</summary>
+    public const string OperationTenantLifecycle = "tenant-lifecycle";
+
+    /// <summary>Operation type constant: tenant-config.</summary>
+    public const string OperationTenantConfig = "tenant-config";
+
+    /// <summary>Operation type constant: case-member.</summary>
+    public const string OperationCaseMember = "case-member";
+
+    /// <summary>Operation type constant: annotation.</summary>
+    public const string OperationAnnotation = "annotation";
 
     /// <summary>Outcome constant: success.</summary>
     public const string OutcomeOk = "ok";
@@ -124,6 +137,18 @@ internal static partial class AccessTelemetryLog
     [LoggerMessage(EventId = 7505, Level = LogLevel.Information, Message = "Delete access {@AuditEvent}")]
     public static partial void LogDeleteAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
+    [LoggerMessage(EventId = 7506, Level = LogLevel.Information, Message = "Tenant lifecycle access {@AuditEvent}")]
+    public static partial void LogTenantLifecycleAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7507, Level = LogLevel.Information, Message = "Tenant config access {@AuditEvent}")]
+    public static partial void LogTenantConfigAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7508, Level = LogLevel.Information, Message = "Case member access {@AuditEvent}")]
+    public static partial void LogCaseMemberAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7509, Level = LogLevel.Information, Message = "Annotation access {@AuditEvent}")]
+    public static partial void LogAnnotationAccess(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
     [LoggerMessage(EventId = 7511, Level = LogLevel.Warning, Message = "Search access error {@AuditEvent}")]
     public static partial void LogSearchAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 
@@ -138,4 +163,16 @@ internal static partial class AccessTelemetryLog
 
     [LoggerMessage(EventId = 7515, Level = LogLevel.Warning, Message = "Delete access error {@AuditEvent}")]
     public static partial void LogDeleteAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7516, Level = LogLevel.Warning, Message = "Tenant lifecycle access error {@AuditEvent}")]
+    public static partial void LogTenantLifecycleAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7517, Level = LogLevel.Warning, Message = "Tenant config access error {@AuditEvent}")]
+    public static partial void LogTenantConfigAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7518, Level = LogLevel.Warning, Message = "Case member access error {@AuditEvent}")]
+    public static partial void LogCaseMemberAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
+
+    [LoggerMessage(EventId = 7519, Level = LogLevel.Warning, Message = "Annotation access error {@AuditEvent}")]
+    public static partial void LogAnnotationAccessError(ILogger<AccessTelemetryCategory> logger, AccessTelemetryEvent auditEvent);
 }

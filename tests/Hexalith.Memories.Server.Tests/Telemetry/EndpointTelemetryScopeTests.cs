@@ -47,6 +47,10 @@ public sealed class EndpointTelemetryScopeTests : IDisposable
     [InlineData(AccessTelemetryLog.OperationTraverse, 7503, 7513, MemoriesActivitySource.TraverseRequest)]
     [InlineData(AccessTelemetryLog.OperationCaseAccess, 7504, 7514, MemoriesActivitySource.CaseAccess)]
     [InlineData(AccessTelemetryLog.OperationDelete, 7505, 7515, MemoriesActivitySource.DeleteRequest)]
+    [InlineData(AccessTelemetryLog.OperationTenantLifecycle, 7506, 7516, "memories.tenant_lifecycle")]
+    [InlineData(AccessTelemetryLog.OperationTenantConfig, 7507, 7517, "memories.tenant_config")]
+    [InlineData(AccessTelemetryLog.OperationCaseMember, 7508, 7518, "memories.case_member")]
+    [InlineData(AccessTelemetryLog.OperationAnnotation, 7509, 7519, "memories.annotation")]
     public void Dispose_SuccessOutcome_EmitsInformationAuditEvent(string operation, int successId, int errorId, string activityName)
     {
         var logger = new CapturingLogger();
@@ -79,6 +83,10 @@ public sealed class EndpointTelemetryScopeTests : IDisposable
     [InlineData(AccessTelemetryLog.OperationTraverse, 7503, 7513)]
     [InlineData(AccessTelemetryLog.OperationCaseAccess, 7504, 7514)]
     [InlineData(AccessTelemetryLog.OperationDelete, 7505, 7515)]
+    [InlineData(AccessTelemetryLog.OperationTenantLifecycle, 7506, 7516)]
+    [InlineData(AccessTelemetryLog.OperationTenantConfig, 7507, 7517)]
+    [InlineData(AccessTelemetryLog.OperationCaseMember, 7508, 7518)]
+    [InlineData(AccessTelemetryLog.OperationAnnotation, 7509, 7519)]
     public void Dispose_ErrorOutcome_EmitsWarningAuditEvent(string operation, int successId, int errorId)
     {
         var logger = new CapturingLogger();

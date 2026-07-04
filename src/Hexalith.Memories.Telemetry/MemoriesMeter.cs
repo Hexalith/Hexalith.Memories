@@ -39,6 +39,9 @@ public static class MemoriesMeter
     /// <summary>Instrument name: search request latency histogram.</summary>
     public const string SearchDurationName = "memories.search.duration";
 
+    /// <summary>Instrument name: inbound rate-limit rejections.</summary>
+    public const string RateLimitRejectionsName = "memories.rate_limit.rejections";
+
     /// <summary>Instrument name: per-tenant per-axis index size gauge.</summary>
     public const string IndexSizeName = "memories.index.size";
 
@@ -101,6 +104,13 @@ public static class MemoriesMeter
     /// <summary>Histogram: search request latency in milliseconds. Tags: <c>tenant_id</c>, <c>axis</c>.</summary>
     public static Histogram<double> SearchDuration { get; } =
         Instance.CreateHistogram<double>(SearchDurationName, unit: "ms", description: "Search request latency per tenant and resolved axis.");
+
+    /// <summary>Counter: total inbound request rejections. Tags: <c>tenant_id</c>, <c>error_code</c>.</summary>
+    public static Counter<long> RateLimitRejections { get; } =
+        Instance.CreateCounter<long>(
+            RateLimitRejectionsName,
+            unit: "{requests}",
+            description: "Total inbound request rate-limit rejections by tenant tag and error code.");
 
     /// <summary>Story 9.2 — histogram: NL description latency in milliseconds. Tag: <c>tenant_id</c>.</summary>
     public static Histogram<double> NaturalLanguageDescriptionDuration { get; } =
@@ -224,6 +234,7 @@ public static class MemoriesMeter
             [IngestionFailuresName] = new[] { "tenant_id", "error_code" },
             [SearchRequestsName] = new[] { "tenant_id", "axis" },
             [SearchDurationName] = new[] { "tenant_id", "axis" },
+            [RateLimitRejectionsName] = new[] { "tenant_id", "error_code" },
             [IndexSizeName] = new[] { "tenant_id", "axis" },
             [PipelineQueueDepthName] = new[] { "tenant_id" },
             [NaturalLanguageDescriptionDurationName] = new[] { "tenant_id" },

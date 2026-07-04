@@ -4,8 +4,10 @@ using Dapr.AI.Conversation.Extensions;
 using Dapr.Client;
 using Dapr.Workflow;
 
+using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -21,6 +23,7 @@ using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
+using Hexalith.Memories.Server.RateLimiting;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
@@ -30,6 +33,7 @@ using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Logging;
 
 using Microsoft.AspNetCore.Http;
@@ -58,6 +62,36 @@ builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build());
+builder.Services.Configure<InboundRateLimitOptions>(
+    builder.Configuration.GetSection(InboundRateLimitOptions.SectionName));
+InboundRateLimitOptions inboundRateLimitOptions = builder.Configuration
+    .GetSection(InboundRateLimitOptions.SectionName)
+    .Get<InboundRateLimitOptions>() ?? new InboundRateLimitOptions();
+var inboundRequestRateLimiter = new InboundRequestRateLimiter(inboundRateLimitOptions);
+builder.Services.AddSingleton(inboundRequestRateLimiter);
+builder.Services.AddRateLimiter(options =>
+{
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        CreateInboundRateLimitPartition(httpContext, inboundRequestRateLimiter));
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        string tenantTag = ResolveRateLimitTenantTag(context.HttpContext);
+        TelemetryMetricsRecorder.RecordRateLimitRejection(tenantTag, "RATE_LIMIT_EXCEEDED");
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter = Math.Ceiling(retryAfter.TotalSeconds)
+                .ToString(CultureInfo.InvariantCulture);
+        }
+
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new ErrorResponse(
+                "RATE_LIMIT_EXCEEDED",
+                "The tenant request rate limit was exceeded.",
+                "Retry after the limiter window resets."),
+            cancellationToken).ConfigureAwait(false);
+    };
+});
 
 // Story 9.2 Task 1: DAPR Conversation API registration — backs GenerateNaturalLanguageDescriptionActivity.
 // The component name (default "llm") is resolved at activity-call time from NaturalLanguageDescriptionOptions.
@@ -376,6 +410,7 @@ app.UseCloudEvents();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantAuthorizationMiddleware>();
+app.UseRateLimiter();
 app.MapControllers();
 app.MapSubscribeHandler().AllowAnonymous();
 
@@ -508,7 +543,8 @@ app.MapPost("/api/ingest", async (
         throw;
     }
 }).WithMetadata(new RequestSizeLimitAttribute(2 * 1024 * 1024))
-    .AddEndpointFilter<TenantAuthorizationEndpointFilter>();
+    .AddEndpointFilter<TenantAuthorizationEndpointFilter>()
+    .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
 app.MapGet("/api/ingest/{instanceId}", async (
     IIngestionWorkflowStateReader workflowStateReader,
@@ -681,7 +717,8 @@ app.MapPost("/api/ingest/url", async (
         scope.MarkUnhandledException(ex);
         throw;
     }
-}).AddEndpointFilter<TenantAuthorizationEndpointFilter>();
+}).AddEndpointFilter<TenantAuthorizationEndpointFilter>()
+    .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
 app.MapPost("/api/ingest/directory", async (
     DirectoryIngestionService directoryService,
@@ -826,7 +863,8 @@ app.MapPost("/api/ingest/directory", async (
         scope.MarkUnhandledException(ex);
         throw;
     }
-}).AddEndpointFilter<TenantAuthorizationEndpointFilter>();
+}).AddEndpointFilter<TenantAuthorizationEndpointFilter>()
+    .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
 app.MapGet("/api/ingest/batches/{batchId}", async (
     DaprClient daprClient,
@@ -937,20 +975,44 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
     async (
         IActorProxyFactory actorProxyFactory,
         TenantStatusGuard tenantGuard,
+        ILogger<AccessTelemetryCategory> auditLogger,
+        HttpContext httpContext,
         string tenantId,
         TenantEmbeddingConfig config,
         CancellationToken cancellationToken,
         bool forceReindex = false) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_config");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationTenantConfig,
+        successEventId: 7507,
+        errorEventId: 7517,
+        tenantId,
+        caseId: null,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "embedding-config-update",
+            ["forceReindex"] = forceReindex,
+            ["fieldCount"] = 7,
+            ["changedFields"] = new[] { "provider", "model", "dimensions", "rateLimitPerMinute", "authMode", "baseUrlConfigured", "oidcConfigured" },
+        });
+
+    try
+    {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
+        scope.MarkTenantRejected(tenantStatusError.Code);
         return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
@@ -960,6 +1022,7 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
     }
     catch (ArgumentException ex)
     {
+        scope.MarkValidationError("INVALID_CONFIG");
         return Results.BadRequest(new ErrorResponse("INVALID_CONFIG", ex.Message, "Fix the configuration values and retry."));
     }
 
@@ -974,6 +1037,7 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
     }
     catch (EmbeddingConfigChangeException ex)
     {
+        scope.MarkValidationError("EMBEDDING_CONFIG_CONFLICT");
         return Results.Conflict(CreateEmbeddingConfigConflictResponse(
             ex.TenantId,
             ex.CurrentConfig ?? EmbeddingProviderDefaults.Google(),
@@ -986,6 +1050,7 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
         string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(currentConfig, config);
         if (affectedFields.Length > 0)
         {
+            scope.MarkValidationError("EMBEDDING_CONFIG_CONFLICT");
             return Results.Conflict(CreateEmbeddingConfigConflictResponse(
                 tenantId,
                 currentConfig,
@@ -995,6 +1060,12 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 
         throw;
     }
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 // Story 5.1: Tenant provisioning endpoints
@@ -1002,16 +1073,43 @@ app.MapPost("/api/tenants", async (
     DaprWorkflowClient workflowClient,
     IActorProxyFactory actorProxyFactory,
     TenantProvisioningInput input,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     ILogger<Program> logger) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationTenantLifecycle,
+        successEventId: 7506,
+        errorEventId: 7516,
+        input?.TenantId,
+        caseId: null,
+        CreateAuditQueryParams("tenant-create"));
+
+    try
+    {
+    if (input is null)
+    {
+        scope.MarkValidationError("INVALID_INPUT");
+        return Results.BadRequest(new ErrorResponse(
+            "INVALID_INPUT",
+            "Request body is required.",
+            "Provide tenant provisioning details."));
+    }
+
     ErrorResponse? tenantValidationError = ValidateTenantId(input.TenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     if (string.IsNullOrWhiteSpace(input.DisplayName))
     {
+        scope.MarkValidationError("INVALID_INPUT");
         return Results.BadRequest(new ErrorResponse(
             "INVALID_INPUT",
             "DisplayName is required.",
@@ -1035,6 +1133,7 @@ app.MapPost("/api/tenants", async (
 
     if (resolvedDimensions < 1 || resolvedDimensions > 4096)
     {
+        scope.MarkValidationError("INVALID_DIMENSIONS");
         return Results.BadRequest(new ErrorResponse(
             "INVALID_DIMENSIONS",
             $"Vector dimensions {resolvedDimensions} must be between 1 and 4096.",
@@ -1051,6 +1150,7 @@ app.MapPost("/api/tenants", async (
     }
     catch (Dapr.DaprException)
     {
+        scope.MarkValidationError("DAPR_UNAVAILABLE");
         return Results.Json(
             new ErrorResponse(
                 "DAPR_UNAVAILABLE",
@@ -1061,29 +1161,54 @@ app.MapPost("/api/tenants", async (
 
     return Results.Accepted($"/api/tenants/{input.TenantId}/provision-status/{instanceId}",
         new { workflowInstanceId = instanceId });
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
     DaprWorkflowClient workflowClient,
     TenantStatusGuard tenantGuard,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     string tenantId,
     string instanceId,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationTenantLifecycle,
+        successEventId: 7506,
+        errorEventId: 7516,
+        tenantId,
+        caseId: null,
+        CreateWorkflowStatusAuditQueryParams("tenant-provision-status", instanceId));
+
+    try
+    {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
     if (tenantExistsError is not null)
     {
+        scope.MarkTenantRejected(tenantExistsError.Code);
         return TenantStatusGuard.ToHttpResult(tenantExistsError);
     }
 
     if (!instanceId.StartsWith($"provision-{tenantId}-", StringComparison.Ordinal))
     {
+        scope.MarkValidationError("PROVISIONING_STATUS_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "PROVISIONING_STATUS_NOT_FOUND",
             $"Provisioning workflow '{instanceId}' was not found for tenant '{tenantId}'.",
@@ -1091,7 +1216,17 @@ app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
     }
 
     WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
+    scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
+    {
+        ["state"] = state?.RuntimeStatus.ToString(),
+    };
     return state is null ? Results.NotFound() : Results.Ok(state);
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 // Story 5.5 AC1 / FR41: enriched tenant listing — per-tenant counts + index health + activity.
@@ -1131,23 +1266,88 @@ app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, str
 app.MapGet("/api/tenants/{tenantId}/configuration", TenantEndpointHandlers.GetTenantConfigurationAsync);
 
 // Story 5.5 AC3 / FR42: PATCH display name (rate-limit updates go through PUT /embedding-config).
-app.MapPatch("/api/tenants/{tenantId}", TenantEndpointHandlers.PatchDisplayNameAsync);
+app.MapPatch("/api/tenants/{tenantId}", async (
+    TenantRegistryService registry,
+    TenantStatusGuard tenantGuard,
+    TenantMetricsService metrics,
+    IActorProxyFactory actorProxyFactory,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
+    string tenantId,
+    TenantUpdateInput? body,
+    CancellationToken cancellationToken) =>
+{
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_config");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationTenantConfig,
+        successEventId: 7507,
+        errorEventId: 7517,
+        tenantId,
+        caseId: null,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "display-name-update",
+            ["fieldCount"] = 1,
+            ["changedFields"] = new[] { "displayName" },
+        });
+
+    try
+    {
+        IResult result = await TenantEndpointHandlers.PatchDisplayNameAsync(
+            registry,
+            tenantGuard,
+            metrics,
+            actorProxyFactory,
+            httpContext,
+            tenantId,
+            body,
+            cancellationToken);
+        MarkAuditFromHttpResult(scope, result);
+        return result;
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
+});
 
 // Story 5.2: Tenant deletion endpoints
 app.MapDelete("/api/tenants/{tenantId}", async (
     DaprWorkflowClient workflowClient,
     TenantRegistryService registry,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     string tenantId) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationDelete,
+        successEventId: 7505,
+        errorEventId: 7515,
+        tenantId,
+        caseId: null,
+        CreateAuditQueryParams("tenant-delete"));
+
+    try
+    {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     TenantRegistryEntry? tenantEntry = await registry.GetTenantEntryAsync(tenantId, CancellationToken.None);
     if (tenantEntry is null)
     {
+        scope.MarkTenantRejected("TENANT_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "TENANT_NOT_FOUND",
             $"Tenant '{tenantId}' not found.",
@@ -1156,6 +1356,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
 
     if (tenantEntry.Tenant.Status == TenantStatus.Provisioning)
     {
+        scope.MarkValidationError("TENANT_PROVISIONING");
         return Results.Conflict(new ErrorResponse(
             "TENANT_PROVISIONING",
             $"Tenant '{tenantId}' is still provisioning.",
@@ -1181,6 +1382,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
         }
         catch (Dapr.DaprException)
         {
+            scope.MarkValidationError("DAPR_UNAVAILABLE");
             return Results.Json(
                 new ErrorResponse(
                     "DAPR_UNAVAILABLE",
@@ -1200,6 +1402,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
 
     if (deletionClaim is null)
     {
+        scope.MarkTenantRejected("TENANT_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "TENANT_NOT_FOUND",
             $"Tenant '{tenantId}' not found.",
@@ -1208,6 +1411,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
 
     if (deletionClaim.Tenant.Status == TenantStatus.Provisioning)
     {
+        scope.MarkValidationError("TENANT_PROVISIONING");
         return Results.Conflict(new ErrorResponse(
             "TENANT_PROVISIONING",
             $"Tenant '{tenantId}' is still provisioning.",
@@ -1232,6 +1436,7 @@ app.MapDelete("/api/tenants/{tenantId}", async (
     }
     catch (Dapr.DaprException)
     {
+        scope.MarkValidationError("DAPR_UNAVAILABLE");
         if (tenantEntry.Tenant.Status != TenantStatus.Deleting)
         {
             try
@@ -1258,29 +1463,54 @@ app.MapDelete("/api/tenants/{tenantId}", async (
 
     return Results.Accepted($"/api/tenants/{tenantId}/deletion-status/{instanceId}",
         new { workflowInstanceId = instanceId });
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
     DaprWorkflowClient workflowClient,
     TenantStatusGuard tenantGuard,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     string tenantId,
     string instanceId,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationTenantLifecycle,
+        successEventId: 7506,
+        errorEventId: 7516,
+        tenantId,
+        caseId: null,
+        CreateWorkflowStatusAuditQueryParams("tenant-deletion-status", instanceId));
+
+    try
+    {
     ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
     if (tenantValidationError is not null)
     {
+        scope.MarkValidationError(tenantValidationError.Code);
         return Results.BadRequest(tenantValidationError);
     }
 
     ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
     if (tenantExistsError is not null)
     {
+        scope.MarkTenantRejected(tenantExistsError.Code);
         return TenantStatusGuard.ToHttpResult(tenantExistsError);
     }
 
     if (!instanceId.StartsWith($"delete-{tenantId}-", StringComparison.Ordinal))
     {
+        scope.MarkValidationError("DELETION_STATUS_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "DELETION_STATUS_NOT_FOUND",
             $"Deletion workflow '{instanceId}' was not found for tenant '{tenantId}'.",
@@ -1288,7 +1518,17 @@ app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
     }
 
     WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
+    scope.QueryParams = new Dictionary<string, object?>(scope.QueryParams, StringComparer.Ordinal)
+    {
+        ["state"] = state?.RuntimeStatus.ToString(),
+    };
     return state is null ? Results.NotFound() : Results.Ok(state);
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 // Story 5.3: Tenant isolation verification
@@ -2043,11 +2283,32 @@ app.MapPut("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
     string memberId,
     JsonElement requestBody,
     CaseService caseService,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.case_member");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationCaseMember,
+        successEventId: 7508,
+        errorEventId: 7518,
+        tenantId,
+        caseId,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "case-member-add",
+            ["memberIdPrefix"] = PrefixIdentifier(memberId, 32),
+        });
+
+    try
+    {
     ErrorResponse? bodyError = TryDeserializeAddCaseMemberInput(requestBody, out AddCaseMemberInput? input);
     if (bodyError is not null)
     {
+        scope.MarkValidationError(bodyError.Code);
         return Results.BadRequest(bodyError);
     }
 
@@ -2055,12 +2316,14 @@ app.MapPut("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
     ErrorResponse? error = CaseValidator.ValidateAddMember(tenantId, caseId, validatedInput);
     if (error is not null)
     {
+        scope.MarkValidationError(error.Code);
         return Results.BadRequest(error);
     }
 
     Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
     if (caseResult is null)
     {
+        scope.MarkValidationError("CASE_NOT_FOUND");
         return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
     }
 
@@ -2073,7 +2336,14 @@ app.MapPut("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
     }
     catch (InvalidOperationException ex) when (ex.Message.Contains("maximum"))
     {
+        scope.MarkValidationError("MEMBER_LIMIT_EXCEEDED");
         return Results.BadRequest(new ErrorResponse("MEMBER_LIMIT_EXCEEDED", ex.Message, "Remove existing members before adding new ones."));
+    }
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
     }
 });
 
@@ -2082,24 +2352,57 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async
     string caseId,
     string memberId,
     CaseService caseService,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.case_member");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationCaseMember,
+        successEventId: 7508,
+        errorEventId: 7518,
+        tenantId,
+        caseId,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "case-member-remove",
+            ["memberIdPrefix"] = PrefixIdentifier(memberId, 32),
+        });
+
+    try
+    {
     ErrorResponse? error = CaseValidator.ValidateRemoveMember(tenantId, caseId, memberId);
     if (error is not null)
     {
+        scope.MarkValidationError(error.Code);
         return Results.BadRequest(error);
     }
 
     Case? caseResult = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
     if (caseResult is null)
     {
+        scope.MarkValidationError("CASE_NOT_FOUND");
         return Results.NotFound(new ErrorResponse("CASE_NOT_FOUND", $"Case '{caseId}' does not exist in tenant '{tenantId}'.", "Run 'memories case list' to see available cases."));
     }
 
     bool removed = await caseService.RemoveMemberAsync(tenantId, caseId, memberId, cancellationToken);
+    if (!removed)
+    {
+        scope.MarkValidationError("MEMBER_NOT_FOUND");
+    }
+
     return removed
         ? Results.NoContent()
         : Results.NotFound(new ErrorResponse("MEMBER_NOT_FOUND", $"Member '{memberId}' is not in case '{caseId}'.", "Run GET /cases/{caseId}/members to see current members."));
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/members", async (
@@ -2139,23 +2442,46 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId
     string memoryUnitId,
     CaseService caseService,
     TenantStatusGuard tenantGuard,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationDelete,
+        successEventId: 7505,
+        errorEventId: 7515,
+        tenantId,
+        caseId,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "memory-unit-delete",
+            ["memoryUnitIdPrefix"] = PrefixIdentifier(memoryUnitId, 32),
+        });
+
+    try
+    {
     ErrorResponse? validationError = CaseValidator.ValidateDeleteMemoryUnit(tenantId, caseId, memoryUnitId);
     if (validationError is not null)
     {
+        scope.MarkValidationError(validationError.Code);
         return Results.BadRequest(validationError);
     }
 
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
+        scope.MarkTenantRejected(tenantStatusError.Code);
         return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
     if (targetCase is null)
     {
+        scope.MarkValidationError("CASE_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "CASE_NOT_FOUND",
             $"Case '{caseId}' not found in tenant '{tenantId}'.",
@@ -2164,6 +2490,7 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId
 
     if (targetCase.Status == CaseStatus.Deleting)
     {
+        scope.MarkValidationError("CASE_DELETING");
         return Results.Conflict(new ErrorResponse(
             "CASE_DELETING",
             $"Case '{caseId}' is being deleted.",
@@ -2171,12 +2498,23 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId
     }
 
     bool deleted = await caseService.DeleteMemoryUnitAsync(tenantId, caseId, memoryUnitId, cancellationToken);
+    if (!deleted)
+    {
+        scope.MarkValidationError("MEMORY_UNIT_NOT_FOUND");
+    }
+
     return deleted
         ? Results.NoContent()
         : Results.NotFound(new ErrorResponse(
             "MEMORY_UNIT_NOT_FOUND",
             $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
             $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
@@ -2184,33 +2522,63 @@ app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
     string caseId,
     CaseService caseService,
     TenantStatusGuard tenantGuard,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationDelete,
+        successEventId: 7505,
+        errorEventId: 7515,
+        tenantId,
+        caseId,
+        CreateAuditQueryParams("case-delete"));
+
+    try
+    {
     ErrorResponse? tenantError = CaseValidator.ValidateTenantId(tenantId);
     if (tenantError is not null)
     {
+        scope.MarkValidationError(tenantError.Code);
         return Results.BadRequest(tenantError);
     }
 
     ErrorResponse? caseError = CaseValidator.ValidateCaseId(caseId);
     if (caseError is not null)
     {
+        scope.MarkValidationError(caseError.Code);
         return Results.BadRequest(caseError);
     }
 
     ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
     if (tenantStatusError is not null)
     {
+        scope.MarkTenantRejected(tenantStatusError.Code);
         return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
     bool deleted = await caseService.DeleteCaseAsync(tenantId, caseId, cancellationToken);
+    if (!deleted)
+    {
+        scope.MarkValidationError("CASE_NOT_FOUND");
+    }
+
     return deleted
         ? Results.NoContent()
         : Results.NotFound(new ErrorResponse(
             "CASE_NOT_FOUND",
             $"Case '{caseId}' not found in tenant '{tenantId}'.",
             $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
+    }
 });
 
 app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations", async (
@@ -2219,18 +2587,40 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
     string memoryUnitId,
     CreateAnnotationInput input,
     CaseService caseService,
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.annotation");
+    using EndpointTelemetryScope scope = CreateEndpointAuditScope(
+        auditLogger,
+        httpContext,
+        activity,
+        AccessTelemetryLog.OperationAnnotation,
+        successEventId: 7509,
+        errorEventId: 7519,
+        tenantId,
+        caseId,
+        new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["operation"] = "annotation-create",
+            ["memoryUnitIdPrefix"] = PrefixIdentifier(memoryUnitId, 32),
+        });
+
+    try
+    {
     var validatedInput = input with { TenantId = tenantId, CaseId = caseId, TargetMemoryUnitId = memoryUnitId };
     ErrorResponse? validationError = CaseValidator.ValidateCreateAnnotation(tenantId, caseId, memoryUnitId, validatedInput);
     if (validationError is not null)
     {
+        scope.MarkValidationError(validationError.Code);
         return Results.BadRequest(validationError);
     }
 
     Case? targetCase = await caseService.GetCaseAsync(tenantId, caseId, cancellationToken);
     if (targetCase is null)
     {
+        scope.MarkValidationError("CASE_NOT_FOUND");
         return Results.NotFound(new ErrorResponse(
             "CASE_NOT_FOUND",
             $"Case '{caseId}' not found in tenant '{tenantId}'.",
@@ -2239,6 +2629,7 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
 
     if (targetCase.Status == CaseStatus.Deleting)
     {
+        scope.MarkValidationError("CASE_DELETING");
         return Results.Conflict(new ErrorResponse(
             "CASE_DELETING",
             $"Case '{caseId}' is being deleted.",
@@ -2250,6 +2641,7 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
         var result = await caseService.CreateAnnotationAsync(validatedInput, cancellationToken);
         if (result is null)
         {
+            scope.MarkValidationError("MEMORY_UNIT_NOT_FOUND");
             return Results.NotFound(new ErrorResponse(
                 "MEMORY_UNIT_NOT_FOUND",
                 $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
@@ -2262,6 +2654,7 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
     }
     catch (InvalidOperationException ex) when (ex.Message == "MEMORY_UNIT_NOT_INDEXED")
     {
+        scope.MarkValidationError("MEMORY_UNIT_NOT_INDEXED");
         return Results.BadRequest(new ErrorResponse(
             "MEMORY_UNIT_NOT_INDEXED",
             $"Memory unit '{memoryUnitId}' is not yet indexed.",
@@ -2269,10 +2662,17 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
     }
     catch (InvalidOperationException ex) when (ex.Message == "NESTED_ANNOTATION_NOT_ALLOWED")
     {
+        scope.MarkValidationError("NESTED_ANNOTATION_NOT_ALLOWED");
         return Results.BadRequest(new ErrorResponse(
             "NESTED_ANNOTATION_NOT_ALLOWED",
             "Cannot annotate an annotation. The target memory unit is itself an annotation.",
             "Annotate the original memory unit instead."));
+    }
+    }
+    catch (Exception ex)
+    {
+        scope.MarkUnhandledException(ex);
+        throw;
     }
 });
 
@@ -3369,6 +3769,139 @@ static string ResolvePrincipalAuditUser(HttpContext httpContext, System.Diagnost
     }
 
     return user;
+}
+
+static EndpointTelemetryScope CreateEndpointAuditScope(
+    ILogger<AccessTelemetryCategory> auditLogger,
+    HttpContext httpContext,
+    System.Diagnostics.Activity? activity,
+    string operationType,
+    int successEventId,
+    int errorEventId,
+    string? tenantId,
+    string? caseId,
+    IReadOnlyDictionary<string, object?> queryParams)
+{
+    string tenantIdTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
+    activity?.SetTag(MemoriesActivitySource.TagOperation, operationType);
+    activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantIdTag);
+    if (!string.IsNullOrWhiteSpace(caseId))
+    {
+        activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+    }
+
+    var scope = new EndpointTelemetryScope(
+        auditLogger,
+        activity,
+        operationType,
+        successEventId,
+        errorEventId,
+        tenantIdTag);
+    scope.CaseId = caseId;
+    scope.User = ResolvePrincipalAuditUser(httpContext, activity);
+    scope.QueryParams = queryParams;
+    return scope;
+}
+
+static Dictionary<string, object?> CreateAuditQueryParams(string operation)
+    => new(StringComparer.Ordinal)
+    {
+        ["operation"] = operation,
+    };
+
+static Dictionary<string, object?> CreateWorkflowStatusAuditQueryParams(string operation, string instanceId)
+    => new(StringComparer.Ordinal)
+    {
+        ["operation"] = operation,
+        ["workflowInstanceIdPrefix"] = PrefixIdentifier(instanceId, 32),
+    };
+
+static void MarkAuditFromHttpResult(EndpointTelemetryScope scope, IResult result)
+{
+    if (result is IStatusCodeHttpResult statusCodeResult
+        && statusCodeResult.StatusCode is int statusCode
+        && statusCode >= StatusCodes.Status400BadRequest)
+    {
+        if (result is IValueHttpResult valueResult && valueResult.Value is ErrorResponse errorResponse)
+        {
+            scope.MarkValidationError(errorResponse.Code);
+            return;
+        }
+
+        scope.MarkValidationError(statusCode switch
+        {
+            StatusCodes.Status404NotFound => "NOT_FOUND",
+            StatusCodes.Status409Conflict => "CONFLICT",
+            StatusCodes.Status503ServiceUnavailable => "DAPR_UNAVAILABLE",
+            _ => "HTTP_" + statusCode.ToString(CultureInfo.InvariantCulture),
+        });
+    }
+}
+
+static string PrefixIdentifier(string value, int maxLength)
+    => string.IsNullOrWhiteSpace(value)
+        ? string.Empty
+        : value[..Math.Min(value.Length, maxLength)];
+
+static RateLimitPartition<string> CreateInboundRateLimitPartition(
+    HttpContext httpContext,
+    InboundRequestRateLimiter limiter)
+{
+    ArgumentNullException.ThrowIfNull(httpContext);
+    ArgumentNullException.ThrowIfNull(limiter);
+
+    if (!IsRateLimitedApiPath(httpContext))
+    {
+        return RateLimitPartition.GetNoLimiter("__infrastructure__");
+    }
+
+    string partitionKey = ResolveRateLimitPartitionKey(httpContext);
+    return limiter.CreatePartition(partitionKey);
+}
+
+static bool IsRateLimitedApiPath(HttpContext httpContext)
+{
+    PathString path = httpContext.Request.Path;
+    if (!path.StartsWithSegments("/api"))
+    {
+        return false;
+    }
+
+    if (HttpMethods.IsPost(httpContext.Request.Method)
+        && (path.Equals("/api/ingest", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/ingest/url", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/ingest/directory", StringComparison.OrdinalIgnoreCase)))
+    {
+        return false;
+    }
+
+    return true;
+}
+
+static string ResolveRateLimitPartitionKey(HttpContext httpContext)
+{
+    string tenantTag = ResolveRateLimitTenantTag(httpContext);
+    if (!string.Equals(tenantTag, MemoriesMeter.RejectedTenantTag, StringComparison.Ordinal))
+    {
+        return "tenant:" + tenantTag;
+    }
+
+    string principal = ResolvePrincipalAuditUser(httpContext, activity: null);
+    return string.Equals(principal, AccessTelemetryLog.UserAnonymous, StringComparison.Ordinal)
+        ? "rejected:" + MemoriesMeter.RejectedTenantTag
+        : "principal:" + principal;
+}
+
+static string ResolveRateLimitTenantTag(HttpContext httpContext)
+{
+    if (httpContext.Items.TryGetValue(AuthorizedTenantAccessor.HttpContextItemKey, out object? value)
+        && value is string tenantId
+        && !string.IsNullOrWhiteSpace(tenantId))
+    {
+        return tenantId;
+    }
+
+    return MemoriesMeter.RejectedTenantTag;
 }
 
 static bool IsSemanticConfigUnavailable(Exception ex)

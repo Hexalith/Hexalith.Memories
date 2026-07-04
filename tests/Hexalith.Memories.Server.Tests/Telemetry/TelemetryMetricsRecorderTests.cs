@@ -136,6 +136,35 @@ public sealed class TelemetryMetricsRecorderTests
     }
 
     [Fact]
+    public void RecordRateLimitRejection_EmitsCounter_WithPinnedTags()
+    {
+        List<CapturedLongMeasurement> hits = [];
+
+        using MeterListener listener = BuildLongListener(MemoriesMeter.RateLimitRejectionsName, hits);
+        listener.Start();
+
+        TelemetryMetricsRecorder.RecordRateLimitRejection("acme", "RATE_LIMIT_EXCEEDED");
+
+        hits.ShouldHaveSingleItem();
+        hits[0].Value.ShouldBe(1);
+        AssertTagsEqual(hits[0].Tags, ("tenant_id", "acme"), ("error_code", "RATE_LIMIT_EXCEEDED"));
+    }
+
+    [Fact]
+    public void RecordRateLimitRejection_EmptyTenant_UsesRejectedTenantTag()
+    {
+        List<CapturedLongMeasurement> hits = [];
+
+        using MeterListener listener = BuildLongListener(MemoriesMeter.RateLimitRejectionsName, hits);
+        listener.Start();
+
+        TelemetryMetricsRecorder.RecordRateLimitRejection(string.Empty, "RATE_LIMIT_EXCEEDED");
+
+        hits.ShouldHaveSingleItem();
+        AssertTagsEqual(hits[0].Tags, ("tenant_id", MemoriesMeter.RejectedTenantTag), ("error_code", "RATE_LIMIT_EXCEEDED"));
+    }
+
+    [Fact]
     public void RecordSearch_DoesNotInjectCaseIdOrUserTags()
     {
         // Risk #1 cardinality mitigation — regression guard asserting the recorder is not a drift surface.

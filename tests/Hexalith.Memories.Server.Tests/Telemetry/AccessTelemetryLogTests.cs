@@ -63,6 +63,10 @@ public sealed class AccessTelemetryLogTests
         AccessTelemetryLog.OperationTraverse.ShouldBe("traverse");
         AccessTelemetryLog.OperationCaseAccess.ShouldBe("case-access");
         AccessTelemetryLog.OperationDelete.ShouldBe("delete");
+        AccessTelemetryLog.OperationTenantLifecycle.ShouldBe("tenant-lifecycle");
+        AccessTelemetryLog.OperationTenantConfig.ShouldBe("tenant-config");
+        AccessTelemetryLog.OperationCaseMember.ShouldBe("case-member");
+        AccessTelemetryLog.OperationAnnotation.ShouldBe("annotation");
     }
 
     [Fact]
@@ -109,6 +113,44 @@ public sealed class AccessTelemetryLogTests
         var logger = new CapturingLogger<AccessTelemetryCategory>();
         AccessTelemetryLog.LogCaseAccess(logger, CreateSample(7504, AccessTelemetryLog.OutcomeOk));
         logger.Captures[0].EventId.Id.ShouldBe(7504);
+    }
+
+    [Theory]
+    [InlineData(AccessTelemetryLog.OperationTenantLifecycle, 7506, 7516)]
+    [InlineData(AccessTelemetryLog.OperationTenantConfig, 7507, 7517)]
+    [InlineData(AccessTelemetryLog.OperationCaseMember, 7508, 7518)]
+    [InlineData(AccessTelemetryLog.OperationAnnotation, 7509, 7519)]
+    public void AddedMutationLoggers_UsePinnedEventIds(string operation, int successId, int errorId)
+    {
+        var logger = new CapturingLogger<AccessTelemetryCategory>();
+        AccessTelemetryEvent success = CreateSample(successId, AccessTelemetryLog.OutcomeOk) with { OperationType = operation };
+        AccessTelemetryEvent error = CreateSample(errorId, AccessTelemetryLog.OutcomeError) with { OperationType = operation };
+
+        switch (operation)
+        {
+            case AccessTelemetryLog.OperationTenantLifecycle:
+                AccessTelemetryLog.LogTenantLifecycleAccess(logger, success);
+                AccessTelemetryLog.LogTenantLifecycleAccessError(logger, error);
+                break;
+            case AccessTelemetryLog.OperationTenantConfig:
+                AccessTelemetryLog.LogTenantConfigAccess(logger, success);
+                AccessTelemetryLog.LogTenantConfigAccessError(logger, error);
+                break;
+            case AccessTelemetryLog.OperationCaseMember:
+                AccessTelemetryLog.LogCaseMemberAccess(logger, success);
+                AccessTelemetryLog.LogCaseMemberAccessError(logger, error);
+                break;
+            case AccessTelemetryLog.OperationAnnotation:
+                AccessTelemetryLog.LogAnnotationAccess(logger, success);
+                AccessTelemetryLog.LogAnnotationAccessError(logger, error);
+                break;
+        }
+
+        logger.Captures.Count.ShouldBe(2);
+        logger.Captures[0].EventId.Id.ShouldBe(successId);
+        logger.Captures[0].Level.ShouldBe(LogLevel.Information);
+        logger.Captures[1].EventId.Id.ShouldBe(errorId);
+        logger.Captures[1].Level.ShouldBe(LogLevel.Warning);
     }
 
     private static AccessTelemetryEvent CreateSample(int eventId, string outcome)

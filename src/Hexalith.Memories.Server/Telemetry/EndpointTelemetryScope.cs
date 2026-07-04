@@ -237,6 +237,50 @@ internal sealed class EndpointTelemetryScope : IDisposable
                 }
 
                 break;
+            case AccessTelemetryLog.OperationTenantLifecycle:
+                if (isError)
+                {
+                    AccessTelemetryLog.LogTenantLifecycleAccessError(_logger, auditEvent);
+                }
+                else
+                {
+                    AccessTelemetryLog.LogTenantLifecycleAccess(_logger, auditEvent);
+                }
+
+                break;
+            case AccessTelemetryLog.OperationTenantConfig:
+                if (isError)
+                {
+                    AccessTelemetryLog.LogTenantConfigAccessError(_logger, auditEvent);
+                }
+                else
+                {
+                    AccessTelemetryLog.LogTenantConfigAccess(_logger, auditEvent);
+                }
+
+                break;
+            case AccessTelemetryLog.OperationCaseMember:
+                if (isError)
+                {
+                    AccessTelemetryLog.LogCaseMemberAccessError(_logger, auditEvent);
+                }
+                else
+                {
+                    AccessTelemetryLog.LogCaseMemberAccess(_logger, auditEvent);
+                }
+
+                break;
+            case AccessTelemetryLog.OperationAnnotation:
+                if (isError)
+                {
+                    AccessTelemetryLog.LogAnnotationAccessError(_logger, auditEvent);
+                }
+                else
+                {
+                    AccessTelemetryLog.LogAnnotationAccess(_logger, auditEvent);
+                }
+
+                break;
             default:
                 // Unknown operation type — should never happen; emit via search channel as a safe default.
                 AccessTelemetryLog.LogSearchAccess(_logger, auditEvent);

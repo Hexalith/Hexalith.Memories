@@ -707,3 +707,45 @@ explicit rather than implied as covered.
 ## Next Steps
 
 - Keep these checks in the focused MCP auth regression set for Story 20.4.
+
+---
+
+# Test Automation Summary - Story 20.5 (Inbound Rate Limiting, Quotas & Audit Completeness)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/20-5-inbound-rate-limiting-quotas-and-audit-completeness.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** inbound tenant-aware API rate limiting and mutation/status access telemetry audit emission.
+
+## Generated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointRateLimitTests.cs` - added rate-limit rejection checks for retry guidance, infrastructure route exemption, and tenant-create principal partitioning instead of body-tenant partitioning.
+- [x] Existing Story 20.5 rate-limit API tests cover tenant route/query partitioning, body-bound ingest limiting after tenant authorization, sanitized 429 `ErrorResponse`, and downstream short-circuiting.
+- [x] `tests/Hexalith.Memories.Server.Tests/Telemetry/MutationAuditLogStreamTests.cs` - added mutation/status audit coverage for embedding-config update, tenant workflow status lookups, tenant delete, case-member remove, and case delete validation/error paths.
+- [x] Existing Story 20.5 mutation audit tests cover tenant create, tenant display-name update, case-member add, annotation create, and memory-unit delete validation/error paths.
+
+### E2E Tests
+
+- [x] TestServer endpoint workflow coverage exercises the HTTP request/response path in-process. Browser UI E2E is not applicable because Story 20.5 has no module UI scope.
+
+## Coverage
+
+- API rate-limit surfaces: route/query tenant partitioning, body-bound ingest limiter, tenant-create principal partitioning, 429 payload sanitization, retry-after header, downstream short-circuiting, and infrastructure path exemption.
+- API mutation audit surfaces: tenant lifecycle/configuration/status/delete, case-member add/remove, annotation create, memory-unit delete, and case delete.
+- UI features: 0/0 applicable; Story 20.5 has no UI.
+
+## Validation
+
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --disable-build-servers -m:1 /nr:false` - passed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLogTests -class Hexalith.Memories.Server.Tests.Telemetry.EndpointTelemetryScopeTests -class Hexalith.Memories.Server.Tests.Telemetry.AuditLogStreamTests -class Hexalith.Memories.Server.Tests.Telemetry.MutationAuditLogStreamTests -class Hexalith.Memories.Server.Tests.Telemetry.TelemetryMetricsRecorderTests -class Hexalith.Memories.Server.Tests.Telemetry.MemoriesMetricsTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests -class Hexalith.Memories.Server.Tests.Authentication.TenantAuthorizationEndpointFilterTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointRateLimitTests` - passed, 133 total, 0 failed.
+- [x] `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build Hexalith.Memories.slnx --disable-build-servers -m:1 /nr:false` - passed.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: TestServer API workflow coverage added; browser UI not applicable.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
+- Test summary created with coverage metrics: pass.

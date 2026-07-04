@@ -61,7 +61,18 @@ deferred-register residuals that outlived completed epics.
 - `15.2-RV1` through `15.2-RV9` and Story 15.3 migration-marker residuals
   target Story 19.4 unless the story explicitly accepts or reassigns them.
 - Other active `open` or `carried-forward` entries are classified by Story 19.1
-  before implementation is scheduled.
+before implementation is scheduled.
+
+## Story 20.5 Deferred Retention Slice (2026-07-04)
+
+- **20.5-A41-ACCESS-TELEMETRY-RETENTION - carried-forward.** Audit finding A41 also requires a bounded retention/TTL policy for access telemetry. Story 20.5 implemented inbound request rate limiting and expanded mutating-operation audit emission, but retention is intentionally kept separate because access telemetry storage ownership and purge cadence need an operator-facing policy decision.
+
+  - ID: 20.5-A41-ACCESS-TELEMETRY-RETENTION
+  - Status: carried-forward
+  - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness
+  - Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation
+  - Re-open trigger: before A41 is marked fully closed, implement and document bounded access-telemetry retention or approve a named retention exception.
+  - Rationale: Inbound quotas and audit completeness are implemented in Story 20.5; access telemetry retention remains unaddressed and is carried forward to avoid falsely closing the A41 retention requirement. Owner: operations maintainer / security remediation owner.
 
 ## Story 19.1 Classification Sweep (2026-06-30)
 

@@ -23,6 +23,7 @@ public sealed class MemoriesMetricsTests
         MemoriesMeter.IngestionFailuresName.ShouldBe("memories.ingestion.failures");
         MemoriesMeter.SearchRequestsName.ShouldBe("memories.search.requests");
         MemoriesMeter.SearchDurationName.ShouldBe("memories.search.duration");
+        MemoriesMeter.RateLimitRejectionsName.ShouldBe("memories.rate_limit.rejections");
         MemoriesMeter.IndexSizeName.ShouldBe("memories.index.size");
         MemoriesMeter.PipelineQueueDepthName.ShouldBe("memories.pipeline.queue_depth");
         MemoriesMeter.NaturalLanguageDescriptionDurationName.ShouldBe("memories_natural_language_description_duration_ms");
@@ -46,6 +47,7 @@ public sealed class MemoriesMetricsTests
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.IngestionFailuresName].ShouldBe(new[] { "tenant_id", "error_code" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.SearchRequestsName].ShouldBe(new[] { "tenant_id", "axis" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.SearchDurationName].ShouldBe(new[] { "tenant_id", "axis" });
+        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.RateLimitRejectionsName].ShouldBe(new[] { "tenant_id", "error_code" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.IndexSizeName].ShouldBe(new[] { "tenant_id", "axis" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.PipelineQueueDepthName].ShouldBe(new[] { "tenant_id" });
         MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageDescriptionDurationName].ShouldBe(new[] { "tenant_id" });
