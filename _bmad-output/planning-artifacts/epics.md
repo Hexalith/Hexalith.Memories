@@ -413,6 +413,10 @@ Minimum build/test CI is part of the executable foundation path and is tracked a
 
 **Future web UI** (Epic 17, FrontComposer, Fluent UI implementation) remains out of MVP unless a later approved sprint change pulls it forward.
 
+**Post-MVP audit remediation:** Epics 20-26 reinforce already-approved requirements and production-readiness gaps. They do not reopen MVP thesis validation or expand active MVP readiness unless a story is explicitly sprint-selected as a blocker for production exposure.
+
+**FR71 scope interpretation:** Epic 26 covers the operational backup/restore and disaster-recovery slice of FR71. It does not pull the broader application-facing portable export feature into active MVP scope; full export remains Phase 2 unless explicitly sprint-selected.
+
 ### Pre-Implementation CI Preflight Gate (2026-05-19)
 
 Before any Epic 1.x product-capability story writes data, Story 0.4 must be complete. Story 0.4 is the minimum build/test CI preflight: pull-request build, restore, `dotnet build` with `TreatWarningsAsErrors=true`, and Docker-free Tier-1 unit/contract test execution.
@@ -592,6 +596,7 @@ Production deployment artifacts, backup/restore, integration-stub closure, cover
 **Lifecycle label:** Operational Readiness / Deploy & Test
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
 **FRs covered:** FR71
+**FR71 scope note:** This epic covers backup/restore and disaster-recovery readiness. Broader application-facing portable export remains Phase 2 unless explicitly sprint-selected.
 
 ---
 
@@ -756,7 +761,7 @@ So that all services share a consistent, versioned type system with serializatio
 
 **Given** the Contracts.V1 namespace exists
 **When** I inspect the memory unit model
-**Then** it contains all required fields: Id (ULID), TenantId, CaseId, Content, ContentHash (SHA-256), SourceUri, SourceType (enum: file, url, event, command, projection, discussion), IngestedBy, IngestedAt, LastUpdated, Status (enum: queued, extracting, embedding, indexing, indexed, failed), Metadata (Dictionary<string, MetadataField>), EmbeddingProvider, EmbeddingDimensions, Classification (optional), FailureDetails (optional)
+**Then** it contains all required fields: Id (opaque stable string; callers must not rely on ULID or time-sortable semantics), TenantId, CaseId, Content, ContentHash (SHA-256), SourceUri, SourceType (enum: file, url, event, command, projection, discussion), IngestedBy, IngestedAt, LastUpdated, Status (enum: queued, extracting, embedding, indexing, indexed, failed), Metadata (Dictionary<string, MetadataField>), EmbeddingProvider, EmbeddingDimensions, Classification (optional), FailureDetails (optional)
 **And** MetadataField contains: value, origin (human/ai), confidence (0.0-1.0)
 
 **Given** the graph edge model exists
@@ -3530,7 +3535,7 @@ Maintainers can give the first external consumer of Hexalith.Memories (the `Hexa
 
 **Release-timing note:** Story 18.4 is the only story with semantic-release sensitivity — it changes the public `Hexalith.Memories.Client.Rest` contract and must land as an additive `feat` (new optional idempotency token / new overload; experimental-marker removal is non-breaking) and be cut before the Parties project pins the stabilised SDK. The other six stories are documentation, drift-guard tests, or additive endpoints with no breaking-change risk.
 
-**Sequencing correction:** Stories 18.5 and 18.6 must not be treated as mutually dependent. Story 18.6 is the independent `MemoryUnitId` and source-URI dedup-record stability contract. Story 18.5 is the lookup endpoint that consumes that contract. If either story is reopened or reimplemented, complete or refresh Story 18.6's contract first, then apply Story 18.5's endpoint work. Preserve the existing numeric keys and completed story history for traceability.
+**Sequencing correction:** Stories 18.5 and 18.6 must not be treated as mutually dependent. Story 18.6 is the independent `MemoryUnitId` and source-URI dedup-record stability contract and is listed before Story 18.5 for execution order. Story 18.5 is the lookup endpoint that consumes that contract. Preserve the existing numeric keys and completed story history for traceability.
 
 ### Story 18.1: AppHost Project-Resolution Guard and Public-Surface Stability Contract
 
@@ -3640,31 +3645,6 @@ So that two near-simultaneous ingests of the same party/source cannot race into 
 
 **Parties-side follow-up:** Parties drops the `HXL001` suppression in `PartyMemoryIndexingService` and passes the idempotency token.
 
-### Story 18.5: Source-URI-Keyed Memory-Unit Lookup Endpoint
-
-**Origin:** MEM-5 (Parties pass 9-6 chunk A).
-
-As a downstream service resolving a graph start node from a source URI,
-I want an exact source-URI-keyed lookup that returns the canonical `MemoryUnitId`,
-So that graph mode no longer silently degrades to local mode when the canonical match falls outside a free-text search's top hits.
-
-**Acceptance Criteria:**
-
-**Given** there is no keyed lookup today and free-text/syntactic search may not surface the canonical unit in its top results,
-**When** a consumer needs the unit for a known source URI,
-**Then** a tenant- and case-scoped endpoint resolves a source URI to its canonical `MemoryUnitId` by exact key, returning a structured not-found result when no unit exists rather than a best-effort search hit.
-
-**Given** the Story 18.6 stability contract states the lifetime and failure modes of the source-URI dedup record `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}`,
-**When** the lookup is implemented or reworked,
-**Then** it reuses that existing mapping as the authoritative index where possible rather than introducing a parallel store
-**And** if the stability contract is missing or stale, Story 18.6 must be completed or refreshed before the endpoint is accepted.
-
-**Given** the endpoint is part of the public client contract,
-**When** it is added,
-**Then** it is exposed through `MemoriesClient` and the MCP/CLI surface as appropriate, tenant-isolated, additive to the JSON contract, and covered by success, not-found, and cross-tenant-rejection tests.
-
-**Parties-side follow-up:** Parties switches `MemoriesPartySearchService.ResolveGraphStartNodeIdAsync` from the free-text URN search to the keyed lookup.
-
 ### Story 18.6: MemoryUnitId Stability Contract
 
 **Origin:** MEM-6 (Parties pass 9-6 / 5th pass).
@@ -3690,6 +3670,31 @@ So that the mapping cannot accumulate ghost ids and exceed the Dapr state-store 
 **And** it states that consumers should resolve the current `MemoryUnitId` through the source-URI keyed lookup when that endpoint is available, or dedup by `sourceUri` when it is not.
 
 **Parties-side follow-up:** Parties revisits cap / TTL / dedup-by-`SourceUri` in `PartyMemoryUnitMappingStore` against the documented guarantee.
+
+### Story 18.5: Source-URI-Keyed Memory-Unit Lookup Endpoint
+
+**Origin:** MEM-5 (Parties pass 9-6 chunk A).
+
+As a downstream service resolving a graph start node from a source URI,
+I want an exact source-URI-keyed lookup that returns the canonical `MemoryUnitId`,
+So that graph mode no longer silently degrades to local mode when the canonical match falls outside a free-text search's top hits.
+
+**Acceptance Criteria:**
+
+**Given** there is no keyed lookup today and free-text/syntactic search may not surface the canonical unit in its top results,
+**When** a consumer needs the unit for a known source URI,
+**Then** a tenant- and case-scoped endpoint resolves a source URI to its canonical `MemoryUnitId` by exact key, returning a structured not-found result when no unit exists rather than a best-effort search hit.
+
+**Given** the Story 18.6 stability contract states the lifetime and failure modes of the source-URI dedup record `dedup:{tenantId}:{caseId}:{SHA256(sourceUri)}`,
+**When** the lookup is implemented or reworked,
+**Then** it reuses that existing mapping as the authoritative index where possible rather than introducing a parallel store
+**And** if the stability contract is missing or stale, Story 18.6 must be completed or refreshed before the endpoint is accepted.
+
+**Given** the endpoint is part of the public client contract,
+**When** it is added,
+**Then** it is exposed through `MemoriesClient` and the MCP/CLI surface as appropriate, tenant-isolated, additive to the JSON contract, and covered by success, not-found, and cross-tenant-rejection tests.
+
+**Parties-side follow-up:** Parties switches `MemoriesPartySearchService.ResolveGraphStartNodeIdAsync` from the free-text URN search to the keyed lookup.
 
 ### Story 18.7: MemoriesClient Mockability Stability Contract
 
@@ -3868,13 +3873,13 @@ So that embedding-provider expansion and live migration do not inherit stale ass
 
 Epics 20-26 are added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation), driven by the audit evidence file `research/architecture-audit-2026-07-04.md` (findings A1-A51). They are remediation epics: each story closes one or more audit findings and must preserve the strengths the audit recorded (health-check depth, contract serialization sweep, Testcontainers/Aspire end-state fixtures, ingestion compensation skeleton, disciplined secrets handling) rather than regress them. No completed epic is reopened. Two stories are decision-first (21.1 consistency model, 24.3 physical isolation) and gate their epic's implementation until the architecture decision is ratified.
 
-### Epic 20: API Security & Tenant Authorization
+## Epic 20: API Security & Tenant Authorization
 Operator and downstream consumers get an authenticated, tenant-authorized server boundary: every endpoint requires an authenticated principal, tenant access is verified against principal claims (not caller-supplied parameters), the audit identity is trustworthy, MCP cannot run on a development signing key in production, inbound load is bounded per tenant, and audit coverage spans all mutating operations.
 **Lifecycle label:** Operational Readiness / Security Hardening
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A1, A2, A6, A20, A31, A41
 **FRs reinforced:** FR44, FR67 · **NFRs reinforced:** NFR8, NFR11
 
-#### Story 20.1: Server Authentication Foundation
+### Story 20.1: Server Authentication Foundation
 
 As an operator,
 I want every server endpoint to require an authenticated principal,
@@ -3890,7 +3895,7 @@ So that no network caller can read, mutate, or destroy tenant data anonymously.
 **When** this story is complete,
 **Then** the deferred-work entry is resolved with evidence and the comment is removed or updated. Closes A1.
 
-#### Story 20.2: Tenant Authorization Filter & Principal-Derived Audit Identity
+### Story 20.2: Tenant Authorization Filter & Principal-Derived Audit Identity
 
 As an operator,
 I want tenant access enforced from authenticated principal claims and the audit user derived from the principal,
@@ -3906,7 +3911,7 @@ So that cross-tenant access is impossible and the FR67 audit trail is non-forgea
 **When** audit events are emitted after this story,
 **Then** the user identity comes from the authenticated principal and the spoofable header is ignored. Closes A2.
 
-#### Story 20.3: Tenant-Scope Workflow & Batch Status Endpoints
+### Story 20.3: Tenant-Scope Workflow & Batch Status Endpoints
 
 As an operator,
 I want workflow and batch status endpoints scoped to the caller's tenant,
@@ -3918,7 +3923,7 @@ So that a leaked or guessed instance id cannot expose another tenant's document 
 **When** a status is requested,
 **Then** the endpoint verifies the stored state's tenant against the authorized tenant and returns a projected status DTO, never the raw `WorkflowState`. Closes A6.
 
-#### Story 20.4: MCP Production Signing-Key Hardening
+### Story 20.4: MCP Production Signing-Key Hardening
 
 As an operator,
 I want the MCP server to refuse a development symmetric signing key in production,
@@ -3930,7 +3935,7 @@ So that the corpus cannot be reached with a static shared secret.
 **When** an HS256 `SigningKey` is configured under `IHostEnvironment.IsProduction()`,
 **Then** startup fails with a clear message and `RequireHttpsMetadata` is enforced on the Authority branch. Closes A20.
 
-#### Story 20.5: Inbound Rate Limiting, Quotas & Audit Completeness
+### Story 20.5: Inbound Rate Limiting, Quotas & Audit Completeness
 
 As an operator,
 I want per-tenant inbound rate limiting and complete audit emission,
@@ -3946,7 +3951,7 @@ So that one tenant cannot saturate the service and every mutating operation is a
 **When** tenant create/delete/status/embedding-config, case-member add/remove, annotation, and deletion operations run,
 **Then** each emits an audit event. Closes A41.
 
-#### Story 20.6: RediSearch Query-Injection Hardening
+### Story 20.6: RediSearch Query-Injection Hardening
 
 As a developer,
 I want one shared, complete RediSearch escaper on all axes,
@@ -3958,13 +3963,13 @@ So that user input cannot break query syntax or cause query-shaped denial of ser
 **When** user-controlled text (including `subject`) flows into a query,
 **Then** a single shared escaper covering the full dialect-2 special set is applied and adversarial inputs return safe empty/typed results rather than 503. Closes A31.
 
-### Epic 21: Data Integrity, Consistency & Migration Safety
+## Epic 21: Data Integrity, Consistency & Migration Safety
 Maintainers get a persistence layer whose multi-backend writes cannot silently diverge, whose key namespaces do not collide, whose deletions are complete, and whose embedding-vector migration cannot strand a tenant. This epic ratifies the consistency model, then closes the divergence, namespace, deletion, routing, dedup, registry, and migration-safety gaps.
 **Lifecycle label:** Operational Readiness / Data Integrity
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A3, A4, A5, A16, A17, A22, A27, A28, A44, A47
 **FRs reinforced:** FR13, FR39 · **NFRs reinforced:** NFR16, NFR17, NFR18, NFR19
 
-#### Story 21.1: Consistency Model Decision (Decision-First)
+### Story 21.1: Consistency Model Decision (Decision-First)
 
 As a solution architect,
 I want a ratified consistency model for `Case`, `MemoryUnit`, and `Tenant`,
@@ -3980,7 +3985,7 @@ So that multi-backend writes stop diverging without a rebuild path.
 **When** the decision is pending,
 **Then** no production code in Epic 21 dependent on the model begins. Frames A3.
 
-#### Story 21.2: Transactional Multi-Backend Mutation
+### Story 21.2: Transactional Multi-Backend Mutation
 
 As a maintainer,
 I want case/memory-unit mutations to be atomic or compensated,
@@ -3992,7 +3997,7 @@ So that a partial backend failure cannot leave permanent cross-store divergence 
 **When** a case, annotation, or memory-unit mutation writes to Redis, FalkorDB, and the activity stream,
 **Then** either all writes commit or compensation restores consistency, mirroring `TenantDeletionWorkflow`, with workflow/compensation tests. Closes A3.
 
-#### Story 21.3: Natural-Language Vector Namespace Separation
+### Story 21.3: Natural-Language Vector Namespace Separation
 
 As a maintainer,
 I want NL vectors on a disjoint key namespace,
@@ -4004,7 +4009,7 @@ So that consistency verification, repair, and raw KNN search stop being corrupte
 **When** NL hashes are stored and a tenant is verified/repaired,
 **Then** NL keys live under a disjoint prefix, the raw index is rebuilt with a non-overlapping prefix, existing data is migrated, and a regression test enumerating a tenant with NL hashes shows zero phantom discrepancies and no repair-workflow crash. Closes A4.
 
-#### Story 21.4: Key-Schema Single Source of Truth
+### Story 21.4: Key-Schema Single Source of Truth
 
 As a maintainer,
 I want all Redis key/index names built through `IndexSchemaDefinitions`,
@@ -4016,7 +4021,7 @@ So that a schema rename cannot silently orphan search, consistency, or migration
 **When** this story completes,
 **Then** `Build{Syntactic,Semantic,NlSemantic}Key` helpers exist, all sites use them, and a CI grep guard fails on raw `:mu:`/`:vec:` literals. Closes A44.
 
-#### Story 21.5: Deletion Completeness
+### Story 21.5: Deletion Completeness
 
 As an operator,
 I want case and tenant deletion to remove every associated key,
@@ -4028,7 +4033,7 @@ So that a re-created case/tenant cannot inherit stale routing or a write-blockin
 **When** a case or tenant is deleted,
 **Then** the aggregate-case-map entry is `HDEL`ed with cache invalidation, and tenant deletion also sweeps `eventstore:*`, `embedding-migration:*`, and a defensive `mu:*`/`vec:*`, verified by end-state tests. Closes A16, A17.
 
-#### Story 21.6: Event Routing for Unknown/Unavailable Tenants
+### Story 21.6: Event Routing for Unknown/Unavailable Tenants
 
 As a maintainer,
 I want events for unknown or unavailable tenants to be retried or dead-lettered,
@@ -4040,7 +4045,7 @@ So that rollout ordering or transient tenant states cannot silently blackhole tr
 **When** such an event arrives,
 **Then** the handler returns 500 (retry) or routes to a dead-letter topic, with duplicate/late-event safety preserved. Closes A27.
 
-#### Story 21.7: Dedup Race & Duplicate-Instance Handling
+### Story 21.7: Dedup Race & Duplicate-Instance Handling
 
 As a maintainer,
 I want the dedup save to be race-safe and duplicate workflow instances handled,
@@ -4052,7 +4057,7 @@ So that concurrent ingests cannot create permanent duplicate memory units or poi
 **When** two ingests of the same `(tenant,case,sourceUri)` race, or a duplicate instance is scheduled,
 **Then** `SaveDedupKeyActivity` uses `When.NotExists` and compensates the loser, and duplicate-instance scheduling returns `Duplicate()`. Closes A28.
 
-#### Story 21.8: Tenant Registry CAS & Rollback Integrity
+### Story 21.8: Tenant Registry CAS & Rollback Integrity
 
 As a maintainer,
 I want tenant status updates and registry rollback to be race-safe,
@@ -4064,7 +4069,7 @@ So that a deletion claim cannot be clobbered and a failed add cannot leave an in
 **When** concurrent status updates occur,
 **Then** ETag CAS with retry is used and entry+index are saved transactionally so rollback cannot orphan a tenant. Closes A47.
 
-#### Story 21.9: Blue/Green Embedding Migration
+### Story 21.9: Blue/Green Embedding Migration
 
 As an operator,
 I want embedding-vector migration to be non-destructive with a real rollback and a locked marker,
@@ -4076,7 +4081,7 @@ So that a mid-run failure cannot strand a tenant with broken search and blocked 
 **When** a migration runs and fails partway,
 **Then** new vectors are written under a staging prefix/index, cutover is atomic, the previous index is retained for real rollback, and the marker uses `SET NX` ownership + TTL/heartbeat with an `--abort` path. Closes A5.
 
-#### Story 21.10: Migration Subsystem Test Coverage
+### Story 21.10: Migration Subsystem Test Coverage
 
 As a test architect,
 I want the migration subsystem covered by unit and real-vector integration tests,
@@ -4088,13 +4093,13 @@ So that the riskiest operation is validated before it touches live tenant data.
 **When** this story completes,
 **Then** store/marker/generator unit tests and a 768→1024-dim real-vector integration migration exist, asserting `FT.INFO` dimension, rewritten keys, marker end-state, and the rollback-unavailable/`--abort` paths. Closes A22.
 
-### Epic 22: RAG Retrieval Quality & Correctness
+## Epic 22: RAG Retrieval Quality & Correctness
 Developers and agents get retrieval that paginates correctly, bounds graph work, fuses axes on calibrated scores, carries case attribution, respects case scope on every path node, does not lose recall to post-filters, and exposes the built-but-stranded NL axis and reranking seams.
 **Lifecycle label:** Product Capability / Retrieval Quality
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A8, A9, A29, A30, A48, A49, A50
 **FRs reinforced:** FR22, FR34 · **NFRs reinforced:** NFR4, NFR24, NFR25
 
-#### Story 22.1: Semantic-Axis Pagination
+### Story 22.1: Semantic-Axis Pagination
 
 As a developer,
 I want `axis=semantic` to honor `Offset`,
@@ -4106,7 +4111,7 @@ So that paginating semantic search returns subsequent pages (FR22) instead of th
 **When** a semantic search is requested with a non-zero offset,
 **Then** it fetches `offset+maxResults` neighbors and skips after enrichment, or rejects non-zero offsets with a documented error, with a pagination test. Closes A8.
 
-#### Story 22.2: Bounded, Cancellable Graph Traversal
+### Story 22.2: Bounded, Cancellable Graph Traversal
 
 As a developer,
 I want graph traversals bounded and server-side cancellable,
@@ -4118,7 +4123,7 @@ So that a dense graph cannot exhaust FalkorDB CPU after the client gives up (NFR
 **When** a traversal runs,
 **Then** it passes the server-side `timeout`, applies a `LIMIT`, and restricts `BuildTraverseFromNode` to semantic edge types. Closes A9.
 
-#### Story 22.3: Graph-Scoped & Hybrid Pagination Correctness
+### Story 22.3: Graph-Scoped & Hybrid Pagination Correctness
 
 As a developer,
 I want scoped and hybrid searches to paginate honestly,
@@ -4130,7 +4135,7 @@ So that clients can page results and deep results are reachable or explicitly ca
 **When** scoped/hybrid searches paginate,
 **Then** scope is pushed into the query (`INKEYS`/TAG pre-filter), `TotalCount` reflects real totals, and deep-pagination beyond the cap returns an explicit error. Closes A29.
 
-#### Story 22.4: Fusion Case Attribution, Score Calibration & Pinned Scorer
+### Story 22.4: Fusion Case Attribution, Score Calibration & Pinned Scorer
 
 As a developer,
 I want hybrid fusion to carry case attribution and fuse calibrated scores on a pinned scorer,
@@ -4142,7 +4147,7 @@ So that hybrid results are not silently degraded versus single-axis (FR34, NFR24
 **When** a hybrid search runs,
 **Then** `CaseId` is carried through fusion, `SCORER BM25` is pinned, and fusion uses a scale-free method (RRF or per-axis min-max), with deterministic-score tests. Closes A30.
 
-#### Story 22.5: Case-Scoped Traversal Path Integrity
+### Story 22.5: Case-Scoped Traversal Path Integrity
 
 As a developer,
 I want case-scoped traversal to constrain every path node to the case,
@@ -4154,7 +4159,7 @@ So that in-case results are not reachable only via other cases and hop scores do
 **When** a case-scoped graph search runs,
 **Then** the all-path-nodes case predicate is applied, verified by a cross-case negative test. Closes A48.
 
-#### Story 22.6: Post-Filter Recall
+### Story 22.6: Post-Filter Recall
 
 As a developer,
 I want metadata/source-type filters not to shrink results below available matches,
@@ -4166,7 +4171,7 @@ So that a filtered semantic search does not return zero while matches exist beyo
 **When** a filtered semantic/graph-scoped search runs,
 **Then** the query over-fetches when a post-filter is present or applies the filter as a KNN pre-filter, with a recall test. Closes A49.
 
-#### Story 22.7: Retrieval Feature Completion
+### Story 22.7: Retrieval Feature Completion
 
 As a developer,
 I want the built-but-stranded NL axis, weight tuning, highlighting, and a reranker seam,
@@ -4178,109 +4183,13 @@ So that half-built retrieval features are usable.
 **When** this story completes,
 **Then** `axis=nl` is wired into hybrid, fusion weights are tunable per query/tenant, RediSearch highlighting is used, and an `IResultFuser` reranker seam exists. Closes A50.
 
-### Epic 23: Ingestion Pipeline Scalability & Resilience
+## Epic 23: Ingestion Pipeline Scalability & Resilience
 Developers get ingestion that chunks documents, keeps workflow history small, survives provider rate limits, can actually re-ingest failed non-URL content, admits work without an actor bottleneck, batches directories efficiently, and isolates provider specifics behind a strategy.
 **Lifecycle label:** Product Capability / Ingestion Scalability
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A11, A12, A13, A14, A15, A33, A34, A35, A51
 **FRs reinforced:** FR6, FR12 · **NFRs reinforced:** NFR5, NFR22
 
-#### Story 23.1: Content Chunking & Batch Embedding
-
-As a developer,
-I want documents chunked and embedded in batches,
-So that long documents embed reliably and retrieval granularity supports RAG relevance.
-
-**Acceptance Criteria:**
-
-**Given** one embedding is generated per whole (≤1MB) document with no token handling (`IngestionWorkflow.cs:156-159`),
-**When** a document is ingested,
-**Then** a token-aware splitter produces N vectors per unit under `{t}:vec:{id}:{seq}` and the provider batch API is used, with chunk-boundary and truncation tests. Closes A12. (Depends on 23.9.)
-
-#### Story 23.2: Claim-Check Workflow Payloads
-
-As a maintainer,
-I want large content/vectors kept out of workflow history,
-So that history size and replay cost stay bounded (NFR5).
-
-**Acceptance Criteria:**
-
-**Given** content and vectors are serialized into workflow history 6-8× per document (`IngestionWorkflow.cs:29-292`),
-**When** an ingestion runs,
-**Then** the producing activity persists the blob and passes `{id, hash}` between activities, with slimmed per-activity input records. Closes A11.
-
-#### Story 23.3: Retry-After-Aware 429 Orchestration
-
-As a developer,
-I want provider 429s handled by a durable Retry-After timer,
-So that a transient rate limit does not become a permanent failed unit (NFR22).
-
-**Acceptance Criteria:**
-
-**Given** the generic retry budget (~16s) is shorter than the closed rate-limit window (≥90s) (`ActivityRetryPolicy.cs:12-21`, `RateLimiterLogic.cs:88-93`),
-**When** the embedding provider returns 429,
-**Then** the workflow performs a durable `CreateTimer(retryAfter)` before retrying and the window-open math is corrected, with a rate-limit-recovery integration test. Closes A13.
-
-#### Story 23.4: Non-URL Re-Ingestion
-
-As an operator,
-I want re-ingestion of failed non-URL units to work or fail clearly,
-So that FR12 retries do not silently loop back to failed.
-
-**Acceptance Criteria:**
-
-**Given** `ReIngestionCoordinator.cs:139-155` rebuilds input with `ContentBytes = null`, rejected for non-URL sources,
-**When** an operator re-ingests a failed File/Event unit,
-**Then** a persisted content pointer is used, or the operation is rejected with an actionable error rather than scheduled to fail. Closes A14.
-
-#### Story 23.5: Rate-Limiter Admission Simplification
-
-As a maintainer,
-I want embedding admission control to cost one round trip,
-So that the limiter is not the throughput ceiling (NFR5).
-
-**Acceptance Criteria:**
-
-**Given** three serialized actor round trips per embedding call (`GenerateEmbeddingActivity.cs:72-104`),
-**When** an embedding is admitted,
-**Then** a single `TryConsume(ceiling)` method or a Redis Lua token bucket is used and tenant config is cached, with a concurrency test. Closes A15.
-
-#### Story 23.6: Directory-Batch Scalability
-
-As a developer,
-I want directory batches scheduled efficiently with an extension allowlist,
-So that large batches do not stall on O(n²) state writes or waste budget on unsupported files.
-
-**Acceptance Criteria:**
-
-**Given** per-file full-batch state rewrites and denylist-only filtering (`DirectoryIngestionService.cs:186-260`),
-**When** a directory of N files is ingested,
-**Then** batch state is checkpointed (not rewritten per file), scheduling is bounded-parallel, and `SupportedExtensions` is applied as an allowlist. Closes A33.
-
-#### Story 23.7: Index-Provisioning Ownership
-
-As a maintainer,
-I want index existence verified once per tenant, not per document,
-So that ingestion does not block threads or spam warnings.
-
-**Acceptance Criteria:**
-
-**Given** each indexed document attempts `FT.CREATE` with exception-as-control-flow and `Thread.Sleep` (`IndexSyntacticActivity.cs:55-66,205`),
-**When** documents are indexed,
-**Then** index verification is memoized per tenant per process, `Thread.Sleep` is replaced with `Task.Delay`, and the per-ingest warning is removed. Closes A34.
-
-#### Story 23.8: Workflow Config Determinism
-
-As a maintainer,
-I want workflow orchestration to read config from its input, not mutable statics,
-So that a config change mid-flight cannot break replay determinism.
-
-**Acceptance Criteria:**
-
-**Given** the orchestrator reads process-global statics (`IngestionWorkflow.cs:41,261`),
-**When** an in-flight instance replays after a config change,
-**Then** retry-policy/NL options are captured into the workflow input at scheduling time and no mutable static is read in orchestrator code, with a replay-determinism test. Closes A35.
-
-#### Story 23.9: EmbeddingClient Provider Strategy
+### Story 23.9: EmbeddingClient Provider Strategy
 
 As a maintainer,
 I want provider specifics behind an `IEmbeddingProvider` strategy with a batch API,
@@ -4292,13 +4201,109 @@ So that adding a provider or chunking does not touch transport/auth/format at on
 **When** this story completes,
 **Then** an `IEmbeddingProvider` strategy (BuildRequest/ParseResponse/Authenticate) with a shared transport/auth-retry decorator and `GenerateBatchAsync` exists, provider knowledge is out of the workflow, and provider tests cover both providers. Closes A51.
 
-### Epic 24: Observability & Performance Hardening
+### Story 23.1: Content Chunking & Batch Embedding
+
+As a developer,
+I want documents chunked and embedded in batches,
+So that long documents embed reliably and retrieval granularity supports RAG relevance.
+
+**Acceptance Criteria:**
+
+**Given** one embedding is generated per whole (≤1MB) document with no token handling (`IngestionWorkflow.cs:156-159`),
+**When** a document is ingested,
+**Then** a token-aware splitter produces N vectors per unit under `{t}:vec:{id}:{seq}` and the provider batch API from Story 23.9 is used, with chunk-boundary and truncation tests. Closes A12.
+
+### Story 23.2: Claim-Check Workflow Payloads
+
+As a maintainer,
+I want large content/vectors kept out of workflow history,
+So that history size and replay cost stay bounded (NFR5).
+
+**Acceptance Criteria:**
+
+**Given** content and vectors are serialized into workflow history 6-8× per document (`IngestionWorkflow.cs:29-292`),
+**When** an ingestion runs,
+**Then** the producing activity persists the blob and passes `{id, hash}` between activities, with slimmed per-activity input records. Closes A11.
+
+### Story 23.3: Retry-After-Aware 429 Orchestration
+
+As a developer,
+I want provider 429s handled by a durable Retry-After timer,
+So that a transient rate limit does not become a permanent failed unit (NFR22).
+
+**Acceptance Criteria:**
+
+**Given** the generic retry budget (~16s) is shorter than the closed rate-limit window (≥90s) (`ActivityRetryPolicy.cs:12-21`, `RateLimiterLogic.cs:88-93`),
+**When** the embedding provider returns 429,
+**Then** the workflow performs a durable `CreateTimer(retryAfter)` before retrying and the window-open math is corrected, with a rate-limit-recovery integration test. Closes A13.
+
+### Story 23.4: Non-URL Re-Ingestion
+
+As an operator,
+I want re-ingestion of failed non-URL units to work or fail clearly,
+So that FR12 retries do not silently loop back to failed.
+
+**Acceptance Criteria:**
+
+**Given** `ReIngestionCoordinator.cs:139-155` rebuilds input with `ContentBytes = null`, rejected for non-URL sources,
+**When** an operator re-ingests a failed File/Event unit,
+**Then** a persisted content pointer is used, or the operation is rejected with an actionable error rather than scheduled to fail. Closes A14.
+
+### Story 23.5: Rate-Limiter Admission Simplification
+
+As a maintainer,
+I want embedding admission control to cost one round trip,
+So that the limiter is not the throughput ceiling (NFR5).
+
+**Acceptance Criteria:**
+
+**Given** three serialized actor round trips per embedding call (`GenerateEmbeddingActivity.cs:72-104`),
+**When** an embedding is admitted,
+**Then** a single `TryConsume(ceiling)` method or a Redis Lua token bucket is used and tenant config is cached, with a concurrency test. Closes A15.
+
+### Story 23.6: Directory-Batch Scalability
+
+As a developer,
+I want directory batches scheduled efficiently with an extension allowlist,
+So that large batches do not stall on O(n²) state writes or waste budget on unsupported files.
+
+**Acceptance Criteria:**
+
+**Given** per-file full-batch state rewrites and denylist-only filtering (`DirectoryIngestionService.cs:186-260`),
+**When** a directory of N files is ingested,
+**Then** batch state is checkpointed (not rewritten per file), scheduling is bounded-parallel, and `SupportedExtensions` is applied as an allowlist. Closes A33.
+
+### Story 23.7: Index-Provisioning Ownership
+
+As a maintainer,
+I want index existence verified once per tenant, not per document,
+So that ingestion does not block threads or spam warnings.
+
+**Acceptance Criteria:**
+
+**Given** each indexed document attempts `FT.CREATE` with exception-as-control-flow and `Thread.Sleep` (`IndexSyntacticActivity.cs:55-66,205`),
+**When** documents are indexed,
+**Then** index verification is memoized per tenant per process, `Thread.Sleep` is replaced with `Task.Delay`, and the per-ingest warning is removed. Closes A34.
+
+### Story 23.8: Workflow Config Determinism
+
+As a maintainer,
+I want workflow orchestration to read config from its input, not mutable statics,
+So that a config change mid-flight cannot break replay determinism.
+
+**Acceptance Criteria:**
+
+**Given** the orchestrator reads process-global statics (`IngestionWorkflow.cs:41,261`),
+**When** an in-flight instance replays after a config change,
+**Then** retry-policy/NL options are captured into the workflow input at scheduling time and no mutable static is read in orchestrator code, with a replay-determinism test. Closes A35.
+
+## Epic 24: Observability & Performance Hardening
 Operators can trace ingestion end-to-end, the read path stops paying avoidable round trips, tenant isolation moves toward physical enforcement with a scalable verifier, metrics land in one naming family with a committed dashboard, and hot-path write amplification is removed.
 **Lifecycle label:** Operational Readiness / Observability & Performance
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A19, A26, A36, A46
 **NFRs reinforced:** NFR8, NFR12, NFR28
 
-#### Story 24.1: Trace Propagation Across the Workflow Boundary
+### Story 24.1: Trace Propagation Across the Workflow Boundary
 
 As an operator,
 I want traces to follow an ingest request through workflow activities,
@@ -4310,7 +4315,7 @@ So that the async pipeline is observable (NFR28).
 **When** an ingest request runs,
 **Then** `traceparent` is serialized into the workflow input, activities emit linked spans via a base class, and `Microsoft.DurableTask` is added as a trace source, verified by an end-to-end trace test. Closes A19.
 
-#### Story 24.2: Read-Path Caching & Tenant-List Bounding
+### Story 24.2: Read-Path Caching & Tenant-List Bounding
 
 As a developer,
 I want tenant status/config/stats cached and the tenant list bounded,
@@ -4322,7 +4327,7 @@ So that search does not pay 4-6 auxiliary round trips and the dashboard does not
 **When** searches and tenant-list refreshes run,
 **Then** a short-TTL cache invalidated on writes fronts those reads and the tenant list is paged with bounded concurrency. Closes A26.
 
-#### Story 24.3: Physical Tenant Isolation & Verifier Scaling (Decision-First)
+### Story 24.3: Physical Tenant Isolation & Verifier Scaling (Decision-First)
 
 As a solution architect,
 I want a ratified physical tenant-isolation strategy and a scalable verifier,
@@ -4334,7 +4339,7 @@ So that isolation is enforced structurally (NFR8), not just detected pairwise.
 **When** this story completes,
 **Then** the team ratifies a physical strategy (per-tenant Redis ACL user, or hash-tag/DB separation), the verifier uses cursor/aggregate checks, the runtime self-test is deleted, and `architecture.md` is updated. Frames A36; decision-first before enforcement implementation.
 
-#### Story 24.4: Metric Naming & Committed Dashboards
+### Story 24.4: Metric Naming & Committed Dashboards
 
 As an operator,
 I want one metric-naming family and a committed dashboard,
@@ -4346,7 +4351,7 @@ So that emitted metrics are actually consumable.
 **When** this story completes,
 **Then** instruments use one naming family and at least one Grafana/Aspire dashboard is committed alongside `MetricTagKeyPolicy`. Closes A19 (metrics portion).
 
-#### Story 24.5: Hot-Path Write-Amplification Cleanup
+### Story 24.5: Hot-Path Write-Amplification Cleanup
 
 As a maintainer,
 I want read paths and background loops to stop over-writing state,
@@ -4358,13 +4363,13 @@ So that latency and memory stay bounded under load.
 **When** these paths run,
 **Then** reads return cached values, streams use `XADD MAXLEN` + a counter, the replay gate uses an app-owned in-flight set, and the NL queue is id-keyed. Closes A46.
 
-### Epic 25: Architecture Factorization & Code Health
+## Epic 25: Architecture Factorization & Code Health
 Maintainers get a thin composition root, centralized error/telemetry handling, a shared route table, a separated contract/persistence boundary, a consolidated CLI/MCP, a UX-conformant evidence cockpit, and a clean project topology — without changing product behavior.
 **Lifecycle label:** Operational Readiness / Code Health
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A7, A21, A32, A37, A38, A39, A40, A43, A45
 **NFRs reinforced:** NFR15
 
-#### Story 25.1: Program.cs Decomposition
+### Story 25.1: Program.cs Decomposition
 
 As a maintainer,
 I want endpoints extracted into per-resource classes,
@@ -4376,7 +4381,7 @@ So that the 3,836-line composition root becomes testable and merge-safe.
 **When** this story completes,
 **Then** endpoints live in `{Ingestion,TenantLifecycle,Cases,Search,Graph,Consistency,Export}Endpoints` classes on route groups, the composition root is ≤ ~150 lines, and no product behavior changes (existing integration suite green). Closes A7.
 
-#### Story 25.2: Error & Telemetry Centralization
+### Story 25.2: Error & Telemetry Centralization
 
 As a maintainer,
 I want error envelopes, tenant validation, and telemetry scopes centralized,
@@ -4388,7 +4393,7 @@ So that duplicated idioms stop drifting and unhandled exceptions still return th
 **When** this story completes,
 **Then** an `ErrorResults` factory, tenant-id/tenant-active endpoint filters, an `EndpointTelemetryFilter`, and one `IExceptionHandler` exist and are used. Closes A32.
 
-#### Story 25.3: Shared Route Table & Client Consolidation
+### Story 25.3: Shared Route Table & Client Consolidation
 
 As a maintainer,
 I want routes defined once and the REST client de-duplicated,
@@ -4400,7 +4405,7 @@ So that a route rename cannot silently break consumers.
 **When** this story completes,
 **Then** a `MemoriesRoutes` table in Contracts is consumed by server and client, a single generic `SendAsync<T>` backs client methods, and `TraverseAsync` parameter order is corrected while `Experimental`. Closes A21.
 
-#### Story 25.4: Contract/Persistence Separation & Route Versioning
+### Story 25.4: Contract/Persistence Separation & Route Versioning
 
 As a maintainer,
 I want contracts free of backend names, versioned routes, and persistence DTOs split out,
@@ -4412,7 +4417,7 @@ So that a vector-store swap (NFR15) or a V2 does not break URLs or stored state.
 **When** this story completes,
 **Then** contracts are axis-named, routes carry `/api/v1/`, and persistence DTOs are split out of the public Contracts package, preserving wire-shape compatibility for existing consumers. Closes A37.
 
-#### Story 25.5: CLI Consolidation
+### Story 25.5: CLI Consolidation
 
 As a maintainer,
 I want the CLI on `Client.Rest` with a generic formatter,
@@ -4424,7 +4429,7 @@ So that the CLI stops re-implementing HTTP and formatter ceremony.
 **When** this story completes,
 **Then** CLI commands consume `MemoriesClient` and a generic `JsonEnvelopeFormatter<T>` replaces the clones, with output-format and exit-code tests preserved. Closes A38.
 
-#### Story 25.6: MCP Tool Executor
+### Story 25.6: MCP Tool Executor
 
 As a maintainer,
 I want MCP tools to share a validate/authorize/catch executor,
@@ -4436,7 +4441,7 @@ So that a new tool cannot silently lose tenant scoping.
 **When** this story completes,
 **Then** an `McpToolExecutor.RunAsync(...)` owns validation, single-source tenant authorization, and error mapping, with tool-contract tests preserved. Closes A39.
 
-#### Story 25.7: Evidence Cockpit UX Conformance
+### Story 25.7: Evidence Cockpit UX Conformance
 
 As a future web user,
 I want the evidence cockpit to follow FrontComposer/Fluent V5 rules and be localized,
@@ -4448,7 +4453,7 @@ So that the flagship trust surface conforms to the mandated UX rules.
 **When** this story completes,
 **Then** sibling sections use `FluentAccordion`/`FluentLabel`, strings route through `EvidenceResourceKeys`, and a shared `EvidencePacketMapper.Unavailable(...)` is consumed, with bUnit conformance tests. Closes A40.
 
-#### Story 25.8: Dead-Code & Topology Cleanup
+### Story 25.8: Dead-Code & Topology Cleanup
 
 As a maintainer,
 I want dead code removed and project boundaries resolved,
@@ -4460,13 +4465,13 @@ So that the topology matches its stated intent.
 **When** this story completes,
 **Then** dead code is deleted and each project boundary is either fixed, hosted, or documented as intentional. Closes A43, A45.
 
-### Epic 26: Test, Deployment & Operational Readiness
+## Epic 26: Test, Deployment & Operational Readiness
 Operators can deploy to production, back up and restore data, and rely on a coverage gate and real failure-mode tests; the empty integration stubs are closed and the operational runbook set is complete.
 **Lifecycle label:** Operational Readiness / Deploy & Test
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
 **NFRs reinforced:** NFR7, NFR14, NFR16
 
-#### Story 26.1: Production Deployment Artifacts
+### Story 26.1: Production Deployment Artifacts
 
 As an operator,
 I want container images and deployment manifests with real config,
@@ -4478,7 +4483,7 @@ So that the system can be deployed to production from this repo.
 **When** this story completes,
 **Then** SDK container publishing is enabled per Hexalith convention and a K8s overlay/Helm with resource limits and real Dapr component values (no echo LLM, no empty passwords) is committed and validated. Closes A24.
 
-#### Story 26.2: Backup & Restore
+### Story 26.2: Backup & Restore
 
 As an operator,
 I want a restore counterpart to export plus a fidelity test,
@@ -4490,7 +4495,7 @@ So that data loss is recoverable by procedure (NFR16).
 **When** this story completes,
 **Then** an import/restore endpoint consumes the export format, an integration test proves export→import fidelity (every Redis hash and FalkorDB edge), and backup/restore + DR runbooks exist. Closes A25 (feature portion).
 
-#### Story 26.3: Integration Stub Closure
+### Story 26.3: Integration Stub Closure
 
 As a test architect,
 I want the empty integration stubs implemented or explicitly skipped,
@@ -4502,7 +4507,7 @@ So that failure-mode coverage is real, not apparent.
 **When** this story completes,
 **Then** retry, rate-limit, and degradation scenarios assert state-store end-state (or are marked with an explicit `Skip=` reason), and none silently pass without asserting. Closes A23.
 
-#### Story 26.4: Coverage Gating & Benchmark Lane
+### Story 26.4: Coverage Gating & Benchmark Lane
 
 As a test architect,
 I want a coverage gate and a benchmark CI lane,
@@ -4514,7 +4519,7 @@ So that regressions in the remediation epics are caught.
 **When** this story completes,
 **Then** coverage collection + a threshold gate exist in CI and the benchmarks run in a nightly lane. Closes A42.
 
-#### Story 26.5: Operational Runbook Set
+### Story 26.5: Operational Runbook Set
 
 As an operator,
 I want the missing operational runbooks,
