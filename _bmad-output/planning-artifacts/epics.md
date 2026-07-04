@@ -4,8 +4,12 @@ inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
   - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/planning-artifacts/ux-design-specification.md'
+  - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-01.md'
+changeControlContext:
+  approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
+  note: 'The latest frontmatter inputs are not the full change-control history. Approved sprint-change proposals are discovered through the glob unless a canonical index replaces it.'
 ---
 
 # Hexalith.Memories - Epic Breakdown
@@ -404,6 +408,8 @@ Minimum build/test CI is part of the executable foundation path and is tracked a
 
 **Active MVP scope:** Epic 0 through Epic 8 are the only epics in active MVP implementation readiness. Any work outside this set must be explicitly sprint-selected and must not be pulled into MVP completion accounting by accident.
 
+**Machine-readable accounting:** `_bmad-output/implementation-artifacts/sprint-status.yaml` owns readiness metadata under `readiness_accounting`. Readiness reports and story tooling must use that metadata rather than inferring MVP readiness from story status, numeric ordering, or FR coverage alone.
+
 - Epic 0: Foundation path, including scaffold, tenant provisioning, minimal case bootstrap, and validation guard
 - Epic 1-8: MVP thesis, tenant isolation, CLI developer experience, and operations gates
 
@@ -426,6 +432,8 @@ If Story 0.4 is not complete, do not start Story 1.2 onward. Either complete Sto
 ### Story Key Policy
 
 New story keys must use numeric `Epic.Story` format. Alphabetic suffixes are allowed only as historical aliases during migration and must not be introduced for new work unless story tooling explicitly supports them and a sprint change approves the exception.
+
+When completed history or external traceability prevents renumbering, execution order must be declared in `_bmad-output/implementation-artifacts/sprint-status.yaml` under `story_execution_order`. Story tooling must honor `story_execution_order` before numeric key order. Do not create a story file for a story whose declared prerequisite in that execution-order list is incomplete unless a sprint change explicitly approves the exception.
 
 **Story-key alias & status map** (reconciles `epics.md` keys with `_bmad-output/implementation-artifacts/*` file keys and reserved/optional slots):
 
@@ -512,6 +520,8 @@ Operational-readiness stories are accepted only when they produce maintainer/ope
 Acceptance criteria that allow "implemented, documented, accepted, or carried forward" are allowed only in Engineering/Operational Readiness stories. MVP product capability stories must deliver working behavior or explicit testable validation, not documentation-only completion, unless a separate sprint change approves a deferral.
 
 Operational checkpoint stories may remain umbrella tracking stories, but each checkpoint must be implemented, reviewed, and evidenced as a separately verifiable slice. A checkpoint cannot be marked complete only because the umbrella story is complete.
+
+When checkpoint-heavy stories are selected for implementation, the story file must either split checkpoints into separately tracked child story files or include a checklist evidence table with owner, validation command or artifact, review status, and completion date for each checkpoint. This guard applies especially to future or backlog stories such as 21.9 and 26.5.
 
 ### Epic 11: CI/CD & Automated Quality Pipeline
 Minimum build/test CI is an enabling prerequisite for any greenfield or restarted implementation sequence. Semantic release, NuGet publishing, branch protection, and release-hardening behavior remain in this operational-readiness epic.
@@ -757,6 +767,8 @@ So that all services share a consistent, versioned type system with serializatio
 
 **Historical Scope Guard:** Do not reopen Story 1.2 as a single broad contract/model implementation unit. If contract rework resumes, split it into separate numeric stories such as memory-unit contract shape, graph-edge contract shape, Evidence Packet/error contract mapping, and downstream serialization/consumer fixture proof.
 
+**Readiness tooling guard:** Do not create a new implementation story file that reuses this broad historical story key for new work. New implementation must use newly numbered split stories with externally observable completion evidence.
+
 **Acceptance Criteria:**
 
 **Given** the Contracts.V1 namespace exists
@@ -852,6 +864,8 @@ So that memory units can be searched by semantic similarity.
 
 **Historical Scope Guard:** Do not reopen Story 1.5 as a single implementation unit. If indexing rework resumes, create separate numeric stories for the documented slices before implementation starts, keep each slice independently testable against tenant-scoped infrastructure, and require observable proof per slice (CLI-visible, contract-visible, or integration-harness output) — internal unit tests alone are not sufficient completion evidence.
 
+**Readiness tooling guard:** Do not create a new implementation story file that reuses this broad historical story key for new work. New implementation must use newly numbered split stories with externally observable completion evidence.
+
 As a developer,
 I want ingested content to be indexed across RediSearch (syntactic), Redis Vector (semantic), and FalkorDB (graph) using tenant infrastructure already provisioned by `TenantProvisioningWorkflow`,
 So that memory units are searchable across all three axes after ingestion.
@@ -905,6 +919,8 @@ So that a single API call results in a fully searchable memory unit with provena
 **Sizing note:** Story 1.6 is historical completed scope. Future reimplementation or major rework must split it into smaller vertical stories: happy-path local file ingestion orchestration; failure, compensation, and failed-unit visibility; restart recovery, idempotency, and duplicate detection hardening.
 
 **Historical Scope Guard:** Do not reopen Story 1.6 as a single implementation unit. If orchestration work resumes, create separate numeric stories for the documented slices before implementation starts, keep each slice independently testable, and require observable API/CLI/integration proof for each slice.
+
+**Readiness tooling guard:** Do not create a new implementation story file that reuses this broad historical story key for new work. New implementation must use newly numbered split stories with externally observable completion evidence.
 
 **Acceptance Criteria:**
 
@@ -3314,6 +3330,8 @@ Future web users can inspect evidence, scope, sources, graph context, case activ
 
 **Readiness note:** Story 17.6 is the current conformance gate for the host-less web RCL. It does not close product-route browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, or manual screen-reader validation gaps; those remain future web-host validation work and must be sprint-selected separately.
 
+**Execution gate:** Any future Epic 17 implementation or reopened Story 17.2-17.5 work must verify Story 17.6 completion evidence first and must reuse its conformance tests. If `story_execution_order` is present in sprint status, tooling must treat 17.6 as the preflight regardless of numeric suffix.
+
 **UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
 
 ### Story 17.1: Evidence Cockpit and Trust Components
@@ -4188,6 +4206,8 @@ Developers get ingestion that chunks documents, keeps workflow history small, su
 **Lifecycle label:** Product Capability / Ingestion Scalability
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A11, A12, A13, A14, A15, A33, A34, A35, A51
 **FRs reinforced:** FR6, FR12 · **NFRs reinforced:** NFR5, NFR22
+
+**Execution note:** Story 23.9 must execute before Story 23.1 because content chunking depends on the provider batch API. The numeric keys are preserved to avoid unnecessary backlog churn; sprint-status `story_execution_order.epic-23` is authoritative for story selection.
 
 ### Story 23.9: EmbeddingClient Provider Strategy
 

@@ -54,10 +54,101 @@ last_updated: 2026-07-04
 # 2026-07-04: Epics 20-26 backlog rows added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation). 50 stories closing audit findings A1-A51; no story files created yet. Decision-first stories: 21.1 (consistency model), 24.3 (physical isolation). Overlaps existing deferred entries Story-9.3-MemoriesServerAuthN (A1) and D8 TenantAuthorizationMiddleware (A2) — cross-linked, not duplicated.
 # 2026-07-04: Epic 19 retrospective completed (epic-19-retrospective -> done; epic-19 in-progress -> done). Retro: epic-19-retro-2026-07-04.md. 4 action items recorded; 19-5 is noted as a completed one-shot CI submodule metadata cleanup artifact outside the registered Epic 19 story rows.
 # 2026-07-04: Sprint planning reconcile completed against committed concrete epics inventory because working-tree epics.md is currently a placeholder/template. Epic 2 corrected from in-progress to done; 27 epics, 147 stories, and 27 retrospectives validated.
+# 2026-07-04: Implementation-readiness cleanup approved by Jerome and applied. Added readiness_accounting metadata and story_execution_order for Epic 17, Epic 18, and Epic 23.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
+
+readiness_accounting:
+  active_mvp_epics:
+    - epic-0
+    - epic-1
+    - epic-2
+    - epic-3
+    - epic-4
+    - epic-5
+    - epic-6
+    - epic-7
+    - epic-8
+  excluded_unless_sprint_selected:
+    - epic-9
+    - epic-10
+    - epic-11
+    - epic-12
+    - epic-13
+    - epic-14
+    - epic-15
+    - epic-16
+    - epic-17
+    - epic-18
+    - epic-19
+    - epic-20
+    - epic-21
+    - epic-22
+    - epic-23
+    - epic-24
+    - epic-25
+    - epic-26
+  default_story_inherits_epic_metadata: true
+  epic_metadata:
+    epic-0: { track: product, phase: MVP, mvpReadiness: included }
+    epic-1: { track: product, phase: MVP, mvpReadiness: included }
+    epic-2: { track: product, phase: MVP, mvpReadiness: included }
+    epic-3: { track: product, phase: MVP, mvpReadiness: included }
+    epic-4: { track: product, phase: MVP, mvpReadiness: included }
+    epic-5: { track: product, phase: MVP, mvpReadiness: included }
+    epic-6: { track: product, phase: MVP, mvpReadiness: included }
+    epic-7: { track: product, phase: MVP, mvpReadiness: included }
+    epic-8: { track: product, phase: MVP, mvpReadiness: included }
+    epic-9: { track: product, phase: P1.5, mvpReadiness: excluded }
+    epic-10: { track: product, phase: P1.5, mvpReadiness: excluded }
+    epic-11: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
+    epic-12: { track: operational, phase: post-MVP, mvpReadiness: excluded }
+    epic-13: { track: operational, phase: post-MVP, mvpReadiness: excluded }
+    epic-14: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
+    epic-15: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
+    epic-16: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
+    epic-17: { track: future-ui, phase: future-web-ui, mvpReadiness: excluded }
+    epic-18: { track: operational, phase: downstream-consumer-hardening, mvpReadiness: excluded }
+    epic-19: { track: operational, phase: deferred-register-governance, mvpReadiness: excluded }
+    epic-20: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-21: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-22: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-23: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-24: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-25: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-26: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+  story_overrides:
+    8-3-data-export: { track: product, phase: Phase2, mvpReadiness: reserved-non-mvp }
+    18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: { releaseSensitive: true }
+
+story_execution_order:
+  epic-17:
+    reason: "Story 17.6 is the conformance gate for future Epic 17 web work."
+    order:
+      - 17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening
+      - 17-2-recovery-and-feedback-state-grammar
+      - 17-3-contract-aware-web-interaction-patterns
+      - 17-4-role-specific-web-inspection-lenses
+      - 17-5-responsive-and-accessible-web-validation
+  epic-18:
+    reason: "Story 18.5 consumes the stability contract produced by Story 18.6; completed keys are preserved for traceability."
+    order:
+      - 18-6-memory-unit-id-stability-contract
+      - 18-5-source-uri-keyed-memory-unit-lookup-endpoint
+  epic-23:
+    reason: "Story 23.1 content chunking consumes the provider batch API from Story 23.9."
+    order:
+      - 23-9-embeddingclient-provider-strategy
+      - 23-1-content-chunking-and-batch-embedding
+      - 23-2-claim-check-workflow-payloads
+      - 23-3-retry-after-aware-429-orchestration
+      - 23-4-non-url-re-ingestion
+      - 23-5-rate-limiter-admission-simplification
+      - 23-6-directory-batch-scalability
+      - 23-7-index-provisioning-ownership
+      - 23-8-workflow-config-determinism
 
 development_status:
   # Epic 0: Tenant and Case Safety Foundation
