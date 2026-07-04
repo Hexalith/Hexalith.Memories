@@ -64,6 +64,8 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 20.6 created (20.6 -> ready-for-dev) via create-story. RediSearch query-injection hardening; closes A31 by consolidating dialect-2 escaping across syntactic and semantic axes.
 # 2026-07-04: Story 21.1 created (epic-21 -> in-progress, 21.1 -> ready-for-dev) via create-story. Decision-first consistency model ratification; frames A3 and gates dependent Epic 21 implementation.
 # 2026-07-04: Story 21.1 senior developer review completed with automatic fixes (residual old-model wording and File List hygiene). 21.1 -> done.
+# 2026-07-04: Story 21.2 created (21.2 -> ready-for-dev) via create-story. Transactional multi-backend mutation implementation for A3; consumes Story 21.1 EventStore source-of-truth decision.
+# 2026-07-04: Story 21.2 senior developer review completed with automatic fixes (annotation child workflow compensation, tenant lifecycle command boundary, File List hygiene). 21.2 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -353,7 +355,7 @@ development_status:
   # Epic 21: Data Integrity, Consistency & Migration Safety (SCP 2026-07-04; closes A3,A4,A5,A16,A17,A22,A27,A28,A44,A47)
   epic-21: in-progress
   21-1-consistency-model-decision: done
-  21-2-transactional-multi-backend-mutation: backlog
+  21-2-transactional-multi-backend-mutation: done
   21-3-natural-language-vector-namespace-separation: backlog
   21-4-key-schema-single-source-of-truth: backlog
   21-5-deletion-completeness: backlog

@@ -1,3 +1,46 @@
+# Test Automation Summary - Story 21.2 (Transactional Multi-Backend Mutation)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-2-transactional-multi-backend-mutation.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** HTTP case mutation path and Story 21.2 EventStore-command-before-projection boundary for transactional multi-backend mutation.
+
+## Generated / Updated Tests
+
+### API Tests
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/CaseMutationEndpointE2ETests.cs` - added in-process HTTP endpoint coverage for create-case mutation success, validation failure, and EventStore command-gateway failure.
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs` - added overridable `IMemoriesCommandStore` and `ICaseProjectionWorkflowScheduler` seams so endpoint tests can drive the real HTTP pipeline without Redis, FalkorDB, Dapr Workflow, or EventStore services.
+
+### E2E Tests
+- [x] API E2E through `WebApplicationFactory<Program>` covers the real minimal API route, authentication/tenant middleware, tenant-status guard, service resolution, EventStore command acceptance, and projection workflow scheduling.
+- [x] UI E2E is not applicable. Story 21.2 has no module UI change.
+
+## Coverage
+
+- API mutation endpoints newly covered: create case 1/1 targeted route.
+- Happy path: `POST /api/tenants/{tenantId}/cases` returns `201 Created`, accepts a `CreateCaseCommand`, schedules `CaseCreationProjectionWorkflow`, and does not write Redis case hashes directly.
+- Critical error cases: invalid case name returns `400` without EventStore command or workflow scheduling; EventStore command acceptance failure returns `500` without projection workflow scheduling or Redis write.
+- Existing Story 21.2 focused coverage rerun: service mutation boundary tests for create case, create annotation, delete memory unit, and delete case; projection workflow compensation/order tests; delete projection activity and architecture guard tests.
+
+## Validation
+
+- [x] `MSBUILDDISABLENODEREUSE=1 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-restore -v:m -m:1 /nodeReuse:false` - passed, 0 warnings, 0 errors.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -parallel none -class Hexalith.Memories.Server.Tests.Endpoints.CaseMutationEndpointE2ETests` - 3 total, 0 failed.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -parallel none -class Hexalith.Memories.Server.Tests.Cases.CaseServiceTests -method "*CreateCaseAsync*" -method "*CreateAnnotationAsync*" -method "*DeleteMemoryUnitAsync*" -method "*DeleteCaseAsync*"` - 11 total, 0 failed.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -parallel none -class Hexalith.Memories.Server.Tests.Workflows.CaseCreationProjectionWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.AnnotationProjectionWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.MemoryUnitDeletionProjectionWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.CaseDeletionProjectionWorkflowTests` - 13 total, 0 failed.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -parallel none -class Hexalith.Memories.Server.Tests.Activities.Cases.DeleteMemoryUnitProjectionActivityTests -class Hexalith.Memories.Server.Tests.Architecture.ConsistencyModelDecisionTests` - 7 total, 0 failed.
+- [x] `dotnet test ... --filter "FullyQualifiedName~CaseMutationEndpointE2ETests"` compiled the project, then VSTest aborted on sandbox TCP listener permission (`SocketException (13): Permission denied`); the xUnit v3 in-process executable above was used as the sandbox-safe runner.
+
+## Checklist Result
+
+- API tests generated: pass.
+- E2E tests generated if UI exists: UI not applicable; API E2E pass.
+- Standard framework APIs, happy path, 1-2 critical error cases, clear descriptions, no hardcoded waits, independent tests: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.1 (Consistency Model Decision)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

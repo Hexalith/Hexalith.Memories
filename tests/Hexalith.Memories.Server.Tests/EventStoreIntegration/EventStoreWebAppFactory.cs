@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Dapr.Client;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
@@ -43,6 +44,10 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
     public IPreflightDedupStore PreflightDedup { get; } = Substitute.For<IPreflightDedupStore>();
 
     public IIngestionWorkflowStateReader IngestionWorkflowStateReader { get; } = Substitute.For<IIngestionWorkflowStateReader>();
+
+    internal IMemoriesCommandStore MemoriesCommandStore { get; set; } = new InMemoryMemoriesCommandStore();
+
+    internal ICaseProjectionWorkflowScheduler CaseProjectionWorkflowScheduler { get; set; } = new InMemoryCaseProjectionWorkflowScheduler();
 
     public IConnectionMultiplexer RedisMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
 
@@ -107,6 +112,8 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             services.RemoveAll<IEventIngestionTelemetry>();
             services.RemoveAll<IPreflightDedupStore>();
             services.RemoveAll<IIngestionWorkflowStateReader>();
+            services.RemoveAll<IMemoriesCommandStore>();
+            services.RemoveAll<ICaseProjectionWorkflowScheduler>();
             services.AddSingleton(Router);
             services.AddSingleton(Scheduler);
             services.AddSingleton(TenantStatus);
@@ -114,6 +121,8 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             services.AddSingleton(Telemetry);
             services.AddSingleton(PreflightDedup);
             services.AddSingleton(IngestionWorkflowStateReader);
+            services.AddSingleton(MemoriesCommandStore);
+            services.AddSingleton(CaseProjectionWorkflowScheduler);
 
             // Endpoint tests drive adapters directly; infrastructure services would resolve DAPR/backends at startup.
             services.RemoveInfrastructureHostedServices();

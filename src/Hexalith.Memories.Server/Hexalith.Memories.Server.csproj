@@ -33,8 +33,9 @@
     <PackageReference Include="Dapr.Actors.AspNetCore" />
     <PackageReference Include="Dapr.AI" />
     <PackageReference Include="Dapr.AI.Microsoft.Extensions" />
+    <PackageReference Include="Hexalith.EventStore.Client" />
     <PackageReference Include="Kreuzberg" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
-</Project>
+</Project>

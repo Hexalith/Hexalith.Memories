@@ -9,7 +9,9 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 
+using Hexalith.EventStore.Client.Registration;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Activities.Tenants;
@@ -56,6 +58,20 @@ builder.Services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureServ
 builder.Services.AddTransient<Microsoft.AspNetCore.Authentication.IClaimsTransformation, ServerTenantClaimsTransformation>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
+// Story 21.2: authoritative case/memory-unit/tenant mutations are accepted by the EventStore
+// gateway (Hexalith.EventStore.Client SDK) before projection fan-out. The base address defaults
+// to Dapr sidecar service invocation for the "eventstore" app so deployments only need
+// configuration when the gateway is reached directly.
+builder.Services.AddEventStoreGatewayClient(options =>
+{
+    string? configuredBaseAddress = builder.Configuration["EventStoreIntegration:CommandGateway:BaseAddress"];
+    string daprHttpPort = Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500";
+    options.BaseAddress = string.IsNullOrWhiteSpace(configuredBaseAddress)
+        ? new Uri($"http://localhost:{daprHttpPort}/v1.0/invoke/eventstore/method/")
+        : new Uri(configuredBaseAddress, UriKind.Absolute);
+});
+builder.Services.AddSingleton<IMemoriesCommandStore, EventStoreMemoriesCommandStore>();
+builder.Services.AddScoped<ICaseProjectionWorkflowScheduler, DaprCaseProjectionWorkflowScheduler>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 builder.Services.AddAuthorizationBuilder()
@@ -313,6 +329,10 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
 
     options.RegisterWorkflow<IngestionWorkflow>();
+    options.RegisterWorkflow<CaseCreationProjectionWorkflow>();
+    options.RegisterWorkflow<AnnotationProjectionWorkflow>();
+    options.RegisterWorkflow<MemoryUnitDeletionProjectionWorkflow>();
+    options.RegisterWorkflow<CaseDeletionProjectionWorkflow>();
     options.RegisterActivity<ValidateContentActivity>();
     options.RegisterActivity<CheckIdempotencyActivity>();
     options.RegisterActivity<SaveDedupKeyActivity>();
@@ -321,6 +341,14 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupSemanticActivity>();
     options.RegisterActivity<CleanupGraphActivity>();
     options.RegisterActivity<RecordCaseActivityActivity>();
+    options.RegisterActivity<ProjectCaseHashActivity>();
+    options.RegisterActivity<ProjectCaseGraphActivity>();
+    options.RegisterActivity<CleanupCaseProjectionActivity>();
+    options.RegisterActivity<ProjectAnnotationGraphActivity>();
+    options.RegisterActivity<ScheduleAnnotationIngestionActivity>();
+    options.RegisterActivity<DeleteMemoryUnitProjectionActivity>();
+    options.RegisterActivity<MarkCaseDeletingActivity>();
+    options.RegisterActivity<DeleteCaseProjectionActivity>();
 
     options.RegisterActivity<FetchUrlActivity>();
 

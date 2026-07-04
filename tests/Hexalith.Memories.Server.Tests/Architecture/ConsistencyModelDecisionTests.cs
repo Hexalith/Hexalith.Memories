@@ -58,25 +58,55 @@ public sealed partial class ConsistencyModelDecisionTests
         string consistency = NormalizeWhitespace(ReadRepoFile("docs", "dev", "consistency.md"));
 
         consistency.ShouldContain(
-            "The syntactic hash `{tenantId}:mu:{memoryUnitId}` is the current pre-Story 21.2 repair source",
+            "Story 21.2 routes case, annotation, memory-unit deletion, and case deletion mutations through a durable EventStore command boundary before projection fan-out",
             Case.Sensitive,
-            "The operator guide must label syntactic hashes as current pre-21.2 repair input, not target truth.");
+            "The operator guide must describe the post-21.2 durable write boundary.");
         consistency.ShouldContain(
-            "Story 21.1 ratifies the target model: `Case`, `MemoryUnit`, and `Tenant` domain state is sourced from Hexalith.EventStore events",
+            "The EventStore command/event stream is the authoritative write record for these domain mutations",
             Case.Sensitive,
-            "The operator guide must state the target EventStore source-of-truth rule.");
+            "The operator guide must state the EventStore source-of-truth rule.");
         consistency.ShouldContain(
-            "RediSearch syntactic hashes, Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant registry/read records are rebuildable projections/read models",
+            "Redis case hashes, RediSearch syntactic memory-unit hashes, Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant registry/read records are projections/read models",
             Case.Sensitive,
             "The operator guide must identify every backend/read surface as rebuildable.");
         consistency.ShouldContain(
-            "Until Story 21.2 changes the mutation path, the repair workflow continues to use the syntactic hash as its operational input",
+            "The syntactic hash `{tenantId}:mu:{memoryUnitId}` remains the operational input for the existing consistency repair workflow",
             Case.Sensitive,
-            "The operator guide must retain the transitional behavior rule until the implementation story lands.");
+            "The operator guide must keep current repair workflow behavior separate from source-of-truth semantics.");
         consistency.ShouldNotContain(
             "authoritative syntactic record",
             Case.Sensitive,
             "The operator guide must not keep stale wording that treats syntactic hashes as the target authoritative source.");
+        consistency.ShouldNotContain(
+            "Until Story 21.2 changes the mutation path",
+            Case.Sensitive,
+            "The operator guide must not retain pre-implementation transitional wording after Story 21.2.");
+    }
+
+    /// <summary>
+    /// Story 21.2 code guard: `CaseService` mutations must stay routed through the EventStore
+    /// command boundary plus workflow-owned projection fan-out. Reintroducing the pre-21.2 direct
+    /// multi-backend write helpers would silently revert audit finding A3.
+    /// </summary>
+    [Fact]
+    public void CaseServiceMutations_RouteThroughEventStoreCommandBoundary()
+    {
+        string source = ReadRepoFile("src", "Hexalith.Memories.Server", "Cases", "CaseService.cs");
+
+        Regex.Matches(source, @"_commandStore\.AcceptAsync\(").Count.ShouldBeGreaterThanOrEqualTo(
+            4,
+            "Case create, annotation, memory-unit deletion, and case deletion must each accept an EventStore command before projection fan-out.");
+        Regex.Matches(source, @"_projectionWorkflowScheduler\.ScheduleAsync\(").Count.ShouldBeGreaterThanOrEqualTo(
+            4,
+            "Each accepted mutation command must schedule its workflow-owned projection fan-out.");
+        source.ShouldNotContain(
+            "DeleteMemoryUnitKeepingHashForRetryAsync",
+            Case.Sensitive,
+            "The pre-21.2 direct multi-backend delete helper must not be reintroduced as authoritative persistence.");
+        source.ShouldNotContain(
+            "DeleteMemoryUnitKeepingGraphForRetryAsync",
+            Case.Sensitive,
+            "The pre-21.2 direct multi-backend delete helper must not be reintroduced as authoritative persistence.");
     }
 
     [Fact]

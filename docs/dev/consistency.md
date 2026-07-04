@@ -119,17 +119,24 @@ function:
 - **No auto-repair.** Repair MUST be an explicit operator action; verification
   emits recommendations but never writes.
 
-## Current repair source and target model
+## Current repair source and durable write model
 
-The syntactic hash `{tenantId}:mu:{memoryUnitId}` is the current pre-Story 21.2
-repair source because it stores the full content + metadata required to rebuild
-the non-authoritative backends. Story 21.1 ratifies the target model: `Case`,
-`MemoryUnit`, and `Tenant` domain state is sourced from Hexalith.EventStore
-events, while RediSearch syntactic hashes, Redis Vector entries, FalkorDB
-nodes/edges, case activity streams, and tenant registry/read records are
-rebuildable projections/read models. Until Story 21.2 changes the mutation path,
-the repair workflow continues to use the syntactic hash as its operational input
-for memory-unit projection repair.
+Story 21.2 routes case, annotation, memory-unit deletion, and case deletion
+mutations through a durable EventStore command boundary before projection fan-out.
+The EventStore command/event stream is the authoritative write record for these
+domain mutations. Redis case hashes, RediSearch syntactic memory-unit hashes,
+Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant
+registry/read records are projections/read models that may be replayed, rebuilt,
+or retried after a projection failure.
+
+The syntactic hash `{tenantId}:mu:{memoryUnitId}` remains the operational input
+for the existing consistency repair workflow because that workflow repairs
+memory-unit search/vector/graph projections from the data shape available today.
+It is no longer the target source of truth for new write-side domain decisions.
+When a post-21.2 projection workflow fails after EventStore command acceptance,
+operators should retry or rebuild the failed projection from the durable command
+or event history instead of treating partial Redis/FalkorDB state as permanent
+truth.
 
 When syntactic is absent in the current repair implementation:
 

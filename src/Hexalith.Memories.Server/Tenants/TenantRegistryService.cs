@@ -10,6 +10,8 @@ using System.Diagnostics;
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.EventStore.Domain.Commands;
+using Hexalith.Memories.Server.EventStoreIntegration;
 
 using Microsoft.Extensions.Logging;
 
@@ -23,14 +25,20 @@ public sealed partial class TenantRegistryService
     private const int MaxDeletionStartRetries = 3;
 
     private readonly DaprClient _daprClient;
+    private readonly IMemoriesCommandStore _commandStore;
     private readonly ILogger<TenantRegistryService> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="TenantRegistryService"/> class.</summary>
     /// <param name="daprClient">The DAPR client for state management.</param>
     /// <param name="logger">The logger instance.</param>
-    public TenantRegistryService(DaprClient daprClient, ILogger<TenantRegistryService> logger)
+    /// <param name="commandStore">The EventStore command boundary for authoritative tenant lifecycle events.</param>
+    public TenantRegistryService(
+        DaprClient daprClient,
+        ILogger<TenantRegistryService> logger,
+        IMemoriesCommandStore? commandStore = null)
     {
         _daprClient = daprClient;
+        _commandStore = commandStore ?? new InMemoryMemoriesCommandStore();
         _logger = logger;
     }
 
@@ -70,6 +78,7 @@ public sealed partial class TenantRegistryService
             new TenantInfo(tenantId, displayName, TenantStatus.Provisioning, now),
             workflowInstanceId,
             now);
+        bool commandAccepted = false;
 
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
@@ -80,6 +89,16 @@ public sealed partial class TenantRegistryService
             if (existing is not null)
             {
                 return existing;
+            }
+
+            if (!commandAccepted)
+            {
+                await _commandStore.AcceptAsync(
+                    tenantId,
+                    new RegisterTenantCommand(tenantId, displayName, now),
+                    workflowInstanceId ?? "system",
+                    ct).ConfigureAwait(false);
+                commandAccepted = true;
             }
 
             bool saved = await _daprClient
@@ -160,11 +179,18 @@ public sealed partial class TenantRegistryService
             throw new InvalidOperationException($"Tenant '{tenantId}' not found in registry.");
         }
 
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        await _commandStore.AcceptAsync(
+            tenantId,
+            new UpdateTenantLifecycleStatusCommand(tenantId, status, now),
+            workflowInstanceId ?? "system",
+            ct).ConfigureAwait(false);
+
         TenantInfo updated = entry.Tenant with { Status = status };
         TenantRegistryEntry updatedEntry = entry with
         {
             Tenant = updated,
-            LastUpdated = DateTimeOffset.UtcNow,
+            LastUpdated = now,
             WorkflowInstanceId = status == TenantStatus.Provisioning ? workflowInstanceId ?? entry.WorkflowInstanceId : null,
         };
         await _daprClient.SaveStateAsync(StoreName, stateKey, updatedEntry, cancellationToken: ct).ConfigureAwait(false);
@@ -190,6 +216,7 @@ public sealed partial class TenantRegistryService
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
 
         string stateKey = GetTenantStateKey(tenantId);
+        bool commandAccepted = false;
 
         for (int attempt = 0; attempt < MaxDeletionStartRetries; attempt++)
         {
@@ -220,9 +247,20 @@ public sealed partial class TenantRegistryService
                 return existing;
             }
 
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (!commandAccepted)
+            {
+                await _commandStore.AcceptAsync(
+                    tenantId,
+                    new UpdateTenantLifecycleStatusCommand(tenantId, TenantStatus.Deleting, now),
+                    workflowInstanceId,
+                    ct).ConfigureAwait(false);
+                commandAccepted = true;
+            }
+
             TenantRegistryEntry updated = existing with
             {
-                LastUpdated = DateTimeOffset.UtcNow,
+                LastUpdated = now,
                 Tenant = existing.Tenant with { Status = TenantStatus.Deleting },
                 WorkflowInstanceId = workflowInstanceId,
             };

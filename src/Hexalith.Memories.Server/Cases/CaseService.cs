@@ -16,7 +16,10 @@ using Dapr.Actors.Client;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.EventStore.Domain.Commands;
+using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
@@ -39,8 +42,9 @@ internal sealed class CaseService
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly CaseActivityService _activityService;
-    private readonly DaprWorkflowClient _workflowClient;
     private readonly IActorProxyFactory _actorProxyFactory;
+    private readonly IMemoriesCommandStore _commandStore;
+    private readonly ICaseProjectionWorkflowScheduler _projectionWorkflowScheduler;
     private readonly ILogger<CaseService> _logger;
 
     public CaseService(
@@ -50,14 +54,20 @@ internal sealed class CaseService
         CaseActivityService activityService,
         DaprWorkflowClient workflowClient,
         IActorProxyFactory actorProxyFactory,
-        ILogger<CaseService> logger)
+        ILogger<CaseService> logger,
+        IMemoriesCommandStore? commandStore = null,
+        ICaseProjectionWorkflowScheduler? projectionWorkflowScheduler = null)
     {
         _redis = redis;
         _falkorDb = falkorDb;
         _graphQueryBuilder = graphQueryBuilder;
         _activityService = activityService;
-        _workflowClient = workflowClient;
         _actorProxyFactory = actorProxyFactory;
+        _commandStore = commandStore ?? new InMemoryMemoriesCommandStore();
+        _projectionWorkflowScheduler = projectionWorkflowScheduler
+            ?? (workflowClient is null
+                ? new InMemoryCaseProjectionWorkflowScheduler()
+                : new DaprCaseProjectionWorkflowScheduler(workflowClient));
         _logger = logger;
     }
 
@@ -66,33 +76,16 @@ internal sealed class CaseService
         string caseId = BaUlid.New(UlidOptions).ToString();
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
-        IDatabase db = _redis.GetDatabase();
-        string redisKey = $"{input.TenantId}:case:{caseId}";
-
-        await db.HashSetAsync(
-            redisKey,
-            [
-                new HashEntry("id", caseId),
-                new HashEntry("tenantId", input.TenantId),
-                new HashEntry("name", input.Name),
-                new HashEntry("description", input.Description ?? string.Empty),
-                new HashEntry("status", "active"),
-                new HashEntry("createdAt", now.ToString("o")),
-                new HashEntry("lastUpdated", now.ToString("o")),
-            ]).ConfigureAwait(false);
-
-        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(
-            caseId, input.Name, input.TenantId, now);
-        await falkor.QueryAsync(input.TenantId, query, parameters).ConfigureAwait(false);
-
-        _ = await _activityService.RecordEventAsync(
+        await _commandStore.AcceptAsync(
             input.TenantId,
-            caseId,
-            CaseActivityEventType.CaseCreated,
+            new CreateCaseCommand(input.TenantId, caseId, input.Name, input.Description, now),
             "system",
-            $"Case '{input.Name}' created",
-            memoryUnitId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        await _projectionWorkflowScheduler.ScheduleAsync(
+            nameof(CaseCreationProjectionWorkflow),
+            $"case-create-{caseId}",
+            new ProjectCaseCreatedInput(input.TenantId, caseId, input.Name, input.Description, now),
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
@@ -161,49 +154,35 @@ internal sealed class CaseService
             metadata["_system.annotation_type"] = new MetadataField(input.AnnotationType, MetadataOrigin.Human, 1.0f);
         }
 
-        // Create stub node + ANNOTATES edge in FalkorDB before scheduling workflow. CaseService is
-        // invoked from the HTTP request path (not a workflow body), so sampling wall-clock UtcNow is
-        // safe — but we pass it explicitly to avoid the 1-arg (Obsolete) overload.
-        NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-        (string stubQuery, IDictionary<string, object> stubParams) = _graphQueryBuilder.BuildMergeStubNode(annotationMuId, DateTimeOffset.UtcNow);
-        await falkor.QueryAsync(input.TenantId, stubQuery, stubParams).ConfigureAwait(false);
+        await _commandStore.AcceptAsync(
+            input.TenantId,
+            new RequestAnnotationCommand(
+                input.TenantId,
+                input.CaseId,
+                annotationMuId,
+                input.TargetMemoryUnitId,
+                sourceUri,
+                input.Content,
+                input.AnnotationType,
+                input.IngestedBy,
+                now),
+            input.IngestedBy,
+            cancellationToken).ConfigureAwait(false);
 
-        (string edgeQuery, IDictionary<string, object> edgeParams) = _graphQueryBuilder.BuildMergeEdge(
-            annotationMuId, input.TargetMemoryUnitId, EdgeType.Annotates, EdgeTypeDefaults.Annotates, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(input.TenantId, edgeQuery, edgeParams).ConfigureAwait(false);
-
-        // Schedule IngestionWorkflow with annotation content — wrap in try/catch for compensation
-        string workflowInstanceId;
-        try
-        {
-            var ingestionInput = new IngestionInput
-            {
-                TenantId = input.TenantId,
-                CaseId = input.CaseId,
-                SourceUri = sourceUri,
-                ContentBytes = Encoding.UTF8.GetBytes(input.Content),
-                ContentType = "text/plain",
-                SourceType = SourceType.Annotation,
-                IngestedBy = input.IngestedBy,
-                Metadata = metadata,
-                CausationId = input.TargetMemoryUnitId,
-            };
-
-            workflowInstanceId = await _workflowClient.ScheduleNewWorkflowAsync(
-                nameof(IngestionWorkflow), instanceId: annotationMuId, input: ingestionInput).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Compensation: clean up stub node + edge on workflow scheduling failure
-            (string cleanupQuery, IDictionary<string, object> cleanupParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(annotationMuId);
-            await falkor.QueryAsync(input.TenantId, cleanupQuery, cleanupParams).ConfigureAwait(false);
-            throw;
-        }
-
-        // Record activity event
-        _ = await _activityService.RecordEventAsync(
-            input.TenantId, input.CaseId, CaseActivityEventType.AnnotationCreated, "system",
-            $"Annotation created on memory unit '{input.TargetMemoryUnitId}'", annotationMuId, cancellationToken).ConfigureAwait(false);
+        string workflowInstanceId = await _projectionWorkflowScheduler.ScheduleAsync(
+            nameof(AnnotationProjectionWorkflow),
+            $"annotation-project-{annotationMuId}",
+            new AnnotationProjectionInput(
+                input.TenantId,
+                input.CaseId,
+                annotationMuId,
+                input.TargetMemoryUnitId,
+                sourceUri,
+                input.Content,
+                input.AnnotationType,
+                input.IngestedBy,
+                metadata),
+            cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Created annotation {AnnotationMuId} on memory unit {TargetMuId} in case {CaseId} tenant {TenantId}",
@@ -673,18 +652,17 @@ internal sealed class CaseService
             .Select(value => value!)
             .ToList();
 
-        foreach (string annotationId in annotationIds)
-        {
-            await DeleteMemoryUnitKeepingHashForRetryAsync(db, falkor, tenantId, annotationId).ConfigureAwait(false);
-        }
+        await _commandStore.AcceptAsync(
+            tenantId,
+            new DeleteMemoryUnitCommand(tenantId, caseId, memoryUnitId, annotationIds, DateTimeOffset.UtcNow),
+            "system",
+            cancellationToken).ConfigureAwait(false);
 
-        // Delete target MU from all 3 backends (DETACH DELETE cleans up ANNOTATES edges)
-        await DeleteMemoryUnitKeepingHashForRetryAsync(db, falkor, tenantId, memoryUnitId).ConfigureAwait(false);
-
-        // Record deletion activity
-        _ = await _activityService.RecordEventAsync(
-            tenantId, caseId, CaseActivityEventType.MemoryUnitDeleted, "system",
-            $"Memory unit '{memoryUnitId}' deleted (with {annotationIds.Count} annotation(s))", memoryUnitId, cancellationToken).ConfigureAwait(false);
+        await _projectionWorkflowScheduler.ScheduleAsync(
+            nameof(MemoryUnitDeletionProjectionWorkflow),
+            $"memory-unit-delete-{memoryUnitId}",
+            new MemoryUnitDeletionProjectionInput(tenantId, caseId, memoryUnitId, annotationIds),
+            cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Deleted memory unit {MemoryUnitId} from case {CaseId} in tenant {TenantId}",
@@ -711,13 +689,6 @@ internal sealed class CaseService
             return false;
         }
 
-        // Set status to "deleting" with timestamp — prevents concurrent ingestion (AC #3) + observability
-        await db.HashSetAsync(caseKey,
-        [
-            new HashEntry("status", "deleting"),
-            new HashEntry("deletionStartedAt", DateTimeOffset.UtcNow.ToString("o")),
-        ]).ConfigureAwait(false);
-
         // Find all memory unit IDs from graph
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string listQuery, IDictionary<string, object> listParams) = _graphQueryBuilder.BuildListCaseMemoryUnitIds(caseId);
@@ -729,61 +700,23 @@ internal sealed class CaseService
             .Select(value => value!)
             .ToList();
 
-        // Delete each MU from all 3 backends
-        foreach (string muId in memoryUnitIds)
-        {
-            await DeleteMemoryUnitKeepingGraphForRetryAsync(db, falkor, tenantId, muId).ConfigureAwait(false);
-        }
+        await _commandStore.AcceptAsync(
+            tenantId,
+            new DeleteCaseCommand(tenantId, caseId, memoryUnitIds, DateTimeOffset.UtcNow),
+            "system",
+            cancellationToken).ConfigureAwait(false);
 
-        // Delete case node from FalkorDB (DETACH DELETE handles any remaining edges)
-        (string caseDelQuery, IDictionary<string, object> caseDelParams) = _graphQueryBuilder.BuildDeleteCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseDelQuery, caseDelParams).ConfigureAwait(false);
-
-        // Delete case Redis resources
-        await Task.WhenAll(
-            db.KeyDeleteAsync($"{tenantId}:case:{caseId}:members"),
-            db.KeyDeleteAsync($"{tenantId}:case:{caseId}:activity"),
-            db.KeyDeleteAsync(caseKey)).ConfigureAwait(false);
+        await _projectionWorkflowScheduler.ScheduleAsync(
+            nameof(CaseDeletionProjectionWorkflow),
+            $"case-delete-{caseId}",
+            new CaseDeletionProjectionInput(tenantId, caseId, memoryUnitIds),
+            cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Deleted case {CaseId} with {MemoryUnitCount} memory units from tenant {TenantId}",
             caseId, memoryUnitIds.Count, tenantId);
 
         return true;
-    }
-
-    private async Task DeleteMemoryUnitKeepingHashForRetryAsync(
-        IDatabase db,
-        NFalkorDB.FalkorDB falkor,
-        string tenantId,
-        string memoryUnitId)
-    {
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
-        string vecKey = $"{tenantId}:vec:{memoryUnitId}";
-        (string graphQuery, IDictionary<string, object> graphParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
-
-        await Task.WhenAll(
-            db.KeyDeleteAsync(vecKey),
-            falkor.QueryAsync(tenantId, graphQuery, graphParams)).ConfigureAwait(false);
-
-        await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
-    }
-
-    private async Task DeleteMemoryUnitKeepingGraphForRetryAsync(
-        IDatabase db,
-        NFalkorDB.FalkorDB falkor,
-        string tenantId,
-        string memoryUnitId)
-    {
-        string muKey = $"{tenantId}:mu:{memoryUnitId}";
-        string vecKey = $"{tenantId}:vec:{memoryUnitId}";
-        (string graphQuery, IDictionary<string, object> graphParams) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
-
-        await Task.WhenAll(
-            db.KeyDeleteAsync(muKey),
-            db.KeyDeleteAsync(vecKey)).ConfigureAwait(false);
-
-        await falkor.QueryAsync(tenantId, graphQuery, graphParams).ConfigureAwait(false);
     }
 
     private CaseMember DeserializeStoredMemberOrThrow(

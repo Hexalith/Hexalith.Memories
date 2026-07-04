@@ -7,8 +7,12 @@ using System.Text.RegularExpressions;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.EventStore.Domain.Commands;
+using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Cases;
+using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,14 +28,26 @@ using CaseRecord = Hexalith.Memories.Contracts.V1.Case;
 public class CaseServiceTests
 {
     [Fact]
-    public async Task CreateCaseAsync_ShouldStoreHashAndCreateGraphNode()
+    public async Task CreateCaseAsync_ShouldAcceptCommandBeforeSchedulingProjectionWorkflow()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
-        (IConnectionMultiplexer falkorDb, IDatabase falkorDbDb) = CreateMockFalkorDb();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
         ILogger<CaseService> logger = NullLogger<CaseService>.Instance;
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), logger);
+        List<string> operationLog = [];
+        CapturingCommandStore commandStore = new(operationLog);
+        CapturingProjectionWorkflowScheduler workflowScheduler = new(operationLog);
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            logger,
+            commandStore,
+            workflowScheduler);
 
         var input = new CreateCaseInput("tenant-1", "Test Case", "A description");
 
@@ -47,13 +63,139 @@ public class CaseServiceTests
         result.Id.ShouldNotBeNullOrWhiteSpace();
         Regex.IsMatch(result.Id, "^[0-9A-HJKMNP-TV-Z]{26}$").ShouldBeTrue();
 
-        await redisDb.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString().StartsWith("tenant-1:case:")),
+        commandStore.AcceptedCommands.Count.ShouldBe(1);
+        CreateCaseCommand command = commandStore.AcceptedCommands[0].ShouldBeOfType<CreateCaseCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.CaseId.ShouldBe(result.Id);
+        command.Name.ShouldBe("Test Case");
+        command.Description.ShouldBe("A description");
+
+        workflowScheduler.ScheduledWorkflows.Count.ShouldBe(1);
+        ScheduledProjectionWorkflow workflow = workflowScheduler.ScheduledWorkflows[0];
+        workflow.WorkflowName.ShouldBe(nameof(CaseCreationProjectionWorkflow));
+        workflow.InstanceId.ShouldBe($"case-create-{result.Id}");
+        workflow.Input.ShouldNotBeNull();
+
+        // Story 21.2 AC1: the EventStore command accept is the authoritative write and must
+        // complete before projection fan-out starts.
+        operationLog.ShouldBe(
+        [
+            $"accept:{CreateCaseCommand.CommandType}",
+            $"schedule:{nameof(CaseCreationProjectionWorkflow)}",
+        ]);
+
+        await redisDb.DidNotReceive().HashSetAsync(
+            Arg.Any<RedisKey>(),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
 
-        builder.Received(1).BuildMergeCaseNode(
-            Arg.Any<string>(), "Test Case", "tenant-1", Arg.Any<DateTimeOffset>());
+        builder.DidNotReceive().BuildMergeCaseNode(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task CreateCaseAsync_WhenCommandAcceptFails_ShouldNotScheduleProjectionOrWriteReadModels()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        CapturingProjectionWorkflowScheduler workflowScheduler = new();
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            new FailingCommandStore(),
+            workflowScheduler);
+
+        var input = new CreateCaseInput("tenant-1", "Test Case", "A description");
+
+        // Act / Assert
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => service.CreateCaseAsync(input, CancellationToken.None));
+
+        exception.Message.ShouldBe("EVENTSTORE_UNAVAILABLE");
+        workflowScheduler.ScheduledWorkflows.ShouldBeEmpty();
+        await redisDb.DidNotReceive().HashSetAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
+        builder.DidNotReceive().BuildMergeCaseNode(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task CreateAnnotationAsync_ShouldAcceptCommandBeforeSchedulingProjectionWorkflow()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDbWithMuIds("mu-001");
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        builder.BuildCheckMemoryUnitExists(Arg.Any<string>())
+            .Returns(("MATCH (m:MemoryUnit {id: $id}) RETURN m.id", new Dictionary<string, object> { ["id"] = "mu-001" }));
+        List<string> operationLog = [];
+        CapturingCommandStore commandStore = new(operationLog);
+        CapturingProjectionWorkflowScheduler workflowScheduler = new(operationLog);
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            commandStore,
+            workflowScheduler);
+
+        redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new HashEntry("id", "mu-001"),
+                new HashEntry("caseId", "case-001"),
+                new HashEntry("content", "Original content"),
+                new HashEntry("contentHash", "hash-001"),
+                new HashEntry("sourceUri", "file:///doc.txt"),
+                new HashEntry("sourceType", "file"),
+                new HashEntry("ingestedBy", "user@test.local"),
+                new HashEntry("ingestedAt", "2026-07-01T10:00:00+00:00"),
+                new HashEntry("lastUpdated", "2026-07-01T10:00:00+00:00"),
+            ]);
+        redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>())
+            .Returns(true);
+
+        CreateAnnotationInput input = new("tenant-1", "case-001", "mu-001", "Correction text", "annotator@test.local", "correction");
+
+        // Act
+        (MemoryUnit Annotation, string WorkflowInstanceId)? result = await service.CreateAnnotationAsync(input, CancellationToken.None);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Value.Annotation.Status.ShouldBe(MemoryUnitStatus.Queued);
+
+        RequestAnnotationCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<RequestAnnotationCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.CaseId.ShouldBe("case-001");
+        command.TargetMemoryUnitId.ShouldBe("mu-001");
+        command.AnnotationMemoryUnitId.ShouldBe(result.Value.Annotation.Id);
+
+        ScheduledProjectionWorkflow workflow = workflowScheduler.ScheduledWorkflows.ShouldHaveSingleItem();
+        workflow.WorkflowName.ShouldBe(nameof(AnnotationProjectionWorkflow));
+        workflow.InstanceId.ShouldBe($"annotation-project-{result.Value.Annotation.Id}");
+
+        operationLog.ShouldBe(
+        [
+            $"accept:{RequestAnnotationCommand.CommandType}",
+            $"schedule:{nameof(AnnotationProjectionWorkflow)}",
+        ]);
+
+        // Story 21.2: graph stub/edge writes moved into AnnotationProjectionWorkflow activities.
+        builder.DidNotReceive().BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>());
+        builder.DidNotReceive().BuildMergeEdge(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EdgeType>(), Arg.Any<float>(), Arg.Any<EdgeOrigin>());
     }
 
     [Fact]
@@ -1019,17 +1161,25 @@ public class CaseServiceTests
     // --- DeleteMemoryUnitAsync tests ---
 
     [Fact]
-    public async Task DeleteMemoryUnitAsync_MuFoundAndDeleted_ShouldReturnTrue()
+    public async Task DeleteMemoryUnitAsync_MuFoundAndDeleted_ShouldAcceptCommandBeforeSchedulingProjectionCleanup()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
-            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
-        (IConnectionMultiplexer activityRedis, IDatabase activityDb) = CreateMockRedis();
-        CaseActivityService activityService = new(activityRedis, NullLogger<CaseActivityService>.Instance);
-        CaseService service = new(redis, falkorDb, builder, activityService, CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        List<string> operationLog = [];
+        CapturingCommandStore commandStore = new(operationLog);
+        CapturingProjectionWorkflowScheduler workflowScheduler = new(operationLog);
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            commandStore,
+            workflowScheduler);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
@@ -1039,42 +1189,63 @@ public class CaseServiceTests
 
         // Assert
         result.ShouldBeTrue();
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
-        builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
-        IEnumerable<NSubstitute.Core.ICall> activityCalls = activityDb.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == "StreamAddAsync");
-        activityCalls.Count().ShouldBe(1);
-        NSubstitute.Core.ICall activityCall = activityCalls.First();
-        ((RedisKey)activityCall.GetArguments()[0]!).ToString().ShouldBe("tenant-1:case:case-001:activity");
-        NameValueEntry[] entries = (NameValueEntry[])activityCall.GetArguments()[1]!;
-        entries.ShouldContain(e => e.Name == "type" && e.Value == "memoryUnitDeleted");
-        entries.ShouldContain(e => e.Name == "memoryUnitId" && e.Value == "mu-001");
+
+        DeleteMemoryUnitCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<DeleteMemoryUnitCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.CaseId.ShouldBe("case-001");
+        command.MemoryUnitId.ShouldBe("mu-001");
+        command.AnnotationMemoryUnitIds.ShouldBeEmpty();
+
+        ScheduledProjectionWorkflow workflow = workflowScheduler.ScheduledWorkflows.ShouldHaveSingleItem();
+        workflow.WorkflowName.ShouldBe(nameof(MemoryUnitDeletionProjectionWorkflow));
+        workflow.InstanceId.ShouldBe("memory-unit-delete-mu-001");
+        MemoryUnitDeletionProjectionInput projectionInput = workflow.Input.ShouldBeOfType<MemoryUnitDeletionProjectionInput>();
+        projectionInput.TenantId.ShouldBe("tenant-1");
+        projectionInput.CaseId.ShouldBe("case-001");
+        projectionInput.MemoryUnitId.ShouldBe("mu-001");
+
+        operationLog.ShouldBe(
+        [
+            $"accept:{DeleteMemoryUnitCommand.CommandType}",
+            $"schedule:{nameof(MemoryUnitDeletionProjectionWorkflow)}",
+        ]);
+
+        // Story 21.2: syntactic/vector/graph deletion and activity recording are workflow-owned
+        // projection cleanup now — the service must not delete read-model keys directly.
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        builder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
 
     [Fact]
-    public async Task DeleteMemoryUnitAsync_WhenVectorDeleteFails_ShouldKeepSyntacticHashForRetry()
+    public async Task DeleteMemoryUnitAsync_WhenCommandAcceptFails_ShouldNotScheduleProjectionOrTouchReadModels()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
-            .Returns(("MATCH (m:MemoryUnit {id: $id}) DETACH DELETE m", new Dictionary<string, object> { ["id"] = "mu-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        CapturingProjectionWorkflowScheduler workflowScheduler = new();
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            new FailingCommandStore(),
+            workflowScheduler);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
-        redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>())
-            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
 
-        // Act / Assert
-        _ = await Should.ThrowAsync<RedisConnectionException>(
+        // Act / Assert — EventStore accept failure must surface and leave every projection intact.
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
             () => service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-001", CancellationToken.None));
 
-        await redisDb.DidNotReceive().KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"),
-            Arg.Any<CommandFlags>());
+        exception.Message.ShouldBe("EVENTSTORE_UNAVAILABLE");
+        workflowScheduler.ScheduledWorkflows.ShouldBeEmpty();
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        builder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
 
     [Fact]
@@ -1118,13 +1289,24 @@ public class CaseServiceTests
     }
 
     [Fact]
-    public async Task DeleteMemoryUnitAsync_WhenAnnotationsExist_ShouldCascadeDeleteThemBeforeTarget()
+    public async Task DeleteMemoryUnitAsync_WhenAnnotationsExist_ShouldCarryAnnotationIdsThroughCommandAndProjectionInput()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDbWithMuIds("ann-001", "ann-002");
         IGraphQueryBuilder builder = CreateMockBuilder();
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        CapturingCommandStore commandStore = new();
+        CapturingProjectionWorkflowScheduler workflowScheduler = new();
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            commandStore,
+            workflowScheduler);
 
         redisDb.HashGetAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Is<RedisValue>(v => v.ToString() == "caseId"), Arg.Any<CommandFlags>())
             .Returns(new RedisValue("case-001"));
@@ -1132,14 +1314,18 @@ public class CaseServiceTests
         // Act
         bool result = await service.DeleteMemoryUnitAsync("tenant-1", "case-001", "mu-001", CancellationToken.None);
 
-        // Assert
+        // Assert — the cascade set is resolved before the command so the durable record and the
+        // projection cleanup input both name every annotation memory unit.
         result.ShouldBeTrue();
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:ann-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:ann-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:ann-002"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:ann-002"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
+
+        DeleteMemoryUnitCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<DeleteMemoryUnitCommand>();
+        command.AnnotationMemoryUnitIds.ShouldBe(new[] { "ann-001", "ann-002" });
+
+        MemoryUnitDeletionProjectionInput projectionInput = workflowScheduler.ScheduledWorkflows
+            .ShouldHaveSingleItem().Input.ShouldBeOfType<MemoryUnitDeletionProjectionInput>();
+        projectionInput.AnnotationMemoryUnitIds.ShouldBe(new[] { "ann-001", "ann-002" });
+
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
     }
 
     // --- DeleteCaseAsync tests ---
@@ -1165,7 +1351,7 @@ public class CaseServiceTests
     }
 
     [Fact]
-    public async Task DeleteCaseAsync_CaseWithZeroMus_ShouldDeleteCaseResources()
+    public async Task DeleteCaseAsync_CaseWithZeroMus_ShouldAcceptCommandAndScheduleProjectionCleanup()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
@@ -1173,9 +1359,19 @@ public class CaseServiceTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         builder.BuildListCaseMemoryUnitIds(Arg.Any<string>())
             .Returns(("MATCH query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        builder.BuildDeleteCaseNode(Arg.Any<string>())
-            .Returns(("DELETE query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        List<string> operationLog = [];
+        CapturingCommandStore commandStore = new(operationLog);
+        CapturingProjectionWorkflowScheduler workflowScheduler = new(operationLog);
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            commandStore,
+            workflowScheduler);
 
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
             .Returns(true);
@@ -1186,37 +1382,49 @@ public class CaseServiceTests
         // Assert
         result.ShouldBeTrue();
 
-        // Verify status set to "deleting"
-        await redisDb.Received().HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"),
-            Arg.Is<HashEntry[]>(entries =>
-                entries.Any(e => e.Name.ToString() == "status" && e.Value.ToString() == "deleting") &&
-                entries.Any(e => e.Name.ToString() == "deletionStartedAt")),
-            Arg.Any<CommandFlags>());
+        DeleteCaseCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<DeleteCaseCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.CaseId.ShouldBe("case-001");
+        command.MemoryUnitIds.ShouldBeEmpty();
 
-        // Verify case graph node deleted
-        builder.Received(1).BuildDeleteCaseNode("case-001");
+        ScheduledProjectionWorkflow workflow = workflowScheduler.ScheduledWorkflows.ShouldHaveSingleItem();
+        workflow.WorkflowName.ShouldBe(nameof(CaseDeletionProjectionWorkflow));
+        workflow.InstanceId.ShouldBe("case-delete-case-001");
 
-        // Verify all 3 case Redis keys deleted
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:members"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001:activity"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>());
+        operationLog.ShouldBe(
+        [
+            $"accept:{DeleteCaseCommand.CommandType}",
+            $"schedule:{nameof(CaseDeletionProjectionWorkflow)}",
+        ]);
+
+        // Story 21.2: the "deleting" status guard and Redis/graph cleanup are workflow-owned
+        // projection steps (MarkCaseDeletingActivity, DeleteCaseProjectionActivity) now.
+        await redisDb.DidNotReceive().HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>());
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        builder.DidNotReceive().BuildDeleteCaseNode(Arg.Any<string>());
     }
 
     [Fact]
-    public async Task DeleteCaseAsync_CaseWithThreeMus_ShouldDeleteAllMuBackendsAndCaseResources()
+    public async Task DeleteCaseAsync_CaseWithThreeMus_ShouldCarryMemoryUnitIdsThroughCommandAndProjectionInput()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
-        (IConnectionMultiplexer falkorDb, IDatabase falkorDbDb) = CreateMockFalkorDbWithMuIds("mu-001", "mu-002", "mu-003");
+        (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDbWithMuIds("mu-001", "mu-002", "mu-003");
         IGraphQueryBuilder builder = CreateMockBuilder();
         builder.BuildListCaseMemoryUnitIds(Arg.Any<string>())
             .Returns(("LIST query", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        builder.BuildDeleteMemoryUnitNode(Arg.Any<string>())
-            .Returns(callInfo => ($"DELETE MU {callInfo.Arg<string>()}", new Dictionary<string, object> { ["id"] = callInfo.Arg<string>() }));
-        builder.BuildDeleteCaseNode(Arg.Any<string>())
-            .Returns(("DELETE CASE", new Dictionary<string, object> { ["caseId"] = "case-001" }));
-        CaseService service = new(redis, falkorDb, builder, CreateMockActivityService(), CreateMockWorkflowClient(), CreateMockActorProxyFactory(), NullLogger<CaseService>.Instance);
+        CapturingCommandStore commandStore = new();
+        CapturingProjectionWorkflowScheduler workflowScheduler = new();
+        CaseService service = new(
+            redis,
+            falkorDb,
+            builder,
+            CreateMockActivityService(),
+            CreateMockWorkflowClient(),
+            CreateMockActorProxyFactory(),
+            NullLogger<CaseService>.Instance,
+            commandStore,
+            workflowScheduler);
 
         redisDb.KeyExistsAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:case:case-001"), Arg.Any<CommandFlags>())
             .Returns(true);
@@ -1224,24 +1432,22 @@ public class CaseServiceTests
         // Act
         bool result = await service.DeleteCaseAsync("tenant-1", "case-001", CancellationToken.None);
 
-        // Assert
+        // Assert — the graph read resolves the member set, but every write goes through the
+        // durable command plus workflow-owned projection cleanup.
         result.ShouldBeTrue();
 
-        // Verify BuildDeleteMemoryUnitNode called for each MU
-        builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
-        builder.Received(1).BuildDeleteMemoryUnitNode("mu-002");
-        builder.Received(1).BuildDeleteMemoryUnitNode("mu-003");
+        builder.Received(1).BuildListCaseMemoryUnitIds("case-001");
 
-        // Verify Redis keys deleted for each MU (syntactic + vector)
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-001"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-002"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-002"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:mu:mu-003"), Arg.Any<CommandFlags>());
-        await redisDb.Received().KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == "tenant-1:vec:mu-003"), Arg.Any<CommandFlags>());
+        DeleteCaseCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<DeleteCaseCommand>();
+        command.MemoryUnitIds.ShouldBe(new[] { "mu-001", "mu-002", "mu-003" });
 
-        // Verify case graph node deleted
-        builder.Received(1).BuildDeleteCaseNode("case-001");
+        CaseDeletionProjectionInput projectionInput = workflowScheduler.ScheduledWorkflows
+            .ShouldHaveSingleItem().Input.ShouldBeOfType<CaseDeletionProjectionInput>();
+        projectionInput.MemoryUnitIds.ShouldBe(new[] { "mu-001", "mu-002", "mu-003" });
+
+        builder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
+        builder.DidNotReceive().BuildDeleteCaseNode(Arg.Any<string>());
+        await redisDb.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
     }
 
     private static CaseActivityService CreateMockActivityService()
@@ -1252,6 +1458,54 @@ public class CaseServiceTests
 
     private static DaprWorkflowClient CreateMockWorkflowClient()
         => null!;
+
+    private sealed class CapturingCommandStore(List<string>? operationLog = null) : IMemoriesCommandStore
+    {
+        public List<object> AcceptedCommands { get; } = [];
+
+        public Task<string> AcceptAsync<TCommand>(
+            string tenantId,
+            TCommand command,
+            string actorId,
+            CancellationToken cancellationToken)
+            where TCommand : IMemoriesCommandContract
+        {
+            tenantId.ShouldNotBeNullOrWhiteSpace();
+            actorId.ShouldNotBeNullOrWhiteSpace();
+            AcceptedCommands.Add(command);
+            operationLog?.Add($"accept:{TCommand.CommandType}");
+            return Task.FromResult($"accepted-{AcceptedCommands.Count}");
+        }
+    }
+
+    private sealed class FailingCommandStore : IMemoriesCommandStore
+    {
+        public Task<string> AcceptAsync<TCommand>(
+            string tenantId,
+            TCommand command,
+            string actorId,
+            CancellationToken cancellationToken)
+            where TCommand : IMemoriesCommandContract
+            => Task.FromException<string>(new InvalidOperationException("EVENTSTORE_UNAVAILABLE"));
+    }
+
+    private sealed class CapturingProjectionWorkflowScheduler(List<string>? operationLog = null) : ICaseProjectionWorkflowScheduler
+    {
+        public List<ScheduledProjectionWorkflow> ScheduledWorkflows { get; } = [];
+
+        public Task<string> ScheduleAsync(
+            string workflowName,
+            string instanceId,
+            object input,
+            CancellationToken cancellationToken)
+        {
+            ScheduledWorkflows.Add(new ScheduledProjectionWorkflow(workflowName, instanceId, input));
+            operationLog?.Add($"schedule:{workflowName}");
+            return Task.FromResult(instanceId);
+        }
+    }
+
+    private sealed record ScheduledProjectionWorkflow(string WorkflowName, string InstanceId, object Input);
 
     private static Dapr.Actors.Client.IActorProxyFactory CreateMockActorProxyFactory(CaseIngestionCounts? counts = null)
     {

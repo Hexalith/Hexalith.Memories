@@ -10,6 +10,8 @@ namespace Hexalith.Memories.Server.Tests.Tenants;
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.EventStore.Domain.Commands;
+using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -24,22 +26,32 @@ public class TenantRegistryServiceTests
     public async Task RegisterTenantAsync_CreatesEntryWithProvisioningStatus()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
+        List<string> operationLog = [];
+        CapturingCommandStore commandStore = new(operationLog);
         daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-acme", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
         daprClient.TrySaveStateAsync("statestore", "tenant-registry-acme", Arg.Any<TenantRegistryEntry>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(true);
+            .Returns(_ =>
+            {
+                operationLog.Add("save:tenant-registry");
+                return true;
+            });
         daprClient.GetStateAndETagAsync<List<string>>("statestore", "tenant-registry-index", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(_ => (new List<string>(), string.Empty));
         daprClient.TrySaveStateAsync("statestore", "tenant-registry-index", Arg.Any<List<string>>(), Arg.Any<string>(), cancellationToken: Arg.Any<CancellationToken>())
             .Returns(true);
 
-        TenantRegistryService service = CreateService(daprClient);
+        TenantRegistryService service = CreateService(daprClient, commandStore);
 
         TenantInfo result = await service.RegisterTenantAsync("acme", "Acme Corp", CancellationToken.None);
 
         result.Id.ShouldBe("acme");
         result.DisplayName.ShouldBe("Acme Corp");
         result.Status.ShouldBe(TenantStatus.Provisioning);
+        RegisterTenantCommand command = commandStore.AcceptedCommands.ShouldHaveSingleItem().ShouldBeOfType<RegisterTenantCommand>();
+        command.TenantId.ShouldBe("acme");
+        command.DisplayName.ShouldBe("Acme Corp");
+        operationLog[0].ShouldBe($"accept:{RegisterTenantCommand.CommandType}");
 
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
@@ -141,6 +153,7 @@ public class TenantRegistryServiceTests
     public async Task UpdateTenantStatusAsync_UpdatesStatusAndClearsWorkflowOwnership()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
         TenantRegistryEntry existing = CreateEntry(
             "tenant-1",
             "Test",
@@ -150,10 +163,15 @@ public class TenantRegistryServiceTests
         daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(existing);
 
-        TenantRegistryService service = CreateService(daprClient);
+        TenantRegistryService service = CreateService(daprClient, commandStore);
 
         await service.UpdateTenantStatusAsync("tenant-1", TenantStatus.Active, CancellationToken.None);
 
+        UpdateTenantLifecycleStatusCommand command = commandStore.AcceptedCommands
+            .ShouldHaveSingleItem()
+            .ShouldBeOfType<UpdateTenantLifecycleStatusCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.Status.ShouldBe(TenantStatus.Active);
         await daprClient.Received(1).SaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
@@ -168,19 +186,25 @@ public class TenantRegistryServiceTests
     public async Task BeginTenantDeletionAsync_ActiveTenant_TransitionsToDeletingAndStoresWorkflowId()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
+        CapturingCommandStore commandStore = new();
         TenantRegistryEntry existing = CreateEntry("tenant-1", "Test", TenantStatus.Active);
         daprClient.GetStateAndETagAsync<TenantRegistryEntry?>("statestore", "tenant-registry-tenant-1", cancellationToken: Arg.Any<CancellationToken>())
             .Returns((existing, "etag-1"));
         daprClient.TrySaveStateAsync("statestore", "tenant-registry-tenant-1", Arg.Any<TenantRegistryEntry>(), "etag-1", cancellationToken: Arg.Any<CancellationToken>())
             .Returns(true);
 
-        TenantRegistryService service = CreateService(daprClient);
+        TenantRegistryService service = CreateService(daprClient, commandStore);
 
         TenantRegistryEntry? result = await service.BeginTenantDeletionAsync("tenant-1", "delete-tenant-1-abc", false, null, CancellationToken.None);
 
         result.ShouldNotBeNull();
         result.Tenant.Status.ShouldBe(TenantStatus.Deleting);
         result.WorkflowInstanceId.ShouldBe("delete-tenant-1-abc");
+        UpdateTenantLifecycleStatusCommand command = commandStore.AcceptedCommands
+            .ShouldHaveSingleItem()
+            .ShouldBeOfType<UpdateTenantLifecycleStatusCommand>();
+        command.TenantId.ShouldBe("tenant-1");
+        command.Status.ShouldBe(TenantStatus.Deleting);
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
@@ -464,9 +488,26 @@ public class TenantRegistryServiceTests
             workflowInstanceId,
             lastUpdated ?? DateTimeOffset.UtcNow);
 
-    private static TenantRegistryService CreateService(DaprClient daprClient)
+    private sealed class CapturingCommandStore(List<string>? operationLog = null) : IMemoriesCommandStore
+    {
+        public List<object> AcceptedCommands { get; } = [];
+
+        public Task<string> AcceptAsync<TCommand>(
+            string tenantId,
+            TCommand command,
+            string actorId,
+            CancellationToken cancellationToken)
+            where TCommand : IMemoriesCommandContract
+        {
+            operationLog?.Add($"accept:{TCommand.CommandType}");
+            AcceptedCommands.Add(command);
+            return Task.FromResult($"{TCommand.CommandType}:{command.AggregateId}");
+        }
+    }
+
+    private static TenantRegistryService CreateService(DaprClient daprClient, IMemoriesCommandStore? commandStore = null)
     {
         ILogger<TenantRegistryService> logger = Substitute.For<ILogger<TenantRegistryService>>();
-        return new TenantRegistryService(daprClient, logger);
+        return new TenantRegistryService(daprClient, logger, commandStore);
     }
 }
