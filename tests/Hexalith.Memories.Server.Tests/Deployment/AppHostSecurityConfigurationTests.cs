@@ -22,8 +22,9 @@ public sealed class AppHostSecurityConfigurationTests
         program.ShouldContain("using Hexalith.EventStore.Aspire;", Case.Sensitive);
         program.ShouldContain("builder.AddHexalithEventStoreSecurity()", Case.Sensitive);
         program.ShouldContain("HexalithEventStoreSecurityResources? security", Case.Sensitive);
-        program.ShouldContain("server.WithSecurityDependency(security)", Case.Sensitive);
+        program.ShouldContain("server.WithJwtBearerSecurity(security)", Case.Sensitive);
         program.ShouldContain("mcp.WithJwtBearerSecurity(security)", Case.Sensitive);
+        program.ShouldContain("PropagateJwtBearerAuthenticationEnvironment(server)", Case.Sensitive);
     }
 
     [Fact]

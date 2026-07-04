@@ -214,10 +214,9 @@ if (daprApiToken is not null)
     server = server.WithEnvironment("DAPR_API_TOKEN", daprApiToken);
 }
 
-if (security is not null)
-{
-    server = server.WithSecurityDependency(security);
-}
+server = security is null
+    ? PropagateJwtBearerAuthenticationEnvironment(server)
+    : server.WithJwtBearerSecurity(security);
 
 _ = server;
 

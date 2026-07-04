@@ -7,12 +7,14 @@ namespace Hexalith.Memories.Server.Tests.EventStoreIntegration;
 
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Server.Tests.Authentication;
 
 using NSubstitute;
 
@@ -128,6 +130,7 @@ public sealed class MiddlewareOrderTests : System.IDisposable
     public async Task ProcessRoute_IsNotMappedAsEventIngestionSurface()
     {
         using HttpClient client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
 
         StringContent content = new("{}", Encoding.UTF8, "application/json");
         HttpResponseMessage response = await client.PostAsync("/process", content);

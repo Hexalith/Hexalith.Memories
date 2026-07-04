@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Endpoints;
@@ -27,6 +28,8 @@ using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.ServiceDefaults;
 using Hexalith.Memories.Telemetry;
 
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 
 using Microsoft.AspNetCore.Http;
@@ -41,6 +44,17 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.Services.AddDaprClient();
+builder.Services.AddOptions<MemoriesServerAuthenticationOptions>()
+    .BindConfiguration("Authentication:JwtBearer")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<MemoriesServerAuthenticationOptions>, ValidateServerAuthenticationOptions>();
+builder.Services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureServerJwtBearerOptions>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer();
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
 
 // Story 9.2 Task 1: DAPR Conversation API registration — backs GenerateNaturalLanguageDescriptionActivity.
 // The component name (default "llm") is resolved at activity-call time from NaturalLanguageDescriptionOptions.
@@ -345,7 +359,9 @@ NaturalLanguageDescriptionOptionsSnapshot.Initialize(
     app.Services.GetRequiredService<IOptions<NaturalLanguageDescriptionOptions>>());
 
 app.MapDefaultEndpoints();
-app.MapActorsHandlers();
+// Dapr actor runtime endpoints are sidecar-facing infrastructure routes, not API routes.
+// ServerEndpointAuthorizationTests guards this anonymous exception against broad route drift.
+app.MapActorsHandlers().AllowAnonymous();
 
 // Story 9.1: DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for plain-JSON
 // requests (guards the /api/ingest POST from accidental envelope unwrapping). EventStore now supplies
@@ -353,8 +369,10 @@ app.MapActorsHandlers();
 // route emits the resolved topic without a handwritten /dapr/subscribe endpoint.
 app.UseMiddleware<Hexalith.Memories.EventStore.CloudEventEnvelopeCaptureMiddleware>();
 app.UseCloudEvents();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapControllers();
-app.MapSubscribeHandler();
+app.MapSubscribeHandler().AllowAnonymous();
 
 TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
 MemoriesMeter.EnsureObservableGaugesCreated(
@@ -3120,7 +3138,7 @@ app.MapGet("/api/tenants/{tenantId}/telemetry/summary", async (
 });
 
 // Story 9.3 — handler registry + mismatch detector endpoints. Experimental HXL002 surface.
-// AuthZ descoped per Spike 0.5 (see deferred-work Story-9.3-MemoriesServerAuthN).
+// Story 20.1: Server fallback authorization now requires bearer authentication for these API routes.
 app.MapGet("/api/handlers", async (
     HttpContext http,
     Hexalith.Memories.Server.Handlers.HandlerRegistryService registryService,

@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
@@ -18,6 +19,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Tenants;
@@ -459,6 +461,13 @@ public sealed class ConsistencyEndpointTests : IDisposable
 
                 services.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(AuditLogs);
             });
+        }
+
+        protected override void ConfigureClient(HttpClient client)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+            base.ConfigureClient(client);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
         }
     }
 }

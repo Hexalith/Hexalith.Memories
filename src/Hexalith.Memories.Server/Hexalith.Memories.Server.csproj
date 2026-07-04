@@ -34,6 +34,7 @@
     <PackageReference Include="Dapr.AI" />
     <PackageReference Include="Dapr.AI.Microsoft.Extensions" />
     <PackageReference Include="Kreuzberg" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
   </ItemGroup>
 
 </Project>

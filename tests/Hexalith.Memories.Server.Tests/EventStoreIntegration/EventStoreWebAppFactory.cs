@@ -14,6 +14,7 @@ using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -60,6 +61,19 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
         // the ConfigureTestServices override replaces the registrations.
         builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
         builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
+        builder.ConfigureAppConfiguration((context, configuration) =>
+        {
+            Dictionary<string, string?> settings = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Authentication:JwtBearer:Issuer"] = "hexalith-memories-test",
+                ["Authentication:JwtBearer:Audience"] = "hexalith-memories-server",
+                ["Authentication:JwtBearer:SigningKey"] = "hexalith-memories-test-signing-key-32b",
+                ["Authentication:JwtBearer:RequireHttpsMetadata"] = "false",
+            };
+
+            _ = configuration.AddInMemoryCollection(settings);
+            _ = context;
+        });
 
         builder.ConfigureTestServices(services =>
         {

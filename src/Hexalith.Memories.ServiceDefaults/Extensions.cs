@@ -599,21 +599,20 @@ public static class Extensions
             ResponseWriter = BackendHealthResponseWriter.WriteAsync,
         };
 
-        _ = app.MapHealthChecks(HealthEndpointPaths.Health, healthOptions);
-
+        _ = app.MapHealthChecks(HealthEndpointPaths.Health, healthOptions)
+            .AllowAnonymous();
         _ = app.MapHealthChecks(HealthEndpointPaths.Alive, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("live"),
             ResultStatusCodes = statusCodes,
             ResponseWriter = BackendHealthResponseWriter.WriteAsync,
-        });
-
+        }).AllowAnonymous();
         _ = app.MapHealthChecks(HealthEndpointPaths.Ready, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("ready"),
             ResultStatusCodes = statusCodes,
             ResponseWriter = BackendHealthResponseWriter.WriteAsync,
-        });
+        }).AllowAnonymous();
 
         return app;
     }

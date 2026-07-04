@@ -9,6 +9,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -54,6 +55,7 @@ public sealed class EventIngestionController : ControllerBase
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An HTTP response that drives DAPR's retry / drop behavior.</returns>
     [HttpPost("ingest")]
+    [AllowAnonymous]
     [EnvironmentTopic(PubSubName, TopicEnvVar)]
     [ProducesResponseType(typeof(EventIngestionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]

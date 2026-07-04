@@ -5,8 +5,11 @@
 
 namespace Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
+using System.Net.Http.Headers;
+
 using Dapr.Client;
 
+using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 
 using Microsoft.AspNetCore.Hosting;
@@ -115,5 +118,12 @@ internal sealed class TelemetryWebAppFactory : WebApplicationFactory<Program>
             //    existing logging pipeline — AddJsonConsole keeps running; our provider captures in parallel.
             services.AddSingleton<ILoggerProvider>(AuditLogs);
         });
+    }
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        base.ConfigureClient(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
     }
 }
