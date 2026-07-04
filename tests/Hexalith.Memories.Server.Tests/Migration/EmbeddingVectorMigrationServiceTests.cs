@@ -5,9 +5,16 @@
 
 namespace Hexalith.Memories.Server.Tests.Migration;
 
+using Dapr.Client;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -330,6 +337,67 @@ public sealed class EmbeddingVectorMigrationServiceTests
     }
 
     [Fact]
+    public async Task LiveMigrationShouldRetainFailureWhenGeneratorReturnsWrongDimensions()
+    {
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
+        FakeStore store = new();
+        store.Tenants.Add("tenant-a");
+        store.Configs["tenant-a"] = EmbeddingProviderDefaults.Google();
+        store.Counts["tenant-a"] = new EmbeddingMigrationTenantCounts(1, 1, 0, 1, 0);
+        store.Indexes["tenant-a"] = new EmbeddingMigrationIndexInfo(768, 768);
+        store.SyntacticUnits["tenant-a"] =
+        [
+            new SyntacticMigrationUnit("mu-wrong-dim", "raw text", "case-1", null),
+        ];
+
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator { DimensionOffset = -1 });
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Live,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        store.RawWrites.ShouldBeEmpty();
+        store.CutoverCalls.ShouldBe(0);
+        store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].IsActive.ShouldBeTrue();
+        store.RecordedFailures.Count.ShouldBe(1);
+        store.RecordedFailures[0].Message.ShouldContain("returned");
+        store.RecordedFailures[0].Message.ShouldContain("expected");
+        result.Tenants[0].Raw.ShouldBe(new EmbeddingMigrationUnitCounters(0, 0, 0, 1));
+    }
+
+    [Fact]
+    public async Task EmbeddingClientMigrationVectorGeneratorShouldDelegateToEmbeddingClient()
+    {
+        IHttpClientFactory httpClientFactory = Substitute.For<IHttpClientFactory>();
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+        IHostEnvironment hostEnvironment = Substitute.For<IHostEnvironment>();
+        hostEnvironment.EnvironmentName.Returns(Environments.Development);
+        EmbeddingClient client = Substitute.ForPartsOf<EmbeddingClient>(
+            httpClientFactory,
+            daprClient,
+            configuration,
+            hostEnvironment);
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
+        float[] expected = [0.1f, 0.2f, 0.3f];
+        client.GenerateAsync("migration text", "tenant-a", config, CancellationToken.None)
+            .Returns(Task.FromResult(expected));
+        EmbeddingClientMigrationVectorGenerator generator = new(client);
+
+        float[] result = await generator.GenerateAsync("migration text", "tenant-a", config, CancellationToken.None);
+
+        result.ShouldBe(expected);
+        await client.Received(1).GenerateAsync("migration text", "tenant-a", config, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task LiveMigrationSuccessShouldVerifyStagingBeforeCutoverAndCompleteAfterConfigUpdate()
     {
         FakeStore store = new();
@@ -551,6 +619,8 @@ public sealed class EmbeddingVectorMigrationServiceTests
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
         result.Message.ShouldContain("Rollback restored");
         store.RollbackCalls.ShouldBe(1);
+        store.MarkerCompleted.ShouldBeFalse();
+        store.ActiveMarkers["tenant-a"].Status.ShouldBe(MigrationMarkerStatus.RolledBack);
         store.DropAndRecreateCalls.ShouldBe(0);
     }
 
@@ -572,6 +642,30 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
         result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
         result.Message.ShouldContain("Abort completed");
+        store.AbortCalls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task AbortModeStoreFailureShouldFailClosedAndRecordTenantFailure()
+    {
+        FakeStore store = new();
+        store.MigrationMarkers["tenant-a"] = true;
+        store.AbortException = new InvalidOperationException("active owner changed");
+        EmbeddingVectorMigrationService service = new(store, new FakeVectorGenerator());
+
+        EmbeddingMigrationResult result = await service.RunAsync(
+            new EmbeddingMigrationOptions
+            {
+                Mode = EmbeddingMigrationMode.Abort,
+                TenantId = "tenant-a",
+                Yes = true,
+            },
+            CancellationToken.None);
+
+        result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.DomainError);
+        result.Message.ShouldContain("Abort failed closed");
+        store.RecordedFailures.Count.ShouldBe(1);
+        store.RecordedFailures[0].ContentKind.ShouldBe("tenant");
         store.AbortCalls.ShouldBe(1);
     }
 
@@ -760,6 +854,8 @@ public sealed class EmbeddingVectorMigrationServiceTests
 
     private sealed class FakeVectorGenerator : IEmbeddingMigrationVectorGenerator
     {
+        public int DimensionOffset { get; init; }
+
         public Task<float[]> GenerateAsync(string text, string tenantId, TenantEmbeddingConfig config, CancellationToken ct)
         {
             if (text == "throw-secret")
@@ -768,7 +864,7 @@ public sealed class EmbeddingVectorMigrationServiceTests
                     "provider failed: client_secret=super-secret-client-secret Authorization: Bearer eyJabcdef AIzaFake123456789");
             }
 
-            return Task.FromResult(Enumerable.Repeat(0.1f, config.Dimensions).ToArray());
+            return Task.FromResult(Enumerable.Repeat(0.1f, config.Dimensions + DimensionOffset).ToArray());
         }
     }
 
@@ -808,6 +904,8 @@ public sealed class EmbeddingVectorMigrationServiceTests
         public Exception? VerifyException { get; set; }
 
         public Exception? CompleteMarkerException { get; set; }
+
+        public Exception? AbortException { get; set; }
 
         public int CutoverCalls { get; private set; }
 
@@ -944,12 +1042,23 @@ public sealed class EmbeddingVectorMigrationServiceTests
                 throw new InvalidOperationException("No retained previous blue/green target is available.");
             }
 
+            ActiveMarkers[tenantId] = new EmbeddingMigrationMarker(
+                tenantId,
+                targetConfig.Provider,
+                targetConfig.Model,
+                targetConfig.Dimensions,
+                MigrationMarkerStatus.RolledBack);
             return Task.CompletedTask;
         }
 
         public Task AbortMigrationAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, CancellationToken ct)
         {
             AbortCalls++;
+            if (AbortException is not null)
+            {
+                throw AbortException;
+            }
+
             return Task.CompletedTask;
         }
 

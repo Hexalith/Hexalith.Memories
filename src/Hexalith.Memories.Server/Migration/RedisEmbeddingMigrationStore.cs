@@ -399,6 +399,14 @@ public sealed partial class RedisEmbeddingMigrationStore(
 
     /// <inheritdoc/>
     public async Task RollbackMigrationAsync(string tenantId, TenantEmbeddingConfig targetConfig, EmbeddingMigrationLease lease, CancellationToken ct)
+        => await RollbackMigrationAsync(tenantId, targetConfig, lease, releaseLock: true, ct).ConfigureAwait(false);
+
+    private async Task RollbackMigrationAsync(
+        string tenantId,
+        TenantEmbeddingConfig targetConfig,
+        EmbeddingMigrationLease lease,
+        bool releaseLock,
+        CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentNullException.ThrowIfNull(targetConfig);
@@ -432,6 +440,10 @@ public sealed partial class RedisEmbeddingMigrationStore(
         }
 
         await SetEmbeddingConfigAsync(tenantId, previous, forceReindex: false, ct).ConfigureAwait(false);
+        if (releaseLock)
+        {
+            await db.KeyDeleteAsync(GetLockKey(tenantId)).WaitAsync(ct).ConfigureAwait(false);
+        }
     }
 
     /// <inheritdoc/>
@@ -446,7 +458,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         if (marker.TryGetValue("status", out string? status)
             && string.Equals(status, MigrationMarkerStatus.Cutover, StringComparison.OrdinalIgnoreCase))
         {
-            await RollbackMigrationAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
+            await RollbackMigrationAsync(tenantId, targetConfig, lease, releaseLock: false, ct).ConfigureAwait(false);
         }
 
         await DropStagingIndexesAsync(db, tenantId, lease.Version, ct).ConfigureAwait(false);
@@ -935,12 +947,27 @@ public sealed partial class RedisEmbeddingMigrationStore(
         }
     }
 
-    private static async Task DropStagingIndexesAsync(IDatabase db, string tenantId, string version, CancellationToken ct)
+    private async Task DropStagingIndexesAsync(IDatabase db, string tenantId, string version, CancellationToken ct)
     {
         DropIndexIfExists(db, IndexSchemaDefinitions.GetSemanticStagingIndexName(tenantId, version));
         ct.ThrowIfCancellationRequested();
         DropIndexIfExists(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingIndexName(tenantId, version));
-        await Task.CompletedTask;
+        await DeleteKeysByPrefixAsync(db, IndexSchemaDefinitions.GetSemanticStagingKeyPrefix(tenantId, version), ct).ConfigureAwait(false);
+        await DeleteKeysByPrefixAsync(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingKeyPrefix(tenantId, version), ct).ConfigureAwait(false);
+    }
+
+    private async Task DeleteKeysByPrefixAsync(IDatabase db, string prefix, CancellationToken ct)
+    {
+        List<RedisKey> keys = [];
+        await foreach (RedisKey key in ScanKeysAsync(prefix, ct).ConfigureAwait(false))
+        {
+            keys.Add(key);
+        }
+
+        if (keys.Count > 0)
+        {
+            await db.KeyDeleteAsync([.. keys]).WaitAsync(ct).ConfigureAwait(false);
+        }
     }
 
     private ITenantConfigurationActor CreateTenantConfigActor(string tenantId)

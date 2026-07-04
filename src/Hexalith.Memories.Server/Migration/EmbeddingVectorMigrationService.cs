@@ -333,7 +333,6 @@ public sealed class EmbeddingVectorMigrationService(
                 recoverStaleLock: options.RecoverStaleLock,
                 ct).ConfigureAwait(false);
             await store.RollbackMigrationAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
-            await store.CompleteMigrationMarkerAsync(tenantId, targetConfig, lease, ct).ConfigureAwait(false);
 
             return new EmbeddingMigrationResult(
                 EmbeddingMigrationMode.Rollback,
@@ -462,6 +461,7 @@ public sealed class EmbeddingVectorMigrationService(
                 else
                 {
                     float[] vector = await vectorGenerator.GenerateAsync(unit.Content, tenantId, targetConfig, ct).ConfigureAwait(false);
+                    EnsureVectorDimensions(vector, targetConfig, unit.MemoryUnitId);
                     await store.WriteRawSemanticAsync(
                         tenantId,
                         targetConfig,
@@ -525,6 +525,7 @@ public sealed class EmbeddingVectorMigrationService(
                 else
                 {
                     float[] vector = await vectorGenerator.GenerateAsync(nl.NaturalLanguageDescription, tenantId, targetConfig, ct).ConfigureAwait(false);
+                    EnsureVectorDimensions(vector, targetConfig, unit.MemoryUnitId);
                     await store.WriteNaturalLanguageSemanticAsync(
                         tenantId,
                         targetConfig,
@@ -638,4 +639,14 @@ public sealed class EmbeddingVectorMigrationService(
             && string.Equals(state.Provider, targetConfig.Provider, StringComparison.OrdinalIgnoreCase)
             && string.Equals(state.Model, targetConfig.Model, StringComparison.OrdinalIgnoreCase)
             && state.Dimensions == targetConfig.Dimensions;
+
+    private static void EnsureVectorDimensions(float[] vector, TenantEmbeddingConfig targetConfig, string memoryUnitId)
+    {
+        ArgumentNullException.ThrowIfNull(vector);
+        if (vector.Length != targetConfig.Dimensions)
+        {
+            throw new InvalidOperationException(
+                $"Generated embedding for memory unit '{memoryUnitId}' returned {vector.Length} dimensions, expected {targetConfig.Dimensions}.");
+        }
+    }
 }

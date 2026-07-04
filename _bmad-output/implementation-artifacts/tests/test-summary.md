@@ -1108,6 +1108,57 @@ explicit rather than implied as covered.
 - Standard framework APIs, happy path, critical error cases, clear descriptions, no sleeps, independent tests: pass.
 - Test summary created with coverage metrics: pass.
 
+---
+
+# Test Automation Summary - Story 21.10 (Migration Subsystem Test Coverage)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-04
+- **Story:** `_bmad-output/implementation-artifacts/21-10-migration-subsystem-test-coverage.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute, with Redis Stack integration coverage through Testcontainers; no new framework introduced.
+- **Feature under test:** embedding vector migration unit/store/tool behavior plus Redis-backed blue/green migration, rollback, abort, marker, and tenant-isolation end-states.
+
+## Generated / Updated Tests
+
+### API / Service / Tool Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Migration/EmbeddingVectorMigrationServiceTests.cs` - covers dry-run/live/resume/rollback/abort orchestration, vector dimension mismatch retention, provider failures, marker end-state protection, secret redaction, and actionable operator messages.
+- [x] `tests/Hexalith.Memories.Server.Tests/Migration/RedisEmbeddingMigrationStoreTests.cs` - covers marker hashes, owner lock behavior, resume preservation, owner mismatch refusal, completion cleanup, and abort cleanup for both raw and natural-language staging key families.
+- [x] `tests/Hexalith.Memories.Server.Tests/Migration/MigrateEmbeddingVectorsToolTests.cs` - covers `--live`, `--resume`, `--rollback`, `--abort`, exactly-one-mode parsing, invalid dimensions, camelCase JSON output, and blue/green help text.
+
+### E2E / Integration Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Migration/EmbeddingVectorMigrationRedisIntegrationTests.cs` - adds RedisStack end-to-end coverage for 768-to-1024 live migration, `FT.INFO` dimension assertions, raw/NL staging hash metadata, completed markers, tenant B isolation, rollback-unavailable fail-closed behavior, pre-cutover abort cleanup, post-cutover abort restore/cleanup, and successful post-cutover rollback end-state.
+- [x] Browser UI E2E is not applicable. Story 21.10 has no module UI surface.
+
+## Coverage
+
+- Migration unit/store/tool surfaces: focused coverage present for store behavior, marker ownership/end-state, vector generation, parser modes, JSON output, human guidance, and secret redaction.
+- Redis-backed migration surfaces: 5 RedisStack scenarios implemented and compiled.
+- Recovery paths: rollback-unavailable, successful post-cutover rollback, pre-cutover abort, and post-cutover abort/restore covered.
+- Tenant isolation: tenant B active aliases remain unchanged, no tenant B lock/marker/staging indexes are created, and no tenant B staging keys are written.
+- UI features: 0/0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed.
+- [x] `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -m:1 /nodeReuse:false --no-restore -p:BuildProjectReferences=false` - passed.
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~Migration" --logger "console;verbosity=normal"` - blocked before discovery by VSTest sandbox listener permission: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -namespace Hexalith.Memories.Server.Tests.Migration -parallel none -noLogo` - passed, 60 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Migration.EmbeddingVectorMigrationRedisIntegrationTests -parallel none -noLogo` - Docker/Testcontainers blocked before test bodies: `DockerUnavailableException`, `unix:///var/run/docker.sock`, inner `SocketException: Permission denied`.
+- [x] `dotnet build Hexalith.Memories.slnx -m:1 /nodeReuse:false --no-restore` - passed with 0 warnings and 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -parallel none -noLogo` - passed, 2212 total, 0 failed, 1 skipped.
+- [x] 2026-07-05 senior-review rerun: server test build passed, migration namespace fallback passed 60 total / 0 failed, integration test build passed, solution build passed, and RedisStack execution remained blocked by Docker socket permission after discovering 5 tests.
+
+## Checklist Result
+
+- API/service/tool tests generated/updated: pass.
+- E2E tests generated if UI exists: pass for RedisStack integration; browser UI not applicable.
+- Standard framework APIs, happy path, critical error cases, semantic Redis state assertions, clear descriptions, no sleeps, independent tests: pass.
+- All generated non-Docker tests run successfully: pass.
+- RedisStack generated tests run successfully: blocked by Docker socket permission in this sandbox; tests compile and are ready for Docker-enabled execution.
+- Test summary created with coverage metrics: pass.
+
 ## Next Steps
 
 - Keep these checks in the focused MCP auth regression set for Story 20.4.

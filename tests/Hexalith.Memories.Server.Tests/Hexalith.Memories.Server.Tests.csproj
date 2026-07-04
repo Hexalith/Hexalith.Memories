@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Telemetry\Hexalith.Memories.Telemetry.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\..\tools\MigrateEmbeddingVectors\MigrateEmbeddingVectors.csproj" Aliases="MigrateTool" />
     <ProjectReference Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
   </ItemGroup>
 

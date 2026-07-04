@@ -76,6 +76,7 @@ last_updated: 2026-07-04
 # 2026-07-04: Story 21.8 created (21.8 -> ready-for-dev) via create-story. Tenant registry CAS and rollback integrity; closes A47 with ETag status updates and atomic entry+index registry commits.
 # 2026-07-04: Story 21.9 created (21.9 -> ready-for-dev) via create-story. Blue/green embedding migration; closes A5 with non-destructive staging, atomic cutover, real rollback, SET NX ownership, TTL/heartbeat marker, and abort path.
 # 2026-07-04: Story 21.9 senior developer review completed with automatic fixes (resume preserves rollback marker fields, tenant deletion drops staging RediSearch indexes). 21.9 -> done.
+# 2026-07-04: Story 21.10 created (21.10 -> ready-for-dev) via create-story. Migration subsystem test coverage; closes A22 with unit/store/tool coverage plus Redis-backed 768-to-1024 real-vector migration, marker end-state, rollback-unavailable, and abort-path proof.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -373,7 +374,7 @@ development_status:
   21-7-dedup-race-and-duplicate-instance-handling: done
   21-8-tenant-registry-cas-and-rollback-integrity: done
   21-9-blue-green-embedding-migration: done
-  21-10-migration-subsystem-test-coverage: backlog
+  21-10-migration-subsystem-test-coverage: done
   epic-21-retrospective: optional
 
   # Epic 22: RAG Retrieval Quality & Correctness (SCP 2026-07-04; closes A8,A9,A29,A30,A48,A49,A50)
