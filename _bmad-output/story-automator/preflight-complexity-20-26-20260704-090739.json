@@ -1,0 +1,598 @@
+[
+  {
+    "storyId": "20.1",
+    "title": "Server Authentication Foundation",
+    "complexity": {
+      "score": 6,
+      "level": "Medium",
+      "reasons": [
+        "Real-time communication",
+        "Authentication system",
+        "Authorization/permissions"
+      ]
+    }
+  },
+  {
+    "storyId": "20.3",
+    "title": "Tenant-Scope Workflow & Batch Status Endpoints",
+    "complexity": {
+      "score": 4,
+      "level": "Medium",
+      "reasons": [
+        "Real-time communication",
+        "Authorization/permissions"
+      ]
+    }
+  },
+  {
+    "storyId": "20.2",
+    "title": "Tenant Authorization Filter & Principal-Derived Audit Identity",
+    "complexity": {
+      "score": 5,
+      "level": "Medium",
+      "reasons": [
+        "Authentication system",
+        "Authorization/permissions",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "20.4",
+    "title": "MCP Production Signing-Key Hardening",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Authentication system"
+      ]
+    }
+  },
+  {
+    "storyId": "20.6",
+    "title": "RediSearch Query-Injection Hardening",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Caching layer",
+        "Accessibility requirements"
+      ]
+    }
+  },
+  {
+    "storyId": "20.5",
+    "title": "Inbound Rate Limiting, Quotas & Audit Completeness",
+    "complexity": {
+      "score": 5,
+      "level": "Medium",
+      "reasons": [
+        "Authentication system",
+        "Performance optimization",
+        "Rate limiting/throttling",
+        "Logging/monitoring/observability"
+      ]
+    }
+  },
+  {
+    "storyId": "21.2",
+    "title": "Transactional Multi-Backend Mutation",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Caching layer",
+        "Transaction management"
+      ]
+    }
+  },
+  {
+    "storyId": "21.1",
+    "title": "Consistency Model Decision (Decision-First)",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Complex database operations",
+        "Charts/visualization"
+      ]
+    }
+  },
+  {
+    "storyId": "21.4",
+    "title": "Key-Schema Single Source of Truth",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Database schema changes",
+        "Caching layer",
+        "Authorization/permissions",
+        "Pure refactor (no behavior change)"
+      ]
+    }
+  },
+  {
+    "storyId": "21.3",
+    "title": "Natural-Language Vector Namespace Separation",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Complex database operations",
+        "Encryption/security"
+      ]
+    }
+  },
+  {
+    "storyId": "21.5",
+    "title": "Deletion Completeness",
+    "complexity": {
+      "score": 6,
+      "level": "Medium",
+      "reasons": [
+        "Database schema changes",
+        "Complex database operations",
+        "Caching layer",
+        "Authentication system"
+      ]
+    }
+  },
+  {
+    "storyId": "21.6",
+    "title": "Event Routing for Unknown/Unavailable Tenants",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Complex error handling"
+      ]
+    }
+  },
+  {
+    "storyId": "21.8",
+    "title": "Tenant Registry CAS & Rollback Integrity",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Complex error handling",
+        "Transaction management"
+      ]
+    }
+  },
+  {
+    "storyId": "21.7",
+    "title": "Dedup Race & Duplicate-Instance Handling",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "21.10",
+    "title": "Migration Subsystem Test Coverage",
+    "complexity": {
+      "score": 5,
+      "level": "Medium",
+      "reasons": [
+        "Real-time communication",
+        "Database schema changes",
+        "Complex error handling",
+        "Integration testing required"
+      ]
+    }
+  },
+  {
+    "storyId": "21.9",
+    "title": "Blue/Green Embedding Migration",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Database schema changes",
+        "Complex error handling"
+      ]
+    }
+  },
+  {
+    "storyId": "22.1",
+    "title": "Semantic-Axis Pagination",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Search/indexing",
+        "Performance optimization"
+      ]
+    }
+  },
+  {
+    "storyId": "22.2",
+    "title": "Bounded, Cancellable Graph Traversal",
+    "complexity": {
+      "score": 7,
+      "level": "Medium",
+      "reasons": [
+        "Real-time communication",
+        "Authorization/permissions",
+        "Backend + Frontend combined",
+        "Charts/visualization"
+      ]
+    }
+  },
+  {
+    "storyId": "22.3",
+    "title": "Graph-Scoped & Hybrid Pagination Correctness",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Performance optimization",
+        "Charts/visualization"
+      ]
+    }
+  },
+  {
+    "storyId": "22.4",
+    "title": "Fusion Case Attribution, Score Calibration & Pinned Scorer",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "22.6",
+    "title": "Post-Filter Recall",
+    "complexity": {
+      "score": 4,
+      "level": "Medium",
+      "reasons": [
+        "Search/indexing",
+        "Charts/visualization",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "22.5",
+    "title": "Case-Scoped Traversal Path Integrity",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Charts/visualization",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "23.9",
+    "title": "EmbeddingClient Provider Strategy",
+    "complexity": {
+      "score": 5,
+      "level": "Medium",
+      "reasons": [
+        "Authentication system",
+        "Backend + Frontend combined",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "22.7",
+    "title": "Retrieval Feature Completion",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Caching layer"
+      ]
+    }
+  },
+  {
+    "storyId": "23.1",
+    "title": "Content Chunking & Batch Embedding",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "23.2",
+    "title": "Claim-Check Workflow Payloads",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Real-time communication",
+        "Encryption/security"
+      ]
+    }
+  },
+  {
+    "storyId": "23.4",
+    "title": "Non-URL Re-Ingestion",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "23.3",
+    "title": "Retry-After-Aware 429 Orchestration",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Rate limiting/throttling",
+        "Integration testing required",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "23.6",
+    "title": "Directory-Batch Scalability",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "23.5",
+    "title": "Rate-Limiter Admission Simplification",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Caching layer"
+      ]
+    }
+  },
+  {
+    "storyId": "23.7",
+    "title": "Index-Provisioning Ownership",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Performance optimization"
+      ]
+    }
+  },
+  {
+    "storyId": "23.8",
+    "title": "Workflow Config Determinism",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "24.1",
+    "title": "Trace Propagation Across the Workflow Boundary",
+    "complexity": {
+      "score": 5,
+      "level": "Medium",
+      "reasons": [
+        "Infrastructure changes",
+        "Integration testing required",
+        "Logging/monitoring/observability",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "24.2",
+    "title": "Read-Path Caching & Tenant-List Bounding",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Caching layer"
+      ]
+    }
+  },
+  {
+    "storyId": "24.3",
+    "title": "Physical Tenant Isolation & Verifier Scaling (Decision-First)",
+    "complexity": {
+      "score": 8,
+      "level": "High",
+      "reasons": [
+        "Complex database operations",
+        "Caching layer",
+        "Authorization/permissions",
+        "Encryption/security",
+        "Performance optimization",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "24.4",
+    "title": "Metric Naming & Committed Dashboards",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "24.5",
+    "title": "Hot-Path Write-Amplification Cleanup",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Caching layer"
+      ]
+    }
+  },
+  {
+    "storyId": "25.1",
+    "title": "Program.cs Decomposition",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Real-time communication",
+        "Charts/visualization",
+        "Pure refactor (no behavior change)"
+      ]
+    }
+  },
+  {
+    "storyId": "25.2",
+    "title": "Error & Telemetry Centralization",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Logging/monitoring/observability"
+      ]
+    }
+  },
+  {
+    "storyId": "25.3",
+    "title": "Shared Route Table & Client Consolidation",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Backend + Frontend combined",
+        "Accessibility requirements",
+        "Configuration/feature flags",
+        "Pure refactor (no behavior change)"
+      ]
+    }
+  },
+  {
+    "storyId": "25.4",
+    "title": "Contract/Persistence Separation & Route Versioning",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Caching layer",
+        "Breaking/migration change"
+      ]
+    }
+  },
+  {
+    "storyId": "25.5",
+    "title": "CLI Consolidation",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "25.6",
+    "title": "MCP Tool Executor",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Authorization/permissions",
+        "Integration testing required"
+      ]
+    }
+  },
+  {
+    "storyId": "25.7",
+    "title": "Evidence Cockpit UX Conformance",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Internationalization",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "25.8",
+    "title": "Dead-Code & Topology Cleanup",
+    "complexity": {
+      "score": 1,
+      "level": "Low",
+      "reasons": [
+        "Caching layer",
+        "Pure refactor (no behavior change)",
+        "Uncertain/research-heavy scope"
+      ]
+    }
+  },
+  {
+    "storyId": "26.1",
+    "title": "Production Deployment Artifacts",
+    "complexity": {
+      "score": 3,
+      "level": "Low",
+      "reasons": [
+        "Infrastructure changes",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "26.2",
+    "title": "Backup & Restore",
+    "complexity": {
+      "score": 4,
+      "level": "Medium",
+      "reasons": [
+        "Caching layer",
+        "Encryption/security",
+        "Integration testing required",
+        "Configuration/feature flags"
+      ]
+    }
+  },
+  {
+    "storyId": "26.3",
+    "title": "Integration Stub Closure",
+    "complexity": {
+      "score": 2,
+      "level": "Low",
+      "reasons": [
+        "Real-time communication"
+      ]
+    }
+  },
+  {
+    "storyId": "26.4",
+    "title": "Coverage Gating & Benchmark Lane",
+    "complexity": {
+      "score": 0,
+      "level": "Low",
+      "reasons": []
+    }
+  },
+  {
+    "storyId": "26.5",
+    "title": "Operational Runbook Set",
+    "complexity": {
+      "score": 4,
+      "level": "Medium",
+      "reasons": [
+        "Database schema changes",
+        "Infrastructure changes",
+        "Logging/monitoring/observability"
+      ]
+    }
+  }
+]
