@@ -86,6 +86,9 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.4 senior developer review completed with automatic fixes (File List hygiene, evidence-table statuses, stale contract summary comment). 22.4 -> done.
 # 2026-07-05: Story 22.5 created (22.5 -> ready-for-dev) via create-story. Case-scoped traversal path integrity; closes A48 by requiring BuildTraverseFromNode to apply the all-path-nodes case predicate used by BuildTraverseWithEdges.
 # 2026-07-05: Story 22.5 senior developer review completed with automatic fixes (evidence table, File List, status sync). 22.5 -> done.
+# 2026-07-05: Story 22.6 created (22.6 -> ready-for-dev) via create-story. Post-filter recall; closes A49 by requiring filtered semantic and graph-scoped semantic search to preserve recall beyond the initial KNN window without unbounded scans.
+# 2026-07-05: Story 22.6 dev-story completed (22.6 -> review). Bounded post-filter KNN candidate-window expansion for metadata/source-type recall; removed fake @sourceType semantic pre-filter (deferred to service-side post-filter); made scoped-KNN reply parser RESP2/RESP3-robust (fixes graph-scoped semantic path). Unit + Redis/FalkorDB integration recall proofs added. Flagged out-of-scope follow-up: SyntacticSearchService.ParseRawSearchResult shares the same latent RESP3 incompatibility.
+# 2026-07-05: Story 22.6 senior developer review completed with automatic fixes (added graph-scoped semantic source-type recall and offset-pagination integration coverage; corrected File List omission for endpoint recall tests). 22.6 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -393,7 +396,7 @@ development_status:
   22-3-graph-scoped-and-hybrid-pagination-correctness: done
   22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: done
   22-5-case-scoped-traversal-path-integrity: done
-  22-6-post-filter-recall: backlog
+  22-6-post-filter-recall: done
   22-7-retrieval-feature-completion: backlog
   epic-22-retrospective: optional
 

@@ -76,7 +76,12 @@ public sealed partial class SemanticSearchService
 
         int maxResults = SearchPaginationOptions.NormalizeCandidateSize(query.MaxResults);
         int offset = SearchPaginationOptions.NormalizeOffset(query.Offset);
-        int candidateCount = CalculateKnnCandidateCount(offset, maxResults);
+
+        // Story 22.6 (A49): metadata and source-type filters are applied service-side after KNN
+        // enrichment, so a fixed offset+max candidate window can drop matches that live beyond the
+        // nearest neighbours. When such a post-filter is present, expand the KNN candidate window to
+        // the bounded cap so filtered recall is preserved without unbounded backend scans.
+        int candidateCount = CalculateKnnCandidateCount(offset, maxResults, RequiresServiceSidePostFilter(query));
 
         // Step 1: Embed the query text
         long embeddingStart = Environment.TickCount64;
@@ -96,7 +101,6 @@ public sealed partial class SemanticSearchService
         string queryString = BuildKnnCandidateQueryString(
             candidateCount,
             query.CaseId,
-            query.SourceTypeFilter,
             query.CloudEventSubject);
 
         var redisQuery = new Query(queryString)
@@ -212,9 +216,9 @@ SearchSucceeded:
             knnResults.Add((memoryUnitId, similarity));
         }
 
-        // Step 6: Enrich from syntactic hashes via pipeline batch (metadataQuery post-filtered here)
+        // Step 6: Enrich from syntactic hashes via pipeline batch (source-type and metadataQuery post-filtered here)
         List<ScoredResult> candidateResults = await EnrichResultsAsync(
-            db, query.TenantId, knnResults, query.MetadataQuery).ConfigureAwait(false);
+            db, query.TenantId, knnResults, query.SourceTypeFilter, query.MetadataQuery).ConfigureAwait(false);
         List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
 
         long searchElapsed = Environment.TickCount64 - searchStart;
@@ -316,7 +320,7 @@ SearchSucceeded:
         }
 
         List<ScoredResult> candidateResults = await EnrichResultsAsync(
-            db, query.TenantId, knnResults, query.MetadataQuery).ConfigureAwait(false);
+            db, query.TenantId, knnResults, query.SourceTypeFilter, query.MetadataQuery).ConfigureAwait(false);
         List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
 
         long searchElapsed = Environment.TickCount64 - searchStart;
@@ -406,7 +410,20 @@ SearchSucceeded:
             return (0, []);
         }
 
-        long totalResults = Convert.ToInt64(values[0].ToString(), CultureInfo.InvariantCulture);
+        // FT.SEARCH returns the legacy RESP2 array ([total, id, [field,val,...], ...]) when the leading
+        // element is the numeric total. When the connection negotiates RESP3 (StackExchange.Redis default),
+        // it instead returns a map ({attributes, format, results:[{id, extra_attributes:{...}, values}],
+        // total_results, warning}). Detect the map by a non-numeric leading element and parse it explicitly.
+        return long.TryParse(values[0].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long legacyTotal)
+            ? ParseLegacyArrayKnnSearchResult(values, legacyTotal, tenantId)
+            : ParseRespMapKnnSearchResult(values, tenantId);
+    }
+
+    private static (long TotalResults, List<(string MemoryUnitId, double Similarity)> Results) ParseLegacyArrayKnnSearchResult(
+        RedisResult[] values,
+        long totalResults,
+        string tenantId)
+    {
         List<(string MemoryUnitId, double Similarity)> results = [];
 
         for (int i = 1; i < values.Length;)
@@ -418,22 +435,94 @@ SearchSucceeded:
             }
 
             Dictionary<string, RedisValue> fields = ParseFieldMap(values[i++]);
-            string memoryUnitId = fields.TryGetValue("memoryUnitId", out RedisValue memoryUnitIdField) && !memoryUnitIdField.IsNullOrEmpty
-                ? memoryUnitIdField.ToString()
-                : IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, documentId, out string parsedMemoryUnitId)
-                    ? parsedMemoryUnitId
-                    : documentId.ToString();
+            if (TryBuildScoredKnnResult(documentId, fields, tenantId, out (string MemoryUnitId, double Similarity) scored))
+            {
+                results.Add(scored);
+            }
+        }
 
-            if (!fields.TryGetValue("__vector_score", out RedisValue scoreField) || scoreField.IsNullOrEmpty)
+        return (totalResults, results);
+    }
+
+    private static (long TotalResults, List<(string MemoryUnitId, double Similarity)> Results) ParseRespMapKnnSearchResult(
+        RedisResult[] mapEntries,
+        string tenantId)
+    {
+        Dictionary<string, RedisResult> map = BuildResultMap(mapEntries);
+
+        long totalResults = 0;
+        if (map.TryGetValue("total_results", out RedisResult? totalValue)
+            && long.TryParse(totalValue.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedTotal))
+        {
+            totalResults = parsedTotal;
+        }
+
+        List<(string MemoryUnitId, double Similarity)> results = [];
+        if (!map.TryGetValue("results", out RedisResult? resultsValue))
+        {
+            return (totalResults, results);
+        }
+
+        RedisResult[] docs = (RedisResult[]?)resultsValue ?? [];
+        foreach (RedisResult docResult in docs)
+        {
+            RedisResult[]? docEntries = (RedisResult[]?)docResult;
+            if (docEntries is null)
             {
                 continue;
             }
 
-            double distance = double.Parse(scoreField.ToString(), CultureInfo.InvariantCulture);
-            results.Add((memoryUnitId, ConvertDistanceToSimilarity(distance)));
+            Dictionary<string, RedisResult> doc = BuildResultMap(docEntries);
+            RedisKey documentId = doc.TryGetValue("id", out RedisResult? idValue) ? idValue.ToString() : (RedisKey)string.Empty;
+            Dictionary<string, RedisValue> fields = doc.TryGetValue("extra_attributes", out RedisResult? attributes)
+                ? ParseFieldMap(attributes)
+                : [];
+
+            if (TryBuildScoredKnnResult(documentId, fields, tenantId, out (string MemoryUnitId, double Similarity) scored))
+            {
+                results.Add(scored);
+            }
         }
 
         return (totalResults, results);
+    }
+
+    private static bool TryBuildScoredKnnResult(
+        RedisKey documentId,
+        Dictionary<string, RedisValue> fields,
+        string tenantId,
+        out (string MemoryUnitId, double Similarity) scored)
+    {
+        string memoryUnitId = fields.TryGetValue("memoryUnitId", out RedisValue memoryUnitIdField) && !memoryUnitIdField.IsNullOrEmpty
+            ? memoryUnitIdField.ToString()
+            : IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, documentId, out string parsedMemoryUnitId)
+                ? parsedMemoryUnitId
+                : documentId.ToString();
+
+        if (!fields.TryGetValue("__vector_score", out RedisValue scoreField) || scoreField.IsNullOrEmpty)
+        {
+            scored = default;
+            return false;
+        }
+
+        double distance = double.Parse(scoreField.ToString(), CultureInfo.InvariantCulture);
+        scored = (memoryUnitId, ConvertDistanceToSimilarity(distance));
+        return true;
+    }
+
+    private static Dictionary<string, RedisResult> BuildResultMap(RedisResult[] entries)
+    {
+        Dictionary<string, RedisResult> map = new(StringComparer.Ordinal);
+        for (int i = 0; i + 1 < entries.Length; i += 2)
+        {
+            string? key = entries[i].ToString();
+            if (!string.IsNullOrEmpty(key))
+            {
+                map[key] = entries[i + 1];
+            }
+        }
+
+        return map;
     }
 
     private static Dictionary<string, RedisValue> ParseFieldMap(RedisResult fieldResult)
@@ -460,18 +549,49 @@ SearchSucceeded:
     /// <returns>The number of KNN candidates to request from Redis.</returns>
     /// <exception cref="SearchPaginationLimitExceededException">Thrown when the resulting candidate window is too large.</exception>
     internal static int CalculateKnnCandidateCount(int offset, int maxResults)
-        => SearchPaginationOptions.CalculateCandidateWindow("semantic", offset, maxResults);
+        => CalculateKnnCandidateCount(offset, maxResults, hasServiceSidePostFilter: false);
 
-    /// <summary>Builds a KNN candidate query string with optional case and source type pre-filters.</summary>
+    /// <summary>Calculates how many nearest-neighbor candidates Redis must return to satisfy an offset page,
+    /// expanding the window to the bounded cap when a service-side post-filter (metadata or source-type) is present.</summary>
+    /// <param name="offset">The requested result offset. Negative values are normalized to zero.</param>
+    /// <param name="maxResults">The requested page size, already normalized to the public result bounds.</param>
+    /// <param name="hasServiceSidePostFilter">When <see langword="true"/>, expand the candidate window so filtered recall is preserved (Story 22.6 / A49).</param>
+    /// <returns>The number of KNN candidates to request from Redis.</returns>
+    /// <exception cref="SearchPaginationLimitExceededException">Thrown when the requested offset page cannot be served within the bounded candidate window.</exception>
+    internal static int CalculateKnnCandidateCount(int offset, int maxResults, bool hasServiceSidePostFilter)
+    {
+        // Always validate the base offset page against the bounded cap first: this preserves Story 22.1
+        // pagination semantics and the Story 22.3 PAGINATION_LIMIT_EXCEEDED behaviour even when expanding.
+        int baseWindow = SearchPaginationOptions.CalculateCandidateWindow("semantic", offset, maxResults);
+        return hasServiceSidePostFilter
+            ? Math.Max(baseWindow, SearchPaginationOptions.MaxCandidateWindow)
+            : baseWindow;
+    }
+
+    /// <summary>Determines whether the query carries a filter that must be applied service-side after KNN enrichment
+    /// (metadata text or source type), and therefore requires an expanded candidate window for filtered recall.</summary>
+    /// <param name="query">The search query.</param>
+    /// <returns><see langword="true"/> when a metadata or source-type post-filter is present.</returns>
+    internal static bool RequiresServiceSidePostFilter(SearchQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        return !string.IsNullOrWhiteSpace(query.MetadataQuery)
+            || !string.IsNullOrWhiteSpace(query.SourceTypeFilter);
+    }
+
+    /// <summary>Builds a KNN candidate query string with the indexed case and CloudEvent-subject TAG pre-filters.</summary>
     /// <param name="candidateCount">The number of nearest-neighbor candidates Redis should return before service-side pagination.</param>
     /// <param name="caseId">An optional case identifier for TAG filtering.</param>
-    /// <param name="sourceTypeFilter">An optional source type for TAG filtering.</param>
     /// <param name="cloudEventSubject">An optional CloudEvent subject for TAG filtering.</param>
     /// <returns>The KNN query string for FT.SEARCH.</returns>
+    /// <remarks>Story 22.6 (A49): <c>caseId</c> and <c>cloudeventSubject</c> are real indexed TAG fields on the raw
+    /// semantic vector hash, so they remain KNN primary filters. <c>sourceType</c> is deliberately NOT emitted here —
+    /// it is not indexed on the semantic vector hash, so a <c>@sourceType</c> pre-filter would silently return false
+    /// negatives. Source-type recall is instead applied as a bounded service-side post-filter in
+    /// <see cref="EnrichResultsAsync"/> over the syntactic hash's <c>sourceType</c> value.</remarks>
     internal static string BuildKnnCandidateQueryString(
         int candidateCount,
         string? caseId,
-        string? sourceTypeFilter = null,
         string? cloudEventSubject = null)
     {
         List<string> filterParts = [];
@@ -479,11 +599,6 @@ SearchSucceeded:
         if (!string.IsNullOrWhiteSpace(caseId))
         {
             filterParts.Add($"@caseId:{{{RediSearchQueryEscaper.EscapeTag(caseId)}}}");
-        }
-
-        if (!string.IsNullOrWhiteSpace(sourceTypeFilter))
-        {
-            filterParts.Add($"@sourceType:{{{RediSearchQueryEscaper.EscapeTag(sourceTypeFilter)}}}");
         }
 
         if (!string.IsNullOrWhiteSpace(cloudEventSubject))
@@ -532,6 +647,7 @@ SearchSucceeded:
         IDatabase db,
         string tenantId,
         List<(string MemoryUnitId, double Similarity)> knnResults,
+        string? sourceTypeFilter = null,
         string? metadataQuery = null)
     {
         // Pipeline batch: fetch content/sourceUri/sourceType/caseId from syntactic hashes
@@ -561,6 +677,15 @@ SearchSucceeded:
             string sourceTypeValue = (string)fields[2]!;
             string? caseIdValue = fields.Length > 3 && fields[3].HasValue ? (string)fields[3]! : null;
             string? metadataText = fields.Length > 4 && fields[4].HasValue ? (string)fields[4]! : null;
+
+            // Story 22.6 (A49): source-type is not indexed on the raw semantic vector hash, so it is
+            // applied here as a bounded post-filter over the syntactic hash's sourceType value rather
+            // than as a fake KNN @sourceType pre-filter that would silently drop matches.
+            if (!string.IsNullOrWhiteSpace(sourceTypeFilter)
+                && !string.Equals(sourceTypeValue, sourceTypeFilter, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
 
             // Post-filter: metadataQuery cannot be a KNN pre-filter (TEXT fields unsupported)
             if (!string.IsNullOrWhiteSpace(metadataQuery)

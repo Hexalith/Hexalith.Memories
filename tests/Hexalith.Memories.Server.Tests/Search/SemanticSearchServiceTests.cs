@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 
@@ -100,46 +101,42 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
-    public void BuildKnnCandidateQueryString_WithSourceTypeFilter_ShouldAddTagFilter()
+    public void BuildKnnCandidateQueryString_ShouldNotEmitSourceTypePreFilter()
     {
-        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "file");
+        // Story 22.6 (A49): sourceType is not indexed on the raw semantic vector hash, so the builder
+        // must never emit a @sourceType KNN pre-filter (it would silently drop matches). Source-type
+        // recall is handled by a bounded service-side post-filter during enrichment instead.
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "case-1", "claim-42");
 
-        result.ShouldBe("@sourceType:{file}=>[KNN 10 @embedding $query_vec AS __vector_score]");
+        result.ShouldNotContain("@sourceType");
+        result.ShouldBe(@"@caseId:{case\-1} @cloudeventSubject:{claim\-42}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
     public void BuildKnnCandidateQueryString_WithCloudEventSubject_ShouldAddTagFilter()
     {
-        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, null, "claim-42");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "claim-42");
 
         result.ShouldBe(@"@cloudeventSubject:{claim\-42}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnCandidateQueryString_WithCaseIdAndSourceType_ShouldCombineFilters()
+    public void BuildKnnCandidateQueryString_WithCaseIdAndCloudEventSubject_ShouldCombineFilters()
     {
-        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "case-1", "file", "claim-42");
+        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, "case-1", "claim-42");
 
         result.ShouldContain(@"@caseId:{case\-1}");
-        result.ShouldContain("@sourceType:{file}");
         result.ShouldContain(@"@cloudeventSubject:{claim\-42}");
+        result.ShouldNotContain("@sourceType");
         result.ShouldContain("=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnCandidateQueryString_WithEmptySourceType_ShouldIgnore()
+    public void BuildKnnCandidateQueryString_WithEmptyCloudEventSubject_ShouldIgnore()
     {
         string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "");
 
         result.ShouldBe("*=>[KNN 10 @embedding $query_vec AS __vector_score]");
-    }
-
-    [Fact]
-    public void BuildKnnCandidateQueryString_WithSourceTypeContainingSpecialChars_ShouldEscape()
-    {
-        string result = SemanticSearchService.BuildKnnCandidateQueryString(10, null, "file-type");
-
-        result.ShouldContain(@"@sourceType:{file\-type}");
     }
 
     [Fact]
@@ -148,22 +145,21 @@ public class SemanticSearchServiceTests
         string result = SemanticSearchService.BuildKnnCandidateQueryString(
             10,
             null,
-            null,
             "claim} @content:{secret}|*");
 
         result.ShouldBe(@"@cloudeventSubject:{claim\} \@content\:\{secret\}\|\*}=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
     [Fact]
-    public void BuildKnnCandidateQueryString_WithAdversarialCaseAndSource_ShouldEscapeTagOperatorsBeforeKnnClause()
+    public void BuildKnnCandidateQueryString_WithAdversarialCaseAndSubject_ShouldEscapeTagOperatorsBeforeKnnClause()
     {
         string result = SemanticSearchService.BuildKnnCandidateQueryString(
             10,
             "case} | @sourceType:{event}",
-            "file=>[KNN 100 @embedding $query_vec]");
+            "subject=>[KNN 100 @embedding $query_vec]");
 
         result.ShouldContain(@"@caseId:{case\} \| \@sourceType\:\{event\}}");
-        result.ShouldContain(@"@sourceType:{file\=\>\[KNN 100 \@embedding \$query_vec\]}");
+        result.ShouldContain(@"@cloudeventSubject:{subject\=\>\[KNN 100 \@embedding \$query_vec\]}");
         result.ShouldContain("=>[KNN 10 @embedding $query_vec AS __vector_score]");
     }
 
@@ -219,6 +215,69 @@ public class SemanticSearchServiceTests
     {
         Should.Throw<SearchPaginationLimitExceededException>(
             () => SemanticSearchService.CalculateKnnCandidateCount(int.MaxValue, 100));
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(20, 30)]
+    [InlineData(900, 100)]
+    public void CalculateKnnCandidateCount_WithServiceSidePostFilter_ShouldExpandToMaxCandidateWindow(
+        int offset,
+        int maxResults)
+    {
+        // Story 22.6 (A49): when a metadata/source-type post-filter is present, over-fetch up to the
+        // bounded cap so filtered recall survives beyond the initial offset+max window.
+        int result = SemanticSearchService.CalculateKnnCandidateCount(offset, maxResults, hasServiceSidePostFilter: true);
+
+        result.ShouldBe(SearchPaginationOptions.MaxCandidateWindow);
+    }
+
+    [Fact]
+    public void CalculateKnnCandidateCount_WithoutServiceSidePostFilter_ShouldReturnBaseWindow()
+    {
+        int result = SemanticSearchService.CalculateKnnCandidateCount(20, 30, hasServiceSidePostFilter: false);
+
+        result.ShouldBe(50);
+    }
+
+    [Fact]
+    public void CalculateKnnCandidateCount_WithServiceSidePostFilter_ShouldNotExceedMaxCandidateWindow()
+    {
+        int result = SemanticSearchService.CalculateKnnCandidateCount(0, 100, hasServiceSidePostFilter: true);
+
+        result.ShouldBeLessThanOrEqualTo(SearchPaginationOptions.MaxCandidateWindow);
+    }
+
+    [Fact]
+    public void CalculateKnnCandidateCount_WithServiceSidePostFilterBeyondCap_ShouldThrowPaginationLimit()
+    {
+        // AC5: expansion must not bypass the bounded candidate window; an offset page that cannot be
+        // served within the cap still raises the established PAGINATION_LIMIT_EXCEEDED behaviour.
+        Should.Throw<SearchPaginationLimitExceededException>(
+            () => SemanticSearchService.CalculateKnnCandidateCount(901, 100, hasServiceSidePostFilter: true));
+    }
+
+    [Fact]
+    public void RequiresServiceSidePostFilter_WithMetadataQuery_ShouldReturnTrue()
+    {
+        SemanticSearchService.RequiresServiceSidePostFilter(
+            new SearchQuery { TenantId = "tenant-a", Query = "q", MetadataQuery = "acme" }).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void RequiresServiceSidePostFilter_WithSourceTypeFilter_ShouldReturnTrue()
+    {
+        SemanticSearchService.RequiresServiceSidePostFilter(
+            new SearchQuery { TenantId = "tenant-a", Query = "q", SourceTypeFilter = "url" }).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void RequiresServiceSidePostFilter_WithCaseAndSubjectOnly_ShouldReturnFalse()
+    {
+        // caseId and cloudeventSubject are indexed TAG pre-filters, not service-side post-filters,
+        // so they must not trigger candidate-window expansion.
+        SemanticSearchService.RequiresServiceSidePostFilter(
+            new SearchQuery { TenantId = "tenant-a", Query = "q", CaseId = "case-1", CloudEventSubject = "claim-42" }).ShouldBeFalse();
     }
 
     [Fact]

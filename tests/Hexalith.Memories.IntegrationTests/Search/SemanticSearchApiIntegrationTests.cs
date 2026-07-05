@@ -127,9 +127,78 @@ public sealed class SemanticSearchApiIntegrationTests
         firstPage.Results.Concat(secondPage.Results).ShouldAllBe(static r => r.Axis == "semantic");
     }
 
-    private async Task SeedDocumentAsync(string tenantId, string memoryUnitId, string content)
+    [Fact]
+    public async Task GetSearch_WithSemanticAxisAndMetadataQueryBeyondInitialWindow_ShouldReturnLaterFilteredMatches()
     {
-        float[] vector = await _embeddingClient.GenerateAsync(
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
+        const string Query = "story 22 semantic api metadata recall probe";
+
+        float[] queryVector = await _embeddingClient.GenerateAsync(
+            Query,
+            tenantId,
+            _embeddingConfig,
+            CancellationToken.None);
+        float[] farVector = NegateVector(queryVector);
+
+        Dictionary<string, MetadataField> nonMatching = new() { ["customer"] = new("globex", MetadataOrigin.Ai, 1.0f) };
+        Dictionary<string, MetadataField> matching = new() { ["customer"] = new("acme", MetadataOrigin.Ai, 1.0f) };
+
+        await SeedDocumentAsync(tenantId, "mu-api-near-1", "api nearest metadata miss 1", embeddingVector: queryVector, metadata: nonMatching);
+        await SeedDocumentAsync(tenantId, "mu-api-near-2", "api nearest metadata miss 2", embeddingVector: queryVector, metadata: nonMatching);
+        await SeedDocumentAsync(tenantId, "mu-api-far-1", "api farther metadata match 1", embeddingVector: farVector, metadata: matching);
+        await SeedDocumentAsync(tenantId, "mu-api-far-2", "api farther metadata match 2", embeddingVector: farVector, metadata: matching);
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&metadataQuery=acme&maxResults=2");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Results.Select(static r => r.MemoryUnitId).ShouldBe(["mu-api-far-1", "mu-api-far-2"]);
+        result.Results.ShouldAllBe(static r => r.Axis == "semantic");
+        result.TotalCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GetSearch_WithSemanticAxisAndSourceTypeBeyondInitialWindow_ShouldReturnLaterFilteredMatches()
+    {
+        string tenantId = await _fixture.ProvisionActiveTenantAsync();
+        const string Query = "story 22 semantic api source recall probe";
+
+        float[] queryVector = await _embeddingClient.GenerateAsync(
+            Query,
+            tenantId,
+            _embeddingConfig,
+            CancellationToken.None);
+        float[] farVector = NegateVector(queryVector);
+
+        await SeedDocumentAsync(tenantId, "mu-api-file-1", "api nearest source miss 1", sourceType: SourceType.File, embeddingVector: queryVector);
+        await SeedDocumentAsync(tenantId, "mu-api-file-2", "api nearest source miss 2", sourceType: SourceType.File, embeddingVector: queryVector);
+        await SeedDocumentAsync(tenantId, "mu-api-url-1", "api farther source match 1", sourceType: SourceType.Url, embeddingVector: farVector);
+        await SeedDocumentAsync(tenantId, "mu-api-url-2", "api farther source match 2", sourceType: SourceType.Url, embeddingVector: farVector);
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&sourceType=url&maxResults=2");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Results.Select(static r => r.MemoryUnitId).ShouldBe(["mu-api-url-1", "mu-api-url-2"]);
+        result.Results.ShouldAllBe(static r => r.Axis == "semantic" && r.SourceType == SourceType.Url);
+        result.TotalCount.ShouldBe(2);
+    }
+
+    private async Task SeedDocumentAsync(
+        string tenantId,
+        string memoryUnitId,
+        string content,
+        SourceType sourceType = SourceType.File,
+        float[]? embeddingVector = null,
+        Dictionary<string, MetadataField>? metadata = null)
+    {
+        float[] vector = embeddingVector ?? await _embeddingClient.GenerateAsync(
             content,
             tenantId,
             _embeddingConfig,
@@ -140,8 +209,13 @@ public sealed class SemanticSearchApiIntegrationTests
             memoryUnitId: memoryUnitId,
             content: content,
             caseId: "default-case",
+            sourceType: sourceType,
             embeddingVector: vector,
-            embeddingDimensions: _embeddingConfig.Dimensions);
+            embeddingDimensions: _embeddingConfig.Dimensions)
+            with
+        {
+            Metadata = metadata ?? [],
+        };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
 
@@ -154,6 +228,17 @@ public sealed class SemanticSearchApiIntegrationTests
             _fixture.RedisConnection,
             NullLogger<IndexSemanticActivity>.Instance);
         await semanticActivity.RunAsync(context, input);
+    }
+
+    private static float[] NegateVector(float[] vector)
+    {
+        float[] negated = new float[vector.Length];
+        for (int i = 0; i < vector.Length; i++)
+        {
+            negated[i] = -vector[i];
+        }
+
+        return negated;
     }
 
     private static IConfiguration CreateFakeEmbeddingConfiguration()

@@ -494,6 +494,86 @@ public class SemanticSearchIntegrationTests
         syntacticResult.Results[0].Axis.ShouldBe("syntactic");
     }
 
+    [Fact]
+    public async Task SearchAsync_MetadataFilterBeyondInitialWindow_ShouldReturnLaterFilteredMatches()
+    {
+        // Story 22.6 (A49): the nearest KNN neighbours fail the metadata filter while later neighbours
+        // match. A fixed offset+max candidate window would return empty/undersized; the bounded
+        // over-fetch must recover the later matches and report an honest filtered TotalCount.
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("recall probe", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("nearest one", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("nearest two", CreateVector(0.95f, 0.05f, 0.0f));
+        embeddingClient.SetVector("farther one", CreateVector(0.80f, 0.20f, 0.0f));
+        embeddingClient.SetVector("farther two", CreateVector(0.70f, 0.30f, 0.0f));
+
+        Dictionary<string, MetadataField> nonMatching = new() { ["customer"] = new("globex", MetadataOrigin.Ai, 1.0f) };
+        Dictionary<string, MetadataField> matching = new() { ["customer"] = new("acme", MetadataOrigin.Ai, 1.0f) };
+
+        await SeedDocumentAsync(tenantId, "mu-near-1", "nearest one", metadata: nonMatching, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-near-2", "nearest two", metadata: nonMatching, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-far-1", "farther one", metadata: matching, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-far-2", "farther two", metadata: matching, embeddingClient: embeddingClient);
+
+        SemanticSearchService service = new(
+            _redis.Connection, embeddingClient, NullLogger<SemanticSearchService>.Instance);
+
+        // Small page size — matching docs live at ranks 3-4, beyond the initial offset+max window.
+        SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = "recall probe",
+                MetadataQuery = "acme",
+                MaxResults = 2,
+            },
+            _embeddingConfig,
+            CancellationToken.None);
+
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-far-1", "mu-far-2"]);
+        result.TotalCount.ShouldBe(2);
+        result.Results.ShouldNotContain(r => r.MemoryUnitId == "mu-near-1" || r.MemoryUnitId == "mu-near-2");
+    }
+
+    [Fact]
+    public async Task SearchAsync_SourceTypeFilterBeyondInitialWindow_ShouldReturnLaterFilteredMatches()
+    {
+        // Story 22.6 (A49): sourceType is applied as a bounded service-side post-filter, not a fake KNN
+        // @sourceType pre-filter (sourceType is not indexed on the semantic vector hash). The nearest
+        // neighbours are the wrong source type; later neighbours match and must be recovered.
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("source probe", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("file near 1", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("file near 2", CreateVector(0.95f, 0.05f, 0.0f));
+        embeddingClient.SetVector("url far 1", CreateVector(0.80f, 0.20f, 0.0f));
+        embeddingClient.SetVector("url far 2", CreateVector(0.70f, 0.30f, 0.0f));
+
+        await SeedDocumentAsync(tenantId, "mu-file-1", "file near 1", sourceType: SourceType.File, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-file-2", "file near 2", sourceType: SourceType.File, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-url-1", "url far 1", sourceType: SourceType.Url, embeddingClient: embeddingClient);
+        await SeedDocumentAsync(tenantId, "mu-url-2", "url far 2", sourceType: SourceType.Url, embeddingClient: embeddingClient);
+
+        SemanticSearchService service = new(
+            _redis.Connection, embeddingClient, NullLogger<SemanticSearchService>.Instance);
+
+        SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = "source probe",
+                SourceTypeFilter = "url",
+                MaxResults = 2,
+            },
+            _embeddingConfig,
+            CancellationToken.None);
+
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-url-1", "mu-url-2"]);
+        result.Results.ShouldAllBe(r => r.SourceType == SourceType.Url);
+        result.TotalCount.ShouldBe(2);
+    }
+
     private SemanticSearchService CreateService()
         => new(
             _redis.Connection,

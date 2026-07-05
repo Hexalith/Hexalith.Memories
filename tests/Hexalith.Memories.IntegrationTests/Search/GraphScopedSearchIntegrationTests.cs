@@ -2,14 +2,19 @@ namespace Hexalith.Memories.IntegrationTests.Search;
 
 using System.Diagnostics;
 
+using Dapr.Client;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NFalkorDB;
@@ -485,6 +490,116 @@ public class GraphScopedSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_GraphScopedSemantic_MetadataFilterBeyondInitialWindow_ShouldRecoverLaterMatches()
+    {
+        // Story 22.6 (A49): graph-scoped semantic search must also preserve filtered recall inside the
+        // graph-approved key set. The nearest in-scope neighbours fail the metadata filter; later
+        // in-scope neighbours match and must be recovered beyond the initial page window.
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string caseId = $"case-{Guid.NewGuid():N}";
+
+        // Chain start→n1→n2→n3, all in the same case and therefore all inside the graph scope.
+        await SeedGraphChainAsync(tenantId, caseId, "mu-start", "mu-n1", "mu-n2", "mu-n3");
+
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("scoped recall probe", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("scoped nearest start", CreateVector(1.0f, 0.0f, 0.0f));
+        embeddingClient.SetVector("scoped nearest n1", CreateVector(0.95f, 0.05f, 0.0f));
+        embeddingClient.SetVector("scoped far n2", CreateVector(0.80f, 0.20f, 0.0f));
+        embeddingClient.SetVector("scoped far n3", CreateVector(0.70f, 0.30f, 0.0f));
+
+        Dictionary<string, MetadataField> nonMatching = new() { ["customer"] = new("globex", MetadataOrigin.Ai, 1.0f) };
+        Dictionary<string, MetadataField> matching = new() { ["customer"] = new("acme", MetadataOrigin.Ai, 1.0f) };
+
+        await SeedSemanticDocumentAsync(tenantId, "mu-start", "scoped nearest start", caseId, CreateVector(1.0f, 0.0f, 0.0f), nonMatching);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n1", "scoped nearest n1", caseId, CreateVector(0.95f, 0.05f, 0.0f), nonMatching);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n2", "scoped far n2", caseId, CreateVector(0.80f, 0.20f, 0.0f), matching);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n3", "scoped far n3", caseId, CreateVector(0.70f, 0.30f, 0.0f), matching);
+
+        GraphScopedSearch service = CreateService();
+        SemanticSearchService semanticService = new(
+            _fixture.RedisConnection, embeddingClient, NullLogger<SemanticSearchService>.Instance);
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+
+        SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = "scoped recall probe",
+                CaseId = caseId,
+                MetadataQuery = "acme",
+                MaxResults = 2,
+            },
+            "mu-start",
+            depth: 3,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: (q, keys) => semanticService.SearchAsync(q, config, keys, CancellationToken.None),
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSemanticKey);
+
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-n2", "mu-n3"]);
+        result.TotalCount.ShouldBe(2);
+        result.Results.ShouldNotContain(r => r.MemoryUnitId == "mu-start" || r.MemoryUnitId == "mu-n1");
+    }
+
+    [Fact]
+    public async Task SearchAsync_GraphScopedSemantic_SourceTypeFilterBeyondInitialWindow_ShouldRecoverLaterPagedMatches()
+    {
+        // Story 22.6 (A49): source type is a bounded service-side post-filter for semantic search,
+        // so graph-scoped semantic search must recover later in-scope matches and still page them.
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string caseId = $"case-{Guid.NewGuid():N}";
+
+        await SeedGraphChainAsync(tenantId, caseId, "mu-start", "mu-n1", "mu-n2", "mu-n3");
+
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("scoped source probe", CreateVector(1.0f, 0.0f, 0.0f));
+
+        await SeedSemanticDocumentAsync(tenantId, "mu-start", "scoped source nearest start", caseId, CreateVector(1.0f, 0.0f, 0.0f), [], SourceType.File);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n1", "scoped source nearest n1", caseId, CreateVector(0.95f, 0.05f, 0.0f), [], SourceType.File);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n2", "scoped source far n2", caseId, CreateVector(0.80f, 0.20f, 0.0f), [], SourceType.Url);
+        await SeedSemanticDocumentAsync(tenantId, "mu-n3", "scoped source far n3", caseId, CreateVector(0.70f, 0.30f, 0.0f), [], SourceType.Url);
+
+        GraphScopedSearch service = CreateService();
+        SemanticSearchService semanticService = new(
+            _fixture.RedisConnection, embeddingClient, NullLogger<SemanticSearchService>.Instance);
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+
+        SearchQuery firstPageQuery = new()
+        {
+            TenantId = tenantId,
+            Query = "scoped source probe",
+            CaseId = caseId,
+            SourceTypeFilter = "url",
+            MaxResults = 1,
+        };
+
+        SearchResult firstPage = await service.SearchAsync(
+            firstPageQuery,
+            "mu-start",
+            depth: 3,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: (q, keys) => semanticService.SearchAsync(q, config, keys, CancellationToken.None),
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSemanticKey);
+        SearchResult secondPage = await service.SearchAsync(
+            firstPageQuery with { Offset = 1 },
+            "mu-start",
+            depth: 3,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: (q, keys) => semanticService.SearchAsync(q, config, keys, CancellationToken.None),
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSemanticKey);
+
+        firstPage.TotalCount.ShouldBe(2);
+        secondPage.TotalCount.ShouldBe(2);
+        firstPage.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-n2"]);
+        secondPage.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-n3"]);
+        firstPage.Results.Concat(secondPage.Results).ShouldAllBe(r => r.SourceType == SourceType.Url);
+        firstPage.Results.Select(r => r.MemoryUnitId).Intersect(secondPage.Results.Select(r => r.MemoryUnitId)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task SearchAsync_Enrichment_ShouldIncludeContentAndSourceFields()
     {
         // Arrange
@@ -644,4 +759,89 @@ public class GraphScopedSearchIntegrationTests
         SourceType = SourceType.File,
         Axis = axis,
     };
+
+    private const int TestDimensions = 768;
+
+    private static float[] CreateVector(params float[] leadingValues)
+    {
+        float[] vector = new float[TestDimensions];
+        Array.Copy(leadingValues, vector, leadingValues.Length);
+        return vector;
+    }
+
+    /// <summary>Seeds a memory unit's syntactic hash (content/source/metadata for enrichment) and its raw
+    /// semantic vector hash (for KNN) on the fixture's Redis Stack connection.</summary>
+    private async Task SeedSemanticDocumentAsync(
+        string tenantId,
+        string memoryUnitId,
+        string content,
+        string caseId,
+        float[] vector,
+        Dictionary<string, MetadataField> metadata,
+        SourceType sourceType = SourceType.File)
+    {
+        IndexInput input = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: memoryUnitId,
+            content: content,
+            caseId: caseId,
+            sourceType: sourceType,
+            embeddingVector: vector,
+            embeddingDimensions: TestDimensions)
+            with
+        {
+            Metadata = metadata,
+        };
+
+        var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        await new IndexSyntacticActivity(_fixture.RedisConnection, NullLogger<IndexSyntacticActivity>.Instance)
+            .RunAsync(context, input);
+        await new IndexSemanticActivity(_fixture.RedisConnection, NullLogger<IndexSemanticActivity>.Instance)
+            .RunAsync(context, input);
+    }
+
+    private static IConfiguration CreateFakeEmbeddingConfiguration()
+        => new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Memories:Testing:UseFakeEmbedding"] = "true",
+            })
+            .Build();
+
+    private static IHostEnvironment CreateDevelopmentHostEnvironment()
+    {
+        IHostEnvironment hostEnv = Substitute.For<IHostEnvironment>();
+        hostEnv.EnvironmentName.Returns("Development");
+        return hostEnv;
+    }
+
+    private sealed class OverrideEmbeddingClient : EmbeddingClient
+    {
+        private readonly Dictionary<string, float[]> _overrides = new(StringComparer.Ordinal);
+
+        public OverrideEmbeddingClient()
+            : base(
+                Substitute.For<IHttpClientFactory>(),
+                Substitute.For<DaprClient>(),
+                CreateFakeEmbeddingConfiguration(),
+                CreateDevelopmentHostEnvironment())
+        {
+        }
+
+        public void SetVector(string text, float[] vector)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(text);
+            ArgumentNullException.ThrowIfNull(vector);
+            _overrides[text] = vector;
+        }
+
+        public override Task<float[]> GenerateAsync(
+            string text,
+            string tenantId,
+            TenantEmbeddingConfig config,
+            CancellationToken ct)
+            => _overrides.TryGetValue(text, out float[]? vector)
+                ? Task.FromResult(vector)
+                : base.GenerateAsync(text, tenantId, config, ct);
+    }
 }
