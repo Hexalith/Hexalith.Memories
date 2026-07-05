@@ -5,8 +5,8 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Input for <c>PersistFailedUnitActivity</c> (Story 6.3 NFR19, FR11). Carries every field needed
-/// to rebuild an <see cref="IngestionInput"/> for re-ingestion EXCEPT <c>ContentBytes</c> (re-fetched).</summary>
+/// <summary>Input for <c>PersistFailedUnitActivity</c> (Story 6.3 NFR19, FR11). Carries safe fields needed
+/// to rebuild an <see cref="IngestionInput"/> for re-ingestion without storing raw payload bytes in the failed-unit record.</summary>
 public sealed record FailedUnitInput(
     string TenantId,
     string CaseId,
@@ -20,4 +20,8 @@ public sealed record FailedUnitInput(
     string? ErrorMessage,
     int RetryCount,
     DateTimeOffset? LastRetryAt,
-    DateTimeOffset FailedAt);
+    DateTimeOffset FailedAt,
+    WorkflowPayloadReference? SourcePayloadReference = null,
+    IReadOnlyDictionary<string, MetadataField>? Metadata = null,
+    string? CausationId = null,
+    string? CorrelationId = null);

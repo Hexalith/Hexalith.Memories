@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Ingestion;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Ingestion;
 
 using Microsoft.Extensions.Logging;
 
@@ -13,19 +14,23 @@ using Microsoft.Extensions.Logging;
 internal sealed class ReIngestionCoordinator
 {
     private readonly IFailedUnitsRegistry _registry;
+    private readonly IWorkflowPayloadStore _payloadStore;
     private readonly IIngestionWorkflowScheduler _scheduler;
     private readonly ILogger<ReIngestionCoordinator> _logger;
 
     public ReIngestionCoordinator(
         IFailedUnitsRegistry registry,
+        IWorkflowPayloadStore payloadStore,
         IIngestionWorkflowScheduler scheduler,
         ILogger<ReIngestionCoordinator> logger)
     {
         ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(payloadStore);
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(logger);
 
         _registry = registry;
+        _payloadStore = payloadStore;
         _scheduler = scheduler;
         _logger = logger;
     }
@@ -47,6 +52,14 @@ internal sealed class ReIngestionCoordinator
         if (!string.Equals(record.CaseId, caseId, StringComparison.Ordinal))
         {
             return ReIngestionAttemptResult.CaseMismatch(memoryUnitId);
+        }
+
+        ReIngestionAttemptResult? unsupported = await ValidateSourcePayloadAsync(
+            record,
+            cancellationToken).ConfigureAwait(false);
+        if (unsupported is not null)
+        {
+            return unsupported;
         }
 
         bool claimed = await _registry
@@ -83,6 +96,7 @@ internal sealed class ReIngestionCoordinator
         int scheduled = 0;
         int notFound = 0;
         int conflicted = 0;
+        int unsupported = 0;
         int errored = 0;
         List<ReIngestedUnitInfo> outcomes = new(memoryUnitIds.Count);
 
@@ -121,6 +135,19 @@ internal sealed class ReIngestionCoordinator
                         RetryFailureLog.LogBulkReIngestionUnitSkipped(_logger, tenantId, memoryUnitId, "conflict");
                         break;
 
+                    case ReIngestionAttemptOutcome.UnsupportedSourcePayload:
+                        outcomes.Add(new ReIngestedUnitInfo(
+                            memoryUnitId,
+                            null,
+                            "unsupported-source-payload",
+                            attempt.Message)
+                        {
+                            ErrorCode = attempt.ErrorCode,
+                        });
+                        unsupported++;
+                        RetryFailureLog.LogBulkReIngestionUnitSkipped(_logger, tenantId, memoryUnitId, "unsupported-source-payload");
+                        break;
+
                     default:
                         throw new InvalidOperationException($"Unsupported re-ingestion attempt outcome '{attempt.Outcome}'.");
                 }
@@ -133,7 +160,10 @@ internal sealed class ReIngestionCoordinator
             }
         }
 
-        return new BulkReIngestionResponse(scheduled, notFound, conflicted, errored, outcomes);
+        return new BulkReIngestionResponse(scheduled, notFound, conflicted, errored, outcomes)
+        {
+            Unsupported = unsupported,
+        };
     }
 
     private static IngestionInput BuildIngestionInput(FailedUnitRecord record) => new()
@@ -151,8 +181,75 @@ internal sealed class ReIngestionCoordinator
                 ? string.Empty
                 : record.ContentType,
         ContentBytes = null,
-        Metadata = [],
+        PayloadReference = record.SourceType == SourceType.Url ? null : record.SourcePayloadReference,
+        Metadata = record.Metadata is null
+            ? []
+            : new Dictionary<string, MetadataField>(record.Metadata, StringComparer.Ordinal),
+        CausationId = record.CausationId,
+        CorrelationId = record.CorrelationId,
     };
+
+    private async Task<ReIngestionAttemptResult?> ValidateSourcePayloadAsync(
+        FailedUnitRecord record,
+        CancellationToken cancellationToken)
+    {
+        if (record.SourceType == SourceType.Url)
+        {
+            return null;
+        }
+
+        WorkflowPayloadReference? reference = record.SourcePayloadReference;
+        if (reference is null)
+        {
+            return ReIngestionAttemptResult.UnsupportedSourcePayload(record.MemoryUnitId);
+        }
+
+        string? expectedMemoryUnitId = ResolveSourcePayloadScope(record, reference);
+        if (expectedMemoryUnitId is null)
+        {
+            return ReIngestionAttemptResult.UnsupportedSourcePayload(record.MemoryUnitId);
+        }
+
+        try
+        {
+            _ = await _payloadStore.ReadAsync(
+                reference,
+                record.TenantId,
+                expectedMemoryUnitId,
+                WorkflowPayloadKind.SourceBytes,
+                cancellationToken).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception ex) when (ex is WorkflowPayloadException or ArgumentException)
+        {
+            return ReIngestionAttemptResult.UnsupportedSourcePayload(record.MemoryUnitId);
+        }
+    }
+
+    private static string? ResolveSourcePayloadScope(FailedUnitRecord record, WorkflowPayloadReference reference)
+    {
+        if (!string.Equals(reference.TenantId, record.TenantId, StringComparison.Ordinal)
+            || reference.ContentKind != WorkflowPayloadKind.SourceBytes)
+        {
+            return null;
+        }
+
+        if (string.Equals(reference.MemoryUnitId, record.MemoryUnitId, StringComparison.Ordinal))
+        {
+            return record.MemoryUnitId;
+        }
+
+        if (record.SourceType == SourceType.Event
+            && string.Equals(
+                reference.MemoryUnitId,
+                DedupKeyBuilder.BuildKey(record.TenantId, record.CaseId, record.SourceUri),
+                StringComparison.Ordinal))
+        {
+            return reference.MemoryUnitId;
+        }
+
+        return null;
+    }
 
     private async Task RestoreClaimAsync(FailedUnitRecord record, Exception schedulingException)
     {
@@ -180,12 +277,16 @@ internal enum ReIngestionAttemptOutcome
     NotFound,
     CaseMismatch,
     Conflict,
+    UnsupportedSourcePayload,
 }
 
 internal sealed record ReIngestionAttemptResult(
     ReIngestionAttemptOutcome Outcome,
     string MemoryUnitId,
-    string? WorkflowInstanceId)
+    string? WorkflowInstanceId,
+    string? ErrorCode = null,
+    string? Message = null,
+    string? Suggestion = null)
 {
     public static ReIngestionAttemptResult Scheduled(string memoryUnitId, string workflowInstanceId)
         => new(ReIngestionAttemptOutcome.Scheduled, memoryUnitId, workflowInstanceId);
@@ -198,4 +299,13 @@ internal sealed record ReIngestionAttemptResult(
 
     public static ReIngestionAttemptResult Conflict(string memoryUnitId)
         => new(ReIngestionAttemptOutcome.Conflict, memoryUnitId, null);
+
+    public static ReIngestionAttemptResult UnsupportedSourcePayload(string memoryUnitId)
+        => new(
+            ReIngestionAttemptOutcome.UnsupportedSourcePayload,
+            memoryUnitId,
+            null,
+            "NON_URL_REINGESTION_UNAVAILABLE",
+            "Cannot re-ingest this non-URL failed unit because the original source content is unavailable.",
+            "Re-ingest from the original file or event source if available, or ingest the content again.");
 }

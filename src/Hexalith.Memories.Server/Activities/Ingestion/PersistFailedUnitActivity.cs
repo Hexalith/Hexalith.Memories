@@ -37,6 +37,10 @@ internal sealed class PersistFailedUnitActivity : WorkflowActivity<FailedUnitInp
     internal const string FieldLastRetryAt = "lastRetryAt";
     internal const string FieldFailedAt = "failedAt";
     internal const string FieldFailureDetailsJson = "failureDetailsJson";
+    internal const string FieldSourcePayloadReferenceJson = "sourcePayloadReferenceJson";
+    internal const string FieldMetadataJson = "metadataJson";
+    internal const string FieldCausationId = "causationId";
+    internal const string FieldCorrelationId = "correlationId";
 
     /// <summary>Lua: HSET hash + ZADD sorted-set as one atomic round-trip.
     /// KEYS[1]=hash, KEYS[2]=sorted-set; ARGV[1..N-2]=field/value pairs; ARGV[N-1]=score; ARGV[N]=member.</summary>
@@ -92,6 +96,14 @@ internal sealed class PersistFailedUnitActivity : WorkflowActivity<FailedUnitInp
             FieldLastRetryAt, input.LastRetryAt?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty,
             FieldFailedAt, input.FailedAt.ToString("O", CultureInfo.InvariantCulture),
             FieldFailureDetailsJson, detailsJson,
+            FieldSourcePayloadReferenceJson, input.SourcePayloadReference is null
+                ? string.Empty
+                : JsonSerializer.Serialize(input.SourcePayloadReference, MemoriesJsonContext.Options),
+            FieldMetadataJson, input.Metadata is { Count: > 0 }
+                ? JsonSerializer.Serialize(new Dictionary<string, MetadataField>(input.Metadata, StringComparer.Ordinal), MemoriesJsonContext.Options)
+                : string.Empty,
+            FieldCausationId, input.CausationId ?? string.Empty,
+            FieldCorrelationId, input.CorrelationId ?? string.Empty,
             failedAtMs.ToString(CultureInfo.InvariantCulture),
             input.MemoryUnitId,
         ];

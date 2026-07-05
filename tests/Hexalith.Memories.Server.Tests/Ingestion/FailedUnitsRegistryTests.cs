@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.Ingestion;
 
 using System.Linq;
+using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -98,6 +99,66 @@ public class FailedUnitsRegistryTests
     }
 
     [Fact]
+    public async Task GetAsync_OldHashWithoutPayloadReference_ReturnsRecordWithNullReference()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(
+        [
+            new(PersistFailedUnitActivity.FieldCaseId, "case-1"),
+            new(PersistFailedUnitActivity.FieldSourceUri, "file:///old.txt"),
+            new(PersistFailedUnitActivity.FieldSourceType, nameof(SourceType.File)),
+            new(PersistFailedUnitActivity.FieldIngestedBy, "user"),
+            new(PersistFailedUnitActivity.FieldContentType, "text/plain"),
+            new(PersistFailedUnitActivity.FieldStage, "embedding"),
+            new(PersistFailedUnitActivity.FieldErrorCode, "PROVIDER_500"),
+            new(PersistFailedUnitActivity.FieldFailedAt, "2026-04-15T12:00:00+00:00"),
+        ]);
+        FailedUnitsRegistry registry = new(redis, NullLogger<FailedUnitsRegistry>.Instance);
+
+        FailedUnitRecord? record = await registry.GetAsync("tenant-1", "mu-old", default);
+
+        record.ShouldNotBeNull();
+        record!.SourcePayloadReference.ShouldBeNull();
+        record.Metadata.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GetAsync_NewHashWithPayloadReference_ReturnsInternalFields()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        WorkflowPayloadReference reference = CreateSourceReference("mu-new");
+        Dictionary<string, MetadataField> metadata = new(StringComparer.Ordinal)
+        {
+            ["cloudevent.type"] = new("ClaimSubmitted", MetadataOrigin.Human, 1.0f),
+        };
+        db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(
+        [
+            new(PersistFailedUnitActivity.FieldCaseId, "case-1"),
+            new(PersistFailedUnitActivity.FieldSourceUri, "event://claim/1"),
+            new(PersistFailedUnitActivity.FieldSourceType, nameof(SourceType.Event)),
+            new(PersistFailedUnitActivity.FieldIngestedBy, "events"),
+            new(PersistFailedUnitActivity.FieldContentType, "application/json"),
+            new(PersistFailedUnitActivity.FieldStage, "embedding"),
+            new(PersistFailedUnitActivity.FieldErrorCode, "PROVIDER_500"),
+            new(PersistFailedUnitActivity.FieldFailedAt, "2026-04-15T12:00:00+00:00"),
+            new(PersistFailedUnitActivity.FieldSourcePayloadReferenceJson, JsonSerializer.Serialize(reference, MemoriesJsonContext.Options)),
+            new(PersistFailedUnitActivity.FieldMetadataJson, JsonSerializer.Serialize(metadata, MemoriesJsonContext.Options)),
+            new(PersistFailedUnitActivity.FieldCausationId, "cause-1"),
+            new(PersistFailedUnitActivity.FieldCorrelationId, "corr-1"),
+        ]);
+        FailedUnitsRegistry registry = new(redis, NullLogger<FailedUnitsRegistry>.Instance);
+
+        FailedUnitRecord? record = await registry.GetAsync("tenant-1", "mu-new", default);
+
+        record.ShouldNotBeNull();
+        record!.SourcePayloadReference.ShouldBe(reference);
+        record.Metadata.ShouldNotBeNull();
+        record.Metadata!["cloudevent.type"].Value.ShouldBe("ClaimSubmitted");
+        record.CausationId.ShouldBe("cause-1");
+        record.CorrelationId.ShouldBe("corr-1");
+    }
+
+    [Fact]
     public async Task RemoveAsync_LuaReturnsOne_ReturnsTrue()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
@@ -131,6 +192,47 @@ public class FailedUnitsRegistryTests
         removed.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task RestoreAsync_WithPayloadReference_WritesOptionalFields()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create((RedisValue)1L));
+        WorkflowPayloadReference reference = CreateSourceReference("mu-restore");
+        FailedUnitRecord record = new(
+            "tenant-1",
+            "case-1",
+            "mu-restore",
+            "file:///doc.txt",
+            SourceType.File,
+            "user",
+            "text/plain",
+            "embedding",
+            "PROVIDER_500",
+            "failed",
+            5,
+            null,
+            DateTimeOffset.Parse("2026-04-15T12:00:00+00:00"),
+            reference,
+            new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            {
+                ["source"] = new("upload", MetadataOrigin.Human, 1.0f),
+            },
+            "cause-1",
+            "corr-1");
+        FailedUnitsRegistry registry = new(redis, NullLogger<FailedUnitsRegistry>.Instance);
+
+        await registry.RestoreAsync(record, default);
+
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        RedisValue[] argv = (RedisValue[])call.GetArguments()[2]!;
+        argv.ShouldContain(PersistFailedUnitActivity.FieldSourcePayloadReferenceJson);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldMetadataJson);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldCausationId);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldCorrelationId);
+    }
+
     private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
@@ -139,4 +241,13 @@ public class FailedUnitsRegistryTests
         redis.GetDatabase(Arg.Any<int>(), Arg.Is<object?>(v => v == null)).Returns(db);
         return (db, redis);
     }
+
+    private static WorkflowPayloadReference CreateSourceReference(string memoryUnitId)
+        => new(
+            $"{memoryUnitId}:sourcebytes:abc:source",
+            "abc",
+            3,
+            WorkflowPayloadKind.SourceBytes,
+            "tenant-1",
+            memoryUnitId);
 }

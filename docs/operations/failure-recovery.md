@@ -36,7 +36,7 @@ Key shapes:
 
 | Key | Purpose |
 |-----|---------|
-| `{tenantId}:failed-unit:{memoryUnitId}` (HASH) | Full failure context — source URI, stage, error code/message, retry count, timestamps, JSON-serialized `FailureDetails`. |
+| `{tenantId}:failed-unit:{memoryUnitId}` (HASH) | Full failure context — source URI, stage, error code/message, retry count, timestamps, JSON-serialized `FailureDetails`, and an internal source-payload reference for supported non-URL failures. |
 | `{tenantId}:case:{caseId}:failed-units` (ZSET) | Per-case index, scored by `failedAt` unix-ms; supports `O(log N)` recency-ordered pagination. |
 
 Hash + ZADD execute in one Lua round-trip — no half-write.
@@ -44,6 +44,13 @@ Hash + ZADD execute in one Lua round-trip — no half-write.
 **Retention:** failed units accumulate indefinitely (NFR19). Operators must re-ingest (which deletes the
 record on success) or, for outright pruning, delete via the Redis CLI. A `DELETE /failed-units/{id}`
 endpoint is Phase 2.
+
+For non-URL failures, the failed-unit hash stores only a safe `WorkflowPayloadReference`, not raw file
+bytes or raw event JSON. The referenced source bytes remain in the workflow payload store for
+`Ingestion:WorkflowPayloadStore:TtlHours` hours, default `24`. After that window, or for legacy records
+that predate source-payload retention, re-ingestion returns `NON_URL_REINGESTION_UNAVAILABLE` and leaves
+the failed-unit hash, case sorted-set row, and dedup key untouched. Operators should ingest again from
+the original file/event source when the retained source payload is unavailable.
 
 ## `FailedCount` vs `FailedUnitsPage.TotalCount`
 
@@ -71,11 +78,14 @@ POST /api/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest
 Per-unit flow:
 
 1. **Read** the failed-unit hash → `FailedUnitRecord`.
-2. **Atomically claim**: delete the hash + sorted-set entry + dedup key in one Lua call. If the hash
+2. **Validate non-URL source payload availability before claim.** URL records skip this because the
+   server fetches the URL again. File, directory, annotation, command/projection, and event records
+   require a valid tenant-scoped source-byte payload reference.
+3. **Atomically claim**: delete the hash + sorted-set entry + dedup key in one Lua call. If the hash
    was already gone (concurrent re-ingestion), return **409 Conflict** (`RE_INGESTION_IN_PROGRESS`).
-3. **Rebuild** an `IngestionInput` from the persisted record (`ContentBytes` is **not** stored — the
-   new workflow re-fetches/re-extracts from `SourceUri`).
-4. **Schedule** a new `IngestionWorkflow` instance, passing `memoryUnitId` as the DAPR workflow
+4. **Rebuild** an `IngestionInput` from the persisted record. URL records refetch from `SourceUri`;
+   supported non-URL records pass `ContentBytes = null` and the retained `PayloadReference`.
+5. **Schedule** a new `IngestionWorkflow` instance, passing `memoryUnitId` as the DAPR workflow
    `instanceId`. The workflow's existing `context.InstanceId`-based memory-unit-id fallback picks it
    up — **annotations and graph edges survive** because the id is preserved.
 

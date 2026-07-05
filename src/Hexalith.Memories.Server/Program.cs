@@ -2231,6 +2231,10 @@ app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/
             "RE_INGESTION_IN_PROGRESS",
             "Another re-ingestion is already in progress for this unit.",
             "Wait for the current re-ingestion to complete or check status.")),
+        ReIngestionAttemptOutcome.UnsupportedSourcePayload => Results.BadRequest(new ErrorResponse(
+            attempt.ErrorCode ?? "NON_URL_REINGESTION_UNAVAILABLE",
+            attempt.Message ?? "Cannot re-ingest this non-URL failed unit because the original source content is unavailable.",
+            attempt.Suggestion ?? "Re-ingest from the original file or event source if available, or ingest the content again.")),
         ReIngestionAttemptOutcome.Scheduled => Results.Accepted(
             $"/api/ingest/{attempt.WorkflowInstanceId}",
             new { newWorkflowInstanceId = attempt.WorkflowInstanceId, memoryUnitId }),

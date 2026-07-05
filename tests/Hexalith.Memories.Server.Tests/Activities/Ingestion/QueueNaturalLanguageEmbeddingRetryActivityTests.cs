@@ -74,15 +74,16 @@ public class QueueNaturalLanguageEmbeddingRetryActivityTests
         IFailedNaturalLanguageEmbeddingRegistry registry = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
         IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
         byte[] rawPayload = Encoding.UTF8.GetBytes("{\"counterId\":\"c-1\",\"increment\":42}");
+        const string sourcePayloadScopeId = "dedup:tenant-a:case-1:abc123";
         WorkflowPayloadReference reference = new(
-            "mu-1:sourcebytes:hash",
+            $"{sourcePayloadScopeId}:sourcebytes:hash",
             "hash",
             rawPayload.Length,
             WorkflowPayloadKind.SourceBytes,
             "tenant-a",
-            "mu-1");
+            sourcePayloadScopeId);
         payloadStore
-            .ReadAsync(reference, "tenant-a", "mu-1", WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
+            .ReadAsync(reference, "tenant-a", sourcePayloadScopeId, WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
             .Returns(rawPayload);
         QueueNaturalLanguageEmbeddingRetryActivity activity = new(
             registry,
@@ -105,6 +106,12 @@ public class QueueNaturalLanguageEmbeddingRetryActivityTests
         bool result = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
 
         result.ShouldBeTrue();
+        await payloadStore.Received(1).ReadAsync(
+            reference,
+            "tenant-a",
+            sourcePayloadScopeId,
+            WorkflowPayloadKind.SourceBytes,
+            Arg.Any<CancellationToken>());
         await registry.Received(1).EnqueueAsync(
             Arg.Is<FailedNaturalLanguageEmbeddingRecord>(record =>
                 record.TenantId == "tenant-a"

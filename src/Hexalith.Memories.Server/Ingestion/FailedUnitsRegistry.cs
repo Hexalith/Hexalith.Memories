@@ -156,6 +156,14 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             PersistFailedUnitActivity.FieldLastRetryAt, record.LastRetryAt?.ToString("O", CultureInfo.InvariantCulture) ?? string.Empty,
             PersistFailedUnitActivity.FieldFailedAt, record.FailedAt.ToString("O", CultureInfo.InvariantCulture),
             PersistFailedUnitActivity.FieldFailureDetailsJson, detailsJson,
+            PersistFailedUnitActivity.FieldSourcePayloadReferenceJson, record.SourcePayloadReference is null
+                ? string.Empty
+                : JsonSerializer.Serialize(record.SourcePayloadReference, MemoriesJsonContext.Options),
+            PersistFailedUnitActivity.FieldMetadataJson, record.Metadata is { Count: > 0 }
+                ? JsonSerializer.Serialize(new Dictionary<string, MetadataField>(record.Metadata, StringComparer.Ordinal), MemoriesJsonContext.Options)
+                : string.Empty,
+            PersistFailedUnitActivity.FieldCausationId, record.CausationId ?? string.Empty,
+            PersistFailedUnitActivity.FieldCorrelationId, record.CorrelationId ?? string.Empty,
             failedAtMs.ToString(CultureInfo.InvariantCulture),
             record.MemoryUnitId,
         ];
@@ -220,6 +228,11 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             : DateTimeOffset.TryParse(lastRetryAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTimeOffset lr)
                 ? lr : null;
 
+        WorkflowPayloadReference? sourcePayloadReference = ParseSourcePayloadReference(
+            fields.GetValueOrDefault(PersistFailedUnitActivity.FieldSourcePayloadReferenceJson, string.Empty));
+        IReadOnlyDictionary<string, MetadataField>? metadata = ParseMetadata(
+            fields.GetValueOrDefault(PersistFailedUnitActivity.FieldMetadataJson, string.Empty));
+
         return new FailedUnitRecord(
             tenantId,
             fields.GetValueOrDefault(PersistFailedUnitActivity.FieldCaseId, string.Empty),
@@ -233,6 +246,54 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             string.IsNullOrEmpty(errorMessage) ? null : errorMessage,
             retryCount,
             lastRetryAtParsed,
-            failedAt);
+            failedAt,
+            sourcePayloadReference,
+            metadata,
+            EmptyToNull(fields.GetValueOrDefault(PersistFailedUnitActivity.FieldCausationId, string.Empty)),
+            EmptyToNull(fields.GetValueOrDefault(PersistFailedUnitActivity.FieldCorrelationId, string.Empty)));
+    }
+
+    private static string? EmptyToNull(string value)
+        => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static IReadOnlyDictionary<string, MetadataField>? ParseMetadata(string metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            Dictionary<string, MetadataField>? metadata = JsonSerializer.Deserialize<Dictionary<string, MetadataField>>(
+                metadataJson,
+                MemoriesJsonContext.Options);
+            return metadata is null || metadata.Count == 0
+                ? null
+                : new Dictionary<string, MetadataField>(metadata, StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static WorkflowPayloadReference? ParseSourcePayloadReference(string referenceJson)
+    {
+        if (string.IsNullOrWhiteSpace(referenceJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<WorkflowPayloadReference>(
+                referenceJson,
+                MemoriesJsonContext.Options);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 }

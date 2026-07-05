@@ -49,6 +49,12 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
 
     internal ICaseProjectionWorkflowScheduler CaseProjectionWorkflowScheduler { get; set; } = new InMemoryCaseProjectionWorkflowScheduler();
 
+    internal IFailedUnitsRegistry? FailedUnitsRegistryOverride { get; set; }
+
+    internal IWorkflowPayloadStore? WorkflowPayloadStoreOverride { get; set; }
+
+    internal IIngestionWorkflowScheduler? IngestionWorkflowSchedulerOverride { get; set; }
+
     public IConnectionMultiplexer RedisMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
 
     public IConnectionMultiplexer FalkorDbMultiplexer { get; } = Substitute.For<IConnectionMultiplexer>();
@@ -123,6 +129,24 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             services.AddSingleton(IngestionWorkflowStateReader);
             services.AddSingleton(MemoriesCommandStore);
             services.AddSingleton(CaseProjectionWorkflowScheduler);
+
+            if (FailedUnitsRegistryOverride is not null)
+            {
+                services.RemoveAll<IFailedUnitsRegistry>();
+                services.AddSingleton(FailedUnitsRegistryOverride);
+            }
+
+            if (WorkflowPayloadStoreOverride is not null)
+            {
+                services.RemoveAll<IWorkflowPayloadStore>();
+                services.AddSingleton(WorkflowPayloadStoreOverride);
+            }
+
+            if (IngestionWorkflowSchedulerOverride is not null)
+            {
+                services.RemoveAll<IIngestionWorkflowScheduler>();
+                services.AddSingleton(IngestionWorkflowSchedulerOverride);
+            }
 
             // Endpoint tests drive adapters directly; infrastructure services would resolve DAPR/backends at startup.
             services.RemoveInfrastructureHostedServices();

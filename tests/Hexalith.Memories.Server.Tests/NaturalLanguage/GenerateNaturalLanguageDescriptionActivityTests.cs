@@ -18,6 +18,7 @@ using Grpc.Core;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -291,6 +292,38 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     }
 
     [Fact]
+    public async Task SuccessPath_WithRawPayloadReferenceScopedToDedupInstance_ReadsUsingReferenceScope()
+    {
+        const string sourcePayloadScopeId = "dedup:t-1:case-1:abc123";
+        byte[] rawPayload = System.Text.Encoding.UTF8.GetBytes(RawJsonPayload);
+        WorkflowPayloadReference reference = new(
+            $"{sourcePayloadScopeId}:sourcebytes:hash",
+            "hash",
+            rawPayload.Length,
+            WorkflowPayloadKind.SourceBytes,
+            TenantId,
+            sourcePayloadScopeId);
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        payloadStore
+            .ReadAsync(reference, TenantId, sourcePayloadScopeId, WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
+            .Returns(rawPayload);
+        DaprConversationClient client = CreateClientReturning("A counter was incremented.", model: "gpt-4o-mini");
+        GenerateNaturalLanguageDescriptionActivity activity = CreateActivity(client, payloadStore: payloadStore);
+
+        NaturalLanguageDescriptionResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new NaturalLanguageDescriptionInput(TenantId, MemoryUnitId, string.Empty, EventType, "Counter", reference));
+
+        result.Description.ShouldBe("A counter was incremented.");
+        await payloadStore.Received(1).ReadAsync(
+            reference,
+            TenantId,
+            sourcePayloadScopeId,
+            WorkflowPayloadKind.SourceBytes,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public void PromptContainsHallucinationGuardance()
     {
         // Structural test — verifies the prompt string contains the hallucination-avoidance constraints
@@ -313,7 +346,8 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
 
     private static GenerateNaturalLanguageDescriptionActivity CreateActivity(
         DaprConversationClient client,
-        int llmRequestTimeoutSeconds = 15)
+        int llmRequestTimeoutSeconds = 15,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         NaturalLanguageDescriptionOptions opts = new()
         {
@@ -325,7 +359,8 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
         return new GenerateNaturalLanguageDescriptionActivity(
             client,
             options,
-            NullLogger<GenerateNaturalLanguageDescriptionActivity>.Instance);
+            NullLogger<GenerateNaturalLanguageDescriptionActivity>.Instance,
+            payloadStore);
     }
 
     private static DaprConversationClient CreateClientReturning(string content, string? model)

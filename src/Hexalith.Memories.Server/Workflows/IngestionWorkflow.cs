@@ -417,8 +417,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     logger);
                 try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
                 context.SetCustomStatus("failed");
-                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
-                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry);
+                WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
+                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
+                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
                 throw;
             }
 
@@ -548,8 +549,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     logger);
                 try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
                 context.SetCustomStatus("failed");
-                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
-                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry);
+                WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
+                await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
+                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
                 throw;
             }
 
@@ -598,8 +600,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 logger);
             try { await UpdateCounter(MapStageToBucket(currentStage), "none"); } catch { /* counter drift documented */ }
             context.SetCustomStatus("failed");
-            await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger);
-            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry);
+            WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
+            await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
+            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
             throw;
         }
     }
@@ -935,7 +938,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         string stage,
         Exception failure,
         WorkflowTaskOptions retry,
-        ILogger logger)
+        ILogger logger,
+        WorkflowPayloadReference? retainedSourcePayloadReference = null)
     {
         try
         {
@@ -953,7 +957,13 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 details?.ErrorMessage,
                 details?.RetryCount ?? 0,
                 details?.LastRetryAt,
-                new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero));
+                new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
+                retainedSourcePayloadReference,
+                input.Metadata.Count == 0
+                    ? null
+                    : new Dictionary<string, MetadataField>(input.Metadata, StringComparer.Ordinal),
+                input.CausationId,
+                input.CorrelationId);
             await context.CallActivityAsync<bool>(nameof(PersistFailedUnitActivity), failedInput, retry);
         }
         catch (Exception persistEx)
@@ -1018,18 +1028,52 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         }
     }
 
-    private static Task CleanupTransientPayloadsAsync(
+    private static WorkflowPayloadReference? GetRetainedSourcePayloadReference(IngestionInput input, string memoryUnitId)
+    {
+        WorkflowPayloadReference? reference = input.PayloadReference;
+        return input.SourceType != SourceType.Url
+            && reference is not null
+            && reference.ContentKind == WorkflowPayloadKind.SourceBytes
+            && string.Equals(reference.TenantId, input.TenantId, StringComparison.Ordinal)
+            && IsExpectedSourcePayloadScope(input, memoryUnitId, reference.MemoryUnitId)
+            ? reference
+            : null;
+    }
+
+    private static bool IsExpectedSourcePayloadScope(IngestionInput input, string memoryUnitId, string referenceMemoryUnitId)
+        => string.Equals(referenceMemoryUnitId, memoryUnitId, StringComparison.Ordinal)
+            || (input.SourceType == SourceType.Event
+                && string.Equals(
+                    referenceMemoryUnitId,
+                    DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri),
+                    StringComparison.Ordinal));
+
+    private static async Task CleanupTransientPayloadsAsync(
         WorkflowContext context,
         string tenantId,
         string memoryUnitId,
         IReadOnlyList<WorkflowPayloadReference> references,
-        WorkflowTaskOptions retry)
-        => references.Count == 0
-            ? Task.CompletedTask
-            : context.CallActivityAsync<bool>(
+        WorkflowTaskOptions retry,
+        WorkflowPayloadReference? retainedSourcePayloadReference = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+
+        IReadOnlyList<WorkflowPayloadReference> cleanupReferences = retainedSourcePayloadReference is null
+            ? references
+            : references
+                .Where(reference => !reference.Equals(retainedSourcePayloadReference))
+                .ToArray();
+
+        foreach (IGrouping<string, WorkflowPayloadReference> group in cleanupReferences
+            .Distinct()
+            .GroupBy(static reference => reference.MemoryUnitId, StringComparer.Ordinal))
+        {
+            await context.CallActivityAsync<bool>(
                 nameof(CleanupWorkflowPayloadsActivity),
-                new CleanupWorkflowPayloadsInput(tenantId, memoryUnitId, references),
+                new CleanupWorkflowPayloadsInput(tenantId, group.Key, group.ToArray()),
                 retry);
+        }
+    }
 
     private static string GetEmbeddingModelIdentifier(EmbeddingResult embedding)
     {

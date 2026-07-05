@@ -11,4 +11,8 @@ public sealed record BulkReIngestionResponse(
     int NotFound,
     int Conflicted,
     int Errored,
-    IReadOnlyList<ReIngestedUnitInfo> Units);
+    IReadOnlyList<ReIngestedUnitInfo> Units)
+{
+    /// <summary>Gets the number of failed units that could not be re-ingested because the original source payload is unavailable or invalid.</summary>
+    public int Unsupported { get; init; }
+}

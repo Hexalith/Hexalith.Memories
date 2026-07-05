@@ -1,3 +1,45 @@
+# Test Automation Summary - Story 23.4 (Non-URL Re-Ingestion)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-4-non-url-re-ingestion.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with ASP.NET Core `WebApplicationFactory` endpoint tests. No new framework introduced.
+- **Feature under test:** failed non-URL re-ingestion API outcomes, including clear unsupported-source errors and mixed bulk scheduling results. Story 23.4 has no browser UI scope.
+
+## Generated Tests
+
+### API / E2E Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/ReIngestionEndpointE2ETests.cs` - added API-level coverage for single non-URL re-ingestion when source content is unavailable. The test verifies `400`, structured `NON_URL_REINGESTION_UNAVAILABLE`, actionable suggestion text, no failed-unit claim, and no workflow scheduling.
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/ReIngestionEndpointE2ETests.cs` - added mixed bulk re-ingestion coverage for scheduled URL, unsupported non-URL, missing, and conflict outcomes. The test verifies aggregate counts, per-unit outcomes, unsupported error code, and that unsupported non-URL units are not claimed.
+
+### Test Infrastructure
+
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs` - added optional test-only re-ingestion dependency overrides so endpoint tests can exercise real HTTP route mapping without live Dapr workflow, Redis failed-unit storage, or payload-store dependencies.
+
+## Coverage
+
+- Single re-ingestion API endpoint: unsupported non-URL source payload unavailable path covered.
+- Bulk re-ingestion API endpoint: scheduled, unsupported, not-found, and conflict outcomes covered in one request.
+- Existing story unit coverage remains in coordinator, registry, persistence activity, workflow cleanup/retention, payload store, and input validator tests.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Endpoints.ReIngestionEndpointE2ETests` - 2 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Endpoints.ReIngestionEndpointE2ETests -class Hexalith.Memories.Server.Tests.Ingestion.ReIngestionCoordinatorTests -class Hexalith.Memories.Server.Tests.Ingestion.FailedUnitsRegistryTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.PersistFailedUnitActivityTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.IngestionInputValidatorTests -class Hexalith.Memories.Server.Tests.Ingestion.WorkflowPayloadStoreTests` - 99 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2363 total, 0 failed, 1 existing skipped submodule guard.
+
+## Checklist Result
+
+- API tests generated where applicable: pass.
+- E2E tests generated where applicable: pass for backend HTTP/API behavior; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy/mixed and critical unsupported-source error cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.3 (Retry-After-Aware 429 Orchestration)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

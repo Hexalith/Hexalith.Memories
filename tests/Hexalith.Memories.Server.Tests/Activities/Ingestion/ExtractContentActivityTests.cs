@@ -103,6 +103,69 @@ public class ExtractContentActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_WithPayloadReferenceScopedToDedupInstance_SavesExtractedTextUnderWorkflowMemoryUnit()
+    {
+        IContentExtractionClient client = Substitute.For<IContentExtractionClient>();
+        byte[] sourceBytes = Encoding.UTF8.GetBytes("{\"eventId\":\"evt-1\"}");
+        const string dedupInstanceId = "dedup:test-tenant:case-1:abc123";
+        const string memoryUnitId = "mu-event-1";
+        WorkflowPayloadReference sourceReference = new(
+            $"{dedupInstanceId}:sourcebytes:source",
+            "source",
+            sourceBytes.Length,
+            WorkflowPayloadKind.SourceBytes,
+            "test-tenant",
+            dedupInstanceId);
+        WorkflowPayloadReference extractedReference = new(
+            $"{memoryUnitId}:extractedtext:extracted",
+            "extracted",
+            "event text".Length,
+            WorkflowPayloadKind.ExtractedText,
+            "test-tenant",
+            memoryUnitId);
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        payloadStore
+            .ReadAsync(sourceReference, "test-tenant", dedupInstanceId, WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
+            .Returns(sourceBytes);
+        payloadStore
+            .SaveAsync(
+                "test-tenant",
+                memoryUnitId,
+                WorkflowPayloadKind.ExtractedText,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                null,
+                Arg.Any<CancellationToken>())
+            .Returns(extractedReference);
+        ExtractionInput input = CreateTestInput() with
+        {
+            ContentBytes = [],
+            MemoryUnitId = memoryUnitId,
+            PayloadReference = sourceReference,
+        };
+        client.ExtractAsync(Arg.Any<ExtractionInput>(), Arg.Any<CancellationToken>())
+            .Returns(new Contracts.V1.ExtractionResult("event text", "abc123", DateTimeOffset.UtcNow));
+
+        ExtractContentActivity activity = new(client, CreateGate(), payloadStore);
+
+        Contracts.V1.ExtractionResult result = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+
+        result.ExtractedContentReference.ShouldBe(extractedReference);
+        await payloadStore.Received(1).ReadAsync(
+            sourceReference,
+            "test-tenant",
+            dedupInstanceId,
+            WorkflowPayloadKind.SourceBytes,
+            Arg.Any<CancellationToken>());
+        await payloadStore.Received(1).SaveAsync(
+            "test-tenant",
+            memoryUnitId,
+            WorkflowPayloadKind.ExtractedText,
+            Arg.Any<ReadOnlyMemory<byte>>(),
+            null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_WhenClientThrowsException_ShouldPropagate()
     {
         // Arrange

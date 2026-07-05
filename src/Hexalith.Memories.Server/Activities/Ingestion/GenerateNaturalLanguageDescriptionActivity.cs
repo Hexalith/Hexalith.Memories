@@ -110,7 +110,7 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
                 .ReadAsync(
                     input.RawPayloadReference,
                     input.TenantId,
-                    input.MemoryUnitId,
+                    input.RawPayloadReference.MemoryUnitId,
                     WorkflowPayloadKind.SourceBytes,
                     CancellationToken.None)
                 .ConfigureAwait(false);

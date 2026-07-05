@@ -59,6 +59,57 @@ public class PersistFailedUnitActivityTests
 
         RedisValue[] argv = (RedisValue[])args[2]!;
         argv[^1].ToString().ShouldBe("mu-99");
+        argv.ShouldContain(PersistFailedUnitActivity.FieldSourcePayloadReferenceJson);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldMetadataJson);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldCausationId);
+        argv.ShouldContain(PersistFailedUnitActivity.FieldCorrelationId);
+    }
+
+    [Fact]
+    public async Task RunAsync_WithSourcePayloadReference_PersistsReferenceButNotRawPayload()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        PersistFailedUnitActivity activity = new(redis, NullLogger<PersistFailedUnitActivity>.Instance);
+        DateTimeOffset failedAt = new(2026, 4, 15, 12, 0, 0, TimeSpan.Zero);
+        WorkflowPayloadReference reference = new(
+            "mu-99:sourcebytes:abc:source",
+            "abc",
+            3,
+            WorkflowPayloadKind.SourceBytes,
+            "tenant-1",
+            "mu-99");
+
+        await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new FailedUnitInput(
+                "tenant-1",
+                "case-1",
+                "mu-99",
+                "file:///doc.txt",
+                SourceType.File,
+                "user@example.com",
+                "text/plain",
+                "embedding",
+                "PROVIDER_500",
+                "Provider returned 500",
+                5,
+                failedAt,
+                failedAt,
+                reference,
+                new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+                {
+                    ["cloudevent.type"] = new("ClaimSubmitted", MetadataOrigin.Human, 1.0f),
+                },
+                "cause-1",
+                "corr-1"));
+
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        RedisValue[] argv = (RedisValue[])call.GetArguments()[2]!;
+        string joined = string.Join("|", argv.Select(static value => value.ToString()));
+        joined.ShouldContain("sourcePayloadReferenceJson");
+        joined.ShouldContain("metadataJson");
+        joined.ShouldContain("mu-99:sourcebytes:abc:source");
+        joined.ShouldNotContain("Provider returned 500|AQID");
     }
 
     [Fact]

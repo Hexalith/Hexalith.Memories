@@ -58,7 +58,7 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
                 .ReadAsync(
                     input.RawPayloadReference,
                     input.TenantId,
-                    input.MemoryUnitId,
+                    input.RawPayloadReference.MemoryUnitId,
                     WorkflowPayloadKind.SourceBytes,
                     CancellationToken.None)
                 .ConfigureAwait(false);

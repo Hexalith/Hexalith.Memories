@@ -1654,6 +1654,236 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_NonUrlFailure_PersistsSourcePayloadReferenceAndCleansOtherPayloads()
+    {
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        string memoryUnitId = TestGuid.ToString();
+        WorkflowPayloadReference sourceReference = CreatePayloadReference(
+            WorkflowPayloadKind.SourceBytes,
+            memoryUnitId,
+            "source",
+            128);
+        WorkflowPayloadReference extractedReference = CreatePayloadReference(
+            WorkflowPayloadKind.ExtractedText,
+            memoryUnitId,
+            "extracted",
+            24);
+        WorkflowPayloadReference chunkTextReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkText,
+            memoryUnitId,
+            "chunk-text",
+            12);
+        WorkflowPayloadReference chunkVectorReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkVector,
+            memoryUnitId,
+            "chunk-vector",
+            sizeof(float) * 3);
+        IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///doc.txt") with
+        {
+            ContentBytes = null,
+            PayloadReference = sourceReference,
+            Metadata = new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            {
+                ["source"] = new("upload", MetadataOrigin.Human, 1.0f),
+            },
+            CausationId = "cause-1",
+            CorrelationId = "corr-1",
+        };
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+        context.CallActivityAsync<ExtractionResult>(
+                nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ExtractionResult(string.Empty, "abc123hash", new DateTimeOffset(TestTimestamp), extractedReference));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ChunkEmbeddingBatchResult
+            {
+                Chunks =
+                [
+                    new ChunkEmbeddingResult
+                    {
+                        Sequence = 0,
+                        Text = string.Empty,
+                        TextReference = chunkTextReference,
+                        StartOffset = 0,
+                        EndOffset = 12,
+                        EstimatedTokens = 3,
+                        Vector = [],
+                        VectorReference = chunkVectorReference,
+                    },
+                ],
+                Provider = "google:gemini-embedding-001",
+                Model = "gemini-embedding-001",
+                Dimensions = 3,
+            });
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", memoryUnitId, input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("boom")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", memoryUnitId, input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupWorkflowPayloadsActivity), Arg.Any<CleanupWorkflowPayloadsInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(UpdateCaseIngestionCounterActivity), Arg.Any<CounterTransitionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        await Should.ThrowAsync<InvalidOperationException>(() => workflow.RunAsync(context, input));
+
+        await context.Received().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Is<FailedUnitInput>(f =>
+                f.SourcePayloadReference == sourceReference
+                && f.Metadata != null
+                && f.Metadata["source"].Value == "upload"
+                && f.CausationId == "cause-1"
+                && f.CorrelationId == "corr-1"),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupWorkflowPayloadsActivity),
+            Arg.Is<CleanupWorkflowPayloadsInput>(i =>
+                !i.References.Contains(sourceReference)
+                && i.References.Contains(extractedReference)
+                && i.References.Contains(chunkTextReference)
+                && i.References.Contains(chunkVectorReference)),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_EventFailure_WithDedupScopedSourcePayload_PersistsReferenceAndCleansWorkflowScopedPayloads()
+    {
+        RetryPolicyBuilder.Initialize(new IngestionSettings());
+        string memoryUnitId = TestGuid.ToString();
+        const string sourceUri = "event-123";
+        IngestionInput baseInput = IngestionInputFactory.Create(sourceType: SourceType.Event, sourceUri: sourceUri);
+        string dedupInstanceId = DedupKeyBuilder.BuildKey(baseInput.TenantId, baseInput.CaseId, sourceUri);
+        WorkflowPayloadReference sourceReference = CreatePayloadReference(
+            WorkflowPayloadKind.SourceBytes,
+            dedupInstanceId,
+            "source",
+            128);
+        WorkflowPayloadReference extractedReference = CreatePayloadReference(
+            WorkflowPayloadKind.ExtractedText,
+            memoryUnitId,
+            "extracted",
+            24);
+        WorkflowPayloadReference chunkTextReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkText,
+            memoryUnitId,
+            "chunk-text",
+            12);
+        WorkflowPayloadReference chunkVectorReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkVector,
+            memoryUnitId,
+            "chunk-vector",
+            sizeof(float) * 3);
+        IngestionInput input = baseInput with
+        {
+            ContentBytes = null,
+            PayloadReference = sourceReference,
+            Metadata = new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            {
+                ["cloudevent.type"] = new("ClaimSubmitted", MetadataOrigin.Human, 1.0f),
+                ["event.aggregateType"] = new("Claim", MetadataOrigin.Human, 1.0f),
+            },
+        };
+        WorkflowContext context = CreateMockContext();
+        context.InstanceId.Returns(dedupInstanceId);
+        SetupPreIndexActivities(context, input);
+        context.CallActivityAsync<ExtractionResult>(
+                nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ExtractionResult(string.Empty, "abc123hash", new DateTimeOffset(TestTimestamp), extractedReference));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new ChunkEmbeddingBatchResult
+            {
+                Chunks =
+                [
+                    new ChunkEmbeddingResult
+                    {
+                        Sequence = 0,
+                        Text = string.Empty,
+                        TextReference = chunkTextReference,
+                        StartOffset = 0,
+                        EndOffset = 12,
+                        EstimatedTokens = 3,
+                        Vector = [],
+                        VectorReference = chunkVectorReference,
+                    },
+                ],
+                Provider = "google:gemini-embedding-001",
+                Model = "gemini-embedding-001",
+                Dimensions = 3,
+            });
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("syntactic", memoryUnitId, input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<IndexResult>(new InvalidOperationException("boom")));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("graph", memoryUnitId, input.TenantId));
+        context.CallActivityAsync<IndexResult>(
+                nameof(IndexNaturalLanguageSemanticActivity), Arg.Any<NaturalLanguageIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IndexResult("semantic-nl", memoryUnitId, input.TenantId));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSyntacticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupGraphActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupSemanticActivity), Arg.Any<CleanupInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(CleanupWorkflowPayloadsActivity), Arg.Any<CleanupWorkflowPayloadsInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        context.CallActivityAsync<bool>(
+                nameof(UpdateCaseIngestionCounterActivity), Arg.Any<CounterTransitionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        _ = await Should.ThrowAsync<Exception>(() => workflow.RunAsync(context, input));
+
+        await context.Received().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Is<FailedUnitInput>(f =>
+                f.MemoryUnitId == memoryUnitId
+                && f.SourceType == SourceType.Event
+                && f.SourcePayloadReference == sourceReference
+                && f.Metadata != null
+                && f.Metadata["cloudevent.type"].Value == "ClaimSubmitted"),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupWorkflowPayloadsActivity),
+            Arg.Is<CleanupWorkflowPayloadsInput>(i =>
+                i.MemoryUnitId == memoryUnitId
+                && !i.References.Contains(sourceReference)
+                && i.References.Contains(extractedReference)
+                && i.References.Contains(chunkTextReference)
+                && i.References.Contains(chunkVectorReference)),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_OuterCatch_PersistFailedUnitFailure_DoesNotMaskOriginalException()
     {
         // When PersistFailedUnitActivity itself throws, the outer catch still re-throws the ORIGINAL

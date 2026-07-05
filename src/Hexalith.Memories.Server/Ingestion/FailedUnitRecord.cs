@@ -22,4 +22,8 @@ internal sealed record FailedUnitRecord(
     string? ErrorMessage,
     int RetryCount,
     DateTimeOffset? LastRetryAt,
-    DateTimeOffset FailedAt);
+    DateTimeOffset FailedAt,
+    WorkflowPayloadReference? SourcePayloadReference = null,
+    IReadOnlyDictionary<string, MetadataField>? Metadata = null,
+    string? CausationId = null,
+    string? CorrelationId = null);

@@ -70,8 +70,7 @@ public sealed class ExtractContentActivity : WorkflowActivity<ExtractionInput, E
         WorkflowPayloadReference reference = await _payloadStore
             .SaveAsync(
                 input.TenantId,
-                input.PayloadReference?.MemoryUnitId
-                    ?? (string.IsNullOrWhiteSpace(input.MemoryUnitId) ? input.SourceUri : input.MemoryUnitId),
+                string.IsNullOrWhiteSpace(input.MemoryUnitId) ? input.SourceUri : input.MemoryUnitId,
                 WorkflowPayloadKind.ExtractedText,
                 Encoding.UTF8.GetBytes(result.ExtractedContent),
                 cancellationToken: CancellationToken.None)
