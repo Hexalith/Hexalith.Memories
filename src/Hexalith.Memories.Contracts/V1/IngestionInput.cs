@@ -49,6 +49,9 @@ public sealed record IngestionInput
 
     public string? CorrelationId { get; init; }
 
+    /// <summary>Gets the durable workflow configuration captured at scheduling time.</summary>
+    public IngestionWorkflowConfiguration? WorkflowConfiguration { get; init; }
+
     /// <summary>
     /// Gets the optional explicit idempotency token. When supplied it takes precedence over
     /// <see cref="SourceUri"/> as the dedup identity, so two near-simultaneous ingests carrying the same

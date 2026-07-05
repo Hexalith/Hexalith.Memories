@@ -22,6 +22,7 @@ using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 
@@ -46,6 +47,7 @@ internal sealed class CaseService
     private readonly IActorProxyFactory _actorProxyFactory;
     private readonly IMemoriesCommandStore _commandStore;
     private readonly ICaseProjectionWorkflowScheduler _projectionWorkflowScheduler;
+    private readonly IngestionWorkflowConfigurationCapture? _workflowConfigurationCapture;
     private readonly ILogger<CaseService> _logger;
 
     public CaseService(
@@ -57,7 +59,8 @@ internal sealed class CaseService
         IActorProxyFactory actorProxyFactory,
         ILogger<CaseService> logger,
         IMemoriesCommandStore? commandStore = null,
-        ICaseProjectionWorkflowScheduler? projectionWorkflowScheduler = null)
+        ICaseProjectionWorkflowScheduler? projectionWorkflowScheduler = null,
+        IngestionWorkflowConfigurationCapture? workflowConfigurationCapture = null)
     {
         _redis = redis;
         _falkorDb = falkorDb;
@@ -69,6 +72,7 @@ internal sealed class CaseService
             ?? (workflowClient is null
                 ? new InMemoryCaseProjectionWorkflowScheduler()
                 : new DaprCaseProjectionWorkflowScheduler(workflowClient));
+        _workflowConfigurationCapture = workflowConfigurationCapture;
         _logger = logger;
     }
 
@@ -182,7 +186,8 @@ internal sealed class CaseService
                 input.Content,
                 input.AnnotationType,
                 input.IngestedBy,
-                metadata),
+                metadata,
+                _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration()),
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(

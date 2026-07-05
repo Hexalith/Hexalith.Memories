@@ -90,5 +90,6 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
             IngestedBy = input.IngestedBy,
             Metadata = input.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal),
             CausationId = input.TargetMemoryUnitId,
+            WorkflowConfiguration = input.WorkflowConfiguration,
         };
 }

@@ -15,13 +15,19 @@ internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowSchedul
 {
     private readonly DaprWorkflowClient _workflowClient;
     private readonly IWorkflowPayloadStore _payloadStore;
+    private readonly IngestionWorkflowConfigurationCapture _workflowConfigurationCapture;
 
-    public DaprIngestionWorkflowScheduler(DaprWorkflowClient workflowClient, IWorkflowPayloadStore payloadStore)
+    public DaprIngestionWorkflowScheduler(
+        DaprWorkflowClient workflowClient,
+        IWorkflowPayloadStore payloadStore,
+        IngestionWorkflowConfigurationCapture workflowConfigurationCapture)
     {
         ArgumentNullException.ThrowIfNull(workflowClient);
         ArgumentNullException.ThrowIfNull(payloadStore);
+        ArgumentNullException.ThrowIfNull(workflowConfigurationCapture);
         _workflowClient = workflowClient;
         _payloadStore = payloadStore;
+        _workflowConfigurationCapture = workflowConfigurationCapture;
     }
 
     public async Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken = default)
@@ -29,12 +35,28 @@ internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowSchedul
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         ArgumentNullException.ThrowIfNull(input);
 
-        IngestionInput slimInput = await IngestionPayloadClaimCheck
-            .PrepareAsync(_payloadStore, instanceId, input, cancellationToken)
+        IngestionInput slimInput = await PrepareInputAsync(
+                _payloadStore,
+                instanceId,
+                input,
+                _workflowConfigurationCapture,
+                cancellationToken)
             .ConfigureAwait(false);
 
         return await _workflowClient
             .ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput, null, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    internal static Task<IngestionInput> PrepareInputAsync(
+        IWorkflowPayloadStore payloadStore,
+        string instanceId,
+        IngestionInput input,
+        IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workflowConfigurationCapture);
+        IngestionInput configuredInput = workflowConfigurationCapture.Apply(input);
+        return IngestionPayloadClaimCheck.PrepareAsync(payloadStore, instanceId, configuredInput, cancellationToken);
     }
 }

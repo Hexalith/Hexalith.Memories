@@ -36,6 +36,10 @@ public class AnnotationProjectionWorkflowTests
         new Dictionary<string, MetadataField>
         {
             ["_system.annotation_target"] = new MetadataField("mu-001", MetadataOrigin.Human, 1.0f),
+        },
+        new IngestionWorkflowConfiguration
+        {
+            NaturalLanguage = new NaturalLanguageWorkflowOptions { PersistInMetadata = true },
         });
 
     [Fact]
@@ -58,7 +62,8 @@ public class AnnotationProjectionWorkflowTests
                     && i.CaseId == Input.CaseId
                     && i.SourceUri == Input.SourceUri
                     && i.SourceType == SourceType.Annotation
-                    && i.CausationId == Input.TargetMemoryUnitId),
+                    && i.CausationId == Input.TargetMemoryUnitId
+                    && i.WorkflowConfiguration == Input.WorkflowConfiguration),
                 Arg.Is<ChildWorkflowTaskOptions>(o => o.InstanceId == Input.AnnotationMemoryUnitId));
             context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity),

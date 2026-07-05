@@ -24,6 +24,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     private const int _compensationRetryAttempts = 3;
     private const int _embeddingProviderRateLimitMaxDurableRetries = 5;
     private const int _mainRetryAttempts = 5;
+    private const string DefaultRetryKey = "__default";
     private const string DedupWorkflowInstancePrefix = "dedup:";
 
     /// <inheritdoc/>
@@ -40,9 +41,9 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
         LogCurrentStatus(logger, memoryUnitId, currentStatus);
 
-        IReadOnlyDictionary<string, WorkflowTaskOptions> retry = RetryPolicyBuilder.SnapshotAll();
+        IReadOnlyDictionary<string, WorkflowTaskOptions> retry = CreateActivityRetryOptions(input.WorkflowConfiguration?.Retry);
         WorkflowTaskOptions For(string activityName) =>
-            retry.TryGetValue(activityName, out WorkflowTaskOptions? opts) ? opts : retry[RetryPolicyBuilder.DefaultKey];
+            retry.TryGetValue(activityName, out WorkflowTaskOptions? opts) ? opts : retry[DefaultRetryKey];
         WorkflowTaskOptions compensationRetry = CreateCompensationRetry();
         CleanupInput cleanupInput = new(memoryUnitId, input.TenantId);
 
@@ -284,7 +285,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             // UI affordance is "no confidence signal," which the absence models correctly.
             if (nlResult is not null
                 && nlResult.EstimatedConfidence is float measuredConfidence
-                && NaturalLanguageDescriptionOptionsSnapshot.Value.PersistInMetadata)
+                && ShouldPersistNaturalLanguageDescription(input.WorkflowConfiguration))
             {
                 metadataForIndex["event.naturalLanguageDescription"] = new MetadataField(
                     nlResult.Description,
@@ -613,6 +614,42 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             firstRetryInterval: TimeSpan.FromSeconds(1),
             backoffCoefficient: 2.0,
             maxRetryInterval: TimeSpan.FromSeconds(30)));
+
+    private static IReadOnlyDictionary<string, WorkflowTaskOptions> CreateActivityRetryOptions(
+        IngestionActivityRetryConfiguration? retryConfiguration)
+    {
+        IngestionActivityRetryConfiguration retry = retryConfiguration ?? new IngestionActivityRetryConfiguration();
+        Dictionary<string, WorkflowTaskOptions> map = new(StringComparer.Ordinal)
+        {
+            [DefaultRetryKey] = ToWorkflowTaskOptions(retry.Default, "workflowConfiguration.retry.default"),
+        };
+
+        foreach ((string activityName, WorkflowActivityRetryPolicy policy) in retry.ActivityOverrides)
+        {
+            map[activityName] = ToWorkflowTaskOptions(policy, $"workflowConfiguration.retry.activityOverrides.{activityName}");
+        }
+
+        return map;
+    }
+
+    private static WorkflowTaskOptions ToWorkflowTaskOptions(WorkflowActivityRetryPolicy policy, string configurationPath)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        if (policy.MaxAttempts <= 0)
+        {
+            throw new InvalidOperationException(
+                $"RETRY_CONFIG_INVALID: {configurationPath}.maxAttempts must be > 0 (was {policy.MaxAttempts}).");
+        }
+
+        return new WorkflowTaskOptions(new WorkflowRetryPolicy(
+            maxNumberOfAttempts: policy.MaxAttempts,
+            firstRetryInterval: TimeSpan.FromSeconds(policy.FirstRetryIntervalSeconds),
+            backoffCoefficient: policy.BackoffCoefficient,
+            maxRetryInterval: TimeSpan.FromSeconds(policy.MaxRetryIntervalSeconds)));
+    }
+
+    private static bool ShouldPersistNaturalLanguageDescription(IngestionWorkflowConfiguration? workflowConfiguration)
+        => workflowConfiguration?.NaturalLanguage.PersistInMetadata == true;
 
     private static async Task<T> CallEmbeddingActivityWithDurableRateLimitAsync<T>(
         WorkflowContext context,

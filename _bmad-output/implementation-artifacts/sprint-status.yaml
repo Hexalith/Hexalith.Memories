@@ -101,6 +101,8 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 23.6 dev-story completed (23.6 -> review). Added SupportedExtensions allowlist enforcement, bounded directory scheduling (default 4, clamp 1..32), checkpointed batch state (default every 50 scheduled files, clamp 1..250), deterministic final file accounting, and unscheduled claim-check payload cleanup. Required server builds, focused xUnit fallback slices, full server in-process regression (2383 total, 0 failed, 1 skipped), and git diff check passed.
 # 2026-07-05: Story 23.6 senior developer review completed with automatic fixes (cancellation cleanup for unscheduled claim-check payloads, scheduler token propagation, File List hygiene). 23.6 -> done.
 # 2026-07-05: Story 23.7 created (23.7 -> ready-for-dev) via create-story. Index-provisioning ownership; requires memoized per-tenant index readiness, no per-document FT.CREATE, no Thread.Sleep, and no per-ingest index-exists warning noise; closes A34.
+# 2026-07-05: Story 23.8 dev-story completed (23.8 -> review). Captured ingestion retry/NL workflow config into durable inputs, removed mutable static reads from IngestionWorkflow, covered live scheduling paths and annotation child workflow config propagation, and added determinism/source-guard tests.
+# 2026-07-05: Story 23.8 senior developer review completed by direct fallback after the child review session exited during discovery; no blocking findings remained. 23.8 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -421,7 +423,7 @@ development_status:
   23-5-rate-limiter-admission-simplification: done
   23-6-directory-batch-scalability: done
   23-7-index-provisioning-ownership: done
-  23-8-workflow-config-determinism: backlog
+  23-8-workflow-config-determinism: done
   23-9-embeddingclient-provider-strategy: done
   epic-23-retrospective: optional
 

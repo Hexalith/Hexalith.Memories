@@ -1,3 +1,47 @@
+# Test Automation Summary - Story 23.8 (Workflow Config Determinism)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-8-workflow-config-determinism.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with ASP.NET Core `WebApplicationFactory` endpoint tests. No new framework introduced.
+- **Feature under test:** deterministic ingestion workflow config capture, retry/NL config replay safety, scheduler-boundary capture, and file-ingest API scheduling through the deterministic scheduler seam. Story 23.8 has no browser UI scope.
+
+## Generated / Updated Tests
+
+### API / E2E Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs` - added real HTTP coverage for `POST /api/ingest` with a valid file payload. The test verifies `202 Accepted`, response location, and that the route schedules through `IIngestionWorkflowScheduler`, which is the production seam that captures workflow config and performs claim-check slimming.
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs` - added invalid file-payload coverage proving `400 INVALID_INPUT` returns before workflow scheduling.
+
+### Existing Story Coverage Confirmed
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionPayloadClaimCheckTests.cs` - confirms scheduler input preparation captures retry/NL config before claim-check slimming and preserves the captured config on the slim workflow input.
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs` and `IngestionWorkflowDualEmbeddingTests.cs` - confirm workflow execution uses captured retry/NL values even when process-global settings change.
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/AnnotationProjectionWorkflowTests.cs` - confirms annotation child-ingestion scheduling propagates already-captured workflow config.
+- [x] `tests/Hexalith.Memories.Server.Tests/Architecture/IngestionWorkflowDeterminismGuardTests.cs` - source guard rejects mutable retry/NL snapshot reads inside `IngestionWorkflow`.
+
+## Coverage
+
+- API endpoints: `POST /api/ingest` happy path and validation error path covered; existing directory and re-ingestion endpoint coverage already exercises paths routed through `IIngestionWorkflowScheduler`.
+- Workflow/scheduler behavior: captured retry policy, captured natural-language persistence flag, claim-check slimming preservation, annotation child workflow config propagation, and mutable-static source guard covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [ ] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~IngestionEndpointE2ETests|FullyQualifiedName~IngestionPayloadClaimCheckTests"` - blocked before execution by the known local VSTest TCP listener issue: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -class Hexalith.Memories.Server.Tests.Endpoints.IngestionEndpointE2ETests -class Hexalith.Memories.Server.Tests.Ingestion.IngestionPayloadClaimCheckTests -parallel none` - 5 total, 0 failed, 0 skipped.
+- [x] `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -class Hexalith.Memories.Server.Tests.Architecture.IngestionWorkflowDeterminismGuardTests -class Hexalith.Memories.Server.Tests.Workflows.AnnotationProjectionWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowDualEmbeddingTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests -parallel none` - 63 total, 0 failed, 0 skipped.
+
+## Checklist Result
+
+- API tests generated where applicable: pass.
+- E2E tests generated where applicable: pass for backend HTTP/API behavior; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and a critical validation error case, have clear descriptions, use no hardcoded waits, and are independent through fake infrastructure: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.7 (Index-Provisioning Ownership)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

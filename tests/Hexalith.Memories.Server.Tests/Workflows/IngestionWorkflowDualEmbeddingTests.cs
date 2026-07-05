@@ -33,13 +33,17 @@ public class IngestionWorkflowDualEmbeddingTests
     public IngestionWorkflowDualEmbeddingTests()
     {
         RetryPolicyBuilder.ResetToDefaults();
-        NaturalLanguageDescriptionOptionsSnapshot.ResetToDefaults();
     }
 
     [Fact]
     public async Task SourceTypeEvent_SuccessPath_SchedulesFourActivities()
     {
-        IngestionInput input = CreateEventInput();
+        IngestionInput input = CreateEventInput() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                new IngestionSettings(),
+                new NaturalLanguageDescriptionOptions()),
+        };
         WorkflowContext context = CreateMockContext();
         SetupHappyPathIncludingNl(context, input);
         IngestionWorkflow workflow = new();
@@ -165,13 +169,12 @@ public class IngestionWorkflowDualEmbeddingTests
             Arg.Is<IndexInput>(i => !i.Metadata.ContainsKey("event.naturalLanguageDescription")),
             Arg.Any<WorkflowTaskOptions>());
 
-        // Flip the snapshot flag ON.
-        NaturalLanguageDescriptionOptionsSnapshot.ResetToDefaults();
-        NaturalLanguageDescriptionOptionsSnapshot.Initialize(
-            Microsoft.Extensions.Options.Options.Create(
-                new NaturalLanguageDescriptionOptions { PersistInMetadata = true }));
-
-        IngestionInput input2 = CreateEventInput();
+        IngestionInput input2 = CreateEventInput() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                new IngestionSettings(),
+                new NaturalLanguageDescriptionOptions { PersistInMetadata = true }),
+        };
         WorkflowContext context2 = CreateMockContext();
         SetupHappyPathIncludingNl(context2, input2);
 
@@ -222,6 +225,32 @@ public class IngestionWorkflowDualEmbeddingTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexNaturalLanguageSemanticActivity),
             Arg.Any<NaturalLanguageIndexInput>(),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task NaturalLanguageDescriptionMetadata_UsesCapturedFlagAfterGlobalSnapshotChanges()
+    {
+        IngestionInput input = CreateEventInput() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                new IngestionSettings(),
+                new NaturalLanguageDescriptionOptions { PersistInMetadata = true }),
+        };
+        NaturalLanguageDescriptionOptionsSnapshot.Initialize(
+            Microsoft.Extensions.Options.Options.Create(
+                new NaturalLanguageDescriptionOptions { PersistInMetadata = false }));
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathIncludingNl(context, input);
+        IngestionWorkflow workflow = new();
+
+        _ = await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(i =>
+                i.Metadata.ContainsKey("event.naturalLanguageDescription")
+                && i.Metadata["event.naturalLanguageDescription"].Value == "A business action happened."),
             Arg.Any<WorkflowTaskOptions>());
     }
 

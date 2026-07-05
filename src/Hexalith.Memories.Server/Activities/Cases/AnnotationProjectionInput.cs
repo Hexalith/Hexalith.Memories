@@ -17,4 +17,5 @@ internal sealed record AnnotationProjectionInput(
     string Content,
     string? AnnotationType,
     string IngestedBy,
-    IReadOnlyDictionary<string, MetadataField> Metadata);
+    IReadOnlyDictionary<string, MetadataField> Metadata,
+    IngestionWorkflowConfiguration? WorkflowConfiguration = null);

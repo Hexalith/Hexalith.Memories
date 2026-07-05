@@ -16,7 +16,8 @@ using Hexalith.Memories.Server.Workflows;
 /// <summary>Schedules the ingestion workflow for an annotation memory unit.</summary>
 internal sealed class ScheduleAnnotationIngestionActivity(
     DaprWorkflowClient workflowClient,
-    IWorkflowPayloadStore payloadStore)
+    IWorkflowPayloadStore payloadStore,
+    IngestionWorkflowConfigurationCapture workflowConfigurationCapture)
     : WorkflowActivity<AnnotationProjectionInput, string>
 {
     /// <inheritdoc/>
@@ -34,7 +35,13 @@ internal sealed class ScheduleAnnotationIngestionActivity(
             IngestedBy = input.IngestedBy,
             Metadata = input.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal),
             CausationId = input.TargetMemoryUnitId,
+            WorkflowConfiguration = input.WorkflowConfiguration,
         };
+
+        if (ingestionInput.WorkflowConfiguration is null)
+        {
+            ingestionInput = workflowConfigurationCapture.Apply(ingestionInput);
+        }
 
         ingestionInput = await IngestionPayloadClaimCheck
             .PrepareAsync(payloadStore, input.AnnotationMemoryUnitId, ingestionInput)

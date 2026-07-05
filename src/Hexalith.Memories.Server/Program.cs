@@ -217,6 +217,7 @@ builder.Services.AddSingleton<IJitterSource, ThreadSafeRandomJitterSource>();
 builder.Services.AddSingleton<CaseIngestionCounterLogic>();
 builder.Services.AddSingleton<FailedUnitsRegistry>();
 builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
+builder.Services.AddSingleton<IngestionWorkflowConfigurationCapture>();
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
 builder.Services.AddSingleton<IIngestionWorkflowStateReader, DaprIngestionWorkflowStateReader>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
@@ -488,10 +489,9 @@ MemoriesMeter.EnsureHandlerGaugeCreated(() =>
 });
 
 app.MapPost("/api/ingest", async (
-    DaprWorkflowClient workflowClient,
+    IIngestionWorkflowScheduler workflowScheduler,
     TenantStatusGuard tenantGuard,
     IngestDedupReservation ingestReservation,
-    IWorkflowPayloadStore payloadStore,
     IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
     ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
@@ -573,11 +573,9 @@ app.MapPost("/api/ingest", async (
 
         try
         {
-            IngestionInput slimInput = await IngestionPayloadClaimCheck
-                .PrepareAsync(payloadStore, candidateInstanceId, input, CancellationToken.None)
+            string instanceId = await workflowScheduler
+                .ScheduleAsync(candidateInstanceId, input, CancellationToken.None)
                 .ConfigureAwait(false);
-            string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
-                nameof(IngestionWorkflow), instanceId: candidateInstanceId, input: slimInput);
             return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
         }
         catch
@@ -672,6 +670,7 @@ app.MapGet("/api/ingest/{instanceId}", async (
 
 app.MapPost("/api/ingest/url", async (
     DaprWorkflowClient workflowClient,
+    IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
     TenantStatusGuard tenantGuard,
     Microsoft.Extensions.Options.IOptions<UrlFetcherOptions> urlFetcherOptions,
     ILoggerFactory loggerFactory,
@@ -752,6 +751,8 @@ app.MapPost("/api/ingest/url", async (
             CausationId = request.CausationId,
             CorrelationId = request.CorrelationId,
         };
+
+        input = workflowConfigurationCapture.Apply(input);
 
         string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
 

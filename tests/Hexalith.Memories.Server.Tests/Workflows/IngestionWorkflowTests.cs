@@ -13,6 +13,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.TestHelpers.Factories;
@@ -788,14 +789,19 @@ public class IngestionWorkflowTests
     [Fact]
     public async Task RunAsync_RawEmbeddingNonProviderRateLimitFailure_ShouldPersistFailedUnitWithoutDurableProviderTimer()
     {
-        RetryPolicyBuilder.Initialize(new IngestionSettings
+        IngestionSettings settings = new()
         {
             RetryPolicies = new(StringComparer.Ordinal)
             {
                 [nameof(GenerateChunkEmbeddingsActivity)] = new ActivityRetryPolicy { MaxAttempts = 1 },
             },
-        });
-        IngestionInput input = IngestionInputFactory.Create();
+        };
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                settings,
+                new NaturalLanguageDescriptionOptions()),
+        };
         WorkflowContext context = CreateMockContext();
         SetupPreIndexActivities(context, input);
         WorkflowTaskFailedException localRateLimitFailure = new(
@@ -1500,8 +1506,12 @@ public class IngestionWorkflowTests
                 },
             },
         };
-        RetryPolicyBuilder.Initialize(settings);
-        IngestionInput input = IngestionInputFactory.Create();
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                settings,
+                new NaturalLanguageDescriptionOptions()),
+        };
         WorkflowContext context = CreateMockContext();
         SetupHappyPathActivities(context, input);
         IngestionWorkflow workflow = new();
@@ -1522,6 +1532,58 @@ public class IngestionWorkflowTests
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
                 options.RetryPolicy == null));
+    }
+
+    [Fact]
+    public async Task RunAsync_CapturedRetryConfig_ShouldIgnoreLaterGlobalRetryChanges()
+    {
+        IngestionSettings capturedSettings = new()
+        {
+            RetryPolicies = new(StringComparer.Ordinal)
+            {
+                [nameof(ExtractContentActivity)] = new ActivityRetryPolicy
+                {
+                    MaxAttempts = 4,
+                    FirstRetryIntervalSeconds = 7,
+                    BackoffCoefficient = 1.25,
+                    MaxRetryIntervalSeconds = 45,
+                },
+            },
+        };
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            WorkflowConfiguration = IngestionWorkflowConfigurationCapture.Create(
+                capturedSettings,
+                new NaturalLanguageDescriptionOptions()),
+        };
+        RetryPolicyBuilder.Initialize(new IngestionSettings
+        {
+            RetryPolicies = new(StringComparer.Ordinal)
+            {
+                [nameof(ExtractContentActivity)] = new ActivityRetryPolicy
+                {
+                    MaxAttempts = 9,
+                    FirstRetryIntervalSeconds = 99,
+                    BackoffCoefficient = 3,
+                    MaxRetryIntervalSeconds = 999,
+                },
+            },
+        });
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<ExtractionResult>(
+            nameof(ExtractContentActivity),
+            Arg.Any<ExtractionInput>(),
+            Arg.Is<WorkflowTaskOptions>(options =>
+                options.RetryPolicy != null
+                && options.RetryPolicy.MaxNumberOfAttempts == 4
+                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(7)
+                && options.RetryPolicy.BackoffCoefficient == 1.25
+                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromSeconds(45)));
     }
 
     [Fact]
