@@ -18,9 +18,10 @@ internal static class FusionEngine
     private const int SyntacticAxis = 0;
     private const int SemanticAxis = 1;
     private const int GraphAxis = 2;
+    private const int NlAxis = 3;
 
     /// <summary>
-    /// Fuses scored results from up to three search axes into a deduplicated, ranked list.
+    /// Fuses scored results from up to three legacy search axes into a deduplicated, ranked list.
     /// </summary>
     /// <param name="syntacticResults">BM25 search results (raw scores), or null if axis was not queried.</param>
     /// <param name="semanticResults">Vector search results (cosine similarity), or null if axis was not queried.</param>
@@ -36,12 +37,34 @@ internal static class FusionEngine
         FusionWeights weights,
         int documentCount,
         double averageDocumentLength)
+        => Fuse(syntacticResults, semanticResults, graphResults, null, weights, documentCount, averageDocumentLength);
+
+    /// <summary>
+    /// Fuses scored results from up to four search axes into a deduplicated, ranked list.
+    /// </summary>
+    /// <param name="syntacticResults">BM25 search results (raw scores), or null if axis was not queried.</param>
+    /// <param name="semanticResults">Vector search results (cosine similarity), or null if axis was not queried.</param>
+    /// <param name="graphResults">Graph traversal results (already normalized proximity), or null if axis was not queried.</param>
+    /// <param name="nlResults">Natural-language semantic results, or null if axis was not queried.</param>
+    /// <param name="weights">The relative weights for each axis.</param>
+    /// <param name="documentCount">Ignored for RRF; retained for internal call-site compatibility.</param>
+    /// <param name="averageDocumentLength">Ignored for RRF; retained for internal call-site compatibility.</param>
+    /// <returns>A sorted list of fused results, descending by composite score, ties broken by MemoryUnitId.</returns>
+    internal static IReadOnlyList<FusedScoredResult> Fuse(
+        IReadOnlyList<ScoredResult>? syntacticResults,
+        IReadOnlyList<ScoredResult>? semanticResults,
+        IReadOnlyList<ScoredResult>? graphResults,
+        IReadOnlyList<ScoredResult>? nlResults,
+        FusionWeights weights,
+        int documentCount,
+        double averageDocumentLength)
     {
         bool hasSyntactic = syntacticResults is { Count: > 0 };
         bool hasSemantic = semanticResults is { Count: > 0 };
         bool hasGraph = graphResults is { Count: > 0 };
+        bool hasNl = nlResults is { Count: > 0 } && weights.NlWeight > 0.0;
 
-        if (!hasSyntactic && !hasSemantic && !hasGraph)
+        if (!hasSyntactic && !hasSemantic && !hasGraph && !hasNl)
         {
             return [];
         }
@@ -64,12 +87,17 @@ internal static class FusionEngine
             AccumulateAxis(accumulators, graphResults!, GraphAxis);
         }
 
+        if (hasNl)
+        {
+            AccumulateAxis(accumulators, nlResults!, NlAxis);
+        }
+
         // Compute composite scores and build result list
         List<FusedScoredResult> fused = new(accumulators.Count);
         foreach (KeyValuePair<string, FusionAccumulator> kvp in accumulators)
         {
             FusionAccumulator acc = kvp.Value;
-            double compositeScore = ComputeCompositeScore(acc, weights, hasSyntactic, hasSemantic, hasGraph);
+            double compositeScore = ComputeCompositeScore(acc, weights, hasSyntactic, hasSemantic, hasGraph, hasNl);
 
             // All-zero weights for active axes -> skip (no division by zero)
             if (double.IsNaN(compositeScore))
@@ -87,6 +115,7 @@ internal static class FusionEngine
                 SyntacticScore = acc.SyntacticScore,
                 SemanticScore = acc.SemanticScore,
                 GraphScore = acc.GraphScore,
+                NlScore = acc.NlScore,
                 CaseId = acc.CaseId,
                 CaseName = acc.CaseName,
                 AnnotationsCount = acc.AnnotationsCount,
@@ -133,6 +162,9 @@ internal static class FusionEngine
                 case GraphAxis when acc.GraphScore is null:
                     acc.GraphScore = contribution;
                     break;
+                case NlAxis when acc.NlScore is null:
+                    acc.NlScore = contribution;
+                    break;
             }
 
             MergeAttribution(acc, result);
@@ -144,7 +176,8 @@ internal static class FusionEngine
         FusionWeights weights,
         bool hasSyntactic,
         bool hasSemantic,
-        bool hasGraph)
+        bool hasGraph,
+        bool hasNl)
     {
         double weightedSum = 0.0;
         double maximumWeightedSum = 0.0;
@@ -166,6 +199,12 @@ internal static class FusionEngine
         {
             weightedSum += weights.GraphWeight * ConvertContributionToRawRrf(acc.GraphScore);
             maximumWeightedSum += weights.GraphWeight * topRankContribution;
+        }
+
+        if (hasNl)
+        {
+            weightedSum += weights.NlWeight * ConvertContributionToRawRrf(acc.NlScore);
+            maximumWeightedSum += weights.NlWeight * topRankContribution;
         }
 
         if (maximumWeightedSum == 0.0)

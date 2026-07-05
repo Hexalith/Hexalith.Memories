@@ -19,6 +19,9 @@ internal enum SearchAxis
     /// <summary>Vector / embedding similarity search.</summary>
     Semantic,
 
+    /// <summary>Natural-language semantic vector similarity search.</summary>
+    Nl,
+
     /// <summary>Fused multi-axis hybrid search.</summary>
     Hybrid,
 }

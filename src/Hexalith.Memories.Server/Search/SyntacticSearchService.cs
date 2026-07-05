@@ -23,8 +23,6 @@ using RedisSearchResult = NRedisStack.Search.SearchResult;
 /// <summary>Executes syntactic (BM25) searches against RediSearch indexes.</summary>
 public sealed partial class SyntacticSearchService
 {
-    private const int MaxSnippetLength = 200;
-
     /// <summary>Explicit RediSearch BM25-family scorer used by all syntactic search paths.</summary>
     internal const string RedisSearchScorerName = "BM25STD";
 
@@ -198,7 +196,7 @@ public sealed partial class SyntacticSearchService
         {
             MemoryUnitId = memoryUnitId,
             Score = doc.Score,
-            ContentSnippet = TruncateContent(content),
+            ContentSnippet = SearchSnippetBuilder.FromHighlightedContent(content, content),
             SourceUri = sourceUri,
             SourceType = sourceType,
             Axis = "syntactic",
@@ -356,6 +354,8 @@ public sealed partial class SyntacticSearchService
         => new Query(queryString)
             .SetWithScores(true)
             .SetScorer(RedisSearchScorerName)
+            .HighlightFields("content")
+            .SummarizeFields(SearchSnippetBuilder.MaxSnippetLength, 1, " ... ", "content")
             .Limit(offset, maxResults)
             .Dialect(2)
             .ReturnFields("content", "sourceUri", "sourceType", "caseId", "metadataJson", "ingestedBy", "ingestedAt");
@@ -383,6 +383,20 @@ public sealed partial class SyntacticSearchService
         args.Add("WITHSCORES");
         args.Add("SCORER");
         args.Add(RedisSearchScorerName);
+        args.Add("HIGHLIGHT");
+        args.Add("FIELDS");
+        args.Add(1);
+        args.Add("content");
+        args.Add("SUMMARIZE");
+        args.Add("FIELDS");
+        args.Add(1);
+        args.Add("content");
+        args.Add("FRAGS");
+        args.Add(1);
+        args.Add("LEN");
+        args.Add(SearchSnippetBuilder.MaxSnippetLength);
+        args.Add("SEPARATOR");
+        args.Add(" ... ");
         args.Add("RETURN");
         args.Add(7);
         args.Add("content");
@@ -480,7 +494,7 @@ public sealed partial class SyntacticSearchService
         {
             MemoryUnitId = memoryUnitId,
             Score = score,
-            ContentSnippet = TruncateContent(content),
+            ContentSnippet = SearchSnippetBuilder.FromHighlightedContent(content, content),
             SourceUri = sourceUri,
             SourceType = sourceType,
             Axis = "syntactic",
@@ -496,7 +510,16 @@ public sealed partial class SyntacticSearchService
             return (0, []);
         }
 
-        long totalResults = Convert.ToInt64(values[0].ToString(), CultureInfo.InvariantCulture);
+        return long.TryParse(values[0].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long legacyTotal)
+            ? ParseLegacyArraySearchResult(values, legacyTotal, tenantId)
+            : ParseRespMapSearchResult(values, tenantId);
+    }
+
+    private static (long TotalResults, List<ScoredResult> Results) ParseLegacyArraySearchResult(
+        RedisResult[] values,
+        long totalResults,
+        string tenantId)
+    {
         List<ScoredResult> results = [];
 
         for (int i = 1; i < values.Length;)
@@ -525,6 +548,70 @@ public sealed partial class SyntacticSearchService
         return (totalResults, results);
     }
 
+    private static (long TotalResults, List<ScoredResult> Results) ParseRespMapSearchResult(
+        RedisResult[] mapEntries,
+        string tenantId)
+    {
+        Dictionary<string, RedisResult> map = BuildResultMap(mapEntries);
+
+        long totalResults = 0;
+        if (map.TryGetValue("total_results", out RedisResult? totalValue)
+            && long.TryParse(totalValue.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsedTotal))
+        {
+            totalResults = parsedTotal;
+        }
+
+        List<ScoredResult> results = [];
+        if (!map.TryGetValue("results", out RedisResult? resultsValue))
+        {
+            return (totalResults, results);
+        }
+
+        RedisResult[] docs = (RedisResult[]?)resultsValue ?? [];
+        foreach (RedisResult docResult in docs)
+        {
+            RedisResult[]? docEntries = (RedisResult[]?)docResult;
+            if (docEntries is null)
+            {
+                continue;
+            }
+
+            Dictionary<string, RedisResult> doc = BuildResultMap(docEntries);
+            RedisKey documentId = doc.TryGetValue("id", out RedisResult? idValue) ? idValue.ToString() : (RedisKey)string.Empty;
+            double score = doc.TryGetValue("score", out RedisResult? scoreValue)
+                && double.TryParse(scoreValue.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double parsedScore)
+                    ? parsedScore
+                    : 0.0;
+            Dictionary<string, RedisValue> fields = doc.TryGetValue("extra_attributes", out RedisResult? attributes)
+                ? ParseFieldMap(attributes)
+                : [];
+
+            if (!HasRequiredFields(fields))
+            {
+                continue;
+            }
+
+            results.Add(MapRawFieldsToScoredResult(documentId, score, fields, tenantId));
+        }
+
+        return (totalResults, results);
+    }
+
+    private static Dictionary<string, RedisResult> BuildResultMap(RedisResult[] entries)
+    {
+        Dictionary<string, RedisResult> map = new(StringComparer.Ordinal);
+        for (int i = 0; i + 1 < entries.Length; i += 2)
+        {
+            string? key = entries[i].ToString();
+            if (!string.IsNullOrEmpty(key))
+            {
+                map[key] = entries[i + 1];
+            }
+        }
+
+        return map;
+    }
+
     private static Dictionary<string, RedisValue> ParseFieldMap(RedisResult fieldResult)
     {
         RedisResult[] rawFields = (RedisResult[]?)fieldResult ?? [];
@@ -541,18 +628,6 @@ public sealed partial class SyntacticSearchService
         }
 
         return fields;
-    }
-
-    private static string TruncateContent(string content)
-    {
-        if (content.Length <= MaxSnippetLength)
-        {
-            return content;
-        }
-
-        int lastSpace = content.LastIndexOf(' ', MaxSnippetLength);
-        int cutoff = lastSpace > 0 ? lastSpace : MaxSnippetLength;
-        return content[..cutoff] + "...";
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "RediSearch index {IndexName} not found for tenant {TenantId} — returning empty results")]

@@ -91,6 +91,9 @@ public sealed record FusedScoredResult
     /// <summary>Gets the graph rank contribution score, or null if the axis was not queried or didn't find this unit.</summary>
     public double? GraphScore { get; init; }
 
+    /// <summary>Gets the natural-language semantic rank contribution score, or null if the axis was not queried or didn't find this unit.</summary>
+    public double? NlScore { get; init; }
+
     /// <summary>Gets the case identifier of the memory unit, or null if not associated with a case.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CaseId { get; init; }

@@ -24,7 +24,7 @@ public sealed class ErrorCatalogTests
         ["MEMORY_UNIT_NOT_INDEXED", 1, "Retry"],
         ["INVALID_INPUT", 1, "memories search query --help"],
         ["INVALID_REQUEST", 1, "memories --help"],
-        ["INVALID_AXIS", 1, "syntactic, semantic, graph, hybrid"],
+        ["INVALID_AXIS", 1, "syntactic, semantic, nl, graph, hybrid"],
         ["INVALID_TENANT_ID", 1, "memories tenant list"],
         ["INVALID_CONFIG", 1, "Fix the configuration"],
         ["TENANT_DELETING", 1, "memories tenant list"],

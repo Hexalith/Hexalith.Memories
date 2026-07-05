@@ -29,6 +29,11 @@ internal static class ExplainMetadataBuilder
             NormalizationMethod = "cosine_clamp",
             Description = "Cosine similarity in [0.0, 1.0] with defensive clamp (Redis vector already returns similarity)",
         },
+        ["nl"] = new AxisExplanation
+        {
+            NormalizationMethod = "cosine_clamp",
+            Description = "Natural-language semantic cosine similarity in [0.0, 1.0] with syntactic-hash attribution backfill",
+        },
         ["graph"] = new AxisExplanation
         {
             NormalizationMethod = "inverse_hop_decay",
@@ -47,6 +52,11 @@ internal static class ExplainMetadataBuilder
         {
             NormalizationMethod = "rrf_rank_contribution",
             Description = "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw vector similarity magnitude is not exposed as the hybrid semantic score",
+        },
+        ["nl"] = new AxisExplanation
+        {
+            NormalizationMethod = "rrf_rank_contribution",
+            Description = "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw natural-language vector similarity magnitude is not exposed as the hybrid NL score",
         },
         ["graph"] = new AxisExplanation
         {

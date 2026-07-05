@@ -170,6 +170,31 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildRedisQuery_ShouldRequestContentHighlightAndSummary()
+    {
+        Query query = SyntacticSearchService.BuildRedisQuery("terms", 0, 10);
+
+        ReadQueryPrivateBool(query, "_wantsHighlight").ShouldBeTrue();
+        ReadQueryPrivateBool(query, "_wantsSummarize").ShouldBeTrue();
+    }
+
+    [Fact]
+    public void BuildGraphScopedSearchArguments_ShouldRequestContentHighlightAndSummary()
+    {
+        List<object> args = SyntacticSearchService.BuildGraphScopedSearchArguments(
+            "idx",
+            "terms",
+            [(RedisKey)"tenant1:mu:mu-001"],
+            0,
+            10);
+
+        IndexOf(args, "HIGHLIGHT").ShouldBeGreaterThan(0);
+        IndexOf(args, "SUMMARIZE").ShouldBeGreaterThan(0);
+        args.ShouldContain("content");
+        args.ShouldContain(SearchSnippetBuilder.MaxSnippetLength);
+    }
+
+    [Fact]
     public void BuildQueryString_WithAdversarialSourceType_ShouldEscapeTagOperators()
     {
         string result = SyntacticSearchService.BuildQueryString(
@@ -484,5 +509,11 @@ public class SyntacticSearchServiceTests
     {
         var property = typeof(Query).GetProperty("Scorer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
         return property?.GetValue(query)?.ToString();
+    }
+
+    private static bool ReadQueryPrivateBool(Query query, string fieldName)
+    {
+        var field = typeof(Query).GetField(fieldName, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        return field?.GetValue(query) is true;
     }
 }

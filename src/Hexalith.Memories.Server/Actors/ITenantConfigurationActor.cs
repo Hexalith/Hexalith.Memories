@@ -16,9 +16,18 @@ public interface ITenantConfigurationActor : IActor
     /// <returns>The <see cref="TenantEmbeddingConfig"/> for this tenant.</returns>
     Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync();
 
+    /// <summary>Gets the tenant's hybrid fusion weights, returning defaults when not configured.</summary>
+    /// <returns>The <see cref="FusionWeights"/> for this tenant.</returns>
+    Task<FusionWeights> GetFusionWeightsAsync();
+
     /// <summary>Sets the tenant's embedding configuration with reindex change detection.</summary>
     /// <param name="config">The new embedding configuration.</param>
     /// <param name="forceReindex">If true, allows breaking changes and sets the ReindexRequired flag.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task SetEmbeddingConfigAsync(TenantEmbeddingConfig config, bool forceReindex);
+
+    /// <summary>Sets the tenant's hybrid fusion weights.</summary>
+    /// <param name="weights">The new fusion weights.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task SetFusionWeightsAsync(FusionWeights weights);
 }

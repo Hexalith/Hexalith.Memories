@@ -16,6 +16,7 @@ public class FusionWeightsSerializationTests
             SyntacticWeight = 0.5,
             SemanticWeight = 0.3,
             GraphWeight = 0.2,
+            NlWeight = 0.1,
         };
 
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
@@ -32,6 +33,7 @@ public class FusionWeightsSerializationTests
         weights.SyntacticWeight.ShouldBe(0.4);
         weights.SemanticWeight.ShouldBe(0.4);
         weights.GraphWeight.ShouldBe(0.2);
+        weights.NlWeight.ShouldBe(0.2);
     }
 
     [Fact]
@@ -44,6 +46,7 @@ public class FusionWeightsSerializationTests
         json.ShouldContain("\"syntacticWeight\":");
         json.ShouldContain("\"semanticWeight\":");
         json.ShouldContain("\"graphWeight\":");
+        json.ShouldContain("\"nlWeight\":");
 
         json.ShouldNotContain("\"SyntacticWeight\":", Shouldly.Case.Sensitive);
     }
@@ -67,7 +70,7 @@ public class FusionWeightsSerializationTests
     [Fact]
     public void Validate_AllZero_ShouldThrow()
     {
-        var weights = new FusionWeights { SyntacticWeight = 0.0, SemanticWeight = 0.0, GraphWeight = 0.0 };
+        var weights = new FusionWeights { SyntacticWeight = 0.0, SemanticWeight = 0.0, GraphWeight = 0.0, NlWeight = 0.0 };
 
         Should.Throw<ArgumentException>(() => weights.Validate());
     }

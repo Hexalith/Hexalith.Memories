@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActor
 {
     private const string StateName = "embeddingConfig";
+    private const string FusionWeightsStateName = "fusionWeights";
 
     private readonly ILogger<TenantConfigurationActor> _logger;
 
@@ -35,6 +36,13 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
     {
         TenantEmbeddingConfig? storedConfig = await TryGetStoredEmbeddingConfigAsync().ConfigureAwait(false);
         return storedConfig ?? EmbeddingProviderDefaults.Google();
+    }
+
+    /// <inheritdoc/>
+    public async Task<FusionWeights> GetFusionWeightsAsync()
+    {
+        FusionWeights? storedWeights = await TryGetStoredFusionWeightsAsync().ConfigureAwait(false);
+        return storedWeights ?? new FusionWeights();
     }
 
     /// <inheritdoc/>
@@ -70,6 +78,14 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
         await StateManager.SetStateAsync(StateName, configToStore).ConfigureAwait(false);
     }
 
+    /// <inheritdoc/>
+    public async Task SetFusionWeightsAsync(FusionWeights weights)
+    {
+        ArgumentNullException.ThrowIfNull(weights);
+        weights.Validate();
+        await StateManager.SetStateAsync(FusionWeightsStateName, weights).ConfigureAwait(false);
+    }
+
     private async Task<TenantEmbeddingConfig?> TryGetStoredEmbeddingConfigAsync()
     {
         try
@@ -102,6 +118,43 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
             _logger.LogWarning(
                 ex,
                 "Corrupted embedding config state for tenant '{TenantId}'. Returning Google defaults.",
+                Id.GetId());
+            return null;
+        }
+    }
+
+    private async Task<FusionWeights?> TryGetStoredFusionWeightsAsync()
+    {
+        try
+        {
+            ConditionalValue<FusionWeights> result = await StateManager
+                .TryGetStateAsync<FusionWeights>(FusionWeightsStateName)
+                .ConfigureAwait(false);
+
+            if (!result.HasValue)
+            {
+                return null;
+            }
+
+            try
+            {
+                result.Value.Validate();
+                return result.Value;
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Invalid fusion weights state for tenant '{TenantId}'. Returning default fusion weights.",
+                    Id.GetId());
+                return null;
+            }
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Corrupted fusion weights state for tenant '{TenantId}'. Returning default fusion weights.",
                 Id.GetId());
             return null;
         }

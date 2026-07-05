@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
 
@@ -73,6 +74,32 @@ public class SyntacticSearchIntegrationTests
 
         result.Results.ShouldContain(r => r.MemoryUnitId == "mu-1");
         result.HasIndexedMemoryUnits.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task SearchAsync_ShouldReturnRedisHighlightedBoundedSnippet()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string memoryUnitId = "mu-highlight";
+        await SeedDocumentAsync(
+            tenantId,
+            memoryUnitId,
+            "opening context before the match. payment outage traced to database timeout and queue backpressure. trailing context after the match.");
+
+        SyntacticSearchService service = CreateService();
+        var query = new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = "payment outage",
+        };
+
+        SearchResult unscoped = await service.SearchAsync(query);
+        SearchResult graphScoped = await service.SearchAsync(
+            query,
+            [IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId)]);
+
+        AssertHighlightedSnippet(unscoped.Results.Single(r => r.MemoryUnitId == memoryUnitId));
+        AssertHighlightedSnippet(graphScoped.Results.Single(r => r.MemoryUnitId == memoryUnitId));
     }
 
     [Fact]
@@ -469,6 +496,13 @@ public class SyntacticSearchIntegrationTests
 
     private SyntacticSearchService CreateService()
         => new(_redis.Connection, NullLogger<SyntacticSearchService>.Instance);
+
+    private static void AssertHighlightedSnippet(ScoredResult result)
+    {
+        result.ContentSnippet.ShouldContain("<b>payment</b>");
+        result.ContentSnippet.ShouldContain("<b>outage</b>");
+        result.ContentSnippet.Length.ShouldBeLessThanOrEqualTo(SearchSnippetBuilder.MaxSnippetLength + 3);
+    }
 
     private static async Task<(SearchResult Result, long ElapsedMilliseconds)> MeasureSearchAsync(
         SyntacticSearchService service,

@@ -89,6 +89,7 @@ public sealed class SearchMemoryToolTests
     [Theory]
     [InlineData("Syntactic", "syntactic")]
     [InlineData("Semantic", "semantic")]
+    [InlineData("Nl", "nl")]
     public async Task SingleAxis_PassesAxisStringToSearchRequest(string axisName, string expected)
     {
         var axis = Enum.Parse<SearchAxis>(axisName);

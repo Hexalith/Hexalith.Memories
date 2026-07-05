@@ -89,6 +89,8 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.6 created (22.6 -> ready-for-dev) via create-story. Post-filter recall; closes A49 by requiring filtered semantic and graph-scoped semantic search to preserve recall beyond the initial KNN window without unbounded scans.
 # 2026-07-05: Story 22.6 dev-story completed (22.6 -> review). Bounded post-filter KNN candidate-window expansion for metadata/source-type recall; removed fake @sourceType semantic pre-filter (deferred to service-side post-filter); made scoped-KNN reply parser RESP2/RESP3-robust (fixes graph-scoped semantic path). Unit + Redis/FalkorDB integration recall proofs added. Flagged out-of-scope follow-up: SyntacticSearchService.ParseRawSearchResult shares the same latent RESP3 incompatibility.
 # 2026-07-05: Story 22.6 senior developer review completed with automatic fixes (added graph-scoped semantic source-type recall and offset-pagination integration coverage; corrected File List omission for endpoint recall tests). 22.6 -> done.
+# 2026-07-05: Story 22.7 dev-story completed (22.7 -> review). Wired axis=nl standalone and explicit hybrid, added query/tenant fusion weights, syntactic RediSearch highlighting, and post-fusion IResultFuser seam. Unit/in-process suites pass; RedisStack runtime and solution build blockers recorded in story.
+# 2026-07-05: Story 22.7 senior developer review completed with automatic fixes (NL adapter unit coverage, stale docs, evidence table, File List hygiene). 22.7 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -397,7 +399,7 @@ development_status:
   22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: done
   22-5-case-scoped-traversal-path-integrity: done
   22-6-post-filter-recall: done
-  22-7-retrieval-feature-completion: backlog
+  22-7-retrieval-feature-completion: done
   epic-22-retrospective: optional
 
   # Epic 23: Ingestion Pipeline Scalability & Resilience (SCP 2026-07-04; closes A11,A12,A13,A14,A15,A33,A34,A35,A51)

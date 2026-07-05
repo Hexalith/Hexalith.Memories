@@ -63,7 +63,7 @@ internal sealed class SearchMemoryTool
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An MCP tool result carrying a JSON-serialized search result.</returns>
     [McpServerTool(Name = "search_memory")]
-    [Description("Searches a tenant's memory corpus across syntactic, semantic, or hybrid axes and returns scored memory-unit results. Use traverse_relations for graph traversal.")]
+    [Description("Searches a tenant's memory corpus across syntactic, semantic, natural-language, or hybrid axes and returns scored memory-unit results. Use traverse_relations for graph traversal.")]
     public async Task<CallToolResult> SearchAsync(
         [Description("The tenant identifier whose memories should be searched.")]
         string tenantId,
@@ -71,7 +71,7 @@ internal sealed class SearchMemoryTool
         string query,
         [Description("Optional case identifier to scope the search to a single case within the tenant.")]
         string? @case = null,
-        [Description("Search axis: syntactic (BM25 lexical), semantic (vector similarity), or hybrid (fused multi-axis). Use traverse_relations for graph traversal.")]
+        [Description("Search axis: syntactic (BM25 lexical), semantic (vector similarity), nl (natural-language vector similarity), or hybrid (fused multi-axis). Use traverse_relations for graph traversal.")]
         SearchAxis axes = SearchAxis.Hybrid,
         [Description("Maximum number of results to return; clamped to the inclusive range 1..100.")]
         int maxResults = 10,
@@ -173,6 +173,7 @@ internal sealed class SearchMemoryTool
     {
         SearchAxis.Syntactic => "syntactic",
         SearchAxis.Semantic => "semantic",
+        SearchAxis.Nl => "nl",
         SearchAxis.Hybrid => "hybrid",
         _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, "Unsupported search axis."),
     };

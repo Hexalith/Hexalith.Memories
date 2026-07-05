@@ -109,7 +109,15 @@ public static class ErrorMessageCatalog
                 ExitCode: 1),
             ["INVALID_AXIS"] = new(
                 CliMessage: null,
-                CliSuggestion: "Use one of: syntactic, semantic, graph, hybrid.",
+                CliSuggestion: "Use one of: syntactic, semantic, nl, graph, hybrid.",
+                ExitCode: 1),
+            ["INVALID_FUSION_WEIGHTS"] = new(
+                CliMessage: null,
+                CliSuggestion: "Provide finite, non-negative fusion weights with at least one weight greater than zero.",
+                ExitCode: 1),
+            ["PAGINATION_LIMIT_EXCEEDED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Request a smaller page or reduce the offset before retrying.",
                 ExitCode: 1),
 
             // Story 18.5: search lookup — missing/blank source URI query parameter.

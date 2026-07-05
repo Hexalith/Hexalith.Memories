@@ -70,6 +70,65 @@ public class TenantConfigurationActorTests
     }
 
     [Fact]
+    public async Task GetFusionWeightsAsync_UnconfiguredTenant_ShouldReturnDefaults()
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        stateManager.TryGetStateAsync<FusionWeights>("fusionWeights", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<FusionWeights>(false, default!));
+
+        FusionWeights weights = await actor.GetFusionWeightsAsync();
+
+        weights.ShouldBe(new FusionWeights());
+        await stateManager.DidNotReceive().SetStateAsync(
+            Arg.Any<string>(),
+            Arg.Any<FusionWeights>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SetFusionWeightsAsync_ValidWeights_ShouldPersistSeparateStateKey()
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        var weights = new FusionWeights
+        {
+            SyntacticWeight = 0.2,
+            SemanticWeight = 0.3,
+            GraphWeight = 0.1,
+            NlWeight = 0.4,
+        };
+
+        await actor.SetFusionWeightsAsync(weights);
+
+        await stateManager.Received().SetStateAsync(
+            "fusionWeights",
+            weights,
+            Arg.Any<CancellationToken>());
+        await stateManager.DidNotReceive().SetStateAsync(
+            "embeddingConfig",
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFusionWeightsAsync_StoredWeights_ShouldReturnStoredValue()
+    {
+        (TenantConfigurationActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        var stored = new FusionWeights
+        {
+            SyntacticWeight = 0.1,
+            SemanticWeight = 0.2,
+            GraphWeight = 0.3,
+            NlWeight = 0.4,
+        };
+        stateManager.TryGetStateAsync<FusionWeights>("fusionWeights", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<FusionWeights>(true, stored));
+
+        FusionWeights weights = await actor.GetFusionWeightsAsync();
+
+        weights.ShouldBe(stored);
+    }
+
+    [Fact]
     public async Task SetEmbeddingConfigAsync_FirstCustomDimensions_ShouldNotRequireForceReindex()
     {
         // Arrange

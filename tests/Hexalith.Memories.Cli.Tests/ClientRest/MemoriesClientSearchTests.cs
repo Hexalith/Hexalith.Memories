@@ -97,6 +97,24 @@ public sealed class MemoriesClientSearchTests
     }
 
     [Fact]
+    public async Task SearchAsync_NaturalLanguageAxis_TargetsNlAxis()
+    {
+        SearchResult body = new() { Results = [], TotalCount = 0, HasIndexedMemoryUnits = true, Query = "needle" };
+        string json = JsonSerializer.Serialize(body, MemoriesJsonContext.Options);
+        (MemoriesClient client, TestDelegatingHandler handler) = CreateClient(HttpStatusCode.OK, json);
+
+        _ = await client.SearchAsync(
+            new SearchRequest(TenantId: "t1", Axis: "nl", Query: "needle"),
+            CancellationToken.None);
+
+        string? uri = handler.Requests[0].RequestUri?.ToString();
+        uri.ShouldNotBeNull();
+        uri.ShouldContain("tenantId=t1");
+        uri.ShouldContain("axis=nl");
+        uri.ShouldContain("query=needle");
+    }
+
+    [Fact]
     public async Task SearchAsync_IncludesOptionalSearchFiltersWhenProvided()
     {
         SearchResult body = new() { Results = [], TotalCount = 0, HasIndexedMemoryUnits = true, Query = "needle" };

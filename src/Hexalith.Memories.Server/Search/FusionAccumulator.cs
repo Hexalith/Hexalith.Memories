@@ -13,6 +13,7 @@ internal sealed class FusionAccumulator
     public double? SyntacticScore;
     public double? SemanticScore;
     public double? GraphScore;
+    public double? NlScore;
     public string? CaseId;
     public string? CaseName;
     public int AnnotationsCount;

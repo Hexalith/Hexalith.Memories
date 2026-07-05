@@ -25,7 +25,6 @@ using RedisSearchResult = NRedisStack.Search.SearchResult;
 /// <summary>Executes semantic (KNN vector) searches against Redis Vector indexes.</summary>
 public sealed partial class SemanticSearchService
 {
-    private const int MaxSnippetLength = 200;
     private static readonly string[] _requiredEnrichmentFields = ["content", "sourceUri", "sourceType"];
 
     private readonly IConnectionMultiplexer _redis;
@@ -631,18 +630,6 @@ SearchSucceeded:
         return true;
     }
 
-    private static string TruncateContent(string content)
-    {
-        if (content.Length <= MaxSnippetLength)
-        {
-            return content;
-        }
-
-        int lastSpace = content.LastIndexOf(' ', MaxSnippetLength);
-        int cutoff = lastSpace > 0 ? lastSpace : MaxSnippetLength;
-        return content[..cutoff] + "...";
-    }
-
     private async Task<List<ScoredResult>> EnrichResultsAsync(
         IDatabase db,
         string tenantId,
@@ -704,7 +691,7 @@ SearchSucceeded:
             {
                 MemoryUnitId = memoryUnitId,
                 Score = similarity,
-                ContentSnippet = TruncateContent(content),
+                ContentSnippet = SearchSnippetBuilder.FromStoredContent(content),
                 SourceUri = sourceUri,
                 SourceType = sourceType,
                 Axis = "semantic",

@@ -18,7 +18,9 @@ using Microsoft.Extensions.Logging;
 internal sealed partial class HybridSearchService(
     Func<SearchQuery, Task<SearchResult>> syntacticSearchFunc,
     Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semanticSearchFunc,
+    Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> naturalLanguageSearchFunc,
     Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graphSearchFunc,
+    IResultFuser resultFuser,
     ILogger<HybridSearchService> logger)
 {
     private static readonly HashSet<string> ValidAxisNames = new(StringComparer.OrdinalIgnoreCase)
@@ -26,7 +28,29 @@ internal sealed partial class HybridSearchService(
         "syntactic",
         "semantic",
         "graph",
+        "nl",
     };
+
+    internal HybridSearchService(
+        Func<SearchQuery, Task<SearchResult>> syntacticSearchFunc,
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semanticSearchFunc,
+        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graphSearchFunc,
+        ILogger<HybridSearchService> logger)
+        : this(
+            syntacticSearchFunc,
+            semanticSearchFunc,
+            (query, _, _) => Task.FromResult(new SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = false,
+                Query = query.Query,
+            }),
+            graphSearchFunc,
+            new IdentityResultFuser(),
+            logger)
+    {
+    }
 
     /// <summary>Executes a hybrid search across enabled axes, fusing results with configurable weights.</summary>
     /// <param name="query">The search query parameters.</param>
@@ -34,7 +58,7 @@ internal sealed partial class HybridSearchService(
     /// <param name="graphStartNodeId">Graph traversal start node (required for graph axis, null to skip).</param>
     /// <param name="graphDepth">Graph traversal depth.</param>
     /// <param name="weights">Fusion weights for each axis.</param>
-    /// <param name="enabledAxes">Set of axis names to execute (valid: "syntactic", "semantic", "graph").</param>
+    /// <param name="enabledAxes">Set of axis names to execute (valid: "syntactic", "semantic", "nl", "graph").</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A <see cref="HybridSearchResult"/> with fused scores and degradation info.</returns>
     internal async Task<HybridSearchResult> SearchAsync(
@@ -61,7 +85,7 @@ internal sealed partial class HybridSearchService(
     /// <param name="graphStartNodeId">Graph traversal start node (required for graph axis, null to skip).</param>
     /// <param name="graphDepth">Graph traversal depth.</param>
     /// <param name="weights">Fusion weights for each axis.</param>
-    /// <param name="enabledAxes">Set of axis names to execute (valid: "syntactic", "semantic", "graph").</param>
+    /// <param name="enabledAxes">Set of axis names to execute (valid: "syntactic", "semantic", "nl", "graph").</param>
     /// <param name="preUnavailableAxes">Axes known to be unavailable before execution begins.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A <see cref="HybridSearchResult"/> with fused scores and degradation info.</returns>
@@ -90,6 +114,7 @@ internal sealed partial class HybridSearchService(
         // Build tasks for enabled axes
         Task<SearchResult?>? syntacticTask = null;
         Task<SearchResult?>? semanticTask = null;
+        Task<SearchResult?>? nlTask = null;
         Task<SearchResult?>? graphTask = null;
 
         if (enabledAxes.Contains("syntactic"))
@@ -114,6 +139,27 @@ internal sealed partial class HybridSearchService(
                     "semantic",
                     axisQuery,
                     searchQuery => semanticSearchFunc(searchQuery, embeddingConfig, cancellationToken),
+                    unavailableAxes,
+                    logger);
+            }
+        }
+
+        if (enabledAxes.Contains("nl"))
+        {
+            if (embeddingConfig is null)
+            {
+                if (!unavailableAxes.ContainsKey("nl"))
+                {
+                    LogNaturalLanguageSkipped(logger, query.TenantId, "embeddingConfig is null");
+                }
+            }
+            else
+            {
+                _ = attemptedAxes.Add("nl");
+                nlTask = ExecuteAxisAsync(
+                    "nl",
+                    axisQuery,
+                    searchQuery => naturalLanguageSearchFunc(searchQuery, embeddingConfig, cancellationToken),
                     unavailableAxes,
                     logger);
             }
@@ -149,14 +195,17 @@ internal sealed partial class HybridSearchService(
         await Task.WhenAll(
             syntacticTask ?? Task.FromResult<SearchResult?>(null),
             semanticTask ?? Task.FromResult<SearchResult?>(null),
+            nlTask ?? Task.FromResult<SearchResult?>(null),
             graphTask ?? Task.FromResult<SearchResult?>(null)).ConfigureAwait(false);
 
         SearchResult? syntacticResult = syntacticTask is not null ? await syntacticTask.ConfigureAwait(false) : null;
         SearchResult? semanticResult = semanticTask is not null ? await semanticTask.ConfigureAwait(false) : null;
+        SearchResult? nlResult = nlTask is not null ? await nlTask.ConfigureAwait(false) : null;
         SearchResult? graphResult = graphTask is not null ? await graphTask.ConfigureAwait(false) : null;
 
         syntacticResult = NormalizeAxisResult(syntacticResult, "syntactic", query.TenantId, unavailableAxes, logger);
         semanticResult = NormalizeAxisResult(semanticResult, "semantic", query.TenantId, unavailableAxes, logger);
+        nlResult = NormalizeAxisResult(nlResult, "nl", query.TenantId, unavailableAxes, logger);
         graphResult = NormalizeAxisResult(graphResult, "graph", query.TenantId, unavailableAxes, logger);
 
         // Fuse results
@@ -164,9 +213,12 @@ internal sealed partial class HybridSearchService(
             syntacticResult?.Results,
             semanticResult?.Results,
             graphResult?.Results,
+            nlResult?.Results,
             weights,
             documentCount: 0,
             averageDocumentLength: 0.0);
+
+        fusedResults = await resultFuser.RerankAsync(query, weights, fusedResults, cancellationToken).ConfigureAwait(false);
 
         // Apply pagination after fusion
         long totalCount = fusedResults.Count;
@@ -354,6 +406,11 @@ internal sealed partial class HybridSearchService(
 
         if (!result.HasIndexedMemoryUnits)
         {
+            if (string.Equals(axisName, "nl", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = unavailableAxes.TryAdd(axisName, 0);
+            }
+
             return null;
         }
 
@@ -369,6 +426,9 @@ internal sealed partial class HybridSearchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic axis skipped for tenant {TenantId}: {Reason}")]
     private static partial void LogSemanticSkipped(ILogger logger, string tenantId, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Natural-language axis skipped for tenant {TenantId}: {Reason}")]
+    private static partial void LogNaturalLanguageSkipped(ILogger logger, string tenantId, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Graph axis skipped for tenant {TenantId}: {Reason}")]
     private static partial void LogGraphSkipped(ILogger logger, string tenantId, string reason);

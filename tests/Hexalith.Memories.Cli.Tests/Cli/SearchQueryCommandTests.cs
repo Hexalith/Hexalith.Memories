@@ -68,6 +68,20 @@ public sealed class SearchQueryCommandTests
     }
 
     [Fact]
+    public async Task Invoke_MissingQueryOnNaturalLanguage_WritesErrorAndExitsPlumbing()
+    {
+        (IServiceProvider services, _, StringWriter stderr) = BuildServices();
+        Command query = SearchQueryCommand.Build(services);
+
+        int exit = await query
+            .Parse(new[] { "query", "--tenant", "t1", "--axis", "nl" })
+            .InvokeAsync();
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldContain("--query is required for --axis nl");
+    }
+
+    [Fact]
     public async Task Invoke_MissingQueryOnHybrid_Json_EmitsErrorEnvelopeOnStdout()
     {
         (IServiceProvider services, StringWriter stdout, StringWriter stderr) = BuildServices(OutputFormat.Json);

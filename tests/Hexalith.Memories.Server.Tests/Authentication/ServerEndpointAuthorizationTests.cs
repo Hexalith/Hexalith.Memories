@@ -117,6 +117,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     [Theory]
     [InlineData("syntactic")]
     [InlineData("semantic")]
+    [InlineData("nl")]
     [InlineData("graph")]
     [InlineData("hybrid")]
     public async Task SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies(string axis)

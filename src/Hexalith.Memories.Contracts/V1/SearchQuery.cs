@@ -30,6 +30,9 @@ public sealed record SearchQuery
     /// <summary>Gets optional exact-match filters for indexed attribute key/value pairs.</summary>
     public IReadOnlyDictionary<string, string>? AttributeFilters { get; init; }
 
+    /// <summary>Gets optional per-query hybrid fusion weights. Null preserves tenant/default resolution.</summary>
+    public FusionWeights? Weights { get; init; }
+
     /// <summary>Gets the maximum number of results to return (default 10).</summary>
     public int MaxResults { get; init; } = 10;
 

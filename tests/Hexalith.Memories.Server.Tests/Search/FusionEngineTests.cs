@@ -456,4 +456,34 @@ public class FusionEngineTests
         results[0].MemoryUnitId.ShouldBe("mu-consensus");
         results[0].CompositeScore.ShouldBeGreaterThan(results[1].CompositeScore);
     }
+
+    [Fact]
+    public void Fuse_NaturalLanguageAxis_ShouldPopulateNlScore()
+    {
+        var nl = new List<ScoredResult> { MakeResult("mu-1", 0.91, "nl") };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            null, null, null, nl, DefaultWeights, 1000, 200.0);
+
+        results.Count.ShouldBe(1);
+        results[0].MemoryUnitId.ShouldBe("mu-1");
+        results[0].NlScore.ShouldBe(1.0);
+        results[0].CompositeScore.ShouldBe(1.0);
+    }
+
+    [Fact]
+    public void Fuse_ZeroNlWeight_ShouldPreserveThreeAxisRanking()
+    {
+        var syntactic = new List<ScoredResult> { MakeResult("mu-1", 10.0, "syntactic") };
+        var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.9, "semantic") };
+        var graph = new List<ScoredResult> { MakeResult("mu-1", 0.8, "graph") };
+        var nl = new List<ScoredResult> { MakeResult("mu-2", 0.99, "nl") };
+        FusionWeights weights = DefaultWeights with { NlWeight = 0.0 };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, semantic, graph, nl, weights, 1000, 200.0);
+
+        results[0].MemoryUnitId.ShouldBe("mu-1");
+        results.ShouldNotContain(r => r.MemoryUnitId == "mu-2");
+    }
 }

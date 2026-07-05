@@ -109,6 +109,22 @@ public sealed class SearchEndpointContractTests : IDisposable
     }
 
     [Fact]
+    public async Task NaturalLanguageSearch_WhenEmbeddingConfigActorUnavailable_ReturnsBackendUnavailable()
+    {
+        StubTenantActive("acme-search");
+        StubSemanticConfigFailure(new Dapr.DaprException("down"));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=nl");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("BACKEND_UNAVAILABLE");
+        GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
+    }
+
+    [Fact]
     public async Task GraphSearch_WhenCandidateWindowExceeded_ReturnsPaginationLimitExceeded()
     {
         StubTenantActive("acme-search");
@@ -207,6 +223,94 @@ public sealed class SearchEndpointContractTests : IDisposable
     }
 
     [Fact]
+    public async Task HybridSearch_Explain_WhenNoQueryWeights_ShouldUseTenantFusionWeights()
+    {
+        StubTenantActive("acme-search");
+        var tenantWeights = new FusionWeights
+        {
+            SyntacticWeight = 0.7,
+            SemanticWeight = 0.2,
+            NlWeight = 0.05,
+            GraphWeight = 0.05,
+        };
+        StubFusionWeights(tenantWeights);
+
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<HybridSearchService>();
+                services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(MakeSyntacticResult("mu-weight")));
+            });
+        });
+        using HttpClient client = factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Explanation.ShouldNotBeNull();
+        result.Explanation.WeightsUsed.ShouldBe(tenantWeights);
+    }
+
+    [Fact]
+    public async Task HybridSearch_Explain_WhenQueryWeightsProvided_ShouldOverrideTenantFusionWeights()
+    {
+        StubTenantActive("acme-search");
+        StubFusionWeights(new FusionWeights
+        {
+            SyntacticWeight = 0.7,
+            SemanticWeight = 0.2,
+            NlWeight = 0.05,
+            GraphWeight = 0.05,
+        });
+
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<HybridSearchService>();
+                services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(MakeSyntacticResult("mu-query-weight")));
+            });
+        });
+        using HttpClient client = factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true&syntacticWeight=1&semanticWeight=0&nlWeight=0&graphWeight=0");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Explanation.ShouldNotBeNull();
+        result.Explanation.WeightsUsed.ShouldBe(new FusionWeights
+        {
+            SyntacticWeight = 1.0,
+            SemanticWeight = 0.0,
+            NlWeight = 0.0,
+            GraphWeight = 0.0,
+        });
+    }
+
+    [Fact]
+    public async Task HybridSearch_WhenQueryWeightsAreAllZero_ReturnsInvalidFusionWeights()
+    {
+        StubTenantActive("acme-search");
+
+        using HttpClient client = _factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&syntacticWeight=0&semanticWeight=0&nlWeight=0&graphWeight=0");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("INVALID_FUSION_WEIGHTS");
+        error.Suggestion.ShouldContain("non-negative fusion weights");
+        _factory.ActorProxyFactory.DidNotReceiveWithAnyArgs().CreateActorProxy<ITenantConfigurationActor>(default!, default!);
+    }
+
+    [Fact]
     public async Task Traverse_WhenGraphQueryTimesOut_ReturnsGraphTimeout()
     {
         StubTenantActive("acme-search");
@@ -253,6 +357,15 @@ public sealed class SearchEndpointContractTests : IDisposable
             .Returns(actor);
     }
 
+    private void StubFusionWeights(FusionWeights weights)
+    {
+        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
+        actor.GetFusionWeightsAsync().Returns(weights);
+        _factory.ActorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(actor);
+    }
+
     private void StubCaseNames(params (string CaseId, string CaseName)[] cases)
     {
         IBatch batch = Substitute.For<IBatch>();
@@ -285,6 +398,16 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         return new HybridSearchService(syntactic, semantic, graph, NullLogger<HybridSearchService>.Instance);
     }
+
+    private static ScoredResult MakeSyntacticResult(string memoryUnitId) => new()
+    {
+        MemoryUnitId = memoryUnitId,
+        Score = 1.0,
+        ContentSnippet = "Weighted content",
+        SourceUri = "file:///weighted.txt",
+        SourceType = SourceType.File,
+        Axis = "syntactic",
+    };
 
     private static async Task<ErrorResponse> ReadErrorResponseAsync(HttpResponseMessage response)
     {

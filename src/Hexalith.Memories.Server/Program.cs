@@ -228,12 +228,14 @@ builder.Services.AddSingleton<SemanticSearchService>(sp =>
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
         sp.GetRequiredService<EmbeddingClient>(),
         sp.GetRequiredService<ILogger<SemanticSearchService>>()));
-// Story 9.2 Task 4.9: library-only NL semantic search service. NOT wired into HybridSearchService
+// Story 9.2 Task 4.9 + Story 22.7: NL semantic search service used directly and by hybrid search.
 // (AC #7 staged rollout) — consumers opt in by requesting this type directly.
 builder.Services.AddSingleton<NaturalLanguageSemanticSearchService>(sp =>
     new NaturalLanguageSemanticSearchService(
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
+        sp.GetRequiredService<EmbeddingClient>(),
         sp.GetRequiredService<ILogger<NaturalLanguageSemanticSearchService>>()));
+builder.Services.AddSingleton<IResultFuser, IdentityResultFuser>();
 
 // Story 9.2 Task 4.10 (chaos Scenario D): one-shot startup reconciler sweeps orphan NL semantic indexes
 // that a SIGKILL mid-provisioning could have left behind when compensation cannot run.
@@ -271,11 +273,14 @@ builder.Services.AddSingleton<HybridSearchService>(sp =>
 {
     var syntactic = sp.GetRequiredService<SyntacticSearchService>();
     var semantic = sp.GetRequiredService<SemanticSearchService>();
+    var naturalLanguage = sp.GetRequiredService<NaturalLanguageSemanticSearchService>();
     var graph = sp.GetRequiredService<GraphScopedSearch>();
     return new HybridSearchService(
         query => syntactic.SearchAsync(query),
         (query, config, ct) => semantic.SearchAsync(query, config, ct),
+        (query, config, ct) => naturalLanguage.SearchAsync(query, config, ct),
         (query, startNode, depth, ct) => graph.SearchAsync(query, startNode, depth, innerSearch: null, ct),
+        sp.GetRequiredService<IResultFuser>(),
         sp.GetRequiredService<ILogger<HybridSearchService>>());
 });
 
@@ -2744,6 +2749,7 @@ app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/a
 app.MapGet("/api/search", async (
     SyntacticSearchService syntacticService,
     SemanticSearchService semanticService,
+    NaturalLanguageSemanticSearchService naturalLanguageService,
     GraphScopedSearch graphScopedSearch,
     HybridSearchService hybridSearchService,
     IActorProxyFactory actorProxyFactory,
@@ -2771,6 +2777,10 @@ app.MapGet("/api/search", async (
     [FromQuery] int depth = 2,
     [FromQuery] bool explain = false,
     [FromQuery] int? tokenBudget = null,
+    [FromQuery] double? syntacticWeight = null,
+    [FromQuery] double? semanticWeight = null,
+    [FromQuery] double? graphWeight = null,
+    [FromQuery] double? nlWeight = null,
     CancellationToken cancellationToken = default) =>
 {
     static string? DetermineSearchAxisMetricTag(string requestedAxis, string? graphScopedStartNodeId)
@@ -2785,6 +2795,11 @@ app.MapGet("/api/search", async (
         if (string.Equals(requestedAxis, "graph", StringComparison.OrdinalIgnoreCase))
         {
             return "graph";
+        }
+
+        if (string.Equals(requestedAxis, "nl", StringComparison.OrdinalIgnoreCase))
+        {
+            return "nl";
         }
 
         if (string.Equals(requestedAxis, "hybrid", StringComparison.OrdinalIgnoreCase))
@@ -2838,6 +2853,10 @@ app.MapGet("/api/search", async (
         ["attributeFilterCount"] = attributeFilters?.Count ?? 0,
         ["explain"] = explain,
         ["tokenBudget"] = tokenBudget,
+        ["syntacticWeight"] = syntacticWeight,
+        ["semanticWeight"] = semanticWeight,
+        ["graphWeight"] = graphWeight,
+        ["nlWeight"] = nlWeight,
     };
     searchScope.QueryParams = searchQueryParams;
     searchActivity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
@@ -2934,6 +2953,7 @@ app.MapGet("/api/search", async (
         // Validate axis BEFORE query — axis determines whether query is required
         if (!string.Equals(axis, "syntactic", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(axis, "nl", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(axis, "graph", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(axis, "hybrid", StringComparison.OrdinalIgnoreCase))
         {
@@ -2941,8 +2961,8 @@ app.MapGet("/api/search", async (
                 "INVALID_AXIS",
                 Results.BadRequest(new ErrorResponse(
                     "INVALID_AXIS",
-                    $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, graph, hybrid.",
-                    "Use axis=syntactic, axis=semantic, axis=graph, or axis=hybrid.")));
+                    $"Search axis '{axis}' is not supported. Supported axes: syntactic, semantic, nl, graph, hybrid.",
+                    "Use axis=syntactic, axis=semantic, axis=nl, axis=graph, or axis=hybrid.")));
         }
 
         // --- axis=graph: pure traversal (query NOT required) ---
@@ -3048,8 +3068,8 @@ app.MapGet("/api/search", async (
                         "INVALID_AXIS",
                         Results.BadRequest(new ErrorResponse(
                             "INVALID_AXIS",
-                            "Parameter 'axes' must specify at least one search axis. Valid axes: syntactic, semantic, graph.",
-                            "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic.")));
+                            "Parameter 'axes' must specify at least one search axis. Valid axes: syntactic, semantic, graph, nl.",
+                            "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic,nl.")));
                 }
             }
 
@@ -3060,8 +3080,8 @@ app.MapGet("/api/search", async (
                     "INVALID_AXIS",
                     Results.BadRequest(new ErrorResponse(
                         "INVALID_AXIS",
-                        $"Unknown axis '{invalidAxis}' in axes parameter. Valid axes: syntactic, semantic, graph.",
-                        "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic.")));
+                        $"Unknown axis '{invalidAxis}' in axes parameter. Valid axes: syntactic, semantic, graph, nl.",
+                        "Use a comma-separated list of valid axis names, e.g., axes=syntactic,semantic,nl.")));
             }
 
             var hybridQuery = new SearchQuery
@@ -3073,26 +3093,83 @@ app.MapGet("/api/search", async (
                 MetadataQuery = metadataQuery,
                 CloudEventSubject = subject,
                 AttributeFilters = attributeFilters,
+                Weights = CreateQueryFusionWeights(syntacticWeight, semanticWeight, graphWeight, nlWeight),
                 MaxResults = Math.Clamp(maxResults, 1, 100),
                 Offset = Math.Max(offset, 0),
             };
 
-            var weights = new FusionWeights();
+            FusionWeights? queryWeights;
+            try
+            {
+                queryWeights = hybridQuery.Weights;
+                queryWeights?.Validate();
+            }
+            catch (ArgumentException ex)
+            {
+                return SearchError(
+                    "INVALID_FUSION_WEIGHTS",
+                    Results.BadRequest(new ErrorResponse(
+                        "INVALID_FUSION_WEIGHTS",
+                        ex.Message,
+                        "Provide finite, non-negative fusion weights with at least one weight greater than zero.")));
+            }
+
+            FusionWeights weights = queryWeights ?? new FusionWeights();
             TenantEmbeddingConfig? embeddingConfig = null;
             List<string> preUnavailableAxes = [];
             string? effectiveGraphStartNodeId = !string.IsNullOrWhiteSpace(graphStartNodeId)
                 ? graphStartNodeId
                 : startNodeId;
             Exception? semanticConfigFailure = null;
+            ITenantConfigurationActor? tenantConfigActor = null;
 
-            if (enabledAxes.Contains("semantic"))
+            if (enabledAxes.Contains("semantic") || enabledAxes.Contains("nl") || queryWeights is null)
+            {
+                tenantConfigActor = actorProxyFactory
+                    .CreateActorProxy<ITenantConfigurationActor>(
+                        new ActorId(tenantId), nameof(TenantConfigurationActor));
+            }
+
+            if (queryWeights is null && tenantConfigActor is not null)
             {
                 try
                 {
-                    ITenantConfigurationActor actor = actorProxyFactory
-                        .CreateActorProxy<ITenantConfigurationActor>(
-                            new ActorId(tenantId), nameof(TenantConfigurationActor));
-                    embeddingConfig = await actor.GetEmbeddingConfigAsync();
+                    FusionWeights? tenantWeights = await tenantConfigActor.GetFusionWeightsAsync();
+                    if (tenantWeights is null)
+                    {
+                        throw new ArgumentException("Tenant fusion weights are missing.");
+                    }
+
+                    tenantWeights.Validate();
+                    weights = tenantWeights;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Tenant fusion weights unavailable for tenant {TenantId}. Falling back to default fusion weights.",
+                        tenantId);
+                    weights = new FusionWeights();
+                }
+                catch (ArgumentException ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Tenant fusion weights invalid for tenant {TenantId}. Falling back to default fusion weights.",
+                        tenantId);
+                    weights = new FusionWeights();
+                }
+            }
+
+            if (enabledAxes.Contains("semantic") || enabledAxes.Contains("nl"))
+            {
+                try
+                {
+                    embeddingConfig = await tenantConfigActor!.GetEmbeddingConfigAsync();
                 }
                 catch (OperationCanceledException)
                 {
@@ -3101,7 +3178,15 @@ app.MapGet("/api/search", async (
                 catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
                 {
                     semanticConfigFailure = ex;
-                    preUnavailableAxes.Add("semantic");
+                    if (enabledAxes.Contains("semantic"))
+                    {
+                        preUnavailableAxes.Add("semantic");
+                    }
+
+                    if (enabledAxes.Contains("nl"))
+                    {
+                        preUnavailableAxes.Add("nl");
+                    }
                 }
             }
 
@@ -3110,9 +3195,10 @@ app.MapGet("/api/search", async (
 
             if (semanticConfigFailure is not null && !hasHybridFallbackAxis)
             {
+                string unavailableAxis = enabledAxes.Contains("semantic") ? "semantic" : "nl";
                 return SearchError(
                     "BACKEND_UNAVAILABLE",
-                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "semantic", tenantId, semanticConfigFailure));
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, unavailableAxis, tenantId, semanticConfigFailure));
             }
 
             int clampedDepth = Math.Clamp(depth, 0, 10);
@@ -3183,7 +3269,7 @@ app.MapGet("/api/search", async (
                 "INVALID_INPUT",
                 Results.BadRequest(new ErrorResponse(
                     "INVALID_INPUT",
-                    "Parameter 'query' is required for syntactic and semantic search.",
+                    "Parameter 'query' is required for syntactic, semantic, and nl search.",
                     "Provide query as a query parameter.")));
         }
 
@@ -3201,6 +3287,90 @@ app.MapGet("/api/search", async (
             MaxResults = clampedMax,
             Offset = clampedOff,
         };
+
+        if (string.Equals(axis, "nl", StringComparison.OrdinalIgnoreCase))
+        {
+            ITenantConfigurationActor actor = actorProxyFactory
+                .CreateActorProxy<ITenantConfigurationActor>(
+                    new ActorId(tenantId), nameof(TenantConfigurationActor));
+
+            TenantEmbeddingConfig config;
+            try
+            {
+                config = await actor.GetEmbeddingConfigAsync();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (IsSemanticConfigUnavailable(ex))
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "nl", tenantId, ex));
+            }
+
+            SearchResult searchResult;
+            try
+            {
+                searchResult = await naturalLanguageService.SearchAsync(
+                    mainSearchQuery, config, cancellationToken);
+            }
+            catch (SearchPaginationLimitExceededException ex)
+            {
+                return SearchError(
+                    "PAGINATION_LIMIT_EXCEEDED",
+                    Results.BadRequest(SearchEndpointErrorResponseFactory.CreatePaginationLimitExceeded(ex)));
+            }
+            catch (EmbeddingApiException ex)
+            {
+                return SearchError(
+                    "EMBEDDING_UNAVAILABLE",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
+            }
+            catch (EmbeddingRateLimitException ex)
+            {
+                return SearchError(
+                    "EMBEDDING_UNAVAILABLE",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateEmbeddingUnavailable(ex), statusCode: 503));
+            }
+            catch (SemanticSearchDimensionMismatchException ex)
+            {
+                return SearchError(
+                    "DIMENSION_MISMATCH",
+                    Results.Json(SearchEndpointErrorResponseFactory.CreateDimensionMismatch(ex), statusCode: 500));
+            }
+            catch (RedisConnectionException ex)
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "nl", tenantId, ex));
+            }
+            catch (RedisTimeoutException ex)
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "nl", tenantId, ex));
+            }
+            catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
+            {
+                return SearchError(
+                    "BACKEND_UNAVAILABLE",
+                    SearchEndpointDegradationResponses.BuildBackendUnavailableResponse(httpContext, logger, "nl", tenantId, ex));
+            }
+
+            searchResult = await EnrichResultWithCaseAttributionAsync(searchResult, caseService, tenantId, cancellationToken);
+            searchResult = await EnrichResultWithAnnotationCountsAsync(searchResult, graphQueryBuilder, falkorDb, tenantId, cancellationToken);
+            if (explain)
+            {
+                searchResult = searchResult with { Explanation = ExplainMetadataBuilder.BuildForSingleAxis("nl") };
+            }
+
+            searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "nl", tokenBudget);
+            CompleteSearchSuccess("nl", searchResult.Results.Count);
+            RecordSearchActivity();
+            return Results.Ok(searchResult);
+        }
 
         if (!string.IsNullOrWhiteSpace(startNodeId))
         {
@@ -4248,6 +4418,7 @@ static IReadOnlySet<string> DetermineHybridExplanationAxes(
     if (!hasSemanticConfiguration)
     {
         _ = explanationAxes.Remove("semantic");
+        _ = explanationAxes.Remove("nl");
     }
 
     if (!hasGraphStartNode)
@@ -4262,6 +4433,28 @@ static IReadOnlySet<string> DetermineHybridExplanationAxes(
 
     return explanationAxes;
 }
+
+static FusionWeights? CreateQueryFusionWeights(
+    double? syntacticWeight,
+    double? semanticWeight,
+    double? graphWeight,
+    double? nlWeight)
+{
+    if (syntacticWeight is null && semanticWeight is null && graphWeight is null && nlWeight is null)
+    {
+        return null;
+    }
+
+    FusionWeights defaults = new();
+    return defaults with
+    {
+        SyntacticWeight = syntacticWeight ?? defaults.SyntacticWeight,
+        SemanticWeight = semanticWeight ?? defaults.SemanticWeight,
+        GraphWeight = graphWeight ?? defaults.GraphWeight,
+        NlWeight = nlWeight ?? defaults.NlWeight,
+    };
+}
+
 static object CreateEmbeddingConfigConflictResponse(
     string tenantId,
     TenantEmbeddingConfig currentConfig,

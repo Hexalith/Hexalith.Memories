@@ -611,4 +611,90 @@ public class HybridSearchServiceTests
         result.UnavailableAxes.ShouldContain("syntactic");
         result.AllEnabledAxesUnavailable.ShouldBe(true);
     }
+
+    [Fact]
+    public async Task SearchAsync_NaturalLanguageAxisEnabled_ShouldCallNlDelegate()
+    {
+        Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> nl = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph = Substitute.For<Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>>>();
+        var service = new HybridSearchService(
+            syntactic,
+            semantic,
+            nl,
+            graph,
+            new IdentityResultFuser(),
+            NullLogger<HybridSearchService>.Instance);
+        HashSet<string> axes = ["nl"];
+
+        nl(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult(MakeResult("mu-nl", 0.92, "nl")));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        await nl.Received(1)(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
+        await semantic.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>());
+        result.Results.Single().MemoryUnitId.ShouldBe("mu-nl");
+        result.Results.Single().NlScore.ShouldBe(1.0);
+    }
+
+    [Fact]
+    public async Task SearchAsync_NaturalLanguageIndexMissing_ShouldMarkNlUnavailable()
+    {
+        Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> nl = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph = Substitute.For<Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>>>();
+        var service = new HybridSearchService(
+            syntactic,
+            semantic,
+            nl,
+            graph,
+            new IdentityResultFuser(),
+            NullLogger<HybridSearchService>.Instance);
+        HashSet<string> axes = ["syntactic", "nl"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
+        nl(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
+            .Returns(MakeSearchResult([], 0, hasIndexedMemoryUnits: false));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Degraded.ShouldBeTrue();
+        result.UnavailableAxes.ShouldContain("nl");
+        result.Results.Single().MemoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public async Task SearchAsync_ResultFuser_ShouldReorderBeforePagination()
+    {
+        Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> nl = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
+        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph = Substitute.For<Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>>>();
+        var resultFuser = new ReversingResultFuser();
+
+        var service = new HybridSearchService(
+            syntactic,
+            semantic,
+            nl,
+            graph,
+            resultFuser,
+            NullLogger<HybridSearchService>.Instance);
+        HashSet<string> axes = ["syntactic"];
+
+        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(
+            MakeResult("mu-first", 10.0, "syntactic"),
+            MakeResult("mu-second", 9.0, "syntactic")));
+
+        HybridSearchResult result = await service.SearchAsync(
+            MakeQuery(maxResults: 2), null, null, 2, DefaultWeights, axes, CancellationToken.None);
+
+        result.Results[0].MemoryUnitId.ShouldBe("mu-second");
+        result.TotalCount.ShouldBe(2);
+        resultFuser.CallCount.ShouldBe(1);
+    }
 }

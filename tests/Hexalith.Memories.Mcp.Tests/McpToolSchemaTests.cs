@@ -102,7 +102,7 @@ public sealed class McpToolSchemaTests
     }
 
     [Fact]
-    public void SearchMemoryTool_AxesParameter_EmitsEnumWithThreeValues()
+    public void SearchMemoryTool_AxesParameter_EmitsEnumWithFourValues()
     {
         McpServerTool tool = ResolveTool(SearchMemoryName);
         JsonElement axesParam = GetParameterProperties(tool).GetProperty("axes");
@@ -114,7 +114,7 @@ public sealed class McpToolSchemaTests
         // canonical axes regardless of SDK rendering choice. The Description on the parameter
         // still teaches LLMs the lowercase form; both work at deserialize time. Graph is not a
         // search_memory axis in 10.1 because the server requires a startNodeId; use traverse_relations.
-        string[] axisLiterals = ["syntactic", "semantic", "hybrid"];
+        string[] axisLiterals = ["syntactic", "semantic", "nl", "hybrid"];
         string serialized = axesParam.GetRawText();
         foreach (string literal in axisLiterals)
         {

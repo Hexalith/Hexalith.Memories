@@ -17,6 +17,9 @@ public sealed record FusionWeights
     /// <summary>Gets the weight for the graph (proximity) search axis.</summary>
     public double GraphWeight { get; init; } = 0.2;
 
+    /// <summary>Gets the weight for the natural-language semantic search axis.</summary>
+    public double NlWeight { get; init; } = 0.2;
+
     /// <summary>Validates that all weights are non-negative and at least one is positive.</summary>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when any weight is negative.</exception>
     /// <exception cref="ArgumentException">Thrown when all weights are zero.</exception>
@@ -37,11 +40,17 @@ public sealed record FusionWeights
             throw new ArgumentOutOfRangeException(nameof(GraphWeight), GraphWeight, "Fusion weight must be a finite number.");
         }
 
+        if (!double.IsFinite(NlWeight))
+        {
+            throw new ArgumentOutOfRangeException(nameof(NlWeight), NlWeight, "Fusion weight must be a finite number.");
+        }
+
         ArgumentOutOfRangeException.ThrowIfNegative(SyntacticWeight);
         ArgumentOutOfRangeException.ThrowIfNegative(SemanticWeight);
         ArgumentOutOfRangeException.ThrowIfNegative(GraphWeight);
+        ArgumentOutOfRangeException.ThrowIfNegative(NlWeight);
 
-        if (SyntacticWeight == 0.0 && SemanticWeight == 0.0 && GraphWeight == 0.0)
+        if (SyntacticWeight == 0.0 && SemanticWeight == 0.0 && GraphWeight == 0.0 && NlWeight == 0.0)
         {
             throw new ArgumentException("At least one fusion weight must be greater than zero.");
         }

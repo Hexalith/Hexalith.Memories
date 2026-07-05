@@ -27,7 +27,6 @@ public sealed partial class GraphScopedSearch
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
     private static readonly long GraphOperationTimeoutMilliseconds =
         GraphQueryExecutionOptions.ToServerTimeoutMilliseconds(GraphOperationTimeout);
-    private const int MaxSnippetLength = 200;
 
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IConnectionMultiplexer _redis;
@@ -292,18 +291,6 @@ public sealed partial class GraphScopedSearch
         && !fields[1].IsNullOrEmpty
         && !fields[2].IsNullOrEmpty;
 
-    private static string TruncateContent(string content)
-    {
-        if (content.Length <= MaxSnippetLength)
-        {
-            return content;
-        }
-
-        int lastSpace = content.LastIndexOf(' ', MaxSnippetLength);
-        int cutoff = lastSpace > 0 ? lastSpace : MaxSnippetLength;
-        return content[..cutoff] + "...";
-    }
-
     private async Task<List<ScoredResult>> EnrichResultsAsync(
         IDatabase db,
         string tenantId,
@@ -361,7 +348,7 @@ public sealed partial class GraphScopedSearch
             {
                 MemoryUnitId = nodeId,
                 Score = ComputeProximityScore(hopDistance),
-                ContentSnippet = TruncateContent(content),
+                ContentSnippet = SearchSnippetBuilder.FromStoredContent(content),
                 SourceUri = sourceUri,
                 SourceType = sourceType,
                 Axis = "graph",

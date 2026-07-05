@@ -8,6 +8,7 @@ using System.Reflection;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
 
@@ -24,7 +25,6 @@ public sealed partial class GraphTraversalService
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
     private static readonly long GraphOperationTimeoutMilliseconds =
         GraphQueryExecutionOptions.ToServerTimeoutMilliseconds(GraphOperationTimeout);
-    private const int MaxSnippetLength = 200;
 
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IConnectionMultiplexer _redis;
@@ -617,16 +617,7 @@ public sealed partial class GraphTraversalService
     };
 
     internal static string TruncateContent(string content)
-    {
-        if (content.Length <= MaxSnippetLength)
-        {
-            return content;
-        }
-
-        int lastSpace = content.LastIndexOf(' ', MaxSnippetLength);
-        int cutoff = lastSpace > 0 ? lastSpace : MaxSnippetLength;
-        return content[..cutoff] + "...";
-    }
+        => SearchSnippetBuilder.FromStoredContent(content);
 
     private static bool IsGraphNotFoundError(RedisServerException ex)
         => ex.Message.Contains("Graph not found", StringComparison.OrdinalIgnoreCase)

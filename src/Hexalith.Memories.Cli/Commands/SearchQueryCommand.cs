@@ -48,7 +48,7 @@ public static class SearchQueryCommand
         + "Run 'memories quickstart' for a guided setup.";
 
     private const string CommandDescription = """
-Search memories using three-axis hybrid fusion (default) or a single axis.
+Search memories using hybrid fusion (default) or a single axis.
 
 Examples:
     memories search query --tenant acme --query "customer escalation"
@@ -78,7 +78,7 @@ Examples:
         };
         var axisOption = new Option<string>("--axis")
         {
-            Description = "Search axis: syntactic, semantic, graph, or hybrid (default).",
+            Description = "Search axis: syntactic, semantic, nl, graph, or hybrid (default).",
             DefaultValueFactory = _ => "hybrid",
         };
         var maxResultsOption = new Option<int>("--max-results")
@@ -138,16 +138,16 @@ Examples:
         }
 
         string normalizedAxis = axis.Trim().ToLowerInvariant();
-        if (normalizedAxis is not ("syntactic" or "semantic" or "graph" or "hybrid"))
+        if (normalizedAxis is not ("syntactic" or "semantic" or "nl" or "graph" or "hybrid"))
         {
             return WriteValidationError(
                 console,
                 code: "INVALID_AXIS",
-                message: $"--axis '{axis}' is not recognized. Use syntactic, semantic, graph, or hybrid.",
+                message: $"--axis '{axis}' is not recognized. Use syntactic, semantic, nl, graph, or hybrid.",
                 suggestion: "Run 'memories search query --help' to see valid axis values.");
         }
 
-        bool requiresQuery = normalizedAxis is "syntactic" or "semantic" or "hybrid";
+        bool requiresQuery = normalizedAxis is "syntactic" or "semantic" or "nl" or "hybrid";
         if (requiresQuery && string.IsNullOrWhiteSpace(query))
         {
             return WriteValidationError(

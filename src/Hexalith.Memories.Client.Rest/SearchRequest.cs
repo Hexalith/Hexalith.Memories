@@ -6,11 +6,11 @@
 namespace Hexalith.Memories.Client.Rest;
 
 /// <summary>
-/// Request DTO for a single-axis search (<c>axis ∈ {syntactic, semantic, graph}</c>). Consumed by
+/// Request DTO for a single-axis search (<c>axis ∈ {syntactic, semantic, nl, graph}</c>). Consumed by
 /// <see cref="MemoriesClient.SearchAsync"/>; translated into a query string that omits server-default values.
 /// </summary>
 /// <param name="TenantId">The tenant identifier. Required.</param>
-/// <param name="Axis">The axis name — <c>syntactic</c>, <c>semantic</c>, or <c>graph</c>.</param>
+/// <param name="Axis">The axis name — <c>syntactic</c>, <c>semantic</c>, <c>nl</c>, or <c>graph</c>.</param>
 /// <param name="Query">The free-text query; nullable for <c>graph</c>-only searches.</param>
 /// <param name="CaseId">The case identifier, or null to search the tenant globally.</param>
 /// <param name="SourceType">Optional source type filter.</param>

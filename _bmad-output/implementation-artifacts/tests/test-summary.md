@@ -1,3 +1,62 @@
+# Test Automation Summary - Story 22.7 (Retrieval Feature Completion)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/22-7-retrieval-feature-completion.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute; API/E2E-facing coverage uses existing ASP.NET Core `WebApplicationFactory` endpoint tests, typed REST client tests, and MCP tool schema/tool tests. No new framework introduced.
+- **Feature under test:** public `axis=nl` exposure across REST, CLI client, and MCP; hybrid fusion weight validation; tenant authorization coverage for the new axis. Story 22.7 has no UI/web scope, so browser E2E is not applicable.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - added `NaturalLanguageSearch_WhenEmbeddingConfigActorUnavailable_ReturnsBackendUnavailable`, proving `/api/search?axis=nl` reaches the NL/embedding-config route and maps unavailable tenant embedding configuration to `BACKEND_UNAVAILABLE` instead of rejecting `nl` as an invalid axis.
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - added `HybridSearch_WhenQueryWeightsAreAllZero_ReturnsInvalidFusionWeights`, covering the public query-weight validation error path for `syntacticWeight=0&semanticWeight=0&nlWeight=0&graphWeight=0`.
+- [x] `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs` - extended tenant-forbidden search coverage to include `axis=nl`, ensuring tenant authorization fails before search dependencies for the new public axis.
+- [x] `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSearchTests.cs` - added `SearchAsync_NaturalLanguageAxis_TargetsNlAxis`, proving the typed client emits `axis=nl` and query parameters for single-axis NL search.
+
+### MCP / Agent-Surface Tests
+
+- [x] `tests/Hexalith.Memories.Mcp.Tests/SearchMemoryToolTests.cs` - extended single-axis routing coverage so `SearchAxis.Nl` is sent as wire axis `nl`.
+- [x] `tests/Hexalith.Memories.Mcp.Tests/McpToolSchemaTests.cs` - updated the `search_memory` schema contract to require `nl` in the advertised `axes` enum.
+
+### E2E / Integration Tests
+
+- [x] Backend/API E2E-facing coverage was added through in-memory HTTP endpoint tests and typed client/MCP tool tests.
+- [x] Browser UI E2E is not applicable. Story 22.7 explicitly has no UI/web work.
+- [x] Redis-backed NL/highlight acceptance coverage already exists in the Story 22.7 implementation diff and remains compile-covered; runtime execution is blocked by Docker/Testcontainers permissions in this sandbox.
+
+## Coverage
+
+- API endpoints: standalone `axis=nl` route acceptance/degradation, hybrid invalid fusion weights, and tenant-forbidden behavior covered.
+- Client surfaces: REST typed client and MCP tool/schema now cover the new `nl` axis.
+- Critical error cases: unavailable embedding configuration for `axis=nl`, all-zero query fusion weights, and mismatched-tenant access for `axis=nl`.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] Senior review addendum: `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors after adding NL adapter coverage.
+- [x] Senior review addendum: `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Search.NaturalLanguageSemanticSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.HybridSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.FusionEngineTests -class Hexalith.Memories.Server.Tests.Search.SyntacticSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.ExplainMetadataBuilderTests -class Hexalith.Memories.Server.Tests.Endpoints.SearchEndpointContractTests -class Hexalith.Memories.Server.Tests.Actors.TenantConfigurationActorTests -parallel none -noLogo` - 152 total, 0 failed.
+- [x] Senior review addendum: focused CLI/MCP/Contracts in-process suites passed (CLI 62/62, MCP 24/24, Contracts 6/6).
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `dotnet build tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `dotnet build tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [ ] `DiffEngine_Disabled=true dotnet test ... --no-build --filter ...` - blocked before execution by VSTest TCP listener setup: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Mcp.Tests/bin/Debug/net10.0/Hexalith.Memories.Mcp.Tests.dll -class Hexalith.Memories.Mcp.Tests.SearchMemoryToolTests -class Hexalith.Memories.Mcp.Tests.McpToolSchemaTests -parallel none -noLogo` - 24 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.ClientRest.MemoriesClientSearchTests -class Hexalith.Memories.Cli.Tests.Cli.SearchQueryCommandTests -class Hexalith.Memories.Cli.Tests.Cli.ErrorCatalogTests -parallel none -noLogo` - 62 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Endpoints.SearchEndpointContractTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests -parallel none -noLogo` - 39 total, 0 failed.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass for backend/API and agent-facing surfaces; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path/public routing and critical error cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+- Full infrastructure-backed Redis/Testcontainers execution remains blocked by sandbox Docker permissions recorded in the Story 22.7 Dev Agent Record, not by test compilation.
+
+---
+
 # Test Automation Summary - Story 22.6 (Post-Filter Recall)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`
