@@ -15,8 +15,7 @@ using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
-
-using NRedisStack.RedisStackCommands;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using StackExchange.Redis;
 
@@ -29,13 +28,17 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexNaturalLanguageSemanticActivity> _logger;
+    private readonly ITenantIndexReadinessVerifier _readinessVerifier;
 
     public IndexNaturalLanguageSemanticActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<IndexNaturalLanguageSemanticActivity> logger)
+        ILogger<IndexNaturalLanguageSemanticActivity> logger,
+        ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
         _redis = redis;
         _logger = logger;
+        _readinessVerifier = readinessVerifier
+            ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
     }
 
     /// <inheritdoc/>
@@ -65,6 +68,9 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
         }
 
         IDatabase db = _redis.GetDatabase();
+
+        // Migration marker safety is per-write and independent of index-readiness memoization (AC8): it must run on
+        // every invocation before any hash write, never skipped by the readiness cache.
         EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
             .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
@@ -74,26 +80,13 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
             input.EmbeddingModel,
             input.EmbeddingDimensions);
 
-        var ft = db.FT();
-
-        string indexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId);
         string hashKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, input.MemoryUnitId);
 
-        try
-        {
-            ft.Create(
-                indexName,
-                IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(input.TenantId),
-                IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(input.EmbeddingDimensions));
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
-        {
-            EnsureNaturalLanguageSchemaMatches(db, indexName, input.TenantId, input.EmbeddingDimensions);
-            _logger.LogWarning(
-                "Natural-language Redis Vector index {IndexName} already exists for tenant {TenantId}",
-                indexName,
-                input.TenantId);
-        }
+        // Story 23.7 (A34): verify the tenant's natural-language semantic index once per process instead of issuing
+        // FT.CREATE per document. TenantProvisioningWorkflow owns creation of the sibling NL index.
+        await _readinessVerifier
+            .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.NaturalLanguageSemantic, input.EmbeddingDimensions, CancellationToken.None)
+            .ConfigureAwait(false);
 
         string confidenceValue = input.DescriptionConfidence?.ToString("R", CultureInfo.InvariantCulture) ?? string.Empty;
         string confidenceSourceValue = input.ConfidenceSource.ToString().ToLowerInvariant();
@@ -120,21 +113,5 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
             input.TenantId);
 
         return new IndexResult("semantic-nl", input.MemoryUnitId, input.TenantId);
-    }
-
-    private static void EnsureNaturalLanguageSchemaMatches(IDatabase db, string indexName, string tenantId, int expectedDimensions)
-    {
-        RedisResult info = db.Execute("FT.INFO", indexName);
-        IReadOnlyList<string> problems = IndexSchemaDefinitions.DescribeVectorSchemaProblems(
-            info,
-            IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId),
-            IndexSchemaDefinitions.GetNaturalLanguageSemanticFieldIdentifiers(),
-            expectedDimensions);
-
-        if (problems.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"Existing Redis Vector index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
-        }
     }
 }

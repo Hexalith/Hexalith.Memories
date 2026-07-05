@@ -9,6 +9,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
@@ -277,6 +278,7 @@ public class SemanticSearchIntegrationTests
             embeddingVector: vector,
             embeddingDimensions: TestDimensions);
 
+        ProvisionTenantIndexes(_redis.Connection.GetDatabase(), tenantId, TestDimensions);
         var semanticActivity = new IndexSemanticActivity(
             _redis.Connection,
             NullLogger<IndexSemanticActivity>.Instance);
@@ -315,6 +317,7 @@ public class SemanticSearchIntegrationTests
             embeddingVector: IndexInputFactory.CreateRealisticVector(TestDimensions),
             embeddingDimensions: TestDimensions);
 
+        ProvisionTenantIndexes(_redis.Connection.GetDatabase(), tenantId, TestDimensions);
         var syntacticActivity = new IndexSyntacticActivity(
             _redis.Connection,
             NullLogger<IndexSyntacticActivity>.Instance);
@@ -727,6 +730,36 @@ public class SemanticSearchIntegrationTests
         return (result, sw.ElapsedMilliseconds);
     }
 
+    // Story 23.7 (A34): indexing activities no longer create indexes on demand (creation is owned by
+    // TenantProvisioningWorkflow), so raw-Redis integration seeds must provision the tenant indexes explicitly
+    // before writing — mirroring the schema TenantProvisioningWorkflow creates.
+    private static void ProvisionTenantIndexes(IDatabase db, string tenantId, int dimensions)
+    {
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSyntacticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticParams(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticSchema()));
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateSemanticSchema(dimensions)));
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(dimensions)));
+    }
+
+    private static void TryCreateIndex(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
+        {
+        }
+    }
+
     private async Task SeedDocumentAsync(
         string tenantId,
         string memoryUnitId,
@@ -758,6 +791,7 @@ public class SemanticSearchIntegrationTests
         };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionTenantIndexes(_redis.Connection.GetDatabase(), tenantId, TestDimensions);
 
         // Seed syntactic index (content for enrichment)
         var syntacticActivity = new IndexSyntacticActivity(
@@ -795,6 +829,7 @@ public class SemanticSearchIntegrationTests
         };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionTenantIndexes(_redis.Connection.GetDatabase(), tenantId, TestDimensions);
         await new IndexSyntacticActivity(_redis.Connection, NullLogger<IndexSyntacticActivity>.Instance)
             .RunAsync(context, syntacticInput);
 

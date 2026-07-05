@@ -20,6 +20,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using NFalkorDB;
 
+using NRedisStack.RedisStackCommands;
+
 using NSubstitute;
 
 using Shouldly;
@@ -826,6 +828,37 @@ public class GraphScopedSearchIntegrationTests
 
     /// <summary>Seeds a memory unit's syntactic hash (content/source/metadata for enrichment) and its raw
     /// semantic vector hash (for KNN) on the fixture's Redis Stack connection.</summary>
+    // Story 23.7 (A34): indexing activities no longer create indexes on demand (creation is owned by
+    // TenantProvisioningWorkflow), so raw-Redis integration seeds must provision the tenant indexes explicitly
+    // before writing — mirroring the schema TenantProvisioningWorkflow creates.
+    private void ProvisionTenantIndexes(string tenantId, int dimensions)
+    {
+        IDatabase db = _fixture.RedisConnection.GetDatabase();
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSyntacticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticParams(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticSchema()));
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateSemanticSchema(dimensions)));
+        TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(dimensions)));
+    }
+
+    private static void TryCreateIndex(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
+        {
+        }
+    }
+
     private async Task SeedSemanticDocumentAsync(
         string tenantId,
         string memoryUnitId,
@@ -849,6 +882,7 @@ public class GraphScopedSearchIntegrationTests
         };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionTenantIndexes(tenantId, TestDimensions);
         await new IndexSyntacticActivity(_fixture.RedisConnection, NullLogger<IndexSyntacticActivity>.Instance)
             .RunAsync(context, input);
         await new IndexSemanticActivity(_fixture.RedisConnection, NullLogger<IndexSemanticActivity>.Instance)
@@ -878,6 +912,7 @@ public class GraphScopedSearchIntegrationTests
         };
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionTenantIndexes(tenantId, TestDimensions);
         await new IndexSyntacticActivity(_fixture.RedisConnection, NullLogger<IndexSyntacticActivity>.Instance)
             .RunAsync(context, input);
 

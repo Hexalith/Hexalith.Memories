@@ -1,3 +1,51 @@
+# Test Automation Summary - Story 23.7 (Index-Provisioning Ownership)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-7-index-provisioning-ownership.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with Redis Stack integration tests. No new framework introduced.
+- **Feature under test:** tenant-owned index provisioning, memoized index readiness, missing-index failure, and unchanged Redis hash/vector writes. Story 23.7 has no browser UI scope.
+
+## Generated / Updated Tests
+
+### E2E / Integration Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSyntacticIntegrationTests.cs` - updated real-Redis syntactic indexing tests to provision the tenant RediSearch index explicitly before direct activity writes, then verify hash persistence, full-text searchability, metadata/source indexing, and tenant isolation under the new provisioning ownership model.
+- [x] `tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSyntacticIntegrationTests.cs` - added real-Redis missing-index coverage proving `IndexSyntacticActivity` fails with `TenantIndexNotProvisionedException` and does not write the memory-unit hash when the tenant index was not provisioned.
+- [x] `tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSemanticIntegrationTests.cs` - updated real-Redis semantic indexing tests to provision the tenant Redis Vector index explicitly before direct activity writes, then verify vector persistence, KNN searchability, tenant isolation, idempotent reindex overwrite, and chunked vector writes.
+- [x] `tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSemanticIntegrationTests.cs` - added real-Redis missing-index coverage for both single-vector and chunked semantic writes, proving they fail with `TenantIndexNotProvisionedException` and do not create vector/chunk hashes.
+
+### Existing Story Coverage Confirmed
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Infrastructure/TenantIndexReadinessVerifierTests.cs` - readiness memoization, per-tenant/per-dimension isolation, missing/incompatible schema failure, additive TAG upgrade, failure eviction, and concurrent first-write coalescing.
+- [x] `tests/Hexalith.Memories.Server.Tests/Architecture/IndexingHotPathGuardTests.cs` - source-level guard against hot-path `Thread.Sleep` and per-document `FT.CREATE` reintroduction.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/*ActivityTests.cs` and `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/RedisSearchIndexMaintenanceAdapterTests.cs` - activity and curated EventStore maintenance tests proving readiness verifier use and unchanged hash writes.
+
+## Coverage
+
+- API endpoints: 0 directly applicable; index writes are workflow activity boundaries, not public HTTP routes.
+- E2E/backend integration: syntactic index write/search, semantic vector write/search, semantic chunk write/search, tenant isolation, idempotent overwrite, and missing-index failure are covered at the Redis Stack boundary.
+- Critical error cases: missing syntactic, semantic, and chunked semantic indexes fail without hash/vector writes; unit coverage covers incompatible schema and additive upgrade behavior.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [ ] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter ...` - blocked before execution by VSTest TCP listener setup: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Infrastructure.TenantIndexReadinessVerifierTests -class Hexalith.Memories.Server.Tests.Architecture.IndexingHotPathGuardTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.IndexSyntacticActivityTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.IndexSemanticActivityTests -class Hexalith.Memories.Server.Tests.Activities.Indexing.IndexNaturalLanguageSemanticActivityTests -class Hexalith.Memories.Server.Tests.EventStoreIntegration.RedisSearchIndexMaintenanceAdapterTests` - 47 total, 0 failed, 0 skipped.
+- [ ] `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -m:1 /nodeReuse:false --no-restore` - blocked by pre-existing AppHost compile failure: `CS0234: The type or namespace name 'EventStore' does not exist in the namespace 'Hexalith'` from `src/Hexalith.Memories.AppHost/Program.cs(11,16)`.
+- [x] `git diff --check -- tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSyntacticIntegrationTests.cs tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSemanticIntegrationTests.cs` - passed.
+- [ ] `git diff --check` - blocked by pre-existing trailing whitespace in `_bmad-output/implementation-artifacts/sprint-status.yaml` outside this QA test change.
+
+## Checklist Result
+
+- API tests generated where applicable: pass; no direct HTTP route changed by Story 23.7.
+- E2E tests generated where applicable: pass for Redis-backed indexing activity boundaries; browser UI is not applicable.
+- Tests use standard xUnit v3, Shouldly, NSubstitute, and NRedisStack APIs; cover happy paths and critical missing-index errors; have clear descriptions; use no hardcoded waits; and are independent through unique tenant IDs: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.6 (Directory-Batch Scalability)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

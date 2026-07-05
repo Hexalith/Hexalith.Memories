@@ -205,6 +205,10 @@ builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
     });
 builder.Services.AddSingleton<IUrlContentFetcher, UrlContentFetcher>();
 builder.Services.AddSingleton<IWorkflowPayloadStore, DaprWorkflowPayloadStore>();
+// Story 23.7 (A34): memoized, process-local tenant index-readiness verification shared across all indexing
+// activity invocations so the ingestion hot path stops issuing per-document FT.CREATE. Singleton so the cache
+// survives across activity instances (but never a process restart).
+builder.Services.AddSingleton<ITenantIndexReadinessVerifier, TenantIndexReadinessVerifier>();
 builder.Services.AddSingleton<DirectoryIngestionService>();
 
 // Story 6.2: per-tenant rate limiting and concurrency gate.

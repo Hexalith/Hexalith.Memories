@@ -59,6 +59,50 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
             Arg.Any<CommandFlags>());
     }
 
+    // Story 23.7 (A34) AC7: the curated EventStore search-index path is reconciled onto the shared readiness
+    // policy — it no longer creates the index per upsert (no FT.CREATE), and repeated upserts reuse a single
+    // memoized FT.INFO verification instead of re-checking on every entry.
+    [Fact]
+    public async Task ApplyEntryChangedAsync_NeverCreatesIndex_AndReusesMemoizedReadiness()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = MockMultiplexer(db);
+        ITenantIndexReadinessVerifier verifier =
+            new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
+        RedisSearchIndexMaintenanceAdapter adapter =
+            new(redis, NullLogger<RedisSearchIndexMaintenanceAdapter>.Instance, verifier);
+
+        SearchIndexEntryChanged first = new() { TenantId = "tenants-index", AggregateId = "t-1", Text = "Acme t-1" };
+        SearchIndexEntryChanged second = new() { TenantId = "tenants-index", AggregateId = "t-2", Text = "Acme t-2" };
+
+        await adapter.ApplyEntryChangedAsync("tenants-index", "tenant:t-1", first, "case-1", CancellationToken.None);
+        await adapter.ApplyEntryChangedAsync("tenants-index", "tenant:t-2", second, "case-1", CancellationToken.None);
+
+        db.DidNotReceive().Execute("FT.CREATE", Arg.Any<object[]>());
+        db.Received(1).Execute("FT.INFO", Arg.Any<object[]>());
+        await db.Received(2).HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task ApplyEntryChangedAsync_MissingIndex_FailsWithoutCreating()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns(_ => throw new RedisServerException("Unknown index name"));
+        db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns(_ => throw new RedisServerException("Unknown index name"));
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        RedisSearchIndexMaintenanceAdapter adapter = new(redis, NullLogger<RedisSearchIndexMaintenanceAdapter>.Instance);
+
+        SearchIndexEntryChanged entry = new() { TenantId = "tenants-index", AggregateId = "t-1", Text = "Acme t-1" };
+
+        await Should.ThrowAsync<TenantIndexNotProvisionedException>(
+            () => adapter.ApplyEntryChangedAsync("tenants-index", "tenant:t-1", entry, null, CancellationToken.None));
+
+        await db.DidNotReceive().HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>());
+    }
+
     [Fact]
     public async Task ApplyEntryRemovedAsync_DeletesByAggregateKey()
     {
@@ -101,8 +145,8 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
 
     private static IConnectionMultiplexer MockMultiplexer(IDatabase db)
     {
-        // The index already exists in steady state (provisioned by TenantProvisioningWorkflow); the adapter's
-        // create-if-missing catches "Index already exists" and proceeds to the hash write.
+        // The index already exists in steady state (provisioned by TenantProvisioningWorkflow); the adapter verifies
+        // the provisioned schema with FT.INFO before writing the curated hash.
         RedisResult Execute(string command)
             => command switch
             {

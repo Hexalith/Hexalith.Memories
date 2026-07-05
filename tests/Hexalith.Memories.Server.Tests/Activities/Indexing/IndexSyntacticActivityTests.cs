@@ -1,3 +1,8 @@
+// <copyright file="IndexSyntacticActivityTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
 using System.Text;
@@ -10,6 +15,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -222,6 +228,29 @@ public class IndexSyntacticActivityTests
             IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
+    }
+
+    // Story 23.7 (A34) AC1/AC10: the activity never issues FT.CREATE — creation is owned by
+    // TenantProvisioningWorkflow. The shared readiness verifier performs a single FT.INFO for the tenant/index
+    // family and every subsequent document write reuses the cached result (no per-document FT.CREATE, no
+    // "already exists" warning).
+    [Fact]
+    public async Task RunAsync_RepeatedWrites_NeverCreateIndex_AndVerifyReadinessOnce()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db);
+        ITenantIndexReadinessVerifier verifier =
+            new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IndexSyntacticActivity activity = new(redis, Substitute.For<ILogger<IndexSyntacticActivity>>(), payloadStore: null, verifier);
+
+        await activity.RunAsync(context, CreateTestInput() with { MemoryUnitId = "mu-1" });
+        await activity.RunAsync(context, CreateTestInput() with { MemoryUnitId = "mu-2" });
+
+        db.DidNotReceive().Execute("FT.CREATE", Arg.Any<object[]>());
+        db.Received(1).Execute("FT.INFO", Arg.Any<object[]>());
+        await db.Received(2).HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>());
     }
 
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)

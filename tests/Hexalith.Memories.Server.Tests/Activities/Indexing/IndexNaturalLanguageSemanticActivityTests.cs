@@ -183,10 +183,17 @@ public class IndexNaturalLanguageSemanticActivityTests
 
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)
     {
+        // Story 23.7 (A34): the NL index is now provisioned by TenantProvisioningWorkflow, so the activity verifies
+        // an already-existing, schema-matching index (dim 3) via FT.INFO instead of creating it per document.
+        RedisResult Execute(string command)
+            => command == "FT.INFO"
+                ? CreateNaturalLanguageIndexInfo(3)
+                : RedisResult.Create(new RedisValue("OK"));
+
         db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns(_ => RedisResult.Create(new RedisValue("OK")));
+            .Returns(call => Execute(call.ArgAt<string>(0)));
         db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => RedisResult.Create(new RedisValue("OK")));
+            .Returns(call => Execute(call.ArgAt<string>(0)));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);

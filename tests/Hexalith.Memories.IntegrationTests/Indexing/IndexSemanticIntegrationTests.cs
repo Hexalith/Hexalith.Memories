@@ -43,6 +43,7 @@ public class IndexSemanticIntegrationTests
         IndexSemanticActivity activity = new(redis, NullLogger<IndexSemanticActivity>.Instance);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSemanticIndex(redis.GetDatabase(), tenantId, input.EmbeddingDimensions);
 
         // Act
         IndexResult result = await activity.RunAsync(context, input);
@@ -65,7 +66,7 @@ public class IndexSemanticIntegrationTests
     }
 
     [Fact]
-    public async Task RunAsync_ShouldCreateSearchableVectorIndex_InRealRedis()
+    public async Task RunAsync_WithProvisionedIndex_ShouldBeSearchableViaKnn_InRealRedis()
     {
         // Arrange
         string tenantId = $"tenant-sem-{Guid.NewGuid():N}";
@@ -79,6 +80,7 @@ public class IndexSemanticIntegrationTests
         IndexSemanticActivity activity = new(redis, NullLogger<IndexSemanticActivity>.Instance);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSemanticIndex(redis.GetDatabase(), tenantId, input.EmbeddingDimensions);
 
         // Act
         await activity.RunAsync(context, input);
@@ -115,13 +117,15 @@ public class IndexSemanticIntegrationTests
 
         IndexSemanticActivity activityA = new(redis, NullLogger<IndexSemanticActivity>.Instance);
         IndexSemanticActivity activityB = new(redis, NullLogger<IndexSemanticActivity>.Instance);
+        IDatabase db = redis.GetDatabase();
+        ProvisionSemanticIndex(db, tenantA, inputA.EmbeddingDimensions);
+        ProvisionSemanticIndex(db, tenantB, inputB.EmbeddingDimensions);
 
         // Act
         await activityA.RunAsync(context, inputA);
         await activityB.RunAsync(context, inputB);
 
         // Assert — tenant A's hash key is not visible under tenant B's prefix
-        IDatabase db = redis.GetDatabase();
         RedisValue crossTenantCheck = await db.HashGetAsync(
             $"{tenantB}:vec:{inputA.MemoryUnitId}",
             "embedding");
@@ -155,6 +159,7 @@ public class IndexSemanticIntegrationTests
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
 
         IndexSemanticActivity activity = new(redis, NullLogger<IndexSemanticActivity>.Instance);
+        ProvisionSemanticIndex(redis.GetDatabase(), tenantId, inputV1.EmbeddingDimensions);
 
         // Act — index twice with different vectors
         await activity.RunAsync(context, inputV1);
@@ -201,6 +206,7 @@ public class IndexSemanticIntegrationTests
         IConnectionMultiplexer redis = _redis.Connection;
         IndexSemanticChunksActivity activity = new(redis, NullLogger<IndexSemanticChunksActivity>.Instance);
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSemanticIndex(redis.GetDatabase(), tenantId, input.EmbeddingDimensions);
 
         IndexResult result = await activity.RunAsync(context, input);
 
@@ -236,6 +242,71 @@ public class IndexSemanticIntegrationTests
                 .Dialect(2));
 
         searchResult.TotalResults.ShouldBeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public async Task RunAsync_MissingProvisionedIndex_ShouldFailWithoutWritingVectorHash_InRealRedis()
+    {
+        string tenantId = $"tenant-sem-missing-{Guid.NewGuid():N}";
+        IndexInput input = IndexInputFactory.Create(tenantId: tenantId);
+
+        IConnectionMultiplexer redis = _redis.Connection;
+        IndexSemanticActivity activity = new(redis, NullLogger<IndexSemanticActivity>.Instance);
+
+        await Should.ThrowAsync<TenantIndexNotProvisionedException>(
+            () => activity.RunAsync(Substitute.For<Dapr.Workflow.WorkflowActivityContext>(), input));
+
+        IDatabase db = redis.GetDatabase();
+        bool hashExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, input.MemoryUnitId));
+        hashExists.ShouldBeFalse("ingestion must not write vectors when the tenant semantic index was not provisioned");
+    }
+
+    [Fact]
+    public async Task RunAsync_ChunkedInputMissingProvisionedIndex_ShouldFailWithoutWritingChunkHashes_InRealRedis()
+    {
+        string tenantId = $"tenant-sem-chunk-missing-{Guid.NewGuid():N}";
+        const string MemoryUnitId = "mu-chunked-missing";
+
+        SemanticChunkIndexInput input = new()
+        {
+            TenantId = tenantId,
+            MemoryUnitId = MemoryUnitId,
+            CaseId = "case-chunked",
+            EmbeddingProvider = "google",
+            EmbeddingModel = "gemini-embedding-001",
+            EmbeddingDimensions = 3,
+            Chunks =
+            [
+                CreateChunk(sequence: 0, text: "first semantic chunk", startOffset: 0, endOffset: 20, vector: [1.0f, 0.0f, 0.0f]),
+            ],
+        };
+
+        IConnectionMultiplexer redis = _redis.Connection;
+        IndexSemanticChunksActivity activity = new(redis, NullLogger<IndexSemanticChunksActivity>.Instance);
+
+        await Should.ThrowAsync<TenantIndexNotProvisionedException>(
+            () => activity.RunAsync(Substitute.For<Dapr.Workflow.WorkflowActivityContext>(), input));
+
+        IDatabase db = redis.GetDatabase();
+        bool chunkHashExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticChunkKey(tenantId, MemoryUnitId, 0));
+        chunkHashExists.ShouldBeFalse("chunked ingestion must not write vectors when the tenant semantic index was not provisioned");
+    }
+
+    private static void ProvisionSemanticIndex(IDatabase db, string tenantId, int dimensions)
+        => TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSemanticParams(tenantId),
+            IndexSchemaDefinitions.CreateSemanticSchema(dimensions)));
+
+    private static void TryCreateIndex(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
+        {
+        }
     }
 
     private static ChunkEmbeddingResult CreateChunk(

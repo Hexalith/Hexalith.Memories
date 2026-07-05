@@ -14,8 +14,7 @@ using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
-
-using NRedisStack.RedisStackCommands;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using StackExchange.Redis;
 
@@ -24,13 +23,17 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSemanticActivity> _logger;
+    private readonly ITenantIndexReadinessVerifier _readinessVerifier;
 
     public IndexSemanticActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<IndexSemanticActivity> logger)
+        ILogger<IndexSemanticActivity> logger,
+        ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
         _redis = redis;
         _logger = logger;
+        _readinessVerifier = readinessVerifier
+            ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
     }
 
     /// <inheritdoc/>
@@ -54,6 +57,9 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
         }
 
         IDatabase db = _redis.GetDatabase();
+
+        // Migration marker safety is per-write and independent of index-readiness memoization (AC8): it must run on
+        // every invocation before any hash write, never skipped by the readiness cache.
         EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
             .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
@@ -63,24 +69,14 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
             input.EmbeddingModel,
             input.EmbeddingDimensions);
 
-        var ft = db.FT();
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
-
-        string indexName = IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId);
         string hashKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId);
 
-        try
-        {
-            ft.Create(
-                indexName,
-                IndexSchemaDefinitions.CreateSemanticParams(input.TenantId),
-                IndexSchemaDefinitions.CreateSemanticSchema(input.EmbeddingDimensions));
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
-        {
-            EnsureSemanticIndexReady(db, indexName, input.TenantId, input.EmbeddingDimensions);
-            _logger.LogWarning("Redis Vector index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
-        }
+        // Story 23.7 (A34): verify the tenant's raw semantic index once per process (existence + prefix + fields +
+        // vector dimensions) instead of issuing FT.CREATE per document. TenantProvisioningWorkflow owns creation.
+        await _readinessVerifier
+            .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Semantic, input.EmbeddingDimensions, CancellationToken.None)
+            .ConfigureAwait(false);
 
         List<HashEntry> hashEntries =
         [
@@ -106,133 +102,6 @@ public sealed class IndexSemanticActivity : WorkflowActivity<IndexInput, IndexRe
 
         return new IndexResult("semantic", input.MemoryUnitId, input.TenantId);
     }
-
-    private void EnsureSemanticIndexReady(IDatabase db, string indexName, string tenantId, int expectedDimensions)
-    {
-        RedisResult info = db.Execute("FT.INFO", indexName);
-        List<string> problems = [];
-
-        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
-        string expectedPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
-        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
-        {
-            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
-        }
-
-        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
-        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSemanticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
-        if (!actualFields.SetEquals(expectedFields)
-            && IndexSchemaDefinitions.TryUpgradeMissingTagField(db, indexName, actualFields, expectedFields, "cloudeventSubject"))
-        {
-            actualFields.Add("cloudeventSubject");
-            _logger.LogInformation(
-                "Added missing cloudeventSubject field to Redis Vector index {IndexName} for tenant {TenantId}",
-                indexName,
-                tenantId);
-        }
-
-        if (!actualFields.SetEquals(expectedFields))
-        {
-            problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
-        }
-
-        int? actualDimensions = TryFindVectorDimensions(info, "embedding");
-        if (actualDimensions is null)
-        {
-            problems.Add("embedding vector dimensions are missing from FT.INFO");
-        }
-        else if (actualDimensions.Value != expectedDimensions)
-        {
-            problems.Add($"expected {expectedDimensions} dimensions but found {actualDimensions.Value}");
-        }
-
-        if (problems.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"Existing Redis Vector index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
-        }
-    }
-
-    private static int? TryFindVectorDimensions(RedisResult result, string attributeName)
-    {
-        if (TryReadVectorFieldDimensions(result, attributeName, out int dimensions))
-        {
-            return dimensions;
-        }
-
-        RedisResult[]? items = TryGetArray(result);
-        if (items is null)
-        {
-            return null;
-        }
-
-        foreach (RedisResult item in items)
-        {
-            int? nestedDimensions = TryFindVectorDimensions(item, attributeName);
-            if (nestedDimensions is not null)
-            {
-                return nestedDimensions;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool TryReadVectorFieldDimensions(RedisResult result, string attributeName, out int dimensions)
-    {
-        dimensions = 0;
-
-        RedisResult[]? items = TryGetArray(result);
-        if (items is null || items.Length < 2 || items.Length % 2 != 0)
-        {
-            return false;
-        }
-
-        Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < items.Length; i += 2)
-        {
-            string? key = TryGetString(items[i]);
-            string? value = TryGetString(items[i + 1]);
-
-            if (!string.IsNullOrWhiteSpace(key) && value is not null)
-            {
-                values[key] = value;
-            }
-        }
-
-        bool nameMatches =
-            (values.TryGetValue("identifier", out string? identifier)
-                && string.Equals(identifier, attributeName, StringComparison.OrdinalIgnoreCase))
-            || (values.TryGetValue("attribute", out string? attribute)
-                && string.Equals(attribute, attributeName, StringComparison.OrdinalIgnoreCase));
-
-        if (!nameMatches
-            || !values.TryGetValue("type", out string? type)
-            || !string.Equals(type, "VECTOR", StringComparison.OrdinalIgnoreCase)
-            || !values.TryGetValue("dim", out string? dimensionText)
-            || !int.TryParse(dimensionText, out dimensions))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private static RedisResult[]? TryGetArray(RedisResult result)
-    {
-        try
-        {
-            RedisResult[]? items = (RedisResult[]?)result;
-            return items;
-        }
-        catch (InvalidCastException)
-        {
-            return null;
-        }
-    }
-
-    private static string? TryGetString(RedisResult result)
-        => result.ToString();
 
     private static string? TryGetMetadataValue(IReadOnlyDictionary<string, MetadataField> metadata, string key)
         => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)

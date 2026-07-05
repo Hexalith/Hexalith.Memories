@@ -3,6 +3,7 @@ namespace Hexalith.Memories.IntegrationTests.Indexing;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +18,7 @@ using StackExchange.Redis;
 
 /// <summary>
 /// Integration tests verifying IndexSyntacticActivity against a real Redis Stack instance.
-/// Validates RediSearch index creation, HASH storage, and tenant isolation.
+/// Validates provisioned RediSearch readiness, HASH storage, and tenant isolation.
 /// </summary>
 [Collection("RedisStack")]
 [Trait("Category", "Integration")]
@@ -28,7 +29,7 @@ public class IndexSyntacticIntegrationTests
     public IndexSyntacticIntegrationTests(RedisStackFixture redis) => _redis = redis;
 
     [Fact]
-    public async Task RunAsync_ShouldCreateIndexAndStoreHash_InRealRedis()
+    public async Task RunAsync_WithProvisionedIndex_ShouldStoreHash_InRealRedis()
     {
         // Arrange
         string tenantId = $"tenant-{Guid.NewGuid():N}";
@@ -39,6 +40,7 @@ public class IndexSyntacticIntegrationTests
         IndexSyntacticActivity activity = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSyntacticIndex(redis.GetDatabase(), tenantId);
 
         // Act
         IndexResult result = await activity.RunAsync(context, input);
@@ -57,7 +59,7 @@ public class IndexSyntacticIntegrationTests
     }
 
     [Fact]
-    public async Task RunAsync_ShouldCreateSearchableIndex_InRealRedis()
+    public async Task RunAsync_WithProvisionedIndex_ShouldBeSearchable_InRealRedis()
     {
         // Arrange
         string tenantId = $"tenant-{Guid.NewGuid():N}";
@@ -67,6 +69,7 @@ public class IndexSyntacticIntegrationTests
         IndexSyntacticActivity activity = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSyntacticIndex(redis.GetDatabase(), tenantId);
 
         // Act
         await activity.RunAsync(context, input);
@@ -94,13 +97,15 @@ public class IndexSyntacticIntegrationTests
 
         IndexSyntacticActivity activityA = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
         IndexSyntacticActivity activityB = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
+        IDatabase db = redis.GetDatabase();
+        ProvisionSyntacticIndex(db, tenantA);
+        ProvisionSyntacticIndex(db, tenantB);
 
         // Act
         await activityA.RunAsync(context, inputA);
         await activityB.RunAsync(context, inputB);
 
         // Assert — tenant A's index does NOT contain tenant B's data
-        IDatabase db = redis.GetDatabase();
         var ft = db.FT();
         var searchResultA = ft.Search($"{tenantA}:memories:idx", new NRedisStack.Search.Query("*"));
         var searchResultB = ft.Search($"{tenantB}:memories:idx", new NRedisStack.Search.Query("*"));
@@ -129,6 +134,7 @@ public class IndexSyntacticIntegrationTests
         IConnectionMultiplexer redis = _redis.Connection;
         IndexSyntacticActivity activity = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSyntacticIndex(redis.GetDatabase(), tenantId);
 
         // Act
         await activity.RunAsync(context, input);
@@ -140,5 +146,39 @@ public class IndexSyntacticIntegrationTests
         ft.Search($"{tenantId}:memories:idx", new NRedisStack.Search.Query("blorbo")).TotalResults.ShouldBe(1);
         ft.Search($"{tenantId}:memories:idx", new NRedisStack.Search.Query("metakeyword42")).TotalResults.ShouldBe(1);
         ft.Search($"{tenantId}:memories:idx", new NRedisStack.Search.Query("url")).TotalResults.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task RunAsync_MissingProvisionedIndex_ShouldFailWithoutWritingHash_InRealRedis()
+    {
+        string tenantId = $"tenant-missing-{Guid.NewGuid():N}";
+        IndexInput input = IndexInputFactory.Create(tenantId: tenantId);
+
+        IConnectionMultiplexer redis = _redis.Connection;
+        IndexSyntacticActivity activity = new(redis, NullLogger<IndexSyntacticActivity>.Instance);
+
+        await Should.ThrowAsync<TenantIndexNotProvisionedException>(
+            () => activity.RunAsync(Substitute.For<Dapr.Workflow.WorkflowActivityContext>(), input));
+
+        IDatabase db = redis.GetDatabase();
+        bool hashExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenantId, input.MemoryUnitId));
+        hashExists.ShouldBeFalse("ingestion must not write hashes when the tenant index was not provisioned");
+    }
+
+    private static void ProvisionSyntacticIndex(IDatabase db, string tenantId)
+        => TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSyntacticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticParams(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticSchema()));
+
+    private static void TryCreateIndex(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
+        {
+        }
     }
 }

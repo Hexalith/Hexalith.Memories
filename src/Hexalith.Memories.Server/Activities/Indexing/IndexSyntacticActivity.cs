@@ -1,3 +1,8 @@
+// <copyright file="IndexSyntacticActivity.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using System.Globalization;
@@ -11,29 +16,29 @@ using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
-
-using NRedisStack.RedisStackCommands;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that indexes a memory unit in RediSearch for full-text search.</summary>
 public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexResult>
 {
-    private static readonly TimeSpan IndexInfoRetryDelay = TimeSpan.FromMilliseconds(100);
-    private const int IndexInfoRetryAttempts = 10;
-
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSyntacticActivity> _logger;
     private readonly IWorkflowPayloadStore? _payloadStore;
+    private readonly ITenantIndexReadinessVerifier _readinessVerifier;
 
     public IndexSyntacticActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         ILogger<IndexSyntacticActivity> logger,
-        IWorkflowPayloadStore? payloadStore = null)
+        IWorkflowPayloadStore? payloadStore = null,
+        ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
         _redis = redis;
         _logger = logger;
         _payloadStore = payloadStore;
+        _readinessVerifier = readinessVerifier
+            ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
     }
 
     /// <inheritdoc/>
@@ -46,7 +51,6 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         string content = await ResolveContentAsync(input).ConfigureAwait(false);
 
         IDatabase db = _redis.GetDatabase();
-        var ft = db.FT();
         string sourceType = ToCamelCase(input.SourceType);
         string metadataText = FlattenMetadata(input.Metadata);
         string attributeTags = FlattenMetadataTags(input.Metadata);
@@ -54,21 +58,14 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
         string ingestedAt = input.IngestedAt.ToString("o");
 
-        string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);
         string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
 
-        try
-        {
-            ft.Create(
-                indexName,
-                IndexSchemaDefinitions.CreateSyntacticParams(input.TenantId),
-                IndexSchemaDefinitions.CreateSyntacticSchema());
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
-        {
-            EnsureSyntacticIndexReady(db, indexName, input.TenantId);
-            _logger.LogWarning("RediSearch index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
-        }
+        // Story 23.7 (A34): TenantProvisioningWorkflow owns index creation. Ingestion only verifies the tenant's
+        // syntactic index exists and matches the expected schema, memoized once per tenant/index family/process —
+        // no per-document FT.CREATE, no "index already exists" warning, no blocking Thread.Sleep retry.
+        await _readinessVerifier
+            .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Syntactic, null, CancellationToken.None)
+            .ConfigureAwait(false);
 
         List<HashEntry> hashEntries =
         [
@@ -209,74 +206,5 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         return string.IsNullOrEmpty(name)
             ? string.Empty
             : char.ToLowerInvariant(name[0]) + name[1..];
-    }
-
-    private void EnsureSyntacticIndexReady(IDatabase db, string indexName, string tenantId)
-    {
-        IReadOnlyList<string> problems = [];
-        for (int attempt = 1; attempt <= IndexInfoRetryAttempts; attempt++)
-        {
-            RedisResult info = db.Execute("FT.INFO", indexName);
-            problems = DescribeSyntacticIndexProblems(db, info, indexName, tenantId, out bool incompleteMetadata);
-            if (problems.Count == 0)
-            {
-                return;
-            }
-
-            if (!incompleteMetadata || attempt == IndexInfoRetryAttempts)
-            {
-                break;
-            }
-
-            Thread.Sleep(IndexInfoRetryDelay);
-        }
-
-        throw new InvalidOperationException(
-            $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: {string.Join("; ", problems)}.");
-    }
-
-    private IReadOnlyList<string> DescribeSyntacticIndexProblems(
-        IDatabase db,
-        RedisResult info,
-        string indexName,
-        string tenantId,
-        out bool incompleteMetadata)
-    {
-        List<string> problems = [];
-
-        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
-        string expectedPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
-        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
-        {
-            problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
-        }
-
-        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
-        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
-        incompleteMetadata = prefixes.Count == 0 || actualFields.Count == 0;
-        if (!actualFields.SetEquals(expectedFields))
-        {
-            foreach (string upgradedField in IndexSchemaDefinitions.TryUpgradeMissingTagFields(
-                db,
-                indexName,
-                actualFields,
-                expectedFields,
-                ["cloudeventSubject", "attributeTags"]))
-            {
-                actualFields.Add(upgradedField);
-                _logger.LogInformation(
-                    "Added missing {FieldName} field to RediSearch index {IndexName} for tenant {TenantId}",
-                    upgradedField,
-                    indexName,
-                    tenantId);
-            }
-        }
-
-        if (!actualFields.SetEquals(expectedFields))
-        {
-            problems.Add($"expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
-        }
-
-        return problems;
     }
 }

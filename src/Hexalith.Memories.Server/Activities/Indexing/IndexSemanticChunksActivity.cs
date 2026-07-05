@@ -17,8 +17,7 @@ using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
-
-using NRedisStack.RedisStackCommands;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using StackExchange.Redis;
 
@@ -28,18 +27,22 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSemanticChunksActivity> _logger;
     private readonly IWorkflowPayloadStore? _payloadStore;
+    private readonly ITenantIndexReadinessVerifier _readinessVerifier;
 
     /// <summary>Initializes a new instance of the <see cref="IndexSemanticChunksActivity"/> class.</summary>
     public IndexSemanticChunksActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         ILogger<IndexSemanticChunksActivity> logger,
-        IWorkflowPayloadStore? payloadStore = null)
+        IWorkflowPayloadStore? payloadStore = null,
+        ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(logger);
         _redis = redis;
         _logger = logger;
         _payloadStore = payloadStore;
+        _readinessVerifier = readinessVerifier
+            ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
     }
 
     /// <inheritdoc/>
@@ -73,21 +76,14 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
             input.EmbeddingModel,
             input.EmbeddingDimensions);
 
-        var ft = db.FT();
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
 
-        string indexName = IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId);
-        try
-        {
-            ft.Create(
-                indexName,
-                IndexSchemaDefinitions.CreateSemanticParams(input.TenantId),
-                IndexSchemaDefinitions.CreateSemanticSchema(input.EmbeddingDimensions));
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists"))
-        {
-            _logger.LogWarning("Redis Vector index {IndexName} already exists for tenant {TenantId}", indexName, input.TenantId);
-        }
+        // Story 23.7 (A34): verify the tenant's raw semantic index once per process instead of issuing FT.CREATE
+        // before every chunked write. Creation stays owned by TenantProvisioningWorkflow; the marker check above
+        // still runs on every invocation and is never skipped by the readiness cache.
+        await _readinessVerifier
+            .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Semantic, input.EmbeddingDimensions, CancellationToken.None)
+            .ConfigureAwait(false);
 
         foreach (ChunkEmbeddingResult chunk in input.Chunks.OrderBy(static c => c.Sequence))
         {

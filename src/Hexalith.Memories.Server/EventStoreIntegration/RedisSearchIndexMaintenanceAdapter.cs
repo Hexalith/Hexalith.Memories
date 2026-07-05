@@ -17,8 +17,7 @@ using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-
-using NRedisStack.RedisStackCommands;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using StackExchange.Redis;
 
@@ -43,15 +42,19 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisSearchIndexMaintenanceAdapter> _logger;
+    private readonly ITenantIndexReadinessVerifier _readinessVerifier;
 
     public RedisSearchIndexMaintenanceAdapter(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<RedisSearchIndexMaintenanceAdapter> logger)
+        ILogger<RedisSearchIndexMaintenanceAdapter> logger,
+        ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(logger);
         _redis = redis;
         _logger = logger;
+        _readinessVerifier = readinessVerifier
+            ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
     }
 
     /// <inheritdoc/>
@@ -68,7 +71,14 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
 
         IDatabase db = _redis.GetDatabase();
-        EnsureSyntacticIndexExists(db, indexTenantId);
+
+        // Story 23.7 (A34): this curated EventStore/Tenants search-index path shared the same per-write
+        // create-if-missing symptom as ingestion. It is now reconciled onto the same memoized readiness policy —
+        // TenantProvisioningWorkflow owns creation, and a missing index for an active tenant fails clearly rather
+        // than being recreated on every upsert. Routing only reaches here for an Active, provisioned tenant.
+        await _readinessVerifier
+            .EnsureReadyAsync(db, indexTenantId, TenantIndexFamily.Syntactic, null, cancellationToken)
+            .ConfigureAwait(false);
 
         string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(indexTenantId, entry.AggregateId);
         string now = DateTimeOffset.UtcNow.ToString("o");
@@ -169,54 +179,6 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         return string.Join(',', tags);
     }
 
-    private void EnsureSyntacticIndexExists(IDatabase db, string tenantId)
-    {
-        // Safety net: the index is normally created by TenantProvisioningWorkflow before the tenant is Active
-        // (and routing only reaches here for an Active tenant). Create-if-missing keeps a curated write from
-        // failing on a rare race where the tenant exists but the index is not yet present.
-        string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
-        try
-        {
-            db.FT().Create(
-                indexName,
-                IndexSchemaDefinitions.CreateSyntacticParams(tenantId),
-                IndexSchemaDefinitions.CreateSyntacticSchema());
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
-        {
-            EnsureSyntacticIndexReady(db, indexName, tenantId);
-        }
-    }
-
-    private void EnsureSyntacticIndexReady(IDatabase db, string indexName, string tenantId)
-    {
-        RedisResult info = db.Execute("FT.INFO", indexName);
-        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
-        HashSet<string> expectedFields = new(IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(), StringComparer.OrdinalIgnoreCase);
-
-        if (actualFields.SetEquals(expectedFields))
-        {
-            return;
-        }
-
-        foreach (string upgradedField in IndexSchemaDefinitions.TryUpgradeMissingTagFields(
-            db,
-            indexName,
-            actualFields,
-            expectedFields,
-            ["cloudeventSubject", "attributeTags"]))
-        {
-            actualFields.Add(upgradedField);
-            LogIndexFieldUpgraded(_logger, tenantId, indexName, upgradedField);
-        }
-
-        if (!actualFields.SetEquals(expectedFields))
-        {
-            throw new InvalidOperationException(
-                $"Existing RediSearch index '{indexName}' does not match the expected tenant schema: expected fields [{string.Join(", ", expectedFields.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}].");
-        }
-    }
-
     [LoggerMessage(
         EventId = 9190,
         Level = LogLevel.Information,
@@ -228,10 +190,4 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         Level = LogLevel.Information,
         Message = "Curated search index removed entry for tenant {TenantId}, aggregate {AggregateId} (existed={Existed}).")]
     private static partial void LogEntryRemoved(ILogger logger, string tenantId, string aggregateId, bool existed);
-
-    [LoggerMessage(
-        EventId = 9192,
-        Level = LogLevel.Information,
-        Message = "Added missing {FieldName} field to RediSearch index {IndexName} for tenant {TenantId}.")]
-    private static partial void LogIndexFieldUpgraded(ILogger logger, string tenantId, string indexName, string fieldName);
 }
