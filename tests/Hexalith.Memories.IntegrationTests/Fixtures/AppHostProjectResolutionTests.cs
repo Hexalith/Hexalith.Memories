@@ -15,9 +15,10 @@ using Shouldly;
 /// downstream Aspire AppHosts. The mere act of naming these generated <see cref="IProjectMetadata"/> types
 /// makes this assembly fail to compile if either symbol stops resolving (e.g. a project rename or a dropped
 /// AppHost <c>&lt;ProjectReference&gt;</c>) — that compile failure IS the guard. This test intentionally
-/// avoids Docker: it is a plain <c>[Fact]</c> in the default (no-container) test lane and does NOT use
+/// avoids Docker: it is a plain <c>[Fact]</c> in the integration lane and does NOT use
 /// <c>DistributedApplicationTestingBuilder</c> or any Testcontainers fixture.
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AppHostProjectResolutionTests
 {
     [Fact]

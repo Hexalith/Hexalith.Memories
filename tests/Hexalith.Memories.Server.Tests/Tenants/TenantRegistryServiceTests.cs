@@ -660,6 +660,87 @@ public class TenantRegistryServiceTests
     }
 
     [Fact]
+    public async Task GetTenantForStatusGuardAsync_MissingTenant_IsCachedOnlyBrieflyThenRefreshed()
+    {
+        // AC1 / Story 24.2 review P5: a missing tenant is negatively cached only for the short missing TTL,
+        // then re-read from the store after it expires.
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        TenantRegistryEntry created = CreateEntry("tenant-1", "Tenant", TenantStatus.Active);
+        daprClient.GetStateAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-tenant-1",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns((TenantRegistryEntry?)null, created);
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 7, 5, 12, 0, 0, TimeSpan.Zero));
+        TenantRegistryService service = CreateService(
+            daprClient,
+            cacheOptions: new TenantReadCacheOptions { MissingTenantStatusTtlSeconds = 2 },
+            timeProvider: timeProvider);
+
+        TenantInfo? miss = await service.GetTenantForStatusGuardAsync("tenant-1", CancellationToken.None);
+        TenantInfo? cachedMiss = await service.GetTenantForStatusGuardAsync("tenant-1", CancellationToken.None);
+        timeProvider.Advance(TimeSpan.FromSeconds(3));
+        TenantInfo? afterExpiry = await service.GetTenantForStatusGuardAsync("tenant-1", CancellationToken.None);
+
+        miss.ShouldBeNull();
+        cachedMiss.ShouldBeNull();
+        afterExpiry.ShouldNotBeNull();
+        afterExpiry.Status.ShouldBe(TenantStatus.Active);
+
+        // The second call is served from the short negative cache; only the initial miss and the
+        // post-expiry refresh reach the store.
+        await daprClient.Received(2).GetStateAsync<TenantRegistryEntry?>(
+            "statestore",
+            "tenant-registry-tenant-1",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RegisterTenantAsync_OverwritesCachedMiss_SoJustCreatedTenantIsNotHidden()
+    {
+        // AC1 / Story 24.2 review P5: after a local registration write, the status guard must see the
+        // just-created tenant immediately rather than a previously cached miss.
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetStateAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-acme",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (TenantRegistryEntry?)null);
+        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+                "statestore",
+                "tenant-registry-acme",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => ((TenantRegistryEntry?)null, string.Empty));
+        daprClient.GetStateAndETagAsync<List<string>?>(
+                "statestore",
+                "tenant-registry-index",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(_ => (new List<string>(), string.Empty));
+        daprClient.ExecuteStateTransactionAsync(
+                "statestore",
+                Arg.Any<IReadOnlyList<StateTransactionRequest>>(),
+                null!,
+                Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        TenantRegistryService service = CreateService(daprClient, commandStore: new CapturingCommandStore());
+
+        TenantInfo? beforeRegister = await service.GetTenantForStatusGuardAsync("acme", CancellationToken.None);
+        await service.RegisterTenantAsync("acme", "Acme Corp", CancellationToken.None);
+        TenantInfo? afterRegister = await service.GetTenantForStatusGuardAsync("acme", CancellationToken.None);
+
+        beforeRegister.ShouldBeNull();
+        afterRegister.ShouldNotBeNull();
+        afterRegister.Status.ShouldBe(TenantStatus.Provisioning);
+
+        // The post-registration guard read is served from the write-populated cache, not a store re-read
+        // that could still see the negatively cached miss: only the initial miss touched the store.
+        await daprClient.Received(1).GetStateAsync<TenantRegistryEntry?>(
+            "statestore",
+            "tenant-registry-acme",
+            cancellationToken: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RemoveTenantAsync_DeletesEntryAndUpdatesIndex()
     {
         DaprClient daprClient = Substitute.For<DaprClient>();

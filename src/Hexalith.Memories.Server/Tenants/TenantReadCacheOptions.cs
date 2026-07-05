@@ -29,6 +29,10 @@ public sealed class TenantReadCacheOptions
     /// <summary>Gets or sets the maximum tenant-list summary enrichment concurrency.</summary>
     public int MaxTenantListConcurrency { get; set; } = 8;
 
+    /// <summary>Gets or sets the maximum number of entries retained in each per-process tenant read cache
+    /// (status and summary). Bounds memory growth from distinct/negative-key probing (Story 24.2 review P4).</summary>
+    public int MaxCacheEntries { get; set; } = 10000;
+
     /// <summary>Gets the clamped tenant status cache TTL.</summary>
     public TimeSpan GetTenantStatusTtl()
         => TimeSpan.FromSeconds(Math.Clamp(TenantStatusTtlSeconds, 1, 60));
@@ -52,4 +56,8 @@ public sealed class TenantReadCacheOptions
     /// <summary>Gets the clamped tenant-list concurrency limit.</summary>
     public int GetMaxTenantListConcurrency()
         => Math.Clamp(MaxTenantListConcurrency, 1, 32);
+
+    /// <summary>Gets the clamped maximum per-cache entry count.</summary>
+    public int GetMaxCacheEntries()
+        => Math.Clamp(MaxCacheEntries, 100, 1_000_000);
 }

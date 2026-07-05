@@ -20,6 +20,7 @@ using Shouldly;
 /// implementation of this test was a source-text grep on Program.cs that could pass even when the
 /// runtime ordering was broken (Story 15.6 code review patch).
 /// </summary>
+[Trait("Category", "Integration")]
 public sealed class AppHostComponentFileOrderingTests
 {
     [RunnableSkippedFact("Story 15.6 AC #7 behavioral guard — requires Docker (Redis/FalkorDB containers). Runs in the Aspire integration lane only; the default test lane does not provision containers. Unskip when the integration lane is wired up.")]

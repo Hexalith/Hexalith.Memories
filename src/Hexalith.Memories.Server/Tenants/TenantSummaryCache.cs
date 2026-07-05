@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tenants;
 using System.Collections.Concurrent;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Caching;
 
 using Microsoft.Extensions.Options;
 
@@ -15,6 +16,7 @@ using Microsoft.Extensions.Options;
 public sealed class TenantSummaryCache
 {
     private readonly ConcurrentDictionary<string, (TenantSummary Summary, DateTimeOffset ExpiresAt)> _cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _generations = new(StringComparer.Ordinal);
     private readonly IOptions<TenantReadCacheOptions> _options;
     private readonly TimeProvider _timeProvider;
 
@@ -45,8 +47,19 @@ public sealed class TenantSummaryCache
             return entry.Summary;
         }
 
+        // Capture the invalidation generation before the (awaited) build so a write that invalidates
+        // while the factory runs is not silently re-cached as a stale value (Story 24.2 review P2).
+        long generation = GetGeneration(tenantId);
         TenantSummary summary = await factory().ConfigureAwait(false);
-        _cache[tenantId] = (summary, now + _options.Value.GetTenantSummaryTtl());
+        if (GetGeneration(tenantId) == generation)
+        {
+            // Stamp expiry from now (after the build), not from before it, so a slow build does not
+            // produce an already-near-expired entry (Story 24.2 review P6).
+            DateTimeOffset storedAt = _timeProvider.GetUtcNow();
+            BoundedCache.PruneIfNeeded(_cache, _options.Value.GetMaxCacheEntries(), storedAt, static e => e.ExpiresAt);
+            _cache[tenantId] = (summary, storedAt + _options.Value.GetTenantSummaryTtl());
+        }
+
         return summary;
     }
 
@@ -56,7 +69,11 @@ public sealed class TenantSummaryCache
     {
         if (!string.IsNullOrWhiteSpace(tenantId))
         {
+            _generations.AddOrUpdate(tenantId, 1L, static (_, current) => current + 1L);
             _cache.TryRemove(tenantId, out _);
         }
     }
+
+    private long GetGeneration(string tenantId)
+        => _generations.TryGetValue(tenantId, out long generation) ? generation : 0L;
 }

@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-05T17:40:39+02:00
+last_updated: 2026-07-05
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
 # 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
@@ -441,7 +441,7 @@ development_status:
   # Epic 24: Observability & Performance Hardening
   epic-24: in-progress
   24-1-trace-propagation-across-the-workflow-boundary: done
-  24-2-read-path-caching-and-tenant-list-bounding: review
+  24-2-read-path-caching-and-tenant-list-bounding: done
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: backlog

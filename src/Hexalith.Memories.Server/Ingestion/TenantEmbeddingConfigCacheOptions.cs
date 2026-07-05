@@ -13,4 +13,12 @@ public sealed class TenantEmbeddingConfigCacheOptions
 
     /// <summary>Gets or sets the per-process cache time-to-live in seconds.</summary>
     public int CacheTtlSeconds { get; set; } = 30;
+
+    /// <summary>Gets or sets the maximum number of entries retained in each per-process embedding-config
+    /// cache (config and fusion weights). Bounds memory growth from distinct-key probing (Story 24.2 review P4).</summary>
+    public int MaxCacheEntries { get; set; } = 10000;
+
+    /// <summary>Gets the clamped maximum per-cache entry count.</summary>
+    public int GetMaxCacheEntries()
+        => Math.Clamp(MaxCacheEntries, 100, 1_000_000);
 }

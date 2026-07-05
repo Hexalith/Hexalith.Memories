@@ -12,6 +12,7 @@ using Dapr.Actors.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Caching;
 
 using Microsoft.Extensions.Options;
 
@@ -21,6 +22,7 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
     private readonly IActorProxyFactory _actorProxyFactory;
     private readonly ConcurrentDictionary<string, (TenantEmbeddingConfig Config, DateTimeOffset ExpiresAt)> _cache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, (FusionWeights Weights, DateTimeOffset ExpiresAt)> _fusionWeightsCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _generations = new(StringComparer.Ordinal);
     private readonly IOptions<TenantEmbeddingConfigCacheOptions> _options;
     private readonly TimeProvider _timeProvider;
 
@@ -53,6 +55,10 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
             return entry.Config;
         }
 
+        // Capture the invalidation generation before the actor read so a write that invalidates while
+        // we are fetching is not silently re-cached as a stale value (Story 24.2 review P2).
+        long generation = GetGeneration(tenantId);
+
         ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(
                 new ActorId(tenantId),
@@ -62,7 +68,13 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
             .GetEmbeddingConfigAsync()
             .ConfigureAwait(false);
 
-        _cache[tenantId] = (config, now + GetCacheTtl());
+        if (GetGeneration(tenantId) == generation)
+        {
+            DateTimeOffset storedAt = _timeProvider.GetUtcNow();
+            BoundedCache.PruneIfNeeded(_cache, _options.Value.GetMaxCacheEntries(), storedAt, static e => e.ExpiresAt);
+            _cache[tenantId] = (config, storedAt + GetCacheTtl());
+        }
+
         return config;
     }
 
@@ -78,6 +90,8 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
             return entry.Weights;
         }
 
+        long generation = GetGeneration(tenantId);
+
         ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(
                 new ActorId(tenantId),
@@ -87,7 +101,13 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
             .GetFusionWeightsAsync()
             .ConfigureAwait(false);
 
-        _fusionWeightsCache[tenantId] = (weights, now + GetCacheTtl());
+        if (GetGeneration(tenantId) == generation)
+        {
+            DateTimeOffset storedAt = _timeProvider.GetUtcNow();
+            BoundedCache.PruneIfNeeded(_fusionWeightsCache, _options.Value.GetMaxCacheEntries(), storedAt, static e => e.ExpiresAt);
+            _fusionWeightsCache[tenantId] = (weights, storedAt + GetCacheTtl());
+        }
+
         return weights;
     }
 
@@ -99,9 +119,15 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
             return;
         }
 
+        // Bump the generation so an in-flight read that already fetched the pre-write config/weights
+        // cannot re-cache the stale value on top of this invalidation (Story 24.2 review P2).
+        _generations.AddOrUpdate(tenantId, 1L, static (_, current) => current + 1L);
         _cache.TryRemove(tenantId, out _);
         _fusionWeightsCache.TryRemove(tenantId, out _);
     }
+
+    private long GetGeneration(string tenantId)
+        => _generations.TryGetValue(tenantId, out long generation) ? generation : 0L;
 
     private TimeSpan GetCacheTtl()
         => TimeSpan.FromSeconds(Math.Clamp(_options.Value.CacheTtlSeconds, 1, 300));

@@ -13,6 +13,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore.Domain.Commands;
+using Hexalith.Memories.Server.Caching;
 using Hexalith.Memories.Server.EventStoreIntegration;
 
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ public sealed partial class TenantRegistryService
     private readonly DaprClient _daprClient;
     private readonly IMemoriesCommandStore _commandStore;
     private readonly ConcurrentDictionary<string, (TenantRegistryEntry? Entry, DateTimeOffset ExpiresAt)> _statusCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _statusGenerations = new(StringComparer.Ordinal);
     private readonly ILogger<TenantRegistryService> _logger;
     private readonly IOptions<TenantReadCacheOptions> _cacheOptions;
     private readonly TenantSummaryCache? _summaryCache;
@@ -382,7 +384,10 @@ public sealed partial class TenantRegistryService
     /// <returns>A list of all registered tenants.</returns>
     public async Task<IReadOnlyList<TenantInfo>> ListTenantsAsync(CancellationToken ct)
     {
-        TenantListPage page = await ListTenantsPageAsync(0, int.MaxValue, ct).ConfigureAwait(false);
+        // Internal callers legitimately need every tenant; this uses a dedicated unbounded path rather
+        // than an int.MaxValue sentinel so the public HTTP path can never bypass the page-size clamp
+        // (Story 24.2 review P1).
+        TenantListPage page = await ListTenantsPageCoreAsync(0, limit: null, unbounded: true, ct).ConfigureAwait(false);
         return page.Tenants;
     }
 
@@ -391,16 +396,20 @@ public sealed partial class TenantRegistryService
     /// <param name="limit">Requested limit.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The bounded tenant-list page.</returns>
-    public async Task<TenantListPage> ListTenantsPageAsync(int offset, int? limit, CancellationToken ct)
+    public Task<TenantListPage> ListTenantsPageAsync(int offset, int? limit, CancellationToken ct)
+        => ListTenantsPageCoreAsync(offset, limit, unbounded: false, ct);
+
+    private async Task<TenantListPage> ListTenantsPageCoreAsync(int offset, int? limit, bool unbounded, CancellationToken ct)
     {
         List<string>? index = await _daprClient.GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct).ConfigureAwait(false);
         List<string> normalizedIndex = NormalizeIndex(index);
         int totalCount = normalizedIndex.Count;
         int clampedOffset = Math.Max(offset, 0);
-        int requestedLimit = limit.GetValueOrDefault(_cacheOptions.Value.GetDefaultTenantListLimit());
-        int clampedLimit = requestedLimit == int.MaxValue
-            ? int.MaxValue
-            : Math.Clamp(requestedLimit, 1, _cacheOptions.Value.GetMaxTenantListLimit());
+
+        // The public path always clamps to the safe maximum; only the internal unbounded path returns all.
+        int clampedLimit = unbounded
+            ? totalCount
+            : Math.Clamp(limit.GetValueOrDefault(_cacheOptions.Value.GetDefaultTenantListLimit()), 1, _cacheOptions.Value.GetMaxTenantListLimit());
 
         if (totalCount == 0 || clampedOffset >= totalCount)
         {
@@ -422,7 +431,8 @@ public sealed partial class TenantRegistryService
             }
         }
 
-        bool hasMore = clampedOffset + clampedLimit < totalCount;
+        // Overflow-free: clampedOffset < totalCount here (guarded above), so the subtraction is positive.
+        bool hasMore = totalCount - clampedOffset > clampedLimit;
         return new TenantListPage(tenants, totalCount, clampedOffset, clampedLimit, hasMore);
     }
 
@@ -615,18 +625,48 @@ public sealed partial class TenantRegistryService
             return entry.Entry;
         }
 
+        // Capture the invalidation generation before the store read so a mutation (register, status
+        // change, deletion, display-name update, removal) that runs while we fetch cannot be clobbered
+        // by this read-through populate — which would re-hide a just-created tenant or serve a stale
+        // status past the write (Story 24.2 review P2 / AC1).
+        long generation = GetStatusGeneration(tenantId);
         TenantRegistryEntry? fresh = await GetTenantEntryAsync(tenantId, ct).ConfigureAwait(false);
-        SetStatusCache(tenantId, fresh);
+        StoreStatusCacheIfCurrent(tenantId, fresh, generation);
         return fresh;
     }
 
+    /// <summary>Authoritative status-cache write from a mutation path.</summary>
     private void SetStatusCache(string tenantId, TenantRegistryEntry? entry)
+    {
+        // Bump the generation so a concurrent in-flight read cannot re-cache a stale value on top of
+        // this fresh, just-written one.
+        _statusGenerations.AddOrUpdate(tenantId, 1L, static (_, current) => current + 1L);
+        StoreStatusEntry(tenantId, entry);
+    }
+
+    /// <summary>Read-through populate that yields to any mutation that raced with the store read.</summary>
+    private void StoreStatusCacheIfCurrent(string tenantId, TenantRegistryEntry? entry, long expectedGeneration)
+    {
+        if (GetStatusGeneration(tenantId) != expectedGeneration)
+        {
+            return;
+        }
+
+        StoreStatusEntry(tenantId, entry);
+    }
+
+    private void StoreStatusEntry(string tenantId, TenantRegistryEntry? entry)
     {
         TimeSpan ttl = entry is null
             ? _cacheOptions.Value.GetMissingTenantStatusTtl()
             : _cacheOptions.Value.GetTenantStatusTtl();
-        _statusCache[tenantId] = (entry, _timeProvider.GetUtcNow() + ttl);
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        BoundedCache.PruneIfNeeded(_statusCache, _cacheOptions.Value.GetMaxCacheEntries(), now, static e => e.ExpiresAt);
+        _statusCache[tenantId] = (entry, now + ttl);
     }
+
+    private long GetStatusGeneration(string tenantId)
+        => _statusGenerations.TryGetValue(tenantId, out long generation) ? generation : 0L;
 
     private static StateTransactionRequest CreateUpsertRequest<T>(string key, T value, string etag)
         => new(
