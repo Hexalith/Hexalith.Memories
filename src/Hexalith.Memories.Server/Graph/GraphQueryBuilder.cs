@@ -335,7 +335,9 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         // Edge labels are also interpolated as literals from the closed EdgeType enum.
         // LIMIT cannot be parameterized reliably in FalkorDB Cypher, so only a validated
         // positive integer is interpolated.
-        string whereClause = string.IsNullOrWhiteSpace(caseId) ? "" : " WHERE n.caseId = $caseId";
+        string whereClause = string.IsNullOrWhiteSpace(caseId)
+            ? string.Empty
+            : " WHERE (n.caseId = $caseId OR n.content IS NULL) AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId))";
         string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH n, min(length(p)) AS hopDistance RETURN n.id AS nodeId, hopDistance ORDER BY hopDistance ASC, nodeId ASC LIMIT {limit}";
 
         Dictionary<string, object> parameters = new()

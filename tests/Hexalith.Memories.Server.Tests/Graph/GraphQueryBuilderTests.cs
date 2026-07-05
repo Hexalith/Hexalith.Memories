@@ -491,9 +491,15 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, "case-abc");
 
-        query.ShouldContain("WHERE n.caseId = $caseId");
+        query.ShouldContain("WHERE (n.caseId = $caseId OR n.content IS NULL)");
+        query.ShouldContain("start.caseId = $caseId");
+        query.ShouldContain("ALL(node IN nodes(p) WHERE (node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId))");
         query.ShouldContain("$startId");
         query.ShouldContain("[:CAUSED_BY|CORRELATED_WITH|REFERENCES*0..3]");
+        query.ShouldNotContain("CONTAINS");
+        query.ShouldNotContain("ANNOTATES");
+        query.ShouldContain("ORDER BY hopDistance ASC, nodeId ASC");
+        query.ShouldContain("LIMIT 1000");
         parameters["startId"].ShouldBe("mu-start-001");
         parameters["caseId"].ShouldBe("case-abc");
     }

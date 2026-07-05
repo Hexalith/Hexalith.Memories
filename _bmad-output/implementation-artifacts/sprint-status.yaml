@@ -84,6 +84,8 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.3 senior developer review completed with automatic fixes (scoped INKEYS tenant-key validation, empty scoped graph response query preservation). 22.3 -> done.
 # 2026-07-05: Story 22.4 created (22.4 -> ready-for-dev) via create-story. Fusion case attribution, score calibration, and pinned BM25-family scorer; closes A30 by requiring hybrid CaseId preservation, explicit RediSearch scorer selection, and deterministic scale-free fusion.
 # 2026-07-05: Story 22.4 senior developer review completed with automatic fixes (File List hygiene, evidence-table statuses, stale contract summary comment). 22.4 -> done.
+# 2026-07-05: Story 22.5 created (22.5 -> ready-for-dev) via create-story. Case-scoped traversal path integrity; closes A48 by requiring BuildTraverseFromNode to apply the all-path-nodes case predicate used by BuildTraverseWithEdges.
+# 2026-07-05: Story 22.5 senior developer review completed with automatic fixes (evidence table, File List, status sync). 22.5 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -390,7 +392,7 @@ development_status:
   22-2-bounded-cancellable-graph-traversal: done
   22-3-graph-scoped-and-hybrid-pagination-correctness: done
   22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: done
-  22-5-case-scoped-traversal-path-integrity: backlog
+  22-5-case-scoped-traversal-path-integrity: done
   22-6-post-filter-recall: backlog
   22-7-retrieval-feature-completion: backlog
   epic-22-retrospective: optional

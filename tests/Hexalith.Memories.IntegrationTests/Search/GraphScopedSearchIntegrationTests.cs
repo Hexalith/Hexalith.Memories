@@ -243,6 +243,70 @@ public class GraphScopedSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_CaseScopedTraversal_ShouldNotReachTargetThroughCrossCaseBridge()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        const string caseA = "case-a";
+        const string caseB = "case-b";
+        const string startNodeId = "mu-a-start";
+        const string bridgeNodeId = "mu-b-bridge";
+        const string targetNodeId = "mu-a-target";
+        const string directNodeId = "mu-a-direct";
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+
+        await CreateMemoryUnitNodeAsync(falkor, tenantId, startNodeId, caseA);
+        await CreateMemoryUnitNodeAsync(falkor, tenantId, bridgeNodeId, caseB);
+        await CreateMemoryUnitNodeAsync(falkor, tenantId, targetNodeId, caseA);
+        await CreateMemoryUnitNodeAsync(falkor, tenantId, directNodeId, caseA);
+        await CreateCausedByEdgeAsync(falkor, tenantId, startNodeId, bridgeNodeId);
+        await CreateCausedByEdgeAsync(falkor, tenantId, bridgeNodeId, targetNodeId);
+        await CreateCausedByEdgeAsync(falkor, tenantId, startNodeId, directNodeId);
+
+        await SeedSyntacticHashAsync(tenantId, startNodeId, "Case A start content", caseId: caseA);
+        await SeedSyntacticHashAsync(tenantId, bridgeNodeId, "Case B bridge content", caseId: caseB);
+        await SeedSyntacticHashAsync(tenantId, targetNodeId, "Case A target content", caseId: caseA);
+        await SeedSyntacticHashAsync(tenantId, directNodeId, "Case A direct content", caseId: caseA);
+
+        GraphScopedSearch service = CreateService();
+        SearchQuery query = new() { TenantId = tenantId, CaseId = caseA, Query = "case scoped", MaxResults = 10 };
+
+        SearchResult pureGraphResult = await service.SearchAsync(query, startNodeId, depth: 2);
+
+        pureGraphResult.Results.Select(r => r.MemoryUnitId).ShouldContain(startNodeId);
+        pureGraphResult.Results.Select(r => r.MemoryUnitId).ShouldContain(directNodeId);
+        pureGraphResult.Results.Select(r => r.MemoryUnitId).ShouldNotContain(bridgeNodeId);
+        pureGraphResult.Results.Select(r => r.MemoryUnitId).ShouldNotContain(targetNodeId);
+
+        List<IReadOnlyCollection<RedisKey>> observedKeySets = [];
+        Task<SearchResult> InnerSearch(SearchQuery q, IReadOnlyCollection<RedisKey> graphScopeKeys)
+        {
+            observedKeySets.Add(graphScopeKeys);
+            return Task.FromResult(new SearchResult
+            {
+                Results = [],
+                TotalCount = 0,
+                HasIndexedMemoryUnits = true,
+                Query = q.Query,
+            });
+        }
+
+        await service.SearchAsync(
+            query,
+            startNodeId,
+            depth: 2,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: InnerSearch,
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
+
+        observedKeySets.Count.ShouldBe(1);
+        observedKeySets[0].ShouldContain((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(tenantId, startNodeId));
+        observedKeySets[0].ShouldContain((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(tenantId, directNodeId));
+        observedKeySets[0].ShouldNotContain((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(tenantId, bridgeNodeId));
+        observedKeySets[0].ShouldNotContain((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey(tenantId, targetNodeId));
+    }
+
+    [Fact]
     public async Task SearchAsync_NonExistentGraph_ShouldReturnEmptyResults()
     {
         // Arrange — query a tenant that has never had data
@@ -552,17 +616,23 @@ public class GraphScopedSearchIntegrationTests
         string memoryUnitId,
         string content,
         string? sourceUri = null,
-        SourceType sourceType = SourceType.File)
+        SourceType sourceType = SourceType.File,
+        string? caseId = null)
     {
         IDatabase db = _fixture.RedisConnection.GetDatabase();
         string key = $"{tenantId}:mu:{memoryUnitId}";
-        HashEntry[] entries =
+        List<HashEntry> entries =
         [
             new("content", content),
             new("sourceUri", sourceUri ?? $"file:///{memoryUnitId}.txt"),
             new("sourceType", sourceType.ToString().ToLowerInvariant()),
         ];
-        await db.HashSetAsync(key, entries);
+        if (!string.IsNullOrWhiteSpace(caseId))
+        {
+            entries.Add(new HashEntry("caseId", caseId));
+        }
+
+        await db.HashSetAsync(key, [.. entries]);
     }
 
     private static ScoredResult CreateScoredResult(string memoryUnitId, double score, string axis) => new()
