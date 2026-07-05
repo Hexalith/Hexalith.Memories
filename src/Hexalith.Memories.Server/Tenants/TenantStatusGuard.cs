@@ -19,7 +19,7 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
     /// <returns>An <see cref="ErrorResponse"/> if the tenant is not active; null if active.</returns>
     public async Task<ErrorResponse?> ValidateTenantActiveAsync(string tenantId, CancellationToken ct)
     {
-        TenantInfo? tenant = await registry.GetTenantAsync(tenantId, ct).ConfigureAwait(false);
+        TenantInfo? tenant = await registry.GetTenantForStatusGuardAsync(tenantId, ct).ConfigureAwait(false);
         if (tenant is null)
         {
             return new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", "List available tenants with GET /api/tenants");
@@ -42,7 +42,7 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
     /// <returns>A <see cref="ErrorResponse"/> with code <c>TENANT_NOT_FOUND</c> if the tenant does not exist; null otherwise.</returns>
     public async Task<ErrorResponse?> ValidateTenantExistsAsync(string tenantId, CancellationToken ct)
     {
-        TenantInfo? tenant = await registry.GetTenantAsync(tenantId, ct).ConfigureAwait(false);
+        TenantInfo? tenant = await registry.GetTenantForStatusGuardAsync(tenantId, ct).ConfigureAwait(false);
         return tenant is null
             ? new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", "List available tenants with GET /api/tenants")
             : null;

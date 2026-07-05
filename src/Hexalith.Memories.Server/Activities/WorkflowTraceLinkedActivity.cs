@@ -22,6 +22,8 @@ public abstract class WorkflowTraceLinkedActivity<TInput, TOutput> : WorkflowAct
     /// <inheritdoc />
     public sealed override async Task<TOutput> RunAsync(WorkflowActivityContext context, TInput input)
     {
+        ArgumentNullException.ThrowIfNull(input);
+
         using Activity? activity = StartLinkedActivity(input);
         try
         {

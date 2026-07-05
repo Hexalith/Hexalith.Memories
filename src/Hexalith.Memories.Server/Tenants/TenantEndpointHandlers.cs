@@ -5,12 +5,9 @@
 
 namespace Hexalith.Memories.Server.Tenants;
 
-using Dapr.Actors;
-using Dapr.Actors.Client;
-
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
-using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.AspNetCore.Http;
 
@@ -23,27 +20,75 @@ internal static class TenantEndpointHandlers
     /// <summary>Builds the enriched tenant summary used by <c>GET /api/tenants</c>.</summary>
     /// <param name="tenant">The tenant record from the registry.</param>
     /// <param name="metrics">Tenant metrics service.</param>
-    /// <param name="actorProxyFactory">Actor proxy factory.</param>
+    /// <param name="embeddingConfigProvider">Cached tenant embedding configuration provider.</param>
+    /// <param name="summaryCache">Short-lived tenant summary cache.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The enriched tenant summary.</returns>
     internal static async Task<TenantSummary> BuildTenantSummaryAsync(
         TenantInfo tenant,
         TenantMetricsService metrics,
-        IActorProxyFactory actorProxyFactory,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
+        TenantSummaryCache summaryCache,
+        CancellationToken cancellationToken)
+        => await summaryCache.GetOrCreateAsync(
+            tenant.Id,
+            () => BuildTenantSummaryCoreAsync(tenant, metrics, embeddingConfigProvider, cancellationToken)).ConfigureAwait(false);
+
+    /// <summary>Builds tenant summaries with bounded enrichment concurrency.</summary>
+    /// <param name="tenants">The tenants to summarize.</param>
+    /// <param name="metrics">Tenant metrics service.</param>
+    /// <param name="embeddingConfigProvider">Cached tenant embedding configuration provider.</param>
+    /// <param name="summaryCache">Short-lived tenant summary cache.</param>
+    /// <param name="maxConcurrency">Maximum concurrent tenant summary enrichments.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The tenant summaries in input order.</returns>
+    internal static async Task<TenantSummary[]> BuildTenantSummariesAsync(
+        IReadOnlyList<TenantInfo> tenants,
+        TenantMetricsService metrics,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
+        TenantSummaryCache summaryCache,
+        int maxConcurrency,
+        CancellationToken cancellationToken)
+    {
+        int concurrency = Math.Clamp(maxConcurrency, 1, 32);
+        using SemaphoreSlim gate = new(concurrency);
+        Task<TenantSummary>[] tasks = tenants.Select(async tenant =>
+        {
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await BuildTenantSummaryAsync(
+                    tenant,
+                    metrics,
+                    embeddingConfigProvider,
+                    summaryCache,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToArray();
+
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static async Task<TenantSummary> BuildTenantSummaryCoreAsync(
+        TenantInfo tenant,
+        TenantMetricsService metrics,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
         CancellationToken cancellationToken)
     {
         Task<(TenantIndexSizes Sizes, TenantIndexStatus Status)> sizesTask = metrics.GetIndexSizesAsync(tenant.Id, cancellationToken);
         Task<long?> countTask = metrics.GetMemoryUnitCountAsync(tenant.Id, cancellationToken);
         Task<DateTimeOffset?> activityTask = metrics.GetLastActivityAtAsync(tenant.Id, cancellationToken);
 
-        // Deferred by review decision: keep the actor-proxy fallback until the direct state-store key
-        // format is empirically verified. Per-tenant failures still collapse to reindexRequired=false.
+        // Metrics have no reliable local write signal for all ingestion/indexing changes yet; the short TTL
+        // bounds staleness while preserving degraded/null metric semantics on backend failures.
         bool reindexRequired = false;
         try
         {
-            ITenantConfigurationActor configActor = actorProxyFactory
-                .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenant.Id), nameof(TenantConfigurationActor));
-            TenantEmbeddingConfig config = await configActor.GetEmbeddingConfigAsync().ConfigureAwait(false);
+            TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(tenant.Id, cancellationToken).ConfigureAwait(false);
             reindexRequired = config.ReindexRequired;
         }
         catch (Exception)
@@ -72,7 +117,7 @@ internal static class TenantEndpointHandlers
         TenantRegistryService registry,
         TenantStatusGuard tenantGuard,
         TenantMetricsService metrics,
-        IActorProxyFactory actorProxyFactory,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
         string tenantId,
         CancellationToken cancellationToken)
     {
@@ -97,9 +142,7 @@ internal static class TenantEndpointHandlers
         TenantEmbeddingConfig embeddingConfig;
         try
         {
-            ITenantConfigurationActor actor = actorProxyFactory
-                .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenantId), nameof(TenantConfigurationActor));
-            embeddingConfig = await actor.GetEmbeddingConfigAsync().ConfigureAwait(false);
+            embeddingConfig = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken).ConfigureAwait(false);
         }
         catch (Dapr.DaprException)
         {
@@ -130,7 +173,8 @@ internal static class TenantEndpointHandlers
         TenantRegistryService registry,
         TenantStatusGuard tenantGuard,
         TenantMetricsService metrics,
-        IActorProxyFactory actorProxyFactory,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
+        TenantSummaryCache summaryCache,
         HttpContext httpContext,
         string tenantId,
         TenantUpdateInput? body,
@@ -194,7 +238,13 @@ internal static class TenantEndpointHandlers
                 body.DisplayName,
                 cancellationToken).ConfigureAwait(false);
 
-            TenantSummary summary = await BuildTenantSummaryAsync(updated, metrics, actorProxyFactory, cancellationToken).ConfigureAwait(false);
+            summaryCache.Invalidate(tenantId);
+            TenantSummary summary = await BuildTenantSummaryAsync(
+                updated,
+                metrics,
+                embeddingConfigProvider,
+                summaryCache,
+                cancellationToken).ConfigureAwait(false);
             return Results.Ok(summary);
         }
         catch (Dapr.DaprException)

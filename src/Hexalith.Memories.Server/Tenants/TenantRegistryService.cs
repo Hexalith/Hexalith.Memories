@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tenants;
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -15,6 +16,7 @@ using Hexalith.Memories.EventStore.Domain.Commands;
 using Hexalith.Memories.Server.EventStoreIntegration;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 /// <summary>Manages the tenant registry using DAPR state store.</summary>
 public sealed partial class TenantRegistryService
@@ -28,7 +30,11 @@ public sealed partial class TenantRegistryService
 
     private readonly DaprClient _daprClient;
     private readonly IMemoriesCommandStore _commandStore;
+    private readonly ConcurrentDictionary<string, (TenantRegistryEntry? Entry, DateTimeOffset ExpiresAt)> _statusCache = new(StringComparer.Ordinal);
     private readonly ILogger<TenantRegistryService> _logger;
+    private readonly IOptions<TenantReadCacheOptions> _cacheOptions;
+    private readonly TenantSummaryCache? _summaryCache;
+    private readonly TimeProvider _timeProvider;
 
     /// <summary>Initializes a new instance of the <see cref="TenantRegistryService"/> class.</summary>
     /// <param name="daprClient">The DAPR client for state management.</param>
@@ -37,11 +43,17 @@ public sealed partial class TenantRegistryService
     public TenantRegistryService(
         DaprClient daprClient,
         ILogger<TenantRegistryService> logger,
-        IMemoriesCommandStore? commandStore = null)
+        IMemoriesCommandStore? commandStore = null,
+        IOptions<TenantReadCacheOptions>? cacheOptions = null,
+        TimeProvider? timeProvider = null,
+        TenantSummaryCache? summaryCache = null)
     {
         _daprClient = daprClient;
         _commandStore = commandStore ?? new InMemoryMemoriesCommandStore();
         _logger = logger;
+        _cacheOptions = cacheOptions ?? Options.Create(new TenantReadCacheOptions());
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _summaryCache = summaryCache;
     }
 
     /// <summary>Registers a new tenant with Provisioning status.</summary>
@@ -96,6 +108,8 @@ public sealed partial class TenantRegistryService
             {
                 if (index.Contains(tenantId, StringComparer.Ordinal))
                 {
+                    SetStatusCache(tenantId, existing);
+                    _summaryCache?.Invalidate(tenantId);
                     return existing;
                 }
 
@@ -111,6 +125,8 @@ public sealed partial class TenantRegistryService
                             metadata: null!,
                             cancellationToken: ct)
                         .ConfigureAwait(false);
+                    SetStatusCache(tenantId, existing);
+                    _summaryCache?.Invalidate(tenantId);
                     return existing;
                 }
                 catch (Dapr.DaprException)
@@ -153,6 +169,8 @@ public sealed partial class TenantRegistryService
             }
 
             LogTenantRegistered(_logger, tenantId, displayName);
+            SetStatusCache(tenantId, entry);
+            _summaryCache?.Invalidate(tenantId);
             return entry;
         }
 
@@ -165,6 +183,8 @@ public sealed partial class TenantRegistryService
 
         if (current is not null && currentIndex?.Contains(tenantId, StringComparer.Ordinal) == true)
         {
+            SetStatusCache(tenantId, current);
+            _summaryCache?.Invalidate(tenantId);
             return current;
         }
 
@@ -198,6 +218,16 @@ public sealed partial class TenantRegistryService
     public async Task<TenantInfo?> GetTenantAsync(string tenantId, CancellationToken ct)
     {
         TenantRegistryEntry? entry = await GetTenantEntryAsync(tenantId, ct).ConfigureAwait(false);
+        return entry?.Tenant;
+    }
+
+    /// <summary>Gets a tenant using the short-lived status-read cache used by hot-path guards.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The tenant info, or null if not found.</returns>
+    public async Task<TenantInfo?> GetTenantForStatusGuardAsync(string tenantId, CancellationToken ct)
+    {
+        TenantRegistryEntry? entry = await GetTenantEntryForStatusGuardAsync(tenantId, ct).ConfigureAwait(false);
         return entry?.Tenant;
     }
 
@@ -249,6 +279,8 @@ public sealed partial class TenantRegistryService
             if (saved)
             {
                 LogTenantStatusUpdated(_logger, tenantId, status);
+                SetStatusCache(tenantId, updatedEntry);
+                _summaryCache?.Invalidate(tenantId);
                 return;
             }
         }
@@ -331,13 +363,18 @@ public sealed partial class TenantRegistryService
             if (saved)
             {
                 LogTenantStatusUpdated(_logger, tenantId, TenantStatus.Deleting);
+                SetStatusCache(tenantId, updated);
+                _summaryCache?.Invalidate(tenantId);
                 return updated;
             }
         }
 
-        return await _daprClient
+        TenantRegistryEntry? current = await _daprClient
             .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
             .ConfigureAwait(false);
+        SetStatusCache(tenantId, current);
+        _summaryCache?.Invalidate(tenantId);
+        return current;
     }
 
     /// <summary>Lists all registered tenants.</summary>
@@ -345,26 +382,48 @@ public sealed partial class TenantRegistryService
     /// <returns>A list of all registered tenants.</returns>
     public async Task<IReadOnlyList<TenantInfo>> ListTenantsAsync(CancellationToken ct)
     {
-        List<string>? index = await _daprClient.GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct).ConfigureAwait(false);
+        TenantListPage page = await ListTenantsPageAsync(0, int.MaxValue, ct).ConfigureAwait(false);
+        return page.Tenants;
+    }
 
-        if (index is null || index.Count == 0)
+    /// <summary>Lists a bounded page of registered tenants.</summary>
+    /// <param name="offset">Requested offset.</param>
+    /// <param name="limit">Requested limit.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The bounded tenant-list page.</returns>
+    public async Task<TenantListPage> ListTenantsPageAsync(int offset, int? limit, CancellationToken ct)
+    {
+        List<string>? index = await _daprClient.GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct).ConfigureAwait(false);
+        List<string> normalizedIndex = NormalizeIndex(index);
+        int totalCount = normalizedIndex.Count;
+        int clampedOffset = Math.Max(offset, 0);
+        int requestedLimit = limit.GetValueOrDefault(_cacheOptions.Value.GetDefaultTenantListLimit());
+        int clampedLimit = requestedLimit == int.MaxValue
+            ? int.MaxValue
+            : Math.Clamp(requestedLimit, 1, _cacheOptions.Value.GetMaxTenantListLimit());
+
+        if (totalCount == 0 || clampedOffset >= totalCount)
         {
-            return [];
+            return new TenantListPage([], totalCount, clampedOffset, clampedLimit, HasMore: false);
         }
 
+        IEnumerable<string> pageIds = normalizedIndex
+            .Skip(clampedOffset)
+            .Take(clampedLimit);
+
         List<TenantInfo> tenants = [];
-        foreach (string tenantId in index)
+        foreach (string tenantId in pageIds)
         {
-            TenantRegistryEntry? entry = await _daprClient
-                .GetStateAsync<TenantRegistryEntry?>(StoreName, GetTenantStateKey(tenantId), cancellationToken: ct)
-                .ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            TenantRegistryEntry? entry = await GetTenantEntryAsync(tenantId, ct).ConfigureAwait(false);
             if (entry is not null)
             {
                 tenants.Add(entry.Tenant);
             }
         }
 
-        return tenants;
+        bool hasMore = clampedOffset + clampedLimit < totalCount;
+        return new TenantListPage(tenants, totalCount, clampedOffset, clampedLimit, hasMore);
     }
 
     /// <summary>
@@ -409,6 +468,8 @@ public sealed partial class TenantRegistryService
 
             if (existing.Tenant.Status != TenantStatus.Active)
             {
+                SetStatusCache(tenantId, existing);
+                _summaryCache?.Invalidate(tenantId);
                 throw new InvalidOperationException($"Tenant '{tenantId}' is not active.");
             }
 
@@ -425,6 +486,7 @@ public sealed partial class TenantRegistryService
                     actor,
                     occurredAt,
                     (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+                SetStatusCache(tenantId, existing);
                 return existing.Tenant;
             }
 
@@ -448,6 +510,8 @@ public sealed partial class TenantRegistryService
                     actor,
                     occurredAt,
                     (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds);
+                SetStatusCache(tenantId, updated);
+                _summaryCache?.Invalidate(tenantId);
                 return updated.Tenant;
             }
         }
@@ -485,6 +549,8 @@ public sealed partial class TenantRegistryService
             bool removedFromIndex = index.Remove(tenantId);
             if (existing is null && !removedFromIndex)
             {
+                SetStatusCache(tenantId, null);
+                _summaryCache?.Invalidate(tenantId);
                 return;
             }
 
@@ -504,6 +570,8 @@ public sealed partial class TenantRegistryService
                         metadata: null!,
                         cancellationToken: ct)
                     .ConfigureAwait(false);
+                SetStatusCache(tenantId, null);
+                _summaryCache?.Invalidate(tenantId);
                 return;
             }
             catch (Dapr.DaprException)
@@ -521,6 +589,8 @@ public sealed partial class TenantRegistryService
 
         if (current is null && currentIndex?.Contains(tenantId, StringComparer.Ordinal) != true)
         {
+            SetStatusCache(tenantId, null);
+            _summaryCache?.Invalidate(tenantId);
             return;
         }
 
@@ -533,6 +603,30 @@ public sealed partial class TenantRegistryService
 
     private static List<string> NormalizeIndex(List<string>? index)
         => index is null ? [] : [.. index.Distinct(StringComparer.Ordinal)];
+
+    private async Task<TenantRegistryEntry?> GetTenantEntryForStatusGuardAsync(string tenantId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        if (_statusCache.TryGetValue(tenantId, out (TenantRegistryEntry? Entry, DateTimeOffset ExpiresAt) entry) &&
+            entry.ExpiresAt > now)
+        {
+            return entry.Entry;
+        }
+
+        TenantRegistryEntry? fresh = await GetTenantEntryAsync(tenantId, ct).ConfigureAwait(false);
+        SetStatusCache(tenantId, fresh);
+        return fresh;
+    }
+
+    private void SetStatusCache(string tenantId, TenantRegistryEntry? entry)
+    {
+        TimeSpan ttl = entry is null
+            ? _cacheOptions.Value.GetMissingTenantStatusTtl()
+            : _cacheOptions.Value.GetTenantStatusTtl();
+        _statusCache[tenantId] = (entry, _timeProvider.GetUtcNow() + ttl);
+    }
 
     private static StateTransactionRequest CreateUpsertRequest<T>(string key, T value, string etag)
         => new(

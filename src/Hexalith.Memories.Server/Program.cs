@@ -179,6 +179,8 @@ builder.Services.AddSingleton<EmbeddingClient>();
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.Configure<TenantEmbeddingConfigCacheOptions>(
     builder.Configuration.GetSection(TenantEmbeddingConfigCacheOptions.SectionName));
+builder.Services.Configure<TenantReadCacheOptions>(
+    builder.Configuration.GetSection(TenantReadCacheOptions.SectionName));
 builder.Services.AddSingleton<ITenantEmbeddingConfigProvider, TenantEmbeddingConfigProvider>();
 builder.Services.AddHttpClient(OidcTokenProvider.HttpClientName, client =>
 {
@@ -308,6 +310,7 @@ builder.Services.AddScoped<Hexalith.Memories.Server.Export.TenantExportService>(
 builder.Services.AddSingleton<TenantRegistryService>();
 builder.Services.AddSingleton<TenantStatusGuard>();
 builder.Services.AddSingleton<TenantMetricsService>();
+builder.Services.AddSingleton<TenantSummaryCache>();
 builder.Services.AddSingleton<RollingCounterStore>();
 builder.Services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<RollingCounterStore>());
 builder.Services.AddSingleton<TelemetrySummaryService>();
@@ -1005,7 +1008,7 @@ app.MapGet("/api/ingest/batches/{batchId}", async (
 });
 
 app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
-    IActorProxyFactory actorProxyFactory,
+    ITenantEmbeddingConfigProvider embeddingConfigProvider,
     TenantStatusGuard tenantGuard,
     string tenantId,
     CancellationToken cancellationToken) =>
@@ -1022,15 +1025,15 @@ app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
         return TenantStatusGuard.ToHttpResult(tenantStatusError);
     }
 
-    ITenantConfigurationActor actor = actorProxyFactory
-        .CreateActorProxy<ITenantConfigurationActor>(new ActorId(tenantId), nameof(TenantConfigurationActor));
-    TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+    TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
     return Results.Ok(config);
 });
 
 app.MapPut("/api/tenants/{tenantId}/embedding-config",
     async (
         IActorProxyFactory actorProxyFactory,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
+        TenantSummaryCache summaryCache,
         TenantStatusGuard tenantGuard,
         ILogger<AccessTelemetryCategory> auditLogger,
         HttpContext httpContext,
@@ -1089,7 +1092,9 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
     try
     {
         await actor.SetEmbeddingConfigAsync(config, forceReindex);
-        TenantEmbeddingConfig updatedConfig = await actor.GetEmbeddingConfigAsync();
+        embeddingConfigProvider.Invalidate(tenantId);
+        summaryCache.Invalidate(tenantId);
+        TenantEmbeddingConfig updatedConfig = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
         return Results.Ok(updatedConfig);
     }
     catch (EmbeddingConfigChangeException ex)
@@ -1128,7 +1133,7 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 // Story 5.1: Tenant provisioning endpoints
 app.MapPost("/api/tenants", async (
     DaprWorkflowClient workflowClient,
-    IActorProxyFactory actorProxyFactory,
+    ITenantEmbeddingConfigProvider embeddingConfigProvider,
     TenantProvisioningInput input,
     ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
@@ -1177,9 +1182,7 @@ app.MapPost("/api/tenants", async (
     int resolvedDimensions = EmbeddingProviderDefaults.Google().Dimensions;
     try
     {
-        ITenantConfigurationActor actor = actorProxyFactory
-            .CreateActorProxy<ITenantConfigurationActor>(new ActorId(input.TenantId), nameof(TenantConfigurationActor));
-        TenantEmbeddingConfig config = await actor.GetEmbeddingConfigAsync();
+        TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(input.TenantId);
         resolvedDimensions = config.Dimensions;
     }
     catch (Exception ex)
@@ -1291,14 +1294,26 @@ app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
 app.MapGet("/api/tenants", async (
     TenantRegistryService registry,
     TenantMetricsService metrics,
-    IActorProxyFactory actorProxyFactory,
-    CancellationToken cancellationToken) =>
+    ITenantEmbeddingConfigProvider embeddingConfigProvider,
+    TenantSummaryCache summaryCache,
+    IOptions<TenantReadCacheOptions> tenantReadCacheOptions,
+    HttpContext httpContext,
+    [FromQuery] int offset = 0,
+    [FromQuery] int? limit = null,
+    CancellationToken cancellationToken = default) =>
 {
-    IReadOnlyList<TenantInfo> tenants = await registry.ListTenantsAsync(cancellationToken);
-    Task<TenantSummary>[] tasks = tenants
-        .Select(tenant => TenantEndpointHandlers.BuildTenantSummaryAsync(tenant, metrics, actorProxyFactory, cancellationToken))
-        .ToArray();
-    TenantSummary[] summaries = await Task.WhenAll(tasks);
+    TenantListPage page = await registry.ListTenantsPageAsync(offset, limit, cancellationToken);
+    httpContext.Response.Headers["X-Hexalith-Total-Count"] = page.TotalCount.ToString(CultureInfo.InvariantCulture);
+    httpContext.Response.Headers["X-Hexalith-Offset"] = page.Offset.ToString(CultureInfo.InvariantCulture);
+    httpContext.Response.Headers["X-Hexalith-Limit"] = page.Limit.ToString(CultureInfo.InvariantCulture);
+    httpContext.Response.Headers["X-Hexalith-Has-More"] = page.HasMore ? "true" : "false";
+    TenantSummary[] summaries = await TenantEndpointHandlers.BuildTenantSummariesAsync(
+        page.Tenants,
+        metrics,
+        embeddingConfigProvider,
+        summaryCache,
+        tenantReadCacheOptions.Value.GetMaxTenantListConcurrency(),
+        cancellationToken);
     return Results.Ok(summaries);
 });
 
@@ -1327,7 +1342,8 @@ app.MapPatch("/api/tenants/{tenantId}", async (
     TenantRegistryService registry,
     TenantStatusGuard tenantGuard,
     TenantMetricsService metrics,
-    IActorProxyFactory actorProxyFactory,
+    ITenantEmbeddingConfigProvider embeddingConfigProvider,
+    TenantSummaryCache summaryCache,
     ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
     string tenantId,
@@ -1357,7 +1373,8 @@ app.MapPatch("/api/tenants/{tenantId}", async (
             registry,
             tenantGuard,
             metrics,
-            actorProxyFactory,
+            embeddingConfigProvider,
+            summaryCache,
             httpContext,
             tenantId,
             body,
@@ -2778,7 +2795,7 @@ app.MapGet("/api/search", async (
     NaturalLanguageSemanticSearchService naturalLanguageService,
     GraphScopedSearch graphScopedSearch,
     HybridSearchService hybridSearchService,
-    IActorProxyFactory actorProxyFactory,
+    ITenantEmbeddingConfigProvider embeddingConfigProvider,
     CaseActivityService activityService,
     CaseService caseService,
     TenantStatusGuard tenantGuard,
@@ -3147,20 +3164,11 @@ app.MapGet("/api/search", async (
                 ? graphStartNodeId
                 : startNodeId;
             Exception? semanticConfigFailure = null;
-            ITenantConfigurationActor? tenantConfigActor = null;
-
-            if (enabledAxes.Contains("semantic") || enabledAxes.Contains("nl") || queryWeights is null)
-            {
-                tenantConfigActor = actorProxyFactory
-                    .CreateActorProxy<ITenantConfigurationActor>(
-                        new ActorId(tenantId), nameof(TenantConfigurationActor));
-            }
-
-            if (queryWeights is null && tenantConfigActor is not null)
+            if (queryWeights is null)
             {
                 try
                 {
-                    FusionWeights? tenantWeights = await tenantConfigActor.GetFusionWeightsAsync();
+                    FusionWeights? tenantWeights = await embeddingConfigProvider.GetFusionWeightsAsync(tenantId, cancellationToken);
                     if (tenantWeights is null)
                     {
                         throw new ArgumentException("Tenant fusion weights are missing.");
@@ -3195,7 +3203,7 @@ app.MapGet("/api/search", async (
             {
                 try
                 {
-                    embeddingConfig = await tenantConfigActor!.GetEmbeddingConfigAsync();
+                    embeddingConfig = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -3316,14 +3324,10 @@ app.MapGet("/api/search", async (
 
         if (string.Equals(axis, "nl", StringComparison.OrdinalIgnoreCase))
         {
-            ITenantConfigurationActor actor = actorProxyFactory
-                .CreateActorProxy<ITenantConfigurationActor>(
-                    new ActorId(tenantId), nameof(TenantConfigurationActor));
-
             TenantEmbeddingConfig config;
             try
             {
-                config = await actor.GetEmbeddingConfigAsync();
+                config = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -3404,16 +3408,12 @@ app.MapGet("/api/search", async (
 
             if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
             {
-                ITenantConfigurationActor actor = actorProxyFactory
-                    .CreateActorProxy<ITenantConfigurationActor>(
-                        new ActorId(tenantId), nameof(TenantConfigurationActor));
-
                 bool innerSearchStarted = false;
 
                 TenantEmbeddingConfig config;
                 try
                 {
-                    config = await actor.GetEmbeddingConfigAsync();
+                    config = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -3602,14 +3602,10 @@ app.MapGet("/api/search", async (
 
         if (string.Equals(axis, "semantic", StringComparison.OrdinalIgnoreCase))
         {
-            ITenantConfigurationActor actor = actorProxyFactory
-                .CreateActorProxy<ITenantConfigurationActor>(
-                    new ActorId(tenantId), nameof(TenantConfigurationActor));
-
             TenantEmbeddingConfig config;
             try
             {
-                config = await actor.GetEmbeddingConfigAsync();
+                config = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
             }
             catch (OperationCanceledException)
             {

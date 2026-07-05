@@ -20,6 +20,7 @@ using Hexalith.Memories.Server.Tenants;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -175,6 +176,41 @@ public class TenantConfigurationEndpointTests
     }
 
     [Fact]
+    public async Task BuildTenantSummariesAsync_UsesBoundedConcurrencyAndCachesSummaries()
+    {
+        TenantInfo[] tenants =
+        [
+            new("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            new("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            new("tenant-c", "Tenant C", TenantStatus.Active, DateTimeOffset.UtcNow),
+        ];
+        SlowEmbeddingConfigProvider embeddingConfigProvider = new();
+        TenantSummaryCache summaryCache = CreateSummaryCache();
+        TenantMetricsService metrics = CreateMetricsService();
+
+        TenantSummary[] first = await TenantEndpointHandlers.BuildTenantSummariesAsync(
+            tenants,
+            metrics,
+            embeddingConfigProvider,
+            summaryCache,
+            maxConcurrency: 1,
+            CancellationToken.None);
+        TenantSummary[] second = await TenantEndpointHandlers.BuildTenantSummariesAsync(
+            tenants,
+            metrics,
+            embeddingConfigProvider,
+            summaryCache,
+            maxConcurrency: 1,
+            CancellationToken.None);
+
+        first.Length.ShouldBe(3);
+        second.Length.ShouldBe(3);
+        embeddingConfigProvider.MaxConcurrentCalls.ShouldBe(1);
+        embeddingConfigProvider.EmbeddingConfigCalls.ShouldBe(3);
+    }
+
+
+    [Fact]
     public async Task GetTenantConfigurationAsync_WhenTenantDisappearsAfterExistsCheck_ReturnsNotFound()
     {
         TenantRegistryEntry existing = CreateEntry("acme", "Acme", TenantStatus.Active);
@@ -188,13 +224,13 @@ public class TenantConfigurationEndpointTests
         TenantRegistryService registry = new(daprClient, CreateLogger<TenantRegistryService>());
         TenantStatusGuard guard = new(registry);
         TenantMetricsService metrics = CreateMetricsService();
-        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
 
         IResult result = await TenantEndpointHandlers.GetTenantConfigurationAsync(
             registry,
             guard,
             metrics,
-            actorProxyFactory,
+            embeddingConfigProvider,
             "acme",
             CancellationToken.None);
 
@@ -203,7 +239,7 @@ public class TenantConfigurationEndpointTests
         statusCode.ShouldBe(StatusCodes.Status404NotFound);
         error.ShouldNotBeNull();
         error.Code.ShouldBe("TENANT_NOT_FOUND");
-        actorProxyFactory.DidNotReceiveWithAnyArgs().CreateActorProxy<ITenantConfigurationActor>(default!, default!);
+        await embeddingConfigProvider.DidNotReceiveWithAnyArgs().GetAsync(default!, default);
     }
 
     [Fact]
@@ -220,17 +256,15 @@ public class TenantConfigurationEndpointTests
         TenantRegistryService registry = new(daprClient, CreateLogger<TenantRegistryService>());
         TenantStatusGuard guard = new(registry);
         TenantMetricsService metrics = CreateMetricsService();
-        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
-        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
-        actor.GetEmbeddingConfigAsync().Returns(Task.FromException<TenantEmbeddingConfig>(new Dapr.DaprException("down")));
-        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<Dapr.Actors.ActorId>(), Arg.Any<string>())
-            .Returns(actor);
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        embeddingConfigProvider.GetAsync("acme", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<TenantEmbeddingConfig>(new Dapr.DaprException("down")));
 
         IResult result = await TenantEndpointHandlers.GetTenantConfigurationAsync(
             registry,
             guard,
             metrics,
-            actorProxyFactory,
+            embeddingConfigProvider,
             "acme",
             CancellationToken.None);
 
@@ -261,7 +295,8 @@ public class TenantConfigurationEndpointTests
         TenantRegistryService registry = new(daprClient, CreateLogger<TenantRegistryService>());
         TenantStatusGuard guard = new(registry);
         TenantMetricsService metrics = CreateMetricsService();
-        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider();
+        TenantSummaryCache summaryCache = CreateSummaryCache();
         DefaultHttpContext httpContext = new();
         httpContext.Connection.RemoteIpAddress = IPAddress.Loopback;
 
@@ -269,7 +304,8 @@ public class TenantConfigurationEndpointTests
             registry,
             guard,
             metrics,
-            actorProxyFactory,
+            embeddingConfigProvider,
+            summaryCache,
             httpContext,
             "acme",
             new TenantUpdateInput("Acme Renamed"),
@@ -308,7 +344,8 @@ public class TenantConfigurationEndpointTests
         TenantRegistryService registry = new(daprClient, CreateLogger<TenantRegistryService>());
         TenantStatusGuard guard = new(registry);
         TenantMetricsService metrics = CreateMetricsService();
-        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider();
+        TenantSummaryCache summaryCache = CreateSummaryCache();
         DefaultHttpContext httpContext = new();
         httpContext.Connection.RemoteIpAddress = IPAddress.Loopback;
 
@@ -316,7 +353,8 @@ public class TenantConfigurationEndpointTests
             registry,
             guard,
             metrics,
-            actorProxyFactory,
+            embeddingConfigProvider,
+            summaryCache,
             httpContext,
             "acme",
             new TenantUpdateInput("Acme Renamed"),
@@ -344,8 +382,51 @@ public class TenantConfigurationEndpointTests
     private static ILogger<T> CreateLogger<T>()
         => Substitute.For<ILogger<T>>();
 
+    private static ITenantEmbeddingConfigProvider CreateEmbeddingConfigProvider()
+    {
+        ITenantEmbeddingConfigProvider provider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        provider.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(EmbeddingProviderDefaults.Google());
+        return provider;
+    }
+
+    private static TenantSummaryCache CreateSummaryCache()
+        => new(Options.Create(new TenantReadCacheOptions()), TimeProvider.System);
+
     private static TenantRegistryEntry CreateEntry(string tenantId, string displayName, TenantStatus status, string? workflowInstanceId = null)
         => new(new TenantInfo(tenantId, displayName, status, DateTimeOffset.UtcNow), workflowInstanceId);
+
+    private sealed class SlowEmbeddingConfigProvider : ITenantEmbeddingConfigProvider
+    {
+        private int _currentCalls;
+
+        public int EmbeddingConfigCalls { get; private set; }
+
+        public int MaxConcurrentCalls { get; private set; }
+
+        public async Task<TenantEmbeddingConfig> GetAsync(string tenantId, CancellationToken cancellationToken = default)
+        {
+            int current = Interlocked.Increment(ref _currentCalls);
+            MaxConcurrentCalls = Math.Max(MaxConcurrentCalls, current);
+            try
+            {
+                EmbeddingConfigCalls++;
+                await Task.Delay(20, cancellationToken).ConfigureAwait(false);
+                return EmbeddingProviderDefaults.Google();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _currentCalls);
+            }
+        }
+
+        public Task<FusionWeights> GetFusionWeightsAsync(string tenantId, CancellationToken cancellationToken = default)
+            => Task.FromResult(new FusionWeights());
+
+        public void Invalidate(string tenantId)
+        {
+        }
+    }
 
     private static async Task<(int StatusCode, ErrorResponse? Error)> ExecuteErrorResultAsync(IResult result)
     {

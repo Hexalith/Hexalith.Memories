@@ -20,6 +20,7 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
 {
     private readonly IActorProxyFactory _actorProxyFactory;
     private readonly ConcurrentDictionary<string, (TenantEmbeddingConfig Config, DateTimeOffset ExpiresAt)> _cache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (FusionWeights Weights, DateTimeOffset ExpiresAt)> _fusionWeightsCache = new(StringComparer.Ordinal);
     private readonly IOptions<TenantEmbeddingConfigCacheOptions> _options;
     private readonly TimeProvider _timeProvider;
 
@@ -63,6 +64,43 @@ public sealed class TenantEmbeddingConfigProvider : ITenantEmbeddingConfigProvid
 
         _cache[tenantId] = (config, now + GetCacheTtl());
         return config;
+    }
+
+    /// <inheritdoc/>
+    public async Task<FusionWeights> GetFusionWeightsAsync(string tenantId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        if (_fusionWeightsCache.TryGetValue(tenantId, out (FusionWeights Weights, DateTimeOffset ExpiresAt) entry) &&
+            entry.ExpiresAt > now)
+        {
+            return entry.Weights;
+        }
+
+        ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(
+                new ActorId(tenantId),
+                nameof(TenantConfigurationActor));
+
+        FusionWeights weights = await tenantConfigActor
+            .GetFusionWeightsAsync()
+            .ConfigureAwait(false);
+
+        _fusionWeightsCache[tenantId] = (weights, now + GetCacheTtl());
+        return weights;
+    }
+
+    /// <inheritdoc/>
+    public void Invalidate(string tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+        {
+            return;
+        }
+
+        _cache.TryRemove(tenantId, out _);
+        _fusionWeightsCache.TryRemove(tenantId, out _);
     }
 
     private TimeSpan GetCacheTtl()

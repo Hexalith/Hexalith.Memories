@@ -107,6 +107,7 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 24.1 dev-story completed by direct fallback after child session drift was reversed (24.1 -> review). Added workflow trace context propagation, linked workflow activity spans, Dapr.Workflow source registration/docs, and focused Tier-2 guard coverage; closest Tier-3 Aspire trace run blocked before assertions by fixture tenant-provisioning 401.
 # 2026-07-05: Story 24.1 automate guardrails completed by source-of-truth validation after tmux session cleanup. Added REST ingest scheduling-boundary trace capture coverage, scheduler trace edge cases, linked-activity error-path coverage, broader workflow replay source guards, and test-summary evidence; focused server slice passed 47/47.
 # 2026-07-05: Story 24.1 senior developer review completed with automatic fixes (registered semantic activity linked-span coverage and omitted trace-context back-compat test); 24.1 -> done.
+# 2026-07-05: Story 24.2 created (24.2 -> ready-for-dev) via create-story. Read-path caching and tenant-list bounding; closes A26 by requiring write-invalidated short-TTL tenant status/config/summary caches plus paged, bounded-concurrency tenant listing.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -434,7 +435,7 @@ development_status:
   # Epic 24: Observability & Performance Hardening (SCP 2026-07-04; closes A19,A26,A36,A46)
   epic-24: in-progress
   24-1-trace-propagation-across-the-workflow-boundary: done
-  24-2-read-path-caching-and-tenant-list-bounding: backlog
+  24-2-read-path-caching-and-tenant-list-bounding: in-progress
   24-3-physical-tenant-isolation-and-verifier-scaling: backlog
   24-4-metric-naming-and-committed-dashboards: backlog
   24-5-hot-path-write-amplification-cleanup: backlog

@@ -22,6 +22,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
@@ -291,6 +292,92 @@ public sealed class SearchEndpointContractTests : IDisposable
             NlWeight = 0.0,
             GraphWeight = 0.0,
         });
+    }
+
+    [Fact]
+    public async Task HybridSearch_WhenTenantFusionWeightsCacheWarm_DoesNotReadActorAgain()
+    {
+        StubTenantActive("acme-search");
+        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
+        actor.GetFusionWeightsAsync().Returns(new FusionWeights
+        {
+            SyntacticWeight = 0.7,
+            SemanticWeight = 0.2,
+            NlWeight = 0.05,
+            GraphWeight = 0.05,
+        });
+        _factory.ActorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(actor);
+
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<HybridSearchService>();
+                services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(MakeSyntacticResult("mu-warm-cache")));
+            });
+        });
+        using HttpClient client = factory.CreateClient();
+
+        using HttpResponseMessage first = await client.GetAsync("/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
+        using HttpResponseMessage second = await client.GetAsync("/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
+
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await actor.Received(1).GetFusionWeightsAsync();
+    }
+
+    [Fact]
+    public async Task TenantList_WithPaging_ReturnsTenantSummaryArrayAndPagingHeaders()
+    {
+        TenantRegistryEntry tenantA = new(
+            new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            WorkflowInstanceId: null);
+        TenantRegistryEntry tenantB = new(
+            new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            WorkflowInstanceId: null);
+        _factory.DaprClient
+            .GetStateAsync<List<string>?>(
+                StoreName,
+                "tenant-registry-index",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(["tenant-a", "tenant-b"]);
+        _factory.DaprClient
+            .GetStateAsync<TenantRegistryEntry?>(
+                StoreName,
+                "tenant-registry-tenant-b",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(tenantB);
+        _factory.DaprClient
+            .GetStateAsync<TenantRegistryEntry?>(
+                StoreName,
+                "tenant-registry-tenant-a",
+                cancellationToken: Arg.Any<CancellationToken>())
+            .Returns(tenantA);
+        _factory.RedisMultiplexer.GetEndPoints(Arg.Any<bool>()).Returns([]);
+        ITenantConfigurationActor actor = Substitute.For<ITenantConfigurationActor>();
+        actor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
+        _factory.ActorProxyFactory
+            .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
+            .Returns(actor);
+        using HttpClient client = _factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync("/api/tenants?offset=1&limit=1");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        GetSingleHeaderValue(response, "X-Hexalith-Total-Count").ShouldBe("2");
+        GetSingleHeaderValue(response, "X-Hexalith-Offset").ShouldBe("1");
+        GetSingleHeaderValue(response, "X-Hexalith-Limit").ShouldBe("1");
+        GetSingleHeaderValue(response, "X-Hexalith-Has-More").ShouldBe("false");
+        TenantSummary[]? summaries = await response.Content.ReadFromJsonAsync<TenantSummary[]>(MemoriesJsonContext.Options);
+        summaries.ShouldNotBeNull();
+        summaries.Length.ShouldBe(1);
+        summaries[0].Id.ShouldBe("tenant-b");
+        await _factory.DaprClient.DidNotReceive().GetStateAsync<TenantRegistryEntry?>(
+            StoreName,
+            "tenant-registry-tenant-a",
+            cancellationToken: Arg.Any<CancellationToken>());
     }
 
     [Fact]
