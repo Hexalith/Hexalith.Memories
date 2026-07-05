@@ -216,10 +216,10 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         }
         catch (EmbeddingRateLimitException ex) when (providerCallInProgress)
         {
-            int retryAfter = ex.RetryAfterSeconds > 0 ? ex.RetryAfterSeconds : 30;
+            int retryAfter = EmbeddingRateLimitRetryAfter.NormalizeSeconds(ex.RetryAfterSeconds);
             RateLimitingLog.LogProviderRateLimitReceived(_logger, input.TenantId, retryAfter);
             await rateLimiter.ReportRateLimitedAsync(retryAfter).ConfigureAwait(false);
-            throw;
+            throw new EmbeddingRateLimitException(input.TenantId, retryAfter);
         }
     }
 

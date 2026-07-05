@@ -757,6 +757,117 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_RawEmbeddingProvider429_ShouldScheduleDurableTimerAndRetryActivity()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        WorkflowTaskFailedException rateLimitFailure = CreateProviderRateLimitFailure(90);
+        ChunkEmbeddingBatchResult success = CreateChunkEmbeddingResult();
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity),
+                Arg.Any<EmbeddingInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure), Task.FromResult(success));
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.Status.ShouldBe(MemoryUnitStatus.Indexed);
+        await context.Received(2).CallActivityAsync<ChunkEmbeddingBatchResult>(
+            nameof(GenerateChunkEmbeddingsActivity),
+            Arg.Any<EmbeddingInput>(),
+            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+        await context.Received(1).CreateTimer(TimeSpan.FromSeconds(90), CancellationToken.None);
+        await context.DidNotReceive().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Any<FailedUnitInput>(),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_RawEmbeddingNonProviderRateLimitFailure_ShouldPersistFailedUnitWithoutDurableProviderTimer()
+    {
+        RetryPolicyBuilder.Initialize(new IngestionSettings
+        {
+            RetryPolicies = new(StringComparer.Ordinal)
+            {
+                [nameof(GenerateChunkEmbeddingsActivity)] = new ActivityRetryPolicy { MaxAttempts = 1 },
+            },
+        });
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+        WorkflowTaskFailedException localRateLimitFailure = new(
+            "activity failed",
+            new WorkflowTaskFailureDetails(
+                typeof(EmbeddingRateLimitException).AssemblyQualifiedName!,
+                "Embedding rate limit exceeded for tenant 'test-tenant'.",
+                string.Empty));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity),
+                Arg.Any<EmbeddingInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<ChunkEmbeddingBatchResult>(localRateLimitFailure));
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity),
+                Arg.Any<FailedUnitInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        WorkflowTaskFailedException ex = await Should.ThrowAsync<WorkflowTaskFailedException>(
+            () => workflow.RunAsync(context, input));
+
+        ex.ShouldBeSameAs(localRateLimitFailure);
+        await context.DidNotReceive().CreateTimer(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Is<FailedUnitInput>(f => f.Stage == "embedding"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
+    public async Task RunAsync_RawEmbeddingProvider429BeyondDurableLimit_ShouldFailThroughExistingFailedUnitPath()
+    {
+        IngestionInput input = IngestionInputFactory.Create();
+        WorkflowContext context = CreateMockContext();
+        SetupPreIndexActivities(context, input);
+        WorkflowTaskFailedException rateLimitFailure = CreateProviderRateLimitFailure(30);
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity),
+                Arg.Any<EmbeddingInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure),
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure),
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure),
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure),
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure),
+                Task.FromException<ChunkEmbeddingBatchResult>(rateLimitFailure));
+        context.CallActivityAsync<bool>(
+                nameof(PersistFailedUnitActivity),
+                Arg.Any<FailedUnitInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        WorkflowTaskFailedException ex = await Should.ThrowAsync<WorkflowTaskFailedException>(
+            () => workflow.RunAsync(context, input));
+
+        ex.ShouldBeSameAs(rateLimitFailure);
+        await context.Received(5).CreateTimer(TimeSpan.FromSeconds(30), CancellationToken.None);
+        await context.Received(6).CallActivityAsync<ChunkEmbeddingBatchResult>(
+            nameof(GenerateChunkEmbeddingsActivity),
+            Arg.Any<EmbeddingInput>(),
+            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+        await context.Received().CallActivityAsync<bool>(
+            nameof(PersistFailedUnitActivity),
+            Arg.Is<FailedUnitInput>(f => f.Stage == "embedding"),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_ShouldPropagateProvenanceToIndexActivities()
     {
         IngestionInput input = IngestionInputFactory.Create(ingestedBy: "reviewer@example.com");
@@ -1139,10 +1250,42 @@ public class IngestionWorkflowTests
         WorkflowContext context = Substitute.For<WorkflowContext>();
         context.NewGuid().Returns(TestGuid);
         context.CurrentUtcDateTime.Returns(TestTimestamp);
+        context.CreateTimer(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
         context.CreateReplaySafeLogger<IngestionWorkflow>()
             .Returns(Substitute.For<ILogger>());
         return context;
     }
+
+    private static WorkflowTaskFailedException CreateProviderRateLimitFailure(int retryAfterSeconds)
+        => new(
+            "activity failed",
+            new WorkflowTaskFailureDetails(
+                typeof(EmbeddingRateLimitException).AssemblyQualifiedName!,
+                EmbeddingRateLimitRetryAfter.AppendProviderMarker(
+                    "Embedding provider rate limit exceeded for tenant 'test-tenant'.",
+                    retryAfterSeconds),
+                string.Empty));
+
+    private static ChunkEmbeddingBatchResult CreateChunkEmbeddingResult()
+        => new()
+        {
+            Chunks =
+            [
+                new ChunkEmbeddingResult
+                {
+                    Sequence = 0,
+                    Text = "Extracted text content",
+                    StartOffset = 0,
+                    EndOffset = "Extracted text content".Length,
+                    EstimatedTokens = 5,
+                    Vector = [0.1f, 0.2f, 0.3f],
+                },
+            ],
+            Provider = "google:text-embedding-004",
+            Model = "gemini-embedding-001",
+            Dimensions = 3,
+        };
 
     private static WorkflowPayloadReference CreatePayloadReference(
         WorkflowPayloadKind kind,
@@ -1192,24 +1335,7 @@ public class IngestionWorkflowTests
             .Returns(_ =>
             {
                 callLog?.Add(nameof(GenerateChunkEmbeddingsActivity));
-                return Task.FromResult(new ChunkEmbeddingBatchResult
-                {
-                    Chunks =
-                    [
-                        new ChunkEmbeddingResult
-                        {
-                            Sequence = 0,
-                            Text = "Extracted text content",
-                            StartOffset = 0,
-                            EndOffset = "Extracted text content".Length,
-                            EstimatedTokens = 5,
-                            Vector = [0.1f, 0.2f, 0.3f],
-                        },
-                    ],
-                    Provider = "google:text-embedding-004",
-                    Model = "gemini-embedding-001",
-                    Dimensions = 3,
-                });
+                return Task.FromResult(CreateChunkEmbeddingResult());
             });
 
         // Record activity (best-effort, needed for both success and failure paths)
@@ -1395,11 +1521,7 @@ public class IngestionWorkflowTests
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy != null
-                && options.RetryPolicy.MaxNumberOfAttempts == 3
-                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(4)
-                && options.RetryPolicy.BackoffCoefficient == 2.0
-                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromSeconds(60)));
+                options.RetryPolicy == null));
     }
 
     [Fact]
@@ -1476,15 +1598,12 @@ public class IngestionWorkflowTests
         details.Stage.ShouldBe("embedding");
         details.RetryCount.ShouldBe(5);
 
-        await context.Received().CallActivityAsync<ChunkEmbeddingBatchResult>(
+        await context.Received(5).CallActivityAsync<ChunkEmbeddingBatchResult>(
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy != null
-                && options.RetryPolicy.MaxNumberOfAttempts == 5
-                && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
-                && options.RetryPolicy.BackoffCoefficient == 1.5
-                && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromMinutes(5)));
+                options.RetryPolicy == null));
+        await context.Received(4).CreateTimer(Arg.Any<TimeSpan>(), CancellationToken.None);
     }
 
     // ==================================================================================

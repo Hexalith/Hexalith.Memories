@@ -191,7 +191,7 @@ public class RateLimiterLogicTests
 
         // Assert
         newState.Remaining.ShouldBe(0, "Remaining should be zero-floored after 429 feedback.");
-        newState.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(expectedClamped));
+        newState.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(expectedClamped).AddMinutes(-1));
         newState.CeilingPerMinute.ShouldBe(state.CeilingPerMinute);
     }
 
@@ -216,7 +216,7 @@ public class RateLimiterLogicTests
     }
 
     [Fact]
-    public void TryConsume_AfterPausedWindowPlusFullDuration_RefillsBudget()
+    public void TryConsume_AtRetryAfterInstant_RefillsBudget()
     {
         // Arrange
         DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -226,8 +226,7 @@ public class RateLimiterLogicTests
 
         state = logic.ReportRateLimited(state, 30);
 
-        // Advance past windowOpen + 1 min (refill condition: now - WindowStart >= 1 min).
-        timeProvider.Advance(TimeSpan.FromSeconds(30 + 61));
+        timeProvider.Advance(TimeSpan.FromSeconds(30));
 
         // Act
         (bool allowed, RateLimitState newState) = logic.TryConsume(state);
@@ -257,17 +256,39 @@ public class RateLimiterLogicTests
         timeProvider.Advance(TimeSpan.FromSeconds(1));
         state = logic.ReportRateLimited(state, 30);
         state.Remaining.ShouldBe(0);
-        state.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(31));
+        state.WindowStart.ShouldBe(baseTime.UtcDateTime.AddSeconds(31).AddMinutes(-1));
 
         // TryConsume at T=2s — still paused
         timeProvider.Advance(TimeSpan.FromSeconds(1));
         (bool allowed2, state) = logic.TryConsume(state);
         allowed2.ShouldBeFalse();
 
-        // TryConsume at windowOpen + 61s — window refilled
-        timeProvider.Advance(TimeSpan.FromSeconds(31 + 58)); // total: baseTime + 31s + 61s
+        // TryConsume at the provider retry-open instant — window refilled
+        timeProvider.Advance(TimeSpan.FromSeconds(29)); // total: baseTime + 31s
         (bool allowed3, state) = logic.TryConsume(state);
         allowed3.ShouldBeTrue();
         state.Remaining.ShouldBe(99);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(90)]
+    public void TryConsume_BeforeRetryAfterInstantClosedAndAtInstantOpen(int retryAfterSeconds)
+    {
+        DateTimeOffset baseTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        FakeTimeProvider timeProvider = new(baseTime);
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState() with { Remaining = 100, CeilingPerMinute = 100 };
+
+        state = logic.ReportRateLimited(state, retryAfterSeconds);
+        timeProvider.Advance(TimeSpan.FromSeconds(retryAfterSeconds - 1));
+        (bool allowedBefore, state) = logic.TryConsume(state);
+        allowedBefore.ShouldBeFalse();
+        state.Remaining.ShouldBe(0);
+
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        (bool allowedAtOpen, RateLimitState openState) = logic.TryConsume(state);
+        allowedAtOpen.ShouldBeTrue();
+        openState.Remaining.ShouldBe(99);
     }
 }

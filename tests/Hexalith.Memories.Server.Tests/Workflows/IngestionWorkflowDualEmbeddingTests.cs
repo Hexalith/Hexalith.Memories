@@ -185,6 +185,46 @@ public class IngestionWorkflowDualEmbeddingTests
             Arg.Any<WorkflowTaskOptions>());
     }
 
+    [Fact]
+    public async Task SourceTypeEvent_NaturalLanguageEmbeddingProvider429_ShouldScheduleDurableTimerAndRetryEmbedding()
+    {
+        IngestionInput input = CreateEventInput();
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathIncludingNl(context, input);
+        WorkflowTaskFailedException rateLimitFailure = new(
+            "activity failed",
+            new WorkflowTaskFailureDetails(
+                typeof(EmbeddingRateLimitException).AssemblyQualifiedName!,
+                EmbeddingRateLimitRetryAfter.AppendProviderMarker(
+                    "Embedding provider rate limit exceeded for tenant 'test-tenant'.",
+                    45),
+                string.Empty));
+        context.CallActivityAsync<EmbeddingResult>(
+                nameof(GenerateEmbeddingActivity),
+                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(
+                Task.FromException<EmbeddingResult>(rateLimitFailure),
+                Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "openai", 3)
+                {
+                    Model = "text-embedding-3-small",
+                }));
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.Indexed);
+        await context.Received(1).CreateTimer(TimeSpan.FromSeconds(45), CancellationToken.None);
+        await context.Received(2).CallActivityAsync<EmbeddingResult>(
+            nameof(GenerateEmbeddingActivity),
+            Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexNaturalLanguageSemanticActivity),
+            Arg.Any<NaturalLanguageIndexInput>(),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
     private static IngestionInput CreateEventInput()
     {
         IngestionInput baseInput = IngestionInputFactory.Create(sourceType: SourceType.Event);
@@ -206,6 +246,8 @@ public class IngestionWorkflowDualEmbeddingTests
         WorkflowContext context = Substitute.For<WorkflowContext>();
         context.NewGuid().Returns(TestGuid);
         context.CurrentUtcDateTime.Returns(TestTimestamp);
+        context.CreateTimer(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
         context.CreateReplaySafeLogger<IngestionWorkflow>()
             .Returns(Substitute.For<ILogger>());
         return context;

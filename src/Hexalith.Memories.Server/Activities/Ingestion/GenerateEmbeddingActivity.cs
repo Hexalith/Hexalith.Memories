@@ -27,7 +27,6 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
     private static readonly ConcurrentDictionary<string, DateTimeOffset> RetryTrackingKeys = new(StringComparer.Ordinal);
     private static readonly TimeSpan RetryTrackingTtl = TimeSpan.FromHours(1);
 
-    private const int DefaultRetryAfterSecondsOn429 = 30;
     private const int JitterMaxExclusiveMilliseconds = 500;
 
     private readonly IActorProxyFactory _actorProxyFactory;
@@ -145,10 +144,10 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
         }
         catch (EmbeddingRateLimitException ex)
         {
-            int retryAfter = ex.RetryAfterSeconds > 0 ? ex.RetryAfterSeconds : DefaultRetryAfterSecondsOn429;
+            int retryAfter = EmbeddingRateLimitRetryAfter.NormalizeSeconds(ex.RetryAfterSeconds);
             RateLimitingLog.LogProviderRateLimitReceived(_logger, input.TenantId, retryAfter);
             await rateLimiter.ReportRateLimitedAsync(retryAfter).ConfigureAwait(false);
-            throw;
+            throw new EmbeddingRateLimitException(input.TenantId, retryAfter);
         }
     }
 

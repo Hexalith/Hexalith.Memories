@@ -73,14 +73,13 @@ public sealed class RateLimiterLogic
         };
     }
 
-    /// <summary>Records a provider 429 by zero-flooring <see cref="RateLimitState.Remaining"/> and pushing
-    /// <see cref="RateLimitState.WindowStart"/> to <c>now + retryAfterSeconds</c>.</summary>
+    /// <summary>Records a provider 429 by zero-flooring <see cref="RateLimitState.Remaining"/> and moving
+    /// <see cref="RateLimitState.WindowStart"/> so the next refill opens at the provider Retry-After instant.</summary>
     /// <remarks>
-    /// <para>After this call, <see cref="TryConsume"/> returns <c>false</c> until <c>WindowStart + 1 min</c> elapses,
-    /// because the window-refill condition <c>now - WindowStart &gt;= WindowDuration</c> is <c>false</c> while
-    /// <c>WindowStart</c> sits in the future. The <c>retryAfterSeconds</c> parameter is clamped to the inclusive
-    /// range [1, 3600] to defend against misbehaving providers — 0/negative values coerce to 1s, values above
-    /// 3600 are capped at 1h (the workflow retry budget will exhaust long before that anyway).</para>
+    /// <para><see cref="TryConsume"/> refills when <c>now - WindowStart &gt;= 1 min</c>, so this method stores
+    /// <c>WindowStart = retryOpen - 1 min</c>. That closes local admission until the provider Retry-After instant
+    /// without adding a second full rate-limit window. The <c>retryAfterSeconds</c> parameter is clamped to the
+    /// inclusive range [1, 3600] to defend against misbehaving providers.</para>
     /// </remarks>
     /// <param name="currentState">The current rate limit state.</param>
     /// <param name="retryAfterSeconds">Seconds the caller suggests waiting before the next provider call.</param>
@@ -88,7 +87,7 @@ public sealed class RateLimiterLogic
     public RateLimitState ReportRateLimited(RateLimitState currentState, int retryAfterSeconds)
     {
         int clamped = Math.Clamp(retryAfterSeconds, 1, 3600);
-        DateTime windowOpen = _timeProvider.GetUtcNow().UtcDateTime + TimeSpan.FromSeconds(clamped);
-        return currentState with { Remaining = 0, WindowStart = windowOpen };
+        DateTime retryOpen = _timeProvider.GetUtcNow().UtcDateTime + TimeSpan.FromSeconds(clamped);
+        return currentState with { Remaining = 0, WindowStart = retryOpen - WindowDuration };
     }
 }

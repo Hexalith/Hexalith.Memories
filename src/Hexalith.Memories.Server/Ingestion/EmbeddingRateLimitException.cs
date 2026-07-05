@@ -16,6 +16,18 @@ public class EmbeddingRateLimitException : Exception
         TenantId = tenantId;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="EmbeddingRateLimitException"/> class for a provider 429.</summary>
+    /// <param name="tenantId">The tenant identifier that hit the provider rate limit.</param>
+    /// <param name="retryAfterSeconds">The effective retry-after delay in seconds.</param>
+    public EmbeddingRateLimitException(string tenantId, int retryAfterSeconds)
+        : base(EmbeddingRateLimitRetryAfter.AppendProviderMarker(
+            $"Embedding provider rate limit exceeded for tenant '{tenantId}'.",
+            retryAfterSeconds))
+    {
+        TenantId = tenantId;
+        RetryAfterSeconds = EmbeddingRateLimitRetryAfter.NormalizeSeconds(retryAfterSeconds);
+    }
+
     /// <summary>Initializes a new instance of the <see cref="EmbeddingRateLimitException"/> class.</summary>
     public EmbeddingRateLimitException()
         : base()

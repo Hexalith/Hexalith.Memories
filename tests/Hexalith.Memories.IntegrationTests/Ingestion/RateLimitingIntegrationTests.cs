@@ -8,10 +8,10 @@ namespace Hexalith.Memories.IntegrationTests.Ingestion;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Story 6.2 integration tests for per-tenant rate limiting and starvation prevention.
-/// All scenarios are <c>[Fact(Skip)]</c> — Story 6.3 unskips them once its retry harness provides
-/// a deterministic 429-producing provider test double and the Aspire fixture is wired to tenant
-/// configuration overrides.
+/// Integration harness placeholders for per-tenant rate limiting and starvation prevention.
+/// Story 23.3 proves provider 429 recovery at unit level with DAPR workflow timer mocks, activity
+/// actor-feedback assertions, and actor reopen-math tests. These scenarios remain skipped until the
+/// Aspire fixture can inject a deterministic 429-then-success embedding provider across a real sidecar run.
 /// </summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
@@ -21,7 +21,7 @@ public sealed class RateLimitingIntegrationTests
 
     public RateLimitingIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Requires Aspire fixture support for per-tenant ceiling overrides.")]
     public void TwoTenantIsolation_ShouldEnforceIndependentCeilings()
     {
         // AC1, AC10: two tenants with different ceilings (500 vs 3000) run concurrently.
@@ -29,7 +29,7 @@ public sealed class RateLimitingIntegrationTests
         _ = _fixture;
     }
 
-    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Requires Aspire fixture support for per-tenant ceiling overrides.")]
     public void BatchVsSingleIngest_ShouldNotStarveRealTimeTenant()
     {
         // AC2: t1 submits 500-file batch, t2 submits single file within 1 s.
@@ -37,12 +37,12 @@ public sealed class RateLimitingIntegrationTests
         _ = _fixture;
     }
 
-    [RunnableSkippedFact("Unskipped by Story 6.3 — requires Aspire fixture + 429 test-double from retry harness.")]
+    [RunnableSkippedFact("Story 23.3 unit coverage exists; integration awaits Aspire fixture 429-then-success provider injection.")]
     public void Provider429_ShouldReportToActorAndRetry()
     {
-        // AC3, AC4: provider returns 429 for first 3 attempts, success on 4th.
-        // Assert memory unit ends Indexed, ReportRateLimitedAsync called with Retry-After value,
-        // actor state pauses budget for Retry-After window.
+        // Provider returns 429 with Retry-After, workflow waits with durable timer, second call succeeds.
+        // Assert memory unit ends Indexed, ReportRateLimitedAsync is activity-owned and called once per
+        // provider 429, actor state pauses budget until the Retry-After instant, and no failed-unit is written.
         _ = _fixture;
     }
 }

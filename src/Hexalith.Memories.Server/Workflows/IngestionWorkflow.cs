@@ -22,6 +22,7 @@ using Microsoft.Extensions.Logging;
 public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 {
     private const int _compensationRetryAttempts = 3;
+    private const int _embeddingProviderRateLimitMaxDurableRetries = 5;
     private const int _mainRetryAttempts = 5;
     private const string DedupWorkflowInstancePrefix = "dedup:";
 
@@ -168,7 +169,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             await UpdateCounter("extracting", "embedding");
             context.SetCustomStatus("embedding");
 
-            ChunkEmbeddingBatchResult embedding = await context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+            ChunkEmbeddingBatchResult embedding = await CallEmbeddingActivityWithDurableRateLimitAsync<ChunkEmbeddingBatchResult>(
+                context,
                 nameof(GenerateChunkEmbeddingsActivity),
                 new EmbeddingInput(
                     input.TenantId,
@@ -219,7 +221,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             sourcePayloadReference),
                         For(nameof(GenerateNaturalLanguageDescriptionActivity)));
 
-                    nlEmbedding = await context.CallActivityAsync<EmbeddingResult>(
+                    nlEmbedding = await CallEmbeddingActivityWithDurableRateLimitAsync<EmbeddingResult>(
+                        context,
                         nameof(GenerateEmbeddingActivity),
                         new EmbeddingInput(
                             input.TenantId,
@@ -607,6 +610,72 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             firstRetryInterval: TimeSpan.FromSeconds(1),
             backoffCoefficient: 2.0,
             maxRetryInterval: TimeSpan.FromSeconds(30)));
+
+    private static async Task<T> CallEmbeddingActivityWithDurableRateLimitAsync<T>(
+        WorkflowContext context,
+        string activityName,
+        EmbeddingInput input,
+        WorkflowTaskOptions retryOptions)
+    {
+        WorkflowRetryPolicy? retryPolicy = retryOptions.RetryPolicy;
+        WorkflowTaskOptions singleAttemptOptions = new(
+            RetryPolicy: null,
+            TargetAppId: retryOptions.TargetAppId,
+            PropagationScope: retryOptions.PropagationScope);
+        int maxGenericAttempts = retryPolicy?.MaxNumberOfAttempts ?? 1;
+        int genericAttempt = 0;
+        int providerRateLimitRetryCount = 0;
+
+        while (true)
+        {
+            try
+            {
+                return await context.CallActivityAsync<T>(activityName, input, singleAttemptOptions);
+            }
+            catch (WorkflowTaskFailedException ex) when (TryGetProviderRateLimitDelay(ex, out TimeSpan delay))
+            {
+                providerRateLimitRetryCount++;
+                if (providerRateLimitRetryCount > _embeddingProviderRateLimitMaxDurableRetries)
+                {
+                    throw;
+                }
+
+                await context.CreateTimer(delay, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException
+                && ShouldRetryGenericActivityFailure(++genericAttempt, maxGenericAttempts))
+            {
+                await context.CreateTimer(GetGenericRetryDelay(retryPolicy!, genericAttempt), CancellationToken.None);
+            }
+        }
+    }
+
+    private static TimeSpan GetGenericRetryDelay(WorkflowRetryPolicy retryPolicy, int failedAttemptNumber)
+    {
+        double multiplier = Math.Pow(retryPolicy.BackoffCoefficient, failedAttemptNumber - 1);
+        double ticks = retryPolicy.FirstRetryInterval.Ticks * multiplier;
+        TimeSpan delay = TimeSpan.FromTicks((long)Math.Min(ticks, TimeSpan.MaxValue.Ticks));
+        TimeSpan maxRetryInterval = retryPolicy.MaxRetryInterval ?? TimeSpan.FromHours(1);
+        return delay <= maxRetryInterval ? delay : maxRetryInterval;
+    }
+
+    private static bool ShouldRetryGenericActivityFailure(int failedAttemptNumber, int maxAttempts)
+        => failedAttemptNumber < maxAttempts;
+
+    private static bool TryGetProviderRateLimitDelay(WorkflowTaskFailedException exception, out TimeSpan delay)
+    {
+        delay = default;
+        WorkflowTaskFailureDetails? details = exception.FailureDetails;
+        if (details is null
+            || !details.IsCausedBy<EmbeddingRateLimitException>()
+            || !EmbeddingRateLimitRetryAfter.TryExtractProviderSeconds(details.ErrorMessage, out int retryAfterSeconds))
+        {
+            return false;
+        }
+
+        delay = TimeSpan.FromSeconds(retryAfterSeconds);
+        return true;
+    }
 
     private static string ResolveMemoryUnitId(WorkflowContext context, IngestionInput input)
     {

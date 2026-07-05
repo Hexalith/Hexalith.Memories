@@ -167,9 +167,11 @@ public class GenerateEmbeddingActivityTests
         GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        await Should.ThrowAsync<EmbeddingRateLimitException>(
+        EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
             () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
 
+        ex.RetryAfterSeconds.ShouldBe(60);
+        ex.Message.ShouldContain("ProviderRetryAfterSeconds=60");
         await rateLimiter.Received(1).ReportRateLimitedAsync(60);
     }
 
@@ -184,9 +186,11 @@ public class GenerateEmbeddingActivityTests
         GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        await Should.ThrowAsync<EmbeddingRateLimitException>(
+        EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
             () => activity.RunAsync(context, new EmbeddingInput(TenantId, TestText)));
 
+        ex.RetryAfterSeconds.ShouldBe(30);
+        ex.Message.ShouldContain("ProviderRetryAfterSeconds=30");
         await rateLimiter.Received(1).ReportRateLimitedAsync(30);
     }
 

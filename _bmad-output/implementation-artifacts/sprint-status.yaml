@@ -410,7 +410,7 @@ development_status:
   epic-23: in-progress
   23-1-content-chunking-and-batch-embedding: done
   23-2-claim-check-workflow-payloads: done
-  23-3-retry-after-aware-429-orchestration: backlog
+  23-3-retry-after-aware-429-orchestration: done
   23-4-non-url-re-ingestion: backlog
   23-5-rate-limiter-admission-simplification: backlog
   23-6-directory-batch-scalability: backlog

@@ -44,21 +44,31 @@ not an *isolation*, when keys are shared.
 the shared-key quota across tenants (see architecture §D41 "Shared embedding rate
 limiter").
 
-## Provider 429 handling (Story 6.2)
+## Provider 429 handling (Stories 6.2, 23.3)
 
-On a provider HTTP 429 response, `GenerateEmbeddingActivity` parses `Retry-After`
-(seconds or HTTP-date per RFC 9110 §10.2.3), invokes
-`IEmbeddingRateLimiterActor.ReportRateLimitedAsync(retryAfterSeconds)` which zero-floors
-the tenant's budget and pushes `WindowStart` to `now + retryAfterSeconds`, then re-throws
-`EmbeddingRateLimitException`. The DAPR Workflow retry policy (5 attempts, exponential
-backoff, 5 min cap) handles the retry. During the Retry-After window, `TryConsumeAsync`
-returns `false` immediately — no provider calls happen — so the retry cost is just
-workflow scheduling overhead.
+On a provider HTTP 429 response, the embedding transport parses `Retry-After`
+(seconds or HTTP-date per RFC 9110 §10.2.3). `GenerateEmbeddingActivity` and
+`GenerateChunkEmbeddingsActivity` keep provider feedback activity-owned by invoking
+`IEmbeddingRateLimiterActor.ReportRateLimitedAsync(retryAfterSeconds)`, then re-throw a
+sanitized `EmbeddingRateLimitException` that carries only the effective retry-after
+seconds.
+
+`IngestionWorkflow` handles provider 429s with a DAPR durable timer. It waits for the
+effective Retry-After duration through `WorkflowContext.CreateTimer(...)`, then calls the
+embedding activity again. This path applies to raw chunk embedding and event
+natural-language embedding. Non-provider failures and local actor-budget denials continue
+through the normal failure/retry/compensation paths.
+
+The rate-limiter actor zero-floors the tenant budget and positions `WindowStart` so
+`TryConsumeAsync` refills at the intended provider retry-open instant, not one extra
+minute later. During the closed window, `TryConsumeAsync` returns `false` immediately,
+so no provider calls happen.
 
 - Missing / malformed `Retry-After` → activity defaults to **30 s**.
 - `Retry-After` values are clamped to `[1, 3600]` seconds at the HTTP boundary.
-- `Retry-After > ~26 s`: the workflow exhausts its retry budget and the unit transitions
-  to `Failed`. Story 6.3 adds re-ingestion UX for this case.
+- The workflow durable retry loop is bounded and deterministic; repeated provider 429s
+  eventually fail through the existing failed-unit path, while transient 429s recover
+  without exhausting the short generic activity retry budget.
 
 ## Per-tenant CPU gate (Story 6.2)
 

@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
 
@@ -182,6 +183,38 @@ public class GenerateChunkEmbeddingsActivityTests
             Arg.Is<ReadOnlyMemory<byte>>(payload => System.Text.Encoding.UTF8.GetString(payload.ToArray()) == "abcdefgh"),
             "0",
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_Provider429_ShouldReportEffectiveRetryAfterOnceAndThrowSanitizedMarker()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
+        embeddingClient.GenerateBatchAsync(
+                Arg.Any<IReadOnlyList<string>>(),
+                "tenant-a",
+                config,
+                Arg.Any<CancellationToken>())
+            .ThrowsAsync(new EmbeddingRateLimitException("tenant-a") { RetryAfterSeconds = 0 });
+        IActorProxyFactory actorProxyFactory = CreateActorProxyFactory(config, out IEmbeddingRateLimiterActor rateLimiter);
+        GenerateChunkEmbeddingsActivity activity = new(
+            embeddingClient,
+            actorProxyFactory,
+            Options.Create(new ContentChunkingOptions
+            {
+                MaxEstimatedTokens = 2,
+                OverlapEstimatedTokens = 0,
+                CharactersPerEstimatedToken = 4,
+            }),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            CreateRedisWithoutMarker());
+
+        EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new EmbeddingInput("tenant-a", "abcdefgh")));
+
+        ex.RetryAfterSeconds.ShouldBe(30);
+        ex.Message.ShouldContain("ProviderRetryAfterSeconds=30");
+        await rateLimiter.Received(1).ReportRateLimitedAsync(30);
     }
 
     private static EmbeddingClient CreateMockEmbeddingClient(TenantEmbeddingConfig config)

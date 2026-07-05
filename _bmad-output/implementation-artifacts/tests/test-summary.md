@@ -1,3 +1,56 @@
+# Test Automation Summary - Story 23.3 (Retry-After-Aware 429 Orchestration)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-3-retry-after-aware-429-orchestration.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute. No new framework introduced.
+- **Feature under test:** provider 429 recovery through workflow durable timers, sanitized Retry-After extraction/defaulting, activity-owned rate-limiter feedback, and actor reopen-window math. Story 23.3 has no UI/web scope, so browser E2E is not applicable.
+
+## Generated / Updated Tests
+
+### API / Workflow-Orchestration Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs` - covers raw embedding provider 429 recovery with `CreateTimer`, second activity call success, no failed-unit persistence, non-provider/local rate-limit failure preserving the existing failed-unit path, and bounded durable retry exhaustion.
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowDualEmbeddingTests.cs` - covers event natural-language embedding provider 429 recovery with the same durable timer and re-call behavior.
+
+### Activity / Actor Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` - covers provider 429 reporting once, effective Retry-After propagation, default `30s` behavior, and sanitized workflow marker emission.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateChunkEmbeddingsActivityTests.cs` - covers chunk batch provider 429 reporting once and sanitized marker emission.
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingRateLimitRetryAfterTests.cs` - covers positive, absent/non-provider, malformed, non-positive/default, and excessive/clamped Retry-After handling.
+- [x] `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs` - covers `30s` and `90s` Retry-After windows staying closed before the open instant and refilling at the intended instant.
+- [x] `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs` - covers persisted actor state preserving the corrected retry-open instant.
+
+### E2E / Integration Notes
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs` - updated the skipped harness note so the real-sidecar provider 429 scenario is explicit and no longer carries stale long-Retry-After failure wording.
+- [x] Browser UI E2E is not applicable. Story 23.3 is backend workflow/rate-limit behavior.
+
+## Coverage
+
+- Workflow recovery: raw chunk embedding and event natural-language embedding provider 429 paths covered.
+- Critical error cases: local/non-provider rate-limit failure, bounded retry exhaustion, malformed Retry-After details, absent provider marker, and excessive Retry-After clamping covered.
+- Activity feedback: single-text and chunk-batch provider 429 actor reporting covered.
+- Actor math: `30s` and `90s` reopen behavior covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowDualEmbeddingTests -class Hexalith.Memories.Server.Tests.Actors.RateLimiterLogicTests -class Hexalith.Memories.Server.Tests.Actors.EmbeddingRateLimiterActorTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateEmbeddingActivityTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateChunkEmbeddingsActivityTests -class Hexalith.Memories.Server.Tests.Ingestion.EmbeddingRateLimitRetryAfterTests -parallel none -noLogo` - 114 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -parallel none -noLogo` - 2348 total, 0 failed, 1 skipped.
+- [x] `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated where applicable: pass for backend workflow/API-equivalent orchestration boundaries.
+- E2E tests generated where applicable: pass for backend workflow/activity/actor behavior; real sidecar 429-then-success remains documented as an integration harness gap.
+- Tests use standard xUnit v3, Shouldly, and NSubstitute APIs; cover happy path and critical error cases; have clear descriptions; use no hardcoded waits; and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.2 (Claim-Check Workflow Payloads)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

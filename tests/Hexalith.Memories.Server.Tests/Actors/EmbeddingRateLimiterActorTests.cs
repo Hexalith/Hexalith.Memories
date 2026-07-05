@@ -160,14 +160,14 @@ public class EmbeddingRateLimiterActorTests
         // Act
         await actor.ReportRateLimitedAsync(30);
 
-        // Assert — Remaining zeroed, WindowStart in the future (~30 s from now), ceiling preserved.
+        // Assert — Remaining zeroed, retry-open instant is ~30 s from now, ceiling preserved.
         await stateManager.Received().SetStateAsync(
             "rateState",
             Arg.Is<RateLimitState>(s =>
                 s.Remaining == 0 &&
                 s.CeilingPerMinute == 1500 &&
-                s.WindowStart >= before.AddSeconds(29) &&
-                s.WindowStart <= DateTime.UtcNow.AddSeconds(31)),
+                s.WindowStart.AddMinutes(1) >= before.AddSeconds(29) &&
+                s.WindowStart.AddMinutes(1) <= DateTime.UtcNow.AddSeconds(31)),
             Arg.Any<CancellationToken>());
     }
 
@@ -185,13 +185,13 @@ public class EmbeddingRateLimiterActorTests
         // Act
         await actor.ReportRateLimitedAsync(-5);
 
-        // Assert — clamped to 1 s.
+        // Assert — clamped to 1 s retry-open instant.
         await stateManager.Received().SetStateAsync(
             "rateState",
             Arg.Is<RateLimitState>(s =>
                 s.Remaining == 0 &&
-                s.WindowStart >= before &&
-                s.WindowStart <= DateTime.UtcNow.AddSeconds(2)),
+                s.WindowStart.AddMinutes(1) >= before &&
+                s.WindowStart.AddMinutes(1) <= DateTime.UtcNow.AddSeconds(2)),
             Arg.Any<CancellationToken>());
     }
 
