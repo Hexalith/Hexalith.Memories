@@ -34,7 +34,7 @@ Information (PII), Protected Health Information (PHI), or other regulated data s
    server refuses to start if a non-zero TTL is configured without an explicit opt-in acknowledgment
    (`NaturalLanguage:AcceptCrossTenantCacheSharing = true` or env var
    `HEXALITH_ACCEPT_CROSS_TENANT_CACHE_SHARING=1`). Event ID `9164` is logged Critical if the
-   operator tries to bypass the gate. The `memories_conversation_cache_hit_total{tenant_id,cache_status}`
+   operator tries to bypass the gate. The `memories.conversation.cache.hits{tenant_id,cache_status}`
    metric schema is reserved for future cache-status emission, but the current Dapr.AI SDK surface
    does not expose a live hit/miss signal; today the real protections are `responseCacheTTL: 0s`
    by default plus the startup validator.

@@ -160,8 +160,8 @@ internal sealed class FileSystemComponentYamlReader : IComponentYamlReader
         catch (IOException)
         {
             // Fail open: we cannot prove non-zero TTL without a readable YAML, so the validator does not
-            // require the acknowledgment. A genuinely non-zero TTL in production will still surface via
-            // the telemetry counter memories_conversation_cache_hit_total (Risk #16 mitigation (d)).
+            // require the acknowledgment. A genuinely non-zero TTL in production remains blocked by the
+            // startup validator whenever the component YAML is readable.
         }
         catch (UnauthorizedAccessException)
         {

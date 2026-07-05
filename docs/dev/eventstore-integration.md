@@ -431,7 +431,7 @@ because the LLM call adds 1-3s (p95) to the critical path. Non-event sources sti
 the raw payload, once for the NL description. Both calls go through the SAME
 `EmbeddingRateLimiterActor` per tenant (so total throughput is preserved correctly), but operators
 must size the `RateLimitPerMinute` ceiling with the 2x factor in mind. Telemetry exposes
-`memories.embedding.api_calls{content_kind="payload|naturalLanguageDescription",tenant=...}` so the
+`memories.embedding.api.calls{content_kind="payload|naturalLanguageDescription",tenant_id=...}` so the
 2:1 split is observable.
 
 ## LLM provider swap procedure
@@ -444,7 +444,7 @@ must size the `RateLimitPerMinute` ceiling with the 2x factor in mind. Telemetry
    `9150 NaturalLanguageDescriptionGenerated` log contains the new `llmProvider` attribute.
 4. Deploy: the component is swapped atomically — DAPR reloads components on file change. No server
    restart required.
-5. Monitor: `memories.natural_language.description.duration_ms` histogram stabilizes within ~5 min.
+5. Monitor: `memories.natural.language.description.duration` histogram stabilizes within ~5 min.
 
 ## Natural language embedding retry queue
 
@@ -475,6 +475,9 @@ redis-cli ZADD nl-embedding-retry:{tenant} "$(date +%s%N | cut -c1-17)" '<record
 ```
 
 **Recommended Prometheus alerts:**
+
+Prometheus query names use collector-normalized underscores derived from the canonical
+dot-separated metric names.
 
 - `rate(memories_natural_language_embedding_queue_depth[5m]) > 10` sustained 15m — backlog growing.
 - `memories_natural_language_embedding_queue_depth > 1000` — dead-letter candidate escalation.

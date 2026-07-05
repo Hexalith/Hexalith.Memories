@@ -40,36 +40,36 @@ public static class MemoriesMeter
     public const string SearchDurationName = "memories.search.duration";
 
     /// <summary>Instrument name: inbound rate-limit rejections.</summary>
-    public const string RateLimitRejectionsName = "memories.rate_limit.rejections";
+    public const string RateLimitRejectionsName = "memories.rate.limit.rejections";
 
     /// <summary>Instrument name: per-tenant per-axis index size gauge.</summary>
     public const string IndexSizeName = "memories.index.size";
 
     /// <summary>Instrument name: per-tenant ingestion queue depth gauge.</summary>
-    public const string PipelineQueueDepthName = "memories.pipeline.queue_depth";
+    public const string PipelineQueueDepthName = "memories.pipeline.queue.depth";
 
     /// <summary>Story 9.2 — instrument name: per-call NL description latency histogram.</summary>
-    public const string NaturalLanguageDescriptionDurationName = "memories_natural_language_description_duration_ms";
+    public const string NaturalLanguageDescriptionDurationName = "memories.natural.language.description.duration";
 
     /// <summary>Story 9.2 — instrument name: per-tenant NL retry queue depth gauge.</summary>
-    public const string NaturalLanguageEmbeddingQueueDepthName = "memories_natural_language_embedding_queue_depth";
+    public const string NaturalLanguageEmbeddingQueueDepthName = "memories.natural.language.embedding.queue.depth";
 
     /// <summary>Story 9.2 (Spike 0.1 payload-by-value fallback) — instrument name: per-tenant NL retry
     /// queue byte-size gauge. Present only when the retry record carries the truncated raw JSON payload
     /// (bounded by <c>NaturalLanguageDescriptionOptions.QueuedPayloadMaxBytes</c>). Operators size
     /// Redis memory by combining depth × average-payload.</summary>
-    public const string NaturalLanguageEmbeddingQueueBytesName = "memories_natural_language_embedding_queue_bytes";
+    public const string NaturalLanguageEmbeddingQueueBytesName = "memories.natural.language.embedding.queue.bytes";
 
     /// <summary>Story 9.2 / Risk #16 — instrument name: DAPR Conversation response-cache hit/miss
     /// counter. Non-zero values observed across multiple tenants are the canonical cross-tenant
     /// cache-leak signature (the cache is shared at the sidecar level regardless of tenant id).
     /// Tags: <c>tenant_id</c>, <c>cache_status</c> (hit | miss).</summary>
-    public const string ConversationCacheHitName = "memories_conversation_cache_hit_total";
+    public const string ConversationCacheHitName = "memories.conversation.cache.hits";
 
     /// <summary>Story 9.2 / Risk #6 — instrument name: per-call embedding API counter partitioned by
     /// tenant + content kind. Operators observe the raw-payload / NL-description 2:1 split under
     /// dual-embedding and size the per-tenant rate-limit ceiling accordingly.</summary>
-    public const string EmbeddingApiCallsName = "memories.embedding.api_calls";
+    public const string EmbeddingApiCallsName = "memories.embedding.api.calls";
 
     /// <summary>Synthetic tenant id used when a request is rejected before tenant resolution.</summary>
     public const string RejectedTenantTag = "__rejected__";
@@ -224,8 +224,8 @@ public static class MemoriesMeter
 
     /// <summary>
     /// Pinned tag-key policy per metric instrument. Tests use this manifest to detect drift.
-    /// Keys are pinned to bounded-cardinality dimensions (tenant + axis + source_type + error_code) —
-    /// case_id and user are NEVER metric tags (Risk #1 cardinality mitigation).
+    /// Keys are pinned to bounded-cardinality dimensions; case_id, user, and memory_unit_id are
+    /// NEVER metric tags (Risk #1 cardinality mitigation).
     /// </summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> MetricTagKeyPolicy { get; } =
         new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.Ordinal)

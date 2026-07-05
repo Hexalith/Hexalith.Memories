@@ -18,7 +18,7 @@ because the target tenant may not exist yet. Health and Dapr infrastructure endp
 with their explicit anonymous policy.
 
 Rejected requests return HTTP `429` with `ErrorResponse.Code = RATE_LIMIT_EXCEEDED` and emit the
-`memories.rate_limit.rejections` counter tagged only by `tenant_id` and `error_code`.
+`memories.rate.limit.rejections` counter tagged only by `tenant_id` and `error_code`.
 
 ## Per-tenant ceilings (Story 6.2)
 
@@ -135,4 +135,4 @@ Structured log events (Story 6.2):
 
 OpenTelemetry metric counters for provider/extraction throttling are Epic 8 (Observability &
 System Health). Inbound HTTP request rejections use the Story 20.5
-`memories.rate_limit.rejections` counter described above.
+`memories.rate.limit.rejections` counter described above.

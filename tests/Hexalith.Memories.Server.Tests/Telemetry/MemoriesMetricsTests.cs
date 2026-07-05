@@ -5,6 +5,10 @@
 
 namespace Hexalith.Memories.Server.Tests.Telemetry;
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 using Hexalith.Memories.Telemetry;
 
 using Shouldly;
@@ -19,17 +23,24 @@ public sealed class MemoriesMetricsTests
     [Fact]
     public void InstrumentNames_ArePinned()
     {
-        MemoriesMeter.IngestionDocumentsName.ShouldBe("memories.ingestion.documents");
-        MemoriesMeter.IngestionFailuresName.ShouldBe("memories.ingestion.failures");
-        MemoriesMeter.SearchRequestsName.ShouldBe("memories.search.requests");
-        MemoriesMeter.SearchDurationName.ShouldBe("memories.search.duration");
-        MemoriesMeter.RateLimitRejectionsName.ShouldBe("memories.rate_limit.rejections");
-        MemoriesMeter.IndexSizeName.ShouldBe("memories.index.size");
-        MemoriesMeter.PipelineQueueDepthName.ShouldBe("memories.pipeline.queue_depth");
-        MemoriesMeter.NaturalLanguageDescriptionDurationName.ShouldBe("memories_natural_language_description_duration_ms");
-        MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName.ShouldBe("memories_natural_language_embedding_queue_depth");
-        MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName.ShouldBe("memories_natural_language_embedding_queue_bytes");
-        MemoriesMeter.ConversationCacheHitName.ShouldBe("memories_conversation_cache_hit_total");
+        ExpectedMetricTags.Keys.ShouldBe(new[]
+        {
+            "memories.ingestion.documents",
+            "memories.ingestion.failures",
+            "memories.search.requests",
+            "memories.search.duration",
+            "memories.rate.limit.rejections",
+            "memories.index.size",
+            "memories.pipeline.queue.depth",
+            "memories.natural.language.description.duration",
+            "memories.natural.language.embedding.queue.depth",
+            "memories.natural.language.embedding.queue.bytes",
+            "memories.embedding.api.calls",
+            "memories.conversation.cache.hits",
+            "memories.handlers.registered",
+            "memories.handlers.mismatches",
+            "memories.handlers.observations.dropped",
+        });
     }
 
     [Fact]
@@ -43,22 +54,23 @@ public sealed class MemoriesMetricsTests
     public void AllRegisteredMetricsHaveExpectedTagKeys()
     {
         // Risk #1 cardinality mitigation — case_id and user are NEVER in the metric tag keys.
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.IngestionDocumentsName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.IngestionFailuresName].ShouldBe(new[] { "tenant_id", "error_code" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.SearchRequestsName].ShouldBe(new[] { "tenant_id", "axis" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.SearchDurationName].ShouldBe(new[] { "tenant_id", "axis" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.RateLimitRejectionsName].ShouldBe(new[] { "tenant_id", "error_code" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.IndexSizeName].ShouldBe(new[] { "tenant_id", "axis" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.PipelineQueueDepthName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageDescriptionDurationName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.ConversationCacheHitName].ShouldBe(new[] { "tenant_id", "cache_status" });
+        MemoriesMeter.MetricTagKeyPolicy.Count.ShouldBe(ExpectedMetricTags.Count);
+        foreach ((string name, string[] tagKeys) in ExpectedMetricTags)
+        {
+            MemoriesMeter.MetricTagKeyPolicy.ShouldContainKey(name);
+            MemoriesMeter.MetricTagKeyPolicy[name].ShouldBe(tagKeys);
+        }
+    }
 
-        // Story 9.3 — handler registry + mismatch instruments.
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.HandlersRegisteredName].ShouldBe(new[] { "tenant_id" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.HandlerMismatchesName].ShouldBe(new[] { "tenant_id", "severity" });
-        MemoriesMeter.MetricTagKeyPolicy[MemoriesMeter.ObservationsDroppedName].ShouldBe(new[] { "reason" });
+    [Fact]
+    public void MetricTagKeyPolicyKeys_AreDotSeparatedMemoriesFamily()
+    {
+        foreach (string metricName in MemoriesMeter.MetricTagKeyPolicy.Keys)
+        {
+            metricName.ShouldStartWith("memories.");
+            metricName.ShouldNotContain("_");
+            metricName.Split('.', StringSplitOptions.RemoveEmptyEntries).Length.ShouldBeGreaterThan(2);
+        }
     }
 
     [Fact]
@@ -74,4 +86,24 @@ public sealed class MemoriesMetricsTests
 
     [Fact]
     public void RejectedTenantTag_IsPinned() => MemoriesMeter.RejectedTenantTag.ShouldBe("__rejected__");
+
+    private static IReadOnlyDictionary<string, string[]> ExpectedMetricTags { get; } =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            [MemoriesMeter.IngestionDocumentsName] = ["tenant_id"],
+            [MemoriesMeter.IngestionFailuresName] = ["tenant_id", "error_code"],
+            [MemoriesMeter.SearchRequestsName] = ["tenant_id", "axis"],
+            [MemoriesMeter.SearchDurationName] = ["tenant_id", "axis"],
+            [MemoriesMeter.RateLimitRejectionsName] = ["tenant_id", "error_code"],
+            [MemoriesMeter.IndexSizeName] = ["tenant_id", "axis"],
+            [MemoriesMeter.PipelineQueueDepthName] = ["tenant_id"],
+            [MemoriesMeter.NaturalLanguageDescriptionDurationName] = ["tenant_id"],
+            [MemoriesMeter.NaturalLanguageEmbeddingQueueDepthName] = ["tenant_id"],
+            [MemoriesMeter.NaturalLanguageEmbeddingQueueBytesName] = ["tenant_id"],
+            [MemoriesMeter.EmbeddingApiCallsName] = ["tenant_id", "content_kind"],
+            [MemoriesMeter.ConversationCacheHitName] = ["tenant_id", "cache_status"],
+            [MemoriesMeter.HandlersRegisteredName] = ["tenant_id"],
+            [MemoriesMeter.HandlerMismatchesName] = ["tenant_id", "severity"],
+            [MemoriesMeter.ObservationsDroppedName] = ["reason"],
+        };
 }

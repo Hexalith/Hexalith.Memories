@@ -50,14 +50,23 @@ server). Do NOT create per-request sources.
 
 Single meter: **`Hexalith.Memories`** (declared by `MemoriesMeter.Name`).
 
-| Metric                          | Type                        | Unit          | Tag keys                  | Description                             |
-| ------------------------------- | --------------------------- | ------------- | ------------------------- | --------------------------------------- |
-| `memories.ingestion.documents`  | Counter&lt;long&gt;         | `{documents}` | `tenant_id`               | Total documents ingested successfully   |
-| `memories.ingestion.failures`   | Counter&lt;long&gt;         | `{documents}` | `tenant_id`, `error_code` | Total ingestion scheduling failures     |
-| `memories.search.requests`      | Counter&lt;long&gt;         | `{requests}`  | `tenant_id`, `axis`       | Total search requests per resolved axis |
-| `memories.search.duration`      | Histogram&lt;double&gt;     | `ms`          | `tenant_id`, `axis`       | Request latency for the resolved axis   |
-| `memories.index.size`           | ObservableGauge&lt;long&gt; | `{documents}` | `tenant_id`, `axis`       | Per-tenant per-axis index size          |
-| `memories.pipeline.queue_depth` | ObservableGauge&lt;int&gt;  | `{items}`     | `tenant_id`               | Per-tenant ingestion queue depth        |
+| Metric                                                  | Type                        | Unit             | Tag keys                    | Description                                                  |
+| ------------------------------------------------------- | --------------------------- | ---------------- | --------------------------- | ------------------------------------------------------------ |
+| `memories.ingestion.documents`                          | Counter&lt;long&gt;         | `{documents}`    | `tenant_id`                 | Total documents ingested successfully                        |
+| `memories.ingestion.failures`                           | Counter&lt;long&gt;         | `{documents}`    | `tenant_id`, `error_code`   | Total ingestion scheduling failures                          |
+| `memories.search.requests`                              | Counter&lt;long&gt;         | `{requests}`     | `tenant_id`, `axis`         | Total search requests per resolved axis                      |
+| `memories.search.duration`                              | Histogram&lt;double&gt;     | `ms`             | `tenant_id`, `axis`         | Request latency for the resolved axis                        |
+| `memories.rate.limit.rejections`                        | Counter&lt;long&gt;         | `{requests}`     | `tenant_id`, `error_code`   | Inbound request rate-limit rejections                        |
+| `memories.index.size`                                   | ObservableGauge&lt;long&gt; | `{documents}`    | `tenant_id`, `axis`         | Per-tenant per-axis index size                               |
+| `memories.pipeline.queue.depth`                         | ObservableGauge&lt;int&gt;  | `{items}`        | `tenant_id`                 | Per-tenant ingestion queue depth                             |
+| `memories.natural.language.description.duration`        | Histogram&lt;double&gt;     | `ms`             | `tenant_id`                 | Natural-language description latency                         |
+| `memories.natural.language.embedding.queue.depth`       | ObservableGauge&lt;long&gt; | `{items}`        | `tenant_id`                 | Natural-language embedding retry queue depth                 |
+| `memories.natural.language.embedding.queue.bytes`       | ObservableGauge&lt;long&gt; | `By`             | `tenant_id`                 | Natural-language embedding retry queue size in bytes         |
+| `memories.embedding.api.calls`                          | Counter&lt;long&gt;         | `{calls}`        | `tenant_id`, `content_kind` | Embedding provider calls by payload/description content kind |
+| `memories.conversation.cache.hits`                      | Counter&lt;long&gt;         | `{calls}`        | `tenant_id`, `cache_status` | Reserved Dapr Conversation cache hit/miss surface            |
+| `memories.handlers.registered`                          | ObservableGauge&lt;int&gt;  | `{handlers}`     | `tenant_id`                 | Per-tenant count of registered event handlers                |
+| `memories.handlers.mismatches`                          | Counter&lt;long&gt;         | `{mismatches}`   | `tenant_id`, `severity`     | Detected event-handler mismatches                            |
+| `memories.handlers.observations.dropped`                | Counter&lt;long&gt;         | `{observations}` | `reason`                    | Dropped observation-store writes                             |
 
 ### Tag-key policy
 
@@ -180,7 +189,7 @@ ingest resilience).
 ## Cardinality risk + operator mitigation
 
 Per-tenant tags × per-axis sub-tags × per-case possible tagging = O(tenants × axes × cases) unique
-time series. MVP keeps tagging at `tenant_id` + `axis` + `source_type` + `error_code` only
+time series. MVP keeps tagging to the bounded keys listed in `MemoriesMeter.MetricTagKeyPolicy`
 (Risk #1). Hard cardinality caps are deferred to Phase 2.
 
 If tenant count grows beyond ~100:
@@ -209,12 +218,15 @@ If tenant count grows beyond ~100:
 
 ## Example Prometheus queries
 
+Prometheus query names use collector-normalized underscores derived from the dot-separated
+instrument names above.
+
 ```promql
 # Tenant ingestion throughput (last 5m, per tenant)
 sum by (tenant_id) (rate(memories_ingestion_documents_total[5m]))
 
 # Per-axis p99 search latency (last 5m)
-histogram_quantile(0.99, sum by (axis, le) (rate(memories_search_duration_ms_bucket[5m])))
+histogram_quantile(0.99, sum by (tenant_id, axis, le) (rate(memories_search_duration_milliseconds_bucket[5m])))
 
 # Hot tenants with elevated ingestion failure rate
 sum by (tenant_id) (rate(memories_ingestion_failures_total{error_code!=""}[5m]))
@@ -224,8 +236,10 @@ sum by (tenant_id) (rate(memories_ingestion_failures_total{error_code!=""}[5m]))
 max_over_time(memories_pipeline_queue_depth[5m]) > 10
 ```
 
-These are illustrative starter queries — not a shipped dashboard. Operators compose dashboards to
-their observability stack.
+The committed starter Grafana dashboard is
+[`../../deploy/grafana/dashboards/memories-operability.json`](../../deploy/grafana/dashboards/memories-operability.json).
+Prometheus query names in that dashboard use collector-normalized underscores derived from the
+dot-separated instrument names above.
 
 ---
 
