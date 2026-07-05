@@ -259,6 +259,32 @@ Modified files:
 - `_bmad-output/implementation-artifacts/deferred-work.md` (mark resolved CRs; record CR9/CR10/CR11/CR15 decisions)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (2-7 → review)
 
+### File List — 2026-07-05 web metadata closure
+
+New files:
+
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketMetadata.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketFreshness.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketFreshnessState.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketIngestionMetadata.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketIngestionStage.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketBenchmarkEvidence.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketBenchmarkQuery.cs`
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacketMcpSchema.cs`
+- `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-05-evidence-packet-web-metadata.md`
+
+Modified areas:
+
+- `src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs`
+- `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs`
+- `src/Hexalith.Memories.Web/Components/Evidence/`
+- `src/Hexalith.Memories.Web/Components/Lenses/`
+- `src/Hexalith.Memories.Web/Resources/`
+- `tests/Hexalith.Memories.Web.Tests/Components/Evidence/`
+- `tests/Hexalith.Memories.Web.Tests/Components/Lenses/`
+- `docs/dev/evidence-packet.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
 ## Change Log
 
 - 2026-05-20: Created ready-for-dev story artifact for Evidence Packet Contract Mapping.
@@ -267,6 +293,7 @@ Modified files:
 - 2026-05-20: Implemented Evidence Packet contract mapping and moved story to review.
 - 2026-05-20: Code review (3 layers, 38 findings). Applied 7 patches (C1 sanitization-test integrity; C2 `SanitizeGuidance` over-broad regex; M2 `TENANT_MALFORMED` unauthorized routing; M3 hybrid `evidence.degraded` alignment; M5 `PendingExpansion` fallback recovery; M11 axis-name normalization; Mi3 dead-code removal). 3 decision-needed resolved as deferred (2.7-CR9/CR10/CR11). 27 lower-priority items added to deferred-work (2.7-CR1…CR27). Story moved to in-progress because spec-required test coverage gaps (2.7-CR1…CR5) remain.
 - 2026-06-24: Dev-story carry-over pass. Decisions taken with Jerome (CR9 trust-upstream; CR10 implement CLI error packet; CR11+CR15 defer to server-side story). Closed spec-required test-coverage gaps 2.7-CR1, CR2, CR3, CR4, CR5, CR18, CR26, CR27 and implemented CR10 (additive `evidencePacket` on `search query` JSON error envelopes). Added shared `EvidencePacketCanonicalFixtures` for cross-surface parity. Full solution build clean; focused suites green (Contracts 542, Cli 382, Mcp 83, Server-Search 240). Story moved to review. Remaining deferred items (2.7-CR6/CR7/CR8/CR12/CR13/CR14/CR16/CR17/CR19/CR20–CR25) are non-spec enhancements/design changes tracked in `deferred-work.md`.
+- 2026-07-05: Web metadata closure. Added optional Evidence Packet metadata for packet/source freshness, source timestamps, source ingestion stage taxonomy, benchmark NDCG@10/threshold/per-query/run evidence, and MCP schema/tool metadata. Updated Web cockpit/lens projections and traceability so Epic 17 no longer renders unavailable boundaries for those fields when packet metadata is present. Story remains done; the Epic 17 action item is closed after focused verification.
 
 ## Party-Mode Review
 

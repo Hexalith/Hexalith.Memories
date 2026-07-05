@@ -12,12 +12,13 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// A single, sanitized Ingestion Lifecycle Tracker row for one memory unit.
 /// </summary>
 /// <remarks>
-/// Story 17.4 — stage is always an unavailable boundary because the canonical contract exposes no stage
-/// taxonomy; outcome, degradation, and recovery derive from named contract fields and the shared recovery
-/// grammar. Recovery is offered only when safe; under a restrictive scope it is disabled with a reason.
+/// Story 17.4 — stage renders from optional Story 2.7 Evidence Packet ingestion metadata when available;
+/// outcome, degradation, and recovery derive from named contract fields and the shared recovery grammar.
+/// Recovery is offered only when safe; under a restrictive scope it is disabled with a reason.
 /// </remarks>
 /// <param name="UnitId">Sanitized memory unit identifier.</param>
-/// <param name="StageAvailability">Availability of the ingestion stage (always unavailable; gap recorded).</param>
+/// <param name="StageAvailability">Availability of the ingestion stage.</param>
+/// <param name="SafeStage">Sanitized ingestion stage label, or the unavailable fallback.</param>
 /// <param name="Outcome">The outcome at contract granularity.</param>
 /// <param name="OutcomeLabelKey">Localization key for the outcome label.</param>
 /// <param name="SafeFailureSummary">Sanitized, whitelisted failure clue, or the no-failure fallback.</param>
@@ -29,6 +30,7 @@ using Hexalith.Memories.Web.Components.Recovery;
 public sealed record IngestionUnitRow(
     string UnitId,
     LensFieldAvailability StageAvailability,
+    string SafeStage,
     IngestionOutcome Outcome,
     string OutcomeLabelKey,
     string SafeFailureSummary,

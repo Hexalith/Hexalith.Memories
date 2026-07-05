@@ -28,8 +28,12 @@ public sealed class AgentPacketInspectorMapperTests
         view.HasError.ShouldBeFalse();
         view.Restrictive.ShouldBeFalse();
         view.CountsAvailability.ShouldBe(LensFieldAvailability.Available);
-        view.ToolNameAvailability.ShouldBe(LensFieldAvailability.Unavailable);
+        view.ToolNameAvailability.ShouldBe(LensFieldAvailability.Available);
         view.SchemaFields.Select(f => f.Kind).ShouldContain(PacketSchemaFieldKind.ToolName);
+        view.SchemaFields.Select(f => f.Kind).ShouldContain(PacketSchemaFieldKind.McpSchema);
+        view.SchemaFields.Single(f => f.Kind == PacketSchemaFieldKind.ToolName).SafeValue.ShouldBe("search_memory");
+        view.SchemaFields.Single(f => f.Kind == PacketSchemaFieldKind.McpSchema).SafeValue
+            .ShouldBe("memories.search_memory.result@v1");
         view.SafeCopyText.ShouldContain("ScopeTenant=tenant-a");
         view.SafeCopyText.ShouldContain("diagnostic=");
     }
@@ -58,10 +62,13 @@ public sealed class AgentPacketInspectorMapperTests
         view.Restrictive.ShouldBeTrue();
         view.CountsAvailability.ShouldBe(LensFieldAvailability.Unauthorized);
         view.TokenBudgetAvailability.ShouldBe(LensFieldAvailability.Unauthorized);
+        view.ToolNameAvailability.ShouldBe(LensFieldAvailability.Unauthorized);
         view.OmittedFieldNames.ShouldBeEmpty();
         view.Expansions.ShouldBeEmpty();
 
         view.SchemaFields.Single(f => f.Kind == PacketSchemaFieldKind.ResultCounts).Availability
+            .ShouldBe(LensFieldAvailability.Unauthorized);
+        view.SchemaFields.Single(f => f.Kind == PacketSchemaFieldKind.ToolName).Availability
             .ShouldBe(LensFieldAvailability.Unauthorized);
         view.SchemaFields.Single(f => f.Kind == PacketSchemaFieldKind.EvidenceStrength).SafeValue
             .ShouldBe("unavailable");

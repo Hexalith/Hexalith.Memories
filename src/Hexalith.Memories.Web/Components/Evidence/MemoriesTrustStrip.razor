@@ -8,7 +8,7 @@
                    Label="@ConfidenceLabel"
                    ColumnHeader="Confidence" />
     <FcStatusBadge Slot="BadgeSlot.Neutral"
-                   Label="@EvidenceDisplay.FreshnessLabel()"
+                   Label="@FreshnessText"
                    ColumnHeader="Freshness" />
     <span data-testid="mem-trust-source-count"
           aria-label="Source count: @SourceCountText">
@@ -63,6 +63,10 @@
 
     private string TokenBudgetText => ShowPacketValues
         ? EvidenceDisplay.TokenBudgetLabel(Packet)
+        : "Unavailable";
+
+    private string FreshnessText => ShowPacketValues
+        ? EvidenceDisplay.FreshnessLabel(Packet)
         : "Unavailable";
 
     private BadgeSlot TokenBudgetSlot => TokenBudgetText == "compressed"

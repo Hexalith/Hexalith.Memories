@@ -856,7 +856,7 @@
     <value>Preuve d'axe de récupération (approximation)</value>
   </data>
   <data name="Benchmark_Proxy_Note" xml:space="preserve">
-    <value>Ce sont des scores d'axe de pertinence de récupération, pas des résultats NDCG@10 de benchmark ; la preuve de benchmark n'est pas exposée par le contrat.</value>
+    <value>Les lignes d'axe donnent le contexte de pertinence de récupération ; les valeurs NDCG@10 ne s'affichent que depuis les métadonnées de benchmark du paquet.</value>
   </data>
   <data name="Benchmark_ResultState_Label" xml:space="preserve">
     <value>État du résultat</value>
@@ -887,6 +887,9 @@
   </data>
   <data name="Benchmark_State_Stale" xml:space="preserve">
     <value>Preuve périmée</value>
+  </data>
+  <data name="Benchmark_State_Passed" xml:space="preserve">
+    <value>Seuil atteint</value>
   </data>
   <data name="Benchmark_State_Inconclusive" xml:space="preserve">
     <value>Non concluant</value>
@@ -977,5 +980,8 @@
   </data>
   <data name="Packet_Field_ToolName" xml:space="preserve">
     <value>Outil MCP</value>
+  </data>
+  <data name="Packet_Field_McpSchema" xml:space="preserve">
+    <value>Schéma MCP</value>
   </data>
 </root>

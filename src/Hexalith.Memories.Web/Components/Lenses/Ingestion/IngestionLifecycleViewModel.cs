@@ -11,13 +11,12 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// Typed, pure projection of an Evidence Packet into the Ingestion Lifecycle Tracker lens (AC2).
 /// </summary>
 /// <remarks>
-/// Story 17.4 — produced by <see cref="IngestionLifecycleMapper.Map"/>. The fine-grained ingestion stage
-/// taxonomy is not exposed by the canonical contract, so <see cref="StageTaxonomyAvailable"/> is false and
-/// the component shows the stage-unavailable note. The most severe row drives the live-region politeness so
-/// only meaningful transitions (failure, degraded backend) announce assertively.
+/// Story 17.4 — produced by <see cref="IngestionLifecycleMapper.Map"/>. Ingestion stage taxonomy renders
+/// when supplied by the canonical packet. The most severe row drives the live-region politeness so only
+/// meaningful transitions (failure, degraded backend) announce assertively.
 /// </remarks>
 /// <param name="Units">The sanitized per-unit ingestion rows.</param>
-/// <param name="StageTaxonomyAvailable">Whether the contract exposes ingestion stages (currently false).</param>
+/// <param name="StageTaxonomyAvailable">Whether at least one row has an ingestion stage from the contract.</param>
 /// <param name="StageNoteKey">Localization key for the stage-unavailable note.</param>
 /// <param name="HighestSeverity">The highest row severity, used for live-region politeness.</param>
 /// <param name="IsEmpty">Whether the tracker has no ingestion units to show.</param>

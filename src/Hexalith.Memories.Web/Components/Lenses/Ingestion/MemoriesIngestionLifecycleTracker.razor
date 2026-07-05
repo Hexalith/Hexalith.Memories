@@ -57,7 +57,9 @@
                     </FluentStack>
                     <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-stage">
                         @Localizer[IngestionLifecycleResourceKeys.StageLabel]:
-                        @Localizer[LensResourceKeys.Availability(unit.StageAvailability)]
+                        @(unit.StageAvailability == LensFieldAvailability.Available
+                            ? unit.SafeStage
+                            : Localizer[LensResourceKeys.Availability(unit.StageAvailability)].Value)
                     </FluentLabel>
                     <FluentLabel Typo="Typography.Body" data-testid="mem-ingestion-failure">
                         @Localizer[IngestionLifecycleResourceKeys.FailureLabel]:

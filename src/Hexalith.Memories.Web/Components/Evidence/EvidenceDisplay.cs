@@ -14,10 +14,7 @@ using Hexalith.Memories.Contracts.V1;
 
 internal static partial class EvidenceDisplay
 {
-    // Story 17.1 — the canonical EvidencePacket contract does not yet expose a freshness field
-    // (the producer side is owned by Story 2.7). Until 2.7 adds one, the freshness column renders
-    // this sentinel everywhere and EvidencePacketViewMapping records "(none — no contract source)"
-    // as the contract source. Replacing this sentinel must coincide with a real contract field.
+    // Fallback for packet producers that have not yet attached optional Story 2.7 freshness metadata.
     public const string FreshnessUnavailable = "Unavailable";
 
     public const string RedactedMarker = "[REDACTED]";
@@ -67,7 +64,39 @@ internal static partial class EvidenceDisplay
             : "within budget";
     }
 
-    public static string FreshnessLabel() => FreshnessUnavailable;
+    public static string FreshnessLabel(EvidencePacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+
+        EvidencePacketFreshness? freshness = packet.Metadata?.Freshness
+            ?? packet.Sources.FirstOrDefault(static source => source.Freshness is not null)?.Freshness;
+        return FreshnessLabel(freshness);
+    }
+
+    public static string FreshnessLabel(EvidencePacketFreshness? freshness)
+    {
+        if (freshness is null)
+        {
+            return FreshnessUnavailable;
+        }
+
+        string state = Label(freshness.State);
+        if (freshness.LastCheckedAt.HasValue)
+        {
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{state}; checked {TimestampLabel(freshness.LastCheckedAt)}");
+        }
+
+        return freshness.AgeSeconds.HasValue
+            ? string.Create(CultureInfo.InvariantCulture, $"{state}; age {freshness.AgeSeconds.Value}s")
+            : state;
+    }
+
+    public static string TimestampLabel(DateTimeOffset? timestamp, string fallback = "timestamp unavailable")
+        => timestamp.HasValue
+            ? timestamp.Value.ToString("O", CultureInfo.InvariantCulture)
+            : fallback;
 
     public static BadgeSlot SlotForState(EvidencePacketState state)
         => state switch

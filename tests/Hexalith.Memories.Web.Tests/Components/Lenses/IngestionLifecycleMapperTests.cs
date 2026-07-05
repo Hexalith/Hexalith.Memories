@@ -19,14 +19,15 @@ public sealed class IngestionLifecycleMapperTests
         => Should.Throw<ArgumentNullException>(() => IngestionLifecycleMapper.Map(null!, LensRole.Operator));
 
     [Fact]
-    public void Map_HappyPacket_RendersIndexedUnitsWithUnavailableStageBoundary()
+    public void Map_HappyPacket_RendersIndexedUnitsWithContractStageTaxonomy()
     {
         IngestionLifecycleViewModel view = IngestionLifecycleMapper.Map(LensPacketFixtures.Happy(), LensRole.Operator);
 
         view.IsEmpty.ShouldBeFalse();
-        view.StageTaxonomyAvailable.ShouldBeFalse();
+        view.StageTaxonomyAvailable.ShouldBeTrue();
         view.StageNoteKey.ShouldBe(IngestionLifecycleResourceKeys.StageNote);
-        view.Units.ShouldAllBe(u => u.StageAvailability == LensFieldAvailability.Unavailable);
+        view.Units.ShouldAllBe(u => u.StageAvailability == LensFieldAvailability.Available);
+        view.Units.ShouldAllBe(u => u.SafeStage == "Completed");
         view.Units.ShouldContain(u => u.Outcome == IngestionOutcome.Indexed);
         view.Units.ShouldAllBe(u => string.IsNullOrEmpty(u.SafeFailureSummary));
     }
@@ -102,7 +103,7 @@ public sealed class IngestionLifecycleMapperTests
         // The out-of-range state must not crash the projection or produce empty success; the stage stays an
         // explicit unavailable boundary and no raw payload leaks into the failure summary.
         view.Units.ShouldNotBeEmpty();
-        view.Units.ShouldAllBe(u => u.StageAvailability == LensFieldAvailability.Unavailable);
+        view.Units.ShouldAllBe(u => u.StageAvailability == LensFieldAvailability.Available);
         view.Units.ShouldAllBe(u => !u.SafeFailureSummary.Contains("Bearer ", StringComparison.OrdinalIgnoreCase));
     }
 }

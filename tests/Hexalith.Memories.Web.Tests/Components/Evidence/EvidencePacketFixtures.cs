@@ -9,6 +9,10 @@ using Hexalith.Memories.Contracts.V1;
 
 internal static class EvidencePacketFixtures
 {
+    private static readonly DateTimeOffset ProducedAt = new(2026, 7, 5, 6, 58, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset LastCheckedAt = new(2026, 7, 5, 7, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset SourceTimestamp = new(2026, 7, 5, 6, 55, 0, TimeSpan.Zero);
+
     public static EvidencePacket CompletePacket()
         => Packet(
             EvidencePacketState.Complete,
@@ -287,7 +291,33 @@ internal static class EvidencePacketFixtures
                 FieldNames: [],
                 DetailGroups: [],
                 ExpansionHandles: []),
-            Recovery: []);
+            Recovery: [],
+            Metadata: new EvidencePacketMetadata(
+                Freshness: Freshness(),
+                Benchmark: new EvidencePacketBenchmarkEvidence(
+                    HybridNdcg10: 0.875d,
+                    SyntacticNdcg10: 0.625d,
+                    SemanticNdcg10: 0.75d,
+                    GraphNdcg10: 0.5d,
+                    Threshold: 0.8d,
+                    ThresholdPassed: true,
+                    CorpusId: "synthetic-corpus-v1",
+                    RunId: "benchmark-run-2026-07-05",
+                    RunAt: LastCheckedAt,
+                    PerQuery:
+                    [
+                        new EvidencePacketBenchmarkQuery(
+                            QueryId: "q-claim-denied",
+                            HybridNdcg10: 0.91d,
+                            BestSingleAxisNdcg10: 0.72d,
+                            ThresholdPassed: true),
+                    ],
+                    EvidenceUri: "docs://benchmarks/benchmark-run-2026-07-05"),
+                McpSchema: new EvidencePacketMcpSchema(
+                    ToolName: "search_memory",
+                    SchemaName: "memories.search_memory.result",
+                    SchemaVersion: "v1",
+                    Transport: "streamable-http")));
 
     private static EvidencePacketSource Source(int rank, string memoryUnitId, string sourceUri, double score)
         => new(
@@ -299,8 +329,23 @@ internal static class EvidencePacketFixtures
             Score: score,
             CaseId: "case-a",
             CaseName: "Case A",
-            AnnotationsCount: 0);
+            AnnotationsCount: 0,
+            Timestamp: SourceTimestamp.AddMinutes(rank),
+            Freshness: Freshness(),
+            Ingestion: new EvidencePacketIngestionMetadata(
+                Stage: EvidencePacketIngestionStage.Completed,
+                StageDetail: "indexed",
+                UpdatedAt: SourceTimestamp.AddMinutes(rank),
+                RetryCount: 0));
 
     private static EvidencePacketAxisEvidence Axis(string axis, double score, string method, string description)
         => new(axis, score, method, description);
+
+    private static EvidencePacketFreshness Freshness()
+        => new(
+            EvidencePacketFreshnessState.Current,
+            ProducedAt: ProducedAt,
+            LastCheckedAt: LastCheckedAt,
+            ExpiresAt: LastCheckedAt.AddMinutes(15),
+            AgeSeconds: 120);
 }

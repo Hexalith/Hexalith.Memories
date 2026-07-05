@@ -9,12 +9,8 @@ namespace Hexalith.Memories.Web.Components.Lenses.Benchmark;
 /// Explicit benchmark result state.
 /// </summary>
 /// <remarks>
-/// Story 17.4 — the canonical Evidence Packet exposes no benchmark NDCG@10 scores, thesis threshold,
-/// per-query breakdown, or reproducible-evidence reference, so the comparator never computes or infers a
-/// benchmark result in the web layer. It fails closed to <see cref="Unavailable"/> or
-/// <see cref="MissingBaseline"/> and surfaces only the retrieval axis evidence the contract does expose, as
-/// an explicitly labelled proxy. Regression, inconclusive, and unreproducible states are represented for
-/// completeness but require canonical benchmark fixtures from Story 2.7 before they can be emitted.
+/// Story 17.4 — benchmark result states are emitted only from canonical Evidence Packet benchmark metadata
+/// or fail-closed availability states. The web layer never computes NDCG@10 from retrieval evidence.
 /// </remarks>
 public enum BenchmarkResultState
 {
@@ -29,6 +25,9 @@ public enum BenchmarkResultState
 
     /// <summary>The underlying evidence may be stale.</summary>
     Stale,
+
+    /// <summary>The benchmark passed the configured thesis threshold.</summary>
+    Passed,
 
     /// <summary>Benchmark comparison would be inconclusive (requires canonical fixtures).</summary>
     Inconclusive,

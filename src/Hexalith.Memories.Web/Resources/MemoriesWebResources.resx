@@ -857,7 +857,7 @@
     <value>Retrieval axis evidence (proxy)</value>
   </data>
   <data name="Benchmark_Proxy_Note" xml:space="preserve">
-    <value>These are retrieval-relevance axis scores, not benchmark NDCG@10 results; benchmark evidence is not exposed by the contract.</value>
+    <value>Axis rows are retrieval-relevance context; NDCG@10 values render only from benchmark metadata supplied by the packet.</value>
   </data>
   <data name="Benchmark_ResultState_Label" xml:space="preserve">
     <value>Result state</value>
@@ -888,6 +888,9 @@
   </data>
   <data name="Benchmark_State_Stale" xml:space="preserve">
     <value>Stale evidence</value>
+  </data>
+  <data name="Benchmark_State_Passed" xml:space="preserve">
+    <value>Threshold passed</value>
   </data>
   <data name="Benchmark_State_Inconclusive" xml:space="preserve">
     <value>Inconclusive</value>
@@ -978,5 +981,8 @@
   </data>
   <data name="Packet_Field_ToolName" xml:space="preserve">
     <value>MCP tool</value>
+  </data>
+  <data name="Packet_Field_McpSchema" xml:space="preserve">
+    <value>MCP schema</value>
   </data>
 </root>

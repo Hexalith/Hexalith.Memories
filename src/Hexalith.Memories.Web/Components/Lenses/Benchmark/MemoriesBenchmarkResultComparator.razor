@@ -30,16 +30,28 @@
         </FluentStack>
 
         <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-ndcg" data-availability="@_view.NdcgAvailability">
-            @Localizer[BenchmarkResourceKeys.NdcgLabel]: @Localizer[LensResourceKeys.Availability(_view.NdcgAvailability)]
+            @Localizer[BenchmarkResourceKeys.NdcgLabel]:
+            @(_view.NdcgAvailability == LensFieldAvailability.Available
+                ? _view.SafeNdcg
+                : Localizer[LensResourceKeys.Availability(_view.NdcgAvailability)].Value)
         </FluentLabel>
         <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-threshold" data-availability="@_view.ThresholdAvailability">
-            @Localizer[BenchmarkResourceKeys.ThresholdLabel]: @Localizer[LensResourceKeys.Availability(_view.ThresholdAvailability)]
+            @Localizer[BenchmarkResourceKeys.ThresholdLabel]:
+            @(_view.ThresholdAvailability == LensFieldAvailability.Available
+                ? _view.SafeThreshold
+                : Localizer[LensResourceKeys.Availability(_view.ThresholdAvailability)].Value)
         </FluentLabel>
         <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-perquery" data-availability="@_view.PerQueryAvailability">
-            @Localizer[BenchmarkResourceKeys.PerQueryLabel]: @Localizer[LensResourceKeys.Availability(_view.PerQueryAvailability)]
+            @Localizer[BenchmarkResourceKeys.PerQueryLabel]:
+            @(_view.PerQueryAvailability == LensFieldAvailability.Available
+                ? _view.SafePerQuery
+                : Localizer[LensResourceKeys.Availability(_view.PerQueryAvailability)].Value)
         </FluentLabel>
         <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-evidence-link" data-availability="@_view.EvidenceLinkAvailability">
-            @Localizer[BenchmarkResourceKeys.EvidenceLinkLabel]: @Localizer[LensResourceKeys.Availability(_view.EvidenceLinkAvailability)]
+            @Localizer[BenchmarkResourceKeys.EvidenceLinkLabel]:
+            @(_view.EvidenceLinkAvailability == LensFieldAvailability.Available
+                ? _view.SafeEvidenceLink
+                : Localizer[LensResourceKeys.Availability(_view.EvidenceLinkAvailability)].Value)
         </FluentLabel>
 
         <FluentLabel Typo="Typography.Body" data-testid="mem-benchmark-proxy-note">

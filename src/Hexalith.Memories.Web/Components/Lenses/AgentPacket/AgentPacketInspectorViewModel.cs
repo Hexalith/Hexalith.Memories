@@ -16,7 +16,7 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// primary inspection path; <see cref="SafeCopyText"/> is the single sanitized payload shared by the copy
 /// control and the secondary JSON view, so visible text, copied text, and the JSON view can never diverge
 /// or leak. A user never needs to read raw JSON to learn whether the packet is valid, compressed, failed,
-/// or expandable — that is conveyed by the error state, token budget, omitted fields, and expansion handles.
+/// expandable, or tied to MCP schema metadata.
 /// </remarks>
 /// <param name="SafeQuery">Sanitized request query.</param>
 /// <param name="SafeCounts">Sanitized returned/total counts, or the unavailable fallback under a restrictive scope.</param>
@@ -31,7 +31,7 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// <param name="ErrorStateKey">Localization key for the structured error/state title.</param>
 /// <param name="Severity">Severity of the packet state.</param>
 /// <param name="SafeDiagnosticCode">Sanitized, whitelisted diagnostic clue.</param>
-/// <param name="ToolNameAvailability">Availability of the MCP tool/resource name (currently unavailable).</param>
+/// <param name="ToolNameAvailability">Availability of the MCP tool/resource name.</param>
 /// <param name="SafeCopyText">The single sanitized, bounded payload shared by the copy control and JSON view.</param>
 /// <param name="Restrictive">Whether the scope is restrictive.</param>
 public sealed record AgentPacketInspectorViewModel(

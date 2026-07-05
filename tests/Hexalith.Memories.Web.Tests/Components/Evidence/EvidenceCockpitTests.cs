@@ -80,7 +80,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
             .Add(p => p.Mode, MemoriesTrustStrip.TrustStripMode.Packet));
 
         component.Markup.ShouldContain("aria-label=\"Confidence: Strong\"");
-        component.Markup.ShouldContain($"aria-label=\"Freshness: {EvidenceDisplay.FreshnessUnavailable}\"");
+        component.Markup.ShouldContain($"aria-label=\"Freshness: {EvidenceDisplay.FreshnessLabel(EvidencePacketFixtures.CompressedPacket())}\"");
         component.Markup.ShouldContain("aria-label=\"Evidence health: Pending expansion\"");
         component.Markup.ShouldContain("aria-label=\"Token budget: compressed\"");
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("1 source");
@@ -104,9 +104,8 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         mappings.ShouldAllBe(static x => !string.IsNullOrWhiteSpace(x.ContractSource));
         mappings.ShouldAllBe(static x => !string.IsNullOrWhiteSpace(x.UnavailableFallback));
 
-        // Freshness has no contract source today — the sentinel must be present, not a fabricated field.
         EvidencePacketFieldMapping freshness = mappings.Single(static x => x.DisplayField == "trust.freshness");
-        freshness.ContractSource.ShouldBe(EvidencePacketViewMapping.NoContractSource);
+        freshness.ContractSource.ShouldContain("EvidencePacket.Metadata.Freshness");
         freshness.UnavailableFallback.ShouldBe(EvidenceDisplay.FreshnessUnavailable);
 
         // Every UI display field shown to operators must be tracked.
@@ -116,6 +115,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
             "trust.confidence", "trust.freshness", "trust.sourceCount", "trust.evidenceHealth", "trust.tokenBudget",
             "result.query", "result.summary",
             "sources.originIdentifier", "sources.type", "sources.snippet", "sources.memoryUnit", "sources.rank", "sources.score",
+            "sources.timestamp", "sources.freshness",
             "axes.axis", "axes.normalizedScore", "axes.rankingReason", "axes.normalizationMethod", "axes.unavailableAxes", "axes.caveat",
             "graph.path", "graph.edgeTypes", "graph.gapMarkers",
             "recovery.label", "recovery.guidance",

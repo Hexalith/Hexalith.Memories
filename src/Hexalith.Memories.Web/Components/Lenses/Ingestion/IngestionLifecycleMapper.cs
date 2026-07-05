@@ -13,10 +13,9 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// Pure, deterministic projection of a canonical Evidence Packet into the Ingestion Lifecycle Tracker (AC2).
 /// </summary>
 /// <remarks>
-/// Story 17.4 — the canonical contract exposes no ingestion stage taxonomy, retry counts, or per-stage
-/// failure categories, so the tracker renders the stage as an unavailable boundary and reports the outcome
-/// only at the granularity the contract supports. Recovery is offered only through the shared recovery
-/// grammar and only when safe. Under a restrictive scope, unit detail is suppressed and a single
+/// Story 17.4 — the tracker renders optional Story 2.7 ingestion stage taxonomy when the canonical packet
+/// supplies it, and otherwise keeps the stage unavailable boundary. Recovery is offered only through the
+/// shared recovery grammar and only when safe. Under a restrictive scope, unit detail is suppressed and a single
 /// authorization row remains.
 /// </remarks>
 public static class IngestionLifecycleMapper
@@ -38,6 +37,7 @@ public static class IngestionLifecycleMapper
             IngestionUnitRow unauthorized = new(
                 UnitId: "unit unavailable",
                 StageAvailability: LensFieldAvailability.Unauthorized,
+                SafeStage: "stage unavailable",
                 Outcome: IngestionOutcome.Unauthorized,
                 OutcomeLabelKey: IngestionLifecycleResourceKeys.Outcome(IngestionOutcome.Unauthorized),
                 SafeFailureSummary: recovery.DiagnosticClueCode,
@@ -69,7 +69,7 @@ public static class IngestionLifecycleMapper
                     : packet.Result.HasIndexedMemoryUnits == true
                         ? IngestionOutcome.Indexed
                         : IngestionOutcome.Unknown;
-            units.Add(BuildUnit(EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable"), outcome, recovery));
+            units.Add(BuildUnit(EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable"), outcome, recovery, source.Ingestion));
         }
 
         if (units.Count == 0)
@@ -86,7 +86,7 @@ public static class IngestionLifecycleMapper
             // a search that simply matched nothing leaves the tracker empty rather than inventing a unit.
             if (aggregate is IngestionOutcome.NotIngestedYet or IngestionOutcome.BackendUnavailable or IngestionOutcome.Degraded)
             {
-                units.Add(BuildUnit("tenant scope", aggregate, recovery));
+                units.Add(BuildUnit("tenant scope", aggregate, recovery, ingestion: null));
             }
         }
 
@@ -101,14 +101,18 @@ public static class IngestionLifecycleMapper
 
         return new IngestionLifecycleViewModel(
             ordered,
-            StageTaxonomyAvailable: false,
+            StageTaxonomyAvailable: units.Any(static unit => unit.StageAvailability == LensFieldAvailability.Available),
             StageNoteKey: IngestionLifecycleResourceKeys.StageNote,
             HighestSeverity: highest,
             IsEmpty: units.Count == 0,
             EmptyReasonKey: IngestionLifecycleResourceKeys.Empty);
     }
 
-    private static IngestionUnitRow BuildUnit(string unitId, IngestionOutcome outcome, RecoveryStateViewModel recovery)
+    private static IngestionUnitRow BuildUnit(
+        string unitId,
+        IngestionOutcome outcome,
+        RecoveryStateViewModel recovery,
+        EvidencePacketIngestionMetadata? ingestion)
     {
         bool recoverable = outcome is IngestionOutcome.Degraded
             or IngestionOutcome.BackendUnavailable
@@ -122,7 +126,10 @@ public static class IngestionLifecycleMapper
 
         return new IngestionUnitRow(
             UnitId: unitId,
-            StageAvailability: LensFieldAvailability.Unavailable,
+            StageAvailability: ingestion is null ? LensFieldAvailability.Unavailable : LensFieldAvailability.Available,
+            SafeStage: ingestion is null
+                ? "stage unavailable"
+                : EvidenceDisplay.SafeText(EvidenceDisplay.Label(ingestion.Stage), "stage unavailable"),
             Outcome: outcome,
             OutcomeLabelKey: IngestionLifecycleResourceKeys.Outcome(outcome),
             SafeFailureSummary: failure,

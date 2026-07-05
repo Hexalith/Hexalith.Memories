@@ -18,18 +18,22 @@ public sealed class BenchmarkResultComparatorMapperTests
         => Should.Throw<ArgumentNullException>(() => BenchmarkResultComparatorMapper.Map(null!, LensRole.TeamLead));
 
     [Fact]
-    public void Map_HappyPacket_ShowsAxisProxyButLeavesBenchmarkEvidenceUnavailable()
+    public void Map_HappyPacket_RendersBenchmarkEvidenceFromContractMetadata()
     {
         BenchmarkResultComparatorViewModel view = BenchmarkResultComparatorMapper.Map(
             LensPacketFixtures.Happy(),
             LensRole.TeamLead);
 
-        view.ResultState.ShouldBe(BenchmarkResultState.MissingBaseline);
+        view.ResultState.ShouldBe(BenchmarkResultState.Passed);
         view.AxisRows.ShouldNotBeEmpty();
-        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Unavailable);
-        view.ThresholdAvailability.ShouldBe(LensFieldAvailability.Unavailable);
-        view.PerQueryAvailability.ShouldBe(LensFieldAvailability.Unavailable);
-        view.EvidenceLinkAvailability.ShouldBe(LensFieldAvailability.Unavailable);
+        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Available);
+        view.SafeNdcg.ShouldContain("hybrid 0.875");
+        view.ThresholdAvailability.ShouldBe(LensFieldAvailability.Available);
+        view.SafeThreshold.ShouldBe("passed at 0.8");
+        view.PerQueryAvailability.ShouldBe(LensFieldAvailability.Available);
+        view.SafePerQuery.ShouldContain("q-claim-denied:0.91");
+        view.EvidenceLinkAvailability.ShouldBe(LensFieldAvailability.Available);
+        view.SafeEvidenceLink.ShouldBe("docs://benchmarks/benchmark-run-2026-07-05");
         view.ProxyNoteKey.ShouldBe(BenchmarkResourceKeys.ProxyNote);
     }
 
@@ -92,14 +96,14 @@ public sealed class BenchmarkResultComparatorMapperTests
     }
 
     [Fact]
-    public void Map_EmptyPacket_IsEmptyWithMissingBaselineAndNoInferredBenchmark()
+    public void Map_EmptyPacket_IsEmptyButKeepsContractBenchmarkMetadata()
     {
         BenchmarkResultComparatorViewModel view = BenchmarkResultComparatorMapper.Map(LensPacketFixtures.Empty(), LensRole.TeamLead);
 
         view.IsEmpty.ShouldBeTrue();
         view.AxisRows.ShouldBeEmpty();
-        view.ResultState.ShouldBe(BenchmarkResultState.MissingBaseline);
-        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Unavailable);
+        view.ResultState.ShouldBe(BenchmarkResultState.Passed);
+        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Available);
     }
 
     [Fact]
@@ -126,30 +130,28 @@ public sealed class BenchmarkResultComparatorMapperTests
     }
 
     [Fact]
-    public void Map_SchemaMismatchPacket_StaysAtMissingBaselineWithUnavailableBenchmarkFields()
+    public void Map_SchemaMismatchPacket_StillUsesContractBenchmarkMetadata()
     {
         BenchmarkResultComparatorViewModel view = BenchmarkResultComparatorMapper.Map(LensPacketFixtures.SchemaMismatch(), LensRole.TeamLead);
 
-        view.ResultState.ShouldBe(BenchmarkResultState.MissingBaseline);
-        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Unavailable);
-        view.ThresholdAvailability.ShouldBe(LensFieldAvailability.Unavailable);
+        view.ResultState.ShouldBe(BenchmarkResultState.Passed);
+        view.NdcgAvailability.ShouldBe(LensFieldAvailability.Available);
+        view.ThresholdAvailability.ShouldBe(LensFieldAvailability.Available);
     }
 
     [Fact]
-    public void Map_EveryBoundedFixture_NeverInfersBenchmarkOnlyStatesOrScores()
+    public void Map_EveryBoundedFixture_UsesOnlyContractBenchmarkOrRestrictiveAvailability()
     {
         foreach (EvidencePacket packet in LensPacketFixtures.All())
         {
             BenchmarkResultComparatorViewModel view = BenchmarkResultComparatorMapper.Map(packet, LensRole.TeamLead);
 
-            // Regression / Inconclusive / Unreproducible require canonical Story 2.7 benchmark fixtures and
-            // must never be inferred from the bounded inventory in the web layer.
-            view.ResultState.ShouldNotBe(BenchmarkResultState.Inconclusive);
-            view.ResultState.ShouldNotBe(BenchmarkResultState.Regression);
             view.ResultState.ShouldNotBe(BenchmarkResultState.Unreproducible);
 
-            // NDCG@10 is never computed; it is always an explicit unavailable/unauthorized boundary.
-            view.NdcgAvailability.ShouldBeOneOf(LensFieldAvailability.Unavailable, LensFieldAvailability.Unauthorized);
+            view.NdcgAvailability.ShouldBeOneOf(
+                LensFieldAvailability.Available,
+                LensFieldAvailability.Unavailable,
+                LensFieldAvailability.Unauthorized);
         }
     }
 }

@@ -27,7 +27,9 @@
          data-has-trust-blocking="@_view.HasTrustBlocking.ToString().ToLowerInvariant()"
          aria-label="@Localizer[OperatorHealthResourceKeys.RegionLabel]">
         <FluentLabel Typo="Typography.Body" data-testid="mem-health-lastchecked-note">
-            @Localizer[_view.LastCheckedNoteKey]
+            @(_view.LastCheckedAvailable
+                ? _view.SafeLastChecked
+                : Localizer[_view.LastCheckedNoteKey].Value)
         </FluentLabel>
 
         @foreach (OperatorHealthCheckRow check in _view.Checks)

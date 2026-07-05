@@ -7,9 +7,7 @@ namespace Hexalith.Memories.Web.Components.Lenses.AgentPacket;
 
 /// <summary>A field of the readable Agent Packet Inspector schema view.</summary>
 /// <remarks>
-/// Story 17.4 — each field is a sanitized projection of a named Evidence Packet member. The MCP
-/// tool/resource name is not exposed by the canonical contract, so <see cref="ToolName"/> always renders an
-/// unavailable boundary (deferred to Story 2.7).
+/// Story 17.4 — each field is a sanitized projection of a named Evidence Packet member.
 /// </remarks>
 public enum PacketSchemaFieldKind
 {
@@ -43,6 +41,9 @@ public enum PacketSchemaFieldKind
     /// <summary>Estimated token budget.</summary>
     TokenBudget,
 
-    /// <summary>MCP tool/resource name (not exposed by the canonical contract).</summary>
+    /// <summary>MCP tool/resource name.</summary>
     ToolName,
+
+    /// <summary>MCP structured-content schema name and version.</summary>
+    McpSchema,
 }

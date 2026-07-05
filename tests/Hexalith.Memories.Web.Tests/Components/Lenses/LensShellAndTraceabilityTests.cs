@@ -86,20 +86,20 @@ public sealed class LensShellAndTraceabilityTests
     }
 
     [Fact]
-    public void Traceability_RecordsDeferredContractGapsInsteadOfInventedSemantics()
+    public void Traceability_RecordsStory27MetadataContractSources()
     {
         LensFieldTraceability.Entries.ShouldContain(r =>
             r.Lens == LensKind.BenchmarkResultComparator &&
             r.DisplayedField == "benchmark.ndcg" &&
-            r.UpstreamSource == LensFieldTraceability.NoContractSource);
+            r.UpstreamSource.Contains("EvidencePacket.Metadata.Benchmark", StringComparison.Ordinal));
         LensFieldTraceability.Entries.ShouldContain(r =>
             r.Lens == LensKind.IngestionLifecycleTracker &&
             r.DisplayedField == "ingestion.stage" &&
-            r.UpstreamSource == LensFieldTraceability.NoContractSource);
+            r.UpstreamSource == "EvidencePacket.Sources[].Ingestion.Stage");
         LensFieldTraceability.Entries.ShouldContain(r =>
             r.Lens == LensKind.AgentPacketInspector &&
             r.DisplayedField == "packet.toolName" &&
-            r.UpstreamSource == LensFieldTraceability.NoContractSource);
+            r.UpstreamSource == "EvidencePacket.Metadata.McpSchema.ToolName");
     }
 
     [Fact]

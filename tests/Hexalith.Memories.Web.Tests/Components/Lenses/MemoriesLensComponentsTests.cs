@@ -41,7 +41,7 @@ public sealed class MemoriesLensComponentsTests : FrontComposerTestBase
         component.Find("[data-testid='mem-lens-tenant']").TextContent.ShouldContain("tenant-a");
         component.Find("[data-testid='mem-lens-return-route']").TextContent.ShouldContain("memories/evidence");
         component.Find("[data-testid='mem-activity-trail']").GetAttribute("data-timestamps-available")
-            .ShouldBe("false");
+            .ShouldBe("true");
         component.FindAll("[data-testid='mem-activity-row']").ShouldNotBeEmpty();
     }
 
@@ -81,15 +81,16 @@ public sealed class MemoriesLensComponentsTests : FrontComposerTestBase
     }
 
     [Fact]
-    public void BenchmarkResultComparator_RendersTextEquivalentForAxisBarsAndUnavailableBenchmarkFields()
+    public void BenchmarkResultComparator_RendersTextEquivalentForAxisBarsAndBenchmarkMetadata()
     {
         IRenderedComponent<MemoriesBenchmarkResultComparator> component = Render<MemoriesBenchmarkResultComparator>(parameters => parameters
             .Add(p => p.Packet, LensPacketFixtures.Happy()));
 
         component.Find("[data-testid='mem-benchmark-comparator']").GetAttribute("data-result-state")
-            .ShouldBe(nameof(BenchmarkResultState.MissingBaseline));
+            .ShouldBe(nameof(BenchmarkResultState.Passed));
         component.Find("[data-testid='mem-benchmark-ndcg']").GetAttribute("data-availability")
-            .ShouldBe(nameof(LensFieldAvailability.Unavailable));
+            .ShouldBe(nameof(LensFieldAvailability.Available));
+        component.Find("[data-testid='mem-benchmark-ndcg']").TextContent.ShouldContain("hybrid 0.875");
         component.FindAll("[data-testid='mem-benchmark-axis']").ShouldNotBeEmpty();
         component.Find("[data-testid='mem-benchmark-axis-score']").TextContent.ShouldContain("0.91");
     }

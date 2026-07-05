@@ -26,7 +26,9 @@
                     <p>@EvidenceDisplay.SafeText(source.Snippet, "snippet unavailable")</p>
                     <dl>
                         <dt>Freshness</dt>
-                        <dd>@EvidenceDisplay.FreshnessLabel()</dd>
+                        <dd>@EvidenceDisplay.FreshnessLabel(source.Freshness ?? Packet.Metadata?.Freshness)</dd>
+                        <dt>Timestamp</dt>
+                        <dd>@EvidenceDisplay.TimestampLabel(source.Timestamp)</dd>
                         <dt>Score</dt>
                         <dd>@EvidenceDisplay.ScoreLabel(source.Score)</dd>
                         <dt>Memory unit</dt>

@@ -23,7 +23,8 @@ public sealed class OperatorHealthMatrixMapperTests
     {
         OperatorHealthViewModel view = OperatorHealthMatrixMapper.Map(LensPacketFixtures.Happy(), LensRole.Developer);
 
-        view.LastCheckedAvailable.ShouldBeFalse();
+        view.LastCheckedAvailable.ShouldBeTrue();
+        view.SafeLastChecked.ShouldStartWith("2026-07-05T07:00:00");
         view.LastCheckedNoteKey.ShouldBe(OperatorHealthResourceKeys.LastCheckedNote);
         view.Checks.Select(c => c.Kind).ShouldBe([
             OperatorCheckKind.TenantIsolation,

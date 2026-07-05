@@ -52,6 +52,14 @@
                     <FluentLabel Typo="Typography.Body" data-testid="mem-activity-summary">
                         @row.SafeSummary
                     </FluentLabel>
+                    <FluentLabel Typo="Typography.Body"
+                                 data-testid="mem-activity-timestamp"
+                                 data-availability="@row.TimestampAvailability">
+                        Timestamp:
+                        @(row.TimestampAvailability == LensFieldAvailability.Available
+                            ? row.SafeTimestamp
+                            : Localizer[LensResourceKeys.Availability(row.TimestampAvailability)].Value)
+                    </FluentLabel>
                     <FluentLabel Typo="Typography.Body" data-testid="mem-activity-link">
                         @Localizer[CaseActivityResourceKeys.LinkLabel]:
                         @Localizer[CaseActivityResourceKeys.LinkStatus(row.LinkAvailability)] — @row.SafeLink

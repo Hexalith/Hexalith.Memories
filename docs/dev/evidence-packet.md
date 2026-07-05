@@ -21,6 +21,7 @@ truthfulness, or corpus completeness.
 | `state` | One of `complete`, `partial`, `weak`, `empty`, `stale`, `degraded`, `unauthorized`, or `pendingExpansion`. |
 | `omittedDetails` | Omitted fields, detail groups, omission reason, counts, token estimate, and scoped expansion handles. |
 | `recovery` | Safe next actions such as retrying, checking authorization, increasing `tokenBudget`, or broadening the authorized query scope. |
+| `metadata` | Optional cross-surface metadata for freshness, benchmark evidence, and MCP schema/tool consumers. Omitted when the producer cannot justify those values. |
 
 ## Search mapping table
 
@@ -31,6 +32,9 @@ truthfulness, or corpus completeness.
 | `result.query` | `SearchResult.Query` / `HybridSearchResult.Query` | Echoed as received from lower-level result. | Empty string for diagnostics without a query. | Do not place query text inside expansion handles. | Re-run search with changed query only through authorized surfaces. |
 | `result.totalCount` | `TotalCount` | Copied. | `0` for diagnostics. | No cross-tenant totals. | Empty packets suggest broadening query/scope. |
 | `sources[]` | `ScoredResult` / `FusedScoredResult` | Preserve rank order; map id, URI, type, snippet, score, case metadata, annotation count. | Empty list means no source evidence is exposed in this packet. | Do not add backend keys, local diagnostic paths, tokens, prompts, or hidden scope identifiers. | Omitted ranked sources use `increaseTokenBudget` guidance. |
+| `sources[].timestamp` | Producer activity metadata | ISO-8601 timestamp for source activity, when known. | Omitted when no chronological signal exists. | Do not infer from local clock or filesystem timestamps. | UI keeps deterministic rank order when absent. |
+| `sources[].freshness` | Producer freshness metadata | Optional source-level freshness state and last-checked/produced timestamps. | Omitted when freshness is unknown. | Do not expose backend hostnames, probe paths, or provider internals. | UI renders an explicit unavailable freshness state when absent. |
+| `sources[].ingestion` | Producer ingestion lifecycle metadata | Optional stable ingestion stage taxonomy, safe detail, update timestamp, and retry count. | Omitted when no ingestion status is attached to the source. | Stage detail must be sanitized before serialization. | UI renders stage unavailable when absent. |
 | `evidence.caveat` | `SearchExplanation.Caveat` | Copied when present; otherwise uses the standard relevance caveat. | Standard caveat. | Never describe scores as factual truth. | None for complete packets. |
 | `evidence.axesUsed` | `AxesUsed` or row axis metadata | Normalized to lowercase, ordered deterministically. | Empty list when unavailable. | Do not invent axes. | Degraded packets expose unavailable axes separately. |
 | `evidence.axisEvidence[]` | `SearchExplanation.AxisDetails`, row scores | Merge explain metadata and best per-axis scores. | Missing score/explain fields are omitted rather than invented. | No backend identifiers or formulas from exceptions. | None. |
@@ -39,6 +43,9 @@ truthfulness, or corpus completeness.
 | `omittedDetails.reason` | `OmittedReason`, degradation flags | Maps `tokenBudget`, backend degradation, and combined signals into packet reasons. | `none` when no omission is reported. | Redaction/policy/authorization are distinct from true absence. | `increaseTokenBudget`, `retry`, or `checkAuthorization`. |
 | `omittedDetails.expansionHandles[]` | Request scope plus query hash | Deterministic opaque handle scoped by tenant/case and detail group. | Empty for unauthorized, degraded-only, and complete packets. | No raw query, backend key, file path, token, prompt, connection string, or storage id. | Re-run authorized commands with larger budget or result count. |
 | `recovery[]` | Packet state and omission reason | Machine-readable action kind plus safe guidance. | Empty for complete packets. | Unauthorized guidance must not reveal whether another tenant or case exists. | State-specific. |
+| `metadata.freshness` | Producer freshness check | Optional packet-level freshness state, produced timestamp, last-checked timestamp, expiry, and age. | Omitted when no producer-side freshness check exists. | Never echo probe URLs, credentials, backend IDs, or local paths. | UI renders freshness and operator last-checked only when present. |
+| `metadata.benchmark` | Benchmark runner output | Optional hybrid/single-axis NDCG@10 scores, threshold status, run/corpus identifiers, per-query rows, and reproducible evidence URI. | Omitted when benchmark evidence is not attached. | Evidence URI must be safe to show and must not expose local paths or secrets. | UI renders benchmark unavailable when absent; it never computes NDCG@10. |
+| `metadata.mcpSchema` | MCP surface metadata | Optional tool name, schema name, schema version, and transport. | Omitted outside MCP or when schema metadata is unavailable. | Tool/schema strings must be stable identifiers, not raw request payloads. | Agent Packet Inspector renders MCP fields only when present. |
 
 ## Diagnostic mapping
 
@@ -61,4 +68,9 @@ continue to render their existing output.
 MCP success results serialize the same object to both `content[0].text` and `structuredContent`.
 MCP error results keep `isError=true`, `code`, `service`, `tool`, `message`, and `suggestion`, and
 may include `evidencePacket` for packet-style state and recovery semantics.
+
+Web surfaces consume the same packet contract. They may render optional metadata when present, but
+must keep fail-closed unavailable or unauthorized states when metadata is absent or the packet scope is
+restrictive. Web components must not invent benchmark scores, ingestion stages, timestamps, freshness,
+or MCP schema names from raw logs, local clocks, browser state, or backend diagnostics.
 

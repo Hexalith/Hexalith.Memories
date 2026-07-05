@@ -23,7 +23,7 @@ public sealed class CaseActivityTrailMapperTests
         CaseActivityTrailViewModel view = CaseActivityTrailMapper.Map(LensPacketFixtures.Happy(), LensRole.Developer);
 
         view.IsEmpty.ShouldBeFalse();
-        view.TimestampsAvailable.ShouldBeFalse();
+        view.TimestampsAvailable.ShouldBeTrue();
         view.OrderingBasisKey.ShouldBe(CaseActivityResourceKeys.OrderingBasis);
         view.Rows.ShouldContain(r => r.Kind == CaseActivityKind.SourceCitation && r.LinkAvailability == LensFieldAvailability.Available);
         view.Rows.ShouldContain(r => r.Kind == CaseActivityKind.TrustState);
@@ -31,7 +31,10 @@ public sealed class CaseActivityTrailMapperTests
         // Every row carries a non-empty localized status key (status never relies on color/position alone).
         view.Rows.ShouldAllBe(r => !string.IsNullOrWhiteSpace(r.StatusLabelKey));
 
-        // Order is deterministic and contiguous because the contract exposes no chronological signal.
+        view.Rows.ShouldContain(r => r.TimestampAvailability == LensFieldAvailability.Available);
+        view.Rows.ShouldContain(r => r.SafeTimestamp.StartsWith("2026-07-05T", StringComparison.Ordinal));
+
+        // Order is deterministic and contiguous.
         view.Rows.Select(r => r.Order).ShouldBe(Enumerable.Range(0, view.Rows.Count));
     }
 

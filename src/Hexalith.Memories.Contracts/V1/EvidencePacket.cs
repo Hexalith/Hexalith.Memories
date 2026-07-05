@@ -16,6 +16,7 @@ using System.Text.Json.Serialization;
 /// <param name="State">Trust and availability state for the packet.</param>
 /// <param name="OmittedDetails">Details omitted from the current response and how to retrieve them.</param>
 /// <param name="Recovery">Safe next actions for the caller.</param>
+/// <param name="Metadata">Optional cross-surface metadata for freshness, benchmark, and MCP schema consumers.</param>
 public sealed record EvidencePacket(
     EvidencePacketScope Scope,
     EvidencePacketResultSummary Result,
@@ -24,7 +25,8 @@ public sealed record EvidencePacket(
     EvidencePacketGraphSummary Graph,
     EvidencePacketState State,
     EvidencePacketOmittedDetails OmittedDetails,
-    IReadOnlyList<EvidencePacketRecoveryAction> Recovery);
+    IReadOnlyList<EvidencePacketRecoveryAction> Recovery,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EvidencePacketMetadata? Metadata = null);
 
 /// <summary>Tenant and case boundary for an evidence packet.</summary>
 /// <param name="TenantId">Requested tenant identifier.</param>
@@ -60,6 +62,9 @@ public sealed record EvidencePacketResultSummary(
 /// <param name="CaseId">Case identifier for the memory unit, when known.</param>
 /// <param name="CaseName">Case display name for the memory unit, when known.</param>
 /// <param name="AnnotationsCount">Number of annotations linked to the memory unit.</param>
+/// <param name="Timestamp">Chronological activity timestamp for this source, when the producer can justify one.</param>
+/// <param name="Freshness">Freshness metadata for this source, when known.</param>
+/// <param name="Ingestion">Ingestion lifecycle metadata for this source, when known.</param>
 public sealed record EvidencePacketSource(
     int Rank,
     string MemoryUnitId,
@@ -69,7 +74,10 @@ public sealed record EvidencePacketSource(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? Score,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CaseId,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CaseName,
-    int AnnotationsCount);
+    int AnnotationsCount,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] DateTimeOffset? Timestamp = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EvidencePacketFreshness? Freshness = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] EvidencePacketIngestionMetadata? Ingestion = null);
 
 /// <summary>Evidence-strength and retrieval-axis metadata for a packet.</summary>
 /// <param name="EvidenceStrength">Strength of query-result evidence, not factual accuracy.</param>

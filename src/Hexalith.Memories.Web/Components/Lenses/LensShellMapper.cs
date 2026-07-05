@@ -60,7 +60,7 @@ public static class LensShellMapper
             Severity: recovery.Severity,
             AffectedCapabilityKey: recovery.AffectedCapabilityKey,
             ConfidenceLabel: confidence,
-            FreshnessLabel: EvidenceDisplay.FreshnessLabel(),
+            FreshnessLabel: EvidenceDisplay.FreshnessLabel(packet),
             ContractVersion: InteractionContextSnapshot.SupportedContractVersion,
             ReturnRoute: EvidenceDisplay.SafeText(returnRoute, "return unavailable"),
             Restrictive: restrictive,

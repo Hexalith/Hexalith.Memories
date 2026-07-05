@@ -97,6 +97,7 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 23.2 senior developer review completed with automatic fixes (duplicate-path payload cleanup, File List hygiene). 23.2 -> done.
 # 2026-07-05: Story 23.4 created (23.4 -> ready-for-dev) via create-story. Non-URL re-ingestion; requires persisted source-byte payload reference or clear unsupported legacy/expired-record error; closes A14.
 # 2026-07-05: Story 23.5 created (23.5 -> ready-for-dev) via create-story. Rate-limiter admission simplification; requires single admission operation per provider call/batch plus tenant config caching; closes A15.
+# 2026-07-05: Story 23.6 created (23.6 -> ready-for-dev) via create-story. Directory batch scalability; requires bounded state checkpointing, bounded-parallel scheduling, and SupportedExtensions allowlist; closes A33.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -415,7 +416,7 @@ development_status:
   23-3-retry-after-aware-429-orchestration: done
   23-4-non-url-re-ingestion: done
   23-5-rate-limiter-admission-simplification: done
-  23-6-directory-batch-scalability: backlog
+  23-6-directory-batch-scalability: ready-for-dev
   23-7-index-provisioning-ownership: backlog
   23-8-workflow-config-determinism: backlog
   23-9-embeddingclient-provider-strategy: done
@@ -456,7 +457,7 @@ action_items:
   - epic: 17
     action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema, and freshness metadata instead of unavailable boundaries"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-07-05: optional Evidence Packet metadata added for source timestamps/freshness/ingestion, benchmark NDCG@10, MCP schema, and operator freshness/last-checked rendering.
   - epic: 17
     action: "Define and schedule a runnable web host / specimen app and at least one manual screen-reader pass to close the fail-closed browser/AT gaps in Epic17ValidationInventory.Gaps (Playwright/axe, forced-colors, reduced-motion, zoom/reflow, touch-target)"
     owner: "Sally, Murat"

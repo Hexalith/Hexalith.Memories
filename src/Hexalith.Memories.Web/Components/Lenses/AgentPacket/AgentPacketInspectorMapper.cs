@@ -21,8 +21,8 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// come from named contract fields and the shared recovery grammar. The readable schema is the primary
 /// path; the copy payload and the secondary JSON view share the single sanitized
 /// <see cref="AgentPacketInspectorViewModel.SafeCopyText"/> so they can never diverge or leak. The raw
-/// serialized packet is never reconstructed. The MCP tool/resource name is not exposed by the canonical
-/// contract and renders an unavailable boundary.
+/// serialized packet is never reconstructed. MCP tool and schema metadata render only from optional
+/// canonical packet metadata.
 /// </remarks>
 public static class AgentPacketInspectorMapper
 {
@@ -55,6 +55,13 @@ public static class AgentPacketInspectorMapper
             ? Unavailable
             : string.Create(CultureInfo.InvariantCulture, $"{packet.OmittedDetails.EstimatedTokensTotal} tokens");
 
+        EvidencePacketMcpSchema? mcp = packet.Metadata?.McpSchema;
+        LensFieldAvailability toolNameAvailability = restrictive
+            ? LensFieldAvailability.Unauthorized
+            : string.IsNullOrWhiteSpace(mcp?.ToolName)
+                ? LensFieldAvailability.Unavailable
+                : LensFieldAvailability.Available;
+
         IReadOnlyList<PacketSchemaField> fields = BuildSchemaFields(packet, safeQuery, safeCounts, safeTokenBudget, restrictive);
         string copyText = BuildCopyText(fields, recovery);
 
@@ -74,7 +81,7 @@ public static class AgentPacketInspectorMapper
             ErrorStateKey: recovery.TitleKey,
             Severity: recovery.Severity,
             SafeDiagnosticCode: recovery.DiagnosticClueCode,
-            ToolNameAvailability: LensFieldAvailability.Unavailable,
+            ToolNameAvailability: toolNameAvailability,
             SafeCopyText: copyText,
             Restrictive: restrictive);
     }
@@ -89,6 +96,18 @@ public static class AgentPacketInspectorMapper
         // Fields that could reveal evidence existence are suppressed to an unauthorized boundary under a
         // restrictive scope; scope/isolation/state stay visible because they are the point of the inspection.
         LensFieldAvailability gated = restrictive ? LensFieldAvailability.Unauthorized : LensFieldAvailability.Available;
+
+        EvidencePacketMcpSchema? mcp = packet.Metadata?.McpSchema;
+        LensFieldAvailability mcpAvailability = restrictive
+            ? LensFieldAvailability.Unauthorized
+            : string.IsNullOrWhiteSpace(mcp?.ToolName)
+                ? LensFieldAvailability.Unavailable
+                : LensFieldAvailability.Available;
+        LensFieldAvailability schemaAvailability = restrictive
+            ? LensFieldAvailability.Unauthorized
+            : string.IsNullOrWhiteSpace(mcp?.SchemaName)
+                ? LensFieldAvailability.Unavailable
+                : LensFieldAvailability.Available;
 
         return
         [
@@ -106,10 +125,25 @@ public static class AgentPacketInspectorMapper
             Field(PacketSchemaFieldKind.OmissionReason, LensFieldAvailability.Available, EvidenceDisplay.Label(packet.OmittedDetails.Reason)),
             Field(PacketSchemaFieldKind.TokenBudget, gated, restrictive ? Unavailable : safeTokenBudget),
 
-            // The MCP tool/resource name is not exposed by the canonical contract — deferred to Story 2.7.
-            Field(PacketSchemaFieldKind.ToolName, LensFieldAvailability.Unavailable, Unavailable),
+            Field(
+                PacketSchemaFieldKind.ToolName,
+                mcpAvailability,
+                mcpAvailability == LensFieldAvailability.Available
+                    ? EvidenceDisplay.SafeText(mcp!.ToolName, Unavailable)
+                    : Unavailable),
+            Field(
+                PacketSchemaFieldKind.McpSchema,
+                schemaAvailability,
+                schemaAvailability == LensFieldAvailability.Available
+                    ? FormatSchema(mcp!)
+                    : Unavailable),
         ];
     }
+
+    private static string FormatSchema(EvidencePacketMcpSchema schema)
+        => EvidenceDisplay.SafeText(
+            string.Create(CultureInfo.InvariantCulture, $"{schema.SchemaName}@{schema.SchemaVersion}"),
+            Unavailable);
 
     private static PacketSchemaField Field(PacketSchemaFieldKind kind, LensFieldAvailability availability, string safeValue)
         => new(kind, AgentPacketResourceKeys.Field(kind), availability, safeValue);

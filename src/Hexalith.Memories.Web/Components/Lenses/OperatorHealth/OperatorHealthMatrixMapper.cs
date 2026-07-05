@@ -53,9 +53,12 @@ public static class OperatorHealthMatrixMapper
             ? checks.OrderByDescending(c => (int)c.Severity).ToArray()
             : checks;
 
+        DateTimeOffset? lastChecked = packet.Metadata?.Freshness?.LastCheckedAt;
+
         return new OperatorHealthViewModel(
             ordered,
-            LastCheckedAvailable: false,
+            LastCheckedAvailable: lastChecked.HasValue,
+            SafeLastChecked: EvidenceDisplay.TimestampLabel(lastChecked, "last-checked unavailable"),
             LastCheckedNoteKey: OperatorHealthResourceKeys.LastCheckedNote,
             HighestSeverity: checks.Max(c => c.Severity),
             HasTrustBlocking: checks.Any(c => c.TrustBlocking));

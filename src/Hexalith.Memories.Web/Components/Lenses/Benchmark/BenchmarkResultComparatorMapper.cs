@@ -13,12 +13,9 @@ using Hexalith.Memories.Web.Components.Lenses;
 /// Pure, deterministic projection of a canonical Evidence Packet into the Benchmark Result Comparator (AC4).
 /// </summary>
 /// <remarks>
-/// Story 17.4 — display-only. Benchmark NDCG@10 scores, the 80% thesis threshold, per-query breakdowns,
-/// corpus/run identifiers, and reproducible-evidence references are not exposed by the canonical contract,
-/// so they always render the unavailable boundary and are never computed or inferred in the web layer. The
-/// only benchmark-adjacent evidence the contract exposes is per-axis retrieval relevance, surfaced here as
-/// an explicitly labelled proxy. The role parameter changes only the shared shell density, not the
-/// benchmark rows, which preserves contract-provided ordering.
+/// Story 17.4 — display-only. Benchmark values render from optional Story 2.7 benchmark metadata when
+/// supplied by the canonical Evidence Packet; otherwise they fail closed to unavailable boundaries. The web
+/// layer never computes NDCG@10 from retrieval axis evidence.
 /// </remarks>
 public static class BenchmarkResultComparatorMapper
 {
@@ -43,9 +40,13 @@ public static class BenchmarkResultComparatorMapper
                 AxisRows: [],
                 UnavailableAxes: [],
                 NdcgAvailability: LensFieldAvailability.Unauthorized,
+                SafeNdcg: "unavailable",
                 ThresholdAvailability: LensFieldAvailability.Unauthorized,
+                SafeThreshold: "unavailable",
                 PerQueryAvailability: LensFieldAvailability.Unauthorized,
+                SafePerQuery: "unavailable",
                 EvidenceLinkAvailability: LensFieldAvailability.Unauthorized,
+                SafeEvidenceLink: "unavailable",
                 ProxyNoteKey: BenchmarkResourceKeys.ProxyNote,
                 IsEmpty: true,
                 EmptyReasonKey: BenchmarkResourceKeys.Empty);
@@ -73,25 +74,119 @@ public static class BenchmarkResultComparatorMapper
             unavailableAxes.Add(EvidenceDisplay.SafeText(axis, "axis"));
         }
 
-        // Fail closed: with no benchmark baseline in the contract, the result state is MissingBaseline
-        // unless degraded axes or staleness give a more specific (still non-NDCG) explanation.
-        BenchmarkResultState state = packet.State == EvidencePacketState.Stale
-            ? BenchmarkResultState.Stale
-            : packet.Evidence.UnavailableAxes.Count > 0 || packet.Evidence.Degraded
-                ? BenchmarkResultState.DegradedAxis
-                : BenchmarkResultState.MissingBaseline;
+        EvidencePacketBenchmarkEvidence? benchmark = packet.Metadata?.Benchmark;
+        BenchmarkResultState state = DetermineState(packet, benchmark);
 
         return new BenchmarkResultComparatorViewModel(
             ResultState: state,
             ResultStateKey: BenchmarkResourceKeys.ResultState(state),
             AxisRows: rows,
             UnavailableAxes: unavailableAxes,
-            NdcgAvailability: LensFieldAvailability.Unavailable,
-            ThresholdAvailability: LensFieldAvailability.Unavailable,
-            PerQueryAvailability: LensFieldAvailability.Unavailable,
-            EvidenceLinkAvailability: LensFieldAvailability.Unavailable,
+            NdcgAvailability: HasNdcg(benchmark) ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
+            SafeNdcg: FormatNdcg(benchmark),
+            ThresholdAvailability: HasThreshold(benchmark) ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
+            SafeThreshold: FormatThreshold(benchmark),
+            PerQueryAvailability: benchmark?.PerQuery is { Count: > 0 } ? LensFieldAvailability.Available : LensFieldAvailability.Unavailable,
+            SafePerQuery: FormatPerQuery(benchmark),
+            EvidenceLinkAvailability: string.IsNullOrWhiteSpace(benchmark?.EvidenceUri)
+                ? LensFieldAvailability.Unavailable
+                : LensFieldAvailability.Available,
+            SafeEvidenceLink: EvidenceDisplay.SafeText(benchmark?.EvidenceUri, "evidence link unavailable"),
             ProxyNoteKey: BenchmarkResourceKeys.ProxyNote,
             IsEmpty: rows.Count == 0,
             EmptyReasonKey: BenchmarkResourceKeys.Empty);
     }
+
+    private static BenchmarkResultState DetermineState(EvidencePacket packet, EvidencePacketBenchmarkEvidence? benchmark)
+    {
+        if (packet.State == EvidencePacketState.Stale)
+        {
+            return BenchmarkResultState.Stale;
+        }
+
+        if (packet.Evidence.UnavailableAxes.Count > 0 || packet.Evidence.Degraded)
+        {
+            return BenchmarkResultState.DegradedAxis;
+        }
+
+        if (benchmark is not null)
+        {
+            return benchmark.ThresholdPassed switch
+            {
+                true => BenchmarkResultState.Passed,
+                false => BenchmarkResultState.Regression,
+                _ => BenchmarkResultState.Inconclusive,
+            };
+        }
+
+        return BenchmarkResultState.MissingBaseline;
+    }
+
+    private static bool HasNdcg(EvidencePacketBenchmarkEvidence? benchmark)
+        => benchmark?.HybridNdcg10.HasValue == true
+            || benchmark?.SyntacticNdcg10.HasValue == true
+            || benchmark?.SemanticNdcg10.HasValue == true
+            || benchmark?.GraphNdcg10.HasValue == true;
+
+    private static bool HasThreshold(EvidencePacketBenchmarkEvidence? benchmark)
+        => benchmark?.Threshold.HasValue == true || benchmark?.ThresholdPassed.HasValue == true;
+
+    private static string FormatNdcg(EvidencePacketBenchmarkEvidence? benchmark)
+    {
+        if (!HasNdcg(benchmark))
+        {
+            return "NDCG@10 unavailable";
+        }
+
+        List<string> parts = [];
+        AddScore(parts, "hybrid", benchmark!.HybridNdcg10);
+        AddScore(parts, "syntactic", benchmark.SyntacticNdcg10);
+        AddScore(parts, "semantic", benchmark.SemanticNdcg10);
+        AddScore(parts, "graph", benchmark.GraphNdcg10);
+        return EvidenceDisplay.SafeText(string.Join("; ", parts), "NDCG@10 unavailable");
+    }
+
+    private static string FormatThreshold(EvidencePacketBenchmarkEvidence? benchmark)
+    {
+        if (!HasThreshold(benchmark))
+        {
+            return "threshold unavailable";
+        }
+
+        string status = benchmark!.ThresholdPassed switch
+        {
+            true => "passed",
+            false => "failed",
+            _ => "inconclusive",
+        };
+
+        return benchmark.Threshold.HasValue
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{status} at {benchmark.Threshold.Value:0.###}")
+            : status;
+    }
+
+    private static string FormatPerQuery(EvidencePacketBenchmarkEvidence? benchmark)
+    {
+        if (benchmark?.PerQuery is not { Count: > 0 } perQuery)
+        {
+            return "per-query evidence unavailable";
+        }
+
+        return EvidenceDisplay.SafeText(
+            string.Join(", ", perQuery.Select(static query => $"{query.QueryId}:{Score(query.HybridNdcg10)}")),
+            "per-query evidence unavailable");
+    }
+
+    private static void AddScore(List<string> parts, string label, double? value)
+    {
+        if (value.HasValue && double.IsFinite(value.Value))
+        {
+            parts.Add($"{label} {Score(value)}");
+        }
+    }
+
+    private static string Score(double? value)
+        => value.HasValue && double.IsFinite(value.Value)
+            ? value.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+            : "n/a";
 }

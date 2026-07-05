@@ -16,10 +16,9 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// </summary>
 /// <remarks>
 /// Story 17.4 — the trail surfaces only what the packet exposes: ranked source citations, annotation
-/// counts, graph relationships and gaps, the current trust state, and safe recovery actions. The canonical
-/// contract exposes no activity timestamps, so ordering is deterministic by rank and the lens declares the
-/// missing-timestamp gap rather than inferring chronology. Under a restrictive scope, source and graph
-/// detail are suppressed for redaction parity and only the trust state plus authorization recovery remain.
+/// counts, graph relationships and gaps, source activity timestamps when present, the current trust state,
+/// and safe recovery actions. Under a restrictive scope, source and graph detail are suppressed for
+/// redaction parity and only the trust state plus authorization recovery remain.
 /// </remarks>
 public static class CaseActivityTrailMapper
 {
@@ -46,11 +45,14 @@ public static class CaseActivityTrailMapper
             foreach (EvidencePacketSource source in packet.Sources)
             {
                 (LensFieldAvailability availability, string safeLink) = ClassifyLink(source.SourceUri, source.MemoryUnitId);
+                (LensFieldAvailability timestampAvailability, string safeTimestamp) = ClassifyTimestamp(source.Timestamp);
                 rows.Add(new CaseActivityRow(
                     order++,
                     CaseActivityKind.SourceCitation,
                     CaseActivityResourceKeys.Kind(CaseActivityKind.SourceCitation),
                     EvidenceDisplay.SafeText(source.Snippet, "snippet unavailable"),
+                    timestampAvailability,
+                    safeTimestamp,
                     availability,
                     safeLink,
                     CaseActivityResourceKeys.LinkStatus(availability),
@@ -64,6 +66,8 @@ public static class CaseActivityTrailMapper
                         CaseActivityKind.Annotation,
                         CaseActivityResourceKeys.Kind(CaseActivityKind.Annotation),
                         string.Create(CultureInfo.InvariantCulture, $"{source.AnnotationsCount} annotations"),
+                        timestampAvailability,
+                        safeTimestamp,
                         availability,
                         safeLink,
                         CaseActivityResourceKeys.LinkStatus(availability),
@@ -86,6 +90,8 @@ public static class CaseActivityTrailMapper
                         CaseActivityKind.Relationship,
                         CaseActivityResourceKeys.Kind(CaseActivityKind.Relationship),
                         edgeContext,
+                        LensFieldAvailability.Unavailable,
+                        "timestamp unavailable",
                         availability,
                         safeLink,
                         CaseActivityResourceKeys.LinkStatus(availability),
@@ -103,6 +109,8 @@ public static class CaseActivityTrailMapper
                     CaseActivityResourceKeys.Kind(CaseActivityKind.GraphGap),
                     EvidenceDisplay.SafeText(marker, "gap"),
                     LensFieldAvailability.Unavailable,
+                    "timestamp unavailable",
+                    LensFieldAvailability.Unavailable,
                     "gap",
                     CaseActivityResourceKeys.LinkStatus(LensFieldAvailability.Unavailable),
                     RecoverySeverity.Caution));
@@ -116,6 +124,8 @@ public static class CaseActivityTrailMapper
             CaseActivityKind.TrustState,
             CaseActivityResourceKeys.Kind(CaseActivityKind.TrustState),
             recovery.DiagnosticClueCode,
+            LensFieldAvailability.Unavailable,
+            "timestamp unavailable",
             restrictive ? LensFieldAvailability.Unauthorized : LensFieldAvailability.Available,
             restrictive ? "unauthorized" : "state",
             RecoveryResourceKeys.Title(recovery.StateKind),
@@ -145,7 +155,7 @@ public static class CaseActivityTrailMapper
 
         return new CaseActivityTrailViewModel(
             Rows: finalRows,
-            TimestampsAvailable: false,
+            TimestampsAvailable: finalRows.Any(static row => row.TimestampAvailability == LensFieldAvailability.Available),
             OrderingBasisKey: CaseActivityResourceKeys.OrderingBasis,
             IsEmpty: activityCount == 0,
             EmptyReasonKey: CaseActivityResourceKeys.Empty);
@@ -179,10 +189,17 @@ public static class CaseActivityTrailMapper
             CaseActivityKind.Recovery,
             CaseActivityResourceKeys.Kind(CaseActivityKind.Recovery),
             action.Guidance,
+            LensFieldAvailability.Unavailable,
+            "timestamp unavailable",
             LensFieldAvailability.Available,
             action.Target,
             RecoveryResourceKeys.Action(action.Kind),
             RecoverySeverity.Info);
+
+    private static (LensFieldAvailability Availability, string SafeTimestamp) ClassifyTimestamp(DateTimeOffset? timestamp)
+        => timestamp.HasValue
+            ? (LensFieldAvailability.Available, EvidenceDisplay.TimestampLabel(timestamp))
+            : (LensFieldAvailability.Unavailable, "timestamp unavailable");
 
     private static (LensFieldAvailability Availability, string SafeLink) ClassifyLink(string? primary, string? fallback)
     {

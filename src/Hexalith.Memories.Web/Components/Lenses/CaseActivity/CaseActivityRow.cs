@@ -15,10 +15,12 @@ using Hexalith.Memories.Web.Components.Recovery;
 /// alone. Missing, redacted, or unauthorized source links render as explicit
 /// <see cref="LensFieldAvailability"/> states rather than broken links or silent omissions.
 /// </remarks>
-/// <param name="Order">Deterministic order index (timestamps are not exposed by the contract).</param>
+/// <param name="Order">Deterministic order index.</param>
 /// <param name="Kind">The activity kind.</param>
 /// <param name="KindLabelKey">Localization key for the activity kind label.</param>
 /// <param name="SafeSummary">Sanitized human-readable summary literal.</param>
+/// <param name="TimestampAvailability">Availability of the source activity timestamp.</param>
+/// <param name="SafeTimestamp">Sanitized ISO-8601 timestamp, or the unavailable fallback.</param>
 /// <param name="LinkAvailability">Availability of the source/relationship link for this row.</param>
 /// <param name="SafeLink">Sanitized link target literal, or a documented unavailable fallback.</param>
 /// <param name="StatusLabelKey">Localization key for the row status label.</param>
@@ -28,6 +30,8 @@ public sealed record CaseActivityRow(
     CaseActivityKind Kind,
     string KindLabelKey,
     string SafeSummary,
+    LensFieldAvailability TimestampAvailability,
+    string SafeTimestamp,
     LensFieldAvailability LinkAvailability,
     string SafeLink,
     string StatusLabelKey,
