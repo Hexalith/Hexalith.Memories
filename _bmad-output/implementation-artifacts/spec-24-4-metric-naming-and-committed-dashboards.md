@@ -2,8 +2,9 @@
 title: '24.4 Metric Naming & Committed Dashboards'
 type: 'feature'
 created: '2026-07-05T19:13:02+02:00'
-status: 'in-review'
+status: 'done'
 baseline_revision: '05e27365f33e830bac583ec111c2a5cfc234ed30'
+final_revision: 'd71e21f5024e05565a4f0debc89e60c0de100e0d'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
