@@ -27,6 +27,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
     private readonly EmbeddingClient _embeddingClient;
     private readonly ILogger<GenerateChunkEmbeddingsActivity> _logger;
     private readonly ContentChunkingOptions _options;
+    private readonly IWorkflowPayloadStore? _payloadStore;
     private readonly IConnectionMultiplexer? _redis;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateChunkEmbeddingsActivity"/> class.</summary>
@@ -35,7 +36,8 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         IActorProxyFactory actorProxyFactory,
         IOptions<ContentChunkingOptions> options,
         ILogger<GenerateChunkEmbeddingsActivity> logger,
-        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null)
+        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(embeddingClient);
         ArgumentNullException.ThrowIfNull(actorProxyFactory);
@@ -45,6 +47,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         _actorProxyFactory = actorProxyFactory;
         _options = options.Value;
         _logger = logger;
+        _payloadStore = payloadStore;
         _redis = redis;
     }
 
@@ -55,10 +58,29 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(input.ContentText);
+        if (string.IsNullOrWhiteSpace(input.ContentText) && input.ContentReference is null)
+        {
+            throw new ArgumentException("ContentText or ContentReference is required.", nameof(input));
+        }
+
+        string contentText = input.ContentText;
+        string memoryUnitId = input.ContentReference?.MemoryUnitId ?? "embedding";
+        if (input.ContentReference is not null)
+        {
+            byte[] contentBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    input.ContentReference,
+                    input.TenantId,
+                    input.ContentReference.MemoryUnitId,
+                    WorkflowPayloadKind.ExtractedText,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            contentText = System.Text.Encoding.UTF8.GetString(contentBytes);
+            memoryUnitId = input.ContentReference.MemoryUnitId;
+        }
 
         ContentChunker chunker = new(_options);
-        IReadOnlyList<ContentChunk> chunks = chunker.Split(input.ContentText);
+        IReadOnlyList<ContentChunk> chunks = chunker.Split(contentText);
 
         ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(
@@ -142,14 +164,45 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
                 }
 
                 ContentChunk chunk = chunks[i];
+                WorkflowPayloadReference? textReference = null;
+                WorkflowPayloadReference? vectorReference = null;
+                string chunkText = chunk.Text;
+                float[] vector = vectors[i];
+                if (_payloadStore is not null && input.ContentKind == EmbeddingContentKind.Payload)
+                {
+                    textReference = await _payloadStore
+                        .SaveAsync(
+                            input.TenantId,
+                            memoryUnitId,
+                            WorkflowPayloadKind.ChunkText,
+                            System.Text.Encoding.UTF8.GetBytes(chunk.Text),
+                            idSuffix: chunk.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            cancellationToken: CancellationToken.None)
+                        .ConfigureAwait(false);
+                    byte[] vectorBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(vectors[i].AsSpan()).ToArray();
+                    vectorReference = await _payloadStore
+                        .SaveAsync(
+                            input.TenantId,
+                            memoryUnitId,
+                            WorkflowPayloadKind.ChunkVector,
+                            vectorBytes,
+                            idSuffix: chunk.Sequence.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                            cancellationToken: CancellationToken.None)
+                        .ConfigureAwait(false);
+                    chunkText = string.Empty;
+                    vector = [];
+                }
+
                 results.Add(new ChunkEmbeddingResult
                 {
                     Sequence = chunk.Sequence,
-                    Text = chunk.Text,
+                    Text = chunkText,
+                    TextReference = textReference,
                     StartOffset = chunk.StartOffset,
                     EndOffset = chunk.EndOffset,
                     EstimatedTokens = chunk.EstimatedTokens,
-                    Vector = vectors[i],
+                    Vector = vector,
+                    VectorReference = vectorReference,
                 });
             }
 
@@ -169,4 +222,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
             throw;
         }
     }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "embedding-input");
 }

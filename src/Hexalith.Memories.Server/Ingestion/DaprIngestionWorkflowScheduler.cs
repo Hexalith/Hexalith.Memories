@@ -14,18 +14,27 @@ using Hexalith.Memories.Server.Workflows;
 internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowScheduler
 {
     private readonly DaprWorkflowClient _workflowClient;
+    private readonly IWorkflowPayloadStore _payloadStore;
 
-    public DaprIngestionWorkflowScheduler(DaprWorkflowClient workflowClient)
+    public DaprIngestionWorkflowScheduler(DaprWorkflowClient workflowClient, IWorkflowPayloadStore payloadStore)
     {
         ArgumentNullException.ThrowIfNull(workflowClient);
+        ArgumentNullException.ThrowIfNull(payloadStore);
         _workflowClient = workflowClient;
+        _payloadStore = payloadStore;
     }
 
-    public Task<string> ScheduleAsync(string instanceId, IngestionInput input)
+    public async Task<string> ScheduleAsync(string instanceId, IngestionInput input)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         ArgumentNullException.ThrowIfNull(input);
 
-        return _workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, input);
+        IngestionInput slimInput = await IngestionPayloadClaimCheck
+            .PrepareAsync(_payloadStore, instanceId, input)
+            .ConfigureAwait(false);
+
+        return await _workflowClient
+            .ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput)
+            .ConfigureAwait(false);
     }
 }

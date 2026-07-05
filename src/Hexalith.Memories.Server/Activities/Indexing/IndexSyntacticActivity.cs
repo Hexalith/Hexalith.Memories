@@ -7,6 +7,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
@@ -23,13 +24,16 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSyntacticActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     public IndexSyntacticActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<IndexSyntacticActivity> logger)
+        ILogger<IndexSyntacticActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         _redis = redis;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -39,6 +43,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
     {
         ArgumentNullException.ThrowIfNull(input);
         TenantIdGuard.Validate(input.TenantId);
+        string content = await ResolveContentAsync(input).ConfigureAwait(false);
 
         IDatabase db = _redis.GetDatabase();
         var ft = db.FT();
@@ -71,7 +76,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
             // Story 5.4 AC2: tenantId persisted on the MU hash to enable tertiary
             // mismatch detection in CaseService (primary defense is the key prefix).
             new HashEntry("tenantId", input.TenantId),
-            new HashEntry("content", input.Content),
+            new HashEntry("content", content),
             new HashEntry("sourceUri", input.SourceUri),
             new HashEntry("sourceUriText", input.SourceUri),
             new HashEntry("sourceType", sourceType),
@@ -156,6 +161,27 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
         => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)
             ? field.Value
             : null;
+
+    private async Task<string> ResolveContentAsync(IndexInput input)
+    {
+        if (input.ContentReference is null)
+        {
+            return input.Content;
+        }
+
+        byte[] contentBytes = await RequirePayloadStore()
+            .ReadAsync(
+                input.ContentReference,
+                input.TenantId,
+                input.MemoryUnitId,
+                WorkflowPayloadKind.ExtractedText,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return System.Text.Encoding.UTF8.GetString(contentBytes);
+    }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "index-content");
 
     private static string FlattenMetadataTags(IReadOnlyDictionary<string, MetadataField> metadata)
     {

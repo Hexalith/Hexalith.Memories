@@ -43,6 +43,66 @@ public class ExtractContentActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_WithPayloadReference_ResolvesSourceBytesAndClaimChecksExtractedText()
+    {
+        IContentExtractionClient client = Substitute.For<IContentExtractionClient>();
+        byte[] sourceBytes = Encoding.UTF8.GetBytes("raw source");
+        WorkflowPayloadReference sourceReference = new(
+            "mu-1:sourcebytes:source",
+            "source",
+            sourceBytes.Length,
+            WorkflowPayloadKind.SourceBytes,
+            "test-tenant",
+            "mu-1");
+        WorkflowPayloadReference extractedReference = new(
+            "mu-1:extractedtext:extracted",
+            "extracted",
+            "extracted text".Length,
+            WorkflowPayloadKind.ExtractedText,
+            "test-tenant",
+            "mu-1");
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        payloadStore
+            .ReadAsync(sourceReference, "test-tenant", "mu-1", WorkflowPayloadKind.SourceBytes, Arg.Any<CancellationToken>())
+            .Returns(sourceBytes);
+        payloadStore
+            .SaveAsync(
+                "test-tenant",
+                "mu-1",
+                WorkflowPayloadKind.ExtractedText,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                null,
+                Arg.Any<CancellationToken>())
+            .Returns(extractedReference);
+        ExtractionInput input = CreateTestInput() with
+        {
+            ContentBytes = [],
+            MemoryUnitId = "mu-1",
+            PayloadReference = sourceReference,
+        };
+        Contracts.V1.ExtractionResult extracted = new("extracted text", "abc123", DateTimeOffset.UtcNow);
+        client.ExtractAsync(Arg.Any<ExtractionInput>(), Arg.Any<CancellationToken>()).Returns(extracted);
+
+        ExtractContentActivity activity = new(client, CreateGate(), payloadStore);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        Contracts.V1.ExtractionResult result = await activity.RunAsync(context, input);
+
+        result.ExtractedContent.ShouldBeEmpty();
+        result.ExtractedContentReference.ShouldBe(extractedReference);
+        await client.Received(1).ExtractAsync(
+            Arg.Is<ExtractionInput>(effective => effective.ContentBytes.SequenceEqual(sourceBytes)),
+            Arg.Any<CancellationToken>());
+        await payloadStore.Received(1).SaveAsync(
+            "test-tenant",
+            "mu-1",
+            WorkflowPayloadKind.ExtractedText,
+            Arg.Is<ReadOnlyMemory<byte>>(payload => Encoding.UTF8.GetString(payload.ToArray()) == "extracted text"),
+            null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_WhenClientThrowsException_ShouldPropagate()
     {
         // Arrange

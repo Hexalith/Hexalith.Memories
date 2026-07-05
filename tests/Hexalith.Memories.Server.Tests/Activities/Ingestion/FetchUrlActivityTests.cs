@@ -36,6 +36,52 @@ public class FetchUrlActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_WithPayloadStore_ReturnsReferenceWithoutFetchedBytes()
+    {
+        IUrlContentFetcher fetcher = Substitute.For<IUrlContentFetcher>();
+        byte[] fetchedBytes = [1, 2, 3];
+        fetcher.FetchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
+            .Returns(new UrlFetchResult(fetchedBytes, "text/plain", fetchedBytes.Length, "https://example.com/final", 200));
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        WorkflowPayloadReference reference = new(
+            "mu-1:fetchedurlbytes:hash",
+            "hash",
+            fetchedBytes.Length,
+            WorkflowPayloadKind.FetchedUrlBytes,
+            "tenant-a",
+            "mu-1");
+        payloadStore
+            .SaveAsync(
+                "tenant-a",
+                "mu-1",
+                WorkflowPayloadKind.FetchedUrlBytes,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                null,
+                Arg.Any<CancellationToken>())
+            .Returns(reference);
+
+        FetchUrlActivity activity = new(
+            fetcher,
+            CreateGate(),
+            NullLogger<FetchUrlActivity>.Instance,
+            payloadStore);
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        UrlFetchResult result = await activity.RunAsync(context, new FetchUrlInput("https://example.com/doc", "mu-1", "tenant-a"));
+
+        result.ContentBytes.ShouldBeEmpty();
+        result.PayloadReference.ShouldBe(reference);
+        result.ContentLength.ShouldBe(fetchedBytes.Length);
+        await payloadStore.Received(1).SaveAsync(
+            "tenant-a",
+            "mu-1",
+            WorkflowPayloadKind.FetchedUrlBytes,
+            Arg.Is<ReadOnlyMemory<byte>>(payload => payload.ToArray().SequenceEqual(fetchedBytes)),
+            null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_FetcherThrowsUrlFetchException_RethrowsForWorkflowRetry()
     {
         IUrlContentFetcher fetcher = Substitute.For<IUrlContentFetcher>();

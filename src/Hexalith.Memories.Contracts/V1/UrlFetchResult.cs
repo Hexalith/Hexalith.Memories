@@ -11,9 +11,11 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <param name="ContentLength">Number of bytes actually read.</param>
 /// <param name="FinalUrl">URL after following redirects (the last hop the fetcher visited).</param>
 /// <param name="HttpStatusCode">Final HTTP status code observed (200 on success paths).</param>
+/// <param name="PayloadReference">Optional claim-check reference for the fetched body.</param>
 public sealed record UrlFetchResult(
     byte[] ContentBytes,
     string ContentType,
     long ContentLength,
     string FinalUrl,
-    int HttpStatusCode);
+    int HttpStatusCode,
+    WorkflowPayloadReference? PayloadReference = null);

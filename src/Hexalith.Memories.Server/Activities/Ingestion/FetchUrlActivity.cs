@@ -23,11 +23,13 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
     private readonly IUrlContentFetcher _fetcher;
     private readonly PerTenantConcurrencyGate _gate;
     private readonly ILogger<FetchUrlActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     public FetchUrlActivity(
         IUrlContentFetcher fetcher,
         PerTenantConcurrencyGate gate,
-        ILogger<FetchUrlActivity> logger)
+        ILogger<FetchUrlActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(fetcher);
         ArgumentNullException.ThrowIfNull(gate);
@@ -35,6 +37,7 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
         _fetcher = fetcher;
         _gate = gate;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -73,7 +76,25 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
                 stopwatch.ElapsedMilliseconds,
                 finalRedacted);
 
-            return result;
+            if (_payloadStore is null)
+            {
+                return result;
+            }
+
+            WorkflowPayloadReference reference = await _payloadStore
+                .SaveAsync(
+                    input.TenantId,
+                    input.MemoryUnitId,
+                    WorkflowPayloadKind.FetchedUrlBytes,
+                    result.ContentBytes,
+                    cancellationToken: CancellationToken.None)
+                .ConfigureAwait(false);
+
+            return result with
+            {
+                ContentBytes = [],
+                PayloadReference = reference,
+            };
         }
         catch (UrlFetchException ex)
         {

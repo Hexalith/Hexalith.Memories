@@ -15,9 +15,13 @@ namespace Hexalith.Memories.Contracts.V1;
 /// string so legacy workflow history that predates the field deserializes without throwing; the activity
 /// treats empty/whitespace values as a contract-violation and fails fast.
 /// </param>
+/// <param name="MemoryUnitId">Optional memory-unit identifier used to scope claim-checked extracted text.</param>
+/// <param name="PayloadReference">Optional claim-check reference for <paramref name="ContentBytes"/>.</param>
 public sealed record ExtractionInput(
     string SourceUri,
     byte[] ContentBytes,
     string ContentType,
     SourceType SourceType,
-    string TenantId = "");
+    string TenantId = "",
+    string MemoryUnitId = "",
+    WorkflowPayloadReference? PayloadReference = null);

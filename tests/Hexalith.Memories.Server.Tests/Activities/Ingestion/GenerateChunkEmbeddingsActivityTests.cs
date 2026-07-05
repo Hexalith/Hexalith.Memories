@@ -105,6 +105,85 @@ public class GenerateChunkEmbeddingsActivityTests
         await rateLimiter.Received(2).TryConsumeAsync();
     }
 
+    [Fact]
+    public async Task RunAsync_WithContentReference_ReturnsChunkReferencesWithoutTextOrVectors()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
+        IActorProxyFactory actorProxyFactory = CreateActorProxyFactory(config);
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        WorkflowPayloadReference contentReference = CreateReference(
+            WorkflowPayloadKind.ExtractedText,
+            "mu-1",
+            "content",
+            16);
+        WorkflowPayloadReference textReference = CreateReference(
+            WorkflowPayloadKind.ChunkText,
+            "mu-1",
+            "text-0",
+            8);
+        WorkflowPayloadReference vectorReference = CreateReference(
+            WorkflowPayloadKind.ChunkVector,
+            "mu-1",
+            "vector-0",
+            sizeof(float) * 3);
+        payloadStore
+            .ReadAsync(contentReference, "tenant-a", "mu-1", WorkflowPayloadKind.ExtractedText, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("abcdefgh"));
+        payloadStore
+            .SaveAsync(
+                "tenant-a",
+                "mu-1",
+                WorkflowPayloadKind.ChunkText,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                "0",
+                Arg.Any<CancellationToken>())
+            .Returns(textReference);
+        payloadStore
+            .SaveAsync(
+                "tenant-a",
+                "mu-1",
+                WorkflowPayloadKind.ChunkVector,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                "0",
+                Arg.Any<CancellationToken>())
+            .Returns(vectorReference);
+        GenerateChunkEmbeddingsActivity activity = new(
+            embeddingClient,
+            actorProxyFactory,
+            Options.Create(new ContentChunkingOptions
+            {
+                MaxEstimatedTokens = 2,
+                OverlapEstimatedTokens = 0,
+                CharactersPerEstimatedToken = 4,
+            }),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            CreateRedisWithoutMarker(),
+            payloadStore);
+
+        ChunkEmbeddingBatchResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EmbeddingInput("tenant-a", string.Empty, EmbeddingContentKind.Payload, contentReference));
+
+        ChunkEmbeddingResult chunk = result.Chunks.ShouldHaveSingleItem();
+        chunk.Text.ShouldBeEmpty();
+        chunk.Vector.ShouldBeEmpty();
+        chunk.TextReference.ShouldBe(textReference);
+        chunk.VectorReference.ShouldBe(vectorReference);
+        await embeddingClient.Received(1).GenerateBatchAsync(
+            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcdefgh" })),
+            "tenant-a",
+            config,
+            Arg.Any<CancellationToken>());
+        await payloadStore.Received(1).SaveAsync(
+            "tenant-a",
+            "mu-1",
+            WorkflowPayloadKind.ChunkText,
+            Arg.Is<ReadOnlyMemory<byte>>(payload => System.Text.Encoding.UTF8.GetString(payload.ToArray()) == "abcdefgh"),
+            "0",
+            Arg.Any<CancellationToken>());
+    }
+
     private static EmbeddingClient CreateMockEmbeddingClient(TenantEmbeddingConfig config)
     {
         EmbeddingClient client = Substitute.For<EmbeddingClient>(
@@ -155,6 +234,19 @@ public class GenerateChunkEmbeddingsActivityTests
         hostEnvironment.EnvironmentName.Returns("Development");
         return hostEnvironment;
     }
+
+    private static WorkflowPayloadReference CreateReference(
+        WorkflowPayloadKind kind,
+        string memoryUnitId,
+        string suffix,
+        long byteLength)
+        => new(
+            $"{memoryUnitId}:{kind.ToString().ToLowerInvariant()}:hash:{suffix}",
+            $"hash-{suffix}",
+            byteLength,
+            kind,
+            "tenant-a",
+            memoryUnitId);
 
     private static IConnectionMultiplexer CreateRedisWithoutMarker()
     {

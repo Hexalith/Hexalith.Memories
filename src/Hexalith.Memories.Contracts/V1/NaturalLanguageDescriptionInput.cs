@@ -19,9 +19,11 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <see cref="MetadataOrigin.System"/>.</param>
 /// <param name="AggregateType">The optional aggregate type (from the <c>event.aggregateType</c> metadata
 /// field). <see langword="null"/> when absent — renders as <c>"(unspecified)"</c> in the prompt.</param>
+/// <param name="RawPayloadReference">Optional claim-check reference for the raw event payload.</param>
 public sealed record NaturalLanguageDescriptionInput(
     string TenantId,
     string MemoryUnitId,
     string RawJsonPayload,
     string EventType,
-    string? AggregateType);
+    string? AggregateType,
+    WorkflowPayloadReference? RawPayloadReference = null);

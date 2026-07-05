@@ -24,6 +24,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// used as the Sorted-Set score for FIFO ordering of the retry queue. Positional with default <c>0</c> so
 /// historical activity-input JSON (pre-fix) deserializes to the legacy shape; the activity falls back to
 /// <c>DateTime.UtcNow.Ticks</c> when the value is <c>0</c>.</param>
+/// <param name="RawPayloadReference">Optional claim-check reference for the raw event payload.</param>
 public sealed record QueueNaturalLanguageEmbeddingRetryInput(
     string TenantId,
     string MemoryUnitId,
@@ -34,4 +35,5 @@ public sealed record QueueNaturalLanguageEmbeddingRetryInput(
     string EmbeddingProvider,
     string EmbeddingModel,
     int EmbeddingDimensions,
-    long QueuedAtTicks = 0L);
+    long QueuedAtTicks = 0L,
+    WorkflowPayloadReference? RawPayloadReference = null);

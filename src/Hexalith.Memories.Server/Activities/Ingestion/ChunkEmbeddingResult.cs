@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Embedding result for one raw payload chunk.</summary>
 public sealed record ChunkEmbeddingResult
 {
@@ -13,6 +15,9 @@ public sealed record ChunkEmbeddingResult
 
     /// <summary>Gets the non-empty chunk text.</summary>
     public required string Text { get; init; }
+
+    /// <summary>Gets the optional claim-check reference for <see cref="Text"/>.</summary>
+    public WorkflowPayloadReference? TextReference { get; init; }
 
     /// <summary>Gets the inclusive source start offset.</summary>
     public required int StartOffset { get; init; }
@@ -25,4 +30,7 @@ public sealed record ChunkEmbeddingResult
 
     /// <summary>Gets the embedding vector for this chunk.</summary>
     public required float[] Vector { get; init; }
+
+    /// <summary>Gets the optional claim-check reference for <see cref="Vector"/>.</summary>
+    public WorkflowPayloadReference? VectorReference { get; init; }
 }

@@ -190,6 +190,8 @@ builder.Services.AddSingleton<IOidcTokenProvider>(sp => sp.GetRequiredService<Oi
 
 // Story 6.1: URL and directory ingestion — settings, named HttpClient, and services.
 builder.Services.Configure<IngestionSettings>(builder.Configuration.GetSection("Ingestion"));
+builder.Services.Configure<WorkflowPayloadStoreOptions>(
+    builder.Configuration.GetSection(WorkflowPayloadStoreOptions.SectionName));
 builder.Services.Configure<ContentChunkingOptions>(
     builder.Configuration.GetSection(ContentChunkingOptions.SectionName));
 builder.Services.Configure<UrlFetcherOptions>(builder.Configuration.GetSection("Ingestion:UrlFetcher"));
@@ -199,6 +201,7 @@ builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
         AllowAutoRedirect = false,
     });
 builder.Services.AddSingleton<IUrlContentFetcher, UrlContentFetcher>();
+builder.Services.AddSingleton<IWorkflowPayloadStore, DaprWorkflowPayloadStore>();
 builder.Services.AddSingleton<DirectoryIngestionService>();
 
 // Story 6.2: per-tenant rate limiting and concurrency gate.
@@ -350,6 +353,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<CleanupSyntacticActivity>();
     options.RegisterActivity<CleanupSemanticActivity>();
     options.RegisterActivity<CleanupGraphActivity>();
+    options.RegisterActivity<CleanupWorkflowPayloadsActivity>();
     options.RegisterActivity<RecordCaseActivityActivity>();
     options.RegisterActivity<ProjectCaseHashActivity>();
     options.RegisterActivity<ProjectCaseGraphActivity>();
@@ -480,6 +484,7 @@ app.MapPost("/api/ingest", async (
     DaprWorkflowClient workflowClient,
     TenantStatusGuard tenantGuard,
     IngestDedupReservation ingestReservation,
+    IWorkflowPayloadStore payloadStore,
     IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
     ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
@@ -509,7 +514,7 @@ app.MapPost("/api/ingest", async (
         });
     scope.CaseId = input.CaseId;
     scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-    scope.QueryParams = CreateIngestAuditQueryParams(input.SourceType, input.ContentType, input.ContentBytes?.Length ?? 0);
+    scope.QueryParams = CreateIngestAuditQueryParams(input.SourceType, input.ContentType, IngestionPayloadClaimCheck.GetDeclaredPayloadLength(input));
     activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
     activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
     activity?.SetTag(MemoriesActivitySource.TagSourceType, input.SourceType.ToString().ToLowerInvariant());
@@ -534,8 +539,8 @@ app.MapPost("/api/ingest", async (
         // REST path. The candidate id becomes the workflow instance id (and, for SourceType.File, the
         // MemoryUnitId), so a losing concurrent ingest returns the winner's instance and observes the same
         // MemoryUnitId without scheduling a second workflow.
-        Hexalith.Memories.EventStore.TenantEventRoutingOptions routing = ingestRoutingOptions.CurrentValue;
         string candidateInstanceId = Guid.NewGuid().ToString();
+        Hexalith.Memories.EventStore.TenantEventRoutingOptions routing = ingestRoutingOptions.CurrentValue;
         bool reservationHeld = false;
 
         if (routing.PreflightDedupEnabled)
@@ -561,8 +566,11 @@ app.MapPost("/api/ingest", async (
 
         try
         {
+            IngestionInput slimInput = await IngestionPayloadClaimCheck
+                .PrepareAsync(payloadStore, candidateInstanceId, input, CancellationToken.None)
+                .ConfigureAwait(false);
             string instanceId = await workflowClient.ScheduleNewWorkflowAsync(
-                nameof(IngestionWorkflow), instanceId: candidateInstanceId, input: input);
+                nameof(IngestionWorkflow), instanceId: candidateInstanceId, input: slimInput);
             return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
         }
         catch
@@ -3979,7 +3987,7 @@ static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configur
 static IReadOnlyDictionary<string, object?> CreateIngestAuditQueryParams(
     SourceType sourceType,
     string? contentType,
-    int? bytes)
+    long? bytes)
     => new Dictionary<string, object?>(System.StringComparer.Ordinal)
     {
         ["sourceType"] = sourceType.ToString(),

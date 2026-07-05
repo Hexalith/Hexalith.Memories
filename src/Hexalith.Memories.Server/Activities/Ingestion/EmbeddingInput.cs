@@ -24,4 +24,5 @@ using Hexalith.Memories.Contracts.V1;
 public sealed record EmbeddingInput(
     string TenantId,
     string ContentText,
-    EmbeddingContentKind ContentKind = EmbeddingContentKind.Payload);
+    EmbeddingContentKind ContentKind = EmbeddingContentKind.Payload,
+    WorkflowPayloadReference? ContentReference = null);

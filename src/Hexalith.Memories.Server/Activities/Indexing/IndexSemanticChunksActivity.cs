@@ -6,12 +6,14 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using System.Runtime.InteropServices;
+using System.Text;
 
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
@@ -25,16 +27,19 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSemanticChunksActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     /// <summary>Initializes a new instance of the <see cref="IndexSemanticChunksActivity"/> class.</summary>
     public IndexSemanticChunksActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<IndexSemanticChunksActivity> logger)
+        ILogger<IndexSemanticChunksActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(logger);
         _redis = redis;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -86,8 +91,9 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
 
         foreach (ChunkEmbeddingResult chunk in input.Chunks.OrderBy(static c => c.Sequence))
         {
-            ValidateChunk(input, chunk);
-            byte[] vectorBytes = MemoryMarshal.AsBytes(chunk.Vector.AsSpan()).ToArray();
+            ResolvedSemanticChunk resolved = await ResolveChunkAsync(input, chunk).ConfigureAwait(false);
+            ValidateChunk(input, resolved);
+            byte[] vectorBytes = MemoryMarshal.AsBytes(resolved.Vector.AsSpan()).ToArray();
             string hashKey = IndexSchemaDefinitions.BuildSemanticChunkKey(input.TenantId, input.MemoryUnitId, chunk.Sequence);
 
             List<HashEntry> hashEntries =
@@ -101,7 +107,7 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
                 new HashEntry("chunkSequence", chunk.Sequence),
                 new HashEntry("chunkStartOffset", chunk.StartOffset),
                 new HashEntry("chunkEndOffset", chunk.EndOffset),
-                new HashEntry("chunkText", chunk.Text),
+                new HashEntry("chunkText", resolved.Text),
             ];
 
             if (!string.IsNullOrWhiteSpace(cloudEventSubject))
@@ -121,7 +127,48 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
         return new IndexResult("semantic", input.MemoryUnitId, input.TenantId);
     }
 
-    private static void ValidateChunk(SemanticChunkIndexInput input, ChunkEmbeddingResult chunk)
+    private async Task<ResolvedSemanticChunk> ResolveChunkAsync(SemanticChunkIndexInput input, ChunkEmbeddingResult chunk)
+    {
+        string text = chunk.Text;
+        if (chunk.TextReference is not null)
+        {
+            byte[] textBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    chunk.TextReference,
+                    input.TenantId,
+                    input.MemoryUnitId,
+                    WorkflowPayloadKind.ChunkText,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            text = Encoding.UTF8.GetString(textBytes);
+        }
+
+        float[] vector = chunk.Vector;
+        if (chunk.VectorReference is not null)
+        {
+            byte[] vectorBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    chunk.VectorReference,
+                    input.TenantId,
+                    input.MemoryUnitId,
+                    WorkflowPayloadKind.ChunkVector,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            if (vectorBytes.Length % sizeof(float) != 0)
+            {
+                throw new WorkflowPayloadException("PAYLOAD_VECTOR_LENGTH_INVALID", chunk.VectorReference.Id);
+            }
+
+            vector = MemoryMarshal.Cast<byte, float>(vectorBytes).ToArray();
+        }
+
+        return new ResolvedSemanticChunk(text, vector, chunk.Sequence, chunk.StartOffset, chunk.EndOffset);
+    }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "semantic-chunk");
+
+    private static void ValidateChunk(SemanticChunkIndexInput input, ResolvedSemanticChunk chunk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(chunk.Text);
         ArgumentNullException.ThrowIfNull(chunk.Vector);
@@ -141,4 +188,5 @@ public sealed class IndexSemanticChunksActivity : WorkflowActivity<SemanticChunk
         => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)
             ? field.Value
             : null;
+
 }

@@ -17,6 +17,9 @@ public sealed record IngestionInput
     /// <summary>Gets the payload bytes. Required (non-null, non-empty) when <see cref="SourceType"/> is <see cref="SourceType.File"/>; MUST be null (or empty) when <see cref="SourceType"/> is <see cref="SourceType.Url"/> — the workflow fetches the body via FetchUrlActivity.</summary>
     public byte[]? ContentBytes { get; init; }
 
+    /// <summary>Gets the optional claim-check reference for non-URL payload bytes. New server schedules use this instead of serializing <see cref="ContentBytes"/> into workflow history.</summary>
+    public WorkflowPayloadReference? PayloadReference { get; init; }
+
     public required string ContentType { get; init; }
 
     public required SourceType SourceType { get; init; }

@@ -34,6 +34,7 @@ public sealed class DirectoryIngestionService
     private readonly IOptions<IngestionSettings> _settings;
     private readonly DaprWorkflowClient _workflowClient;
     private readonly DaprClient _daprClient;
+    private readonly IWorkflowPayloadStore? _payloadStore;
     private readonly ILogger<DirectoryIngestionService> _logger;
     private readonly TimeProvider _timeProvider;
 
@@ -41,6 +42,17 @@ public sealed class DirectoryIngestionService
         IOptions<IngestionSettings> settings,
         DaprWorkflowClient workflowClient,
         DaprClient daprClient,
+        ILogger<DirectoryIngestionService> logger,
+        TimeProvider? timeProvider = null)
+        : this(settings, workflowClient, daprClient, null, logger, timeProvider)
+    {
+    }
+
+    public DirectoryIngestionService(
+        IOptions<IngestionSettings> settings,
+        DaprWorkflowClient workflowClient,
+        DaprClient daprClient,
+        IWorkflowPayloadStore? payloadStore,
         ILogger<DirectoryIngestionService> logger,
         TimeProvider? timeProvider = null)
     {
@@ -52,6 +64,7 @@ public sealed class DirectoryIngestionService
         _settings = settings;
         _workflowClient = workflowClient;
         _daprClient = daprClient;
+        _payloadStore = payloadStore;
         _logger = logger;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -203,6 +216,7 @@ public sealed class DirectoryIngestionService
                 continue;
             }
 
+            string requestedInstanceId = BaUlid.New(UlidOptions).ToString();
             IngestionInput input = new()
             {
                 TenantId = request.TenantId,
@@ -216,8 +230,12 @@ public sealed class DirectoryIngestionService
                 CausationId = request.CausationId,
                 CorrelationId = batchId,
             };
-
-            string requestedInstanceId = BaUlid.New(UlidOptions).ToString();
+            if (_payloadStore is not null)
+            {
+                input = await IngestionPayloadClaimCheck
+                    .PrepareAsync(_payloadStore, requestedInstanceId, input, cancellationToken)
+                    .ConfigureAwait(false);
+            }
             string instanceId;
             try
             {

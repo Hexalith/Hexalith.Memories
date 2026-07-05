@@ -25,11 +25,16 @@ internal static class IngestionInputValidator
         ValidateRequired(input.ContentType, nameof(input.ContentType));
         ValidateRequired(input.IngestedBy, nameof(input.IngestedBy));
         ValidateSourceType(input.SourceType);
-        ValidateContentBytesForSourceType(input.ContentBytes, input.SourceType, input.SourceUri);
+        ValidateContentBytesForSourceType(input.ContentBytes, input.PayloadReference, input.SourceType, input.SourceUri, input.TenantId);
         ValidateMetadata(input.Metadata);
     }
 
-    private static void ValidateContentBytesForSourceType(byte[]? contentBytes, SourceType sourceType, string sourceUri)
+    private static void ValidateContentBytesForSourceType(
+        byte[]? contentBytes,
+        WorkflowPayloadReference? payloadReference,
+        SourceType sourceType,
+        string sourceUri,
+        string tenantId)
     {
         if (sourceType == SourceType.Url)
         {
@@ -47,21 +52,42 @@ internal static class IngestionInputValidator
             return;
         }
 
-        // Inline ingestion types (File, Event, Command, Projection, Discussion, Annotation)
-        // carry payload bytes directly through extraction/indexing.
-        if (contentBytes is null)
-        {
-            throw new ArgumentException($"ContentBytes is required for SourceType={sourceType}.");
-        }
-
-        if (contentBytes.Length == 0)
+        bool hasReference = payloadReference is not null;
+        if (contentBytes is { Length: 0 } && !hasReference)
         {
             throw new ArgumentException($"ContentBytes must not be empty for SourceType={sourceType}.");
         }
 
-        if (contentBytes.Length > MaxContentBytes)
+        bool hasInlineBytes = contentBytes is { Length: > 0 };
+        if (!hasInlineBytes && !hasReference)
+        {
+            throw new ArgumentException($"ContentBytes or PayloadReference is required for SourceType={sourceType}.");
+        }
+
+        if (contentBytes is { Length: > MaxContentBytes })
         {
             throw new ArgumentException($"ContentBytes must not exceed {MaxContentBytes} bytes (1 MB).");
+        }
+
+        if (payloadReference is not null)
+        {
+            if (!string.Equals(payloadReference.TenantId, tenantId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("PayloadReference tenant scope must match TenantId.");
+            }
+
+            if (payloadReference.ContentKind != WorkflowPayloadKind.SourceBytes)
+            {
+                throw new ArgumentException("PayloadReference must reference source bytes for non-URL ingestion.");
+            }
+
+            if (payloadReference.ByteLength <= 0
+                || string.IsNullOrWhiteSpace(payloadReference.Id)
+                || string.IsNullOrWhiteSpace(payloadReference.Sha256Hash)
+                || string.IsNullOrWhiteSpace(payloadReference.MemoryUnitId))
+            {
+                throw new ArgumentException("PayloadReference must include id, sha256Hash, byteLength, and memoryUnitId.");
+            }
         }
     }
 

@@ -86,6 +86,110 @@ public class IngestionWorkflowTests
     }
 
     [Fact]
+    public async Task RunAsync_WithClaimCheckedPayloads_ShouldScheduleSlimActivityPayloads()
+    {
+        string memoryUnitId = TestGuid.ToString();
+        WorkflowPayloadReference sourceReference = CreatePayloadReference(
+            WorkflowPayloadKind.SourceBytes,
+            memoryUnitId,
+            "source",
+            128);
+        WorkflowPayloadReference extractedReference = CreatePayloadReference(
+            WorkflowPayloadKind.ExtractedText,
+            memoryUnitId,
+            "extracted",
+            24);
+        WorkflowPayloadReference chunkTextReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkText,
+            memoryUnitId,
+            "chunk-text",
+            12);
+        WorkflowPayloadReference chunkVectorReference = CreatePayloadReference(
+            WorkflowPayloadKind.ChunkVector,
+            memoryUnitId,
+            "chunk-vector",
+            sizeof(float) * 3);
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            ContentBytes = null,
+            PayloadReference = sourceReference,
+        };
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<ExtractionResult>(
+                nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(new ExtractionResult(string.Empty, "abc123hash", new DateTimeOffset(TestTimestamp), extractedReference)));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(new ChunkEmbeddingBatchResult
+            {
+                Chunks =
+                [
+                    new ChunkEmbeddingResult
+                    {
+                        Sequence = 0,
+                        Text = string.Empty,
+                        TextReference = chunkTextReference,
+                        StartOffset = 0,
+                        EndOffset = 12,
+                        EstimatedTokens = 3,
+                        Vector = [],
+                        VectorReference = chunkVectorReference,
+                    },
+                ],
+                Provider = "google:gemini-embedding-001",
+                Model = "gemini-embedding-001",
+                Dimensions = 3,
+            }));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupWorkflowPayloadsActivity),
+                Arg.Any<CleanupWorkflowPayloadsInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        await workflow.RunAsync(context, input);
+
+        await context.Received().CallActivityAsync<ExtractionResult>(
+            nameof(ExtractContentActivity),
+            Arg.Is<ExtractionInput>(i =>
+                i.ContentBytes.Length == 0
+                && i.PayloadReference == sourceReference
+                && i.MemoryUnitId == memoryUnitId),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<ChunkEmbeddingBatchResult>(
+            nameof(GenerateChunkEmbeddingsActivity),
+            Arg.Is<EmbeddingInput>(i =>
+                i.ContentText == string.Empty
+                && i.ContentReference == extractedReference),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSyntacticActivity),
+            Arg.Is<IndexInput>(i =>
+                i.Content == string.Empty
+                && i.ContentReference == extractedReference
+                && i.EmbeddingVector.Length == 0
+                && i.EmbeddingVectorReference == chunkVectorReference),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<IndexResult>(
+            nameof(IndexSemanticChunksActivity),
+            Arg.Is<SemanticChunkIndexInput>(i =>
+                i.Chunks[0].Text == string.Empty
+                && i.Chunks[0].TextReference == chunkTextReference
+                && i.Chunks[0].Vector.Length == 0
+                && i.Chunks[0].VectorReference == chunkVectorReference),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.Received().CallActivityAsync<bool>(
+            nameof(CleanupWorkflowPayloadsActivity),
+            Arg.Is<CleanupWorkflowPayloadsInput>(i =>
+                i.References.Contains(sourceReference)
+                && i.References.Contains(extractedReference)
+                && i.References.Contains(chunkTextReference)
+                && i.References.Contains(chunkVectorReference)),
+            Arg.Any<WorkflowTaskOptions>());
+    }
+
+    [Fact]
     public async Task RunAsync_EventStoreDedupInstanceId_ShouldGenerateIndependentMemoryUnitId()
     {
         IngestionInput input = IngestionInputFactory.Create(sourceType: SourceType.Event, sourceUri: "event-1");
@@ -698,6 +802,47 @@ public class IngestionWorkflowTests
             nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>());
     }
 
+    [Fact]
+    public async Task RunAsync_DuplicateClaimCheckedSource_ShouldCleanupInputPayloadReference()
+    {
+        string memoryUnitId = TestGuid.ToString();
+        WorkflowPayloadReference sourceReference = CreatePayloadReference(
+            WorkflowPayloadKind.SourceBytes,
+            memoryUnitId,
+            "source",
+            128);
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            ContentBytes = null,
+            PayloadReference = sourceReference,
+        };
+        WorkflowContext context = CreateMockContext();
+        context.CallActivityAsync<IdempotencyResult>(
+                nameof(CheckIdempotencyActivity), Arg.Any<IdempotencyInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(new IdempotencyResult(true, "mu-existing"));
+        context.CallActivityAsync<bool>(
+                nameof(CleanupWorkflowPayloadsActivity),
+                Arg.Any<CleanupWorkflowPayloadsInput>(),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(true);
+        IngestionWorkflow workflow = new();
+
+        IngestionResult result = await workflow.RunAsync(context, input);
+
+        result.WasDuplicate.ShouldBeTrue();
+        result.MemoryUnitId.ShouldBe("mu-existing");
+        await context.Received(1).CallActivityAsync<bool>(
+            nameof(CleanupWorkflowPayloadsActivity),
+            Arg.Is<CleanupWorkflowPayloadsInput>(i =>
+                i.TenantId == input.TenantId
+                && i.MemoryUnitId == memoryUnitId
+                && i.References.Count == 1
+                && i.References[0] == sourceReference),
+            Arg.Any<WorkflowTaskOptions>());
+        await context.DidNotReceive().CallActivityAsync<ValidateResult>(
+            nameof(ValidateContentActivity), Arg.Any<IngestionInput>());
+    }
+
     // Story 18.4 — explicit idempotency token threads into the dedup check and augments the permanent record.
     [Fact]
     public async Task RunAsync_WithIdempotencyToken_ShouldPassTokenIntoIdempotencyInput()
@@ -998,6 +1143,19 @@ public class IngestionWorkflowTests
             .Returns(Substitute.For<ILogger>());
         return context;
     }
+
+    private static WorkflowPayloadReference CreatePayloadReference(
+        WorkflowPayloadKind kind,
+        string memoryUnitId,
+        string suffix,
+        long byteLength)
+        => new(
+            $"{memoryUnitId}:{kind.ToString().ToLowerInvariant()}:hash:{suffix}",
+            $"hash-{suffix}",
+            byteLength,
+            kind,
+            "test-tenant",
+            memoryUnitId);
 
     private static void SetupPreIndexActivities(WorkflowContext context, IngestionInput input, List<string>? callLog = null)
     {

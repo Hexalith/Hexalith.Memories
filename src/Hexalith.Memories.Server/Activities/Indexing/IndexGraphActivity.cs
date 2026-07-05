@@ -6,6 +6,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Logging;
 
@@ -19,15 +20,18 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly ILogger<IndexGraphActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     public IndexGraphActivity(
         [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
         IGraphQueryBuilder graphQueryBuilder,
-        ILogger<IndexGraphActivity> logger)
+        ILogger<IndexGraphActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         _falkorDb = falkorDb;
         _graphQueryBuilder = graphQueryBuilder;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -37,6 +41,7 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
     {
         ArgumentNullException.ThrowIfNull(input);
         TenantIdGuard.Validate(input.TenantId);
+        string content = await ResolveContentAsync(input).ConfigureAwait(false);
 
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         string graphId = input.TenantId;
@@ -56,7 +61,7 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
         (query, parameters) = _graphQueryBuilder.BuildMergeMemoryUnitNode(
             input.MemoryUnitId,
             input.CaseId,
-            input.Content,
+            content,
             input.ContentHash,
             input.SourceUri,
             input.SourceType,
@@ -209,4 +214,25 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
             return null;
         }
     }
+
+    private async Task<string> ResolveContentAsync(IndexInput input)
+    {
+        if (input.ContentReference is null)
+        {
+            return input.Content;
+        }
+
+        byte[] contentBytes = await RequirePayloadStore()
+            .ReadAsync(
+                input.ContentReference,
+                input.TenantId,
+                input.MemoryUnitId,
+                WorkflowPayloadKind.ExtractedText,
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return System.Text.Encoding.UTF8.GetString(contentBytes);
+    }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "graph-content");
 }

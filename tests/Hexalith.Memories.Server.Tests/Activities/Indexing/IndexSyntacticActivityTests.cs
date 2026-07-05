@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
+using System.Text;
 using System.Text.Json;
 
 using Dapr.Workflow;
@@ -7,6 +8,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
@@ -73,6 +75,40 @@ public class IndexSyntacticActivityTests
         await db.Received(1).HashSetAsync(
             Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("test-tenant", "test-mu-001")),
             Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithContentReference_StoresResolvedContent()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = CreateMockMultiplexer(db);
+        ILogger<IndexSyntacticActivity> logger = Substitute.For<ILogger<IndexSyntacticActivity>>();
+        WorkflowPayloadReference contentReference = new(
+            "test-mu-001:extractedtext:hash",
+            "hash",
+            16,
+            WorkflowPayloadKind.ExtractedText,
+            "test-tenant",
+            "test-mu-001");
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        payloadStore
+            .ReadAsync(contentReference, "test-tenant", "test-mu-001", WorkflowPayloadKind.ExtractedText, Arg.Any<CancellationToken>())
+            .Returns(Encoding.UTF8.GetBytes("resolved content"));
+        IndexInput input = CreateTestInput() with
+        {
+            Content = string.Empty,
+            ContentReference = contentReference,
+        };
+        WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
+
+        IndexSyntacticActivity activity = new(redis, logger, payloadStore);
+
+        await activity.RunAsync(context, input);
+
+        await db.Received(1).HashSetAsync(
+            IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
+            Arg.Is<HashEntry[]>(entries => HasEntry(entries, "content", "resolved content")),
             Arg.Any<CommandFlags>());
     }
 

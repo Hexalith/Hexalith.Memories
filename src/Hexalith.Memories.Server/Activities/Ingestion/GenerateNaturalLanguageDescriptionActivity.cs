@@ -21,6 +21,7 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Telemetry;
@@ -62,6 +63,7 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
     private readonly DaprConversationClient _conversationClient;
     private readonly IOptions<NaturalLanguageDescriptionOptions> _options;
     private readonly ILogger<GenerateNaturalLanguageDescriptionActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     /// <summary>Initializes a new instance of the
     /// <see cref="GenerateNaturalLanguageDescriptionActivity"/> class.</summary>
@@ -71,7 +73,8 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
     public GenerateNaturalLanguageDescriptionActivity(
         DaprConversationClient conversationClient,
         IOptions<NaturalLanguageDescriptionOptions> options,
-        ILogger<GenerateNaturalLanguageDescriptionActivity> logger)
+        ILogger<GenerateNaturalLanguageDescriptionActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(conversationClient);
         ArgumentNullException.ThrowIfNull(options);
@@ -79,6 +82,7 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
         _conversationClient = conversationClient;
         _options = options;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -99,7 +103,21 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
             NaturalLanguageIntegrationLog.ConversationApiIsEchoComponent(_logger, componentName);
         }
 
-        string truncatedPayload = TruncatePayload(input.RawJsonPayload, options.MaxPayloadChars);
+        string rawJsonPayload = input.RawJsonPayload;
+        if (input.RawPayloadReference is not null)
+        {
+            byte[] rawBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    input.RawPayloadReference,
+                    input.TenantId,
+                    input.MemoryUnitId,
+                    WorkflowPayloadKind.SourceBytes,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            rawJsonPayload = System.Text.Encoding.UTF8.GetString(rawBytes);
+        }
+
+        string truncatedPayload = TruncatePayload(rawJsonPayload, options.MaxPayloadChars);
 
         IReadOnlyList<IConversationMessage> messages = BuildMessages(
             input.EventType,
@@ -265,6 +283,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
         TryApplyMaxTokenHint(conversationOptions, MaxTokens);
         return conversationOptions;
     }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "nl-raw-event");
 
     private static string TruncatePayload(string? rawPayload, int maxChars)
     {

@@ -16,6 +16,9 @@ public sealed record IndexInput
 
     public required string Content { get; init; }
 
+    /// <summary>Gets the optional claim-check reference for <see cref="Content"/> on new workflow paths.</summary>
+    public WorkflowPayloadReference? ContentReference { get; init; }
+
     public required string ContentHash { get; init; }
 
     public required string SourceUri { get; init; }
@@ -27,6 +30,9 @@ public sealed record IndexInput
     public required DateTimeOffset IngestedAt { get; init; }
 
     public required float[] EmbeddingVector { get; init; }
+
+    /// <summary>Gets the optional claim-check reference for <see cref="EmbeddingVector"/> on new workflow paths.</summary>
+    public WorkflowPayloadReference? EmbeddingVectorReference { get; init; }
 
     public required string EmbeddingProvider { get; init; }
 

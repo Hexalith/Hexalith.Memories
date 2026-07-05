@@ -10,6 +10,7 @@ using System.Text;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 
 using Microsoft.Extensions.Logging;
@@ -26,11 +27,13 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
     private readonly IFailedNaturalLanguageEmbeddingRegistry _registry;
     private readonly IOptions<NaturalLanguageDescriptionOptions> _options;
     private readonly ILogger<QueueNaturalLanguageEmbeddingRetryActivity> _logger;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     public QueueNaturalLanguageEmbeddingRetryActivity(
         IFailedNaturalLanguageEmbeddingRegistry registry,
         IOptions<NaturalLanguageDescriptionOptions> options,
-        ILogger<QueueNaturalLanguageEmbeddingRetryActivity> logger)
+        ILogger<QueueNaturalLanguageEmbeddingRetryActivity> logger,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(options);
@@ -38,6 +41,7 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
         _registry = registry;
         _options = options;
         _logger = logger;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -47,7 +51,21 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        string truncatedPayload = Truncate(input.RawJsonPayload, _options.Value.QueuedPayloadMaxBytes);
+        string rawJsonPayload = input.RawJsonPayload;
+        if (input.RawPayloadReference is not null)
+        {
+            byte[] rawBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    input.RawPayloadReference,
+                    input.TenantId,
+                    input.MemoryUnitId,
+                    WorkflowPayloadKind.SourceBytes,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            rawJsonPayload = Encoding.UTF8.GetString(rawBytes);
+        }
+
+        string truncatedPayload = Truncate(rawJsonPayload, _options.Value.QueuedPayloadMaxBytes);
 
         FailedNaturalLanguageEmbeddingRecord record = new(
             input.TenantId,
@@ -99,4 +117,7 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
 
         return builder.ToString();
     }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "nl-retry-raw-event");
 }

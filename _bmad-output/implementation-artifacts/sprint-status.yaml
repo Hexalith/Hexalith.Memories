@@ -93,6 +93,8 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.7 senior developer review completed with automatic fixes (NL adapter unit coverage, stale docs, evidence table, File List hygiene). 22.7 -> done.
 # 2026-07-05: Story 23.9 created (epic-23 -> in-progress, 23.9 -> ready-for-dev) via create-story. EmbeddingClient provider strategy and batch API; must precede 23.1 content chunking per story_execution_order.epic-23.
 # 2026-07-05: Story 23.1 created (23.1 -> ready-for-dev) via create-story. Content chunking and batch embedding; consumes 23.9 provider batch API and closes A12.
+# 2026-07-05: Story 23.2 created (23.2 -> ready-for-dev) via create-story. Claim-check workflow payloads; keeps large content/vectors out of workflow history and closes A11.
+# 2026-07-05: Story 23.2 senior developer review completed with automatic fixes (duplicate-path payload cleanup, File List hygiene). 23.2 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -407,7 +409,7 @@ development_status:
   # Epic 23: Ingestion Pipeline Scalability & Resilience (SCP 2026-07-04; closes A11,A12,A13,A14,A15,A33,A34,A35,A51)
   epic-23: in-progress
   23-1-content-chunking-and-batch-embedding: done
-  23-2-claim-check-workflow-payloads: backlog
+  23-2-claim-check-workflow-payloads: done
   23-3-retry-after-aware-429-orchestration: backlog
   23-4-non-url-re-ingestion: backlog
   23-5-rate-limiter-admission-simplification: backlog

@@ -9,7 +9,9 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <param name="ExtractedContent">The text content extracted from the source.</param>
 /// <param name="ContentHash">SHA-256 hash of the extracted content for deduplication.</param>
 /// <param name="ExtractedAt">The timestamp when extraction completed.</param>
+/// <param name="ExtractedContentReference">Optional claim-check reference for the extracted text.</param>
 public sealed record ExtractionResult(
     string ExtractedContent,
     string ContentHash,
-    DateTimeOffset ExtractedAt);
+    DateTimeOffset ExtractedAt,
+    WorkflowPayloadReference? ExtractedContentReference = null);

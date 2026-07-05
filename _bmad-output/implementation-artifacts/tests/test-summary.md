@@ -1,3 +1,49 @@
+# Test Automation Summary - Story 23.2 (Claim-Check Workflow Payloads)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-2-claim-check-workflow-payloads.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute. No new framework introduced.
+- **Feature under test:** claim-check scheduling and activity boundaries for large ingestion payloads. Story 23.2 has no UI/web scope, so browser E2E is not applicable.
+
+## Generated / Updated Tests
+
+### API / Scheduling Boundary Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionPayloadClaimCheckTests.cs` - added non-URL scheduling coverage that saves source bytes to the payload store and returns workflow input with `ContentBytes = null` plus a `PayloadReference`; also pins URL scheduling as fetch-boundary based.
+
+### E2E / Activity Workflow Boundary Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/FetchUrlActivityTests.cs` - added URL fetch claim-check coverage proving fetched bytes are stored and the activity result carries only a reference.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/ExtractContentActivityTests.cs` - added extraction coverage proving source-byte references are resolved inside the activity and extracted text is returned by reference.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateChunkEmbeddingsActivityTests.cs` - added chunk embedding coverage proving extracted-text references are resolved and chunk text/vector outputs are references, not inline payloads.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Indexing/IndexSyntacticActivityTests.cs` - added syntactic indexing coverage proving extracted-content references are resolved before persistence.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/QueueNaturalLanguageEmbeddingRetryActivityTests.cs` - added natural-language retry coverage proving raw payload references are resolved inside the activity and queued payloads remain byte-bounded.
+- [x] `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs` - senior review added duplicate short-circuit coverage proving claim-checked source payloads are cleaned when idempotency exits before validation.
+
+## Coverage
+
+- API/scheduling claim-check boundary: 2 focused tests added.
+- Activity/workflow claim-check boundaries: 6 focused tests added.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [ ] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter ...` - blocked before execution by VSTest TCP listener setup: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class ...` - passed after senior review: 97 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - passed after senior review: 2333 total, 0 failed, 1 skipped.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated where applicable: pass.
+- E2E tests generated where applicable: pass for backend/API activity-boundary behavior; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and critical reference-resolution/slimming cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.1 (Content Chunking & Batch Embedding)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

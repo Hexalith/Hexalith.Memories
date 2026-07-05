@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using System.Text;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -15,16 +17,21 @@ public sealed class ExtractContentActivity : WorkflowActivity<ExtractionInput, E
 {
     private readonly IContentExtractionClient _client;
     private readonly PerTenantConcurrencyGate _gate;
+    private readonly IWorkflowPayloadStore? _payloadStore;
 
     /// <summary>Initializes a new instance of the <see cref="ExtractContentActivity"/> class.</summary>
     /// <param name="client">The content extraction client.</param>
     /// <param name="gate">The per-tenant concurrency gate (Story 6.2).</param>
-    public ExtractContentActivity(IContentExtractionClient client, PerTenantConcurrencyGate gate)
+    public ExtractContentActivity(
+        IContentExtractionClient client,
+        PerTenantConcurrencyGate gate,
+        IWorkflowPayloadStore? payloadStore = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(gate);
         _client = client;
         _gate = gate;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -39,7 +46,44 @@ public sealed class ExtractContentActivity : WorkflowActivity<ExtractionInput, E
             .AcquireAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
+        ExtractionInput effectiveInput = input;
+        if (input.PayloadReference is not null)
+        {
+            byte[] sourceBytes = await RequirePayloadStore()
+                .ReadAsync(
+                    input.PayloadReference,
+                    input.TenantId,
+                    input.PayloadReference.MemoryUnitId,
+                    input.PayloadReference.ContentKind,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            effectiveInput = input with { ContentBytes = sourceBytes };
+        }
+
         // Let exceptions propagate — DAPR Workflow retry policy handles retries.
-        return await _client.ExtractAsync(input).ConfigureAwait(false);
+        ExtractionResult result = await _client.ExtractAsync(effectiveInput).ConfigureAwait(false);
+        if (_payloadStore is null)
+        {
+            return result;
+        }
+
+        WorkflowPayloadReference reference = await _payloadStore
+            .SaveAsync(
+                input.TenantId,
+                input.PayloadReference?.MemoryUnitId
+                    ?? (string.IsNullOrWhiteSpace(input.MemoryUnitId) ? input.SourceUri : input.MemoryUnitId),
+                WorkflowPayloadKind.ExtractedText,
+                Encoding.UTF8.GetBytes(result.ExtractedContent),
+                cancellationToken: CancellationToken.None)
+            .ConfigureAwait(false);
+
+        return result with
+        {
+            ExtractedContent = string.Empty,
+            ExtractedContentReference = reference,
+        };
     }
+
+    private IWorkflowPayloadStore RequirePayloadStore()
+        => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "extraction-input");
 }

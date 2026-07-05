@@ -20,7 +20,7 @@ public class IngestionInputValidatorTests
         IngestionInput input = IngestionInputFactory.Create() with { ContentBytes = null };
 
         ArgumentException ex = Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input));
-        ex.Message.ShouldContain("ContentBytes is required");
+        ex.Message.ShouldContain("ContentBytes or PayloadReference is required");
     }
 
     [Fact]
@@ -47,6 +47,44 @@ public class IngestionInputValidatorTests
         IngestionInput input = IngestionInputFactory.Create(contentBytes: [1, 2, 3]);
 
         Should.NotThrow(() => IngestionInputValidator.Validate(input));
+    }
+
+    [Fact]
+    public void Validate_File_WithPayloadReferenceAndNoBytes_DoesNotThrow()
+    {
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: [1, 2, 3]) with
+        {
+            ContentBytes = null,
+            PayloadReference = CreateSourceReference(),
+        };
+
+        Should.NotThrow(() => IngestionInputValidator.Validate(input));
+    }
+
+    [Fact]
+    public void Validate_File_WithPayloadReferenceTenantMismatch_Throws()
+    {
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: [1, 2, 3]) with
+        {
+            ContentBytes = null,
+            PayloadReference = CreateSourceReference() with { TenantId = "other-tenant" },
+        };
+
+        Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input))
+            .Message.ShouldContain("tenant scope");
+    }
+
+    [Fact]
+    public void Validate_File_WithPayloadReferenceWrongKind_Throws()
+    {
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: [1, 2, 3]) with
+        {
+            ContentBytes = null,
+            PayloadReference = CreateSourceReference() with { ContentKind = WorkflowPayloadKind.ExtractedText },
+        };
+
+        Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input))
+            .Message.ShouldContain("source bytes");
     }
 
     [Fact]
@@ -148,6 +186,9 @@ public class IngestionInputValidatorTests
         };
 
         Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input))
-            .Message.ShouldContain("ContentBytes is required for SourceType=Event");
+            .Message.ShouldContain("ContentBytes or PayloadReference is required for SourceType=Event");
     }
+
+    private static WorkflowPayloadReference CreateSourceReference()
+        => new("mu-1:sourcebytes:abc:source", "abc", 3, WorkflowPayloadKind.SourceBytes, "test-tenant", "mu-1");
 }
