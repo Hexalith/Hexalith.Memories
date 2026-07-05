@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Globalization;
 using System.Runtime.InteropServices;
 
@@ -24,7 +26,7 @@ using StackExchange.Redis;
 /// Structural clone of <see cref="IndexSemanticActivity"/> with two line-level differences: index name
 /// and hash-key prefix. Keeping the two activities separate preserves per-activity telemetry, retry, and
 /// cleanup granularity.</summary>
-public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<NaturalLanguageIndexInput, IndexResult>
+public sealed class IndexNaturalLanguageSemanticActivity : WorkflowTraceLinkedActivity<NaturalLanguageIndexInput, IndexResult>
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexNaturalLanguageSemanticActivity> _logger;
@@ -42,7 +44,7 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowActivity<Natu
     }
 
     /// <inheritdoc/>
-    public override async Task<IndexResult> RunAsync(
+    protected override async Task<IndexResult> RunActivityAsync(
         WorkflowActivityContext context,
         NaturalLanguageIndexInput input)
     {

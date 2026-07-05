@@ -24,6 +24,12 @@ using Shouldly;
 /// </summary>
 public class AnnotationProjectionWorkflowTests
 {
+    private static readonly WorkflowTraceContext TraceContext = new()
+    {
+        TraceParent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        TraceState = "vendor=annotation",
+    };
+
     private static readonly AnnotationProjectionInput Input = new(
         "tenant-1",
         "case-001",
@@ -40,7 +46,8 @@ public class AnnotationProjectionWorkflowTests
         new IngestionWorkflowConfiguration
         {
             NaturalLanguage = new NaturalLanguageWorkflowOptions { PersistInMetadata = true },
-        });
+        },
+        TraceContext);
 
     [Fact]
     public async Task RunAsync_HappyPath_ShouldProjectGraphRunIngestionAndRecordActivityInOrder()
@@ -63,7 +70,8 @@ public class AnnotationProjectionWorkflowTests
                     && i.SourceUri == Input.SourceUri
                     && i.SourceType == SourceType.Annotation
                     && i.CausationId == Input.TargetMemoryUnitId
-                    && i.WorkflowConfiguration == Input.WorkflowConfiguration),
+                    && i.WorkflowConfiguration == Input.WorkflowConfiguration
+                    && i.TraceContext == TraceContext),
                 Arg.Is<ChildWorkflowTaskOptions>(o => o.InstanceId == Input.AnnotationMemoryUnitId));
             context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity),
@@ -71,7 +79,8 @@ public class AnnotationProjectionWorkflowTests
                     i.TenantId == Input.TenantId
                     && i.CaseId == Input.CaseId
                     && i.EventType == CaseActivityEventType.AnnotationCreated
-                    && i.MemoryUnitId == Input.AnnotationMemoryUnitId),
+                    && i.MemoryUnitId == Input.AnnotationMemoryUnitId
+                    && i.TraceContext == TraceContext),
                 Arg.Any<WorkflowTaskOptions>());
         });
         await context.DidNotReceive().CallActivityAsync<bool>(
@@ -113,7 +122,10 @@ public class AnnotationProjectionWorkflowTests
 
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupGraphActivity),
-            Arg.Is<CleanupInput>(i => i.MemoryUnitId == Input.AnnotationMemoryUnitId && i.TenantId == Input.TenantId),
+            Arg.Is<CleanupInput>(i =>
+                i.MemoryUnitId == Input.AnnotationMemoryUnitId
+                && i.TenantId == Input.TenantId
+                && i.TraceContext == TraceContext),
             Arg.Any<WorkflowTaskOptions>());
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>(), Arg.Any<WorkflowTaskOptions>());

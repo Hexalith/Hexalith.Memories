@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Diagnostics;
 
 using Dapr.Workflow;
@@ -18,7 +20,7 @@ using Microsoft.Extensions.Logging;
 /// Workflow activity that fetches the body of a URL via <see cref="IUrlContentFetcher"/>. Throws
 /// <see cref="UrlFetchException"/> on failure so the workflow retry policy can handle it.
 /// </summary>
-public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchResult>
+public sealed class FetchUrlActivity : WorkflowTraceLinkedActivity<FetchUrlInput, UrlFetchResult>
 {
     private readonly IUrlContentFetcher _fetcher;
     private readonly PerTenantConcurrencyGate _gate;
@@ -41,7 +43,7 @@ public sealed class FetchUrlActivity : WorkflowActivity<FetchUrlInput, UrlFetchR
     }
 
     /// <inheritdoc/>
-    public override async Task<UrlFetchResult> RunAsync(WorkflowActivityContext context, FetchUrlInput input)
+    protected override async Task<UrlFetchResult> RunActivityAsync(WorkflowActivityContext context, FetchUrlInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);

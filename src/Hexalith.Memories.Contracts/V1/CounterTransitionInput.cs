@@ -14,4 +14,5 @@ public sealed record CounterTransitionInput(
     string CaseId,
     string PreviousStage,
     string NextStage,
-    string TransitionId);
+    string TransitionId,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

@@ -40,6 +40,9 @@ public static class Extensions
     /// <summary>Story 8.5 — FalkorDB keyed <see cref="IConnectionMultiplexer"/> service key.</summary>
     internal const string FalkorDbConnectionKey = "falkordb";
 
+    /// <summary>Story 24.1 — Dapr Workflow ActivitySource name for workflow engine spans.</summary>
+    internal const string DaprWorkflowActivitySourceName = "Dapr.Workflow";
+
     /// <summary>
     /// Story 8.5 — flush interval applied to BOTH Redis OTEL instrumentation registrations.
     /// See ADR-8.5-001 (e): 100 ms in all environments, no env-gated override. Upstream stores
@@ -90,6 +93,7 @@ public static class Extensions
                 _ = tracing
                     .AddSource(builder.Environment.ApplicationName)
                     .AddSource(MemoriesActivitySource.SourceName)
+                    .AddSource(DaprWorkflowActivitySourceName)
                     .AddAspNetCoreInstrumentation(aspnet =>
                         aspnet.Filter = ShouldTraceHttpRequest)
                     .AddHttpClientInstrumentation();

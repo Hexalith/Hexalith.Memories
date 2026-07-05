@@ -46,7 +46,8 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
                     CaseActivityEventType.AnnotationCreated,
                     "system",
                     $"Annotation created on memory unit '{input.TargetMemoryUnitId}'",
-                    input.AnnotationMemoryUnitId),
+                    input.AnnotationMemoryUnitId,
+                    input.TraceContext),
                 retryOptions);
 
             return input.AnnotationMemoryUnitId;
@@ -57,7 +58,7 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
             {
                 await context.CallActivityAsync<bool>(
                     nameof(CleanupGraphActivity),
-                    new CleanupInput(input.AnnotationMemoryUnitId, input.TenantId),
+                    new CleanupInput(input.AnnotationMemoryUnitId, input.TenantId, input.TraceContext),
                     compensationOptions);
             }
 
@@ -91,5 +92,6 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
             Metadata = input.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal),
             CausationId = input.TargetMemoryUnitId,
             WorkflowConfiguration = input.WorkflowConfiguration,
+            TraceContext = input.TraceContext,
         };
 }

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Cases;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Text;
 
 using Dapr.Workflow;
@@ -17,11 +19,12 @@ using Hexalith.Memories.Server.Workflows;
 internal sealed class ScheduleAnnotationIngestionActivity(
     DaprWorkflowClient workflowClient,
     IWorkflowPayloadStore payloadStore,
-    IngestionWorkflowConfigurationCapture workflowConfigurationCapture)
-    : WorkflowActivity<AnnotationProjectionInput, string>
+    IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
+    WorkflowTraceContextCapture workflowTraceContextCapture)
+    : WorkflowTraceLinkedActivity<AnnotationProjectionInput, string>
 {
     /// <inheritdoc/>
-    public override async Task<string> RunAsync(WorkflowActivityContext context, AnnotationProjectionInput input)
+    protected override async Task<string> RunActivityAsync(WorkflowActivityContext context, AnnotationProjectionInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
         var ingestionInput = new IngestionInput
@@ -36,6 +39,7 @@ internal sealed class ScheduleAnnotationIngestionActivity(
             Metadata = input.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value, StringComparer.Ordinal),
             CausationId = input.TargetMemoryUnitId,
             WorkflowConfiguration = input.WorkflowConfiguration,
+            TraceContext = input.TraceContext ?? workflowTraceContextCapture.Capture(),
         };
 
         if (ingestionInput.WorkflowConfiguration is null)

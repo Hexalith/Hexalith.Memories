@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Globalization;
 using System.Text.Json;
 
@@ -21,7 +23,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that indexes a memory unit in RediSearch for full-text search.</summary>
-public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexResult>
+public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexInput, IndexResult>
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IndexSyntacticActivity> _logger;
@@ -42,7 +44,7 @@ public sealed class IndexSyntacticActivity : WorkflowActivity<IndexInput, IndexR
     }
 
     /// <inheritdoc/>
-    public override async Task<IndexResult> RunAsync(
+    protected override async Task<IndexResult> RunActivityAsync(
         WorkflowActivityContext context,
         IndexInput input)
     {

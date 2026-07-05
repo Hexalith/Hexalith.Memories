@@ -13,4 +13,8 @@ namespace Hexalith.Memories.Contracts.V1;
 /// string so legacy workflow history that predates the field deserializes without throwing; the activity
 /// treats empty/whitespace values as a contract-violation and fails fast.
 /// </param>
-public sealed record FetchUrlInput(string Url, string MemoryUnitId, string TenantId = "");
+public sealed record FetchUrlInput(
+    string Url,
+    string MemoryUnitId,
+    string TenantId = "",
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

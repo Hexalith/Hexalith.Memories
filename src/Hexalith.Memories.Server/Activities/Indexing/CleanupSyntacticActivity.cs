@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Infrastructure;
@@ -14,7 +16,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 /// <summary>Compensation activity that removes a memory unit from RediSearch.</summary>
-public sealed class CleanupSyntacticActivity : WorkflowActivity<CleanupInput, bool>
+public sealed class CleanupSyntacticActivity : WorkflowTraceLinkedActivity<CleanupInput, bool>
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<CleanupSyntacticActivity> _logger;
@@ -28,7 +30,7 @@ public sealed class CleanupSyntacticActivity : WorkflowActivity<CleanupInput, bo
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    protected override async Task<bool> RunActivityAsync(
         WorkflowActivityContext context,
         CleanupInput input)
     {

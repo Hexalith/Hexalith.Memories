@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Text;
 
 using Dapr.Workflow;
@@ -22,7 +24,7 @@ using Microsoft.Extensions.Options;
 /// bounded payload-by-value (Spike 0.1 fallback — cap at
 /// <c>NaturalLanguageDescriptionOptions.QueuedPayloadMaxBytes</c>).</summary>
 public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
-    : WorkflowActivity<QueueNaturalLanguageEmbeddingRetryInput, bool>
+    : WorkflowTraceLinkedActivity<QueueNaturalLanguageEmbeddingRetryInput, bool>
 {
     private readonly IFailedNaturalLanguageEmbeddingRegistry _registry;
     private readonly IOptions<NaturalLanguageDescriptionOptions> _options;
@@ -45,7 +47,7 @@ public sealed partial class QueueNaturalLanguageEmbeddingRetryActivity
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    protected override async Task<bool> RunActivityAsync(
         WorkflowActivityContext context,
         QueueNaturalLanguageEmbeddingRetryInput input)
     {

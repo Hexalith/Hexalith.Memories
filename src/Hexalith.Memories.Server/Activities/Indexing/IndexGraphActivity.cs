@@ -1,5 +1,7 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Text.Json;
 
 using Dapr.Workflow;
@@ -13,7 +15,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that indexes a memory unit in FalkorDB (graph database).</summary>
-public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, IndexResult>
+public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<IndexInput, IndexResult>
 {
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
 
@@ -35,7 +37,7 @@ public sealed partial class IndexGraphActivity : WorkflowActivity<IndexInput, In
     }
 
     /// <inheritdoc/>
-    public override async Task<IndexResult> RunAsync(
+    protected override async Task<IndexResult> RunActivityAsync(
         WorkflowActivityContext context,
         IndexInput input)
     {

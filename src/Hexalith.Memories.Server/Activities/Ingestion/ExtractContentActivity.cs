@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Text;
 
 using Dapr.Workflow;
@@ -13,7 +15,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 
 /// <summary>DAPR Workflow activity that extracts text content via Kreuzberg.</summary>
-public sealed class ExtractContentActivity : WorkflowActivity<ExtractionInput, ExtractionResult>
+public sealed class ExtractContentActivity : WorkflowTraceLinkedActivity<ExtractionInput, ExtractionResult>
 {
     private readonly IContentExtractionClient _client;
     private readonly PerTenantConcurrencyGate _gate;
@@ -35,7 +37,7 @@ public sealed class ExtractContentActivity : WorkflowActivity<ExtractionInput, E
     }
 
     /// <inheritdoc/>
-    public override async Task<ExtractionResult> RunAsync(
+    protected override async Task<ExtractionResult> RunActivityAsync(
         WorkflowActivityContext context,
         ExtractionInput input)
     {

@@ -97,6 +97,7 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(WorkflowActivityRetryPolicy))]
 [JsonSerializable(typeof(WorkflowPayloadKind))]
 [JsonSerializable(typeof(WorkflowPayloadReference))]
+[JsonSerializable(typeof(WorkflowTraceContext))]
 [JsonSerializable(typeof(TenantStatus))]
 [JsonSerializable(typeof(TenantInfo))]
 [JsonSerializable(typeof(TenantProvisioningInput))]

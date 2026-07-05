@@ -11,4 +11,5 @@ using Hexalith.Memories.Contracts.V1;
 public sealed record CleanupWorkflowPayloadsInput(
     string TenantId,
     string MemoryUnitId,
-    IReadOnlyList<WorkflowPayloadReference> References);
+    IReadOnlyList<WorkflowPayloadReference> References,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

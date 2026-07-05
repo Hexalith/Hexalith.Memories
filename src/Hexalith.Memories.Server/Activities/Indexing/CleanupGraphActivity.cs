@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
@@ -14,7 +16,7 @@ using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 /// <summary>Compensation activity that removes a memory unit node from FalkorDB.</summary>
-public sealed class CleanupGraphActivity : WorkflowActivity<CleanupInput, bool>
+public sealed class CleanupGraphActivity : WorkflowTraceLinkedActivity<CleanupInput, bool>
 {
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
@@ -31,7 +33,7 @@ public sealed class CleanupGraphActivity : WorkflowActivity<CleanupInput, bool>
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    protected override async Task<bool> RunActivityAsync(
         WorkflowActivityContext context,
         CleanupInput input)
     {

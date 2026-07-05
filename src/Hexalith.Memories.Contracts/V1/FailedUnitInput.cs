@@ -24,4 +24,5 @@ public sealed record FailedUnitInput(
     WorkflowPayloadReference? SourcePayloadReference = null,
     IReadOnlyDictionary<string, MetadataField>? Metadata = null,
     string? CausationId = null,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

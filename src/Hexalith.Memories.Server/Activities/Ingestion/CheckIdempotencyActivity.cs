@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.EventStore;
@@ -12,7 +14,7 @@ using Hexalith.Memories.EventStore;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that checks whether a source has already been ingested (dedup).</summary>
-public sealed class CheckIdempotencyActivity : WorkflowActivity<IdempotencyInput, IdempotencyResult>
+public sealed class CheckIdempotencyActivity : WorkflowTraceLinkedActivity<IdempotencyInput, IdempotencyResult>
 {
     private readonly IConnectionMultiplexer _redis;
 
@@ -22,7 +24,7 @@ public sealed class CheckIdempotencyActivity : WorkflowActivity<IdempotencyInput
     }
 
     /// <inheritdoc/>
-    public override async Task<IdempotencyResult> RunAsync(
+    protected override async Task<IdempotencyResult> RunActivityAsync(
         WorkflowActivityContext context,
         IdempotencyInput input)
     {

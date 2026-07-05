@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Globalization;
 using System.Text.Json;
 
@@ -21,7 +23,7 @@ using StackExchange.Redis;
 /// <summary>DAPR Workflow activity that durably persists a failed memory unit to Redis (Story 6.3 NFR19/FR11).
 /// Hash <c>{tenantId}:failed-unit:{memoryUnitId}</c> + sorted-set <c>{tenantId}:case:{caseId}:failed-units</c>
 /// scored by <c>FailedAt</c> unix-ms — written atomically via Lua.</summary>
-internal sealed class PersistFailedUnitActivity : WorkflowActivity<FailedUnitInput, bool>
+internal sealed class PersistFailedUnitActivity : WorkflowTraceLinkedActivity<FailedUnitInput, bool>
 {
     /// <summary>Redis hash field names. Centralized to keep the registry reader and writer in lockstep.</summary>
     internal const string FieldTenantId = "tenantId";
@@ -64,7 +66,7 @@ internal sealed class PersistFailedUnitActivity : WorkflowActivity<FailedUnitInp
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(WorkflowActivityContext context, FailedUnitInput input)
+    protected override async Task<bool> RunActivityAsync(WorkflowActivityContext context, FailedUnitInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
 

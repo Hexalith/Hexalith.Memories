@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Workflow;
@@ -21,7 +23,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that chunks raw payload content and embeds it through the provider batch API.</summary>
-public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<EmbeddingInput, ChunkEmbeddingBatchResult>
+public sealed class GenerateChunkEmbeddingsActivity : WorkflowTraceLinkedActivity<EmbeddingInput, ChunkEmbeddingBatchResult>
 {
     private readonly IActorProxyFactory _actorProxyFactory;
     private readonly EmbeddingClient _embeddingClient;
@@ -59,7 +61,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
     }
 
     /// <inheritdoc/>
-    public override async Task<ChunkEmbeddingBatchResult> RunAsync(
+    protected override async Task<ChunkEmbeddingBatchResult> RunActivityAsync(
         WorkflowActivityContext context,
         EmbeddingInput input)
     {

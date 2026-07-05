@@ -5,12 +5,14 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that removes a permanent dedup key only when it is still owned by this workflow.</summary>
-public sealed class ReleaseDedupKeyIfOwnedActivity : WorkflowActivity<DedupKeyInput, bool>
+public sealed class ReleaseDedupKeyIfOwnedActivity : WorkflowTraceLinkedActivity<DedupKeyInput, bool>
 {
     private readonly IConnectionMultiplexer _redis;
 
@@ -20,7 +22,7 @@ public sealed class ReleaseDedupKeyIfOwnedActivity : WorkflowActivity<DedupKeyIn
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    protected override async Task<bool> RunActivityAsync(
         WorkflowActivityContext context,
         DedupKeyInput input)
     {

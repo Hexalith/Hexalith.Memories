@@ -5,12 +5,14 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that persists a dedup key to Redis after successful ingestion.</summary>
-public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, DedupKeySaveResult>
+public sealed class SaveDedupKeyActivity : WorkflowTraceLinkedActivity<DedupKeyInput, DedupKeySaveResult>
 {
     private readonly IConnectionMultiplexer _redis;
 
@@ -20,7 +22,7 @@ public sealed class SaveDedupKeyActivity : WorkflowActivity<DedupKeyInput, Dedup
     }
 
     /// <inheritdoc/>
-    public override async Task<DedupKeySaveResult> RunAsync(
+    protected override async Task<DedupKeySaveResult> RunActivityAsync(
         WorkflowActivityContext context,
         DedupKeyInput input)
     {

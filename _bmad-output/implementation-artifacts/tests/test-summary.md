@@ -1854,6 +1854,57 @@ explicit rather than implied as covered.
 
 ---
 
+# Test Automation Summary - Story 24.1 (Trace Propagation Across the Workflow Boundary)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/24-1-trace-propagation-across-the-workflow-boundary.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute through `Hexalith.Memories.Server.Tests`; no new framework introduced.
+- **Feature under test:** serialized W3C trace context capture at ingestion scheduling boundaries, replay-safe workflow orchestration, linked workflow activity spans, and OpenTelemetry workflow source registration.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/IngestionEndpointE2ETests.cs` - added an in-process `POST /api/ingest` traceparent/tracestate test proving the REST ingest scheduling boundary can capture serialized W3C trace context while the endpoint input remains additive.
+
+### Workflow / Telemetry Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestionPayloadClaimCheckTests.cs` - added scheduler-boundary coverage for omitted ambient trace context and preservation of pre-serialized trace context; existing coverage proves trace capture occurs before claim-check slimming.
+- [x] `tests/Hexalith.Memories.Server.Tests/Telemetry/WorkflowTraceLinkedActivityTests.cs` - added the linked-activity failure path proving an error span is emitted and tagged before rethrow.
+- [x] `tests/Hexalith.Memories.Server.Tests/Architecture/IngestionWorkflowDeterminismGuardTests.cs` - broadened the replay-safety source guard to cover both `IngestionWorkflow.cs` and `AnnotationProjectionWorkflow.cs`.
+
+### E2E Tests
+
+- [x] Browser UI E2E not applicable. Story 24.1 is a backend workflow/API telemetry slice.
+- [x] Tier-2 TestServer/API workflow coverage was added. Existing Tier-3 Aspire trace harness remains the closest Docker-backed trace harness; the Story 24.1 dev record captures the focused local Tier-3 blocker from fixture tenant provisioning.
+
+## Coverage
+
+- API scheduling surfaces: REST file ingest via `IIngestionWorkflowScheduler`; direct URL scheduling remains covered by source guard because it schedules `DaprWorkflowClient` directly.
+- Trace context cases: valid W3C `traceparent`/`tracestate`, missing ambient activity, existing serialized context, invalid serialized context, activity failure path.
+- Replay safety: ingestion and annotation workflow orchestration source guards reject ambient trace capture and direct span emission.
+- Telemetry registration: existing `OpenTelemetryRegistrationTests` and `InstrumentationInventoryTests` cover `Dapr.Workflow` registration/docs parity.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `git diff --check` - passed.
+- [x] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~IngestionEndpointE2ETests|FullyQualifiedName~IngestionPayloadClaimCheckTests|FullyQualifiedName~WorkflowTraceLinkedActivityTests|FullyQualifiedName~OpenTelemetryRegistrationTests|FullyQualifiedName~InstrumentationInventoryTests|FullyQualifiedName~AnnotationProjectionWorkflowTests|FullyQualifiedName~IngestionWorkflowDeterminismGuardTests"` - passed, 47 total, 0 failed, 0 skipped.
+- [x] Review-expanded contract slice: `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj --no-build --filter "FullyQualifiedName~IngestionInputSerializationTests"` - passed, 11 total, 0 failed, 0 skipped.
+- [x] Review-expanded server slice: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~IngestionEndpointE2ETests|FullyQualifiedName~IngestionPayloadClaimCheckTests|FullyQualifiedName~WorkflowTraceLinkedActivityTests|FullyQualifiedName~OpenTelemetryRegistrationTests|FullyQualifiedName~InstrumentationInventoryTests|FullyQualifiedName~AnnotationProjectionWorkflowTests|FullyQualifiedName~IngestionWorkflowDeterminismGuardTests|FullyQualifiedName~IndexSemanticActivityTests"` - passed, 57 total, 0 failed, 0 skipped.
+- [x] Workflow source guard check (`rg -n "Activity\\.Current|StartActivity|WorkflowTraceContextCapture" src/Hexalith.Memories.Server/Workflows -g "*.cs"`) returned no matches.
+
+## Checklist Result
+
+- API tests generated/updated: pass.
+- E2E tests generated if UI exists: UI not applicable; Tier-2 API workflow coverage added.
+- Standard framework APIs, happy path, critical error cases, clear descriptions, no hardcoded waits/sleeps, independent tests: pass by inspection and build.
+- All generated non-Tier-3 tests run successfully: pass.
+- Test summary created with coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 21.10 (Migration Subsystem Test Coverage)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

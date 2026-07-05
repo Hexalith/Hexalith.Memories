@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Actors;
 using Dapr.Actors.Client;
 using Dapr.Workflow;
@@ -17,7 +19,7 @@ using Microsoft.Extensions.Logging;
 
 /// <summary>DAPR Workflow activity that forwards a stage transition to the per-case counter actor (Story 6.3 FR10).
 /// Best-effort: a failure logs event 6310 and returns <c>false</c> but does NOT break the workflow.</summary>
-internal sealed class UpdateCaseIngestionCounterActivity : WorkflowActivity<CounterTransitionInput, bool>
+internal sealed class UpdateCaseIngestionCounterActivity : WorkflowTraceLinkedActivity<CounterTransitionInput, bool>
 {
     private readonly IActorProxyFactory _actorFactory;
     private readonly ILogger<UpdateCaseIngestionCounterActivity> _logger;
@@ -33,7 +35,7 @@ internal sealed class UpdateCaseIngestionCounterActivity : WorkflowActivity<Coun
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(WorkflowActivityContext context, CounterTransitionInput input)
+    protected override async Task<bool> RunActivityAsync(WorkflowActivityContext context, CounterTransitionInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
         try

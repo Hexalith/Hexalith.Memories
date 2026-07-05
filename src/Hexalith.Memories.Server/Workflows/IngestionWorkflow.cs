@@ -34,6 +34,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     {
         var logger = context.CreateReplaySafeLogger<IngestionWorkflow>();
         string memoryUnitId = ResolveMemoryUnitId(context, input);
+        WorkflowTraceContext? traceContext = input.TraceContext;
         DateTimeOffset ingestedAt = new(context.CurrentUtcDateTime, TimeSpan.Zero);
         string currentStage = "queued";
         MemoryUnitStatus currentStatus = MemoryUnitStatus.Queued;
@@ -45,7 +46,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         WorkflowTaskOptions For(string activityName) =>
             retry.TryGetValue(activityName, out WorkflowTaskOptions? opts) ? opts : retry[DefaultRetryKey];
         WorkflowTaskOptions compensationRetry = CreateCompensationRetry();
-        CleanupInput cleanupInput = new(memoryUnitId, input.TenantId);
+        CleanupInput cleanupInput = new(memoryUnitId, input.TenantId, traceContext);
 
         // Story 6.3 FR10: monotonic transition id used by CaseIngestionCounterActor for replay-idempotency.
         // The sequence is deterministic across replays because the workflow re-executes from the top.
@@ -58,7 +59,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     input.CaseId,
                     previous,
                     next,
-                    $"{context.InstanceId}:{System.Threading.Interlocked.Increment(ref counterSeq)}"),
+                    $"{context.InstanceId}:{System.Threading.Interlocked.Increment(ref counterSeq)}",
+                    traceContext),
                 compensationRetry);
 
         try
@@ -79,7 +81,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
             IdempotencyResult idempotency = await context.CallActivityAsync<IdempotencyResult>(
                 nameof(CheckIdempotencyActivity),
-                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId, input.IdempotencyToken),
+                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId, input.IdempotencyToken, traceContext),
                 For(nameof(CheckIdempotencyActivity)));
 
             if (idempotency.IsDuplicate)
@@ -94,7 +96,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
                 await UpdateCounter("queued", "none");
                 context.SetCustomStatus("duplicate");
-                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry);
+                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, traceContext: traceContext);
 
                 // Story 9.2 Task 5.6: dedup returns NotApplicable — the existing memory unit was
                 // already indexed by an earlier ingest and its NL status is owned by that prior run.
@@ -131,7 +133,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 currentStage = "fetching";
                 urlFetch = await context.CallActivityAsync<UrlFetchResult>(
                     nameof(FetchUrlActivity),
-                    new FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId),
+                    new FetchUrlInput(input.SourceUri, memoryUnitId, input.TenantId, traceContext),
                     For(nameof(FetchUrlActivity)));
                 contentBytes = urlFetch.PayloadReference is null ? urlFetch.ContentBytes : [];
                 sourcePayloadReference = urlFetch.PayloadReference;
@@ -156,7 +158,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     input.SourceType,
                     input.TenantId,
                     memoryUnitId,
-                    sourcePayloadReference),
+                    sourcePayloadReference,
+                    traceContext),
                 For(nameof(ExtractContentActivity)));
             AddPayloadReference(transientPayloads, extraction.ExtractedContentReference);
 
@@ -177,7 +180,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     input.TenantId,
                     extraction.ExtractedContent,
                     EmbeddingContentKind.Payload,
-                    extraction.ExtractedContentReference),
+                    extraction.ExtractedContentReference,
+                    traceContext),
                 For(nameof(GenerateChunkEmbeddingsActivity)));
             AddPayloadReferences(transientPayloads, embedding);
 
@@ -219,7 +223,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             rawJsonPayload,
                             eventType,
                             aggregateType,
-                            sourcePayloadReference),
+                            sourcePayloadReference,
+                            traceContext),
                         For(nameof(GenerateNaturalLanguageDescriptionActivity)));
 
                     nlEmbedding = await CallEmbeddingActivityWithDurableRateLimitAsync<EmbeddingResult>(
@@ -228,7 +233,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         new EmbeddingInput(
                             input.TenantId,
                             nlResult.Description,
-                            EmbeddingContentKind.NaturalLanguageDescription),
+                            EmbeddingContentKind.NaturalLanguageDescription,
+                            TraceContext: traceContext),
                         For(nameof(GenerateEmbeddingActivity)));
 
                     nlStatus = NaturalLanguageEmbeddingStatus.Indexed;
@@ -252,7 +258,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             GetEmbeddingModelIdentifier(embedding),
                             embedding.Dimensions,
                             context.CurrentUtcDateTime.Ticks,
-                            sourcePayloadReference),
+                            sourcePayloadReference,
+                            traceContext),
                         compensationRetry);
 
                     nlStatus = NaturalLanguageEmbeddingStatus.Queued;
@@ -318,6 +325,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 Metadata = metadataForIndex,
                 CausationId = input.CausationId,
                 CorrelationId = input.CorrelationId,
+                TraceContext = traceContext,
             };
 
             Task<IndexResult> syntacticTask = context.CallActivityAsync<IndexResult>(
@@ -334,6 +342,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 EmbeddingModel = GetEmbeddingModelIdentifier(embedding),
                 EmbeddingDimensions = embedding.Dimensions,
                 Metadata = metadataForIndex,
+                TraceContext = traceContext,
             };
 
             Task<IndexResult> semanticTask = context.CallActivityAsync<IndexResult>(
@@ -363,6 +372,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     NaturalLanguageDescription = nlResult.Description,
                     DescriptionConfidence = nlResult.EstimatedConfidence,
                     ConfidenceSource = nlResult.ConfidenceSource,
+                    TraceContext = traceContext,
                 };
 
                 nlSemanticTask = context.CallActivityAsync<IndexResult>(
@@ -397,7 +407,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             CaseActivityEventType.IngestionFailed,
                             input.IngestedBy,
                             $"Ingestion failed for {input.SourceUri} at stage {currentStage}",
-                            memoryUnitId));
+                            memoryUnitId,
+                            traceContext));
                 }
                 catch
                 {
@@ -420,7 +431,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 context.SetCustomStatus("failed");
                 WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
                 await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
-                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
+                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload, traceContext);
                 throw;
             }
 
@@ -435,7 +446,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 currentStage = "verifying";
                 ConsistencyResult consistency = await context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
-                    new ConsistencyInput(memoryUnitId, input.TenantId),
+                    new ConsistencyInput(memoryUnitId, input.TenantId, traceContext),
                     For(nameof(VerifyConsistencyActivity)));
 
                 consistencyNote = null;
@@ -467,7 +478,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 currentStage = "dedup";
                 DedupKeySaveResult sourceSave = await context.CallActivityAsync<DedupKeySaveResult>(
                     nameof(SaveDedupKeyActivity),
-                    new DedupKeyInput(dedupKey, memoryUnitId),
+                    new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
                     For(nameof(SaveDedupKeyActivity)));
 
                 if (IsDuplicateOwnedByAnother(sourceSave, memoryUnitId))
@@ -493,7 +504,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     string tokenDedupKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
                     DedupKeySaveResult tokenSave = await context.CallActivityAsync<DedupKeySaveResult>(
                         nameof(SaveDedupKeyActivity),
-                        new DedupKeyInput(tokenDedupKey, memoryUnitId),
+                        new DedupKeyInput(tokenDedupKey, memoryUnitId, traceContext),
                         For(nameof(SaveDedupKeyActivity)));
 
                     if (IsDuplicateOwnedByAnother(tokenSave, memoryUnitId))
@@ -502,7 +513,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         {
                             await context.CallActivityAsync<bool>(
                                 nameof(ReleaseDedupKeyIfOwnedActivity),
-                                new DedupKeyInput(dedupKey, memoryUnitId),
+                                new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
                                 compensationRetry);
                         }
 
@@ -552,7 +563,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 context.SetCustomStatus("failed");
                 WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
                 await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
-                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
+                await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload, traceContext);
                 throw;
             }
 
@@ -566,7 +577,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         CaseActivityEventType.MemoryUnitIngested,
                         input.IngestedBy,
                         $"Memory unit {memoryUnitId} indexed from {input.SourceUri}",
-                        memoryUnitId));
+                        memoryUnitId,
+                        traceContext));
             }
             catch
             {
@@ -576,7 +588,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed);
             await UpdateCounter("indexing", "none");
             context.SetCustomStatus("indexed");
-            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry);
+            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, traceContext: traceContext);
 
             // Story 9.2 Task 5.6: surface the NL-embedding outcome — Indexed on the healthy path,
             // Queued on the degraded path (LLM unavailable), NotApplicable for SourceType != Event.
@@ -603,7 +615,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             context.SetCustomStatus("failed");
             WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
             await TryPersistFailedUnit(context, input, memoryUnitId, currentStage, ex, compensationRetry, logger, retainedSourcePayload);
-            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload);
+            await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, retainedSourcePayload, traceContext);
             throw;
         }
     }
@@ -862,7 +874,13 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
         try { await updateCounter("indexing", "none"); } catch { /* counter drift documented */ }
         context.SetCustomStatus("duplicate");
-        await CleanupTransientPayloadsAsync(context, cleanupInput.TenantId, loserMemoryUnitId, transientPayloads, compensationRetry);
+        await CleanupTransientPayloadsAsync(
+            context,
+            cleanupInput.TenantId,
+            loserMemoryUnitId,
+            transientPayloads,
+            compensationRetry,
+            traceContext: cleanupInput.TraceContext);
 
         return new IngestionResult(
             winnerMemoryUnitId,
@@ -1000,7 +1018,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     ? null
                     : new Dictionary<string, MetadataField>(input.Metadata, StringComparer.Ordinal),
                 input.CausationId,
-                input.CorrelationId);
+                input.CorrelationId,
+                input.TraceContext);
             await context.CallActivityAsync<bool>(nameof(PersistFailedUnitActivity), failedInput, retry);
         }
         catch (Exception persistEx)
@@ -1091,7 +1110,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         string memoryUnitId,
         IReadOnlyList<WorkflowPayloadReference> references,
         WorkflowTaskOptions retry,
-        WorkflowPayloadReference? retainedSourcePayloadReference = null)
+        WorkflowPayloadReference? retainedSourcePayloadReference = null,
+        WorkflowTraceContext? traceContext = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
 
@@ -1107,7 +1127,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         {
             await context.CallActivityAsync<bool>(
                 nameof(CleanupWorkflowPayloadsActivity),
-                new CleanupWorkflowPayloadsInput(tenantId, group.Key, group.ToArray()),
+                new CleanupWorkflowPayloadsInput(tenantId, group.Key, group.ToArray(), traceContext),
                 retry);
         }
     }

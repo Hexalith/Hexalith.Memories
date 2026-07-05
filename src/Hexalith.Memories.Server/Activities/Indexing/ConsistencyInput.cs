@@ -5,7 +5,12 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Input for the consistency verification activity.</summary>
 /// <param name="MemoryUnitId">The memory unit to verify across all backends.</param>
 /// <param name="TenantId">The tenant identifier for namespacing.</param>
-public sealed record ConsistencyInput(string MemoryUnitId, string TenantId);
+public sealed record ConsistencyInput(
+    string MemoryUnitId,
+    string TenantId,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

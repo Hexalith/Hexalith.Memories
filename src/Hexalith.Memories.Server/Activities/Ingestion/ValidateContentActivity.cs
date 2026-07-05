@@ -5,15 +5,17 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 
 /// <summary>DAPR Workflow activity that validates ingestion input before processing.</summary>
-public sealed class ValidateContentActivity : WorkflowActivity<IngestionInput, ValidateResult>
+public sealed class ValidateContentActivity : WorkflowTraceLinkedActivity<IngestionInput, ValidateResult>
 {
     /// <inheritdoc/>
-    public override Task<ValidateResult> RunAsync(
+    protected override Task<ValidateResult> RunActivityAsync(
         WorkflowActivityContext context,
         IngestionInput input)
     {

@@ -36,4 +36,5 @@ public sealed record QueueNaturalLanguageEmbeddingRetryInput(
     string EmbeddingModel,
     int EmbeddingDimensions,
     long QueuedAtTicks = 0L,
-    WorkflowPayloadReference? RawPayloadReference = null);
+    WorkflowPayloadReference? RawPayloadReference = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

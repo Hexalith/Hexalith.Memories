@@ -5,16 +5,18 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Ingestion;
 
 /// <summary>Workflow activity that deletes transient claim-checked payloads.</summary>
 public sealed class CleanupWorkflowPayloadsActivity(IWorkflowPayloadStore payloadStore)
-    : WorkflowActivity<CleanupWorkflowPayloadsInput, bool>
+    : WorkflowTraceLinkedActivity<CleanupWorkflowPayloadsInput, bool>
 {
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(WorkflowActivityContext context, CleanupWorkflowPayloadsInput input)
+    protected override async Task<bool> RunActivityAsync(WorkflowActivityContext context, CleanupWorkflowPayloadsInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);

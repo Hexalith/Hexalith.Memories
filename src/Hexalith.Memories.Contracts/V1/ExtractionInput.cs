@@ -24,4 +24,5 @@ public sealed record ExtractionInput(
     SourceType SourceType,
     string TenantId = "",
     string MemoryUnitId = "",
-    WorkflowPayloadReference? PayloadReference = null);
+    WorkflowPayloadReference? PayloadReference = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

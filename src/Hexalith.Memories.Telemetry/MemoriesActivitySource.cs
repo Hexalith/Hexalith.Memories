@@ -45,6 +45,9 @@ public static class MemoriesActivitySource
     /// can attribute LLM latency and failure rates per tenant in distributed traces.</summary>
     public const string NaturalLanguageDescriptionGeneration = "memories.natural_language.description";
 
+    /// <summary>Span wrapping a Dapr workflow activity execution and linked to the original request trace.</summary>
+    public const string WorkflowActivity = "memories.workflow.activity";
+
     /// <summary>Tag key for tenant id.</summary>
     public const string TagTenantId = "memories.tenant_id";
 

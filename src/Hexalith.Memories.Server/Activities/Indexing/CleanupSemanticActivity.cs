@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Net;
 
 using Dapr.Workflow;
@@ -22,7 +24,7 @@ using StackExchange.Redis;
 /// <b>neither</b> hash existed (a no-op cleanup, e.g., compensation for an event that failed before any
 /// indexing took place). Callers that branched on the pre-9.2 "raw hash deleted" semantic must be audited
 /// — consider reading the per-hash flags from the accompanying log instead.</para></remarks>
-public sealed class CleanupSemanticActivity : WorkflowActivity<CleanupInput, bool>
+public sealed class CleanupSemanticActivity : WorkflowTraceLinkedActivity<CleanupInput, bool>
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<CleanupSemanticActivity> _logger;
@@ -36,7 +38,7 @@ public sealed class CleanupSemanticActivity : WorkflowActivity<CleanupInput, boo
     }
 
     /// <inheritdoc/>
-    public override async Task<bool> RunAsync(
+    protected override async Task<bool> RunActivityAsync(
         WorkflowActivityContext context,
         CleanupInput input)
     {

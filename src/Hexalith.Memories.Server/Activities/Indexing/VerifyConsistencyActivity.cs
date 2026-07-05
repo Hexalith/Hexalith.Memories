@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Net;
 
 using Dapr.Workflow;
@@ -21,7 +23,7 @@ using NFalkorDB;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that verifies a memory unit exists in all three backends.</summary>
-public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInput, ConsistencyResult>
+public sealed class VerifyConsistencyActivity : WorkflowTraceLinkedActivity<ConsistencyInput, ConsistencyResult>
 {
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
 
@@ -43,7 +45,7 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
     }
 
     /// <inheritdoc/>
-    public override async Task<ConsistencyResult> RunAsync(
+    protected override async Task<ConsistencyResult> RunActivityAsync(
         WorkflowActivityContext context,
         ConsistencyInput input)
     {

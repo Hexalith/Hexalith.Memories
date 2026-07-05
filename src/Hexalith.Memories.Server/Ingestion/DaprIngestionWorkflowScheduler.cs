@@ -16,18 +16,22 @@ internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowSchedul
     private readonly DaprWorkflowClient _workflowClient;
     private readonly IWorkflowPayloadStore _payloadStore;
     private readonly IngestionWorkflowConfigurationCapture _workflowConfigurationCapture;
+    private readonly WorkflowTraceContextCapture _workflowTraceContextCapture;
 
     public DaprIngestionWorkflowScheduler(
         DaprWorkflowClient workflowClient,
         IWorkflowPayloadStore payloadStore,
-        IngestionWorkflowConfigurationCapture workflowConfigurationCapture)
+        IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
+        WorkflowTraceContextCapture workflowTraceContextCapture)
     {
         ArgumentNullException.ThrowIfNull(workflowClient);
         ArgumentNullException.ThrowIfNull(payloadStore);
         ArgumentNullException.ThrowIfNull(workflowConfigurationCapture);
+        ArgumentNullException.ThrowIfNull(workflowTraceContextCapture);
         _workflowClient = workflowClient;
         _payloadStore = payloadStore;
         _workflowConfigurationCapture = workflowConfigurationCapture;
+        _workflowTraceContextCapture = workflowTraceContextCapture;
     }
 
     public async Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken = default)
@@ -40,6 +44,7 @@ internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowSchedul
                 instanceId,
                 input,
                 _workflowConfigurationCapture,
+                _workflowTraceContextCapture,
                 cancellationToken)
             .ConfigureAwait(false);
 
@@ -53,10 +58,12 @@ internal sealed class DaprIngestionWorkflowScheduler : IIngestionWorkflowSchedul
         string instanceId,
         IngestionInput input,
         IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
+        WorkflowTraceContextCapture workflowTraceContextCapture,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workflowConfigurationCapture);
-        IngestionInput configuredInput = workflowConfigurationCapture.Apply(input);
+        ArgumentNullException.ThrowIfNull(workflowTraceContextCapture);
+        IngestionInput configuredInput = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));
         return IngestionPayloadClaimCheck.PrepareAsync(payloadStore, instanceId, configuredInput, cancellationToken);
     }
 }

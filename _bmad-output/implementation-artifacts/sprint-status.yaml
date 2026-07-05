@@ -103,6 +103,10 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 23.7 created (23.7 -> ready-for-dev) via create-story. Index-provisioning ownership; requires memoized per-tenant index readiness, no per-document FT.CREATE, no Thread.Sleep, and no per-ingest index-exists warning noise; closes A34.
 # 2026-07-05: Story 23.8 dev-story completed (23.8 -> review). Captured ingestion retry/NL workflow config into durable inputs, removed mutable static reads from IngestionWorkflow, covered live scheduling paths and annotation child workflow config propagation, and added determinism/source-guard tests.
 # 2026-07-05: Story 23.8 senior developer review completed by direct fallback after the child review session exited during discovery; no blocking findings remained. 23.8 -> done.
+# 2026-07-05: Story 24.1 created (epic-24 -> in-progress, 24.1 -> ready-for-dev) by direct create-story fallback. Trace propagation across workflow boundary; closes A19 workflow tracing portion and reinforces NFR28.
+# 2026-07-05: Story 24.1 dev-story completed by direct fallback after child session drift was reversed (24.1 -> review). Added workflow trace context propagation, linked workflow activity spans, Dapr.Workflow source registration/docs, and focused Tier-2 guard coverage; closest Tier-3 Aspire trace run blocked before assertions by fixture tenant-provisioning 401.
+# 2026-07-05: Story 24.1 automate guardrails completed by source-of-truth validation after tmux session cleanup. Added REST ingest scheduling-boundary trace capture coverage, scheduler trace edge cases, linked-activity error-path coverage, broader workflow replay source guards, and test-summary evidence; focused server slice passed 47/47.
+# 2026-07-05: Story 24.1 senior developer review completed with automatic fixes (registered semantic activity linked-span coverage and omitted trace-context back-compat test); 24.1 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -428,8 +432,8 @@ development_status:
   epic-23-retrospective: optional
 
   # Epic 24: Observability & Performance Hardening (SCP 2026-07-04; closes A19,A26,A36,A46)
-  epic-24: backlog
-  24-1-trace-propagation-across-the-workflow-boundary: backlog
+  epic-24: in-progress
+  24-1-trace-propagation-across-the-workflow-boundary: done
   24-2-read-path-caching-and-tenant-list-bounding: backlog
   24-3-physical-tenant-isolation-and-verifier-scaling: backlog
   24-4-metric-naming-and-committed-dashboards: backlog

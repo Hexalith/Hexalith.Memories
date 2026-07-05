@@ -303,6 +303,13 @@ NFR28 is validated in 7.5 for:
 - CLI → Server (Tier-2 `WebApplicationFactory` + `AddInMemoryExporter`).
 - CLI → Server → Redis (Tier-3 Aspire fixture, requires Docker).
 
+Story 24.1 extends the trace contract across the durable ingestion workflow boundary. Ingestion
+scheduling captures W3C `traceparent` and optional `tracestate` into `IngestionInput.TraceContext`
+before Dapr Workflow scheduling. Workflow orchestration only passes that serialized value; it must
+not read `Activity.Current` or start spans because replay may re-execute orchestration code. Workflow
+activities inherit the linked-span base class, which emits `memories.workflow.activity` spans with an
+`ActivityLink` to the original request context when the serialized trace context is valid.
+
 **Not covered** (yet):
 
 - **MCP Server → Memories Server trace propagation** (via DAPR service invocation). MCP does not
@@ -465,6 +472,7 @@ six months after ship.
 | `Microsoft.AspNetCore`                                    | `ServiceDefaults/Extensions.cs` `AddAspNetCoreInstrumentation`                              | Inbound HTTP request spans on the Memories Server                    | `OpenTelemetryRegistrationTests.ShouldTraceHttpRequest_IncludesApplicationEndpoints`            |
 | `System.Net.Http`                                         | `ServiceDefaults/Extensions.cs` `AddHttpClientInstrumentation`                              | Outbound HttpClient spans (CLI → Server + any Server-side outbound)  | `TracePropagationNoDockerTests` (Tier-2 WAF)                                                    |
 | `Hexalith.Memories` (`MemoriesActivitySource.SourceName`) | `ServiceDefaults/Extensions.cs` `AddSource(MemoriesActivitySource.SourceName)`              | Application-level spans (`memories.search`, `memories.ingest`, etc.) | `OpenTelemetryRegistrationTests.ConfigureOpenTelemetry_RegistersMemoriesActivitySource_Runtime` |
+| `Dapr.Workflow`                                           | `ServiceDefaults/Extensions.cs` `AddSource(Extensions.DaprWorkflowActivitySourceName)`      | Dapr workflow engine spans for workflow scheduling/activity execution | `OpenTelemetryRegistrationTests.ConfigureOpenTelemetry_RegistersDaprWorkflowActivitySource_Runtime` |
 | `OpenTelemetry.Instrumentation.StackExchangeRedis`        | `ServiceDefaults/Extensions.cs` `AddRedisInstrumentation` + `ConfigureRedisInstrumentation` | RediSearch + Redis Vector + FalkorDB-protocol command spans          | `RedisInstrumentationRegistrationTests.TracerRegistration_IncludesRedisInstrumentationSource`   |
 | `<Environment.ApplicationName>` (default source)          | `ServiceDefaults/Extensions.cs` `AddSource(builder.Environment.ApplicationName)`            | Default application-named spans for opt-in emitters                  | `OpenTelemetryRegistrationTests.AddServiceDefaults_ProducesBuildableContainer`                  |
 

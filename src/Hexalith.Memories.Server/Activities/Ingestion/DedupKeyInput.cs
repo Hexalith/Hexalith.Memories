@@ -5,7 +5,12 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Input for the dedup key persistence activity.</summary>
 /// <param name="DedupKey">The dedup key to store (format: dedup:{tenantId}:{caseId}:{hash}).</param>
 /// <param name="MemoryUnitId">The memory unit ID to associate with the dedup key.</param>
-public sealed record DedupKeyInput(string DedupKey, string MemoryUnitId);
+public sealed record DedupKeyInput(
+    string DedupKey,
+    string MemoryUnitId,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

@@ -71,6 +71,29 @@ public sealed class OpenTelemetryRegistrationTests
     }
 
     [Fact]
+    public void ConfigureOpenTelemetry_RegistersDaprWorkflowActivitySource_Runtime()
+    {
+        HostApplicationBuilder builder = BuildHostBuilder();
+        List<Activity> exportedActivities = [];
+        _ = builder.Services.AddOpenTelemetry()
+            .WithTracing(tracing => tracing.AddInMemoryExporter(exportedActivities));
+
+        using ServiceProvider provider = builder.Services.BuildServiceProvider();
+        _ = provider.GetRequiredService<TracerProvider>();
+
+        using var source = new ActivitySource(Extensions.DaprWorkflowActivitySourceName);
+        using (Activity? activity = source.StartActivity("registration-probe"))
+        {
+            activity.ShouldNotBeNull(
+                $"Expected '{Extensions.DaprWorkflowActivitySourceName}' to be a registered ActivitySource " +
+                "on the TracerProvider built by AddServiceDefaults.");
+        }
+
+        provider.GetRequiredService<TracerProvider>().ForceFlush();
+        exportedActivities.ShouldContain(a => a.Source.Name == Extensions.DaprWorkflowActivitySourceName);
+    }
+
+    [Fact]
     public void ConfigureOpenTelemetry_RegistersMemoriesMeter_Runtime()
     {
         HostApplicationBuilder builder = BuildHostBuilder();

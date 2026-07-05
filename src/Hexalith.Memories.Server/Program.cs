@@ -218,6 +218,7 @@ builder.Services.AddSingleton<CaseIngestionCounterLogic>();
 builder.Services.AddSingleton<FailedUnitsRegistry>();
 builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
 builder.Services.AddSingleton<IngestionWorkflowConfigurationCapture>();
+builder.Services.AddSingleton<WorkflowTraceContextCapture>();
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
 builder.Services.AddSingleton<IIngestionWorkflowStateReader, DaprIngestionWorkflowStateReader>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
@@ -671,6 +672,7 @@ app.MapGet("/api/ingest/{instanceId}", async (
 app.MapPost("/api/ingest/url", async (
     DaprWorkflowClient workflowClient,
     IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
+    WorkflowTraceContextCapture workflowTraceContextCapture,
     TenantStatusGuard tenantGuard,
     Microsoft.Extensions.Options.IOptions<UrlFetcherOptions> urlFetcherOptions,
     ILoggerFactory loggerFactory,
@@ -752,7 +754,7 @@ app.MapPost("/api/ingest/url", async (
             CorrelationId = request.CorrelationId,
         };
 
-        input = workflowConfigurationCapture.Apply(input);
+        input = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));
 
         string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
 

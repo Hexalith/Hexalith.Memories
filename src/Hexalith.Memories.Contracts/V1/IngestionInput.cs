@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>Input for the ingestion workflow — a single file to be processed through the full pipeline.</summary>
-public sealed record IngestionInput
+public sealed record IngestionInput : IWorkflowTraceContextCarrier
 {
     public required string TenantId { get; init; }
 
@@ -51,6 +51,9 @@ public sealed record IngestionInput
 
     /// <summary>Gets the durable workflow configuration captured at scheduling time.</summary>
     public IngestionWorkflowConfiguration? WorkflowConfiguration { get; init; }
+
+    /// <summary>Gets the serialized request trace context captured before scheduling the workflow.</summary>
+    public WorkflowTraceContext? TraceContext { get; init; }
 
     /// <summary>
     /// Gets the optional explicit idempotency token. When supplied it takes precedence over

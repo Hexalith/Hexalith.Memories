@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tests.Endpoints;
 
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -19,6 +20,7 @@ using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
 using Hexalith.Memories.TestHelpers.Factories;
+using Hexalith.Memories.Telemetry;
 
 using NSubstitute;
 
@@ -83,6 +85,49 @@ public sealed class IngestionEndpointE2ETests : IDisposable
     }
 
     [Fact]
+    public async Task PostIngest_WithTraceparentHeader_SchedulingBoundaryCanCaptureSerializedTraceContext()
+    {
+        const string traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+        const string traceState = "vendor=ingest24";
+        WorkflowTraceContext? capturedTraceContext = null;
+        StubTenantActive();
+        IngestionInput request = IngestionInputFactory.Create(
+            tenantId: TenantId,
+            caseId: CaseId,
+            sourceUri: "file:///evidence/story-24-1.txt",
+            contentBytes: Encoding.UTF8.GetBytes("workflow trace context evidence"),
+            ingestedBy: "qa@example.com");
+        _scheduler
+            .ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                capturedTraceContext = new WorkflowTraceContextCapture().Capture();
+                return callInfo.ArgAt<string>(0);
+            });
+        using ActivityListener listener = CreateServerTraceListener();
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpRequestMessage httpRequest = new(HttpMethod.Post, "/api/ingest")
+        {
+            Content = JsonContent.Create(request, options: MemoriesJsonContext.Options),
+        };
+        httpRequest.Headers.Add("traceparent", $"00-{traceId}-0000000000000001-01");
+        httpRequest.Headers.TryAddWithoutValidation("tracestate", traceState);
+
+        using HttpResponseMessage response = await client.SendAsync(
+            httpRequest,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        capturedTraceContext.ShouldNotBeNull();
+        capturedTraceContext.TraceParent.ShouldStartWith($"00-{traceId}-");
+        capturedTraceContext.TraceState.ShouldBe(traceState);
+        await _scheduler.Received(1).ScheduleAsync(
+            Arg.Any<string>(),
+            Arg.Is<IngestionInput>(input => input.TraceContext == null),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task PostIngest_WithInvalidFilePayload_ReturnsBadRequestWithoutScheduling()
     {
         IngestionInput request = IngestionInputFactory.Create(
@@ -133,6 +178,20 @@ public sealed class IngestionEndpointE2ETests : IDisposable
                 Arg.Any<IReadOnlyDictionary<string, string>?>(),
                 Arg.Any<CancellationToken>())
             .Returns(entry);
+    }
+
+    private static ActivityListener CreateServerTraceListener()
+    {
+        ActivityListener listener = new()
+        {
+            ShouldListenTo = source =>
+                source.Name == MemoriesActivitySource.SourceName
+                || source.Name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            SampleUsingParentId = (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllData,
+        };
+        ActivitySource.AddActivityListener(listener);
+        return listener;
     }
 
     private static async Task<string> ReadInstanceIdAsync(HttpResponseMessage response)

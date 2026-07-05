@@ -48,6 +48,7 @@ internal sealed class CaseService
     private readonly IMemoriesCommandStore _commandStore;
     private readonly ICaseProjectionWorkflowScheduler _projectionWorkflowScheduler;
     private readonly IngestionWorkflowConfigurationCapture? _workflowConfigurationCapture;
+    private readonly WorkflowTraceContextCapture? _workflowTraceContextCapture;
     private readonly ILogger<CaseService> _logger;
 
     public CaseService(
@@ -60,7 +61,8 @@ internal sealed class CaseService
         ILogger<CaseService> logger,
         IMemoriesCommandStore? commandStore = null,
         ICaseProjectionWorkflowScheduler? projectionWorkflowScheduler = null,
-        IngestionWorkflowConfigurationCapture? workflowConfigurationCapture = null)
+        IngestionWorkflowConfigurationCapture? workflowConfigurationCapture = null,
+        WorkflowTraceContextCapture? workflowTraceContextCapture = null)
     {
         _redis = redis;
         _falkorDb = falkorDb;
@@ -73,6 +75,7 @@ internal sealed class CaseService
                 ? new InMemoryCaseProjectionWorkflowScheduler()
                 : new DaprCaseProjectionWorkflowScheduler(workflowClient));
         _workflowConfigurationCapture = workflowConfigurationCapture;
+        _workflowTraceContextCapture = workflowTraceContextCapture;
         _logger = logger;
     }
 
@@ -187,7 +190,8 @@ internal sealed class CaseService
                 input.AnnotationType,
                 input.IngestedBy,
                 metadata,
-                _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration()),
+                _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration(),
+                _workflowTraceContextCapture?.Capture()),
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(

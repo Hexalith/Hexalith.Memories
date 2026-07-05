@@ -25,4 +25,5 @@ public sealed record EmbeddingInput(
     string TenantId,
     string ContentText,
     EmbeddingContentKind ContentKind = EmbeddingContentKind.Payload,
-    WorkflowPayloadReference? ContentReference = null);
+    WorkflowPayloadReference? ContentReference = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

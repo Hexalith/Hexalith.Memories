@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Ingestion;
 
+using System.Diagnostics;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
@@ -112,7 +114,8 @@ public sealed class IngestionPayloadClaimCheckTests
             payloadStore,
             "mu-2",
             input,
-            capture);
+            capture,
+            new WorkflowTraceContextCapture());
 
         result.ContentBytes.ShouldBeNull();
         result.PayloadReference.ShouldBe(reference);
@@ -123,5 +126,131 @@ public sealed class IngestionPayloadClaimCheckTests
         retry.FirstRetryIntervalSeconds.ShouldBe(3);
         retry.BackoffCoefficient.ShouldBe(1.1);
         retry.MaxRetryIntervalSeconds.ShouldBe(30);
+    }
+
+    [Fact]
+    public async Task PrepareInputAsync_CapturesTraceContextBeforeClaimCheckSlimming()
+    {
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        byte[] contentBytes = [4, 3, 2, 1];
+        WorkflowPayloadReference reference = new(
+            "mu-trace:sourcebytes:hash:source",
+            "hash",
+            contentBytes.Length,
+            WorkflowPayloadKind.SourceBytes,
+            "test-tenant",
+            "mu-trace");
+        payloadStore
+            .SaveAsync(
+                "test-tenant",
+                "mu-trace",
+                WorkflowPayloadKind.SourceBytes,
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                "source",
+                Arg.Any<CancellationToken>())
+            .Returns(reference);
+        IngestionWorkflowConfigurationCapture capture = new(
+            Options.Create(new IngestionSettings()),
+            Options.Create(new NaturalLanguageDescriptionOptions()));
+        using var source = new ActivitySource("Hexalith.Memories.Server.Tests.TraceRoot");
+        using ActivityListener listener = CreateAllDataListener(source.Name);
+        using Activity? root = source.StartActivity("trace-root");
+        root.ShouldNotBeNull();
+        root.TraceStateString = "vendor=story24";
+        IngestionInput input = IngestionInputFactory.Create(contentBytes: contentBytes);
+
+        IngestionInput result = await DaprIngestionWorkflowScheduler.PrepareInputAsync(
+            payloadStore,
+            "mu-trace",
+            input,
+            capture,
+            new WorkflowTraceContextCapture());
+
+        result.ContentBytes.ShouldBeNull();
+        result.PayloadReference.ShouldBe(reference);
+        result.TraceContext.ShouldNotBeNull();
+        result.TraceContext.TraceParent.ShouldBe(root.Id);
+        result.TraceContext.TraceState.ShouldBe("vendor=story24");
+    }
+
+    [Fact]
+    public async Task PrepareInputAsync_WithoutAmbientTraceContext_LeavesTraceContextNull()
+    {
+        Activity? previous = Activity.Current;
+        Activity.Current = null;
+        try
+        {
+            IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+            IngestionWorkflowConfigurationCapture capture = new(
+                Options.Create(new IngestionSettings()),
+                Options.Create(new NaturalLanguageDescriptionOptions()));
+            IngestionInput input = IngestionInputFactory.Create(
+                sourceType: SourceType.Url,
+                sourceUri: "https://example.com/no-trace",
+                contentBytes: null);
+
+            IngestionInput result = await DaprIngestionWorkflowScheduler.PrepareInputAsync(
+                payloadStore,
+                "mu-no-trace",
+                input,
+                capture,
+                new WorkflowTraceContextCapture());
+
+            result.TraceContext.ShouldBeNull();
+            await payloadStore.DidNotReceiveWithAnyArgs().SaveAsync(default!, default!, default, default, default, default);
+        }
+        finally
+        {
+            Activity.Current = previous;
+        }
+    }
+
+    [Fact]
+    public async Task PrepareInputAsync_WithExistingSerializedTraceContext_DoesNotOverwriteIt()
+    {
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        IngestionWorkflowConfigurationCapture capture = new(
+            Options.Create(new IngestionSettings()),
+            Options.Create(new NaturalLanguageDescriptionOptions()));
+        WorkflowTraceContext existing = new()
+        {
+            TraceParent = "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+            TraceState = "vendor=existing",
+        };
+        using var source = new ActivitySource("Hexalith.Memories.Server.Tests.TraceRoot.Existing");
+        using ActivityListener listener = CreateAllDataListener(source.Name);
+        using Activity? root = source.StartActivity("trace-root");
+        root.ShouldNotBeNull();
+        IngestionInput input = IngestionInputFactory.Create(
+            sourceType: SourceType.Url,
+            sourceUri: "https://example.com/existing-trace",
+            contentBytes: null) with
+        {
+            TraceContext = existing,
+        };
+
+        IngestionInput result = await DaprIngestionWorkflowScheduler.PrepareInputAsync(
+            payloadStore,
+            "mu-existing-trace",
+            input,
+            capture,
+            new WorkflowTraceContextCapture());
+
+        WorkflowTraceContext resultTraceContext = result.TraceContext.ShouldNotBeNull();
+        resultTraceContext.ShouldBe(existing);
+        resultTraceContext.TraceParent.ShouldNotBe(root.Id);
+        await payloadStore.DidNotReceiveWithAnyArgs().SaveAsync(default!, default!, default, default, default, default);
+    }
+
+    private static ActivityListener CreateAllDataListener(string sourceName)
+    {
+        ActivityListener listener = new()
+        {
+            ShouldListenTo = source => source.Name == sourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            SampleUsingParentId = (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllData,
+        };
+        ActivitySource.AddActivityListener(listener);
+        return listener;
     }
 }

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Collections;
 using System.Globalization;
 using System.Diagnostics;
@@ -47,7 +49,7 @@ using Microsoft.Extensions.Options;
 /// above is sufficient per Session 1 Spike 0.3.</para>
 /// </remarks>
 public sealed class GenerateNaturalLanguageDescriptionActivity
-    : WorkflowActivity<NaturalLanguageDescriptionInput, NaturalLanguageDescriptionResult>
+    : WorkflowTraceLinkedActivity<NaturalLanguageDescriptionInput, NaturalLanguageDescriptionResult>
 {
     internal const string SystemPrompt =
         "You are an event summarizer. Given a JSON event payload of type {EventType}, write a single "
@@ -86,7 +88,7 @@ public sealed class GenerateNaturalLanguageDescriptionActivity
     }
 
     /// <inheritdoc/>
-    public override async Task<NaturalLanguageDescriptionResult> RunAsync(
+    protected override async Task<NaturalLanguageDescriptionResult> RunActivityAsync(
         WorkflowActivityContext context,
         NaturalLanguageDescriptionInput input)
     {

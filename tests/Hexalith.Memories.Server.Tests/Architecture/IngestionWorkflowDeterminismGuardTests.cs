@@ -31,6 +31,52 @@ public static partial class IngestionWorkflowDeterminismGuardTests
             "IngestionWorkflow must use natural-language options captured on IngestionInput, not process-global option snapshots.");
     }
 
+    [Fact]
+    public static void WorkflowOrchestrationFiles_DoNotCaptureAmbientTraceState()
+    {
+        string repoRoot = ResolveRepoRoot();
+        string[] workflowFiles =
+        [
+            Path.Combine(repoRoot, "src", "Hexalith.Memories.Server", "Workflows", "IngestionWorkflow.cs"),
+            Path.Combine(repoRoot, "src", "Hexalith.Memories.Server", "Workflows", "AnnotationProjectionWorkflow.cs"),
+        ];
+
+        foreach (string workflowPath in workflowFiles)
+        {
+            string source = StripComments(File.ReadAllText(workflowPath));
+            string fileName = Path.GetFileName(workflowPath);
+
+            source.Contains("Activity.Current", StringComparison.Ordinal).ShouldBeFalse(
+                $"{fileName} must use serialized trace context from workflow input; ambient Activity.Current is not replay-safe.");
+            source.Contains("StartActivity", StringComparison.Ordinal).ShouldBeFalse(
+                $"{fileName} orchestration must not emit spans directly because replay can re-execute orchestration code.");
+            source.Contains("WorkflowTraceContextCapture", StringComparison.Ordinal).ShouldBeFalse(
+                $"Trace context capture belongs at scheduling/activity boundaries, not inside durable workflow orchestration ({fileName}).");
+        }
+    }
+
+    [Fact]
+    public static void DirectUrlIngestion_CapturesTraceContextBeforeDirectWorkflowSchedule()
+    {
+        string repoRoot = ResolveRepoRoot();
+        string programPath = Path.Combine(
+            repoRoot,
+            "src",
+            "Hexalith.Memories.Server",
+            "Program.cs");
+        string source = StripComments(File.ReadAllText(programPath));
+
+        int captureIndex = source.IndexOf(
+            "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",
+            StringComparison.Ordinal);
+        int scheduleIndex = source.IndexOf(
+            "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input)",
+            StringComparison.Ordinal);
+
+        captureIndex.ShouldBeGreaterThanOrEqualTo(0, "The direct URL endpoint must apply workflow trace capture.");
+        scheduleIndex.ShouldBeGreaterThan(captureIndex, "Trace context must be captured before direct URL workflow scheduling.");
+    }
+
     private static string StripComments(string source)
         => LineCommentRegex().Replace(source, string.Empty);
 

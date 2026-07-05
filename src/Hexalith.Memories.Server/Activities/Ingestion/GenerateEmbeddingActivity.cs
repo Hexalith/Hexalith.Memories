@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Server.Activities;
+
 using System.Collections.Concurrent;
 
 using Dapr.Actors;
@@ -23,7 +25,7 @@ using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 /// <summary>DAPR Workflow activity that generates embeddings via configurable provider API with per-tenant rate limiting.</summary>
-public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput, EmbeddingResult>
+public sealed class GenerateEmbeddingActivity : WorkflowTraceLinkedActivity<EmbeddingInput, EmbeddingResult>
 {
     private static readonly ConcurrentDictionary<string, DateTimeOffset> RetryTrackingKeys = new(StringComparer.Ordinal);
     private static readonly TimeSpan RetryTrackingTtl = TimeSpan.FromHours(1);
@@ -69,7 +71,7 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
     }
 
     /// <inheritdoc/>
-    public override async Task<EmbeddingResult> RunAsync(
+    protected override async Task<EmbeddingResult> RunActivityAsync(
         WorkflowActivityContext context,
         EmbeddingInput input)
     {

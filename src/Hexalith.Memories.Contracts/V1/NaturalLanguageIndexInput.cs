@@ -10,7 +10,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// (<see cref="NaturalLanguageDescription"/>, <see cref="DescriptionConfidence"/>,
 /// <see cref="ConfidenceSource"/>). Field list is explicit (Improvement AH) so the mapping is auditable
 /// without grep.</summary>
-public sealed record NaturalLanguageIndexInput
+public sealed record NaturalLanguageIndexInput : IWorkflowTraceContextCarrier
 {
     /// <summary>The memory unit identifier.</summary>
     public required string MemoryUnitId { get; init; }
@@ -43,4 +43,7 @@ public sealed record NaturalLanguageIndexInput
 
     /// <summary>Classifies how <see cref="DescriptionConfidence"/> was derived.</summary>
     public required ConfidenceSource ConfidenceSource { get; init; }
+
+    /// <summary>Gets the serialized request trace context captured before workflow scheduling.</summary>
+    public WorkflowTraceContext? TraceContext { get; init; }
 }

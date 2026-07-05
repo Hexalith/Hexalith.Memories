@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>Shared input for all three indexing activities (syntactic, semantic, graph).</summary>
-public sealed record IndexInput
+public sealed record IndexInput : IWorkflowTraceContextCarrier
 {
     public required string MemoryUnitId { get; init; }
 
@@ -60,4 +60,7 @@ public sealed record IndexInput
     public string? CausationId { get; init; }
 
     public string? CorrelationId { get; init; }
+
+    /// <summary>Gets the serialized request trace context captured before workflow scheduling.</summary>
+    public WorkflowTraceContext? TraceContext { get; init; }
 }

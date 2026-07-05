@@ -12,4 +12,5 @@ public sealed record CaseActivityInput(
     CaseActivityEventType EventType,
     string Actor,
     string Description,
-    string? MemoryUnitId);
+    string? MemoryUnitId,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

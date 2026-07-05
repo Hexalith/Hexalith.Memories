@@ -5,7 +5,12 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Input for cleanup/compensation activities.</summary>
 /// <param name="MemoryUnitId">The memory unit to clean up.</param>
 /// <param name="TenantId">The tenant identifier for namespacing.</param>
-public sealed record CleanupInput(string MemoryUnitId, string TenantId);
+public sealed record CleanupInput(
+    string MemoryUnitId,
+    string TenantId,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

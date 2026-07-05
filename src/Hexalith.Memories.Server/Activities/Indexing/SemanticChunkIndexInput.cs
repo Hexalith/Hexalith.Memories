@@ -9,7 +9,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
 
 /// <summary>Input for writing one or more raw semantic chunk vectors for a base memory unit.</summary>
-public sealed record SemanticChunkIndexInput
+public sealed record SemanticChunkIndexInput : IWorkflowTraceContextCarrier
 {
     /// <summary>Gets the stable base memory-unit identifier.</summary>
     public required string MemoryUnitId { get; init; }
@@ -43,4 +43,7 @@ public sealed record SemanticChunkIndexInput
             _ => new Dictionary<string, MetadataField>(value, StringComparer.Ordinal),
         };
     }
+
+    /// <summary>Gets the serialized request trace context captured before workflow scheduling.</summary>
+    public WorkflowTraceContext? TraceContext { get; init; }
 }

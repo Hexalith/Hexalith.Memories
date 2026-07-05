@@ -112,6 +112,52 @@ public class IngestionInputSerializationTests
     }
 
     [Fact]
+    public void TraceContext_WhenPopulated_ShouldSerializeW3CNamesAndRoundTrip()
+    {
+        IngestionInput original = CreateFullInput() with
+        {
+            TraceContext = new WorkflowTraceContext
+            {
+                TraceParent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                TraceState = "vendor=story24",
+            },
+        };
+
+        string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
+        IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(json, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"traceContext\":");
+        json.ShouldContain("\"traceparent\":\"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01\"");
+        json.ShouldContain("\"tracestate\":\"vendor=story24\"");
+        deserialized.ShouldNotBeNull();
+        deserialized.TraceContext.ShouldNotBeNull();
+        deserialized.TraceContext.TraceParent.ShouldBe("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+        deserialized.TraceContext.TraceState.ShouldBe("vendor=story24");
+    }
+
+    [Fact]
+    public void Deserialize_PayloadWithoutTraceContext_ShouldSucceedWithNullTraceContext()
+    {
+        // Back-compat: a pre-24.1 durable workflow payload that never carried trace context must still deserialize.
+        const string legacyJson = """
+            {
+              "tenantId": "tenant-001",
+              "caseId": "case-001",
+              "sourceUri": "file:///document.pdf",
+              "contentType": "application/pdf",
+              "sourceType": "file",
+              "ingestedBy": "user@example.com"
+            }
+            """;
+
+        IngestionInput? deserialized = JsonSerializer.Deserialize<IngestionInput>(legacyJson, MemoriesJsonContext.Options);
+
+        deserialized.ShouldNotBeNull();
+        deserialized.TraceContext.ShouldBeNull();
+        deserialized.SourceUri.ShouldBe("file:///document.pdf");
+    }
+
+    [Fact]
     public void Deserialize_PayloadWithoutIdempotencyToken_ShouldSucceedWithNullToken()
     {
         // Back-compat: a pre-18.4 payload that never carried the field must still deserialize.

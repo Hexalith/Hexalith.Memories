@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Ingestion;
 
+using Hexalith.Memories.Contracts.V1;
+
 /// <summary>Input for the idempotency check activity.</summary>
 /// <param name="SourceUri">The URI of the source content.</param>
 /// <param name="TenantId">The tenant identifier.</param>
@@ -14,4 +16,9 @@ namespace Hexalith.Memories.Server.Activities.Ingestion;
 /// the <see cref="SourceUri"/> natural key is the fallback. Defaults to <see langword="null"/> so existing
 /// callers and serialized payloads are unaffected.
 /// </param>
-public sealed record IdempotencyInput(string SourceUri, string TenantId, string CaseId, string? IdempotencyToken = null);
+public sealed record IdempotencyInput(
+    string SourceUri,
+    string TenantId,
+    string CaseId,
+    string? IdempotencyToken = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;

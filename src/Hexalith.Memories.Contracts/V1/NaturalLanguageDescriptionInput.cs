@@ -26,4 +26,5 @@ public sealed record NaturalLanguageDescriptionInput(
     string RawJsonPayload,
     string EventType,
     string? AggregateType,
-    WorkflowPayloadReference? RawPayloadReference = null);
+    WorkflowPayloadReference? RawPayloadReference = null,
+    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;
