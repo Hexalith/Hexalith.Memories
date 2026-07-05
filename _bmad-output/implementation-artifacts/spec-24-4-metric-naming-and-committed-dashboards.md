@@ -5,7 +5,7 @@ created: '2026-07-05T19:13:02+02:00'
 status: 'in-review'
 baseline_revision: '05e27365f33e830bac583ec111c2a5cfc234ed30'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-24-context.md'
 warnings: []
@@ -75,6 +75,23 @@ warnings: []
 
 ## Review Triage Log
 
+### 2026-07-05 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 1, medium 8, low 0)
+- defer: 0
+- reject: 1: (high 0, medium 0, low 1)
+- addressed_findings:
+  - `[high]` `[patch]` Prometheus-normalized histogram queries and tests used `_ms_*` suffixes for `ms` instruments; updated dashboard, docs, spec notes, and test variants to `_milliseconds_*` per the OpenTelemetry Prometheus translator.
+  - `[medium]` `[patch]` Dashboard tests allowed `_total` variants for gauges/histograms; changed variants to be instrument-kind-specific so nonexistent counter/gauge series cannot pass.
+  - `[medium]` `[patch]` Dashboard tests validated tags against a global union; changed validation to enforce each referenced metric's own `MetricTagKeyPolicy` tags while allowing histogram `le`.
+  - `[medium]` `[patch]` Grafana dashboard used `${DS_PROMETHEUS}` without import metadata; added a Prometheus `__inputs` datasource declaration.
+  - `[medium]` `[patch]` Tenant selector read only successful-ingestion series; changed it to list tenant IDs from all `memories_*` custom metric series.
+  - `[medium]` `[patch]` Search latency p95 dropped `tenant_id` during all/multi-tenant views; grouped quantiles by `tenant_id`, `axis`, and `le`.
+  - `[medium]` `[patch]` Natural-language retry depth and bytes shared one panel/unit; split queue bytes into a separate byte-unit panel.
+  - `[medium]` `[patch]` Registered handler count and mismatch rate shared one panel/unit; split mismatch rate into a separate rate panel.
+  - `[medium]` `[patch]` The non-readable component YAML comment overstated reserved cache metric protection; corrected it to point at the readable-YAML startup validator.
+
 ## Design Notes
 
 The canonical instrument-name shape is dot-separated lowercase words after the `memories` prefix. Prometheus query names in dashboard JSON may use collector-normalized underscores, but tests should derive those query tokens from `MetricTagKeyPolicy` so the dashboard cannot drift from code.
@@ -85,6 +102,7 @@ The canonical instrument-name shape is dot-separated lowercase words after the `
 - Added dashboard contract coverage that parses [../../deploy/grafana/dashboards/memories-operability.json](../../deploy/grafana/dashboards/memories-operability.json), derives allowed Prometheus query names from `MemoriesMeter.MetricTagKeyPolicy`, allows histogram `le`, and rejects `case_id`, `user`, and `memory_unit_id`.
 - The dashboard uses Prometheus-normalized query tokens such as `memories_natural_language_description_duration_milliseconds_bucket` and `memories_conversation_cache_hits_total`; these are query names derived from canonical dot instruments, not runtime instrument names.
 - The conversation cache panel remains reserved until the Dapr Conversation SDK exposes cache hit/miss metadata; no runtime emission was added.
+- Review patched the Grafana datasource import metadata, latency query suffixes, tenant grouping, mixed-unit panels, tenant selector coverage, and dashboard contract tests.
 
 ## File List
 
@@ -113,5 +131,23 @@ The canonical instrument-name shape is dot-separated lowercase words after the `
 - `dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -m:1 /nodeReuse:false --no-restore` -- passed, 0 warnings, 0 errors.
 - `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` -- passed on serial rerun, 0 warnings, 0 errors. Earlier parallel build attempts produced output-file contention and were rerun serially.
 - `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~MemoriesMetricsTests|FullyQualifiedName~MemoriesDashboardTests|FullyQualifiedName~TelemetryMetricsRecorderTests|FullyQualifiedName~EmbeddingInputContentKindTests|FullyQualifiedName~GenerateEmbeddingActivityTests"` -- passed, 44/44.
-- `rg "memories_natural|memories_conversation|memories\\.rate_limit|memories\\.pipeline\\.queue_depth|memories\\.embedding\\.api_calls" src tests docs deploy` -- returned only Prometheus-normalized dashboard/doc query names for canonical natural-language and conversation metrics; no source/test runtime instrument names use the stale legacy names.
+- Review rerun: `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` -- passed, 0 warnings, 0 errors.
+- Review rerun: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~MemoriesMetricsTests|FullyQualifiedName~MemoriesDashboardTests|FullyQualifiedName~TelemetryMetricsRecorderTests|FullyQualifiedName~EmbeddingInputContentKindTests|FullyQualifiedName~GenerateEmbeddingActivityTests"` -- passed, 44/44.
+- Review rerun: `dotnet build src/Hexalith.Memories.Telemetry/Hexalith.Memories.Telemetry.csproj -m:1 /nodeReuse:false --no-restore` -- passed, 0 warnings, 0 errors.
+- Review rerun: `dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -m:1 /nodeReuse:false --no-restore` -- passed, 0 warnings, 0 errors.
+- `rg "memories_natural|memories_conversation|memories\\.rate_limit|memories\\.pipeline\\.queue_depth|memories\\.embedding\\.api_calls|_ms_bucket|_ms_count|_ms_sum" src tests docs deploy _bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md` -- returned only documented Prometheus-normalized dashboard/doc/spec query names for canonical natural-language and conversation metrics; no source/test runtime instrument names use stale legacy names and no `_ms_*` histogram query suffixes remain.
 - `git diff --check` -- passed.
+
+## Auto Run Result
+
+**Summary:** Story 24.4 normalized repo-owned Memories custom metric instruments into the dot-separated `memories.*` family, added a committed Grafana starter dashboard, and pinned the dashboard/query contract to `MemoriesMeter.MetricTagKeyPolicy`.
+
+**Files changed:** Metric constants in `MemoriesMeter.cs`; dashboard JSON in `deploy/grafana/dashboards/memories-operability.json`; metric and dashboard tests under `tests/Hexalith.Memories.Server.Tests/Telemetry`; telemetry, EventStore, rate-limit, and PII docs; the readable-YAML validator comment for reserved conversation cache behavior; sprint/story artifacts.
+
+**Review findings breakdown:** 0 intent gaps, 0 bad-spec findings, 9 patch findings addressed (1 high, 8 medium), 0 deferred findings, and 1 low finding rejected as already covered by explicit reserved-cache wording and tests.
+
+**Follow-up review recommendation:** Recommended. The review pass corrected dashboard query suffixes, panel grouping/units, and test contract strictness after implementation, so a later lightweight reviewer pass should re-check Grafana import behavior and Prometheus translator assumptions.
+
+**Verification performed:** Telemetry, server, and server-test project builds passed; focused metric/dashboard/runtime tests passed 44/44; dashboard JSON parsed with `python3 -m json.tool`; stale-name search found no runtime legacy names or `_ms_*` histogram suffixes; `git diff --check` passed.
+
+**Residual risks:** The dashboard is committed and contract-tested, but it has not been imported into a live Grafana instance in this run. Prometheus query names assume the default OpenTelemetry Collector Prometheus translation strategy that normalizes `ms` units to `milliseconds`.
