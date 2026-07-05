@@ -14,6 +14,11 @@ public interface IEmbeddingRateLimiterActor : IActor
     /// <returns>True if the request is within budget; false if the rate limit is exhausted.</returns>
     Task<bool> TryConsumeAsync();
 
+    /// <summary>Updates the current ceiling and attempts to consume one rate limit token in a single actor operation.</summary>
+    /// <param name="ceiling">The current configured ceiling per minute.</param>
+    /// <returns>True if the request is within budget; false if the rate limit is exhausted.</returns>
+    Task<bool> TryConsumeWithCeilingAsync(int ceiling);
+
     /// <summary>Resets the rate limit window to full budget.</summary>
     /// <returns>A task representing the asynchronous operation.</returns>
     Task ResetAsync();

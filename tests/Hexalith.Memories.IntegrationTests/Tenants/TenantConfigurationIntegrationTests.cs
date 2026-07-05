@@ -118,14 +118,14 @@ public sealed class TenantConfigurationIntegrationTests
         await Task.CompletedTask;
     }
 
-    // AC5 / FR69 — rate-limit propagation on next embedding request.
+    // AC5 / FR69 + Story 23.5 AC4 — rate-limit propagation within the embedding-config cache freshness bound.
     [RunnableSkippedFact("Requires Aspire AppHost fixture")]
     public async Task PutEmbeddingConfig_RateLimitChange_PropagatesToRateLimiterOnNextIngest()
     {
         // Given a tenant with rateLimitPerMinute=1500,
         // When PUT /api/tenants/{id}/embedding-config with rateLimitPerMinute=200,
-        // Then the next GenerateEmbeddingActivity invocation calls
-        // IEmbeddingRateLimiterActor.SetCeilingAsync(200) before TryConsumeAsync.
+        // Then GenerateEmbeddingActivity calls IEmbeddingRateLimiterActor.TryConsumeWithCeilingAsync(200)
+        // after the configured embedding-config cache freshness bound.
         _ = _fixture;
         await Task.CompletedTask;
     }

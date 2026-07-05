@@ -45,6 +45,16 @@ public sealed class RateLimiterLogic
         return (true, state);
     }
 
+    /// <summary>Applies a current ceiling and attempts to consume one rate limit token.</summary>
+    /// <param name="currentState">The current rate limit state.</param>
+    /// <param name="ceiling">The current configured ceiling per minute.</param>
+    /// <returns>A tuple of (allowed, newState) indicating whether the request is allowed and the updated state.</returns>
+    public (bool Allowed, RateLimitState NewState) TryConsume(RateLimitState currentState, int ceiling)
+    {
+        RateLimitState state = SetCeiling(currentState, ceiling);
+        return TryConsume(state);
+    }
+
     /// <summary>Resets the rate limit state to full budget.</summary>
     /// <param name="currentState">The current rate limit state.</param>
     /// <returns>The reset state with full budget and updated window start.</returns>

@@ -29,6 +29,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
     private readonly ContentChunkingOptions _options;
     private readonly IWorkflowPayloadStore? _payloadStore;
     private readonly IConnectionMultiplexer? _redis;
+    private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateChunkEmbeddingsActivity"/> class.</summary>
     public GenerateChunkEmbeddingsActivity(
@@ -37,7 +38,8 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         IOptions<ContentChunkingOptions> options,
         ILogger<GenerateChunkEmbeddingsActivity> logger,
         [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null,
-        IWorkflowPayloadStore? payloadStore = null)
+        IWorkflowPayloadStore? payloadStore = null,
+        ITenantEmbeddingConfigProvider? tenantEmbeddingConfigProvider = null)
     {
         ArgumentNullException.ThrowIfNull(embeddingClient);
         ArgumentNullException.ThrowIfNull(actorProxyFactory);
@@ -49,6 +51,11 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         _logger = logger;
         _payloadStore = payloadStore;
         _redis = redis;
+        _tenantEmbeddingConfigProvider = tenantEmbeddingConfigProvider
+            ?? new TenantEmbeddingConfigProvider(
+                actorProxyFactory,
+                Options.Create(new TenantEmbeddingConfigCacheOptions()),
+                TimeProvider.System);
     }
 
     /// <inheritdoc/>
@@ -82,13 +89,8 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
         ContentChunker chunker = new(_options);
         IReadOnlyList<ContentChunk> chunks = chunker.Split(contentText);
 
-        ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
-            .CreateActorProxy<ITenantConfigurationActor>(
-                new ActorId(input.TenantId),
-                nameof(TenantConfigurationActor));
-
-        TenantEmbeddingConfig config = await tenantConfigActor
-            .GetEmbeddingConfigAsync()
+        TenantEmbeddingConfig config = await _tenantEmbeddingConfigProvider
+            .GetAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
         if (_redis is not null)
@@ -112,8 +114,6 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
                 new ActorId(input.TenantId),
                 nameof(EmbeddingRateLimiterActor));
 
-        await rateLimiter.SetCeilingAsync(config.RateLimitPerMinute).ConfigureAwait(false);
-
         bool providerCallInProgress = false;
         try
         {
@@ -121,7 +121,7 @@ public sealed class GenerateChunkEmbeddingsActivity : WorkflowActivity<Embedding
             for (int start = 0; start < chunks.Count; start += _options.MaxChunksPerBatch)
             {
                 ContentChunk[] batchChunks = [.. chunks.Skip(start).Take(_options.MaxChunksPerBatch)];
-                bool allowed = await rateLimiter.TryConsumeAsync().ConfigureAwait(false);
+                bool allowed = await rateLimiter.TryConsumeWithCeilingAsync(config.RateLimitPerMinute).ConfigureAwait(false);
                 if (!allowed)
                 {
                     RateLimitingLog.LogRateLimitExceededLocally(_logger, input.TenantId);

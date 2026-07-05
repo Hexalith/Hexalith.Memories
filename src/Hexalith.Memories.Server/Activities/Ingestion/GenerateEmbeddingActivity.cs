@@ -18,6 +18,7 @@ using Hexalith.Memories.Server.Migration;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using StackExchange.Redis;
 
@@ -34,6 +35,7 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
     private readonly IJitterSource _jitterSource;
     private readonly ILogger<GenerateEmbeddingActivity> _logger;
     private readonly IConnectionMultiplexer? _redis;
+    private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
 
     /// <summary>Initializes a new instance of the <see cref="GenerateEmbeddingActivity"/> class.</summary>
     /// <param name="embeddingClient">The embedding client for provider API calls.</param>
@@ -41,12 +43,14 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
     /// <param name="jitterSource">Jitter source providing the pre-call retry delay (Story 6.2).</param>
     /// <param name="logger">Logger for structured rate-limit events (6201-6203).</param>
     /// <param name="redis">The tenant-scoped migration marker store.</param>
+    /// <param name="tenantEmbeddingConfigProvider">The cached tenant embedding configuration provider.</param>
     public GenerateEmbeddingActivity(
         EmbeddingClient embeddingClient,
         IActorProxyFactory actorProxyFactory,
         IJitterSource jitterSource,
         ILogger<GenerateEmbeddingActivity> logger,
-        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null)
+        [FromKeyedServices("redis")] IConnectionMultiplexer? redis = null,
+        ITenantEmbeddingConfigProvider? tenantEmbeddingConfigProvider = null)
     {
         ArgumentNullException.ThrowIfNull(embeddingClient);
         ArgumentNullException.ThrowIfNull(actorProxyFactory);
@@ -57,6 +61,11 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
         _jitterSource = jitterSource;
         _logger = logger;
         _redis = redis;
+        _tenantEmbeddingConfigProvider = tenantEmbeddingConfigProvider
+            ?? new TenantEmbeddingConfigProvider(
+                actorProxyFactory,
+                Options.Create(new TenantEmbeddingConfigCacheOptions()),
+                TimeProvider.System);
     }
 
     /// <inheritdoc/>
@@ -68,13 +77,8 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
         ArgumentException.ThrowIfNullOrWhiteSpace(input.TenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.ContentText);
 
-        ITenantConfigurationActor tenantConfigActor = _actorProxyFactory
-            .CreateActorProxy<ITenantConfigurationActor>(
-                new ActorId(input.TenantId),
-                nameof(TenantConfigurationActor));
-
-        TenantEmbeddingConfig config = await tenantConfigActor
-            .GetEmbeddingConfigAsync()
+        TenantEmbeddingConfig config = await _tenantEmbeddingConfigProvider
+            .GetAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
         if (_redis is not null)
@@ -98,9 +102,7 @@ public sealed class GenerateEmbeddingActivity : WorkflowActivity<EmbeddingInput,
                 new ActorId(input.TenantId),
                 nameof(EmbeddingRateLimiterActor));
 
-        await rateLimiter.SetCeilingAsync(config.RateLimitPerMinute).ConfigureAwait(false);
-
-        bool allowed = await rateLimiter.TryConsumeAsync().ConfigureAwait(false);
+        bool allowed = await rateLimiter.TryConsumeWithCeilingAsync(config.RateLimitPerMinute).ConfigureAwait(false);
         if (!allowed)
         {
             RateLimitingLog.LogRateLimitExceededLocally(_logger, input.TenantId);

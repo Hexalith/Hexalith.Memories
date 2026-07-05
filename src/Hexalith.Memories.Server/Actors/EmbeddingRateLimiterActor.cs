@@ -33,13 +33,13 @@ internal sealed class EmbeddingRateLimiterActor : Actor, IEmbeddingRateLimiterAc
     /// <inheritdoc/>
     public async Task<RateLimitState> GetStateAsync()
     {
-        return await GetOrCreateStateAsync().ConfigureAwait(false);
+        return await GetStateOrDefaultAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
     public async Task ResetAsync()
     {
-        RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
+        RateLimitState state = await GetStateOrDefaultAsync().ConfigureAwait(false);
         RateLimitState newState = _logic.Reset(state);
         await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
     }
@@ -47,7 +47,7 @@ internal sealed class EmbeddingRateLimiterActor : Actor, IEmbeddingRateLimiterAc
     /// <inheritdoc/>
     public async Task SetCeilingAsync(int ceiling)
     {
-        RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
+        RateLimitState state = await GetStateOrDefaultAsync().ConfigureAwait(false);
         RateLimitState newState = RateLimiterLogic.SetCeiling(state, ceiling);
         await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
     }
@@ -55,8 +55,17 @@ internal sealed class EmbeddingRateLimiterActor : Actor, IEmbeddingRateLimiterAc
     /// <inheritdoc/>
     public async Task<bool> TryConsumeAsync()
     {
-        RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
+        RateLimitState state = await GetStateOrDefaultAsync().ConfigureAwait(false);
         (bool allowed, RateLimitState newState) = _logic.TryConsume(state);
+        await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
+        return allowed;
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> TryConsumeWithCeilingAsync(int ceiling)
+    {
+        RateLimitState state = await GetStateOrDefaultAsync().ConfigureAwait(false);
+        (bool allowed, RateLimitState newState) = _logic.TryConsume(state, ceiling);
         await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
         return allowed;
     }
@@ -64,13 +73,13 @@ internal sealed class EmbeddingRateLimiterActor : Actor, IEmbeddingRateLimiterAc
     /// <inheritdoc/>
     public async Task ReportRateLimitedAsync(int retryAfterSeconds)
     {
-        RateLimitState state = await GetOrCreateStateAsync().ConfigureAwait(false);
+        RateLimitState state = await GetStateOrDefaultAsync().ConfigureAwait(false);
         RateLimitState newState = _logic.ReportRateLimited(state, retryAfterSeconds);
         await StateManager.SetStateAsync(StateName, newState).ConfigureAwait(false);
         RateLimitingLog.LogRateLimitActorUpdated(_logger, Id.GetId(), newState.Remaining, newState.WindowStart);
     }
 
-    private async Task<RateLimitState> GetOrCreateStateAsync()
+    private async Task<RateLimitState> GetStateOrDefaultAsync()
     {
         ConditionalValue<RateLimitState> result = await StateManager
             .TryGetStateAsync<RateLimitState>(StateName)
@@ -81,8 +90,6 @@ internal sealed class EmbeddingRateLimiterActor : Actor, IEmbeddingRateLimiterAc
             return result.Value;
         }
 
-        RateLimitState defaultState = _logic.CreateDefaultState();
-        await StateManager.SetStateAsync(StateName, defaultState).ConfigureAwait(false);
-        return defaultState;
+        return _logic.CreateDefaultState();
     }
 }

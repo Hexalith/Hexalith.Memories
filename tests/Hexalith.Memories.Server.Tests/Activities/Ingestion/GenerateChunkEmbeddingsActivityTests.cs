@@ -103,7 +103,9 @@ public class GenerateChunkEmbeddingsActivityTests
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
-        await rateLimiter.Received(2).TryConsumeAsync();
+        await rateLimiter.Received(2).TryConsumeWithCeilingAsync(config.RateLimitPerMinute);
+        await rateLimiter.DidNotReceive().SetCeilingAsync(Arg.Any<int>());
+        await rateLimiter.DidNotReceive().TryConsumeAsync();
     }
 
     [Fact]
@@ -186,6 +188,90 @@ public class GenerateChunkEmbeddingsActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_WithContentReferenceAcrossMultipleBatches_ConsumesOncePerProviderBatchAndPersistsReferences()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3, RateLimitPerMinute = 7 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
+        IActorProxyFactory actorProxyFactory = CreateActorProxyFactory(config, out IEmbeddingRateLimiterActor rateLimiter);
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        WorkflowPayloadReference contentReference = CreateReference(
+            WorkflowPayloadKind.ExtractedText,
+            "mu-1",
+            "content",
+            12);
+        payloadStore
+            .ReadAsync(contentReference, "tenant-a", "mu-1", WorkflowPayloadKind.ExtractedText, Arg.Any<CancellationToken>())
+            .Returns(System.Text.Encoding.UTF8.GetBytes("abcdefghijkl"));
+        payloadStore
+            .SaveAsync(
+                "tenant-a",
+                "mu-1",
+                Arg.Any<WorkflowPayloadKind>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call => CreateReference(
+                call.ArgAt<WorkflowPayloadKind>(2),
+                call.ArgAt<string>(1),
+                call.ArgAt<string>(4),
+                call.ArgAt<ReadOnlyMemory<byte>>(3).Length));
+        GenerateChunkEmbeddingsActivity activity = new(
+            embeddingClient,
+            actorProxyFactory,
+            Options.Create(new ContentChunkingOptions
+            {
+                MaxEstimatedTokens = 1,
+                OverlapEstimatedTokens = 0,
+                CharactersPerEstimatedToken = 4,
+                MaxChunksPerBatch = 2,
+            }),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            CreateRedisWithoutMarker(),
+            payloadStore);
+
+        ChunkEmbeddingBatchResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new EmbeddingInput("tenant-a", string.Empty, EmbeddingContentKind.Payload, contentReference));
+
+        result.Chunks.Count.ShouldBe(3);
+        foreach (ChunkEmbeddingResult chunk in result.Chunks)
+        {
+            chunk.Text.ShouldBeEmpty();
+            chunk.Vector.ShouldBeEmpty();
+            chunk.TextReference.ShouldNotBeNull();
+            chunk.VectorReference.ShouldNotBeNull();
+        }
+
+        await embeddingClient.Received(1).GenerateBatchAsync(
+            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcd", "efgh" })),
+            "tenant-a",
+            config,
+            Arg.Any<CancellationToken>());
+        await embeddingClient.Received(1).GenerateBatchAsync(
+            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "ijkl" })),
+            "tenant-a",
+            config,
+            Arg.Any<CancellationToken>());
+        await rateLimiter.Received(2).TryConsumeWithCeilingAsync(config.RateLimitPerMinute);
+        await rateLimiter.DidNotReceive().SetCeilingAsync(Arg.Any<int>());
+        await rateLimiter.DidNotReceive().TryConsumeAsync();
+        await payloadStore.Received(3).SaveAsync(
+            "tenant-a",
+            "mu-1",
+            WorkflowPayloadKind.ChunkText,
+            Arg.Any<ReadOnlyMemory<byte>>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+        await payloadStore.Received(3).SaveAsync(
+            "tenant-a",
+            "mu-1",
+            WorkflowPayloadKind.ChunkVector,
+            Arg.Any<ReadOnlyMemory<byte>>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_Provider429_ShouldReportEffectiveRetryAfterOnceAndThrowSanitizedMarker()
     {
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3 };
@@ -215,6 +301,39 @@ public class GenerateChunkEmbeddingsActivityTests
         ex.RetryAfterSeconds.ShouldBe(30);
         ex.Message.ShouldContain("ProviderRetryAfterSeconds=30");
         await rateLimiter.Received(1).ReportRateLimitedAsync(30);
+    }
+
+    [Fact]
+    public async Task RunAsync_LocalRateLimitRefused_ShouldNotCallProviderOrReportProvider429()
+    {
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { Dimensions = 3, RateLimitPerMinute = 7 };
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(config);
+        IActorProxyFactory actorProxyFactory = CreateActorProxyFactory(config, out IEmbeddingRateLimiterActor rateLimiter);
+        rateLimiter.TryConsumeWithCeilingAsync(config.RateLimitPerMinute).Returns(false);
+        GenerateChunkEmbeddingsActivity activity = new(
+            embeddingClient,
+            actorProxyFactory,
+            Options.Create(new ContentChunkingOptions
+            {
+                MaxEstimatedTokens = 2,
+                OverlapEstimatedTokens = 0,
+                CharactersPerEstimatedToken = 4,
+            }),
+            NullLogger<GenerateChunkEmbeddingsActivity>.Instance,
+            CreateRedisWithoutMarker());
+
+        EmbeddingRateLimitException ex = await Should.ThrowAsync<EmbeddingRateLimitException>(
+            () => activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new EmbeddingInput("tenant-a", "abcdefgh")));
+
+        ex.TenantId.ShouldBe("tenant-a");
+        await rateLimiter.Received(1).TryConsumeWithCeilingAsync(config.RateLimitPerMinute);
+        await rateLimiter.DidNotReceive().SetCeilingAsync(Arg.Any<int>());
+        await rateLimiter.DidNotReceive().ReportRateLimitedAsync(Arg.Any<int>());
+        await embeddingClient.DidNotReceive().GenerateBatchAsync(
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
     }
 
     private static EmbeddingClient CreateMockEmbeddingClient(TenantEmbeddingConfig config)
@@ -255,7 +374,7 @@ public class GenerateChunkEmbeddingsActivityTests
         rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
         ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
-        rateLimiter.TryConsumeAsync().Returns(true);
+        rateLimiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
         factory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
         factory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
         return factory;

@@ -71,7 +71,7 @@ public class GenerateEmbeddingActivityConfigTests
     }
 
     [Fact]
-    public async Task RunAsync_ShouldSetRateLimiterCeilingFromConfig()
+    public async Task RunAsync_ShouldConsumeWithRateLimiterCeilingFromConfig()
     {
         // Arrange
         TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 500 };
@@ -85,12 +85,9 @@ public class GenerateEmbeddingActivityConfigTests
         // Act
         await activity.RunAsync(context, input);
 
-        // Assert — SetCeilingAsync called with config value before TryConsumeAsync
-        Received.InOrder(() =>
-        {
-            rateLimiter.SetCeilingAsync(500);
-            rateLimiter.TryConsumeAsync();
-        });
+        await rateLimiter.Received(1).TryConsumeWithCeilingAsync(500);
+        await rateLimiter.DidNotReceive().SetCeilingAsync(Arg.Any<int>());
+        await rateLimiter.DidNotReceive().TryConsumeAsync();
     }
 
     [Fact]
@@ -127,7 +124,7 @@ public class GenerateEmbeddingActivityConfigTests
             .Returns(new float[768]);
 
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
-        rateLimiter.TryConsumeAsync().Returns(true);
+        rateLimiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
 
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
         actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
@@ -150,6 +147,7 @@ public class GenerateEmbeddingActivityConfigTests
         db.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(Task.FromResult(Array.Empty<HashEntry>()));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return redis;
     }

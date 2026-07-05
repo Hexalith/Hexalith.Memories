@@ -1,3 +1,48 @@
+# Test Automation Summary - Story 23.5 (Rate-Limiter Admission Simplification)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-5-rate-limiter-admission-simplification.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute. No new framework introduced.
+- **Feature under test:** single-RPC embedding admission, tenant embedding config cache freshness/isolation, actor-owned atomic consume-with-ceiling behavior, local denial behavior, provider-429 feedback separation, and chunked claim-check payload admission. Story 23.5 has no browser UI scope.
+
+## Generated / Updated Tests
+
+### API / Activity Boundary Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` - existing story coverage verifies configured ceilings are passed through `TryConsumeWithCeilingAsync`, repeated same-tenant calls reuse cached config within TTL, cache expiry observes updated rate limits, local denial does not call the provider or `ReportRateLimitedAsync`, and provider 429s report retry-after feedback.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityConfigTests.cs` - existing story coverage verifies tenant config is read and passed to the embedding client, and the old `SetCeilingAsync` + parameterless `TryConsumeAsync` activity admission path is not used.
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateChunkEmbeddingsActivityTests.cs` - added `RunAsync_WithContentReferenceAcrossMultipleBatches_ConsumesOncePerProviderBatchAndPersistsReferences`, covering raw claim-check payload embedding across multiple provider batches with one admission per provider call, no `SetCeilingAsync`, no parameterless consume, and persisted chunk text/vector references.
+
+### Actor / Cache Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Actors/RateLimiterLogicTests.cs` - existing story coverage verifies consume-with-ceiling clamp/upshift/window-reset behavior, invalid ceilings, provider retry-after math, and serialized no-oversubscription with ceiling 1.
+- [x] `tests/Hexalith.Memories.Server.Tests/Actors/EmbeddingRateLimiterActorTests.cs` - existing story coverage verifies `TryConsumeWithCeilingAsync` persists exactly one state update per admission operation and preserves deny-without-oversubscription behavior.
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/TenantEmbeddingConfigProviderTests.cs` - existing story coverage verifies tenant configs are cached per tenant and not leaked across tenants.
+
+## Coverage
+
+- API endpoints: 0 directly applicable; story behavior is behind workflow activities and Dapr actors, not a public HTTP route.
+- Activity boundaries: single-text, natural-language-compatible, chunked batch, local-denial, provider-429, cached-config, and claim-check multi-batch paths covered.
+- Actor/cache behavior: combined admission, persistence, same-tenant budget serialization, retry-after feedback math, TTL freshness, and tenant isolation covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateEmbeddingActivityTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateEmbeddingActivityConfigTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateChunkEmbeddingsActivityTests -class Hexalith.Memories.Server.Tests.Actors.EmbeddingRateLimiterActorTests -class Hexalith.Memories.Server.Tests.Actors.RateLimiterLogicTests -class Hexalith.Memories.Server.Tests.Ingestion.TenantEmbeddingConfigProviderTests -class Hexalith.Memories.Server.Tests.NaturalLanguage.EmbeddingInputContentKindTests -parallel none -noLogo` - 74 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -parallel none -noLogo` - 2378 total, 0 failed, 1 skipped.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated where applicable: pass; no direct HTTP route changed by Story 23.5.
+- E2E tests generated where applicable: pass for backend activity/actor workflow boundaries; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and critical local/provider rate-limit errors, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.4 (Non-URL Re-Ingestion)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

@@ -26,9 +26,17 @@ Each tenant has an `EmbeddingRateLimiterActor` (Actor ID = tenant ID). It enforc
 the `RateLimitPerMinute` ceiling from `TenantEmbeddingConfig` (Story 1.7 / 5.5). The
 actor is independent per tenant; one tenant cannot consume another's budget.
 
-The ceiling is re-read from `TenantConfigurationActor.GetEmbeddingConfigAsync()` on
-every embedding activity invocation, so operator updates via
-`PUT /api/tenants/{tenantId}/embedding-config` take effect on the next ingestion.
+Embedding activities read tenant embedding configuration through a process-local,
+tenant-keyed cache. The default cache TTL is **30 seconds** and is bounded to the
+range 1-300 seconds by `Ingestion:EmbeddingConfigCache:CacheTtlSeconds`. Operator
+updates via `PUT /api/tenants/{tenantId}/embedding-config` are therefore observed
+within that configured bound. The cache stores the `TenantEmbeddingConfig` contract,
+including the provider secret key name, but it does not store provider secret values.
+
+Admission uses one actor call per provider call or provider batch:
+`IEmbeddingRateLimiterActor.TryConsumeWithCeilingAsync(rateLimitPerMinute)`. The actor
+updates the current ceiling, consumes one token, and persists the resulting
+tenant-scoped `RateLimitState` before the activity proceeds to the provider call.
 
 ## Shared provider quota (Known Limitation)
 
@@ -60,9 +68,9 @@ natural-language embedding. Non-provider failures and local actor-budget denials
 through the normal failure/retry/compensation paths.
 
 The rate-limiter actor zero-floors the tenant budget and positions `WindowStart` so
-`TryConsumeAsync` refills at the intended provider retry-open instant, not one extra
-minute later. During the closed window, `TryConsumeAsync` returns `false` immediately,
-so no provider calls happen.
+the next consume refills at the intended provider retry-open instant, not one extra
+minute later. During the closed window, `TryConsumeWithCeilingAsync` returns `false`
+immediately, so no provider calls happen.
 
 - Missing / malformed `Retry-After` → activity defaults to **30 s**.
 - `Retry-After` values are clamped to `[1, 3600]` seconds at the HTTP boundary.

@@ -170,6 +170,88 @@ public class RateLimiterLogicTests
         updatedState.Remaining.ShouldBe(500);
     }
 
+    [Fact]
+    public void TryConsume_WithLowerCeiling_ClampsAndConsumesAtomically()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState() with { Remaining = 1200, CeilingPerMinute = 1500 };
+
+        (bool allowed, RateLimitState newState) = logic.TryConsume(state, 500);
+
+        allowed.ShouldBeTrue();
+        newState.CeilingPerMinute.ShouldBe(500);
+        newState.Remaining.ShouldBe(499);
+    }
+
+    [Fact]
+    public void TryConsume_WithHigherCeiling_PreservesLowerRemainingAndConsumes()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState() with { Remaining = 50, CeilingPerMinute = 100 };
+
+        (bool allowed, RateLimitState newState) = logic.TryConsume(state, 500);
+
+        allowed.ShouldBeTrue();
+        newState.CeilingPerMinute.ShouldBe(500);
+        newState.Remaining.ShouldBe(49);
+    }
+
+    [Fact]
+    public void TryConsume_WithCurrentCeilingAfterWindowExpiry_ResetsToCurrentCeilingThenConsumes()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState() with
+        {
+            Remaining = 0,
+            CeilingPerMinute = 100,
+            WindowStart = timeProvider.GetUtcNow().UtcDateTime,
+        };
+        timeProvider.Advance(TimeSpan.FromSeconds(60));
+
+        (bool allowed, RateLimitState newState) = logic.TryConsume(state, 250);
+
+        allowed.ShouldBeTrue();
+        newState.CeilingPerMinute.ShouldBe(250);
+        newState.Remaining.ShouldBe(249);
+        newState.WindowStart.ShouldBe(timeProvider.GetUtcNow().UtcDateTime);
+    }
+
+    [Fact]
+    public void TryConsume_WithNonPositiveCeiling_ThrowsArgumentOutOfRangeException()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState();
+
+        Should.Throw<ArgumentOutOfRangeException>(() => logic.TryConsume(state, 0));
+        Should.Throw<ArgumentOutOfRangeException>(() => logic.TryConsume(state, -1));
+    }
+
+    [Fact]
+    public void TryConsume_SerializedConcurrentEquivalentWithCeilingOne_AdmitsExactlyOne()
+    {
+        FakeTimeProvider timeProvider = new(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        RateLimiterLogic logic = new(timeProvider);
+        RateLimitState state = logic.CreateDefaultState();
+        int admitted = 0;
+
+        for (int i = 0; i < 32; i++)
+        {
+            (bool allowed, state) = logic.TryConsume(state, 1);
+            if (allowed)
+            {
+                admitted++;
+            }
+        }
+
+        admitted.ShouldBe(1);
+        state.CeilingPerMinute.ShouldBe(1);
+        state.Remaining.ShouldBe(0);
+    }
+
     [Theory]
     [InlineData(30, 30)]
     [InlineData(0, 1)]

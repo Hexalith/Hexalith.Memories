@@ -147,6 +147,53 @@ public class EmbeddingRateLimiterActorTests
     }
 
     [Fact]
+    public async Task TryConsumeWithCeilingAsync_ShouldUpdateCeilingConsumeAndPersistOnce()
+    {
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        RateLimitState currentState = new(Remaining: 500, WindowStart: DateTime.UtcNow, CeilingPerMinute: 1500);
+        SetupExistingState(stateManager, currentState);
+
+        bool allowed = await actor.TryConsumeWithCeilingAsync(100);
+
+        allowed.ShouldBeTrue();
+        await stateManager.Received(1).SetStateAsync(
+            "rateState",
+            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 100 && s.Remaining == 99),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryConsumeWithCeilingAsync_WhenNoStateExists_ShouldPersistConsumedStateOnce()
+    {
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        SetupEmptyState(stateManager);
+
+        bool allowed = await actor.TryConsumeWithCeilingAsync(100);
+
+        allowed.ShouldBeTrue();
+        await stateManager.Received(1).SetStateAsync(
+            "rateState",
+            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 100 && s.Remaining == 99),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryConsumeWithCeilingAsync_WithCeilingOneAndExhaustedState_ShouldDenyWithoutOversubscription()
+    {
+        (EmbeddingRateLimiterActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        RateLimitState currentState = new(Remaining: 0, WindowStart: DateTime.UtcNow, CeilingPerMinute: 1);
+        SetupExistingState(stateManager, currentState);
+
+        bool allowed = await actor.TryConsumeWithCeilingAsync(1);
+
+        allowed.ShouldBeFalse();
+        await stateManager.Received(1).SetStateAsync(
+            "rateState",
+            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 1 && s.Remaining == 0),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ReportRateLimitedAsync_ShouldZeroFloorRemainingAndAdvanceWindow()
     {
         // Arrange

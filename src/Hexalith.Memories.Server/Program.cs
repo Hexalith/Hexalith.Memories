@@ -177,6 +177,9 @@ builder.Services.AddHttpClient("EmbeddingClient", client =>
 });
 builder.Services.AddSingleton<EmbeddingClient>();
 builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.Configure<TenantEmbeddingConfigCacheOptions>(
+    builder.Configuration.GetSection(TenantEmbeddingConfigCacheOptions.SectionName));
+builder.Services.AddSingleton<ITenantEmbeddingConfigProvider, TenantEmbeddingConfigProvider>();
 builder.Services.AddHttpClient(OidcTokenProvider.HttpClientName, client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);

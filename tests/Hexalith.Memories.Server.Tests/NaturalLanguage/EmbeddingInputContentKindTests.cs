@@ -192,7 +192,7 @@ public sealed class EmbeddingInputContentKindTests
         IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
         ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
         tenantConfigActor.GetEmbeddingConfigAsync().Returns(EmbeddingProviderDefaults.Google());
-        rateLimiter.TryConsumeAsync().Returns(allowed);
+        rateLimiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(allowed);
         factory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
         factory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
         return factory;

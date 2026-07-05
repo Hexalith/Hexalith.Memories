@@ -96,6 +96,7 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 23.2 created (23.2 -> ready-for-dev) via create-story. Claim-check workflow payloads; keeps large content/vectors out of workflow history and closes A11.
 # 2026-07-05: Story 23.2 senior developer review completed with automatic fixes (duplicate-path payload cleanup, File List hygiene). 23.2 -> done.
 # 2026-07-05: Story 23.4 created (23.4 -> ready-for-dev) via create-story. Non-URL re-ingestion; requires persisted source-byte payload reference or clear unsupported legacy/expired-record error; closes A14.
+# 2026-07-05: Story 23.5 created (23.5 -> ready-for-dev) via create-story. Rate-limiter admission simplification; requires single admission operation per provider call/batch plus tenant config caching; closes A15.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -413,7 +414,7 @@ development_status:
   23-2-claim-check-workflow-payloads: done
   23-3-retry-after-aware-429-orchestration: done
   23-4-non-url-re-ingestion: done
-  23-5-rate-limiter-admission-simplification: backlog
+  23-5-rate-limiter-admission-simplification: done
   23-6-directory-batch-scalability: backlog
   23-7-index-provisioning-ownership: backlog
   23-8-workflow-config-determinism: backlog
