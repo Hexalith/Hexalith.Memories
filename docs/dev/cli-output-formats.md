@@ -123,9 +123,9 @@ The token value itself is never serialized — `tokenConfigured` is the only sig
 ```
 Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.
 1. [0.812] mem://case-1/mu-42 — Customer escalation regarding invoicing discrepancy
-    composite=0.812, syntactic=0.700, semantic=0.900
-      (syntactic: bm25_saturation)
-      (semantic: cosine)
+    composite=0.812, syntactic=0.700, semantic=0.900, nl=0.000
+      (syntactic: rrf_rank_contribution)
+      (semantic: rrf_rank_contribution)
 ```
 
 **JSON with `--explain`** — `memories search query --explain --format json --tenant acme --query "needle"`:
@@ -141,6 +141,7 @@ Confidence scores measure query-result relevance, NOT factual accuracy or data c
                 "compositeScore": 0.812,
                 "syntacticScore": 0.7,
                 "semanticScore": 0.9,
+                "nlScore": 0.0,
                 "sourceUri": "mem://case-1/mu-42",
                 "sourceType": "file",
                 "contentSnippet": "Customer escalation...",
@@ -155,12 +156,16 @@ Confidence scores measure query-result relevance, NOT factual accuracy or data c
             "caveat": "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness.",
             "axisDetails": {
                 "syntactic": {
-                    "normalizationMethod": "bm25_saturation",
-                    "description": "BM25 saturation"
+                    "normalizationMethod": "rrf_rank_contribution",
+                    "description": "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw BM25 magnitude is not exposed as the hybrid syntactic score"
                 },
                 "semantic": {
-                    "normalizationMethod": "cosine",
-                    "description": "cosine similarity"
+                    "normalizationMethod": "rrf_rank_contribution",
+                    "description": "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw vector similarity magnitude is not exposed as the hybrid semantic score"
+                },
+                "nl": {
+                    "normalizationMethod": "rrf_rank_contribution",
+                    "description": "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw natural-language vector similarity magnitude is not exposed as the hybrid NL score"
                 }
             }
         },

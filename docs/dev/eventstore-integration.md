@@ -601,9 +601,10 @@ model may:
 - Mis-classify the business action (summarize an administrative no-op as a substantive change).
 
 Because the NL description is persisted into the tenant NL semantic hash, a hallucinated summary
-can surface in any future consumer that queries that hash directly. Story 9.2 ships
-`NaturalLanguageSemanticSearchService` as a library-only surface; the default `HybridSearchService`
-axis is unchanged until a later opt-in rollout. The project's defensive posture:
+can surface through `axis=nl` or through hybrid searches that explicitly enable the `nl` axis.
+Story 22.7 wired `NaturalLanguageSemanticSearchService` into REST, CLI, MCP, and hybrid search
+while keeping `nl` out of the default hybrid axis set for benchmark stability. The project's
+defensive posture:
 
 1. **Provenance tagging.** Every persisted description in the NL semantic hash carries
    `descriptionOrigin = "ai"`. When `NaturalLanguage:PersistInMetadata = true`, the duplicate

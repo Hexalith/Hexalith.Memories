@@ -457,12 +457,13 @@ Confidence scores must have clear, documented meaning. Each memory unit's search
 
 | Component | What it measures | Range | Normalization |
 |---|---|---|---|
-| Syntactic score | BM25 relevance to query terms | 0.0–1.0 | Normalized BM25 (saturation normalization against corpus statistics). Raw BM25 is unbounded — normalization to 0.0–1.0 is required before fusion. Normalization method documented in API reference. |
-| Semantic score | Cosine similarity between query and memory unit embeddings | 0.0–1.0 | Native range, no normalization needed |
+| Syntactic score | BM25 relevance to query terms for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses BM25 saturation; hybrid explain exposes weighted reciprocal-rank contribution so raw BM25 magnitude is not fused directly. |
+| Semantic score | Cosine similarity for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses cosine clamp; hybrid explain exposes weighted reciprocal-rank contribution. |
+| NL score | Natural-language-description vector similarity for single-axis `axis=nl`; rank contribution for hybrid search when `nl` is enabled | 0.0–1.0 | Single-axis explain uses cosine clamp with syntactic-hash attribution backfill; hybrid explain exposes weighted reciprocal-rank contribution. |
 | Graph score | Proximity in the relationship graph (hop distance, edge weight) | 0.0–1.0 | Inverse hop distance with decay function |
-| Composite score | Weighted fusion of available axes | 0.0–1.0 | Weighted average of normalized axis scores |
+| Composite score | Weighted reciprocal-rank fusion of available axes | 0.0–1.0 | Weighted RRF over available axis rankings, normalized against the best possible rank contribution |
 
-All axis scores are normalized to 0.0–1.0 before fusion. The fusion weights and algorithm are documented and deterministic. `--explain` exposes all component scores and the normalization method applied.
+Single-axis scores keep their axis-specific meaning. Hybrid per-axis scores are rank-contribution scores, not raw BM25, cosine, or graph-proximity magnitudes. The fusion weights and algorithm are documented and deterministic. `--explain` exposes the score semantics and fusion weights applied.
 
 **Evidence Packet (cross-surface trust envelope):** The trust primitives defined across these requirements — composite confidence with per-axis breakdown (FR63), source/origin attribution (FR24), token-budget-aware omitted-detail handling (FR23), and graceful-degradation signaling (FR66), together with tenant/case scope, result state, and recovery guidance — are composed into a single shared response object referred to as the **Evidence Packet**. The Evidence Packet is the cross-surface envelope used identically by CLI JSON output, MCP tool responses, and future web UI composition, so no interface invents a conflicting definition of confidence, degraded state, omitted details, or recovery action. Its concrete shape is owned by `Contracts.V1` (see Architecture) and its presentation semantics are elaborated in the UX Design Specification.
 
@@ -1001,7 +1002,7 @@ Non-.NET external consumers can integrate today via ingress REST API (JSON paylo
 
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
-| **NFR24** | All axis scores normalized to 0.0-1.0 before fusion — BM25 via saturation normalization against corpus statistics, cosine similarity native range, graph proximity via inverse hop distance with decay | Normalization unit tests with known inputs/outputs | MVP |
+| **NFR24** | Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0; single-axis explain still documents axis-specific score semantics | Fusion and explain unit tests with known rankings/weights | MVP |
 | **NFR25** | Fusion algorithm produces deterministic scores — same query against same data produces identical composite scores. Result ordering within the same score tier may vary. | Determinism test: 100 repeated queries, zero score variance | MVP |
 | **NFR26** | Benchmark suite produces reproducible results — running benchmarks twice against the same dataset yields identical NDCG@10 scores | Reproducibility test in CI | MVP |
 

@@ -34,11 +34,11 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 - **Performance:** Tiered latency targets per axis (<200ms syntactic, <500ms semantic, <1s hybrid, <2s graph). Ingestion throughput >100 units/min. Event freshness <5s.
 - **Security:** Zero cross-tenant data leakage (hard gate). Physical index isolation. DAPR API token authentication. Ingress-layer auth for external access.
 - **Reliability:** Zero data loss on restart (AOF). Pipeline state survives restarts (DAPR actors). Partial backend failure → degraded service, not total failure.
-- **Algorithmic Quality:** All scores normalized to 0.0-1.0 before fusion. Deterministic fusion scores. Reproducible benchmark results.
+- **Algorithmic Quality:** Hybrid search uses deterministic weighted reciprocal-rank fusion with bounded rank-contribution scores. Single-axis scores keep axis-specific semantics. Reproducible benchmark results.
 
 **Top Architectural Drivers — the 5 requirements that most constrain the architecture:**
 
-1. **NFR24-26 (Algorithmic Quality):** Fusion must be deterministic with normalized scores. Forces the fusion algorithm to be a **pure function** with injected dependencies (corpus statistics, normalization parameters) — no hidden state.
+1. **NFR24-26 (Algorithmic Quality):** Fusion must be deterministic with bounded rank-contribution scores. Forces the fusion algorithm to be a **pure function** with explicit inputs — no hidden state or backend calls.
 
 2. **NFR8 (Zero cross-tenant leakage):** Hard gate. Forces physical index isolation, tenant context validation in every query path, parameterized graph queries, and provisioning rollback. Non-negotiable.
 
@@ -91,7 +91,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 7. **Serialization & Protocol Conformance (phase-split):** JSON contract serialization and source-generated round-trip tests are MVP-critical. MCP protocol conformance (NFR20) and DAPR CloudEvents publisher compatibility for EventStore ingestion (NFR21) are Phase 1.5 fast-follow scope; the MVP architecture must keep these additions additive, not count them as MVP gate completion.
 
-8. **Fusion Algorithm (FR17, FR19, NFR24-26) [MVP-critical]:** The architectural center of gravity — depends on all 3 backends producing results, all 3 normalization strategies being correct, and feeds all 4 interface layers. **BM25 normalization is corpus-dependent** — the architecture must support per-tenant corpus statistics or a corpus-invariant normalization strategy (e.g., rank-based instead of score-based). Three-axis retrieval is a hypothesis, not a given — the graph axis must be architecturally optional so the system degrades gracefully to two-axis if the hypothesis fails.
+8. **Fusion Algorithm (FR17, FR19, NFR24-26) [MVP-critical]:** The architectural center of gravity — depends on available retrieval axes producing stable rankings and feeds all 4 interface layers. Story 22.4 selected a corpus-invariant, rank-based implementation: weighted reciprocal-rank fusion. Raw BM25, cosine, and graph-proximity magnitudes are not averaged in hybrid scoring; explain metadata exposes rank-contribution semantics. Three-axis retrieval remains a hypothesis, not a given — the graph axis must be architecturally optional so the system degrades gracefully to two-axis if the hypothesis fails.
 
 9. **Multi-Backend Consistency (FR6, FR13) [MVP-critical]:** "Atomic write across all three backends" is not achievable — no distributed transaction exists across Redis + FalkorDB. **Story 21.1 ratifies the EventStore aggregate model as the consistency target for `Case`, `MemoryUnit`, and `Tenant`: domain state is sourced from Hexalith.EventStore events, while RediSearch syntactic hashes, Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant registry/read records are rebuildable projections/read models.** DAPR Workflow saga/compensation remains the required delivery mechanism for projection fan-out and tenant infrastructure side effects, not the domain source of truth. `Case` and `MemoryUnit` commands must first append/accept EventStore events, then project to Redis/FalkorDB with idempotent activity retries and compensation for partial projection writes. `Tenant` lifecycle commands must use EventStore events for registry/status semantics; backend provisioning/deletion remains workflow-owned because those are infrastructure side effects. Story 21.2 implements the command-acceptance boundary for case, annotation, memory-unit deletion, case deletion, and tenant lifecycle mutation paths; new domain mutation paths must follow that boundary instead of treating direct Redis/FalkorDB or Dapr state writes as authoritative. `IngestionWorkflow` writes to each backend as separate activities — `IndexSyntacticActivity` (RediSearch), `IndexSemanticActivity` (Redis Vector), `IndexGraphActivity` (FalkorDB) — each with its own `WorkflowRetryPolicy` (exponential backoff). If any activity fails after retries, the workflow executes compensation activities to clean up partially-written projection state. `VerifyConsistencyActivity` runs after all writes succeed. `memories tenant verify` triggers `ConsistencyVerificationWorkflow` for operator-initiated audits. Per-memory-unit consistency inspection (`memories consistency inspect --tenant <tenant-id> --id <unit-id>`) queries all three backends for a single unit's state — essential for operator and developer debugging. This command is owned by Epic 8 operational consistency work, not by the root MVP CLI essentials list in Epic 7.
 
@@ -229,9 +229,9 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 
 | Requirement | Design Implication |
 |---|---|
-| Fusion algorithm testable without backends | Pure function: `Fuse(List<ScoredResult>[], FusionWeights) → RankedResults`. No backend calls. |
-| Normalization independently testable | Separate functions: `NormalizeBm25(rawScore, corpusStats) → float`. Known inputs → known outputs. |
-| Corpus statistics injectable | `ICorpusStatisticsProvider` — real implementation delegates to `CorpusStatisticsActor`; test implementation returns fixed values. |
+| Fusion algorithm testable without backends | Pure function: `Fuse(List<ScoredResult>[], FusionWeights) → RankedResults` using weighted reciprocal-rank fusion. No backend calls. |
+| Score semantics independently testable | Single-axis explain tests cover BM25/cosine/graph semantics; hybrid tests cover rank contributions, tie handling, and weight application. |
+| Corpus statistics injectable | `ICorpusStatisticsProvider` remains available for single-axis explanation/legacy statistics paths; hybrid RRF does not require corpus statistics. |
 | Workflow activities testable independently | Each activity is a standalone class with DI. Test activities directly without workflow engine. Mock external dependencies (Kreuzberg, embedding API, Redis, FalkorDB). |
 | Workflow orchestration testable | Use DAPR Workflow test framework — verify activity sequencing, compensation paths, and retry behavior. |
 | Actor logic testable without DAPR | Extract business logic into plain service classes; actor is a thin host that delegates. Test the service, not the actor infrastructure. |
@@ -338,7 +338,7 @@ When embedding model changes (e.g., `text-embedding-004` → `text-embedding-005
 | Actor | Purpose | State |
 |---|---|---|
 | `EmbeddingRateLimiterActor` | Per-tenant embedding API rate limiting. Actor ID = tenant ID. Checks/decrements rate budget before `GenerateEmbeddingActivity` proceeds. | Rate window start, remaining budget, ceiling config |
-| `CorpusStatisticsActor` | Per-tenant corpus stats caching for BM25 normalization. Methods: `GetDocumentCount()`, `GetAverageDocumentLength()`, `GetTermFrequency(term)`. Refreshed via timer. | Cached stats, last refresh timestamp |
+| `CorpusStatisticsActor` | Per-tenant corpus stats caching for single-axis BM25 explanation and legacy statistics consumers. Hybrid RRF does not depend on this actor. Methods: `GetDocumentCount()`, `GetAverageDocumentLength()`, `GetTermFrequency(term)`. Refreshed via timer. | Cached stats, last refresh timestamp |
 
 **MVP-critical — concrete classes (extract to interface when second implementation arrives):**
 

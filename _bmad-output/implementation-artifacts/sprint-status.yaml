@@ -392,7 +392,7 @@ development_status:
   epic-21-retrospective: done
 
   # Epic 22: RAG Retrieval Quality & Correctness (SCP 2026-07-04; closes A8,A9,A29,A30,A48,A49,A50)
-  epic-22: in-progress
+  epic-22: done
   22-1-semantic-axis-pagination: done
   22-2-bounded-cancellable-graph-traversal: done
   22-3-graph-scoped-and-hybrid-pagination-correctness: done
@@ -400,7 +400,7 @@ development_status:
   22-5-case-scoped-traversal-path-integrity: done
   22-6-post-filter-recall: done
   22-7-retrieval-feature-completion: done
-  epic-22-retrospective: optional
+  epic-22-retrospective: done
 
   # Epic 23: Ingestion Pipeline Scalability & Resilience (SCP 2026-07-04; closes A11,A12,A13,A14,A15,A33,A34,A35,A51)
   epic-23: backlog
@@ -542,16 +542,36 @@ action_items:
   - epic: 21
     action: "Preserve EventStore command-boundary and projection workflow guards while Epic 22 changes retrieval and case attribution code"
     owner: "Amelia, Winston, Murat"
-    status: open
+    status: done  # 2026-07-05 (Epic 22): retrieval stories preserved EventStore command-boundary and projection/read-model framing; no authoritative Redis/FalkorDB domain writes were introduced.
   - epic: 21
     action: "Keep key-schema literal guards in the Epic 22 close-out checklist"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-07-05 (Epic 22): stories preserved IndexSchemaDefinitions and added scoped key validation before raw RediSearch INKEYS paths.
   - epic: 21
     action: "Provide a runnable or explicitly accepted infrastructure lane for RedisStack migration integration tests"
     owner: "Murat, Amelia"
     status: open
   - epic: 21
     action: "Add review-found workflow/runtime defects to future remediation story checklists"
+    owner: "Amelia"
+    status: open
+  - epic: 22
+    action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 22
+    action: "Carry Epic 22 retrieval invariants into Epic 23 ingestion stories"
+    owner: "Amelia, Winston, Murat"
+    status: open
+  - epic: 22
+    action: "Resolve or explicitly accept the AppHost/EventStore duplicate assembly validation blocker before using full-solution build as ingestion close-out evidence"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 22
+    action: "Keep raw Redis command response parsing on review checklists for search and ingestion indexing changes"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 22
+    action: "Keep Story 23.9 before Story 23.1 in story creation and implementation"
     owner: "Amelia"
     status: open

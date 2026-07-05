@@ -74,7 +74,7 @@ authentication and tenant-authorization guardrails.
 | `tenantId` | string | yes | — | Tenant whose memories should be searched. |
 | `query` | string | yes | — | Free-text query. |
 | `case` | string | no | — | Optional case identifier for case-scoped search. |
-| `axes` | enum | no | `Hybrid` | One of `Syntactic` / `Semantic` / `Hybrid` (case-insensitive on the wire — the SDK 1.2.0 schema renders PascalCase but tools deserialize either form). Use `traverse_relations` for graph traversal because graph operations require a starting memory unit. |
+| `axes` | enum | no | `Hybrid` | One of `Syntactic` / `Semantic` / `Nl` / `Hybrid` (case-insensitive on the wire). Use `traverse_relations` for graph traversal because graph operations require a starting memory unit. |
 | `maxResults` | integer | no | `10` | Clamped to `[1, 100]`. |
 | `tokenBudget` | integer | no | — | Server-side output budget. Results are truncated by relevance rank and response metadata reports `omittedCount`, `estimatedTokensTotal`, and `omittedReason`. |
 | `explain` | boolean | no | `false` | Include explain metadata. |
