@@ -71,6 +71,8 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
 
     public CapturingEventStoreLogProvider EventStoreLogs { get; } = new();
 
+    internal Dictionary<string, string?> ConfigurationOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public EventStoreWebAppFactory()
     {
         RedisMultiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(RedisDatabase);
@@ -96,6 +98,11 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
             };
 
             _ = configuration.AddInMemoryCollection(settings);
+            if (ConfigurationOverrides.Count > 0)
+            {
+                _ = configuration.AddInMemoryCollection(ConfigurationOverrides);
+            }
+
             _ = context;
         });
 

@@ -24,5 +24,5 @@ internal sealed class EventIngestionWorkflowSchedulerAdapter : IEventIngestionWo
     }
 
     public Task<string> ScheduleAsync(string instanceId, IngestionInput input, CancellationToken cancellationToken)
-        => _inner.ScheduleAsync(instanceId, input);
+        => _inner.ScheduleAsync(instanceId, input, cancellationToken);
 }

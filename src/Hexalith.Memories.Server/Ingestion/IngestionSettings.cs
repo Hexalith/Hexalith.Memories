@@ -20,6 +20,12 @@ public sealed class IngestionSettings
     /// <summary>Gets or sets the TTL (in hours) for persisted batch state records.</summary>
     public int BatchStateTtlHours { get; set; } = 24;
 
+    /// <summary>Gets or sets the maximum number of directory files scheduled concurrently.</summary>
+    public int DirectorySchedulingParallelism { get; set; } = 4;
+
+    /// <summary>Gets or sets the number of scheduled directory files between persisted progress checkpoints.</summary>
+    public int DirectoryBatchCheckpointSize { get; set; } = 50;
+
     /// <summary>Gets or sets the list of extensions that are always enqueued (lowercase with leading dot).</summary>
     public string[] SupportedExtensions { get; set; } =
     [

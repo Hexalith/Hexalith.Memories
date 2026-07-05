@@ -1,3 +1,47 @@
+# Test Automation Summary - Story 23.6 (Directory-Batch Scalability)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-6-directory-batch-scalability.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute with ASP.NET Core `WebApplicationFactory` endpoint E2E tests. No new framework introduced.
+- **Feature under test:** directory ingestion allowlist filtering, bounded checkpointed batch state, claim-check workflow scheduling, batch status lookup, and scheduling failure cleanup. Story 23.6 has no browser UI scope.
+
+## Generated Tests
+
+### API / E2E Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/DirectoryIngestionEndpointE2ETests.cs` - added real HTTP coverage for `POST /api/ingest/directory` with a mixed supported/unsupported batch. The test verifies `202 Accepted`, bounded checkpoint saves, final persisted state completeness, unsupported-extension skip reporting, claim-check scheduling with `ContentBytes = null`, preserved tenant/case/causation/correlation fields, and `GET /api/ingest/batches/{batchId}` returning queued per-file status.
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/DirectoryIngestionEndpointE2ETests.cs` - added real HTTP failure coverage for a scheduler failure after claim-check preparation. The test verifies `500`, structured `BATCH_SCHEDULING_FAILED`, deletion of the unscheduled source payload reference, and no falsely persisted scheduled file.
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/DirectoryIngestionServiceTests.cs` - senior review added cancellation cleanup coverage proving a claim-check payload created before workflow scheduling is deleted when scheduling is canceled and the batch does not return success.
+
+### Test Infrastructure
+
+- [x] `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs` - added test-only configuration overrides so endpoint tests can point `Ingestion:AllowedDirectoryRoots` at a temp directory without live Dapr sidecars or external infrastructure.
+
+## Coverage
+
+- API endpoints: `POST /api/ingest/directory` happy/mixed batch and scheduling-failure paths covered; `GET /api/ingest/batches/{batchId}` queued status path covered.
+- Directory service behavior: existing Story 23.6 unit tests cover allowlist-only filtering before bytes/payload/schedule, checkpoint frequency, bounded scheduling concurrency, path validation preservation, deterministic final accounting, scheduling failure cleanup, and cancellation cleanup.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Endpoints.DirectoryIngestionEndpointE2ETests` - 2 total, 0 failed, 0 skipped.
+- [x] `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionServiceTests -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionPathValidationTests -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryBatchStatusMapperTests -class Hexalith.Memories.Server.Tests.Ingestion.IngestionEndpointLogTests -class Hexalith.Memories.Server.Tests.Authentication.IngestionStatusEndpointAuthorizationTests -class Hexalith.Memories.Server.Tests.Endpoints.DirectoryIngestionEndpointE2ETests` - 45 total, 0 failed, 0 skipped.
+- [x] Senior review focused validation: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionServiceTests -class Hexalith.Memories.Server.Tests.Endpoints.DirectoryIngestionEndpointE2ETests -class Hexalith.Memories.Server.Tests.Ingestion.ReIngestionCoordinatorTests` - 24 total, 0 failed, 0 skipped.
+- [x] Senior review full server regression: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor` - 2386 total, 0 failed, 1 skipped.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated where applicable: pass.
+- E2E tests generated where applicable: pass for backend HTTP/API behavior; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and critical scheduling-failure cleanup, have clear descriptions, use no hardcoded waits, and are independent through per-test temp directories and fake infrastructure: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+
+---
+
 # Test Automation Summary - Story 23.5 (Rate-Limiter Admission Simplification)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

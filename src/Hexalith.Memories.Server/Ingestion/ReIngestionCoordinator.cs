@@ -73,7 +73,7 @@ internal sealed class ReIngestionCoordinator
         try
         {
             string workflowInstanceId = await _scheduler
-                .ScheduleAsync(memoryUnitId, BuildIngestionInput(record))
+                .ScheduleAsync(memoryUnitId, BuildIngestionInput(record), cancellationToken)
                 .ConfigureAwait(false);
             RetryFailureLog.LogReIngestionScheduled(_logger, tenantId, caseId, memoryUnitId, workflowInstanceId);
             return ReIngestionAttemptResult.Scheduled(memoryUnitId, workflowInstanceId);

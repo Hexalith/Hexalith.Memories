@@ -8,7 +8,6 @@ namespace Hexalith.Memories.Server.Ingestion;
 using BaUlid = ByteAether.Ulid.Ulid;
 
 using Dapr.Client;
-using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
@@ -21,10 +20,12 @@ using Microsoft.Extensions.Options;
 /// Batch-ingest a directory of files: validate path against the allow-list, enumerate, filter by
 /// extension/size, schedule one <see cref="IngestionWorkflow"/> per candidate, persist batch state.
 /// </summary>
-public sealed class DirectoryIngestionService
+internal sealed class DirectoryIngestionService
 {
     internal const string BatchStateKeyPrefix = "ingestion-batch:";
     internal const string StateStoreName = "statestore";
+    internal const int MaxDirectorySchedulingParallelism = 32;
+    internal const int MaxDirectoryBatchCheckpointSize = 250;
 
     private static readonly BaUlid.GenerationOptions UlidOptions = new()
     {
@@ -32,7 +33,7 @@ public sealed class DirectoryIngestionService
     };
 
     private readonly IOptions<IngestionSettings> _settings;
-    private readonly DaprWorkflowClient _workflowClient;
+    private readonly IIngestionWorkflowScheduler _workflowScheduler;
     private readonly DaprClient _daprClient;
     private readonly IWorkflowPayloadStore? _payloadStore;
     private readonly ILogger<DirectoryIngestionService> _logger;
@@ -40,29 +41,19 @@ public sealed class DirectoryIngestionService
 
     public DirectoryIngestionService(
         IOptions<IngestionSettings> settings,
-        DaprWorkflowClient workflowClient,
+        IIngestionWorkflowScheduler workflowScheduler,
         DaprClient daprClient,
         ILogger<DirectoryIngestionService> logger,
-        TimeProvider? timeProvider = null)
-        : this(settings, workflowClient, daprClient, null, logger, timeProvider)
-    {
-    }
-
-    public DirectoryIngestionService(
-        IOptions<IngestionSettings> settings,
-        DaprWorkflowClient workflowClient,
-        DaprClient daprClient,
-        IWorkflowPayloadStore? payloadStore,
-        ILogger<DirectoryIngestionService> logger,
+        IWorkflowPayloadStore? payloadStore = null,
         TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(workflowClient);
+        ArgumentNullException.ThrowIfNull(workflowScheduler);
         ArgumentNullException.ThrowIfNull(daprClient);
         ArgumentNullException.ThrowIfNull(logger);
 
         _settings = settings;
-        _workflowClient = workflowClient;
+        _workflowScheduler = workflowScheduler;
         _daprClient = daprClient;
         _payloadStore = payloadStore;
         _logger = logger;
@@ -88,6 +79,8 @@ public sealed class DirectoryIngestionService
         List<string> candidates = [];
         List<SkippedFile> skipped = [];
         bool skippedTruncated = false;
+        HashSet<string> supportedExtensions = NormalizeExtensions(settings.SupportedExtensions);
+        HashSet<string> unsupportedExtensions = NormalizeExtensions(settings.UnsupportedExtensions);
 
         EnumerationOptions search = new()
         {
@@ -133,8 +126,8 @@ public sealed class DirectoryIngestionService
                     continue;
                 }
 
-                string ext = Path.GetExtension(filePath).ToLowerInvariant();
-                if (Array.IndexOf(settings.UnsupportedExtensions, ext) >= 0)
+                string ext = NormalizeExtension(Path.GetExtension(filePath));
+                if (!supportedExtensions.Contains(ext) || unsupportedExtensions.Contains(ext))
                 {
                     AppendSkipped(batchId, skipped, settings, new SkippedFile(filePath, "UNSUPPORTED_EXTENSION"), ref skippedTruncated);
                     continue;
@@ -179,6 +172,8 @@ public sealed class DirectoryIngestionService
             return DirectoryIngestionResult.Failed("INVALID_DIRECTORY_PATH");
         }
 
+        candidates.Sort(StringComparer.Ordinal);
+
         List<string> instanceIds = new(candidates.Count);
         List<BatchFileRef> scheduledFiles = new(candidates.Count);
 
@@ -196,24 +191,57 @@ public sealed class DirectoryIngestionService
             return DirectoryIngestionResult.Failed("BATCH_TRACKING_UNAVAILABLE", batchId);
         }
 
-        foreach (string candidatePath in candidates)
+        int parallelism = ClampDirectorySchedulingParallelism(settings.DirectorySchedulingParallelism);
+        int checkpointSize = ClampDirectoryBatchCheckpointSize(settings.DirectoryBatchCheckpointSize);
+        int scheduledSinceCheckpoint = 0;
+        string? failureCode = null;
+        using CancellationTokenSource failureCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using SemaphoreSlim stateSaveGate = new(1, 1);
+        object progressGate = new();
+
+        async Task<bool> SaveSnapshotAsync(CancellationToken saveCancellationToken)
         {
+            await stateSaveGate.WaitAsync(saveCancellationToken).ConfigureAwait(false);
+            try
+            {
+                DirectoryBatchState snapshot;
+                lock (progressGate)
+                {
+                    SortProgress(instanceIds, scheduledFiles);
+                    snapshot = CreateBatchState(batchId, request, discovered, instanceIds, scheduledFiles, skipped, createdAt);
+                }
+
+                return await TrySaveBatchStateAsync(snapshot, ttlSeconds, saveCancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                stateSaveGate.Release();
+            }
+        }
+
+        async ValueTask ProcessCandidateAsync(string candidatePath, CancellationToken schedulingCancellationToken)
+        {
+            schedulingCancellationToken.ThrowIfCancellationRequested();
+
             byte[] bytes;
             try
             {
-                bytes = await File.ReadAllBytesAsync(candidatePath, cancellationToken).ConfigureAwait(false);
+                bytes = await File.ReadAllBytesAsync(candidatePath, schedulingCancellationToken).ConfigureAwait(false);
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                AppendSkipped(batchId, skipped, settings, new SkippedFile(candidatePath, "FILE_UNREADABLE"), ref skippedTruncated);
-
-                state = CreateBatchState(batchId, request, discovered, instanceIds, scheduledFiles, skipped, createdAt);
-                if (!await TrySaveBatchStateAsync(state, ttlSeconds, cancellationToken).ConfigureAwait(false))
+                lock (progressGate)
                 {
-                    return DirectoryIngestionResult.Failed("BATCH_TRACKING_UNAVAILABLE", batchId);
+                    AppendSkipped(batchId, skipped, settings, new SkippedFile(candidatePath, "FILE_UNREADABLE"), ref skippedTruncated);
                 }
 
-                continue;
+                if (!await SaveSnapshotAsync(schedulingCancellationToken).ConfigureAwait(false))
+                {
+                    failureCode = "BATCH_TRACKING_UNAVAILABLE";
+                    await failureCancellation.CancelAsync().ConfigureAwait(false);
+                }
+
+                return;
             }
 
             string requestedInstanceId = BaUlid.New(UlidOptions).ToString();
@@ -230,51 +258,98 @@ public sealed class DirectoryIngestionService
                 CausationId = request.CausationId,
                 CorrelationId = batchId,
             };
-            if (_payloadStore is not null)
-            {
-                input = await IngestionPayloadClaimCheck
-                    .PrepareAsync(_payloadStore, requestedInstanceId, input, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            string instanceId;
+            WorkflowPayloadReference? createdPayloadReference = null;
             try
             {
-                instanceId = await _workflowClient
-                    .ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), requestedInstanceId, input)
+                if (_payloadStore is not null)
+                {
+                    input = await IngestionPayloadClaimCheck
+                        .PrepareAsync(_payloadStore, requestedInstanceId, input, schedulingCancellationToken)
+                        .ConfigureAwait(false);
+                    createdPayloadReference = input.PayloadReference;
+                }
+
+                string instanceId = await _workflowScheduler
+                    .ScheduleAsync(requestedInstanceId, input, schedulingCancellationToken)
                     .ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(instanceId))
+                {
+                    instanceId = requestedInstanceId;
+                }
+
+                lock (progressGate)
+                {
+                    instanceIds.Add(instanceId);
+                    scheduledFiles.Add(new BatchFileRef(instanceId, candidatePath));
+                }
+
+                int checkpointProgress = Interlocked.Increment(ref scheduledSinceCheckpoint);
+                if (checkpointProgress % checkpointSize == 0
+                    && !await SaveSnapshotAsync(schedulingCancellationToken).ConfigureAwait(false))
+                {
+                    failureCode = "BATCH_TRACKING_UNAVAILABLE";
+                    await failureCancellation.CancelAsync().ConfigureAwait(false);
+                }
             }
             catch (Dapr.DaprException ex)
             {
+                await DeleteCreatedPayloadAsync(createdPayloadReference, CancellationToken.None).ConfigureAwait(false);
+                failureCode = "DAPR_UNAVAILABLE";
+                await failureCancellation.CancelAsync().ConfigureAwait(false);
                 _logger.LogWarning(
                     ex,
                     "Failed to schedule workflow for batch {BatchId} and file {SourceUri}; returning a non-success result because the batch may be incomplete.",
                     batchId,
                     candidatePath);
-                return DirectoryIngestionResult.Failed("DAPR_UNAVAILABLE", batchId);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                await DeleteCreatedPayloadAsync(createdPayloadReference, CancellationToken.None).ConfigureAwait(false);
+                failureCode = "BATCH_SCHEDULING_FAILED";
+                await failureCancellation.CancelAsync().ConfigureAwait(false);
                 _logger.LogWarning(
                     ex,
                     "Failed to schedule workflow for batch {BatchId} and file {SourceUri}; returning a non-success result because the batch may be incomplete.",
                     batchId,
                     candidatePath);
-                return DirectoryIngestionResult.Failed("BATCH_SCHEDULING_FAILED", batchId);
             }
-
-            if (string.IsNullOrWhiteSpace(instanceId))
+            catch (OperationCanceledException)
             {
-                instanceId = requestedInstanceId;
+                await DeleteCreatedPayloadAsync(createdPayloadReference, CancellationToken.None).ConfigureAwait(false);
+                throw;
             }
+        }
 
-            instanceIds.Add(instanceId);
-            scheduledFiles.Add(new BatchFileRef(instanceId, candidatePath));
+        try
+        {
+            await Parallel.ForEachAsync(
+                candidates,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = parallelism,
+                    CancellationToken = failureCancellation.Token,
+                },
+                ProcessCandidateAsync).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && failureCode is not null)
+        {
+            // A worker recorded the precise non-success result and canceled the remaining bounded work.
+        }
 
-            state = CreateBatchState(batchId, request, discovered, instanceIds, scheduledFiles, skipped, createdAt);
-            if (!await TrySaveBatchStateAsync(state, ttlSeconds, cancellationToken).ConfigureAwait(false))
-            {
-                return DirectoryIngestionResult.Failed("BATCH_TRACKING_UNAVAILABLE", batchId);
-            }
+        if (failureCode is not null)
+        {
+            _ = await SaveSnapshotAsync(CancellationToken.None).ConfigureAwait(false);
+            return DirectoryIngestionResult.Failed(failureCode, batchId);
+        }
+
+        if (!await SaveSnapshotAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return DirectoryIngestionResult.Failed("BATCH_TRACKING_UNAVAILABLE", batchId);
+        }
+
+        lock (progressGate)
+        {
+            SortProgress(instanceIds, scheduledFiles);
         }
 
         foreach (SkippedFile item in skipped)
@@ -468,6 +543,73 @@ public sealed class DirectoryIngestionService
                 state.BatchId);
             return false;
         }
+    }
+
+    internal static int ClampDirectorySchedulingParallelism(int configured)
+        => Math.Clamp(configured, 1, MaxDirectorySchedulingParallelism);
+
+    internal static int ClampDirectoryBatchCheckpointSize(int configured)
+        => Math.Clamp(configured, 1, MaxDirectoryBatchCheckpointSize);
+
+    internal static HashSet<string> NormalizeExtensions(IEnumerable<string>? extensions)
+    {
+        HashSet<string> normalized = new(StringComparer.OrdinalIgnoreCase);
+        if (extensions is null)
+        {
+            return normalized;
+        }
+
+        foreach (string extension in extensions)
+        {
+            string value = NormalizeExtension(extension);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                normalized.Add(value);
+            }
+        }
+
+        return normalized;
+    }
+
+    internal static string NormalizeExtension(string? extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return string.Empty;
+        }
+
+        string value = extension.Trim().ToLowerInvariant();
+        return value.StartsWith(".", StringComparison.Ordinal) ? value : "." + value;
+    }
+
+    private async Task DeleteCreatedPayloadAsync(WorkflowPayloadReference? reference, CancellationToken cancellationToken)
+    {
+        if (reference is null || _payloadStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _payloadStore.DeleteAsync(reference, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to delete claim-check payload {PayloadId} after directory workflow scheduling failed.",
+                reference.Id);
+        }
+    }
+
+    private static void SortProgress(List<string> instanceIds, List<BatchFileRef> scheduledFiles)
+    {
+        List<BatchFileRef> sorted = [.. scheduledFiles.OrderBy(static file => file.SourceUri, StringComparer.Ordinal)];
+        scheduledFiles.Clear();
+        scheduledFiles.AddRange(sorted);
+
+        instanceIds.Clear();
+        instanceIds.AddRange(sorted.Select(static file => file.InstanceId));
     }
 
     private static Dictionary<string, MetadataField> CloneMetadata(IReadOnlyDictionary<string, MetadataField> source)

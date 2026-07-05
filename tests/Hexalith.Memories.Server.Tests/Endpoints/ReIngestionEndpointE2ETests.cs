@@ -70,7 +70,10 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
             Arg.Any<string>(),
             Arg.Any<string>(),
             Arg.Any<CancellationToken>());
-        await _scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>());
+        await _scheduler.DidNotReceive().ScheduleAsync(
+            Arg.Any<string>(),
+            Arg.Any<IngestionInput>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -88,7 +91,9 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
             });
         _registry.RemoveAsync(TenantId, CaseId, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => callInfo.ArgAt<string>(2) == "mu-ok");
-        _scheduler.ScheduleAsync("mu-ok", Arg.Any<IngestionInput>()).Returns("wf-mu-ok");
+        _scheduler
+            .ScheduleAsync("mu-ok", Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns("wf-mu-ok");
         using HttpClient client = CreateAuthorizedClient();
         ReIngestRequest request = new(["mu-ok", "mu-unsupported", "mu-missing", "mu-conflict"]);
 
@@ -114,7 +119,10 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
         bulk.Units[0].NewWorkflowInstanceId.ShouldBe("wf-mu-ok");
         bulk.Units[1].ErrorCode.ShouldBe("NON_URL_REINGESTION_UNAVAILABLE");
 
-        await _scheduler.Received(1).ScheduleAsync("mu-ok", Arg.Any<IngestionInput>());
+        await _scheduler.Received(1).ScheduleAsync(
+            "mu-ok",
+            Arg.Any<IngestionInput>(),
+            Arg.Any<CancellationToken>());
         await _registry.DidNotReceive().RemoveAsync(
             TenantId,
             CaseId,

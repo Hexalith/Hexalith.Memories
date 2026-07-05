@@ -4,7 +4,7 @@ baseline_commit: 8dced2b
 
 # Story 23.6: Directory-Batch Scalability
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,59 +40,59 @@ Story 23.6 follows Story 23.9, Story 23.1, Story 23.2, Story 23.3, Story 23.4, a
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 - Reconfirm A33 and current directory ingestion behavior before editing (AC: 1-10)
-  - [ ] Read `src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs` completely. Confirm current full-state save points: initial save, unreadable-file save, and per-scheduled-file save.
-  - [ ] Read `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs` completely. Confirm `SupportedExtensions` exists and is not currently used by `DirectoryIngestionService`.
-  - [ ] Read `src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs`, `IIngestionWorkflowScheduler.cs`, `IngestionPayloadClaimCheck.cs`, and `IWorkflowPayloadStore.cs`.
-  - [ ] Read `Program.cs` directory ingest and batch-status endpoints so response/error mapping and tenant authorization behavior are preserved.
-  - [ ] Read existing tests: `DirectoryIngestionServiceTests`, `DirectoryIngestionPathValidationTests`, `DirectoryBatchStatusMapperTests`, `IngestionEndpointLogTests`, and relevant authorization/status endpoint tests.
+- [x] Task 1 - Reconfirm A33 and current directory ingestion behavior before editing (AC: 1-10)
+  - [x] Read `src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs` completely. Confirm current full-state save points: initial save, unreadable-file save, and per-scheduled-file save.
+  - [x] Read `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs` completely. Confirm `SupportedExtensions` exists and is not currently used by `DirectoryIngestionService`.
+  - [x] Read `src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs`, `IIngestionWorkflowScheduler.cs`, `IngestionPayloadClaimCheck.cs`, and `IWorkflowPayloadStore.cs`.
+  - [x] Read `Program.cs` directory ingest and batch-status endpoints so response/error mapping and tenant authorization behavior are preserved.
+  - [x] Read existing tests: `DirectoryIngestionServiceTests`, `DirectoryIngestionPathValidationTests`, `DirectoryBatchStatusMapperTests`, `IngestionEndpointLogTests`, and relevant authorization/status endpoint tests.
 
-- [ ] Task 2 - Add directory batch scalability settings with safe defaults (AC: 1-3, 8-10)
-  - [ ] Add focused settings such as `DirectorySchedulingParallelism` and `DirectoryBatchCheckpointSize` to `IngestionSettings`, or deliberately reuse an existing safe setting if it truly matches scheduling work.
-  - [ ] Clamp the scheduling parallelism to a positive bounded value. Do not allow zero, negative, or very large configured values to create unbounded task fan-out.
-  - [ ] Clamp checkpoint size to a positive bounded value. The default should reduce state writes for the current `MaxBatchSize = 500` while still exposing progress for status reads.
-  - [ ] Update `src/Hexalith.Memories.Server/appsettings.json` only if the new defaults need to be visible in config. Keep default directory ingestion disabled by `AllowedDirectoryRoots: []`.
+- [x] Task 2 - Add directory batch scalability settings with safe defaults (AC: 1-3, 8-10)
+  - [x] Add focused settings such as `DirectorySchedulingParallelism` and `DirectoryBatchCheckpointSize` to `IngestionSettings`, or deliberately reuse an existing safe setting if it truly matches scheduling work.
+  - [x] Clamp the scheduling parallelism to a positive bounded value. Do not allow zero, negative, or very large configured values to create unbounded task fan-out.
+  - [x] Clamp checkpoint size to a positive bounded value. The default should reduce state writes for the current `MaxBatchSize = 500` while still exposing progress for status reads.
+  - [x] Update `src/Hexalith.Memories.Server/appsettings.json` only if the new defaults need to be visible in config. Keep default directory ingestion disabled by `AllowedDirectoryRoots: []`.
 
-- [ ] Task 3 - Make `SupportedExtensions` the allowlist (AC: 3-4, 9)
-  - [ ] Normalize configured supported and unsupported extensions once per request or through a small helper. Accept both `.txt` and `txt` config values by normalizing to `.txt`, or reject malformed config with a documented fallback.
-  - [ ] Skip any extension not in `SupportedExtensions` as `UNSUPPORTED_EXTENSION` before opening or reading file bytes.
-  - [ ] Preserve the existing denylist behavior for `UnsupportedExtensions` as a stricter overlay if both settings are present.
-  - [ ] Add tests for uppercase supported extensions, unknown extensions, denylisted extensions, extensionless files, and the guarantee that unsupported files are not scheduled or claim-checked.
+- [x] Task 3 - Make `SupportedExtensions` the allowlist (AC: 3-4, 9)
+  - [x] Normalize configured supported and unsupported extensions once per request or through a small helper. Accept both `.txt` and `txt` config values by normalizing to `.txt`, or reject malformed config with a documented fallback.
+  - [x] Skip any extension not in `SupportedExtensions` as `UNSUPPORTED_EXTENSION` before opening or reading file bytes.
+  - [x] Preserve the existing denylist behavior for `UnsupportedExtensions` as a stricter overlay if both settings are present.
+  - [x] Add tests for uppercase supported extensions, unknown extensions, denylisted extensions, extensionless files, and the guarantee that unsupported files are not scheduled or claim-checked.
 
-- [ ] Task 4 - Replace per-file full-state rewrites with bounded checkpointing (AC: 1, 6-9)
-  - [ ] Introduce a small batch progress accumulator or checkpoint helper so `DirectoryBatchState` creation is not duplicated through the scheduling loop.
-  - [ ] Persist initial batch state before scheduling begins.
-  - [ ] Persist progress only after every configured checkpoint interval, after unreadable-file discoveries that need to be visible, and at final completion. It is acceptable for skipped entries to accumulate until the next checkpoint as long as the final state is complete and tests pin the chosen behavior.
-  - [ ] Keep `ttlInSeconds` metadata on every state save.
-  - [ ] If a state-save failure happens after some workflows were scheduled, preserve the existing non-success behavior and do not fabricate a successful accepted batch.
-  - [ ] Add tests proving save calls are bounded for a multi-file batch and that final state contains every scheduled file and bounded skipped entry.
+- [x] Task 4 - Replace per-file full-state rewrites with bounded checkpointing (AC: 1, 6-9)
+  - [x] Introduce a small batch progress accumulator or checkpoint helper so `DirectoryBatchState` creation is not duplicated through the scheduling loop.
+  - [x] Persist initial batch state before scheduling begins.
+  - [x] Persist progress only after every configured checkpoint interval, after unreadable-file discoveries that need to be visible, and at final completion. It is acceptable for skipped entries to accumulate until the next checkpoint as long as the final state is complete and tests pin the chosen behavior.
+  - [x] Keep `ttlInSeconds` metadata on every state save.
+  - [x] If a state-save failure happens after some workflows were scheduled, preserve the existing non-success behavior and do not fabricate a successful accepted batch.
+  - [x] Add tests proving save calls are bounded for a multi-file batch and that final state contains every scheduled file and bounded skipped entry.
 
-- [ ] Task 5 - Implement bounded-parallel scheduling safely (AC: 2, 5-8)
-  - [ ] Prefer reusing `IIngestionWorkflowScheduler` so directory ingestion uses the same claim-check-and-schedule path as re-ingestion. Because `DirectoryIngestionService` is currently public and `IIngestionWorkflowScheduler` is internal, choose a valid accessibility/DI path: make the service internal if appropriate, add an internal constructor plus public compatibility constructor, or introduce an equivalent public/internal-safe seam. Do not create a public constructor with a less-accessible parameter.
-  - [ ] Use `SemaphoreSlim`, `Parallel.ForEachAsync`, `Channel`, or another simple bounded pattern. Do not create one unbounded task per candidate for large batches.
-  - [ ] Preserve per-file input fields: tenant id, case id, source URI, inferred content type, `SourceType.File`, ingested by, cloned metadata, causation id, and `CorrelationId = batchId`.
-  - [ ] Preserve requested instance id generation using ULID-style values and use that id for payload claim-check scoping.
-  - [ ] Ensure cancellation flows into file reads, payload saving, workflow scheduling where supported, checkpoint saves, and cleanup.
-  - [ ] If order matters, sort candidates before scheduling. If order does not matter, document that `InstanceIds`/`Files` are complete but not filesystem-order guaranteed.
+- [x] Task 5 - Implement bounded-parallel scheduling safely (AC: 2, 5-8)
+  - [x] Prefer reusing `IIngestionWorkflowScheduler` so directory ingestion uses the same claim-check-and-schedule path as re-ingestion. Because `DirectoryIngestionService` is currently public and `IIngestionWorkflowScheduler` is internal, choose a valid accessibility/DI path: make the service internal if appropriate, add an internal constructor plus public compatibility constructor, or introduce an equivalent public/internal-safe seam. Do not create a public constructor with a less-accessible parameter.
+  - [x] Use `SemaphoreSlim`, `Parallel.ForEachAsync`, `Channel`, or another simple bounded pattern. Do not create one unbounded task per candidate for large batches.
+  - [x] Preserve per-file input fields: tenant id, case id, source URI, inferred content type, `SourceType.File`, ingested by, cloned metadata, causation id, and `CorrelationId = batchId`.
+  - [x] Preserve requested instance id generation using ULID-style values and use that id for payload claim-check scoping.
+  - [x] Ensure cancellation flows into file reads, payload saving, workflow scheduling where supported, checkpoint saves, and cleanup.
+  - [x] If order matters, sort candidates before scheduling. If order does not matter, document that `InstanceIds`/`Files` are complete but not filesystem-order guaranteed.
 
-- [ ] Task 6 - Handle partial failures and payload cleanup (AC: 5-7, 9)
-  - [ ] Track payload references created before workflow scheduling succeeds.
-  - [ ] If scheduling fails after claim-check preparation but before a workflow is accepted, delete that file's source payload reference using `IWorkflowPayloadStore.DeleteAsync`.
-  - [ ] On a batch-level failure, do not delete payloads for workflows that were successfully scheduled; the workflow owns their lifecycle.
-  - [ ] Keep `DAPR_UNAVAILABLE` for `DaprException` and `BATCH_SCHEDULING_FAILED` for other scheduling failures.
-  - [ ] Add tests for a scheduling failure after one payload save and before schedule success, proving unscheduled payload cleanup and no false enqueued state.
+- [x] Task 6 - Handle partial failures and payload cleanup (AC: 5-7, 9)
+  - [x] Track payload references created before workflow scheduling succeeds.
+  - [x] If scheduling fails after claim-check preparation but before a workflow is accepted, delete that file's source payload reference using `IWorkflowPayloadStore.DeleteAsync`.
+  - [x] On a batch-level failure, do not delete payloads for workflows that were successfully scheduled; the workflow owns their lifecycle.
+  - [x] Keep `DAPR_UNAVAILABLE` for `DaprException` and `BATCH_SCHEDULING_FAILED` for other scheduling failures.
+  - [x] Add tests for a scheduling failure after one payload save and before schedule success, proving unscheduled payload cleanup and no false enqueued state.
 
-- [ ] Task 7 - Preserve endpoint/status compatibility (AC: 4, 7-8)
-  - [ ] Re-run existing endpoint and authorization tests impacted by `DirectoryBatchState` or service constructor changes.
-  - [ ] Ensure `GET /api/ingest/batches/{batchId}` still reads the state key `ingestion-batch:{batchId}` and maps every `BatchFileRef` through `DirectoryBatchStatusMapper`.
-  - [ ] Do not rename public JSON fields in `DirectoryIngestionRequest`, `DirectoryIngestionOutcome`, `BatchStatusResponse`, or `BatchInstanceStatus`.
+- [x] Task 7 - Preserve endpoint/status compatibility (AC: 4, 7-8)
+  - [x] Re-run existing endpoint and authorization tests impacted by `DirectoryBatchState` or service constructor changes.
+  - [x] Ensure `GET /api/ingest/batches/{batchId}` still reads the state key `ingestion-batch:{batchId}` and maps every `BatchFileRef` through `DirectoryBatchStatusMapper`.
+  - [x] Do not rename public JSON fields in `DirectoryIngestionRequest`, `DirectoryIngestionOutcome`, `BatchStatusResponse`, or `BatchInstanceStatus`.
 
-- [ ] Task 8 - Focused validation evidence (AC: 1-10)
-  - [ ] Run `dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -m:1 /nodeReuse:false --no-restore`.
-  - [ ] Run `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore`.
-  - [ ] Run focused xUnit v3 tests for directory ingestion service, path validation, batch status mapping, endpoint authorization/status, ingestion payload claim-check, and any new scheduler/checkpoint helper tests. If VSTest is blocked by the known sandbox TCP-listener issue, use the established `DiffEngine_Disabled=true dotnet exec ...Hexalith.Memories.Server.Tests.dll` fallback and record exact counts.
-  - [ ] Run `git diff --check`.
-  - [ ] Record the checkpoint cadence, scheduling parallelism, and validation results in this story's Dev Agent Record.
+- [x] Task 8 - Focused validation evidence (AC: 1-10)
+  - [x] Run `dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -m:1 /nodeReuse:false --no-restore`.
+  - [x] Run `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore`.
+  - [x] Run focused xUnit v3 tests for directory ingestion service, path validation, batch status mapping, endpoint authorization/status, ingestion payload claim-check, and any new scheduler/checkpoint helper tests. If VSTest is blocked by the known sandbox TCP-listener issue, use the established `DiffEngine_Disabled=true dotnet exec ...Hexalith.Memories.Server.Tests.dll` fallback and record exact counts.
+  - [x] Run `git diff --check`.
+  - [x] Record the checkpoint cadence, scheduling parallelism, and validation results in this story's Dev Agent Record.
 
 ## Dev Notes
 
@@ -224,15 +224,66 @@ GPT-5 Codex
 - 2026-07-05: Loaded project context, Epic 23 source, A33 audit finding, sprint-change proposal, architecture/prd directory-ingestion mentions, previous Epic 23 story files, current directory ingestion source files, current directory tests, integration placeholder, and recent git commits.
 - 2026-07-05: Discovery results: no sharded planning directories were present; loaded relevant sections from `_bmad-output/planning-artifacts/epics.md`, `architecture.md`, `prd.md`, `sprint-change-proposal-2026-07-04.md`, `research/architecture-audit-2026-07-04.md`, plus `_bmad-output/project-context.md` and prior story files.
 - 2026-07-05: Validation pass applied checklist concerns: prevented bypassing claim-check payloads, prevented unbounded task fan-out, required allowlist semantics for `SupportedExtensions`, required checkpoint/final-state proof, required payload cleanup on partial scheduling failure, and bounded scope away from Stories 23.7 and 23.8.
+- 2026-07-05: Used `.agents/skills/bmad-dev-story/SKILL.md`; resolved workflow customization with `_bmad/scripts/resolve_customization.py`; activation prepend/append steps were empty and persistent facts loaded `_bmad-output/project-context.md`.
+- 2026-07-05: Reconfirmed current A33 behavior before editing: `DirectoryIngestionService` rewrote full state initially, for unreadable scheduled candidates, and after every scheduled file; `SupportedExtensions` existed in settings but directory ingestion enforced only `UnsupportedExtensions`.
+- 2026-07-05: Made `DirectoryIngestionService` internal and injected `IIngestionWorkflowScheduler` so directory ingestion uses the existing scheduling seam without exposing a less-accessible public constructor.
+- 2026-07-05: Added `DirectorySchedulingParallelism` default 4, clamped 1..32, and `DirectoryBatchCheckpointSize` default 50, clamped 1..250. With the current `MaxBatchSize = 500`, default successful batches save initial state, up to 10 progress checkpoints, and final state instead of saving after every file.
+- 2026-07-05: Applied `SupportedExtensions` as the effective allowlist with case-insensitive normalization to lowercase leading-dot values; `UnsupportedExtensions` remains a denylist overlay.
+- 2026-07-05: Replaced sequential scheduling with bounded `Parallel.ForEachAsync`; candidates are sorted before scheduling and final `InstanceIds`/`Files` are sorted by source URI for deterministic accounting.
+- 2026-07-05: Preserved claim-check semantics by preparing file payloads with `IWorkflowPayloadStore` before scheduling and deleting newly created source payload references when scheduling fails before workflow acceptance.
+- 2026-07-05: `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter "FullyQualifiedName~DirectoryIngestion|FullyQualifiedName~DirectoryBatchStatusMapper|FullyQualifiedName~IngestionEndpointLog|FullyQualifiedName~IngestionStatusEndpointAuthorization"` was blocked by the known VSTest `SocketException (13): Permission denied`.
+- 2026-07-05: Focused xUnit v3 fallback passed: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionServiceTests -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionPathValidationTests -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryBatchStatusMapperTests -class Hexalith.Memories.Server.Tests.Ingestion.IngestionEndpointLogTests -class Hexalith.Memories.Server.Tests.Authentication.IngestionStatusEndpointAuthorizationTests` -> Total 43, Failed 0.
+- 2026-07-05: Scheduler/claim-check regression xUnit v3 fallback passed: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Ingestion.IngestionPayloadClaimCheckTests -class Hexalith.Memories.Server.Tests.Ingestion.ReIngestionCoordinatorTests -class Hexalith.Memories.Server.Tests.Endpoints.ReIngestionEndpointE2ETests` -> Total 18, Failed 0.
+- 2026-07-05: Required builds passed: `dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -m:1 /nodeReuse:false --no-restore`; `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore`.
+- 2026-07-05: Full server in-process regression passed: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor` -> Total 2383, Failed 0, Skipped 1.
+- 2026-07-05: `git diff --check` passed.
+- 2026-07-05: Senior developer review used `.agents/skills/bmad-story-automator-review/SKILL.md`, loaded `workflow.yaml`, `instructions.xml`, and `checklist.md`, then reviewed the story File List plus git-discovered changes.
+- 2026-07-05: MCP resource discovery returned no available resources; verified Dapr workflow cancellation support through the pinned local NuGet XML docs at `~/.nuget/packages/dapr.workflow/1.18.4/lib/net10.0/Dapr.Workflow.xml`.
+- 2026-07-05: Senior review auto-fixes applied: cancellation cleanup for unscheduled claim-check payloads, Dapr workflow scheduler cancellation propagation, re-ingestion scheduler cancellation propagation, ReIngestion endpoint test stub alignment, File List hygiene, and review/status sync.
+- 2026-07-05: Senior review focused validation passed: `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore`; `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor -class Hexalith.Memories.Server.Tests.Ingestion.DirectoryIngestionServiceTests -class Hexalith.Memories.Server.Tests.Endpoints.DirectoryIngestionEndpointE2ETests -class Hexalith.Memories.Server.Tests.Ingestion.ReIngestionCoordinatorTests` -> Total 24, Failed 0.
+- 2026-07-05: Senior review full server regression passed after endpoint test alignment: `DiffEngine_Disabled=true tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests -noLogo -noColor` -> Total 2386, Failed 0, Skipped 1.
 
 ### Completion Notes List
 
-- Created comprehensive ready-for-dev story context for A33 directory-batch scalability.
-- Story directs implementation toward bounded state checkpointing, bounded-parallel scheduling, and using `SupportedExtensions` as the effective allowlist.
-- Story highlights existing `IIngestionWorkflowScheduler`/claim-check scheduling seam while warning about accessibility and DI constraints.
-- Story requires tests that prove state saves are bounded, scheduling concurrency is bounded, unsupported files are skipped before reads/payload saves, and unscheduled payloads are cleaned up on failure.
+- Implemented A33 directory-batch scalability with bounded state checkpointing, bounded-parallel scheduling, effective `SupportedExtensions` allowlist filtering, deterministic final batch accounting, and partial-failure source-payload cleanup.
+- Operational defaults: directory scheduling parallelism defaults to 4 and clamps to 1..32; directory batch checkpoint cadence defaults to every 50 scheduled files and clamps to 1..250. `AllowedDirectoryRoots` remains empty by default.
+- `DirectoryIngestionService` now uses `IIngestionWorkflowScheduler`; the service is internal to keep accessibility valid while preserving endpoint DI and testability.
+- Added focused tests for allowlist/denylist behavior, unsupported-file no claim-check/no schedule, bounded checkpoint saves, deterministic final state, bounded scheduling concurrency, and unscheduled payload cleanup.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/23-6-directory-batch-scalability.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `src/Hexalith.Memories.Server/EventStoreIntegration/EventIngestionWorkflowSchedulerAdapter.cs`
+- `src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs`
+- `src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs`
+- `src/Hexalith.Memories.Server/Ingestion/IIngestionWorkflowScheduler.cs`
+- `src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs`
+- `src/Hexalith.Memories.Server/Ingestion/ReIngestionCoordinator.cs`
+- `src/Hexalith.Memories.Server/appsettings.json`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/DirectoryIngestionEndpointE2ETests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/ReIngestionEndpointE2ETests.cs`
+- `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/EventStoreWebAppFactory.cs`
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/DirectoryIngestionServiceTests.cs`
+- `_bmad-output/implementation-artifacts/tests/test-summary.md`
+- `_bmad-output/story-automator/orchestration-20-20260704-091304.md`
+
+### Senior Developer Review (AI)
+
+- [CRITICAL] Cancellation after source-byte claim-check creation could leave an unscheduled payload behind. `DirectoryIngestionService.ProcessCandidateAsync` only cleaned payload references for `DaprException` and non-cancellation exceptions; a cancellation from another failing worker or request cancellation after `PrepareAsync` could skip deletion. Fixed by moving claim-check preparation inside the scheduling try/catch, deleting created references on `OperationCanceledException`, and adding `IngestAsync_WhenSchedulingIsCanceledAfterClaimCheck_ShouldDeleteUnscheduledPayloadAndNotSucceed`.
+- [HIGH] The production Dapr scheduler accepted a `CancellationToken` through `IIngestionWorkflowScheduler` but did not pass it to `DaprWorkflowClient.ScheduleNewWorkflowAsync`. Fixed by using the Dapr 1.18.4 overload with `startTime: null` and the caller token.
+- [MEDIUM] `ReIngestionCoordinator` was still calling the shared scheduler seam without forwarding its cancellation token. Fixed so re-ingestion scheduling uses the same cancellation path.
+- [MEDIUM] The re-ingestion endpoint E2E scheduler substitute matched only the optional default token, so it failed once the coordinator forwarded the real request token. Fixed the setup and verification to include `Arg.Any<CancellationToken>()`.
+- [MEDIUM] The story File List omitted git-discovered changes: endpoint E2E coverage, `EventStoreWebAppFactory`, `tests/test-summary.md`, `ReIngestionCoordinator`, and the story-automator orchestration artifact. Fixed by updating the File List.
+
+Checklist summary:
+
+- Story status was reviewable and is now `done`.
+- Acceptance Criteria 1-10 rechecked against source and tests.
+- No critical issues remain after automatic fixes.
+- Sprint status synced to `done`.
+
+### Change Log
+
+- 2026-07-05: Completed Story 23.6 implementation for A33 directory batch scalability; added bounded scheduling/checkpointing settings, allowlist enforcement, scheduler seam use, failure cleanup, and focused validation coverage.
+- 2026-07-05: Senior developer review completed with automatic fixes for cancellation cleanup, scheduler token propagation, and File List hygiene. Status moved to done.
