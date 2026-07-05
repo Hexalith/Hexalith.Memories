@@ -79,7 +79,7 @@ public class RepairUnitActivityTests
         record.AfterState["graph"].ShouldBe("absent");
 
         await harness.RedisDb.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId)),
+            Arg.Is<RedisKey[]>(keys => keys.Any(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId))),
             Arg.Any<CommandFlags>());
         harness.GraphQueryBuilder.DidNotReceive().BuildDeleteMemoryUnitNode(Arg.Any<string>());
     }
@@ -224,7 +224,7 @@ public class RepairUnitActivityTests
         record.Succeeded.ShouldBeTrue();
 
         await harness.RedisDb.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId)),
+            Arg.Is<RedisKey[]>(keys => keys.Any(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, TestMemoryUnitId))),
             Arg.Any<CommandFlags>());
         harness.GraphQueryBuilder.Received(1).BuildDeleteMemoryUnitNode(TestMemoryUnitId);
     }

@@ -153,15 +153,16 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             await UpdateCounter("extracting", "embedding");
             context.SetCustomStatus("embedding");
 
-            EmbeddingResult embedding = await context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity),
+            ChunkEmbeddingBatchResult embedding = await context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity),
                 new EmbeddingInput(input.TenantId, extraction.ExtractedContent),
-                For(nameof(GenerateEmbeddingActivity)));
+                For(nameof(GenerateChunkEmbeddingsActivity)));
 
             logger.LogInformation(
-                "Embedding generated: {Provider}, {Dims} dimensions",
+                "Embedding generated: {Provider}, {Dims} dimensions across {ChunkCount} chunks",
                 embedding.Provider,
-                embedding.Dimensions);
+                embedding.Dimensions,
+                embedding.Chunks.Count);
 
             // Story 9.2 Task 5.3: SourceType.Event-gated dual-embedding block. Generates the NL
             // description via the DAPR Conversation API (alpha), embeds it through the SAME
@@ -277,7 +278,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 SourceType = input.SourceType,
                 IngestedBy = input.IngestedBy,
                 IngestedAt = ingestedAt,
-                EmbeddingVector = embedding.Vector,
+                EmbeddingVector = embedding.Chunks[0].Vector,
                 EmbeddingProvider = embedding.Provider,
                 // Story 5.5 FR70: thread the model through from EmbeddingResult so it lands in
                 // the Redis hash (see IndexSyntacticActivity) and is readable via GET memory-unit.
@@ -295,10 +296,22 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 nameof(IndexSyntacticActivity),
                 indexInput,
                 For(nameof(IndexSyntacticActivity)));
+            SemanticChunkIndexInput semanticIndexInput = new()
+            {
+                MemoryUnitId = memoryUnitId,
+                TenantId = input.TenantId,
+                CaseId = input.CaseId,
+                Chunks = embedding.Chunks,
+                EmbeddingProvider = embedding.Provider,
+                EmbeddingModel = GetEmbeddingModelIdentifier(embedding),
+                EmbeddingDimensions = embedding.Dimensions,
+                Metadata = metadataForIndex,
+            };
+
             Task<IndexResult> semanticTask = context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity),
-                indexInput,
-                For(nameof(IndexSemanticActivity)));
+                nameof(IndexSemanticChunksActivity),
+                semanticIndexInput,
+                For(nameof(IndexSemanticChunksActivity)));
             Task<IndexResult> graphTask = context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity),
                 indexInput,
@@ -886,6 +899,21 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
     {
         ArgumentNullException.ThrowIfNull(embedding);
 
+        if (!string.IsNullOrWhiteSpace(embedding.Model))
+        {
+            return embedding.Model;
+        }
+
+        string provider = embedding.Provider;
+        int separatorIndex = provider.IndexOf(':', StringComparison.Ordinal);
+        return separatorIndex >= 0 && separatorIndex < provider.Length - 1
+            ? provider[(separatorIndex + 1)..]
+            : provider;
+    }
+
+    private static string GetEmbeddingModelIdentifier(ChunkEmbeddingBatchResult embedding)
+    {
+        ArgumentNullException.ThrowIfNull(embedding);
         if (!string.IsNullOrWhiteSpace(embedding.Model))
         {
             return embedding.Model;

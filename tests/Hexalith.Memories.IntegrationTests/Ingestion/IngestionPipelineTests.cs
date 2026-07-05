@@ -11,6 +11,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Infrastructure;
 
 using NFalkorDB;
 
@@ -78,6 +79,16 @@ public sealed class IngestionPipelineTests
 
         bool semanticExists = await redisDb.KeyExistsAsync(semanticKey);
         semanticExists.ShouldBeTrue();
+        IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, semanticKey, out string parsedMemoryUnitId, out int chunkSequence)
+            .ShouldBeTrue();
+        chunkSequence.ShouldBe(0);
+        parsedMemoryUnitId.ShouldBe(syntacticKey[(syntacticKey.LastIndexOf(':') + 1)..]);
+        RedisValue storedChunkSequence = await redisDb.HashGetAsync(semanticKey, "chunkSequence");
+        RedisValue storedChunkStartOffset = await redisDb.HashGetAsync(semanticKey, "chunkStartOffset");
+        RedisValue storedChunkEndOffset = await redisDb.HashGetAsync(semanticKey, "chunkEndOffset");
+        ((int)storedChunkSequence).ShouldBe(0);
+        ((int)storedChunkStartOffset).ShouldBe(0);
+        ((int)storedChunkEndOffset).ShouldBeGreaterThan(0);
 
         using HttpResponseMessage stateResponse = await _fixture.MemoriesClient
             .GetAsync($"/api/ingest/{accepted.InstanceId}");

@@ -5,6 +5,8 @@ using System.Runtime.InteropServices;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -167,4 +169,88 @@ public class IndexSemanticIntegrationTests
         byte[] expectedV2 = MemoryMarshal.AsBytes(vectorV2.AsSpan()).ToArray();
         ((byte[])storedVector!).ShouldBe(expectedV2, "Re-indexing should overwrite with the latest vector");
     }
+
+    [Fact]
+    public async Task RunAsync_ChunkedInput_ShouldStoreChunkHashesAndRetrieveViaKnn_InRealRedis()
+    {
+        string tenantId = $"tenant-sem-chunk-{Guid.NewGuid():N}";
+        const string MemoryUnitId = "mu-chunked";
+        const string CaseId = "case-chunked";
+        float[] firstVector = [1.0f, 0.0f, 0.0f];
+        float[] secondVector = [0.0f, 1.0f, 0.0f];
+
+        SemanticChunkIndexInput input = new()
+        {
+            TenantId = tenantId,
+            MemoryUnitId = MemoryUnitId,
+            CaseId = CaseId,
+            EmbeddingProvider = "google",
+            EmbeddingModel = "gemini-embedding-001",
+            EmbeddingDimensions = 3,
+            Metadata =
+            {
+                ["cloudevent.subject"] = new("claim-42", MetadataOrigin.Ai, 1.0f),
+            },
+            Chunks =
+            [
+                CreateChunk(sequence: 0, text: "first semantic chunk", startOffset: 0, endOffset: 20, vector: firstVector),
+                CreateChunk(sequence: 1, text: "second semantic chunk", startOffset: 20, endOffset: 41, vector: secondVector),
+            ],
+        };
+
+        IConnectionMultiplexer redis = _redis.Connection;
+        IndexSemanticChunksActivity activity = new(redis, NullLogger<IndexSemanticChunksActivity>.Instance);
+        var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+
+        IndexResult result = await activity.RunAsync(context, input);
+
+        result.Backend.ShouldBe("semantic");
+        result.MemoryUnitId.ShouldBe(MemoryUnitId);
+        result.TenantId.ShouldBe(tenantId);
+
+        IDatabase db = redis.GetDatabase();
+        string firstKey = IndexSchemaDefinitions.BuildSemanticChunkKey(tenantId, MemoryUnitId, 0);
+        string secondKey = IndexSchemaDefinitions.BuildSemanticChunkKey(tenantId, MemoryUnitId, 1);
+
+        (await db.KeyExistsAsync(firstKey)).ShouldBeTrue();
+        (await db.KeyExistsAsync(secondKey)).ShouldBeTrue();
+        (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, MemoryUnitId))).ShouldBeFalse();
+
+        RedisValue storedMemoryUnitId = await db.HashGetAsync(firstKey, "memoryUnitId");
+        RedisValue storedSequence = await db.HashGetAsync(secondKey, "chunkSequence");
+        RedisValue storedSubject = await db.HashGetAsync(firstKey, "cloudeventSubject");
+        RedisValue storedVector = await db.HashGetAsync(secondKey, "embedding");
+
+        storedMemoryUnitId.ToString().ShouldBe(MemoryUnitId);
+        ((int)storedSequence).ShouldBe(1);
+        storedSubject.ToString().ShouldBe("claim-42");
+        ((byte[])storedVector!).ShouldBe(MemoryMarshal.AsBytes(secondVector.AsSpan()).ToArray());
+
+        byte[] queryBytes = MemoryMarshal.AsBytes(firstVector.AsSpan()).ToArray();
+        var searchResult = db.FT().Search(
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            new Query("*=>[KNN 2 @embedding $vec AS score]")
+                .AddParam("vec", queryBytes)
+                .SetSortBy("score")
+                .Limit(0, 2)
+                .Dialect(2));
+
+        searchResult.TotalResults.ShouldBeGreaterThanOrEqualTo(2);
+    }
+
+    private static ChunkEmbeddingResult CreateChunk(
+        int sequence,
+        string text,
+        int startOffset,
+        int endOffset,
+        float[] vector)
+        => new()
+        {
+            Sequence = sequence,
+            Text = text,
+            StartOffset = startOffset,
+            EndOffset = endOffset,
+            EstimatedTokens = 8,
+            Vector = vector,
+        };
 }

@@ -1,3 +1,54 @@
+# Test Automation Summary - Story 23.1 (Content Chunking & Batch Embedding)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-1-content-chunking-and-batch-embedding.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute; backend E2E coverage uses existing Redis Stack, FalkorDB, and Aspire integration fixtures. No new framework introduced.
+- **Feature under test:** raw payload chunk vector indexing, semantic search chunk deduplication before pagination, graph-scoped semantic chunk-key expansion, and ingestion API chunk-key metadata. Story 23.1 has no UI/web scope, so browser E2E is not applicable.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionPipelineTests.cs` - extended the full `/api/ingest` Aspire workflow test to assert the raw semantic write is a chunk-suffixed key and includes chunk sequence/range metadata.
+
+### E2E / Integration Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Indexing/IndexSemanticIntegrationTests.cs` - added Redis-backed chunk indexing coverage for `{tenant}:vec:{memoryUnitId}:{seq}` hashes, chunk metadata, provider/model metadata, vector bytes, absence of the base raw key, and KNN visibility.
+- [x] `tests/Hexalith.Memories.IntegrationTests/Search/SemanticSearchIntegrationTests.cs` - added Redis-backed semantic search coverage proving multiple chunk vectors for one memory unit deduplicate to the best chunk before pagination.
+- [x] `tests/Hexalith.Memories.IntegrationTests/Search/GraphScopedSearchIntegrationTests.cs` - added Redis/Falkor-backed graph-scoped semantic coverage proving graph base keys expand to raw chunk keys and still deduplicate results.
+- [x] Browser UI E2E is not applicable. Story 23.1 has no module UI.
+
+### Existing Focused Tests
+
+- [x] Existing server tests cover deterministic chunk boundaries, truncation behavior, batch embedding mapping, workflow activity ordering, semantic key parsing, cleanup, consistency, repair, migration, and unit-level semantic search behavior.
+
+## Coverage
+
+- API endpoints: `/api/ingest` small-document workflow now asserts chunk-suffixed semantic storage.
+- Redis vector indexing: chunk hash shape, metadata, provider/model/dimensions, vector bytes, and KNN discoverability covered.
+- Semantic retrieval: best-chunk deduplication before pagination covered.
+- Graph-scoped semantic retrieval: chunk-key expansion and deduplication covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Ingestion.ContentChunkerTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateChunkEmbeddingsActivityTests -class Hexalith.Memories.Server.Tests.Infrastructure.IndexSchemaDefinitionsTests -class Hexalith.Memories.Server.Tests.Search.SemanticSearchServiceTests -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests -parallel none` - 130 total, 0 failed.
+- [ ] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Indexing.IndexSemanticIntegrationTests.RunAsync_ChunkedInput_ShouldStoreChunkHashesAndRetrieveViaKnn_InRealRedis -method Hexalith.Memories.IntegrationTests.Search.SemanticSearchIntegrationTests.SearchAsync_ChunkedMemoryUnit_ShouldDeduplicateBestChunkBeforePagination -method Hexalith.Memories.IntegrationTests.Search.GraphScopedSearchIntegrationTests.SearchAsync_GraphScopedSemantic_ChunkedMemoryUnit_ShouldExpandChunkKeysAndDeduplicate -parallel none` - blocked by Testcontainers Docker access: `Failed to connect to Docker endpoint at 'unix:///var/run/docker.sock'`; inner error `System.Net.Sockets.SocketException: Permission denied`.
+- [ ] `git diff --check` - blocked by pre-existing Story 23.1 dirty-worktree CRLF/trailing-whitespace reports in `_bmad-output/implementation-artifacts/sprint-status.yaml` and `tests/Hexalith.Memories.Server.Tests/Workflows/IngestionWorkflowTests.cs`.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass for backend/API integration intent; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and critical chunking/retrieval cases, have clear descriptions, use no hardcoded waits in the new tests, and are independent through unique tenant ids: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+- Integration runtime execution remains blocked by sandbox Docker socket permissions, not by compilation or test code.
+
+---
+
 # Test Automation Summary - Story 23.9 (EmbeddingClient Provider Strategy)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

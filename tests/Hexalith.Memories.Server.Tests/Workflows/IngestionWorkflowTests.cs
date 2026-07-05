@@ -59,9 +59,9 @@ public class IngestionWorkflowTests
             nameof(CheckIdempotencyActivity),
             nameof(ValidateContentActivity),
             nameof(ExtractContentActivity),
-            nameof(GenerateEmbeddingActivity),
+            nameof(GenerateChunkEmbeddingsActivity),
             nameof(IndexSyntacticActivity),
-            nameof(IndexSemanticActivity),
+            nameof(IndexSemanticChunksActivity),
             nameof(IndexGraphActivity),
             nameof(VerifyConsistencyActivity),
             nameof(SaveDedupKeyActivity),
@@ -211,8 +211,8 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => RegisterIndexTask(nameof(IndexSyntacticActivity), syntacticTask.Task));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(_ => RegisterIndexTask(nameof(IndexSemanticActivity), semanticTask.Task));
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => RegisterIndexTask(nameof(IndexSemanticChunksActivity), semanticTask.Task));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => RegisterIndexTask(nameof(IndexGraphActivity), graphTask.Task));
@@ -239,7 +239,7 @@ public class IngestionWorkflowTests
         await allIndexTasksScheduled.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         callLog.ShouldContain(nameof(IndexSyntacticActivity));
-        callLog.ShouldContain(nameof(IndexSemanticActivity));
+        callLog.ShouldContain(nameof(IndexSemanticChunksActivity));
         callLog.ShouldContain(nameof(IndexGraphActivity));
         callLog.ShouldNotContain(nameof(VerifyConsistencyActivity));
 
@@ -252,7 +252,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
-            nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
+            nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
         result.Status.ShouldBe(MemoryUnitStatus.Indexed);
@@ -303,7 +303,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -341,7 +341,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Syntactic failed")));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic failed")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -371,7 +371,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -406,7 +406,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -444,7 +444,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Provider returned 500 Internal Server Error")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -478,7 +478,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException(longMessage)));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -555,7 +555,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("Semantic indexing failed")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -622,9 +622,26 @@ public class IngestionWorkflowTests
         IngestionInput input = IngestionInputFactory.Create();
         WorkflowContext context = CreateMockContext();
         SetupHappyPathActivities(context, input);
-        context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(_ => Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:gemini-embedding-001", 3)));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(new ChunkEmbeddingBatchResult
+            {
+                Chunks =
+                [
+                    new ChunkEmbeddingResult
+                    {
+                        Sequence = 0,
+                        Text = "Extracted text content",
+                        StartOffset = 0,
+                        EndOffset = "Extracted text content".Length,
+                        EstimatedTokens = 5,
+                        Vector = [0.1f, 0.2f, 0.3f],
+                    },
+                ],
+                Provider = "google:gemini-embedding-001",
+                Model = string.Empty,
+                Dimensions = 3,
+            }));
         IngestionWorkflow workflow = new();
 
         await workflow.RunAsync(context, input);
@@ -943,7 +960,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("semantic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -1011,15 +1028,29 @@ public class IngestionWorkflowTests
                 return Task.FromResult(new ExtractionResult("Extracted text content", "abc123hash", new DateTimeOffset(TestTimestamp)));
             });
 
-        // Embed
-        context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+        // Embed raw payload chunks
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
-                callLog?.Add(nameof(GenerateEmbeddingActivity));
-                return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3)
+                callLog?.Add(nameof(GenerateChunkEmbeddingsActivity));
+                return Task.FromResult(new ChunkEmbeddingBatchResult
                 {
+                    Chunks =
+                    [
+                        new ChunkEmbeddingResult
+                        {
+                            Sequence = 0,
+                            Text = "Extracted text content",
+                            StartOffset = 0,
+                            EndOffset = "Extracted text content".Length,
+                            EstimatedTokens = 5,
+                            Vector = [0.1f, 0.2f, 0.3f],
+                        },
+                    ],
+                    Provider = "google:text-embedding-004",
                     Model = "gemini-embedding-001",
+                    Dimensions = 3,
                 });
             });
 
@@ -1052,10 +1083,10 @@ public class IngestionWorkflowTests
                 return Task.FromResult(new IndexResult("syntactic", muId, input.TenantId));
             });
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
-                callLog?.Add(nameof(IndexSemanticActivity));
+                callLog?.Add(nameof(IndexSemanticChunksActivity));
                 return Task.FromResult(new IndexResult("semantic", muId, input.TenantId));
             });
         context.CallActivityAsync<IndexResult>(
@@ -1082,6 +1113,18 @@ public class IngestionWorkflowTests
                     Hexalith.Memories.Contracts.V1.ConfidenceSource.Constant,
                     LlmProvider: "llm",
                     LlmModel: "gpt-4o-mini"));
+            });
+        context.CallActivityAsync<EmbeddingResult>(
+                nameof(GenerateEmbeddingActivity),
+                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ =>
+            {
+                callLog?.Add(nameof(GenerateEmbeddingActivity));
+                return Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "google:text-embedding-004", 3)
+                {
+                    Model = "gemini-embedding-001",
+                });
             });
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexNaturalLanguageSemanticActivity),
@@ -1164,7 +1207,7 @@ public class IngestionWorkflowTests
         {
             RetryPolicies = new(StringComparer.Ordinal)
             {
-                [nameof(GenerateEmbeddingActivity)] = new ActivityRetryPolicy
+                [nameof(GenerateChunkEmbeddingsActivity)] = new ActivityRetryPolicy
                 {
                     MaxAttempts = 3,
                     FirstRetryIntervalSeconds = 4,
@@ -1190,8 +1233,8 @@ public class IngestionWorkflowTests
                 && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
                 && options.RetryPolicy.BackoffCoefficient == 1.5
                 && options.RetryPolicy.MaxRetryInterval == TimeSpan.FromMinutes(5)));
-        await context.Received().CallActivityAsync<EmbeddingResult>(
-            nameof(GenerateEmbeddingActivity),
+        await context.Received().CallActivityAsync<ChunkEmbeddingBatchResult>(
+            nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
                 options.RetryPolicy != null
@@ -1262,9 +1305,9 @@ public class IngestionWorkflowTests
         WorkflowContext context = CreateMockContext();
         SetupPreIndexActivities(context, input);
 
-        context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
-            .Returns(Task.FromException<EmbeddingResult>(new SemanticSearchDimensionMismatchException(384, 768)));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(Task.FromException<ChunkEmbeddingBatchResult>(new SemanticSearchDimensionMismatchException(384, 768)));
 
         IngestionWorkflow workflow = new();
 
@@ -1275,8 +1318,8 @@ public class IngestionWorkflowTests
         details.Stage.ShouldBe("embedding");
         details.RetryCount.ShouldBe(5);
 
-        await context.Received().CallActivityAsync<EmbeddingResult>(
-            nameof(GenerateEmbeddingActivity),
+        await context.Received().CallActivityAsync<ChunkEmbeddingBatchResult>(
+            nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
                 options.RetryPolicy != null
@@ -1305,7 +1348,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("boom")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -1347,7 +1390,7 @@ public class IngestionWorkflowTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(new IndexResult("syntactic", TestGuid.ToString(), input.TenantId));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(Task.FromException<IndexResult>(new InvalidOperationException("original error")));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())

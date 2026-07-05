@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Search;
 
 using System.Globalization;
+using System.Net;
 using System.Runtime.InteropServices;
 
 using Hexalith.Memories.Contracts.V1;
@@ -130,6 +131,18 @@ public sealed partial class SemanticSearchService
                 };
             }
 
+            RedisKey[] expandedScopedKeys = await ExpandGraphScopeKeysAsync(db, query.TenantId, scopedKeys).ConfigureAwait(false);
+            if (expandedScopedKeys.Length == 0)
+            {
+                return new Contracts.V1.SearchResult
+                {
+                    Results = [],
+                    TotalCount = 0,
+                    HasIndexedMemoryUnits = true,
+                    Query = query.Query,
+                };
+            }
+
             return await SearchWithGraphScopeKeysAsync(
                 db,
                 query,
@@ -137,7 +150,7 @@ public sealed partial class SemanticSearchService
                 queryString,
                 indexName,
                 fallbackIndexName,
-                scopedKeys,
+                expandedScopedKeys,
                 embeddingConfig.Dimensions,
                 candidateCount,
                 offset,
@@ -216,6 +229,8 @@ SearchSucceeded:
         }
 
         // Step 6: Enrich from syntactic hashes via pipeline batch (source-type and metadataQuery post-filtered here)
+        knnResults = DeduplicateKnnResults(knnResults);
+
         List<ScoredResult> candidateResults = await EnrichResultsAsync(
             db, query.TenantId, knnResults, query.SourceTypeFilter, query.MetadataQuery).ConfigureAwait(false);
         List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
@@ -318,6 +333,8 @@ SearchSucceeded:
             };
         }
 
+        knnResults = DeduplicateKnnResults(knnResults);
+
         List<ScoredResult> candidateResults = await EnrichResultsAsync(
             db, query.TenantId, knnResults, query.SourceTypeFilter, query.MetadataQuery).ConfigureAwait(false);
         List<ScoredResult> results = [.. candidateResults.Skip(offset).Take(maxResults)];
@@ -397,6 +414,65 @@ SearchSucceeded:
         }
 
         return keys;
+    }
+
+    internal static List<(string MemoryUnitId, double Similarity)> DeduplicateKnnResults(
+        IReadOnlyList<(string MemoryUnitId, double Similarity)> knnResults)
+        => [.. knnResults
+            .GroupBy(static r => r.MemoryUnitId, StringComparer.Ordinal)
+            .Select(static g => g
+                .OrderByDescending(static r => r.Similarity)
+                .ThenBy(static r => r.MemoryUnitId, StringComparer.Ordinal)
+                .First())
+            .OrderByDescending(static r => r.Similarity)
+            .ThenBy(static r => r.MemoryUnitId, StringComparer.Ordinal)];
+
+    private async Task<RedisKey[]> ExpandGraphScopeKeysAsync(IDatabase db, string tenantId, IReadOnlyList<RedisKey> graphScopeKeys)
+    {
+        IServer? server = GetAnyServer(_redis);
+        List<RedisKey> expanded = [];
+        foreach (RedisKey key in graphScopeKeys)
+        {
+            if (!IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(tenantId, key, out string memoryUnitId))
+            {
+                continue;
+            }
+
+            bool foundChunk = false;
+            if (server is not null)
+            {
+                await foreach (RedisKey chunkKey in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
+                {
+                    if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, chunkKey, out string parsedId, out _)
+                        && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+                    {
+                        expanded.Add(chunkKey);
+                        foundChunk = true;
+                    }
+                }
+            }
+
+            if (!foundChunk && await db.KeyExistsAsync(key).ConfigureAwait(false))
+            {
+                expanded.Add(key);
+            }
+        }
+
+        return [.. expanded.Distinct().OrderBy(static k => k.ToString(), StringComparer.Ordinal)];
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 
     private static (long TotalResults, List<(string MemoryUnitId, double Similarity)> Results) ParseRawKnnSearchResult(

@@ -8,6 +8,7 @@ using Dapr.Client;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.TestHelpers.Factories;
@@ -427,6 +428,54 @@ public class SemanticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_ChunkedMemoryUnit_ShouldDeduplicateBestChunkBeforePagination()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("chunk best probe", CreateVector(1.0f, 0.0f, 0.0f));
+
+        await SeedChunkedDocumentAsync(
+            tenantId,
+            "mu-chunked",
+            "full content from two semantic chunks",
+            "default-case",
+            [
+                CreateChunk(sequence: 0, text: "weaker chunk", startOffset: 0, endOffset: 12, vector: CreateVector(0.70f, 0.30f, 0.0f)),
+                CreateChunk(sequence: 1, text: "best matching chunk", startOffset: 12, endOffset: 31, vector: CreateVector(1.0f, 0.0f, 0.0f)),
+            ]);
+        await SeedDocumentAsync(
+            tenantId,
+            "mu-other",
+            "single semantic vector",
+            embeddingVector: CreateVector(0.90f, 0.10f, 0.0f));
+
+        SemanticSearchService service = new(
+            _redis.Connection,
+            embeddingClient,
+            NullLogger<SemanticSearchService>.Instance);
+
+        SearchQuery firstPageQuery = new()
+        {
+            TenantId = tenantId,
+            Query = "chunk best probe",
+            MaxResults = 2,
+        };
+
+        SearchResult firstPage = await service.SearchAsync(firstPageQuery, _embeddingConfig, CancellationToken.None);
+        SearchResult secondPage = await service.SearchAsync(
+            firstPageQuery with { MaxResults = 1, Offset = 1 },
+            _embeddingConfig,
+            CancellationToken.None);
+
+        firstPage.TotalCount.ShouldBe(2);
+        firstPage.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-chunked", "mu-other"]);
+        firstPage.Results.Count(r => r.MemoryUnitId == "mu-chunked").ShouldBe(1);
+        firstPage.Results[0].ContentSnippet.ShouldContain("full content from two semantic chunks");
+        secondPage.TotalCount.ShouldBe(2);
+        secondPage.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-other"]);
+    }
+
+    [Fact]
     [Trait("Category", "Performance")]
     public async Task SearchAsync_LatencySmokeTest_10ConcurrentQueries_ShouldBeFast()
     {
@@ -722,6 +771,64 @@ public class SemanticSearchIntegrationTests
             NullLogger<IndexSemanticActivity>.Instance);
         await semanticActivity.RunAsync(context, input);
     }
+
+    private async Task SeedChunkedDocumentAsync(
+        string tenantId,
+        string memoryUnitId,
+        string content,
+        string caseId,
+        IReadOnlyList<ChunkEmbeddingResult> chunks,
+        SourceType sourceType = SourceType.File,
+        Dictionary<string, MetadataField>? metadata = null)
+    {
+        IndexInput syntacticInput = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: memoryUnitId,
+            content: content,
+            caseId: caseId,
+            sourceType: sourceType,
+            embeddingVector: chunks[0].Vector,
+            embeddingDimensions: TestDimensions)
+            with
+        {
+            Metadata = metadata ?? [],
+        };
+
+        var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        await new IndexSyntacticActivity(_redis.Connection, NullLogger<IndexSyntacticActivity>.Instance)
+            .RunAsync(context, syntacticInput);
+
+        SemanticChunkIndexInput semanticInput = new()
+        {
+            TenantId = tenantId,
+            MemoryUnitId = memoryUnitId,
+            CaseId = caseId,
+            Chunks = chunks,
+            EmbeddingProvider = "google",
+            EmbeddingModel = "gemini-embedding-001",
+            EmbeddingDimensions = TestDimensions,
+            Metadata = metadata ?? [],
+        };
+
+        await new IndexSemanticChunksActivity(_redis.Connection, NullLogger<IndexSemanticChunksActivity>.Instance)
+            .RunAsync(context, semanticInput);
+    }
+
+    private static ChunkEmbeddingResult CreateChunk(
+        int sequence,
+        string text,
+        int startOffset,
+        int endOffset,
+        float[] vector)
+        => new()
+        {
+            Sequence = sequence,
+            Text = text,
+            StartOffset = startOffset,
+            EndOffset = endOffset,
+            EstimatedTokens = Math.Max(1, text.Length / 4),
+            Vector = vector,
+        };
 
     private static IConfiguration CreateFakeEmbeddingConfiguration()
         => new ConfigurationBuilder()

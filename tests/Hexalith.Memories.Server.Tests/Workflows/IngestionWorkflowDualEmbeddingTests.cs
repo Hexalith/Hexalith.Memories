@@ -52,7 +52,7 @@ public class IngestionWorkflowDualEmbeddingTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
-            nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
+            nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
@@ -224,8 +224,30 @@ public class IngestionWorkflowDualEmbeddingTests
         context.CallActivityAsync<ExtractionResult>(
                 nameof(ExtractContentActivity), Arg.Any<ExtractionInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new ExtractionResult("Extracted text", "hash", new DateTimeOffset(TestTimestamp))));
+        context.CallActivityAsync<ChunkEmbeddingBatchResult>(
+                nameof(GenerateChunkEmbeddingsActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+            .Returns(_ => Task.FromResult(new ChunkEmbeddingBatchResult
+            {
+                Chunks =
+                [
+                    new ChunkEmbeddingResult
+                    {
+                        Sequence = 0,
+                        Text = "Extracted text",
+                        StartOffset = 0,
+                        EndOffset = "Extracted text".Length,
+                        EstimatedTokens = 4,
+                        Vector = [0.1f, 0.2f, 0.3f],
+                    },
+                ],
+                Provider = "openai",
+                Model = "text-embedding-3-small",
+                Dimensions = 3,
+            }));
         context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity), Arg.Any<EmbeddingInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(GenerateEmbeddingActivity),
+                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "openai", 3)
             {
                 Model = "text-embedding-3-small",
@@ -252,7 +274,7 @@ public class IngestionWorkflowDualEmbeddingTests
                 nameof(IndexSyntacticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new IndexResult("syntactic", muId, input.TenantId)));
         context.CallActivityAsync<IndexResult>(
-                nameof(IndexSemanticActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())
+                nameof(IndexSemanticChunksActivity), Arg.Any<SemanticChunkIndexInput>(), Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new IndexResult("semantic", muId, input.TenantId)));
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexGraphActivity), Arg.Any<IndexInput>(), Arg.Any<WorkflowTaskOptions>())

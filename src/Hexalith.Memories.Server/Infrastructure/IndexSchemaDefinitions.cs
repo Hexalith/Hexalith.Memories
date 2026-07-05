@@ -147,6 +147,24 @@ internal static class IndexSchemaDefinitions
     public static string BuildSemanticKey(string tenantId, string memoryUnitId)
         => GetSemanticKeyPrefix(ValidateTenantId(tenantId)) + ValidateMemoryUnitId(memoryUnitId);
 
+    /// <summary>Builds a tenant-scoped raw semantic chunk vector hash key.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The base memory-unit identifier.</param>
+    /// <param name="sequence">The zero-based chunk sequence.</param>
+    /// <returns>The full Redis hash key.</returns>
+    public static string BuildSemanticChunkKey(string tenantId, string memoryUnitId, int sequence)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(sequence);
+        return BuildSemanticKey(tenantId, memoryUnitId) + ":" + sequence.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Builds a Redis SCAN pattern for all raw semantic chunk hashes for a base memory unit.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="memoryUnitId">The base memory-unit identifier.</param>
+    /// <returns>The Redis key pattern.</returns>
+    public static string BuildSemanticChunkKeyPattern(string tenantId, string memoryUnitId)
+        => BuildSemanticKey(tenantId, memoryUnitId) + ":*";
+
     /// <summary>Story 9.2: Gets the Redis Vector natural-language semantic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The full index name.</returns>
@@ -238,7 +256,36 @@ internal static class IndexSchemaDefinitions
             return false;
         }
 
-        return TryParseMemoryUnitId(GetSemanticKeyPrefix(tenantId), key, out memoryUnitId);
+        if (!TryParseMemoryUnitId(GetSemanticKeyPrefix(tenantId), key, out memoryUnitId))
+        {
+            return false;
+        }
+
+        if (TrySplitSemanticChunkId(memoryUnitId, out string baseMemoryUnitId, out _))
+        {
+            memoryUnitId = baseMemoryUnitId;
+        }
+
+        return true;
+    }
+
+    /// <summary>Attempts to parse a raw semantic chunk key into base memory-unit identifier and sequence.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to parse.</param>
+    /// <param name="memoryUnitId">The parsed base memory-unit identifier.</param>
+    /// <param name="sequence">The parsed chunk sequence.</param>
+    /// <returns><see langword="true"/> when the key has the raw semantic chunk shape.</returns>
+    public static bool TryParseSemanticChunkKey(string tenantId, RedisKey key, out string memoryUnitId, out int sequence)
+    {
+        sequence = 0;
+        if (!TryParseMemoryUnitId(GetSemanticKeyPrefix(ValidateTenantId(tenantId)), key, out string suffix)
+            || !TrySplitSemanticChunkId(suffix, out memoryUnitId, out sequence))
+        {
+            memoryUnitId = string.Empty;
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Attempts to parse a memory-unit identifier from a tenant-scoped natural-language semantic hash key.</summary>
@@ -691,6 +738,27 @@ internal static class IndexSchemaDefinitions
 
         memoryUnitId = keyText[expectedPrefix.Length..];
         return true;
+    }
+
+    private static bool TrySplitSemanticChunkId(string suffix, out string memoryUnitId, out int sequence)
+    {
+        int separator = suffix.LastIndexOf(':');
+        if (separator <= 0 || separator == suffix.Length - 1)
+        {
+            memoryUnitId = string.Empty;
+            sequence = 0;
+            return false;
+        }
+
+        string sequenceText = suffix[(separator + 1)..];
+        if (!int.TryParse(sequenceText, NumberStyles.None, CultureInfo.InvariantCulture, out sequence) || sequence < 0)
+        {
+            memoryUnitId = string.Empty;
+            return false;
+        }
+
+        memoryUnitId = suffix[..separator];
+        return !string.IsNullOrWhiteSpace(memoryUnitId);
     }
 
     private static Dictionary<string, string> ParseKeyValuePairs(RedisResult raw)

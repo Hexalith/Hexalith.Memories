@@ -7,6 +7,7 @@ using Dapr.Client;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
@@ -600,6 +601,60 @@ public class GraphScopedSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_GraphScopedSemantic_ChunkedMemoryUnit_ShouldExpandChunkKeysAndDeduplicate()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        string caseId = $"case-{Guid.NewGuid():N}";
+        await SeedGraphChainAsync(tenantId, caseId, "mu-start", "mu-neighbor");
+
+        OverrideEmbeddingClient embeddingClient = new();
+        embeddingClient.SetVector("graph chunk probe", CreateVector(1.0f, 0.0f, 0.0f));
+
+        await SeedChunkedSemanticDocumentAsync(
+            tenantId,
+            "mu-start",
+            "graph scoped chunked content",
+            caseId,
+            [
+                CreateChunk(sequence: 0, text: "less similar graph chunk", startOffset: 0, endOffset: 24, vector: CreateVector(0.70f, 0.30f, 0.0f)),
+                CreateChunk(sequence: 1, text: "best graph chunk", startOffset: 24, endOffset: 40, vector: CreateVector(1.0f, 0.0f, 0.0f)),
+            ]);
+        await SeedSemanticDocumentAsync(
+            tenantId,
+            "mu-neighbor",
+            "graph scoped neighbor content",
+            caseId,
+            CreateVector(0.90f, 0.10f, 0.0f),
+            []);
+
+        GraphScopedSearch service = CreateService();
+        SemanticSearchService semanticService = new(
+            _fixture.RedisConnection,
+            embeddingClient,
+            NullLogger<SemanticSearchService>.Instance);
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+
+        SearchResult result = await service.SearchAsync(
+            new SearchQuery
+            {
+                TenantId = tenantId,
+                Query = "graph chunk probe",
+                MaxResults = 10,
+            },
+            "mu-start",
+            depth: 1,
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: (q, keys) => semanticService.SearchAsync(q, config, keys, CancellationToken.None),
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSemanticKey);
+
+        result.TotalCount.ShouldBe(2);
+        result.Results.Select(r => r.MemoryUnitId).ShouldBe(["mu-start", "mu-neighbor"]);
+        result.Results.Count(r => r.MemoryUnitId == "mu-start").ShouldBe(1);
+        result.Results[0].ContentSnippet.ShouldContain("graph scoped chunked content");
+    }
+
+    [Fact]
     public async Task SearchAsync_Enrichment_ShouldIncludeContentAndSourceFields()
     {
         // Arrange
@@ -799,6 +854,64 @@ public class GraphScopedSearchIntegrationTests
         await new IndexSemanticActivity(_fixture.RedisConnection, NullLogger<IndexSemanticActivity>.Instance)
             .RunAsync(context, input);
     }
+
+    private async Task SeedChunkedSemanticDocumentAsync(
+        string tenantId,
+        string memoryUnitId,
+        string content,
+        string caseId,
+        IReadOnlyList<ChunkEmbeddingResult> chunks,
+        Dictionary<string, MetadataField>? metadata = null,
+        SourceType sourceType = SourceType.File)
+    {
+        IndexInput input = IndexInputFactory.Create(
+            tenantId: tenantId,
+            memoryUnitId: memoryUnitId,
+            content: content,
+            caseId: caseId,
+            sourceType: sourceType,
+            embeddingVector: chunks[0].Vector,
+            embeddingDimensions: TestDimensions)
+            with
+        {
+            Metadata = metadata ?? [],
+        };
+
+        var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        await new IndexSyntacticActivity(_fixture.RedisConnection, NullLogger<IndexSyntacticActivity>.Instance)
+            .RunAsync(context, input);
+
+        await new IndexSemanticChunksActivity(_fixture.RedisConnection, NullLogger<IndexSemanticChunksActivity>.Instance)
+            .RunAsync(
+                context,
+                new SemanticChunkIndexInput
+                {
+                    TenantId = tenantId,
+                    MemoryUnitId = memoryUnitId,
+                    CaseId = caseId,
+                    Chunks = chunks,
+                    EmbeddingProvider = "google",
+                    EmbeddingModel = "gemini-embedding-001",
+                    EmbeddingDimensions = TestDimensions,
+                    Metadata = metadata ?? [],
+                });
+    }
+
+    private static ChunkEmbeddingResult CreateChunk(
+        int sequence,
+        string text,
+        int startOffset,
+        int endOffset,
+        float[] vector)
+        => new()
+        {
+            Sequence = sequence,
+            Text = text,
+            StartOffset = startOffset,
+            EndOffset = endOffset,
+            EstimatedTokens = Math.Max(1, text.Length / 4),
+            Vector = vector,
+        };
 
     private static IConfiguration CreateFakeEmbeddingConfiguration()
         => new ConfigurationBuilder()

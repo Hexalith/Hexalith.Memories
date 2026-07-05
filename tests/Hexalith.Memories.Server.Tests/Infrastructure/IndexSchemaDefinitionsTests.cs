@@ -28,6 +28,11 @@ public class IndexSchemaDefinitionsTests
             .ShouldBe("tenant-a:vec:mu-1");
 
     [Fact]
+    public void BuildSemanticChunkKey_ReturnsTenantScopedChunkVectorHashKey()
+        => IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 3)
+            .ShouldBe("tenant-a:vec:mu-1:3");
+
+    [Fact]
     public void BuildNaturalLanguageSemanticKey_ReturnsDisjointTenantScopedVectorHashKey()
         => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1")
             .ShouldBe("tenant-a:vecnl:mu-1");
@@ -158,6 +163,46 @@ public class IndexSchemaDefinitionsTests
 
         parsed.ShouldBeTrue();
         memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseSemanticMemoryUnitId_ChunkKey_ReturnsBaseId()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:mu-1:7",
+            out string memoryUnitId);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+    }
+
+    [Fact]
+    public void TryParseSemanticChunkKey_ChunkKey_ReturnsBaseIdAndSequence()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticChunkKey(
+            "tenant-a",
+            (RedisKey)"tenant-a:vec:mu-1:7",
+            out string memoryUnitId,
+            out int sequence);
+
+        parsed.ShouldBeTrue();
+        memoryUnitId.ShouldBe("mu-1");
+        sequence.ShouldBe(7);
+    }
+
+    [Fact]
+    public void TryParseSemanticChunkKey_NaturalLanguageKey_ReturnsFalse()
+    {
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticChunkKey(
+            "tenant-a",
+            (RedisKey)"tenant-a:vecnl:mu-1:7",
+            out string memoryUnitId,
+            out int sequence);
+
+        parsed.ShouldBeFalse();
+        memoryUnitId.ShouldBe(string.Empty);
+        sequence.ShouldBe(0);
     }
 
     [Fact]

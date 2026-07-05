@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
 using System.Diagnostics;
+using System.Net;
 
 using Dapr.Workflow;
 
@@ -309,7 +310,35 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
     private async Task DeleteVectorAsync(string tenantId, string memoryUnitId, CancellationToken ct)
     {
         IDatabase db = _redis.GetDatabase();
-        await db.KeyDeleteAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)).WaitAsync(ct).ConfigureAwait(false);
+        List<RedisKey> keys = [IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)];
+        IServer? server = GetAnyServer(_redis);
+        if (server is not null)
+        {
+            await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId)).WithCancellation(ct))
+            {
+                if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                    && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        await db.KeyDeleteAsync([.. keys]).WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 
     private async Task DeleteGraphNodeAsync(string tenantId, string memoryUnitId, CancellationToken ct)

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Consistency;
 
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -85,10 +86,11 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, normalizedMemoryUnitId);
         string vectorKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, normalizedMemoryUnitId);
+        string? chunkVectorKey = await FindFirstSemanticChunkKeyAsync(tenantId, normalizedMemoryUnitId, ct).ConfigureAwait(false);
         string naturalLanguageVectorKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, normalizedMemoryUnitId);
 
         Task<HashEntry[]> syntacticTask = redisDb.HashGetAllAsync(syntacticKey);
-        Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(vectorKey);
+        Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(chunkVectorKey ?? vectorKey);
         Task<HashEntry[]> naturalLanguageSemanticTask = redisDb.HashGetAllAsync(naturalLanguageVectorKey);
         Task<(bool Exists, ConsistencyGraphDetail? Detail)> graphTask = ProbeGraphAsync(tenantId, normalizedMemoryUnitId, ct);
 
@@ -112,7 +114,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
             : null;
 
         ConsistencySemanticDetail? semanticDetail = semanticPresent
-            ? ExtractSemanticDetail(semanticEntries, vectorKey)
+            ? ExtractSemanticDetail(semanticEntries, chunkVectorKey ?? vectorKey)
             : null;
 
         ConsistencySemanticDetail? naturalLanguageSemanticDetail = naturalLanguageSemanticPresent
@@ -253,6 +255,40 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         int caseEdges = ParseEdgeCount(record.Values[2]);
 
         return (true, new ConsistencyGraphDetail(outgoing, incoming, caseEdges));
+    }
+
+    private async Task<string?> FindFirstSemanticChunkKeyAsync(string tenantId, string memoryUnitId, CancellationToken ct)
+    {
+        IServer? server = GetAnyServer(_redis);
+        if (server is null)
+        {
+            return null;
+        }
+
+        await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100).WithCancellation(ct))
+        {
+            if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+            {
+                return key.ToString();
+            }
+        }
+
+        return null;
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 
     private static int ParseEdgeCount(object? value)

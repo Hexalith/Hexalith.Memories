@@ -540,7 +540,7 @@ public sealed partial class RedisEmbeddingMigrationStore(
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         IDatabase db = redis.GetDatabase();
-        RedisKey key = await GetSemanticReadKeyAsync(db, tenantId, memoryUnitId, ct).ConfigureAwait(false);
+        RedisKey key = await GetSemanticChunkOrReadKeyAsync(db, tenantId, memoryUnitId, ct).ConfigureAwait(false);
         if (!await db.KeyExistsAsync(key).WaitAsync(ct).ConfigureAwait(false))
         {
             return null;
@@ -1007,6 +1007,21 @@ public sealed partial class RedisEmbeddingMigrationStore(
             .WaitAsync(ct)
             .ConfigureAwait(false);
         return new SemanticMigrationState(NullableString(values[0]), NullableString(values[1]), TryParseInt(values[2]));
+    }
+
+    private async Task<RedisKey> GetSemanticChunkOrReadKeyAsync(IDatabase db, string tenantId, string memoryUnitId, CancellationToken ct)
+    {
+        IServer server = GetAnyServer();
+        await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100).WithCancellation(ct))
+        {
+            if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+            {
+                return key;
+            }
+        }
+
+        return await GetSemanticReadKeyAsync(db, tenantId, memoryUnitId, ct).ConfigureAwait(false);
     }
 
     private static bool IsTargetState(SemanticMigrationState? state, TenantEmbeddingConfig targetConfig)

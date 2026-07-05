@@ -190,6 +190,8 @@ builder.Services.AddSingleton<IOidcTokenProvider>(sp => sp.GetRequiredService<Oi
 
 // Story 6.1: URL and directory ingestion — settings, named HttpClient, and services.
 builder.Services.Configure<IngestionSettings>(builder.Configuration.GetSection("Ingestion"));
+builder.Services.Configure<ContentChunkingOptions>(
+    builder.Configuration.GetSection(ContentChunkingOptions.SectionName));
 builder.Services.Configure<UrlFetcherOptions>(builder.Configuration.GetSection("Ingestion:UrlFetcher"));
 builder.Services.AddHttpClient(UrlContentFetcher.HttpClientName)
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
@@ -314,8 +316,10 @@ builder.Services.AddDaprWorkflow(options =>
 {
     options.RegisterActivity<ExtractContentActivity>();
     options.RegisterActivity<GenerateEmbeddingActivity>();
+    options.RegisterActivity<GenerateChunkEmbeddingsActivity>();
     options.RegisterActivity<IndexSyntacticActivity>();
     options.RegisterActivity<IndexSemanticActivity>();
+    options.RegisterActivity<IndexSemanticChunksActivity>();
     options.RegisterActivity<IndexGraphActivity>();
 
     // Story 9.2 Task 2.6: NL description activity (dual-embedding pipeline, SourceType.Event).

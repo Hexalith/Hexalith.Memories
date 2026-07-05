@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Net;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Infrastructure;
@@ -41,6 +43,7 @@ public sealed class CleanupSemanticActivity : WorkflowActivity<CleanupInput, boo
         ArgumentNullException.ThrowIfNull(input);
 
         string hashKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId);
+        IReadOnlyList<RedisKey> chunkKeys = await FindSemanticChunkKeysAsync(input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
 
         // Story 9.2 Task 4.7: extend compensation to delete the NL semantic hash alongside the raw one.
         // Semantic cleanup is transactionally coupled for dual-embedding events — forking a second
@@ -50,16 +53,55 @@ public sealed class CleanupSemanticActivity : WorkflowActivity<CleanupInput, boo
 
         IDatabase db = _redis.GetDatabase();
         bool deleted = await db.KeyDeleteAsync(hashKey).ConfigureAwait(false);
+        long chunkDeleted = chunkKeys.Count == 0
+            ? 0
+            : await db.KeyDeleteAsync([.. chunkKeys]).ConfigureAwait(false);
         bool nlDeleted = await db.KeyDeleteAsync(nlHashKey).ConfigureAwait(false);
 
         _logger.LogWarning(
-            "Compensation: cleaned up Redis Vector keys {Key} (deleted={Deleted}) and {NlKey} (deleted={NlDeleted}) for {MemoryUnitId}",
+            "Compensation: cleaned up Redis Vector keys {Key} (deleted={Deleted}), {ChunkCount} raw chunks, and {NlKey} (deleted={NlDeleted}) for {MemoryUnitId}",
             hashKey,
             deleted,
+            chunkDeleted,
             nlHashKey,
             nlDeleted,
             input.MemoryUnitId);
 
-        return deleted || nlDeleted;
+        return deleted || chunkDeleted > 0 || nlDeleted;
+    }
+
+    private async Task<IReadOnlyList<RedisKey>> FindSemanticChunkKeysAsync(string tenantId, string memoryUnitId)
+    {
+        IServer? server = GetAnyServer(_redis);
+        if (server is null)
+        {
+            return [];
+        }
+
+        List<RedisKey> keys = [];
+        await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId)))
+        {
+            if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+            {
+                keys.Add(key);
+            }
+        }
+
+        return keys;
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 }

@@ -92,6 +92,7 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.7 dev-story completed (22.7 -> review). Wired axis=nl standalone and explicit hybrid, added query/tenant fusion weights, syntactic RediSearch highlighting, and post-fusion IResultFuser seam. Unit/in-process suites pass; RedisStack runtime and solution build blockers recorded in story.
 # 2026-07-05: Story 22.7 senior developer review completed with automatic fixes (NL adapter unit coverage, stale docs, evidence table, File List hygiene). 22.7 -> done.
 # 2026-07-05: Story 23.9 created (epic-23 -> in-progress, 23.9 -> ready-for-dev) via create-story. EmbeddingClient provider strategy and batch API; must precede 23.1 content chunking per story_execution_order.epic-23.
+# 2026-07-05: Story 23.1 created (23.1 -> ready-for-dev) via create-story. Content chunking and batch embedding; consumes 23.9 provider batch API and closes A12.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -405,7 +406,7 @@ development_status:
 
   # Epic 23: Ingestion Pipeline Scalability & Resilience (SCP 2026-07-04; closes A11,A12,A13,A14,A15,A33,A34,A35,A51)
   epic-23: in-progress
-  23-1-content-chunking-and-batch-embedding: backlog
+  23-1-content-chunking-and-batch-embedding: done
   23-2-claim-check-workflow-payloads: backlog
   23-3-retry-after-aware-429-orchestration: backlog
   23-4-non-url-re-ingestion: backlog

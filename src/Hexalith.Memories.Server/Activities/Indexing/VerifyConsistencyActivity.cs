@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Indexing;
 
+using System.Net;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -55,9 +57,10 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
         string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
         bool syntacticExists = await redisDb.KeyExistsAsync(syntacticKey).ConfigureAwait(false);
 
-        // Check semantic (Redis Vector hash key)
+        // Check semantic (Redis Vector hash key or one-or-more raw chunk keys)
         string semanticKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, input.MemoryUnitId);
-        bool semanticExists = await redisDb.KeyExistsAsync(semanticKey).ConfigureAwait(false);
+        bool semanticExists = await redisDb.KeyExistsAsync(semanticKey).ConfigureAwait(false)
+            || await AnySemanticChunkExistsAsync(input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
 
         // Check natural-language semantic sibling (Redis Vector hash key)
         string naturalLanguageSemanticKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, input.MemoryUnitId);
@@ -110,5 +113,39 @@ public sealed class VerifyConsistencyActivity : WorkflowActivity<ConsistencyInpu
             .ConfigureAwait(false);
 
         return result.Count > 0;
+    }
+
+    private async Task<bool> AnySemanticChunkExistsAsync(string tenantId, string memoryUnitId)
+    {
+        IServer? server = GetAnyServer(_redis);
+        if (server is null)
+        {
+            return false;
+        }
+
+        await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
+        {
+            if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    {
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (server.IsConnected)
+            {
+                return server;
+            }
+        }
+
+        return null;
     }
 }

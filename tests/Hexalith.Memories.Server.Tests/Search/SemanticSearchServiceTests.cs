@@ -299,6 +299,59 @@ public class SemanticSearchServiceTests
     }
 
     [Fact]
+    public void ValidateGraphScopeKeys_WithTenantScopedSemanticChunkKeys_ShouldReturnDistinctKeys()
+    {
+        RedisKey[] keys = SemanticSearchService.ValidateGraphScopeKeys(
+            "tenant-a",
+            [
+                IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 0),
+                IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 1),
+            ]);
+
+        keys.ShouldBe(
+        [
+            IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 0),
+            IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 1),
+        ]);
+    }
+
+    [Fact]
+    public void DeduplicateKnnResults_KeepsBestScoreBeforePagination()
+    {
+        List<(string MemoryUnitId, double Similarity)> results = SemanticSearchService.DeduplicateKnnResults(
+        [
+            ("mu-1", 0.71),
+            ("mu-2", 0.80),
+            ("mu-1", 0.90),
+            ("mu-3", 0.75),
+        ]);
+
+        results.ShouldBe(
+        [
+            ("mu-1", 0.90),
+            ("mu-2", 0.80),
+            ("mu-3", 0.75),
+        ]);
+    }
+
+    [Fact]
+    public void DeduplicateKnnResults_WithChunkHits_KeepsBestChunkScore()
+    {
+        List<(string MemoryUnitId, double Similarity)> results = SemanticSearchService.DeduplicateKnnResults(
+        [
+            ("mu-1", 0.40),
+            ("mu-1", 0.92),
+            ("mu-2", 0.80),
+        ]);
+
+        results.ShouldBe(
+        [
+            ("mu-1", 0.92),
+            ("mu-2", 0.80),
+        ]);
+    }
+
+    [Fact]
     public void ValidateGraphScopeKeys_WithForeignTenantSemanticKey_ShouldThrow()
     {
         Should.Throw<ArgumentException>(() => SemanticSearchService.ValidateGraphScopeKeys(
