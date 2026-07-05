@@ -44,16 +44,19 @@ public sealed class CliErrorMessagesIntegrationTests
         CliGlobalOptions options = provider.GetRequiredService<CliGlobalOptions>();
         RootCommand root = RootCommandFactory.Build(provider, options);
         string endpoint = _fixture.MemoriesClient.BaseAddress!.ToString();
+        string tenantId = $"tenant-error-{Guid.NewGuid():N}";
+        string memoryUnitId = $"memory-unit-{Guid.NewGuid():N}";
 
         System.CommandLine.ParseResult parse = root.Parse(
             new[]
             {
                 "--format", "json",
                 "--endpoint", endpoint,
+                "--token", AspireIngestionPipelineFixture.MintServerBearer(tenantId),
                 "search", "inspect",
-                "--tenant", "nonexistent-tenant",
+                "--tenant", tenantId,
                 "--case", "anything",
-                "--id", "anything",
+                "--id", memoryUnitId,
             });
 
         RootCommandFactory.ApplyGlobalOptions(provider, parse, options);
@@ -69,7 +72,7 @@ public sealed class CliErrorMessagesIntegrationTests
         // The /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId} endpoint intentionally
         // does NOT run TenantStatusGuard (failed units must remain inspectable for tenants in unusual
         // states), so the validation order for a nonexistent tenant resolves to MEMORY_UNIT_NOT_FOUND —
-        // the first miss the endpoint can observe without a tenant-registry lookup. See Program.cs:1543+.
+        // the first miss the endpoint can observe without a tenant-registry lookup.
         code.ShouldBe(
             "MEMORY_UNIT_NOT_FOUND",
             customMessage: $"Expected MEMORY_UNIT_NOT_FOUND but got {code}. Validation order in Program.cs:1543 may have changed — update the pinned code or add a TenantStatusGuard check to the endpoint.");

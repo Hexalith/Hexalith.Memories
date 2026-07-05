@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.IntegrationTests.Cli;
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 using Hexalith.Memories.Client.Rest;
@@ -47,6 +48,9 @@ public sealed class CliTenantListIntegrationTests
             BaseAddress = _fixture.MemoriesClient.BaseAddress,
             Timeout = TimeSpan.FromSeconds(60),
         };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            AspireIngestionPipelineFixture.MintServerBearer());
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
         {
             Endpoint = _fixture.MemoriesClient.BaseAddress,

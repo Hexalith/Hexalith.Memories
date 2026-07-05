@@ -11,6 +11,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
@@ -457,6 +458,9 @@ public sealed class AuditLogStreamIntegrationTests
             BaseAddress = _fixture.MemoriesClient.BaseAddress,
             Timeout = TimeSpan.FromSeconds(60),
         };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            AspireIngestionPipelineFixture.MintServerBearer(tenantId));
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
         {
             Endpoint = _fixture.MemoriesClient.BaseAddress,

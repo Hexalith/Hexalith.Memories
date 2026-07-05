@@ -76,9 +76,9 @@ public class MemoriesAuthHandlerTests
         captured.Headers.Contains("dapr-api-token").ShouldBeFalse();
     }
 
-    // Row 4: token + localhost http → dapr-api-token only; no Bearer.
+    // Row 4: token + localhost http → Bearer is allowed for the direct Memories Server development endpoint.
     [Fact]
-    public async Task SendAsync_TokenAndLocalhostHttpEndpoint_AttachesDaprHeaderOnly()
+    public async Task SendAsync_TokenAndLocalhostHttpEndpoint_AttachesBearerOnly()
     {
         // Arrange
         (MemoriesAuthHandler authHandler, TestDelegatingHandler innerHandler) = BuildPipeline(TokenValue);
@@ -90,9 +90,10 @@ public class MemoriesAuthHandlerTests
 
         // Assert
         HttpRequestMessage captured = innerHandler.Requests.ShouldHaveSingleItem();
-        captured.Headers.Authorization.ShouldBeNull();
-        captured.Headers.Contains("dapr-api-token").ShouldBeTrue();
-        captured.Headers.GetValues("dapr-api-token").ShouldHaveSingleItem().ShouldBe(TokenValue);
+        captured.Headers.Authorization.ShouldNotBeNull();
+        captured.Headers.Authorization!.Scheme.ShouldBe("Bearer");
+        captured.Headers.Authorization.Parameter.ShouldBe(TokenValue);
+        captured.Headers.Contains("dapr-api-token").ShouldBeFalse();
     }
 
     [Fact]

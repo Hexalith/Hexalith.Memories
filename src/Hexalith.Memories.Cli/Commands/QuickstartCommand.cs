@@ -48,6 +48,7 @@ Examples:
     memories quickstart --tenant acme-quickstart
     memories quickstart --dry-run --format json
     memories quickstart --skip-prereq-check --skip-boot-check
+    memories quickstart --tenant-timeout-seconds 120
 """;
 
     private const string BootCommand = "dotnet run --project src/Hexalith.Memories.AppHost";
@@ -103,6 +104,26 @@ Examples:
         {
             Description = "Print every step and the exact action it would perform without mutating any state. Exits 0.",
         };
+        var tenantTimeoutOption = new Option<int?>("--tenant-timeout-seconds")
+        {
+            Description = "Maximum seconds to wait for sample tenant provisioning to become Active (default: 30).",
+            CustomParser = result =>
+            {
+                if (result.Tokens.Count == 0)
+                {
+                    return null;
+                }
+
+                string raw = result.Tokens[0].Value;
+                if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) || seconds <= 0)
+                {
+                    result.AddError("--tenant-timeout-seconds must be a positive integer.");
+                    return null;
+                }
+
+                return seconds;
+            },
+        };
 
         var command = new Command("quickstart", CommandDescription)
         {
@@ -110,6 +131,7 @@ Examples:
             skipBootOption,
             skipPrereqOption,
             dryRunOption,
+            tenantTimeoutOption,
         };
 
         command.SetAction((parseResult, ct) => ExecuteAsync(
@@ -118,7 +140,10 @@ Examples:
                 TenantId: parseResult.GetValue(tenantOption),
                 SkipBootCheck: parseResult.GetValue(skipBootOption),
                 SkipPrereqCheck: parseResult.GetValue(skipPrereqOption),
-                DryRun: parseResult.GetValue(dryRunOption)),
+                DryRun: parseResult.GetValue(dryRunOption),
+                TenantProvisionTimeout: parseResult.GetValue(tenantTimeoutOption) is int tenantTimeoutSeconds
+                    ? TimeSpan.FromSeconds(tenantTimeoutSeconds)
+                    : null),
             ct));
 
         return command;
@@ -404,7 +429,10 @@ Examples:
         try
         {
             QuickstartTenantResult result = await provisioner
-                .EnsureSampleTenantAsync(tenantId, ct)
+                .EnsureSampleTenantAsync(
+                    tenantId,
+                    options.TenantProvisionTimeout ?? QuickstartTenantProvisioner.DefaultProvisionTimeout,
+                    ct)
                 .ConfigureAwait(false);
 
             TimeSpan elapsed = Stopwatch.GetElapsedTime(startTimestamp);
@@ -897,8 +925,10 @@ Examples:
 /// <param name="SkipBootCheck">True when --skip-boot-check was specified.</param>
 /// <param name="SkipPrereqCheck">True when --skip-prereq-check was specified.</param>
 /// <param name="DryRun">True when --dry-run was specified.</param>
+/// <param name="TenantProvisionTimeout">Optional tenant provisioning timeout override.</param>
 internal sealed record QuickstartOptions(
     string? TenantId,
     bool SkipBootCheck,
     bool SkipPrereqCheck,
-    bool DryRun);
+    bool DryRun,
+    TimeSpan? TenantProvisionTimeout = null);

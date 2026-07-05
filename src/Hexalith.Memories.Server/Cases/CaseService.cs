@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Cases;
 
 using System.IO;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 
@@ -857,13 +858,37 @@ internal sealed class CaseService
         cancellationToken.ThrowIfCancellationRequested();
 
         IDatabase db = _redis.GetDatabase();
-        bool semanticExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)).ConfigureAwait(false);
+        bool semanticExists = await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)).ConfigureAwait(false)
+            || await AnySemanticChunkExistsAsync(tenantId, memoryUnitId).ConfigureAwait(false);
         if (!semanticExists)
         {
             return false;
         }
 
         return await MemoryUnitGraphNodeExistsAsync(tenantId, memoryUnitId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> AnySemanticChunkExistsAsync(string tenantId, string memoryUnitId)
+    {
+        foreach (EndPoint endpoint in _redis.GetEndPoints())
+        {
+            IServer server = _redis.GetServer(endpoint);
+            if (!server.IsConnected)
+            {
+                continue;
+            }
+
+            await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
+            {
+                if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                    && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private async Task<bool> MemoryUnitGraphNodeExistsAsync(

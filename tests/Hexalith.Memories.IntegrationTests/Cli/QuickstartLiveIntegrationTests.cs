@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.IntegrationTests.Cli;
 
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
 
 using Hexalith.Memories.Cli;
@@ -50,14 +51,18 @@ public sealed class QuickstartLiveIntegrationTests
         RootCommand root = RootCommandFactory.Build(provider, options);
         string endpoint = _fixture.MemoriesClient.BaseAddress!.ToString();
         string tenantId = $"quickstart-test-{Guid.NewGuid():N}";
+        string token = AspireIngestionPipelineFixture.MintServerBearer(tenantId);
+        int logStartIndex = _fixture.LogEntryCount;
 
         System.CommandLine.ParseResult parse = root.Parse(
             new[]
             {
                 "--format", "json",
                 "--endpoint", endpoint,
+                "--token", token,
                 "quickstart",
                 "--tenant", tenantId,
+                "--tenant-timeout-seconds", AspireIngestionPipelineFixture.DefaultTenantActivationTimeout.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture),
                 "--skip-prereq-check",
                 "--skip-boot-check",
             });
@@ -67,7 +72,9 @@ public sealed class QuickstartLiveIntegrationTests
         int exitCode = await parse.InvokeAsync();
 
         stderr.ToString().ShouldBeEmpty(stdout.ToString());
-        exitCode.ShouldBe(CliExitCodes.Success, $"stdout:{Environment.NewLine}{stdout}{Environment.NewLine}stderr:{Environment.NewLine}{stderr}");
+        exitCode.ShouldBe(
+            CliExitCodes.Success,
+            $"stdout:{Environment.NewLine}{stdout}{Environment.NewLine}stderr:{Environment.NewLine}{stderr}{Environment.NewLine}{FormatRecentLogs(logStartIndex)}");
 
         using JsonDocument document = JsonDocument.Parse(stdout.ToString());
         JsonElement data = document.RootElement.GetProperty("data");
@@ -84,5 +91,20 @@ public sealed class QuickstartLiveIntegrationTests
         steps[3].GetProperty("status").GetString().ShouldBe("ok");
         steps[4].GetProperty("status").GetString().ShouldBe("ok");
         steps[5].GetProperty("status").GetString().ShouldBe("ok");
+    }
+
+    private string FormatRecentLogs(int startIndex)
+    {
+        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> entries = _fixture.GetLogEntriesSince(startIndex);
+        if (entries.Count == 0)
+        {
+            return "Recent captured logs: n/a";
+        }
+
+        IEnumerable<AspireIngestionPipelineFixture.CapturedLogEntry> recent = entries
+            .Skip(Math.Max(0, entries.Count - 40));
+        return "Recent captured logs:" + Environment.NewLine + string.Join(
+            Environment.NewLine,
+            recent.Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
     }
 }

@@ -10,14 +10,12 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
 
 /// <summary>
-/// Delegating handler that attaches authentication headers when a token is configured. HTTPS endpoints use
-/// <c>Authorization: Bearer {token}</c>. Plain-HTTP loopback endpoints use <c>dapr-api-token: {token}</c>.
-/// Plain-HTTP non-loopback endpoints are rejected to avoid sending tokens over insecure transport.
+/// Delegating handler that attaches authentication headers when a token is configured. HTTPS endpoints and
+/// plain-HTTP loopback development endpoints use <c>Authorization: Bearer {token}</c>. Plain-HTTP non-loopback
+/// endpoints are rejected to avoid sending tokens over insecure transport.
 /// </summary>
 public sealed class MemoriesAuthHandler : DelegatingHandler
 {
-    private const string DaprApiTokenHeader = "dapr-api-token";
-
     private readonly IOptionsMonitor<MemoriesClientOptions> _options;
 
     /// <summary>Initializes a new instance of the <see cref="MemoriesAuthHandler"/> class.</summary>
@@ -46,11 +44,6 @@ public sealed class MemoriesAuthHandler : DelegatingHandler
                 {
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 }
-                else if (IsSidecarStyle(target))
-                {
-                    request.Headers.Remove(DaprApiTokenHeader);
-                    request.Headers.Add(DaprApiTokenHeader, token);
-                }
                 else
                 {
                     throw new InvalidOperationException(
@@ -63,16 +56,14 @@ public sealed class MemoriesAuthHandler : DelegatingHandler
     }
 
     /// <summary>
-    /// Decides whether the target looks like an ingress URL (attach <c>Authorization: Bearer</c>).
+    /// Decides whether the target can safely receive <c>Authorization: Bearer</c>.
     /// </summary>
     /// <param name="target">The request target URI.</param>
-    /// <returns><see langword="true"/> for ingress-style.</returns>
+    /// <returns><see langword="true"/> for HTTPS or loopback HTTP development endpoints.</returns>
     internal static bool IsIngressStyle(Uri target)
-        => string.Equals(target.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsSidecarStyle(Uri target)
-        => string.Equals(target.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+        => string.Equals(target.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+        || (string.Equals(target.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
         && (string.Equals(target.Host, "127.0.0.1", StringComparison.Ordinal)
             || string.Equals(target.Host, "localhost", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(target.Host, "::1", StringComparison.Ordinal));
+            || string.Equals(target.Host, "::1", StringComparison.Ordinal)));
 }

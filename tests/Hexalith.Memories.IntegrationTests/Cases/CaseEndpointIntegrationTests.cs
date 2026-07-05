@@ -541,7 +541,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         createAnnotationResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         (MemoryUnit acceptedAnnotation, string instanceId) = await ReadAcceptedAnnotationAsync(createAnnotationResponse.Content);
-        instanceId.ShouldBe(acceptedAnnotation.Id);
+        instanceId.ShouldBe($"annotation-project-{acceptedAnnotation.Id}");
 
         List<MemoryUnit> annotations = await WaitForAnnotationsAsync(tenantId, caseId, targetMuId, expectedCount: 1);
         MemoryUnit stored = annotations.Single();
@@ -669,19 +669,11 @@ public sealed partial class CaseEndpointIntegrationTests
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         // Verify case now has 0 MUs
-        using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
-        getResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        CaseRecord? reloaded = await getResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
-        reloaded.ShouldNotBeNull();
+        CaseRecord reloaded = await WaitForCaseMemoryUnitCountAsync(tenantId, createdCase.Id, expectedCount: 0);
         reloaded.MemoryUnitCount.ShouldBe(0);
 
         // Verify search no longer returns the deleted MU
-        using HttpResponseMessage searchAfterResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&caseId={createdCase.Id}&query={Uri.EscapeDataString(searchToken)}");
-        searchAfterResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        SearchResult? searchAfter = await searchAfterResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
-        searchAfter.ShouldNotBeNull();
+        SearchResult searchAfter = await WaitForSearchWithoutMemoryUnitAsync(tenantId, createdCase.Id, searchToken, muId);
         searchAfter.TotalCount.ShouldBe(0);
         searchAfter.Results.ShouldNotContain(r => r.MemoryUnitId == muId);
     }
@@ -854,6 +846,7 @@ public sealed partial class CaseEndpointIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify case is gone
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
@@ -895,6 +888,7 @@ public sealed partial class CaseEndpointIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await WaitForCaseDeletedAsync(tenantId, createdCase.Id, [muId]);
 
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
@@ -936,6 +930,7 @@ public sealed partial class CaseEndpointIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify case is gone
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
@@ -974,6 +969,7 @@ public sealed partial class CaseEndpointIntegrationTests
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify list no longer returns it
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync(
@@ -999,6 +995,7 @@ public sealed partial class CaseEndpointIntegrationTests
         using HttpResponseMessage deleteResponse1 = await _fixture.MemoriesClient.DeleteAsync(
             $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse1.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Second delete
         using HttpResponseMessage deleteResponse2 = await _fixture.MemoriesClient.DeleteAsync(
@@ -1055,7 +1052,9 @@ public sealed partial class CaseEndpointIntegrationTests
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForContainsEdgeAsync(tenantId, createdCase.Id);
-        return await GetFirstMemoryUnitIdAsync(tenantId, createdCase.Id);
+        string memoryUnitId = await GetFirstMemoryUnitIdAsync(tenantId, createdCase.Id);
+        await WaitForMemoryUnitIndexedAsync(tenantId, memoryUnitId);
+        return memoryUnitId;
     }
 
     private async Task<string> GetCaseIdForMemoryUnitAsync(string tenantId, string memoryUnitId)
@@ -1124,6 +1123,149 @@ public sealed partial class CaseEndpointIntegrationTests
         }
 
         throw new TimeoutException($"Contains edge for case '{caseId}' was not created within the allotted time.");
+    }
+
+    private async Task WaitForMemoryUnitIndexedAsync(string tenantId, string memoryUnitId)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        IDatabase db = _fixture.RedisConnection.GetDatabase();
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            bool syntacticExists = await db.KeyExistsAsync($"{tenantId}:mu:{memoryUnitId}");
+            bool semanticExists = await db.KeyExistsAsync($"{tenantId}:vec:{memoryUnitId}")
+                || await AnySemanticChunkExistsAsync(tenantId, memoryUnitId);
+            if (syntacticExists && semanticExists)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Memory unit '{memoryUnitId}' was not indexed within the allotted time.");
+    }
+
+    private async Task<CaseRecord> WaitForCaseMemoryUnitCountAsync(string tenantId, string caseId, int expectedCount)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        int? lastCount = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+                $"/api/tenants/{tenantId}/cases/{caseId}");
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            CaseRecord? record = await response.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
+            record.ShouldNotBeNull();
+            lastCount = record.MemoryUnitCount;
+            if (record.MemoryUnitCount == expectedCount)
+            {
+                return record;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException(
+            $"Case '{caseId}' memory unit count did not reach {expectedCount}; last count was {lastCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}.");
+    }
+
+    private async Task<SearchResult> WaitForSearchWithoutMemoryUnitAsync(
+        string tenantId,
+        string caseId,
+        string searchToken,
+        string memoryUnitId)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        SearchResult? lastResult = null;
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+                $"/api/search?tenantId={tenantId}&caseId={caseId}&query={Uri.EscapeDataString(searchToken)}");
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
+            result.ShouldNotBeNull();
+            lastResult = result;
+            if (result.TotalCount == 0 && !result.Results.Any(r => r.MemoryUnitId == memoryUnitId))
+            {
+                return result;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException(
+            $"Search results for deleted memory unit '{memoryUnitId}' did not clear; last total was {lastResult?.TotalCount.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}.");
+    }
+
+    private async Task WaitForCaseDeletedAsync(
+        string tenantId,
+        string caseId,
+        IReadOnlyCollection<string>? memoryUnitIds = null)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        IDatabase db = _fixture.RedisConnection.GetDatabase();
+
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            bool caseKeyExists = await db.KeyExistsAsync($"{tenantId}:case:{caseId}");
+            bool membersKeyExists = await db.KeyExistsAsync($"{tenantId}:case:{caseId}:members");
+            long caseGraphCount = await QueryGraphCountAsync(
+                tenantId,
+                "MATCH (c:Case {id: $caseId}) RETURN count(c) AS cnt",
+                new Dictionary<string, object> { ["caseId"] = caseId });
+
+            bool memoryUnitsDeleted = true;
+            if (memoryUnitIds is not null)
+            {
+                foreach (string memoryUnitId in memoryUnitIds)
+                {
+                    bool syntacticExists = await db.KeyExistsAsync($"{tenantId}:mu:{memoryUnitId}");
+                    bool semanticExists = await db.KeyExistsAsync($"{tenantId}:vec:{memoryUnitId}")
+                        || await AnySemanticChunkExistsAsync(tenantId, memoryUnitId);
+                    long memoryUnitGraphCount = await QueryGraphCountAsync(
+                        tenantId,
+                        "MATCH (m:MemoryUnit {id: $muId}) RETURN count(m) AS cnt",
+                        new Dictionary<string, object> { ["muId"] = memoryUnitId });
+                    if (syntacticExists || semanticExists || memoryUnitGraphCount != 0)
+                    {
+                        memoryUnitsDeleted = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!caseKeyExists && !membersKeyExists && caseGraphCount == 0 && memoryUnitsDeleted)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException($"Case '{caseId}' was not deleted within the allotted time.");
+    }
+
+    private async Task<bool> AnySemanticChunkExistsAsync(string tenantId, string memoryUnitId)
+    {
+        foreach (EndPoint endpoint in _fixture.RedisConnection.GetEndPoints())
+        {
+            IServer server = _fixture.RedisConnection.GetServer(endpoint);
+            if (!server.IsConnected)
+            {
+                continue;
+            }
+
+            await foreach (RedisKey key in server.KeysAsync(pattern: $"{tenantId}:vec:{memoryUnitId}:*", pageSize: 100))
+            {
+                _ = key;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static long ReadCount(ResultSet result)

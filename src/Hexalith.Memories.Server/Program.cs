@@ -60,18 +60,27 @@ builder.Services.AddTransient<Microsoft.AspNetCore.Authentication.IClaimsTransfo
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
 // Story 21.2: authoritative case/memory-unit/tenant mutations are accepted by the EventStore
-// gateway (Hexalith.EventStore.Client SDK) before projection fan-out. The base address defaults
-// to Dapr sidecar service invocation for the "eventstore" app so deployments only need
-// configuration when the gateway is reached directly.
-builder.Services.AddEventStoreGatewayClient(options =>
+// gateway (Hexalith.EventStore.Client SDK) before projection fan-out. The fast Aspire integration
+// fixture does not compose the EventStore gateway service, so it opts into the in-memory command
+// store explicitly with Memories:Testing:UseInMemoryCommandStore=true.
+if (builder.Configuration.GetValue("Memories:Testing:UseInMemoryCommandStore", false))
 {
-    string? configuredBaseAddress = builder.Configuration["EventStoreIntegration:CommandGateway:BaseAddress"];
-    string daprHttpPort = Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500";
-    options.BaseAddress = string.IsNullOrWhiteSpace(configuredBaseAddress)
-        ? new Uri($"http://localhost:{daprHttpPort}/v1.0/invoke/eventstore/method/")
-        : new Uri(configuredBaseAddress, UriKind.Absolute);
-});
-builder.Services.AddSingleton<IMemoriesCommandStore, EventStoreMemoriesCommandStore>();
+    builder.Services.AddSingleton<IMemoriesCommandStore, InMemoryMemoriesCommandStore>();
+}
+else
+{
+    // The base address defaults to Dapr sidecar service invocation for the "eventstore" app so
+    // deployments only need configuration when the gateway is reached directly.
+    builder.Services.AddEventStoreGatewayClient(options =>
+    {
+        string? configuredBaseAddress = builder.Configuration["EventStoreIntegration:CommandGateway:BaseAddress"];
+        string daprHttpPort = Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500";
+        options.BaseAddress = string.IsNullOrWhiteSpace(configuredBaseAddress)
+            ? new Uri($"http://localhost:{daprHttpPort}/v1.0/invoke/eventstore/method/")
+            : new Uri(configuredBaseAddress, UriKind.Absolute);
+    });
+    builder.Services.AddSingleton<IMemoriesCommandStore, EventStoreMemoriesCommandStore>();
+}
 builder.Services.AddScoped<ICaseProjectionWorkflowScheduler, DaprCaseProjectionWorkflowScheduler>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
@@ -1133,7 +1142,6 @@ app.MapPut("/api/tenants/{tenantId}/embedding-config",
 // Story 5.1: Tenant provisioning endpoints
 app.MapPost("/api/tenants", async (
     DaprWorkflowClient workflowClient,
-    ITenantEmbeddingConfigProvider embeddingConfigProvider,
     TenantProvisioningInput input,
     ILogger<AccessTelemetryCategory> auditLogger,
     HttpContext httpContext,
@@ -1178,29 +1186,14 @@ app.MapPost("/api/tenants", async (
             "Provide a non-empty display name for the tenant."));
     }
 
-    // Resolve vector dimensions from TenantConfigurationActor or default to 768
-    int resolvedDimensions = EmbeddingProviderDefaults.Google().Dimensions;
-    try
-    {
-        TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(input.TenantId);
-        resolvedDimensions = config.Dimensions;
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Could not resolve embedding config for tenant {TenantId} — defaulting to {Dimensions} dimensions",
-            input.TenantId, resolvedDimensions);
-    }
-
-    if (resolvedDimensions < 1 || resolvedDimensions > 4096)
+    if (input.VectorDimensions < 1 || input.VectorDimensions > 4096)
     {
         scope.MarkValidationError("INVALID_DIMENSIONS");
         return Results.BadRequest(new ErrorResponse(
             "INVALID_DIMENSIONS",
-            $"Vector dimensions {resolvedDimensions} must be between 1 and 4096.",
-            "Check the embedding provider configuration for this tenant."));
+            $"Vector dimensions {input.VectorDimensions} must be between 1 and 4096.",
+            "Provide a tenant provisioning vector dimension between 1 and 4096."));
     }
-
-    input = input with { VectorDimensions = resolvedDimensions };
 
     string instanceId = $"provision-{input.TenantId}-{Guid.NewGuid():N}";
     try

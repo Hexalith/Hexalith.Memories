@@ -17,7 +17,9 @@ using Hexalith.Memories.Contracts.V1;
 public sealed class QuickstartTenantProvisioner
 {
     private static readonly TimeSpan ProvisionPollInterval = TimeSpan.FromSeconds(1);
-    private static readonly TimeSpan ProvisionTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Default quickstart tenant activation wait budget.</summary>
+    public static readonly TimeSpan DefaultProvisionTimeout = TimeSpan.FromSeconds(30);
 
     private readonly MemoriesClient _client;
     private readonly TimeProvider _timeProvider;
@@ -42,8 +44,26 @@ public sealed class QuickstartTenantProvisioner
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The provisioning result.</returns>
     public async Task<QuickstartTenantResult> EnsureSampleTenantAsync(string tenantId, CancellationToken ct)
+        => await EnsureSampleTenantAsync(tenantId, DefaultProvisionTimeout, ct).ConfigureAwait(false);
+
+    /// <summary>
+    /// Ensures a sample tenant with <paramref name="tenantId"/> exists and is active within the
+    /// supplied wait budget.
+    /// </summary>
+    /// <param name="tenantId">The tenant id.</param>
+    /// <param name="provisionTimeout">Maximum time to wait for the tenant to become active.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The provisioning result.</returns>
+    public async Task<QuickstartTenantResult> EnsureSampleTenantAsync(
+        string tenantId,
+        TimeSpan provisionTimeout,
+        CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        if (provisionTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(provisionTimeout), provisionTimeout, "Provision timeout must be positive.");
+        }
 
         TenantInfo? existing = await _client.GetTenantAsync(tenantId, ct).ConfigureAwait(false);
         if (existing is { Status: TenantStatus.Active })
@@ -58,7 +78,7 @@ public sealed class QuickstartTenantProvisioner
         if (existing is { Status: TenantStatus.Provisioning })
         {
             // Prior run may have left the tenant mid-provision; wait for it to land.
-            return await WaitForActiveAsync(tenantId, startedFresh: false, ct).ConfigureAwait(false);
+            return await WaitForActiveAsync(tenantId, startedFresh: false, provisionTimeout, ct).ConfigureAwait(false);
         }
 
         if (existing is { Status: TenantStatus.Deleting })
@@ -84,10 +104,10 @@ public sealed class QuickstartTenantProvisioner
             // Concurrent-rerun race: another run created the tenant between our GetTenantAsync
             // null-check and CreateTenantAsync. Fall through to WaitForActiveAsync as if we had
             // observed the existing tenant.
-            return await WaitForActiveAsync(tenantId, startedFresh: false, ct).ConfigureAwait(false);
+            return await WaitForActiveAsync(tenantId, startedFresh: false, provisionTimeout, ct).ConfigureAwait(false);
         }
 
-        return await WaitForActiveAsync(tenantId, startedFresh: true, ct).ConfigureAwait(false);
+        return await WaitForActiveAsync(tenantId, startedFresh: true, provisionTimeout, ct).ConfigureAwait(false);
     }
 
     private static bool IsAlreadyExists(string? code)
@@ -95,7 +115,11 @@ public sealed class QuickstartTenantProvisioner
             || string.Equals(code, "DUPLICATE_TENANT", StringComparison.Ordinal)
             || string.Equals(code, "CONFLICT", StringComparison.Ordinal);
 
-    private async Task<QuickstartTenantResult> WaitForActiveAsync(string tenantId, bool startedFresh, CancellationToken ct)
+    private async Task<QuickstartTenantResult> WaitForActiveAsync(
+        string tenantId,
+        bool startedFresh,
+        TimeSpan provisionTimeout,
+        CancellationToken ct)
     {
         long startTimestamp = _timeProvider.GetTimestamp();
 
@@ -134,13 +158,13 @@ public sealed class QuickstartTenantProvisioner
                     Diagnostic: $"Tenant '{tenantId}' is being deleted.");
             }
 
-            if (_timeProvider.GetElapsedTime(startTimestamp) >= ProvisionTimeout)
+            if (_timeProvider.GetElapsedTime(startTimestamp) >= provisionTimeout)
             {
                 return new QuickstartTenantResult(
                     Created: false,
                     AlreadyExisted: false,
                     ErrorCode: "TENANT_PROVISIONING",
-                    Diagnostic: $"Tenant '{tenantId}' did not become Active within {ProvisionTimeout.TotalSeconds:F0}s.");
+                    Diagnostic: $"Tenant '{tenantId}' did not become Active within {provisionTimeout.TotalSeconds:F0}s.");
             }
 
             try

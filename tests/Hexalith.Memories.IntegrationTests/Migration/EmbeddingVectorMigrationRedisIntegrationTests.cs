@@ -36,14 +36,14 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
     public EmbeddingVectorMigrationRedisIntegrationTests(RedisStackFixture redis) => _redis = redis;
 
     [Fact]
-    public async Task LiveMigration_768To1024_CutsOverAliasesRewritesStagingHashesCompletesMarkerAndKeepsTenantBIsolated()
+    public async Task LiveMigration_768ToOllama_CutsOverAliasesRewritesStagingHashesCompletesMarkerAndKeepsTenantBIsolated()
     {
         string tenantA = $"tenant-mig-a-{Guid.NewGuid():N}";
         string tenantB = $"tenant-mig-b-{Guid.NewGuid():N}";
-        const string ownerId = "owner-live-1024";
+        const string ownerId = "owner-live-ollama";
         const string memoryUnitId = "mu-live";
         TenantEmbeddingConfig previous = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama() with { Dimensions = 1024, ReindexRequired = false };
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
         IDatabase db = _redis.Connection.GetDatabase();
         await CleanupTenantAsync(tenantA, ownerId);
         await CleanupTenantAsync(tenantB, ownerId);
@@ -59,7 +59,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             RedisEmbeddingMigrationStore store = CreateStore(actor);
             IEmbeddingMigrationVectorGenerator generator = Substitute.For<IEmbeddingMigrationVectorGenerator>();
             generator.GenerateAsync(Arg.Any<string>(), tenantA, Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
-                .Returns(_ => Task.FromResult(CreateVector(1024, 0.25f)));
+                .Returns(_ => Task.FromResult(CreateVector(target.Dimensions, 0.25f)));
             EmbeddingVectorMigrationService service = new(store, generator);
 
             EmbeddingMigrationResult result = await service.RunAsync(
@@ -77,8 +77,8 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
                 CancellationToken.None);
 
             result.ExitCode.ShouldBe(EmbeddingMigrationExitCodes.Success);
-            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantA), 1024);
-            AssertIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(tenantA), 1024);
+            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantA), target.Dimensions);
+            AssertIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(tenantA), target.Dimensions);
             AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticIndexName(tenantA), 768);
             AssertIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantA), 768);
             AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantB), 768);
@@ -89,14 +89,14 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             Dictionary<string, string> raw = await ReadHashAsync(db, IndexSchemaDefinitions.BuildSemanticStagingKey(tenantA, ownerId, memoryUnitId));
             raw["embeddingProvider"].ShouldBe(target.Provider);
             raw["embeddingModel"].ShouldBe(target.Model);
-            raw["embeddingDimensions"].ShouldBe("1024");
+            raw["embeddingDimensions"].ShouldBe(target.Dimensions.ToString(System.Globalization.CultureInfo.InvariantCulture));
             raw["memoryUnitId"].ShouldBe(memoryUnitId);
             raw["caseId"].ShouldBe("case-live");
 
             Dictionary<string, string> nl = await ReadHashAsync(db, IndexSchemaDefinitions.BuildNaturalLanguageSemanticStagingKey(tenantA, ownerId, memoryUnitId));
             nl["embeddingProvider"].ShouldBe(target.Provider);
             nl["embeddingModel"].ShouldBe(target.Model);
-            nl["embeddingDimensions"].ShouldBe("1024");
+            nl["embeddingDimensions"].ShouldBe(target.Dimensions.ToString(System.Globalization.CultureInfo.InvariantCulture));
             nl["memoryUnitId"].ShouldBe(memoryUnitId);
             nl["caseId"].ShouldBe("case-live");
             nl["naturalLanguageDescription"].ShouldBe("Customer reported a delayed shipment.");
@@ -107,7 +107,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             Dictionary<string, string> marker = await ReadHashAsync(db, ActiveMarkerKey(tenantA));
             marker["status"].ShouldBe(MigrationMarkerStatus.Completed);
             marker["ownerId"].ShouldBe(ownerId);
-            marker["targetDimensions"].ShouldBe("1024");
+            marker["targetDimensions"].ShouldBe(target.Dimensions.ToString(System.Globalization.CultureInfo.InvariantCulture));
             marker["previousRawTarget"].ShouldBe(IndexSchemaDefinitions.GetSemanticIndexName(tenantA));
             marker["previousNaturalLanguageTarget"].ShouldBe(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantA));
             (await db.KeyExistsAsync(LockKey(tenantA))).ShouldBeFalse();
@@ -115,7 +115,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(ActiveMarkerKey(tenantB))).ShouldBeFalse();
             (await AnyKeyWithPrefixAsync(IndexSchemaDefinitions.GetSemanticStagingKeyPrefix(tenantB, ownerId))).ShouldBeFalse();
             (await AnyKeyWithPrefixAsync(IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingKeyPrefix(tenantB, ownerId))).ShouldBeFalse();
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 1024), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
         }
         finally
         {
@@ -130,7 +130,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
         string tenantId = $"tenant-mig-rb-missing-{Guid.NewGuid():N}";
         const string ownerId = "owner-rollback-missing";
         TenantEmbeddingConfig previous = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama() with { Dimensions = 1024, ReindexRequired = false };
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
         IDatabase db = _redis.Connection.GetDatabase();
         await CleanupTenantAsync(tenantId, ownerId);
 
@@ -192,7 +192,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
         const string ownerId = "owner-abort-pre";
         const string memoryUnitId = "mu-abort-pre";
         TenantEmbeddingConfig previous = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama() with { Dimensions = 1024, ReindexRequired = false };
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
         IDatabase db = _redis.Connection.GetDatabase();
         await CleanupTenantAsync(tenantId, ownerId);
 
@@ -215,12 +215,12 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             await store.WriteRawSemanticAsync(
                 tenantId,
                 target,
-                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(1024, 0.5f)),
+                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(target.Dimensions, 0.5f)),
                 CancellationToken.None);
             await store.WriteNaturalLanguageSemanticAsync(
                 tenantId,
                 target,
-                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(1024, 0.6f)),
+                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(target.Dimensions, 0.6f)),
                 CancellationToken.None);
             await store.AbortMigrationAsync(tenantId, target, lease, CancellationToken.None);
 
@@ -248,7 +248,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
         const string ownerId = "owner-abort-post";
         const string memoryUnitId = "mu-abort-post";
         TenantEmbeddingConfig previous = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama() with { Dimensions = 1024, ReindexRequired = false };
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
         IDatabase db = _redis.Connection.GetDatabase();
         await CleanupTenantAsync(tenantId, ownerId);
 
@@ -271,16 +271,16 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             await store.WriteRawSemanticAsync(
                 tenantId,
                 target,
-                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(1024, 0.5f)),
+                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(target.Dimensions, 0.5f)),
                 CancellationToken.None);
             await store.WriteNaturalLanguageSemanticAsync(
                 tenantId,
                 target,
-                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(1024, 0.6f)),
+                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(target.Dimensions, 0.6f)),
                 CancellationToken.None);
             await store.CutoverStagingSemanticIndexesAsync(tenantId, previous, target, lease, CancellationToken.None);
 
-            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), 1024);
+            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), target.Dimensions);
             await store.AbortMigrationAsync(tenantId, target, lease, CancellationToken.None);
 
             AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), 768);
@@ -292,7 +292,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(LockKey(tenantId))).ShouldBeFalse();
             Dictionary<string, string> marker = await ReadHashAsync(db, ActiveMarkerKey(tenantId));
             marker["status"].ShouldBe(MigrationMarkerStatus.Aborted);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 1024), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
             await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 768), forceReindex: false);
         }
         finally
@@ -308,7 +308,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
         const string ownerId = "owner-rollback-post";
         const string memoryUnitId = "mu-rollback-post";
         TenantEmbeddingConfig previous = EmbeddingProviderDefaults.Google();
-        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama() with { Dimensions = 1024, ReindexRequired = false };
+        TenantEmbeddingConfig target = EmbeddingProviderDefaults.Ollama();
         IDatabase db = _redis.Connection.GetDatabase();
         await CleanupTenantAsync(tenantId, ownerId);
 
@@ -331,17 +331,17 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             await store.WriteRawSemanticAsync(
                 tenantId,
                 target,
-                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(1024, 0.5f)),
+                new RawSemanticMigrationWrite(memoryUnitId, "case-live", "subject-live", CreateVector(target.Dimensions, 0.5f)),
                 CancellationToken.None);
             await store.WriteNaturalLanguageSemanticAsync(
                 tenantId,
                 target,
-                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(1024, 0.6f)),
+                new NaturalLanguageSemanticMigrationWrite(memoryUnitId, "case-live", "Description", "ai", "0.9", "model", CreateVector(target.Dimensions, 0.6f)),
                 CancellationToken.None);
             await store.CutoverStagingSemanticIndexesAsync(tenantId, previous, target, lease, CancellationToken.None);
 
-            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), 1024);
-            AssertIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(tenantId), 1024);
+            AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), target.Dimensions);
+            AssertIndexDimensions(db, IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(tenantId), target.Dimensions);
             await store.RollbackMigrationAsync(tenantId, target, lease, CancellationToken.None);
 
             AssertIndexDimensions(db, IndexSchemaDefinitions.GetSemanticActiveAliasName(tenantId), 768);
@@ -349,7 +349,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(LockKey(tenantId))).ShouldBeFalse();
             Dictionary<string, string> marker = await ReadHashAsync(db, ActiveMarkerKey(tenantId));
             marker["status"].ShouldBe(MigrationMarkerStatus.RolledBack);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 1024), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
             await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 768), forceReindex: false);
         }
         finally

@@ -38,6 +38,42 @@ public class MemoriesClientTests
         result[0].DisplayName.ShouldBe("Tenant One");
     }
 
+    [Fact]
+    public async Task ListTenantsAsync_PaginatedResponse_FollowsHasMoreCursor()
+    {
+        // Arrange
+        TenantSummary first = CreateSummary("tenant-1", "Tenant One");
+        TenantSummary second = CreateSummary("tenant-2", "Tenant Two");
+        var handler = new TestDelegatingHandler((request, _) =>
+        {
+            int offset = request.RequestUri?.Query.Contains("offset=1", StringComparison.Ordinal) == true ? 1 : 0;
+            TenantSummary[] payload = offset == 0 ? [first] : [second];
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    JsonSerializer.Serialize(payload, MemoriesJsonContext.Options),
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+            response.Headers.Add("X-Hexalith-Offset", offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            response.Headers.Add("X-Hexalith-Limit", "1");
+            response.Headers.Add("X-Hexalith-Has-More", offset == 0 ? "true" : "false");
+            return Task.FromResult(response);
+        });
+        var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
+        IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
+        var client = new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance);
+
+        // Act
+        IReadOnlyList<TenantSummary> result = await client.ListTenantsAsync(CancellationToken.None);
+
+        // Assert
+        result.Select(static tenant => tenant.Id).ShouldBe(new[] { "tenant-1", "tenant-2" });
+        handler.Requests.Count.ShouldBe(2);
+        handler.Requests[0].RequestUri!.Query.ShouldContain("offset=0");
+        handler.Requests[1].RequestUri!.Query.ShouldContain("offset=1");
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden)]

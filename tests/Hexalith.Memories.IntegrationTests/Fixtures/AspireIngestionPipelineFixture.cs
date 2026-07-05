@@ -58,6 +58,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _aspNetCoreEnvironmentScope;
     private EnvVarScope? _dotNetEnvironmentScope;
     private EnvVarScope? _fakeEmbeddingScope;
+    private EnvVarScope? _inMemoryCommandStoreScope;
     private EnvVarScope? _allowPrivateHostsScope;
     private EnvVarScope? _daprAppIdScope;
     private EnvVarScope? _daprConfigPathScope;
@@ -385,6 +386,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _fakeEmbeddingScope = EnvVarScope.Set(
                 "Memories__Testing__UseFakeEmbedding",
                 _providerMode == EmbeddingProviderTestMode.GoogleFake ? "true" : "false");
+            _inMemoryCommandStoreScope = EnvVarScope.Set("Memories__Testing__UseInMemoryCommandStore", "true");
             _allowPrivateHostsScope = EnvVarScope.Set("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
             _daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", _daprAppId);
             _redisVolumeNameScope = EnvVarScope.Set("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
@@ -425,6 +427,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _daprConfigPathScope = null;
         _allowPrivateHostsScope?.Dispose();
         _allowPrivateHostsScope = null;
+        _inMemoryCommandStoreScope?.Dispose();
+        _inMemoryCommandStoreScope = null;
         _fakeEmbeddingScope?.Dispose();
         _fakeEmbeddingScope = null;
         _dotNetEnvironmentScope?.Dispose();
@@ -462,6 +466,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         TimeSpan? activationTimeout = null,
         CancellationToken cancellationToken = default)
     {
+        int logStartIndex = _logProvider.Count;
         string id = tenantId ?? $"tenant-it-{Guid.NewGuid():N}";
         string name = displayName ?? $"Tenant {id}";
 
@@ -486,7 +491,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 $"Unexpected POST /api/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
         }
 
-        await WaitForTenantActiveAsync(id, activationTimeout ?? DefaultTenantActivationTimeout, cancellationToken).ConfigureAwait(false);
+        await WaitForTenantActiveAsync(
+            id,
+            activationTimeout ?? DefaultTenantActivationTimeout,
+            logStartIndex,
+            cancellationToken).ConfigureAwait(false);
         return id;
     }
 
@@ -543,32 +552,72 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string tenantId,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
+        => await WaitForTenantActiveAsync(
+            tenantId,
+            timeout,
+            _logProvider.Count,
+            cancellationToken).ConfigureAwait(false);
+
+    private async Task WaitForTenantActiveAsync(
+        string tenantId,
+        TimeSpan? timeout,
+        int logStartIndex,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
         TimeSpan budget = timeout ?? DefaultTenantActivationTimeout;
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(budget);
+        HttpStatusCode? lastStatusCode = null;
+        TenantStatus? lastTenantStatus = null;
+        Exception? lastException = null;
+
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using HttpResponseMessage tenantResponse = await MemoriesClient.GetAsync(
-                $"/api/tenants/{tenantId}",
-                cancellationToken).ConfigureAwait(false);
-            if (tenantResponse.StatusCode == HttpStatusCode.OK)
+            try
             {
-                TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(
-                    MemoriesJsonContext.Options,
+                using HttpResponseMessage tenantResponse = await MemoriesClient.GetAsync(
+                    $"/api/tenants/{tenantId}",
                     cancellationToken).ConfigureAwait(false);
-                if (tenant?.Status == TenantStatus.Active)
+                lastStatusCode = tenantResponse.StatusCode;
+                if (tenantResponse.StatusCode == HttpStatusCode.OK)
                 {
-                    return;
+                    TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(
+                        MemoriesJsonContext.Options,
+                        cancellationToken).ConfigureAwait(false);
+                    lastTenantStatus = tenant?.Status;
+                    if (tenant?.Status == TenantStatus.Active)
+                    {
+                        return;
+                    }
+
+                    if (tenant?.Status is TenantStatus.Failed or TenantStatus.CompensationFailed)
+                    {
+                        throw new InvalidOperationException(
+                            $"Tenant '{tenantId}' entered terminal provisioning state {tenant.Status} before becoming Active."
+                            + $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
+                    }
                 }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException($"Tenant '{tenantId}' did not reach Active state within {budget}.");
+        throw new TimeoutException(
+            $"Tenant '{tenantId}' did not reach Active state within {budget}. " +
+            $"Last status: {lastStatusCode?.ToString() ?? "n/a"}. " +
+            $"Last tenant status: {lastTenantStatus?.ToString() ?? "n/a"}. " +
+            $"Last error: {FormatException(lastException)}." +
+            $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
     }
 
     /// <summary>Stops the FalkorDB container hosted by the Aspire topology.</summary>

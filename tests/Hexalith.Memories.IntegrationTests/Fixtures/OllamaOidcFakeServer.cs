@@ -215,31 +215,62 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
         {
             if (!doc.RootElement.TryGetProperty("model", out JsonElement modelElement) ||
                 !doc.RootElement.TryGetProperty("input", out JsonElement inputElement) ||
-                modelElement.ValueKind != JsonValueKind.String ||
-                inputElement.ValueKind != JsonValueKind.String)
+                modelElement.ValueKind != JsonValueKind.String)
             {
                 return ScriptedHttpResponse.Text(
-                    "Ollama embed request requires string model and input properties.",
+                    "Ollama embed request requires a string model property and a string or string-array input property.",
                     HttpStatusCode.BadRequest);
             }
 
             string model = modelElement.GetString()!;
-            string input = inputElement.GetString()!;
-            if (!string.Equals(model, DefaultModel, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(input))
+            string[] inputs = ReadInputs(inputElement);
+            if (!string.Equals(model, DefaultModel, StringComparison.Ordinal) ||
+                inputs.Length == 0 ||
+                inputs.Any(string.IsNullOrWhiteSpace))
             {
                 return ScriptedHttpResponse.Text("Ollama embed request has invalid model or input.", HttpStatusCode.BadRequest);
             }
 
-            return BuildEmbedResponse(model, input, request.Method, request.Path.Value);
+            return BuildEmbedResponse(model, inputs, request.Method, request.Path.Value);
         }
     }
 
-    private ScriptedHttpResponse BuildEmbedResponse(string model, string input, string method, string? path)
+    private static string[] ReadInputs(JsonElement inputElement)
     {
-        float[] vector = CreateDeterministicVector(model, input, OllamaDimensions);
-        string values = string.Join(
-            ",",
-            vector.Select(value => value.ToString("R", CultureInfo.InvariantCulture)));
+        if (inputElement.ValueKind == JsonValueKind.String)
+        {
+            return [inputElement.GetString()!];
+        }
+
+        if (inputElement.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        List<string> inputs = [];
+        foreach (JsonElement item in inputElement.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                return [];
+            }
+
+            inputs.Add(item.GetString()!);
+        }
+
+        return [.. inputs];
+    }
+
+    private ScriptedHttpResponse BuildEmbedResponse(string model, IReadOnlyList<string> inputs, string method, string? path)
+    {
+        string[] embeddings = [.. inputs.Select(input =>
+        {
+            float[] vector = CreateDeterministicVector(model, input, OllamaDimensions);
+            string values = string.Join(
+                ",",
+                vector.Select(value => value.ToString("R", CultureInfo.InvariantCulture)));
+            return $"[{values}]";
+        })];
 
         AddEvidence(new FakeHttpRequestEvidence(
             method,
@@ -248,7 +279,7 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
             HasBearerToken: true));
         _ = Interlocked.Increment(ref _embedRequestCount);
 
-        return Json($$"""{"model":"{{DefaultModel}}","embeddings":[[{{values}}]]}""");
+        return Json($$"""{"model":"{{DefaultModel}}","embeddings":[{{string.Join(",", embeddings)}}]}""");
     }
 
     private static bool TryReadSingle(IFormCollection form, string key, out string? value)

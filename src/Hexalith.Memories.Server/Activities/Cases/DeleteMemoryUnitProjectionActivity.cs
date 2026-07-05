@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Cases;
 
+using System.Net;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
@@ -37,14 +39,38 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
     private async Task DeleteOneAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, string memoryUnitId)
     {
         string muKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
-        string vecKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId);
+        RedisKey[] semanticKeys = await FindSemanticKeysAsync(tenantId, memoryUnitId).ConfigureAwait(false);
         string nlVecKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
         (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
 
         await Task.WhenAll(
-            db.KeyDeleteAsync(vecKey),
+            db.KeyDeleteAsync(semanticKeys),
             db.KeyDeleteAsync(nlVecKey),
             falkor.QueryAsync(tenantId, graphQuery, graphParams)).ConfigureAwait(false);
         await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
+    }
+
+    private async Task<RedisKey[]> FindSemanticKeysAsync(string tenantId, string memoryUnitId)
+    {
+        List<RedisKey> keys = [IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)];
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (!server.IsConnected)
+            {
+                continue;
+            }
+
+            await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
+            {
+                if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                    && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        return [.. keys];
     }
 }

@@ -61,6 +61,34 @@ public sealed class QuickstartTenantProvisionerTests
     }
 
     [Fact]
+    public async Task EnsureSampleTenant_CustomTimeout_UsesProvidedBudget()
+    {
+        var client = new StubTenantClient();
+        client.ExistingTenant = null;
+        client.BecomeActiveAfterCalls = int.MaxValue;
+
+        var clock = new FakeTimeProvider();
+        var provisioner = new QuickstartTenantProvisioner(client, clock);
+
+        Task<QuickstartTenantResult> task = provisioner.EnsureSampleTenantAsync(
+            "acme",
+            TimeSpan.FromSeconds(3),
+            CancellationToken.None);
+
+        for (int i = 0; i < 5; i++)
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            await Task.Yield();
+        }
+
+        QuickstartTenantResult result = await task;
+
+        result.Created.ShouldBeFalse();
+        result.ErrorCode.ShouldBe("TENANT_PROVISIONING");
+        result.Diagnostic.ShouldContain("3s");
+    }
+
+    [Fact]
     public async Task EnsureSampleTenant_RemoteException_BubblesOut()
     {
         var client = new StubTenantClient();

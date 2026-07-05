@@ -360,25 +360,24 @@ public class GraphScopedSearchIntegrationTests
     [Fact]
     public async Task SearchAsync_GraphScopedInnerSearch_ShouldApplyOffsetAfterFiltering()
     {
-        // Arrange — graph scope contains A, B, C; global ranked results begin with an out-of-graph hit
+        // Arrange — graph scope contains A, B, C; the scoped inner search returns only graph-approved hits.
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         string caseId = $"case-{Guid.NewGuid():N}";
         await SeedGraphChainAsync(tenantId, caseId, "mu-A", "mu-B", "mu-C");
 
         GraphScopedSearch service = CreateService();
 
-        List<ScoredResult> globalResults =
+        List<ScoredResult> scopedResults =
         [
-            CreateScoredResult("mu-out-1", 0.99, "syntactic"),
             CreateScoredResult("mu-A", 0.95, "syntactic"),
             CreateScoredResult("mu-B", 0.90, "syntactic"),
             CreateScoredResult("mu-C", 0.85, "syntactic"),
         ];
 
-        Task<SearchResult> InnerSearch(SearchQuery q) => Task.FromResult(new SearchResult
+        Task<SearchResult> InnerSearch(SearchQuery q, IReadOnlyCollection<RedisKey> _) => Task.FromResult(new SearchResult
         {
-            Results = globalResults.Skip(q.Offset).Take(q.MaxResults).ToList(),
-            TotalCount = globalResults.Count,
+            Results = scopedResults.Take(q.MaxResults).ToList(),
+            TotalCount = scopedResults.Count,
             HasIndexedMemoryUnits = true,
             Query = q.Query,
         });
@@ -388,7 +387,10 @@ public class GraphScopedSearchIntegrationTests
             new SearchQuery { TenantId = tenantId, Query = "graph scoped", MaxResults = 1, Offset = 1 },
             "mu-A",
             depth: 2,
-            InnerSearch);
+            innerSearch: null,
+            CancellationToken.None,
+            scopedInnerSearch: InnerSearch,
+            graphScopeKeyBuilder: IndexSchemaDefinitions.BuildSyntacticKey);
 
         // Assert
         result.TotalCount.ShouldBe(3);

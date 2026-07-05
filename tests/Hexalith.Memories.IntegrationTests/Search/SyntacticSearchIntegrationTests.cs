@@ -11,6 +11,8 @@ using Hexalith.Memories.TestHelpers.Factories;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NRedisStack.RedisStackCommands;
+
 using NSubstitute;
 
 using Shouldly;
@@ -342,9 +344,10 @@ public class SyntacticSearchIntegrationTests
     [Fact]
     public async Task SearchAsync_BroadMatch_ShouldRespectMaxResultsCap()
     {
-        // Arrange — seed many docs with a common word
+        // Arrange — seed more than the direct service candidate window with a common word.
         string tenantId = $"tenant-{Guid.NewGuid():N}";
-        for (int i = 0; i < 120; i++)
+        int documentCount = SearchPaginationOptions.MaxCandidateWindow + 20;
+        for (int i = 0; i < documentCount; i++)
         {
             await SeedDocumentAsync(tenantId, $"mu-{i:D3}", $"common word appears in document {i}");
         }
@@ -356,12 +359,12 @@ public class SyntacticSearchIntegrationTests
         {
             TenantId = tenantId,
             Query = "common word document",
-            MaxResults = 500,
+            MaxResults = SearchPaginationOptions.MaxCandidateWindow + 50,
         });
 
         // Assert
-        result.Results.Count.ShouldBe(100);
-        result.TotalCount.ShouldBeGreaterThanOrEqualTo(100);
+        result.Results.Count.ShouldBe(SearchPaginationOptions.MaxCandidateWindow);
+        result.TotalCount.ShouldBe(documentCount);
         result.HasIndexedMemoryUnits.ShouldBeTrue();
     }
 
@@ -370,7 +373,8 @@ public class SyntacticSearchIntegrationTests
     {
         // Arrange
         string tenantId = $"tenant-{Guid.NewGuid():N}";
-        for (int i = 0; i < 120; i++)
+        int documentCount = SearchPaginationOptions.MaxCandidateWindow + 20;
+        for (int i = 0; i < documentCount; i++)
         {
             await SeedDocumentAsync(tenantId, $"mu-{i:D3}", $"common word appears in document {i}");
         }
@@ -382,7 +386,7 @@ public class SyntacticSearchIntegrationTests
         {
             TenantId = tenantId,
             Query = "common word document",
-            MaxResults = 500,
+            MaxResults = SearchPaginationOptions.MaxCandidateWindow + 50,
             Offset = -50,
         });
 
@@ -390,12 +394,12 @@ public class SyntacticSearchIntegrationTests
         {
             TenantId = tenantId,
             Query = "common word document",
-            MaxResults = 100,
+            MaxResults = SearchPaginationOptions.MaxCandidateWindow,
             Offset = 0,
         });
 
         // Assert
-        clamped.Results.Count.ShouldBe(100);
+        clamped.Results.Count.ShouldBe(SearchPaginationOptions.MaxCandidateWindow);
         clamped.TotalCount.ShouldBe(baseline.TotalCount);
         clamped.HasIndexedMemoryUnits.ShouldBeTrue();
         clamped.Results.Select(r => r.MemoryUnitId).ToArray()
@@ -538,6 +542,24 @@ public class SyntacticSearchIntegrationTests
             NullLogger<IndexSyntacticActivity>.Instance);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
+        ProvisionSyntacticIndex(_redis.Connection.GetDatabase(), tenantId);
         await activity.RunAsync(context, input);
+    }
+
+    private static void ProvisionSyntacticIndex(IDatabase db, string tenantId)
+        => TryCreateIndex(() => db.FT().Create(
+            IndexSchemaDefinitions.GetSyntacticIndexName(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticParams(tenantId),
+            IndexSchemaDefinitions.CreateSyntacticSchema()));
+
+    private static void TryCreateIndex(Action create)
+    {
+        try
+        {
+            create();
+        }
+        catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase))
+        {
+        }
     }
 }

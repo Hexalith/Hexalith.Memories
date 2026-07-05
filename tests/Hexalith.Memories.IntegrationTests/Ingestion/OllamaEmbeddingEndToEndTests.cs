@@ -6,12 +6,14 @@
 namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
 
 using Shouldly;
@@ -93,7 +95,6 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
             displayName: $"Ollama {unique}",
             vectorDimensions: OllamaOidcFakeServer.OllamaDimensions);
         await ConfigureOllamaTenantAsync(fixture, fakeServer, tenantId);
-        await ResetSemanticIndexesAsync(fixture, tenantId);
         await CreateCaseAsync(fixture, tenantId, caseId);
 
         IngestionInput input = new()
@@ -203,24 +204,6 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 
-    private static async Task ResetSemanticIndexesAsync(AspireIngestionPipelineFixture fixture, string tenantId)
-    {
-        IDatabase db = fixture.RedisConnection.GetDatabase();
-        await DropIndexIfExistsAsync(db, $"{tenantId}:memories:vec");
-        await DropIndexIfExistsAsync(db, $"{tenantId}:memories:vec:nl");
-    }
-
-    private static async Task DropIndexIfExistsAsync(IDatabase db, string indexName)
-    {
-        try
-        {
-            _ = await db.ExecuteAsync("FT.DROPINDEX", indexName);
-        }
-        catch (RedisServerException ex) when (ex.Message.Contains("Unknown Index name", StringComparison.OrdinalIgnoreCase))
-        {
-        }
-    }
-
     private async Task<(string SemanticKey, string MemoryUnitId)> WaitForSemanticHashAsync(
         OllamaOidcFakeServer fakeServer,
         string tenantId,
@@ -241,7 +224,11 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         {
             try
             {
-                using HttpResponseMessage workflowResponse = await fixture.MemoriesClient.GetAsync($"/api/ingest/{instanceId}", ct).ConfigureAwait(false);
+                using var workflowRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/ingest/{instanceId}");
+                workflowRequest.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+                using HttpResponseMessage workflowResponse = await fixture.MemoriesClient.SendAsync(workflowRequest, ct).ConfigureAwait(false);
                 if (workflowResponse.StatusCode == HttpStatusCode.OK)
                 {
                     lastWorkflowPayload = await workflowResponse.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -249,11 +236,18 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
                     string? targetedMemoryUnitId = TryExtractMemoryUnitId(lastWorkflowPayload) ?? instanceId;
                     if (!string.IsNullOrEmpty(targetedMemoryUnitId))
                     {
-                        string targetedKey = $"{tenantId}:vec:{targetedMemoryUnitId}";
+                        string targetedKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, targetedMemoryUnitId);
                         string? matchedMemoryUnitId = await TryMatchSemanticHashAsync(db, tenantId, targetedKey, caseId, sourceUri).ConfigureAwait(false);
                         if (!string.IsNullOrEmpty(matchedMemoryUnitId))
                         {
                             return (targetedKey, matchedMemoryUnitId);
+                        }
+
+                        string targetedChunkKey = IndexSchemaDefinitions.BuildSemanticChunkKey(tenantId, targetedMemoryUnitId, sequence: 0);
+                        matchedMemoryUnitId = await TryMatchSemanticHashAsync(db, tenantId, targetedChunkKey, caseId, sourceUri).ConfigureAwait(false);
+                        if (!string.IsNullOrEmpty(matchedMemoryUnitId))
+                        {
+                            return (targetedChunkKey, matchedMemoryUnitId);
                         }
                     }
 

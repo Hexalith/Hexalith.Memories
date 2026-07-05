@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -90,8 +91,12 @@ public sealed class IngestionPipelineTests
         ((int)storedChunkStartOffset).ShouldBe(0);
         ((int)storedChunkEndOffset).ShouldBeGreaterThan(0);
 
+        using var stateRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/ingest/{accepted.InstanceId}");
+        stateRequest.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            AspireIngestionPipelineFixture.MintServerBearer(tenantId));
         using HttpResponseMessage stateResponse = await _fixture.MemoriesClient
-            .GetAsync($"/api/ingest/{accepted.InstanceId}");
+            .SendAsync(stateRequest);
         stateResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 

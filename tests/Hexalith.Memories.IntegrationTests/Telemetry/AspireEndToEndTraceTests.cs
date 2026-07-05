@@ -301,6 +301,7 @@ public sealed class AspireEndToEndTraceTests
             {
                 "--format", "json",
                 "--endpoint", _fixture.MemoriesClient.BaseAddress!.ToString(),
+                "--token", AspireIngestionPipelineFixture.MintServerBearer(tenantId),
                 "search",
                 "query",
                 "--tenant", tenantId,

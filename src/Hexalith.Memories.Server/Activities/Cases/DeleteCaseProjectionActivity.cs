@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Activities.Cases;
 
+using System.Net;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
@@ -28,12 +30,12 @@ internal sealed class DeleteCaseProjectionActivity(
         foreach (string memoryUnitId in input.MemoryUnitIds)
         {
             string muKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, memoryUnitId);
-            string vecKey = IndexSchemaDefinitions.BuildSemanticKey(input.TenantId, memoryUnitId);
+            RedisKey[] semanticKeys = await FindSemanticKeysAsync(input.TenantId, memoryUnitId).ConfigureAwait(false);
             string nlVecKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, memoryUnitId);
             (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
             await Task.WhenAll(
                 db.KeyDeleteAsync(muKey),
-                db.KeyDeleteAsync(vecKey),
+                db.KeyDeleteAsync(semanticKeys),
                 db.KeyDeleteAsync(nlVecKey)).ConfigureAwait(false);
             await falkor.QueryAsync(input.TenantId, graphQuery, graphParams).ConfigureAwait(false);
         }
@@ -45,5 +47,29 @@ internal sealed class DeleteCaseProjectionActivity(
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}:activity"),
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}")).ConfigureAwait(false);
         return true;
+    }
+
+    private async Task<RedisKey[]> FindSemanticKeysAsync(string tenantId, string memoryUnitId)
+    {
+        List<RedisKey> keys = [IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)];
+        foreach (EndPoint endpoint in redis.GetEndPoints())
+        {
+            IServer server = redis.GetServer(endpoint);
+            if (!server.IsConnected)
+            {
+                continue;
+            }
+
+            await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
+            {
+                if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
+                    && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
+                {
+                    keys.Add(key);
+                }
+            }
+        }
+
+        return [.. keys];
     }
 }

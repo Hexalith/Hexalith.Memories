@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Client.Rest;
 
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 
@@ -22,6 +23,7 @@ using Microsoft.Extensions.Options;
 public class MemoriesClient
 {
     private static readonly TimeSpan HealthProbeTimeout = TimeSpan.FromSeconds(5);
+    private const int TenantListPageLimit = 100;
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<MemoriesClient> _logger;
@@ -54,13 +56,47 @@ public class MemoriesClient
     /// <returns>The list of tenants.</returns>
     public virtual async Task<IReadOnlyList<TenantSummary>> ListTenantsAsync(CancellationToken ct)
     {
-        using HttpResponseMessage response = await _httpClient.GetAsync("api/tenants", ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        List<TenantSummary> tenants = [];
+        int offset = 0;
 
+        while (true)
+        {
+            using HttpResponseMessage response = await _httpClient
+                .GetAsync($"api/tenants?offset={offset.ToString(CultureInfo.InvariantCulture)}&limit={TenantListPageLimit.ToString(CultureInfo.InvariantCulture)}", ct)
+                .ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+                throw new MemoriesRemoteException(response.StatusCode, error);
+            }
+
+            IReadOnlyList<TenantSummary> page = await ReadTenantSummaryPageAsync(response, ct).ConfigureAwait(false);
+            tenants.AddRange(page);
+
+            if (!HasMoreTenantPages(response.Headers))
+            {
+                return tenants;
+            }
+
+            int pageOffset = GetIntHeader(response.Headers, "X-Hexalith-Offset", offset);
+            int pageLimit = GetIntHeader(response.Headers, "X-Hexalith-Limit", page.Count);
+            int nextOffset = pageOffset + pageLimit;
+            if (pageLimit <= 0 || nextOffset <= offset)
+            {
+                throw new MemoriesRemoteException(
+                    response.StatusCode,
+                    new ErrorResponse(
+                        Code: "INVALID_RESPONSE",
+                        Message: "Server tenant-list pagination headers did not advance the cursor.",
+                        Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
+            }
+
+            offset = nextOffset;
+        }
+    }
+
+    private static async Task<IReadOnlyList<TenantSummary>> ReadTenantSummaryPageAsync(HttpResponseMessage response, CancellationToken ct)
+    {
         try
         {
             IReadOnlyList<TenantSummary>? tenants = await response.Content
@@ -79,6 +115,17 @@ public class MemoriesClient
                 jsonException);
         }
     }
+
+    private static bool HasMoreTenantPages(HttpResponseHeaders headers)
+        => headers.TryGetValues("X-Hexalith-Has-More", out IEnumerable<string>? values)
+        && bool.TryParse(values.FirstOrDefault(), out bool hasMore)
+        && hasMore;
+
+    private static int GetIntHeader(HttpResponseHeaders headers, string name, int fallback)
+        => headers.TryGetValues(name, out IEnumerable<string>? values)
+        && int.TryParse(values.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int value)
+            ? value
+            : fallback;
 
     /// <summary>Lists the cases for a given tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
