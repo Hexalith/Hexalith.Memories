@@ -115,6 +115,54 @@ public sealed class EvidencePacketServerMappingTests
     }
 
     [Fact]
+    public void ServerApplied_HybridCaseAttribution_ShouldMapEvidenceSourceCaseId()
+    {
+        HybridSearchResult serverResult = SearchResponseMetadataApplier.ApplyHybrid(
+            new HybridSearchResult
+            {
+                Results =
+                [
+                    new FusedScoredResult
+                    {
+                        MemoryUnitId = "mu-001",
+                        CompositeScore = 1.0,
+                        ContentSnippet = "Snippet body for ranked result number 001.",
+                        SourceUri = "mem://tenant-a/case-a/mu-001",
+                        SourceType = SourceType.File,
+                        SyntacticScore = 1.0,
+                        SemanticScore = 1.0,
+                        CaseId = "case-a",
+                        CaseName = "Case A",
+                        AnnotationsCount = 2,
+                    },
+                ],
+                TotalCount = 1,
+                Degraded = false,
+                UnavailableAxes = [],
+                Query = "claim denied",
+            },
+            budget: null,
+            enabledAxes: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic" },
+            embeddingConfig: new TenantEmbeddingConfig
+            {
+                Provider = "google",
+                Model = "text-embedding-004",
+                Dimensions = 768,
+                RateLimitPerMinute = 60,
+                ApiSecretKeyName = "test-key",
+            },
+            graphStart: null);
+
+        EvidencePacket packet = EvidencePacketMapper.FromHybridSearchResult(serverResult, AuthorizedScope);
+
+        EvidencePacketSource source = packet.Sources.ShouldHaveSingleItem();
+        source.CaseId.ShouldBe("case-a");
+        source.CaseName.ShouldBe("Case A");
+        source.AnnotationsCount.ShouldBe(2);
+        packet.Evidence.AxesUsed.ShouldBe(["semantic", "syntactic"]);
+    }
+
+    [Fact]
     public void ServerError_Forbidden_ShouldMapUnauthorizedWithoutLeak()
     {
         var error = new ErrorResponse(

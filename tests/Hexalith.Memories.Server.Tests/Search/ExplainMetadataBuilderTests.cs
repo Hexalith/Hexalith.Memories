@@ -19,9 +19,9 @@ public class ExplainMetadataBuilderTests
         result.AxisDetails.ShouldContainKey("syntactic");
         result.AxisDetails.ShouldContainKey("semantic");
         result.AxisDetails.ShouldContainKey("graph");
-        result.AxisDetails["syntactic"].NormalizationMethod.ShouldBe("bm25_saturation");
-        result.AxisDetails["semantic"].NormalizationMethod.ShouldBe("cosine_clamp");
-        result.AxisDetails["graph"].NormalizationMethod.ShouldBe("inverse_hop_decay");
+        result.AxisDetails["syntactic"].NormalizationMethod.ShouldBe("rrf_rank_contribution");
+        result.AxisDetails["semantic"].NormalizationMethod.ShouldBe("rrf_rank_contribution");
+        result.AxisDetails["graph"].NormalizationMethod.ShouldBe("rrf_rank_contribution");
     }
 
     [Fact]
@@ -59,6 +59,18 @@ public class ExplainMetadataBuilderTests
         SearchExplanation result = ExplainMetadataBuilder.BuildForHybrid(activeAxes, weights);
 
         result.Caveat.ShouldBe(ExplainMetadataBuilder.Caveat);
+    }
+
+    [Fact]
+    public void BuildForHybrid_ShouldDescribeRankBasedFusion()
+    {
+        HashSet<string> activeAxes = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic" };
+        var weights = new FusionWeights();
+
+        SearchExplanation result = ExplainMetadataBuilder.BuildForHybrid(activeAxes, weights);
+
+        result.AxisDetails["syntactic"].Description.ShouldContain("reciprocal rank");
+        result.AxisDetails["semantic"].Description.ShouldContain("reciprocal rank");
     }
 
     [Fact]

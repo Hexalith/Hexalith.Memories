@@ -58,6 +58,24 @@ public class SyntacticSearchIntegrationTests
     }
 
     [Fact]
+    public async Task SearchAsync_PinnedBm25StdScorer_ShouldBeAcceptedByRedisStack()
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        await SeedDocumentAsync(tenantId, "mu-1", "explicit scorer acceptance document");
+
+        SyntacticSearchService service = CreateService();
+
+        SearchResult result = await service.SearchAsync(new SearchQuery
+        {
+            TenantId = tenantId,
+            Query = "explicit scorer",
+        });
+
+        result.Results.ShouldContain(r => r.MemoryUnitId == "mu-1");
+        result.HasIndexedMemoryUnits.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task SearchAsync_TenantIsolation_ShouldNotReturnCrossTenantResults()
     {
         // Arrange

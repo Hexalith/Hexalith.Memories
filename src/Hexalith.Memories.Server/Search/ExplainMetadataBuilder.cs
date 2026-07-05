@@ -16,8 +16,8 @@ internal static class ExplainMetadataBuilder
     /// <summary>The standard caveat included in all explain responses.</summary>
     internal const string Caveat = "Confidence scores measure query-result relevance, NOT factual accuracy or data completeness";
 
-    // Descriptions must stay in sync with ScoreNormalizer methods. Update here when normalization formulas change.
-    private static readonly Dictionary<string, AxisExplanation> AxisExplanations = new(StringComparer.OrdinalIgnoreCase)
+    // Single-axis descriptions must stay in sync with ScoreNormalizer methods.
+    private static readonly Dictionary<string, AxisExplanation> SingleAxisExplanations = new(StringComparer.OrdinalIgnoreCase)
     {
         ["syntactic"] = new AxisExplanation
         {
@@ -36,6 +36,25 @@ internal static class ExplainMetadataBuilder
         },
     };
 
+    private static readonly Dictionary<string, AxisExplanation> HybridAxisExplanations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["syntactic"] = new AxisExplanation
+        {
+            NormalizationMethod = "rrf_rank_contribution",
+            Description = "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw BM25 magnitude is not exposed as the hybrid syntactic score",
+        },
+        ["semantic"] = new AxisExplanation
+        {
+            NormalizationMethod = "rrf_rank_contribution",
+            Description = "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; raw vector similarity magnitude is not exposed as the hybrid semantic score",
+        },
+        ["graph"] = new AxisExplanation
+        {
+            NormalizationMethod = "rrf_rank_contribution",
+            Description = "Weighted reciprocal rank contribution normalized to [0.0, 1.0]; graph proximity magnitude is not exposed as the hybrid graph score",
+        },
+    };
+
     /// <summary>
     /// Builds explain metadata for a hybrid (multi-axis) search, including all active axes and fusion weights.
     /// </summary>
@@ -47,7 +66,7 @@ internal static class ExplainMetadataBuilder
         Dictionary<string, AxisExplanation> axisDetails = new(StringComparer.OrdinalIgnoreCase);
         foreach (string axis in activeAxes)
         {
-            if (AxisExplanations.TryGetValue(axis, out AxisExplanation? explanation))
+            if (HybridAxisExplanations.TryGetValue(axis, out AxisExplanation? explanation))
             {
                 axisDetails[axis.ToLowerInvariant()] = explanation;
             }
@@ -69,7 +88,7 @@ internal static class ExplainMetadataBuilder
     internal static SearchExplanation BuildForSingleAxis(string axisName)
     {
         Dictionary<string, AxisExplanation> axisDetails = new(StringComparer.OrdinalIgnoreCase);
-        if (AxisExplanations.TryGetValue(axisName, out AxisExplanation? explanation))
+        if (SingleAxisExplanations.TryGetValue(axisName, out AxisExplanation? explanation))
         {
             axisDetails[axisName.ToLowerInvariant()] = explanation;
         }

@@ -1,10 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Search;
 
-using Dapr.Actors;
-using Dapr.Actors.Client;
-
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,7 +13,6 @@ using Shouldly;
 public class HybridSearchServiceTests
 {
     private static readonly FusionWeights DefaultWeights = new();
-    private static readonly CorpusStatistics DefaultStats = new(1000, 200.0, DateTimeOffset.UtcNow);
 
     private static ScoredResult MakeResult(string id, double score, string axis)
         => new()
@@ -48,23 +43,17 @@ public class HybridSearchServiceTests
             Query = "test query",
         };
 
-    private static (HybridSearchService Service, Func<SearchQuery, Task<SearchResult>> Syntactic, Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> Semantic, Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> Graph, IActorProxyFactory ActorFactory) CreateService()
+    private static (HybridSearchService Service, Func<SearchQuery, Task<SearchResult>> Syntactic, Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> Semantic, Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> Graph) CreateService()
     {
         Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
         Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
         Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph = Substitute.For<Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>>>();
 
-        IActorProxyFactory actorFactory = Substitute.For<IActorProxyFactory>();
-        ICorpusStatisticsActor statsActor = Substitute.For<ICorpusStatisticsActor>();
-        statsActor.GetStatisticsAsync().Returns(DefaultStats);
-        actorFactory.CreateActorProxy<ICorpusStatisticsActor>(Arg.Any<ActorId>(), Arg.Any<string>())
-            .Returns(statsActor);
-
         var service = new HybridSearchService(
-            syntactic, semantic, graph, actorFactory,
+            syntactic, semantic, graph,
             NullLogger<HybridSearchService>.Instance);
 
-        return (service, syntactic, semantic, graph, actorFactory);
+        return (service, syntactic, semantic, graph);
     }
 
     private static SearchQuery MakeQuery(string tenantId = "tenant-1", int maxResults = 10, int offset = 0)
@@ -77,7 +66,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_AllAxesEnabled_ShouldCallAllDelegates()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -99,7 +88,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_TwoAxesEnabled_ShouldNotCallExcludedAxis()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -118,7 +107,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_WithAdversarialFilters_ShouldPreserveQueryForInnerAxes()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
         SearchQuery query = MakeQuery() with
         {
@@ -162,7 +151,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_SyntacticThrows_ShouldReturnDegraded()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new InvalidOperationException("Redis down"));
@@ -182,7 +171,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_SemanticWithNullConfig_ShouldNotBeDegraded()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -199,7 +188,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_GraphWithNullStartNode_ShouldNotBeDegraded()
     {
-        var (service, syntactic, _, graph, _) = CreateService();
+        var (service, syntactic, _, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -212,41 +201,10 @@ public class HybridSearchServiceTests
         await graph.DidNotReceive()(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
-    // 8.8: Corpus stats actor called with correct tenantId
     [Fact]
-    public async Task SearchAsync_ShouldFetchCorpusStatsForCorrectTenant()
+    public async Task SearchAsync_SyntacticRrf_ShouldNotRequireCorpusStatistics()
     {
-        var (service, syntactic, _, _, actorFactory) = CreateService();
-        HashSet<string> axes = ["syntactic"];
-
-        syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
-
-        await service.SearchAsync(
-            MakeQuery("my-tenant"), null, null, 2, DefaultWeights, axes, CancellationToken.None);
-
-        actorFactory.Received(1).CreateActorProxy<ICorpusStatisticsActor>(
-            Arg.Is<ActorId>(id => id.ToString() == "my-tenant"),
-            Arg.Is(nameof(CorpusStatisticsActor)));
-    }
-
-    // 8.8b: Corpus stats actor throws -> service still returns results with BM25 normalization using 0/0 defaults
-    [Fact]
-    public async Task SearchAsync_CorpusStatsFailure_ShouldStillReturnResults()
-    {
-        Func<SearchQuery, Task<SearchResult>> syntactic = Substitute.For<Func<SearchQuery, Task<SearchResult>>>();
-        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic = Substitute.For<Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>>>();
-        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph = Substitute.For<Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>>>();
-
-        IActorProxyFactory actorFactory = Substitute.For<IActorProxyFactory>();
-        ICorpusStatisticsActor statsActor = Substitute.For<ICorpusStatisticsActor>();
-        statsActor.GetStatisticsAsync().ThrowsAsync(new InvalidOperationException("Actor unavailable"));
-        actorFactory.CreateActorProxy<ICorpusStatisticsActor>(Arg.Any<ActorId>(), Arg.Any<string>())
-            .Returns(statsActor);
-
-        var service = new HybridSearchService(
-            syntactic, semantic, graph, actorFactory,
-            NullLogger<HybridSearchService>.Instance);
-
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 10.0, "syntactic")));
@@ -257,19 +215,19 @@ public class HybridSearchServiceTests
             MakeQuery(), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
 
         result.Results.ShouldNotBeEmpty();
-        result.Degraded.ShouldBeTrue();
-        result.UnavailableAxes.ShouldContain("syntactic");
-        result.Results[0].SyntacticScore.ShouldBeNull();
-        // Semantic should still contribute normally
+        result.Degraded.ShouldBeFalse();
+        result.UnavailableAxes.ShouldBeEmpty();
+        result.Results[0].SyntacticScore.ShouldNotBeNull();
+        result.Results[0].SyntacticScore!.Value.ShouldBe(1.0);
         result.Results[0].SemanticScore.ShouldNotBeNull();
-        result.Results[0].SemanticScore!.Value.ShouldBe(0.85, tolerance: 0.001);
-        result.Results[0].CompositeScore.ShouldBe(0.85, tolerance: 0.001);
+        result.Results[0].SemanticScore!.Value.ShouldBe(1.0);
+        result.Results[0].CompositeScore.ShouldBe(1.0);
     }
 
     [Fact]
     public async Task SearchAsync_UnindexedAxisShouldNotPenalizeOtherAxes()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult([], 0, false));
@@ -284,14 +242,14 @@ public class HybridSearchServiceTests
         result.Results.Count.ShouldBe(1);
         result.Results[0].SyntacticScore.ShouldBeNull();
         result.Results[0].SemanticScore.ShouldNotBeNull();
-        result.Results[0].SemanticScore!.Value.ShouldBe(0.85, tolerance: 0.001);
-        result.Results[0].CompositeScore.ShouldBe(0.85, tolerance: 0.001);
+        result.Results[0].SemanticScore!.Value.ShouldBe(1.0);
+        result.Results[0].CompositeScore.ShouldBe(1.0);
     }
 
     [Fact]
     public async Task SearchAsync_StaleOnlyAxisShouldBeExcludedFromFusion()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -313,7 +271,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_StaleLeadingPageShouldBackfillLaterValidHits()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -349,7 +307,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_Pagination_ShouldSliceFusedResults()
     {
-        var (service, _, semantic, _, _) = CreateService();
+        var (service, _, semantic, _) = CreateService();
         HashSet<string> axes = ["semantic"];
 
         // Return 10 results
@@ -378,7 +336,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_PaginationBeyondRank100WithinWindow_ShouldRequestFullCandidateWindow()
     {
-        var (service, _, semantic, _, _) = CreateService();
+        var (service, _, semantic, _) = CreateService();
         HashSet<string> axes = ["semantic"];
 
         ScoredResult[] results = Enumerable.Range(0, 160)
@@ -403,7 +361,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_WhenRequestedWindowExceedsLimit_ShouldThrowWithoutExecutingAxes()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         await Should.ThrowAsync<SearchPaginationLimitExceededException>(() => service.SearchAsync(
@@ -417,7 +375,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_PreUnavailableSemanticAxis_ShouldRemainDegraded()
     {
-        var (service, syntactic, semantic, _, _) = CreateService();
+        var (service, syntactic, semantic, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -441,7 +399,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_PreUnavailableOnlyAxis_ShouldNotPromoteTotalFailure()
     {
-        var (service, _, semantic, _, _) = CreateService();
+        var (service, _, semantic, _) = CreateService();
         HashSet<string> axes = ["semantic"];
 
         HybridSearchResult result = await service.SearchAsync(
@@ -464,7 +422,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_CanceledAxis_ShouldPropagateCancellation()
     {
-        var (service, _, semantic, _, _) = CreateService();
+        var (service, _, semantic, _) = CreateService();
         HashSet<string> axes = ["semantic"];
         using CancellationTokenSource cts = new();
         cts.Cancel();
@@ -489,7 +447,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_SemanticFails_OthersSucceed_ShouldReportNotAllUnavailable()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -511,7 +469,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_GraphFails_OthersSucceed_ShouldReportNotAllUnavailable()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -533,7 +491,7 @@ public class HybridSearchServiceTests
     [Fact]
     public async Task SearchAsync_AllAxesFail_ShouldReportAllEnabledAxesUnavailable()
     {
-        var (service, syntactic, semantic, graph, _) = CreateService();
+        var (service, syntactic, semantic, graph) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
@@ -559,7 +517,7 @@ public class HybridSearchServiceTests
     public async Task SearchAsync_SkippedAxesNotAttempted_ShouldNotBeCountedAsFailed()
     {
         // AC3.4 edge: enabled axes skipped for missing inputs are NOT attempted → do not count toward total failure.
-        var (service, syntactic, _, _, _) = CreateService();
+        var (service, syntactic, _, _) = CreateService();
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
@@ -583,7 +541,7 @@ public class HybridSearchServiceTests
     public async Task SearchAsync_AllAxesSkipped_ShouldReportAllEnabledAxesUnavailableNull()
     {
         // AC3.4 edge: if no axis is attempted (all skipped), AllEnabledAxesUnavailable is null.
-        var (service, _, _, _, _) = CreateService();
+        var (service, _, _, _) = CreateService();
         HashSet<string> axes = ["semantic", "graph"];
 
         HybridSearchResult result = await service.SearchAsync(
@@ -605,7 +563,7 @@ public class HybridSearchServiceTests
     public async Task SearchAsync_TransientThenSuccess_SecondCallShouldNotBeDegraded()
     {
         // AC4: auto-recovery — once the mock stops throwing, the next call is a clean success.
-        var (service, _, semantic, _, _) = CreateService();
+        var (service, _, semantic, _) = CreateService();
         HashSet<string> axes = ["semantic"];
 
         int callCount = 0;
@@ -641,7 +599,7 @@ public class HybridSearchServiceTests
     public async Task SearchAsync_TransientRedisServerException_ShouldMarkAxisUnavailable(string redisMessage)
     {
         // Task 5.4: LOADING / BUSY / OOM must be classified as backend-unavailable, not missing-data.
-        var (service, syntactic, _, _, _) = CreateService();
+        var (service, syntactic, _, _) = CreateService();
         HashSet<string> axes = ["syntactic"];
 
         syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisServerException(redisMessage));

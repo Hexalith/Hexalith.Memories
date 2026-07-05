@@ -7,7 +7,14 @@ namespace Hexalith.Memories.Server.Tests.Endpoints;
 
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
+
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using Dapr.Actors;
 using Dapr.Actors.Client;
@@ -15,6 +22,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
+using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
 
@@ -131,6 +139,74 @@ public sealed class SearchEndpointContractTests : IDisposable
     }
 
     [Fact]
+    public async Task HybridSearch_WithFusedCaseAttribution_ReturnsCaseGroupsAndEnrichedNames()
+    {
+        StubTenantActive("acme-search");
+        StubCaseNames(("case-alpha", "Alpha Case"), ("case-beta", "Beta Case"));
+
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<HybridSearchService>();
+                services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(
+                    new ScoredResult
+                    {
+                        MemoryUnitId = "mu-alpha",
+                        Score = 42.0,
+                        ContentSnippet = "Alpha scoped content",
+                        SourceUri = "file:///alpha.txt",
+                        SourceType = SourceType.File,
+                        Axis = "syntactic",
+                        CaseId = "case-alpha",
+                        AnnotationsCount = 2,
+                    },
+                    new ScoredResult
+                    {
+                        MemoryUnitId = "mu-beta",
+                        Score = 21.0,
+                        ContentSnippet = "Beta scoped content",
+                        SourceUri = "file:///beta.txt",
+                        SourceType = SourceType.File,
+                        Axis = "syntactic",
+                        CaseId = "case-beta",
+                        AnnotationsCount = 3,
+                    }));
+            });
+        });
+        using HttpClient client = factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/search?tenantId=acme-search&query=calibration&axis=hybrid&axes=syntactic");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.AxesUsed.ShouldBe(["syntactic"]);
+        result.Results.Count.ShouldBe(2);
+
+        FusedScoredResult alpha = result.Results.Single(r => r.MemoryUnitId == "mu-alpha");
+        alpha.CaseId.ShouldBe("case-alpha");
+        alpha.CaseName.ShouldBe("Alpha Case");
+        alpha.AnnotationsCount.ShouldBe(2);
+        alpha.SyntacticScore.ShouldNotBeNull();
+
+        FusedScoredResult beta = result.Results.Single(r => r.MemoryUnitId == "mu-beta");
+        beta.CaseId.ShouldBe("case-beta");
+        beta.CaseName.ShouldBe("Beta Case");
+        beta.AnnotationsCount.ShouldBe(3);
+        beta.SyntacticScore.ShouldNotBeNull();
+
+        result.CaseGroups.ShouldNotBeNull();
+        CaseGroupSummary alphaGroup = result.CaseGroups.Single(g => g.CaseId == "case-alpha");
+        alphaGroup.CaseName.ShouldBe("Alpha Case");
+        alphaGroup.ResultCount.ShouldBe(1);
+        CaseGroupSummary betaGroup = result.CaseGroups.Single(g => g.CaseId == "case-beta");
+        betaGroup.CaseName.ShouldBe("Beta Case");
+        betaGroup.ResultCount.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task Traverse_WhenGraphQueryTimesOut_ReturnsGraphTimeout()
     {
         StubTenantActive("acme-search");
@@ -175,6 +251,39 @@ public sealed class SearchEndpointContractTests : IDisposable
         _factory.ActorProxyFactory
             .CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>())
             .Returns(actor);
+    }
+
+    private void StubCaseNames(params (string CaseId, string CaseName)[] cases)
+    {
+        IBatch batch = Substitute.For<IBatch>();
+        _factory.RedisDatabase.CreateBatch(Arg.Any<object>()).Returns(batch);
+
+        foreach ((string caseId, string caseName) in cases)
+        {
+            batch.HashGetAsync(
+                    Arg.Is<RedisKey>(key => key == $"acme-search:case:{caseId}"),
+                    Arg.Is<RedisValue>(field => field == "name"),
+                    Arg.Any<CommandFlags>())
+                .Returns(Task.FromResult((RedisValue)caseName));
+        }
+    }
+
+    private static HybridSearchService CreateHybridSearchServiceWithSyntacticResults(params ScoredResult[] results)
+    {
+        Func<SearchQuery, Task<SearchResult>> syntactic = _ => Task.FromResult(new SearchResult
+        {
+            Results = results,
+            TotalCount = results.Length,
+            HasIndexedMemoryUnits = true,
+            Query = "calibration",
+        });
+
+        Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semantic =
+            (_, _, _) => Task.FromException<SearchResult>(new InvalidOperationException("Semantic axis should not run."));
+        Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graph =
+            (_, _, _, _) => Task.FromException<SearchResult>(new InvalidOperationException("Graph axis should not run."));
+
+        return new HybridSearchService(syntactic, semantic, graph, NullLogger<HybridSearchService>.Instance);
     }
 
     private static async Task<ErrorResponse> ReadErrorResponseAsync(HttpResponseMessage response)

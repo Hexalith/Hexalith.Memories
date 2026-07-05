@@ -64,7 +64,7 @@ public sealed record HybridSearchResult
     public EvidencePacket? EvidencePacket { get; init; }
 }
 
-/// <summary>A single fused search result with per-axis normalized scores and a composite score.</summary>
+/// <summary>A single fused search result with per-axis rank contribution scores and a composite score.</summary>
 public sealed record FusedScoredResult
 {
     /// <summary>Gets the identifier of the matched memory unit.</summary>
@@ -82,13 +82,13 @@ public sealed record FusedScoredResult
     /// <summary>Gets the source type of the matched memory unit.</summary>
     public required SourceType SourceType { get; init; }
 
-    /// <summary>Gets the normalized syntactic (BM25) score, or null if the axis was not queried or didn't find this unit.</summary>
+    /// <summary>Gets the syntactic rank contribution score, or null if the axis was not queried or didn't find this unit.</summary>
     public double? SyntacticScore { get; init; }
 
-    /// <summary>Gets the normalized semantic (vector) score, or null if the axis was not queried or didn't find this unit.</summary>
+    /// <summary>Gets the semantic rank contribution score, or null if the axis was not queried or didn't find this unit.</summary>
     public double? SemanticScore { get; init; }
 
-    /// <summary>Gets the normalized graph (proximity) score, or null if the axis was not queried or didn't find this unit.</summary>
+    /// <summary>Gets the graph rank contribution score, or null if the axis was not queried or didn't find this unit.</summary>
     public double? GraphScore { get; init; }
 
     /// <summary>Gets the case identifier of the memory unit, or null if not associated with a case.</summary>

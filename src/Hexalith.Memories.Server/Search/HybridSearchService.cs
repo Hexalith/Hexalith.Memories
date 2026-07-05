@@ -7,11 +7,7 @@ namespace Hexalith.Memories.Server.Search;
 
 using System.Collections.Concurrent;
 
-using Dapr.Actors;
-using Dapr.Actors.Client;
-
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Server.Actors;
 
 using Microsoft.Extensions.Logging;
 
@@ -23,7 +19,6 @@ internal sealed partial class HybridSearchService(
     Func<SearchQuery, Task<SearchResult>> syntacticSearchFunc,
     Func<SearchQuery, TenantEmbeddingConfig, CancellationToken, Task<SearchResult>> semanticSearchFunc,
     Func<SearchQuery, string, int, CancellationToken, Task<SearchResult>> graphSearchFunc,
-    IActorProxyFactory actorProxyFactory,
     ILogger<HybridSearchService> logger)
 {
     private static readonly HashSet<string> ValidAxisNames = new(StringComparer.OrdinalIgnoreCase)
@@ -164,38 +159,14 @@ internal sealed partial class HybridSearchService(
         semanticResult = NormalizeAxisResult(semanticResult, "semantic", query.TenantId, unavailableAxes, logger);
         graphResult = NormalizeAxisResult(graphResult, "graph", query.TenantId, unavailableAxes, logger);
 
-        // Fetch corpus statistics for BM25 normalization
-        int documentCount = 0;
-        double averageDocumentLength = 0.0;
-
-        if (syntacticResult is { Results.Count: > 0 })
-        {
-            try
-            {
-                ICorpusStatisticsActor statsActor = actorProxyFactory
-                    .CreateActorProxy<ICorpusStatisticsActor>(
-                        new ActorId(query.TenantId),
-                        nameof(CorpusStatisticsActor));
-                CorpusStatistics stats = await statsActor.GetStatisticsAsync().ConfigureAwait(false);
-                documentCount = stats.DocumentCount;
-                averageDocumentLength = stats.AverageDocumentLength;
-            }
-            catch (Exception ex)
-            {
-                LogCorpusStatsFailure(logger, query.TenantId, ex);
-                _ = unavailableAxes.TryAdd("syntactic", 0);
-                syntacticResult = null;
-            }
-        }
-
         // Fuse results
         IReadOnlyList<FusedScoredResult> fusedResults = FusionEngine.Fuse(
             syntacticResult?.Results,
             semanticResult?.Results,
             graphResult?.Results,
             weights,
-            documentCount,
-            averageDocumentLength);
+            documentCount: 0,
+            averageDocumentLength: 0.0);
 
         // Apply pagination after fusion
         long totalCount = fusedResults.Count;
@@ -401,9 +372,6 @@ internal sealed partial class HybridSearchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Graph axis skipped for tenant {TenantId}: {Reason}")]
     private static partial void LogGraphSkipped(ILogger logger, string tenantId, string reason);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to fetch corpus statistics for tenant {TenantId} — BM25 normalization will use defaults")]
-    private static partial void LogCorpusStatsFailure(ILogger logger, string tenantId, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Axis {AxisName} returned only stale or unenrichable hits for tenant {TenantId} — excluding it from fusion")]
     private static partial void LogAxisDroppedFromFusion(ILogger logger, string axisName, string tenantId);

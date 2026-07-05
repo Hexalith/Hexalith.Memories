@@ -82,6 +82,8 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.2 senior developer review completed with automatic fixes (graph-scoped count-query timeout, latency logging, File List/test-summary hygiene). 22.2 -> done.
 # 2026-07-05: Story 22.3 created (22.3 -> ready-for-dev) via create-story. Graph-scoped and hybrid pagination correctness; closes A29 with graph-scope pushdown, honest totals, and explicit deep-pagination cap errors.
 # 2026-07-05: Story 22.3 senior developer review completed with automatic fixes (scoped INKEYS tenant-key validation, empty scoped graph response query preservation). 22.3 -> done.
+# 2026-07-05: Story 22.4 created (22.4 -> ready-for-dev) via create-story. Fusion case attribution, score calibration, and pinned BM25-family scorer; closes A30 by requiring hybrid CaseId preservation, explicit RediSearch scorer selection, and deterministic scale-free fusion.
+# 2026-07-05: Story 22.4 senior developer review completed with automatic fixes (File List hygiene, evidence-table statuses, stale contract summary comment). 22.4 -> done.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -387,7 +389,7 @@ development_status:
   22-1-semantic-axis-pagination: done
   22-2-bounded-cancellable-graph-traversal: done
   22-3-graph-scoped-and-hybrid-pagination-correctness: done
-  22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: backlog
+  22-4-fusion-case-attribution-score-calibration-and-pinned-scorer: done
   22-5-case-scoped-traversal-path-integrity: backlog
   22-6-post-filter-recall: backlog
   22-7-retrieval-feature-completion: backlog

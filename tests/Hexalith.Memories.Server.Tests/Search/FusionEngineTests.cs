@@ -11,7 +11,16 @@ public class FusionEngineTests
 
     // --- Helper methods ---
 
-    private static ScoredResult MakeResult(string id, double score, string axis, string snippet = "snippet", string uri = "file:///test", SourceType sourceType = SourceType.File)
+    private static ScoredResult MakeResult(
+        string id,
+        double score,
+        string axis,
+        string snippet = "snippet",
+        string uri = "file:///test",
+        SourceType sourceType = SourceType.File,
+        string? caseId = null,
+        string? caseName = null,
+        int annotationsCount = 0)
         => new()
         {
             MemoryUnitId = id,
@@ -20,16 +29,15 @@ public class FusionEngineTests
             SourceUri = uri,
             SourceType = sourceType,
             Axis = axis,
+            CaseId = caseId,
+            CaseName = caseName,
+            AnnotationsCount = annotationsCount,
         };
 
-    // 7.2: All three axes with known scores -> expected composite scores
+    // 7.2: All three axes with the same top-ranked memory unit -> maximum RRF score
     [Fact]
     public void Fuse_AllThreeAxes_ShouldProduceExpectedCompositeScores()
     {
-        // BM25 raw=5.0, docCount=1000, avgDocLen=200 -> k=~19.934 -> normalized=5/(5+19.934)=~0.2006
-        // Cosine=0.85 -> normalized=0.85
-        // Graph=0.5 (already normalized)
-        // composite = (0.4*0.2006 + 0.4*0.85 + 0.2*0.5) / (0.4+0.4+0.2) = (0.08024 + 0.34 + 0.1) / 1.0 = 0.52024
         var syntactic = new List<ScoredResult> { MakeResult("mu-1", 5.0, "syntactic") };
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.85, "semantic") };
         var graph = new List<ScoredResult> { MakeResult("mu-1", 0.5, "graph") };
@@ -40,19 +48,16 @@ public class FusionEngineTests
         results.Count.ShouldBe(1);
         FusedScoredResult r = results[0];
         r.MemoryUnitId.ShouldBe("mu-1");
-        r.CompositeScore.ShouldBe(0.52, tolerance: 0.02);
-        r.SyntacticScore.ShouldNotBeNull();
-        r.SemanticScore.ShouldNotBeNull();
-        r.GraphScore.ShouldNotBeNull();
+        r.CompositeScore.ShouldBe(1.0);
+        r.SyntacticScore.ShouldBe(1.0);
+        r.SemanticScore.ShouldBe(1.0);
+        r.GraphScore.ShouldBe(1.0);
     }
 
     // 7.3: Syntactic + semantic only (graph null) -> composite uses only two-axis weights
     [Fact]
     public void Fuse_TwoAxes_ShouldUseOnlyTwoAxisWeights()
     {
-        // BM25 raw=5.0 -> normalized~0.2006
-        // Cosine=0.85 -> normalized=0.85
-        // composite = (0.4*0.2006 + 0.4*0.85) / (0.4+0.4) = (0.08024+0.34)/0.8 = 0.5253
         var syntactic = new List<ScoredResult> { MakeResult("mu-1", 5.0, "syntactic") };
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.85, "semantic") };
 
@@ -61,23 +66,21 @@ public class FusionEngineTests
 
         results.Count.ShouldBe(1);
         FusedScoredResult r = results[0];
-        r.CompositeScore.ShouldBe(0.525, tolerance: 0.02);
+        r.CompositeScore.ShouldBe(1.0);
         r.GraphScore.ShouldBeNull();
     }
 
-    // 7.4: Single axis only -> composite equals normalized single-axis score
+    // 7.4: Single axis only -> composite equals normalized top-rank contribution
     [Fact]
     public void Fuse_SingleAxis_ShouldEqualNormalizedScore()
     {
-        // Cosine=0.85 -> normalized=0.85
-        // composite = (0.4*0.85) / 0.4 = 0.85
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.85, "semantic") };
 
         IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
             null, semantic, null, DefaultWeights, 1000, 200.0);
 
         results.Count.ShouldBe(1);
-        results[0].CompositeScore.ShouldBe(0.85, tolerance: 0.001);
+        results[0].CompositeScore.ShouldBe(1.0);
         results[0].SyntacticScore.ShouldBeNull();
         results[0].GraphScore.ShouldBeNull();
     }
@@ -93,8 +96,8 @@ public class FusionEngineTests
 
         results.Count.ShouldBe(1);
         results[0].SyntacticScore.ShouldBeNull();
-        results[0].SemanticScore.ShouldBe(0.85);
-        results[0].CompositeScore.ShouldBe(0.425, tolerance: 0.001);
+        results[0].SemanticScore.ShouldBe(1.0);
+        results[0].CompositeScore.ShouldBe(1.0);
     }
 
     // 7.5: Same memory unit appearing in multiple axes -> merged with per-axis scores populated
@@ -110,7 +113,7 @@ public class FusionEngineTests
         results.Count.ShouldBe(1);
         results[0].SyntacticScore.ShouldNotBeNull();
         results[0].SemanticScore.ShouldNotBeNull();
-        results[0].SemanticScore!.Value.ShouldBe(0.9, tolerance: 0.001);
+        results[0].SemanticScore!.Value.ShouldBe(1.0);
     }
 
     // 7.6: Memory unit appearing in only one active axis -> other active axis scores stay null, but composite keeps the axis weight active
@@ -135,9 +138,9 @@ public class FusionEngineTests
         mu1.GraphScore.ShouldBeNull();
         mu2.GraphScore.ShouldBeNull();
 
-        // Composite scoring still penalizes the missing active axis internally.
-        mu1.CompositeScore.ShouldBe(0.100, tolerance: 0.02);
-        mu2.CompositeScore.ShouldBe(0.45, tolerance: 0.001);
+        // Composite scoring is based on active axis rank contribution, not raw score magnitude.
+        mu1.CompositeScore.ShouldBe(0.5);
+        mu2.CompositeScore.ShouldBe(0.5);
     }
 
     // 7.7: Determinism — same inputs produce identical output ordering (NFR25)
@@ -210,43 +213,47 @@ public class FusionEngineTests
         results.ShouldBeEmpty();
     }
 
-    // 7.10: BM25 normalization applied correctly
+    // 7.10: Syntactic contribution is rank-derived rather than raw BM25 magnitude
     [Fact]
-    public void Fuse_Bm25Normalization_ShouldProduceExpectedNormalizedValue()
+    public void Fuse_SyntacticScore_ShouldUseRankContribution()
     {
-        // BM25 raw=10.0, docCount=1000, avgDocLen=200 -> k=~19.934 -> normalized=10/(10+19.934)=~0.334
-        var syntactic = new List<ScoredResult> { MakeResult("mu-1", 10.0, "syntactic") };
+        var syntactic = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 10.0, "syntactic"),
+            MakeResult("mu-2", 9.0, "syntactic"),
+        };
 
         IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
             syntactic, null, null, DefaultWeights, 1000, 200.0);
 
-        results.Count.ShouldBe(1);
+        results.Count.ShouldBe(2);
         results[0].SyntacticScore.ShouldNotBeNull();
-        results[0].SyntacticScore!.Value.ShouldBe(0.334, tolerance: 0.01);
+        results[0].SyntacticScore!.Value.ShouldBe(1.0);
+        results[1].SyntacticScore!.Value.ShouldBeLessThan(1.0);
     }
 
-    // 7.11: Cosine passthrough
+    // 7.11: Semantic contribution is rank-derived rather than raw cosine passthrough
     [Fact]
-    public void Fuse_CosineScore_ShouldPassThroughUnchanged()
+    public void Fuse_SemanticScore_ShouldUseRankContribution()
     {
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.85, "semantic") };
 
         IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
             null, semantic, null, DefaultWeights, 1000, 200.0);
 
-        results[0].SemanticScore.ShouldBe(0.85);
+        results[0].SemanticScore.ShouldBe(1.0);
     }
 
-    // 7.12: Graph scores passed through (already normalized)
+    // 7.12: Graph contribution is rank-derived rather than raw proximity passthrough
     [Fact]
-    public void Fuse_GraphScore_ShouldPassThrough()
+    public void Fuse_GraphScore_ShouldUseRankContribution()
     {
         var graph = new List<ScoredResult> { MakeResult("mu-1", 0.5, "graph") };
 
         IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
             null, null, graph, DefaultWeights, 1000, 200.0);
 
-        results[0].GraphScore.ShouldBe(0.5);
+        results[0].GraphScore.ShouldBe(1.0);
     }
 
     // 7.13: Content snippet taken from syntactic result when available
@@ -323,9 +330,9 @@ public class FusionEngineTests
         }
     }
 
-    // 7.17: BM25 raw score = NaN -> normalized to 0.0
+    // 7.17: Raw non-finite syntactic score does not leak into public fused scores
     [Fact]
-    public void Fuse_Bm25NaN_ShouldNormalizeToZero()
+    public void Fuse_Bm25NaN_ShouldUseFiniteRankContribution()
     {
         var syntactic = new List<ScoredResult> { MakeResult("mu-1", double.NaN, "syntactic") };
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.8, "semantic") };
@@ -334,15 +341,13 @@ public class FusionEngineTests
             syntactic, semantic, null, DefaultWeights, 1000, 200.0);
 
         results.Count.ShouldBe(1);
-        // NaN BM25 -> normalized to 0.0 by ScoreNormalizer, so syntactic score = 0.0
-        results[0].SyntacticScore.ShouldBe(0.0);
-        // Composite should still be valid (semantic contributes)
+        results[0].SyntacticScore.ShouldBe(1.0);
         results[0].CompositeScore.ShouldBeInRange(0.0, 1.0);
     }
 
-    // 7.18: BM25 raw score = PositiveInfinity -> normalized to 0.0
+    // 7.18: Infinite syntactic score does not leak into public fused scores
     [Fact]
-    public void Fuse_Bm25Infinity_ShouldNormalizeToZero()
+    public void Fuse_Bm25Infinity_ShouldUseFiniteRankContribution()
     {
         var syntactic = new List<ScoredResult> { MakeResult("mu-1", double.PositiveInfinity, "syntactic") };
         var semantic = new List<ScoredResult> { MakeResult("mu-1", 0.8, "semantic") };
@@ -351,7 +356,104 @@ public class FusionEngineTests
             syntactic, semantic, null, DefaultWeights, 1000, 200.0);
 
         results.Count.ShouldBe(1);
-        results[0].SyntacticScore.ShouldBe(0.0);
+        results[0].SyntacticScore.ShouldBe(1.0);
         results[0].CompositeScore.ShouldBeInRange(0.0, 1.0);
+    }
+
+    [Fact]
+    public void Fuse_SyntacticOnlyResult_ShouldPreserveCaseAttribution()
+    {
+        var syntactic = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 10.0, "syntactic", caseId: "case-1", caseName: "Case One", annotationsCount: 3),
+        };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, null, null, DefaultWeights, 1000, 200.0);
+
+        results[0].CaseId.ShouldBe("case-1");
+        results[0].CaseName.ShouldBe("Case One");
+        results[0].AnnotationsCount.ShouldBe(3);
+    }
+
+    [Theory]
+    [InlineData("semantic")]
+    [InlineData("graph")]
+    public void Fuse_SingleNonSyntacticAxis_ShouldPreserveCaseAttribution(string axis)
+    {
+        var axisResults = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 0.9, axis, caseId: "case-1", caseName: "Case One", annotationsCount: 2),
+        };
+
+        IReadOnlyList<FusedScoredResult> results = axis == "semantic"
+            ? FusionEngine.Fuse(null, axisResults, null, DefaultWeights, 1000, 200.0)
+            : FusionEngine.Fuse(null, null, axisResults, DefaultWeights, 1000, 200.0);
+
+        results[0].CaseId.ShouldBe("case-1");
+        results[0].CaseName.ShouldBe("Case One");
+        results[0].AnnotationsCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Fuse_MixedAxes_ShouldFillMissingAttributionFromLaterAxes()
+    {
+        var syntactic = new List<ScoredResult> { MakeResult("mu-1", 10.0, "syntactic") };
+        var semantic = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 0.9, "semantic", caseId: "case-1", caseName: "Case One", annotationsCount: 4),
+        };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, semantic, null, DefaultWeights, 1000, 200.0);
+
+        results[0].CaseId.ShouldBe("case-1");
+        results[0].CaseName.ShouldBe("Case One");
+        results[0].AnnotationsCount.ShouldBe(4);
+    }
+
+    [Fact]
+    public void Fuse_ConflictingCaseIds_ShouldKeepFirstNonEmptyCaseId()
+    {
+        var syntactic = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 10.0, "syntactic", caseId: "case-first", caseName: "First"),
+        };
+        var semantic = new List<ScoredResult>
+        {
+            MakeResult("mu-1", 0.9, "semantic", caseId: "case-second", caseName: "Second", annotationsCount: 5),
+        };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, semantic, null, DefaultWeights, 1000, 200.0);
+
+        results[0].CaseId.ShouldBe("case-first");
+        results[0].CaseName.ShouldBe("First");
+        results[0].AnnotationsCount.ShouldBe(5);
+    }
+
+    [Fact]
+    public void Fuse_SkewedRawScores_ShouldPreferBetterCrossAxisRanks()
+    {
+        var syntactic = new List<ScoredResult>
+        {
+            MakeResult("mu-bm25", 10_000.0, "syntactic"),
+            MakeResult("mu-consensus", 1.0, "syntactic"),
+        };
+        var semantic = new List<ScoredResult>
+        {
+            MakeResult("mu-consensus", 0.95, "semantic"),
+            MakeResult("mu-bm25", 0.10, "semantic"),
+        };
+        var graph = new List<ScoredResult>
+        {
+            MakeResult("mu-consensus", 0.9, "graph"),
+        };
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, semantic, graph, DefaultWeights, 1000, 200.0);
+
+        results[0].MemoryUnitId.ShouldBe("mu-consensus");
+        results[0].CompositeScore.ShouldBeGreaterThan(results[1].CompositeScore);
     }
 }

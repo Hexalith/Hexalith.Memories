@@ -1,3 +1,59 @@
+# Test Automation Summary - Story 22.4 (Fusion Case Attribution, Score Calibration & Pinned Scorer)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/22-4-fusion-case-attribution-score-calibration-and-pinned-scorer.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute; API/E2E coverage uses existing ASP.NET Core `WebApplicationFactory` endpoint tests and existing Aspire/Redis/FalkorDB integration fixtures. No new framework introduced.
+- **Feature under test:** hybrid fusion case attribution, deterministic scale-free RRF score fusion, explicit Redis BM25-family scorer pinning, hybrid response case grouping, evidence source attribution, and Story 22.1-22.3 regression preservation.
+
+## Generated / Updated Tests
+
+### API Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - added `HybridSearch_WithFusedCaseAttribution_ReturnsCaseGroupsAndEnrichedNames`, which exercises the real `/api/search?axis=hybrid&axes=syntactic` endpoint path and proves fused `CaseId` values are enriched into `CaseName` and `CaseGroups`.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/EvidencePacketServerMappingTests.cs` - existing Story 22.4 coverage proves server-applied hybrid results map case id, case name, annotation count, and axes used into evidence packet sources.
+- [x] `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs` - existing Story 22.3 regression coverage still proves hybrid over-window requests return HTTP 400 `PAGINATION_LIMIT_EXCEEDED`.
+
+### E2E / Integration Tests
+
+- [x] `tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs` - Story 22.4 Redis-backed pinned scorer acceptance coverage is present, but compilation/execution remains sandbox-blocked by NuGet signature lookup network denial.
+- [x] Browser UI E2E is not applicable. Story 22.4 has no module UI.
+
+### Unit / Service Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs` - case attribution preservation, deterministic conflict policy, bounded composite scores, rank-derived axis scores, skewed-score RRF behavior, and repeated-run deterministic ordering.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/SyntacticSearchServiceTests.cs` - typed query and raw scoped `FT.SEARCH INKEYS` command shape pin the explicit BM25-family scorer token and keep scoped key validation.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/HybridSearchServiceTests.cs` - hybrid orchestration preserves candidate windows, excludes stale-only axes from fusion, avoids corpus-statistics dependency, and keeps pagination-limit behavior.
+- [x] `tests/Hexalith.Memories.Server.Tests/Search/ExplainMetadataBuilderTests.cs` - public explain metadata reflects rank-contribution score semantics.
+
+## Coverage
+
+- API endpoints: `/api/search` hybrid success path now covered for fused case attribution, enriched case names, and grouped case metadata; hybrid pagination-limit errors remain covered.
+- Fusion engine: syntactic-only, semantic-only, graph-only, mixed-axis attribution; conflict handling; deterministic RRF ordering; bounded composite and per-axis contribution scores covered.
+- Redis scorer: normal NRedisStack query and raw graph-scoped `FT.SEARCH INKEYS` command shape covered; Redis-backed acceptance test exists but cannot be compiled in this sandbox.
+- Evidence packets: hybrid evidence source case id/name/annotation count mapping covered.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [ ] `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --filter FullyQualifiedName~SearchEndpointContractTests -m:1 /nodeReuse:false` - blocked before discovery by VSTest TCP listener setup: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Endpoints.SearchEndpointContractTests` - 8 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Search.FusionEngineTests -class Hexalith.Memories.Server.Tests.Search.SyntacticSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.ExplainMetadataBuilderTests -class Hexalith.Memories.Server.Tests.Search.HybridSearchServiceTests -class Hexalith.Memories.Server.Tests.Search.EvidencePacketServerMappingTests -class Hexalith.Memories.Server.Tests.Endpoints.SearchEndpointContractTests` - 114 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2248 total, 0 failed, 1 skipped.
+- [ ] `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -m:1 /nodeReuse:false --no-restore` - blocked before compilation by `NU1301` NuGet repository signature lookup denial: `Permission denied (api.nuget.org:443)`.
+- [x] `git diff --check` - passed.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass; one endpoint-level hybrid attribution success path added.
+- E2E tests generated where applicable: pass for backend/API surface; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy path and critical error cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+- Full Redis/Aspire integration compilation/execution remains blocked by sandbox NuGet signature network policy, not by test code.
+
+---
+
 # Test Automation Summary - Story 22.3 (Graph-Scoped & Hybrid Pagination Correctness)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`

@@ -25,6 +25,9 @@ public sealed partial class SyntacticSearchService
 {
     private const int MaxSnippetLength = 200;
 
+    /// <summary>Explicit RediSearch BM25-family scorer used by all syntactic search paths.</summary>
+    internal const string RedisSearchScorerName = "BM25STD";
+
     private static readonly HashSet<string> s_naturalLanguageLeadingTerms = new(StringComparer.OrdinalIgnoreCase)
     {
         "describe",
@@ -90,11 +93,7 @@ public sealed partial class SyntacticSearchService
             query.CloudEventSubject,
             query.AttributeFilters);
 
-        var redisQuery = new Query(queryString)
-            .SetWithScores(true)
-            .Limit(offset, maxResults)
-            .Dialect(2)
-            .ReturnFields("content", "sourceUri", "sourceType", "caseId", "metadataJson", "ingestedBy", "ingestedAt");
+        Query redisQuery = BuildRedisQuery(queryString, offset, maxResults);
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId);
         RedisSearchResult result;
@@ -302,34 +301,12 @@ public sealed partial class SyntacticSearchService
         int offset,
         int maxResults)
     {
-        List<object> args =
-        [
+        List<object> args = BuildGraphScopedSearchArguments(
             indexName,
             queryString,
-            "INKEYS",
-            graphScopeKeys.Count,
-        ];
-
-        foreach (RedisKey key in graphScopeKeys)
-        {
-            args.Add(key);
-        }
-
-        args.Add("WITHSCORES");
-        args.Add("RETURN");
-        args.Add(7);
-        args.Add("content");
-        args.Add("sourceUri");
-        args.Add("sourceType");
-        args.Add("caseId");
-        args.Add("metadataJson");
-        args.Add("ingestedBy");
-        args.Add("ingestedAt");
-        args.Add("LIMIT");
-        args.Add(offset);
-        args.Add(maxResults);
-        args.Add("DIALECT");
-        args.Add(2);
+            graphScopeKeys,
+            offset,
+            maxResults);
 
         RedisResult rawResult;
         try
@@ -374,6 +351,55 @@ public sealed partial class SyntacticSearchService
 
     internal static string BuildAttributeTag(string key, string value)
         => $"{key.Trim()}={value.Trim()}";
+
+    internal static Query BuildRedisQuery(string queryString, int offset, int maxResults)
+        => new Query(queryString)
+            .SetWithScores(true)
+            .SetScorer(RedisSearchScorerName)
+            .Limit(offset, maxResults)
+            .Dialect(2)
+            .ReturnFields("content", "sourceUri", "sourceType", "caseId", "metadataJson", "ingestedBy", "ingestedAt");
+
+    internal static List<object> BuildGraphScopedSearchArguments(
+        string indexName,
+        string queryString,
+        IReadOnlyList<RedisKey> graphScopeKeys,
+        int offset,
+        int maxResults)
+    {
+        List<object> args =
+        [
+            indexName,
+            queryString,
+            "INKEYS",
+            graphScopeKeys.Count,
+        ];
+
+        foreach (RedisKey key in graphScopeKeys)
+        {
+            args.Add(key);
+        }
+
+        args.Add("WITHSCORES");
+        args.Add("SCORER");
+        args.Add(RedisSearchScorerName);
+        args.Add("RETURN");
+        args.Add(7);
+        args.Add("content");
+        args.Add("sourceUri");
+        args.Add("sourceType");
+        args.Add("caseId");
+        args.Add("metadataJson");
+        args.Add("ingestedBy");
+        args.Add("ingestedAt");
+        args.Add("LIMIT");
+        args.Add(offset);
+        args.Add(maxResults);
+        args.Add("DIALECT");
+        args.Add(2);
+
+        return args;
+    }
 
     internal static RedisKey[] ValidateGraphScopeKeys(string tenantId, IReadOnlyCollection<RedisKey> graphScopeKeys)
     {

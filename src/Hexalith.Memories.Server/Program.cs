@@ -276,7 +276,6 @@ builder.Services.AddSingleton<HybridSearchService>(sp =>
         query => syntactic.SearchAsync(query),
         (query, config, ct) => semantic.SearchAsync(query, config, ct),
         (query, startNode, depth, ct) => graph.SearchAsync(query, startNode, depth, innerSearch: null, ct),
-        sp.GetRequiredService<IActorProxyFactory>(),
         sp.GetRequiredService<ILogger<HybridSearchService>>());
 });
 

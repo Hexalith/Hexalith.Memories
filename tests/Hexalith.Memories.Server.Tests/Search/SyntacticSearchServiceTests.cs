@@ -323,6 +323,37 @@ public class SyntacticSearchServiceTests
     }
 
     [Fact]
+    public void BuildRedisQuery_ShouldPinBm25FamilyScorer()
+    {
+        Query query = SyntacticSearchService.BuildRedisQuery("outage", offset: 0, maxResults: 10);
+
+        ReadQueryScorer(query).ShouldBe(SyntacticSearchService.RedisSearchScorerName);
+    }
+
+    [Fact]
+    public void BuildGraphScopedSearchArguments_ShouldPinScorerBeforeLimit()
+    {
+        IReadOnlyList<object> args = SyntacticSearchService.BuildGraphScopedSearchArguments(
+            "tenant1:memories:idx:syntactic",
+            "outage",
+            [
+                IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"),
+                IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"),
+            ],
+            offset: 25,
+            maxResults: 150);
+
+        int inKeysIndex = IndexOf(args, "INKEYS");
+        int scorerIndex = IndexOf(args, "SCORER");
+        int limitIndex = IndexOf(args, "LIMIT");
+
+        inKeysIndex.ShouldBeGreaterThan(1);
+        scorerIndex.ShouldBeGreaterThan(inKeysIndex);
+        limitIndex.ShouldBeGreaterThan(scorerIndex);
+        args[scorerIndex + 1].ShouldBe(SyntacticSearchService.RedisSearchScorerName);
+    }
+
+    [Fact]
     public async Task SearchAsync_WithGraphScopeKeys_ShouldApplyInKeysBeforeLimit()
     {
         IDatabase db = Substitute.For<IDatabase>();
@@ -354,9 +385,13 @@ public class SyntacticSearchServiceTests
         observedArguments.Count.ShouldBe(1);
         IReadOnlyList<object> args = observedArguments[0];
         int inKeysIndex = IndexOf(args, "INKEYS");
+        int scorerIndex = IndexOf(args, "SCORER");
         int limitIndex = IndexOf(args, "LIMIT");
         inKeysIndex.ShouldBeGreaterThan(1);
+        scorerIndex.ShouldBeGreaterThan(inKeysIndex);
         limitIndex.ShouldBeGreaterThan(inKeysIndex);
+        limitIndex.ShouldBeGreaterThan(scorerIndex);
+        args[scorerIndex + 1].ShouldBe(SyntacticSearchService.RedisSearchScorerName);
         args[inKeysIndex + 1].ShouldBe(2);
         args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-001"));
         args.ShouldContain(IndexSchemaDefinitions.BuildSyntacticKey("tenant1", "mu-002"));
@@ -443,5 +478,11 @@ public class SyntacticSearchServiceTests
         }
 
         return -1;
+    }
+
+    private static string? ReadQueryScorer(Query query)
+    {
+        var property = typeof(Query).GetProperty("Scorer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+        return property?.GetValue(query)?.ToString();
     }
 }
