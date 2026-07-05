@@ -8,6 +8,7 @@ extern alias MigrateTool;
 namespace Hexalith.Memories.Server.Tests.Migration;
 
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 using Hexalith.Memories.Server.Migration;
@@ -99,8 +100,9 @@ public sealed class MigrateEmbeddingVectorsToolTests
     private static async Task<ToolRunResult> RunToolAsync(params string[] args)
     {
         string repoRoot = ResolveRepoRoot();
-        string toolPath = Path.Combine(repoRoot, "tools", "MigrateEmbeddingVectors", "bin", "Debug", "net10.0", "MigrateEmbeddingVectors.dll");
-        File.Exists(toolPath).ShouldBeTrue("Build the solution before running migration tool parser tests.");
+        string toolPath = ResolveToolPath(repoRoot);
+        File.Exists(toolPath).ShouldBeTrue(
+            $"Build the solution before running migration tool parser tests. Expected tool at '{toolPath}'.");
 
         using Process process = new()
         {
@@ -124,6 +126,37 @@ public sealed class MigrateEmbeddingVectorsToolTests
         string error = await process.StandardError.ReadToEndAsync().ConfigureAwait(false);
         await process.WaitForExitAsync().ConfigureAwait(false);
         return new ToolRunResult(process.ExitCode, output, error);
+    }
+
+    private static string ResolveToolPath(string repoRoot)
+    {
+        string toolBinRoot = Path.Combine(repoRoot, "tools", "MigrateEmbeddingVectors", "bin");
+
+        // Resolve the tool DLL under the same build configuration as this test assembly. CI builds and
+        // runs the suite in Release (`--configuration Release`), so a hard-coded "Debug" segment points
+        // at a path that never exists on a clean checkout. AssemblyConfigurationAttribute is emitted by
+        // the SDK with the active configuration ("Debug"/"Release").
+        string configuration = typeof(MigrateEmbeddingVectorsToolTests).Assembly
+            .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Debug";
+        string preferred = Path.Combine(toolBinRoot, configuration, "net10.0", "MigrateEmbeddingVectors.dll");
+        if (File.Exists(preferred))
+        {
+            return preferred;
+        }
+
+        // Defensive fallback: honor whichever configuration was actually built. A local run may only
+        // have produced one of the two outputs, and the configuration attribute can be absent under
+        // non-default SDK settings.
+        foreach (string candidateConfiguration in new[] { "Release", "Debug" })
+        {
+            string candidate = Path.Combine(toolBinRoot, candidateConfiguration, "net10.0", "MigrateEmbeddingVectors.dll");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return preferred;
     }
 
     private static string ResolveRepoRoot()
