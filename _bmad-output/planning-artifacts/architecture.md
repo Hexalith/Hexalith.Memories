@@ -68,7 +68,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 | Embedding provider APIs | External dependency for vector generation; rate limits, latency, cost. **Provider outage halts ingestion for all affected tenants.** Thundering herd risk on recovery — workflow retry policies with jitter. Shared rate limiter coordination deferred to Phase 3. | External chokepoint |
 | Polyglot services via DAPR | When a Python/other-language library is the best fit for a major feature, create a service in that language and call it through DAPR service invocation. **DAPR makes the calling language invisible** — C# workflows call Python services identically to C# activities. The Dapr Agents Python SDK (GA 1.0.0) is the primary example: AI enrichment runs as a Python sidecar service rather than reimplementing agent patterns in C#. | Best-of-breed per feature; DAPR service invocation as universal glue |
 | JSON-only serialization | All service communication; CloudEvents for pub/sub | Simplicity and interoperability |
-| Physical tenant isolation | Separate indexes per tenant. **Defense-in-depth**: even a query filter bug can't leak data because data isn't co-located. Cost: connection pooling (N tenants × 3 backends). FalkorDB isolation must be at database level, not label level. | Makes leakage a configuration error, not a code error |
+| Physical tenant isolation | Separate indexes per tenant plus the Story 24.3 target of per-tenant Redis ACL users resolved through tenant-scoped backend routing. **Defense-in-depth**: even a query filter bug can't leak data because data is not accessible through the wrong tenant backend principal. FalkorDB isolation must be at database level, not label level. Prefixes, hash tags, and logical DBs are placement tools, not the primary security boundary. | Makes leakage a configuration/access-control error, not a query-filter error |
 | DAPR Workflow model | Workflow state persisted via Durable Task Framework in actor state store. Workflows are event-sourced — incremental append-only history. Activities are individually retriable with `WorkflowRetryPolicy`. Compensation via try/catch in workflow orchestration. Workflows survive restarts. | Replaces custom actor-based queue management for orchestrations |
 | DAPR actor state model | Virtual actor pattern. Per-tenant actors for stateful singletons (rate limiting, corpus stats). **State must be persisted before every response** — not batch-persisted on deactivation. Actor idle timeout configured per actor type via `entitiesConfig`. | Per-entity state management; complements workflows |
 | DAPR pub/sub delivery | At-least-once delivery semantics. **Ingestion must be idempotent** — duplicate event detection by source identifier (event ID + aggregate ID) is required. **Message ordering is NOT guaranteed** — causal chain gap markers must be fillable retroactively when out-of-order events arrive. Graph edge updates must be idempotent. | Prevents duplicates; handles reordering |
@@ -77,7 +77,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Cross-Cutting Concerns Identified
 
-1. **Tenant Isolation (NFR8, FR38-45) [MVP-critical]:** Enforced at 4 layers — API validation, index namespace prefixing, DAPR actor scoping, graph query isolation. Every component must be tenant-aware. Physical index separation means tenant provisioning/deletion is a multi-backend operation requiring atomicity or rollback handling. FalkorDB isolation must be at the database level, not label/namespace level. Cypher queries must use parameterized queries to prevent injection. **Tenant deletion at scale is a potentially blocking operation — async deletion with progress tracking required; graph deletion must not block other tenants' queries (batched deletion: delete N nodes per transaction, yield between batches).**
+1. **Tenant Isolation (NFR8, FR38-45) [MVP-critical]:** Enforced at 4 layers — API validation, tenant-scoped backend authorization, DAPR actor scoping, and graph query isolation. Every component must be tenant-aware. Physical index separation means tenant provisioning/deletion is a multi-backend operation requiring atomicity or rollback handling. Story 24.3 ratifies per-tenant Redis ACL users plus tenant-scoped backend resolution as the target Redis security boundary; per-tenant RediSearch/vector indexes remain lifecycle resources, while prefixes/hash tags/logical DBs are placement aids only. FalkorDB isolation must be at the database level, not label/namespace level. Cypher queries must use parameterized queries to prevent injection. **Tenant deletion at scale is a potentially blocking operation — async deletion with progress tracking required; graph deletion must not block other tenants' queries (batched deletion: delete N nodes per transaction, yield between batches).**
 
 2. **Observability (NFR27-29) [MVP-critical]:** OpenTelemetry traces must propagate across all DAPR hops (CLI → ingress → Server → MCP → backends). Structured JSON logging with DAPR trace context correlation IDs. Custom metrics per tenant (ingestion throughput, search latency per axis, index size, pipeline queue depth). Aspire dashboard for local dev.
 
@@ -278,6 +278,9 @@ Architectural deliverable for operator guide. Sizing formula: `(dimensions × 4 
 **3. Tenant-to-Instance Mapping:**
 `ITenantInfrastructureResolver` interface — a **planned extension point**, not a free abstraction. Single implementation in MVP (all tenants → same instance). Returns per-tenant connection details for all three backends. Multi-instance is configuration, not code change. Migration tooling deferred until needed. Document clearly so contributors understand why it exists (future multi-instance scaling).
 
+**4. Story 24.3 Physical Tenant Isolation Decision:**
+Redis physical isolation target is per-tenant ACL users combined with tenant-scoped backend resolution. RediSearch syntactic indexes, raw Redis Vector indexes, natural-language Redis Vector indexes, and FalkorDB graph databases remain tenant-scoped lifecycle resources created and deleted by tenant workflows. Key prefixes, Redis hash tags, and logical Redis databases are placement and routing tools only; they are not the primary security boundary. Story 24.3 ratifies this direction and updates verifier evidence to structural/cursor checks, while full ACL user provisioning, tenant-scoped connection migration, and data migration remain follow-up enforcement work.
+
 ### PRD Deviations
 
 Where the architecture overrides or clarifies PRD language, documented here for implementer clarity.
@@ -301,6 +304,7 @@ When embedding model changes (e.g., `text-embedding-004` → `text-embedding-005
 |---|---|---|
 | Fusion algorithm (pure function, normalization) | Gate 1 (three-axis validation) | MVP |
 | EventStore source of truth + projection compensation | Gate 1 | MVP |
+| Per-tenant Redis ACL users plus tenant-scoped backend resolution | Gate 2 (zero cross-tenant leaks) | MVP target; full enforcement follows Story 24.3 |
 | Physical FalkorDB isolation at database level | Gate 2 (zero cross-tenant leaks) | MVP |
 | `IGraphQueryBuilder` (injection prevention) | Gate 2 | MVP |
 | Provisioning rollback | Gate 2 | MVP |
@@ -398,6 +402,7 @@ Decisions made during context analysis, extracted for quick reference:
 | D8 | TenantAuthorizationMiddleware no longer deferred | Epic 20 implemented Server auth and tenant-claim authorization; preserve the guard on every tenant-scoped ingress path | Security Architecture |
 | D9 | Safety interfaces (IGraphQueryBuilder) are interfaces; extensibility points are concrete classes | Avoids abstraction tax; extract when second implementation arrives | Architectural Components |
 | D10 | Index rebuild: accept degradation in MVP, design naming for concurrent versions | Solo developer; no production tenants during thesis validation | Open Decision |
+| D29 | Redis physical isolation target is per-tenant ACL users plus tenant-scoped backend resolution | Prefix-only naming is insufficient as a security boundary; verifier evidence must prove target tenant storage and metadata without pairwise deep scans | Resolved Design Questions |
 
 ## Starter Template Evaluation
 
@@ -593,6 +598,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D26 | DAPR Conversation API for LLM communication | Provider-agnostic LLM abstraction via `Dapr.AI`. Swap providers (OpenAI, Anthropic, Google, Mistral) by changing component YAML only. Alpha status accepted — suppress `DAPR_CONVERSATION` warning. | MVP (enrichment optional), Phase 1.5 (full AI features) |
 | D27 | Dapr Agents as Python sidecar service | Dapr Agents SDK is Python-only (GA 1.0.0). Run as a polyglot sidecar service (`ai-agent`) called by C# workflows via DAPR service invocation. Python owns AI enrichment, NLP, causal inference. C# owns core domain. | MVP (optional enrichment), Phase 1.5 (full AI features) |
 | D28 | Polyglot services via DAPR service invocation | When a Python/other-language library is the best fit, create a service in that language. DAPR service invocation makes the calling language invisible. Aspire AppHost orchestrates all services regardless of language. | MVP |
+| D29 | Redis physical isolation target | Per-tenant ACL users plus tenant-scoped backend resolution; prefixes/hash tags/logical DBs are placement aids, not the security boundary | Operational readiness |
 
 ### Cross-Component Dependencies
 
@@ -1441,8 +1447,8 @@ Hexalith.Memories/
 
 | Backend | Owns | Tenant Isolation | Access Pattern |
 |---|---|---|---|
-| RediSearch | Syntactic index (BM25) | `{tenantId}:memories:idx` per tenant | `NRedisStack` via `RediSearchQueryExecutor` |
-| Redis Vector | Semantic index (HNSW) | `{tenantId}:memories:vec` per tenant | `NRedisStack` via `RedisVectorQueryExecutor` |
+| RediSearch | Syntactic index (BM25) | `{tenantId}:memories:idx` per tenant; Story 24.3 target adds per-tenant Redis ACL users via tenant-scoped backend resolution | `NRedisStack` via `RediSearchQueryExecutor` |
+| Redis Vector | Raw + natural-language semantic indexes (HNSW) | `{tenantId}:memories:vec` and `{tenantId}:memories:vec:nl` per tenant; prefixes/hash tags/logical DBs are placement tools, not the primary security boundary | `NRedisStack` via `RedisVectorQueryExecutor` |
 | FalkorDB | Graph (edges, traversal) | Separate database per tenant | `NFalkorDB` via `FalkorDbQueryExecutor` through `IGraphQueryBuilder` |
 | Redis State | DAPR workflow state + actor state | Shared instance, workflow instance IDs + actor IDs scoped by tenant | DAPR SDK (workflows + actors) |
 

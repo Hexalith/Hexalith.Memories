@@ -16,9 +16,6 @@ internal static partial class TenantIdGuard
         "global",
     };
 
-    /// <summary>Gets the canonical reserved tenant names.</summary>
-    internal static IReadOnlySet<string> ReservedNames => _reservedNames;
-
     /// <summary>Validates that the tenant ID is well-formed and not a reserved name.</summary>
     /// <param name="tenantId">The tenant identifier to validate.</param>
     /// <exception cref="ArgumentException">Thrown when the tenant ID is invalid or reserved.</exception>

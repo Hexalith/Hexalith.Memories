@@ -69,6 +69,7 @@ public class IndexNaturalLanguageSemanticActivityTests
 
         captured.ShouldNotBeNull();
         captured.ShouldContain(e => e.Name == "descriptionOrigin" && e.Value.ToString() == "ai");
+        captured.ShouldContain(e => e.Name == "tenantId" && e.Value.ToString() == "tenant-a");
         captured.ShouldContain(e => e.Name == "descriptionConfidenceSource" && e.Value.ToString() == "logprobs");
         captured.ShouldContain(e => e.Name == "descriptionConfidence" && e.Value.ToString()!.StartsWith("0.87"));
         captured.ShouldContain(e => e.Name == "naturalLanguageDescription" && e.Value.ToString() == "User opened a support claim.");

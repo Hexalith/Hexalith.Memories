@@ -141,9 +141,9 @@ public sealed class TenantIsolationIntegrationTests
     public async Task VerifyTenant_PlantedCrossTenantData_DetectsLeakage()
     {
         // Negative test (false-pass prevention): Deliberately plant cross-tenant data
-        // (e.g., manually write a hash with tenant B's key prefix into tenant A's RediSearch index),
+        // (e.g., manually write a hash under tenant A's prefix with tenant B's stored tenantId),
         // run verify on A, confirm the verifier detects the planted leakage.
-        // This prevents false-pass bugs in FT.SEARCH query construction.
+        // This prevents false-pass bugs in the target-prefix cursor checks.
         string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
         string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
         await SeedMemoryUnitHashAsync(tenantA, "case-1", "mu-leak", "Planted cross-tenant payload.", tenantB);
@@ -157,6 +157,10 @@ public sealed class TenantIsolationIntegrationTests
 
         result.ShouldNotBeNull();
         result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
+        syntacticCheck.Passed.ShouldBeFalse();
+        syntacticCheck.Details.ShouldNotBeNull();
+        syntacticCheck.Details.ShouldContain(tenantB);
     }
 
     private async Task SeedMemoryUnitHashAsync(
@@ -194,7 +198,6 @@ public sealed class TenantIsolationIntegrationTests
             "SyntacticIsolation",
             "SemanticIsolation",
             "GraphIsolation",
-            "InputValidation",
         })
         {
             TenantIsolationCheckResult check = result.Checks.First(c => c.CheckName == checkName);

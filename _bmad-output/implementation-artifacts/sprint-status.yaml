@@ -442,7 +442,7 @@ development_status:
   epic-24: in-progress
   24-1-trace-propagation-across-the-workflow-boundary: done
   24-2-read-path-caching-and-tenant-list-bounding: review
-  24-3-physical-tenant-isolation-and-verifier-scaling: backlog
+  24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: backlog
   24-5-hot-path-write-amplification-cleanup: backlog
   epic-24-retrospective: optional

@@ -97,6 +97,7 @@ public sealed class IndexSemanticChunksActivity : WorkflowTraceLinkedActivity<Se
             List<HashEntry> hashEntries =
             [
                 new HashEntry("embedding", vectorBytes),
+                new HashEntry("tenantId", input.TenantId),
                 new HashEntry("memoryUnitId", input.MemoryUnitId),
                 new HashEntry("caseId", input.CaseId),
                 new HashEntry("embeddingProvider", input.EmbeddingProvider),

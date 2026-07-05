@@ -7,6 +7,9 @@
 
 namespace Hexalith.Memories.Server.Tests.Tenants;
 
+using System.Globalization;
+using System.Net;
+
 using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
@@ -24,18 +27,19 @@ using StackExchange.Redis;
 
 public class TenantIsolationVerifierTests
 {
+    private const int VectorDimensions = 3;
+
     [Fact]
     public async Task VerifyAsync_AllChecksPassed_ReturnsAllPassed()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
                 new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -48,22 +52,19 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_DetectsSyntacticLeakage_ReturnsFailed()
+    public async Task VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
                 new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        // Simulate leakage: tenant-a's syntactic index contains a key with tenant-b's prefix
-        SetupSearchWithForeignKey(
-            redisDb,
-            IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"),
-            IndexSchemaDefinitions.BuildSyntacticKey("tenant-b", "leaked-doc"));
-        SetupEmptySearchExcept(redisDb, IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"));
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "leaked-doc");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), plantedKey);
+        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -77,22 +78,19 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_DetectsSemanticLeakage_ReturnsFailed()
+    public async Task VerifyAsync_DetectsSemanticTenantIdMismatch_ReturnsFailed()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
                 new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb); // syntactic clean
-        // Override semantic search to simulate leakage in tenant-a's semantic index
-        SetupSearchWithForeignKeyForIndex(
-            redisDb,
-            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
-            IndexSchemaDefinitions.BuildSemanticKey("tenant-b", "leaked-vec"));
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "leaked-vec");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -106,39 +104,115 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_MissingPeerGraphDatabase_ReturnsFailed()
+    public async Task VerifyAsync_DetectsNaturalLanguageSemanticTenantIdMismatch_ReturnsFailed()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
                 new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
-        SetupGraphList(falkorDb, "tenant-a");
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "leaked-nl");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
         result.AllPassed.ShouldBeFalse();
-        TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
-        graphCheck.Passed.ShouldBeFalse();
-        graphCheck.Details.ShouldNotBeNull();
-        graphCheck.Details.ShouldContain("tenant-b");
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("natural-language semantic");
+        semanticCheck.Details.ShouldContain("tenant-b");
     }
 
     [Fact]
-    public async Task VerifyAsync_DetectsOrphanedDatabases_ReturnsFailed()
+    public async Task VerifyAsync_DetectsMissingSemanticTenantId_ReturnsFailed()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "missing-tenant-marker");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupGraphList(falkorDb, "tenant-a");
+        SetupGraphQueryEmpty(falkorDb);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("missing tenantId field");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MultipleRedisEndpoints_ScansAllConnectedServers()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer firstServer, IServer secondServer) = CreateVerifierWithTwoRedisServers(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string firstKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "first");
+        string secondKey = IndexSchemaDefinitions.BuildSyntacticKey("tenant-a", "second");
+        SetupRedisKeyScan(firstServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), firstKey);
+        SetupRedisKeyScan(secondServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), secondKey);
+        SetupTenantIdField(redisDb, firstKey, "tenant-a");
+        SetupTenantIdField(redisDb, secondKey, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+        SetupGraphQueryEmpty(falkorDb);
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeTrue();
+        TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
+        syntacticCheck.Details.ShouldNotBeNull();
+        syntacticCheck.Details.ShouldContain("2 target-prefix hash(es)");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MissingPeerGraphDatabase_DoesNotFailTargetGraphIsolation()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeTrue();
+        TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
+        graphCheck.Passed.ShouldBeTrue();
+        graphCheck.Details.ShouldNotBeNull();
+        graphCheck.Details.ShouldContain("tenant-a");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_DetectsOrphanedDatabases_ReturnsFailed()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         // GRAPH.LIST returns an extra database not in registry
         SetupGraphList(falkorDb, "tenant-a", "ghost-tenant");
         SetupGraphQueryEmpty(falkorDb);
@@ -154,58 +228,55 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_RejectsMalformedTenantIds_InputValidationPasses()
+    public async Task VerifyAsync_DoesNotEmitInputValidationCheck()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
-        TenantIsolationCheckResult inputCheck = result.Checks.First(c => c.CheckName == "InputValidation");
-        inputCheck.Passed.ShouldBeTrue();
-        inputCheck.Details.ShouldNotBeNull();
-        inputCheck.Details.ShouldContain("correctly rejected");
+        result.Checks.ShouldNotContain(c => c.CheckName == "InputValidation");
     }
 
     [Fact]
-    public async Task VerifyAsync_RejectsReservedTenantIds_InputValidationPasses()
+    public async Task VerifyAsync_ManyPeerTenants_DoesNotIssueSearchScans()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
-            tenants:
-            [
-                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
-            ]);
+        List<TenantInfo> tenants =
+        [
+            new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+        ];
+        tenants.AddRange(Enumerable.Range(0, 50)
+            .Select(i => new TenantInfo($"tenant-peer-{i}", $"Peer {i}", TenantStatus.Active, DateTimeOffset.UtcNow)));
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(tenants);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
-        TenantIsolationCheckResult inputCheck = result.Checks.First(c => c.CheckName == "InputValidation");
-        inputCheck.Passed.ShouldBeTrue();
+        result.AllPassed.ShouldBeTrue();
+        _ = redisDb.DidNotReceive().ExecuteAsync(Arg.Is("FT.SEARCH"), Arg.Any<object[]>());
     }
 
     [Fact]
     public async Task VerifyAsync_IncludesPerCheckTiming()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -220,7 +291,7 @@ public class TenantIsolationVerifierTests
     [Fact]
     public async Task VerifyAsync_AllPassedFalseWhenAnyCheckFails()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
@@ -229,7 +300,6 @@ public class TenantIsolationVerifierTests
         // Make index existence fail
         redisDb.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Any<object[]>())
             .Throws(new RedisServerException("Unknown index name"));
-        SetupEmptySearch(redisDb);
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -242,7 +312,7 @@ public class TenantIsolationVerifierTests
     [Fact]
     public async Task VerifyAsync_BackendUnavailable_ReturnsFailedCheckNotException()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
@@ -270,23 +340,18 @@ public class TenantIsolationVerifierTests
             check.Details.ShouldContain("Backend unavailable");
             check.Remediation.ShouldNotBeNull();
         }
-
-        // InputValidation doesn't depend on backend
-        TenantIsolationCheckResult inputCheck = result.Checks.First(c => c.CheckName == "InputValidation");
-        inputCheck.Passed.ShouldBeTrue();
     }
 
     [Fact]
-    public async Task VerifyAsync_SingleTenant_CrossChecksReportSkipped()
+    public async Task VerifyAsync_SingleTenant_PerformsTargetStructuralChecks()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -297,23 +362,23 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
         syntacticCheck.Passed.ShouldBeTrue();
         syntacticCheck.Details.ShouldNotBeNull();
-        syntacticCheck.Details.ShouldContain("no other tenants to check against");
+        syntacticCheck.Details.ShouldContain("Target syntactic index metadata");
 
         TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
         semanticCheck.Passed.ShouldBeTrue();
         semanticCheck.Details.ShouldNotBeNull();
-        semanticCheck.Details.ShouldContain("no other tenants to check against");
+        semanticCheck.Details.ShouldContain("raw and natural-language vector index metadata");
 
         TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
         graphCheck.Passed.ShouldBeTrue();
         graphCheck.Details.ShouldNotBeNull();
-        graphCheck.Details.ShouldContain("no other tenants to check against");
+        graphCheck.Details.ShouldContain("Target graph database");
     }
 
     [Fact]
     public async Task VerifyAsync_NonActiveTenantsSkippedInCrossChecks()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
@@ -321,8 +386,7 @@ public class TenantIsolationVerifierTests
                 new TenantInfo("tenant-deleting", "Deleting Tenant", TenantStatus.Deleting, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -340,25 +404,19 @@ public class TenantIsolationVerifierTests
         skipDeleting.Passed.ShouldBeTrue();
         skipDeleting.Details.ShouldNotBeNull();
         skipDeleting.Details.ShouldContain("Deleting");
-
-        // Cross-checks for syntactic/semantic/graph should skip since no active other tenants
-        TenantIsolationCheckResult syntacticCheck = result.Checks.First(c => c.CheckName == "SyntacticIsolation");
-        syntacticCheck.Details.ShouldNotBeNull();
-        syntacticCheck.Details.ShouldContain("no other tenants to check against");
     }
 
     [Fact]
     public async Task VerifyAsync_EmptyTenant_PassesWithVacuousDetails()
     {
-        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb) = CreateVerifier(
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("empty-tenant", "Empty", TenantStatus.Active, DateTimeOffset.UtcNow),
                 new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
             ]);
 
-        SetupSuccessfulIndexInfo(redisDb, 0);
-        SetupEmptySearch(redisDb);
+        SetupSuccessfulIndexInfo(redisDb, "empty-tenant", 0);
         SetupGraphList(falkorDb, "empty-tenant", "tenant-b");
         SetupGraphQueryEmpty(falkorDb);
 
@@ -377,8 +435,25 @@ public class TenantIsolationVerifierTests
 
     // --- Helper methods ---
 
-    private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb) CreateVerifier(
+    private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IServer RedisServer) CreateVerifier(
         IReadOnlyList<TenantInfo> tenants)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IReadOnlyList<IServer> redisServers) =
+            CreateVerifierCore(tenants, redisServerCount: 1);
+        return (verifier, redisDb, falkorDb, redisServers[0]);
+    }
+
+    private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IServer FirstRedisServer, IServer SecondRedisServer) CreateVerifierWithTwoRedisServers(
+        IReadOnlyList<TenantInfo> tenants)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IReadOnlyList<IServer> redisServers) =
+            CreateVerifierCore(tenants, redisServerCount: 2);
+        return (verifier, redisDb, falkorDb, redisServers[0], redisServers[1]);
+    }
+
+    private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IReadOnlyList<IServer> RedisServers) CreateVerifierCore(
+        IReadOnlyList<TenantInfo> tenants,
+        int redisServerCount)
     {
         // Set up TenantRegistryService with mocked DaprClient
         DaprClient daprClient = Substitute.For<DaprClient>();
@@ -400,7 +475,28 @@ public class TenantIsolationVerifierTests
         // Set up Redis mocks
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         IDatabase redisDb = Substitute.For<IDatabase>();
+        List<IServer> redisServers = [];
+        EndPoint[] redisEndpoints = Enumerable.Range(0, redisServerCount)
+            .Select(i => new DnsEndPoint("localhost", 6379 + i))
+            .Cast<EndPoint>()
+            .ToArray();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+        redis.GetEndPoints().Returns(redisEndpoints);
+        foreach (EndPoint redisEndpoint in redisEndpoints)
+        {
+            IServer redisServer = Substitute.For<IServer>();
+            redis.GetServer(redisEndpoint).Returns(redisServer);
+            redisServer.IsConnected.Returns(true);
+            redisServer.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Any<RedisValue>(),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+                .Returns(_ => ToAsyncKeys());
+            redisServers.Add(redisServer);
+        }
 
         // Set up FalkorDB mocks
         IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
@@ -410,70 +506,119 @@ public class TenantIsolationVerifierTests
         ILogger<TenantIsolationVerifier> logger = Substitute.For<ILogger<TenantIsolationVerifier>>();
 
         TenantIsolationVerifier verifier = new(registry, redis, falkorDb, logger);
-        return (verifier, redisDb, falkorDatabase);
+        return (verifier, redisDb, falkorDatabase, redisServers);
     }
 
-    private static void SetupSuccessfulIndexInfo(IDatabase db, int docCount = 1)
+    private static void SetupSuccessfulIndexInfo(IDatabase db, string tenantId, int docCount = 1)
     {
-        RedisResult infoResult = RedisResult.Create(
+        SetupIndexInfo(
+            db,
+            IndexSchemaDefinitions.GetSyntacticIndexName(tenantId),
+            CreateIndexInfo(
+                IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId),
+                IndexSchemaDefinitions.GetSyntacticFieldIdentifiers(),
+                docCount));
+        SetupIndexInfo(
+            db,
+            IndexSchemaDefinitions.GetSemanticIndexName(tenantId),
+            CreateIndexInfo(
+                IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId),
+                IndexSchemaDefinitions.GetSemanticFieldIdentifiers(),
+                docCount,
+                VectorDimensions));
+        SetupIndexInfo(
+            db,
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId),
+            CreateIndexInfo(
+                IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId),
+                IndexSchemaDefinitions.GetNaturalLanguageSemanticFieldIdentifiers(),
+                docCount,
+                VectorDimensions));
+    }
+
+    private static void SetupIndexInfo(IDatabase db, string indexName, RedisResult info)
+    {
+        db.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Is<object[]>(args =>
+                args.Length > 0 && string.Equals(args[0].ToString(), indexName, StringComparison.Ordinal)))
+            .Returns(info);
+    }
+
+    private static RedisResult CreateIndexInfo(
+        string prefix,
+        IReadOnlyList<string> fields,
+        int docCount,
+        int? dimensions = null)
+    {
+        RedisResult[] attributes = fields
+            .Select(field => CreateAttribute(field, dimensions))
+            .ToArray();
+
+        return RedisResult.Create(
         [
             RedisResult.Create(new RedisValue("num_docs")),
-            RedisResult.Create(new RedisValue(docCount.ToString(System.Globalization.CultureInfo.InvariantCulture))),
+            RedisResult.Create(new RedisValue(docCount.ToString(CultureInfo.InvariantCulture))),
+            RedisResult.Create(new RedisValue("index_definition")),
+            RedisResult.Create(
+            [
+                RedisResult.Create(new RedisValue("prefixes")),
+                RedisResult.Create([RedisResult.Create(new RedisValue(prefix))]),
+            ]),
+            RedisResult.Create(new RedisValue("attributes")),
+            RedisResult.Create(attributes),
         ]);
-
-        db.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Any<object[]>())
-            .Returns(infoResult);
     }
 
-    private static void SetupEmptySearch(IDatabase db)
+    private static RedisResult CreateAttribute(string field, int? dimensions)
     {
-        // FT.SEARCH NOCONTENT returns [0] — no documents
-        RedisResult emptySearchResult = RedisResult.Create(
+        string type = string.Equals(field, "embedding", StringComparison.Ordinal)
+            ? "VECTOR"
+            : "TAG";
+        List<RedisResult> values =
         [
-            RedisResult.Create(new RedisValue("0")),
-        ]);
-        db.ExecuteAsync(Arg.Is("FT.SEARCH"), Arg.Any<object[]>())
-            .Returns(emptySearchResult);
+            RedisResult.Create(new RedisValue("identifier")),
+            RedisResult.Create(new RedisValue(field)),
+            RedisResult.Create(new RedisValue("type")),
+            RedisResult.Create(new RedisValue(type)),
+        ];
+
+        if (string.Equals(field, "embedding", StringComparison.Ordinal) && dimensions is not null)
+        {
+            values.Add(RedisResult.Create(new RedisValue("dim")));
+            values.Add(RedisResult.Create(new RedisValue(dimensions.Value.ToString(CultureInfo.InvariantCulture))));
+        }
+
+        return RedisResult.Create([.. values]);
     }
 
-    private static void SetupEmptySearchExcept(IDatabase db, string leakingIndex)
+    private static void SetupRedisKeyScan(IServer server, string keyPrefix, params string[] keys)
     {
-        // For non-leaking indexes, return empty results
-        RedisResult emptySearchResult = RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("0")),
-        ]);
-        db.ExecuteAsync(Arg.Is("FT.SEARCH"), Arg.Is<object[]>(args =>
-                args.Length > 0 && args[0].ToString() != leakingIndex))
-            .Returns(emptySearchResult);
+        string pattern = keyPrefix + "*";
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(value => string.Equals(value.ToString(), pattern, StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(_ => ToAsyncKeys(keys));
     }
 
-    private static void SetupSearchWithForeignKey(IDatabase db, string indexName, string foreignKey)
+    private static void SetupTenantIdField(IDatabase db, string key, string tenantId)
     {
-        // FT.SEARCH NOCONTENT returns [1, foreignKey] — one document with foreign prefix
-        RedisResult leakyResult = RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("1")),
-            RedisResult.Create(new RedisValue(foreignKey)),
-        ]);
-        db.ExecuteAsync(Arg.Is("FT.SEARCH"), Arg.Is<object[]>(args =>
-                args.Length > 0 && args[0].ToString() == indexName))
-            .Returns(leakyResult);
+        db.HashGetAsync(
+                Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "tenantId", StringComparison.Ordinal)),
+                Arg.Any<CommandFlags>())
+            .Returns(new RedisValue(tenantId));
     }
 
-    private static void SetupSearchWithForeignKeyForIndex(IDatabase db, string indexName, string foreignKey)
+    private static async IAsyncEnumerable<RedisKey> ToAsyncKeys(params string[] keys)
     {
-        // Override just for the specific semantic index
-        RedisResult leakyResult = RedisResult.Create(
-        [
-            RedisResult.Create(new RedisValue("1")),
-            RedisResult.Create(new RedisValue(foreignKey)),
-        ]);
-
-        // First set up default empty for all FT.SEARCH, then override for specific index
-        db.ExecuteAsync(Arg.Is("FT.SEARCH"), Arg.Is<object[]>(args =>
-                args.Length > 0 && args[0].ToString() == indexName))
-            .Returns(leakyResult);
+        foreach (string key in keys)
+        {
+            await Task.Yield();
+            yield return key;
+        }
     }
 
     private static void SetupGraphList(IDatabase falkorDb, params string[] databases)

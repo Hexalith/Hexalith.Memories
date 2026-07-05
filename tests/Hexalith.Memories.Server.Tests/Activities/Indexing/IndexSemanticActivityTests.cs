@@ -45,7 +45,7 @@ public class IndexSemanticActivityTests
 
         await db.Received(1).HashSetAsync(
             Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("test-tenant", "test-mu-001")),
-            Arg.Any<HashEntry[]>(),
+            Arg.Is<HashEntry[]>(entries => HasEntry(entries, "tenantId", "test-tenant")),
             Arg.Any<CommandFlags>());
     }
 
@@ -225,6 +225,9 @@ public class IndexSemanticActivityTests
 
     private static bool IsTestTenantSemanticKey(RedisKey key)
         => IndexSchemaDefinitions.TryParseSemanticMemoryUnitId("test-tenant", key, out string _);
+
+    private static bool HasEntry(IEnumerable<HashEntry> entries, string name, string value)
+        => entries.Any(entry => entry.Name == name && entry.Value.ToString() == value);
 
     private static HashEntry[] CreateActiveMarkerEntries(string tenantId) =>
     [

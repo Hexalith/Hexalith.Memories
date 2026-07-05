@@ -6,11 +6,9 @@
 namespace Hexalith.Memories.Server.Tenants;
 
 using System.Diagnostics;
-using System.Globalization;
 using System.Net;
 
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
@@ -53,10 +51,6 @@ public sealed partial class TenantIsolationVerifier
         LogVerificationStarted(_logger, tenantId);
 
         IReadOnlyList<TenantInfo> allTenants = await _registry.ListTenantsAsync(ct).ConfigureAwait(false);
-        List<TenantInfo> otherActiveTenants = allTenants
-            .Where(t => !string.Equals(t.Id, tenantId, StringComparison.Ordinal) && t.Status == TenantStatus.Active)
-            .ToList();
-
         List<TenantInfo> skippedTenants = allTenants
             .Where(t => !string.Equals(t.Id, tenantId, StringComparison.Ordinal) && t.Status != TenantStatus.Active)
             .ToList();
@@ -65,10 +59,9 @@ public sealed partial class TenantIsolationVerifier
 
         // Core checks
         checks.Add(await CheckIndexExistenceAsync(tenantId, ct).ConfigureAwait(false));
-        checks.Add(await CheckSyntacticIsolationAsync(tenantId, otherActiveTenants, ct).ConfigureAwait(false));
-        checks.Add(await CheckSemanticIsolationAsync(tenantId, otherActiveTenants, ct).ConfigureAwait(false));
-        checks.Add(await CheckGraphIsolationAsync(tenantId, otherActiveTenants, ct).ConfigureAwait(false));
-        checks.Add(await CheckInputValidationAsync(tenantId, ct).ConfigureAwait(false));
+        checks.Add(await CheckSyntacticIsolationAsync(tenantId, ct).ConfigureAwait(false));
+        checks.Add(await CheckSemanticIsolationAsync(tenantId, ct).ConfigureAwait(false));
+        checks.Add(await CheckGraphIsolationAsync(tenantId, ct).ConfigureAwait(false));
 
         // Enhancement checks
         checks.Add(await CheckOrphanedDatabasesAsync(ct).ConfigureAwait(false));
@@ -110,26 +103,13 @@ public sealed partial class TenantIsolationVerifier
             IDatabase db = _redis.GetDatabase();
             string syntacticIndex = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
             string semanticIndex = IndexSchemaDefinitions.GetSemanticIndexName(tenantId);
+            string naturalLanguageSemanticIndex = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
 
             List<string> missing = [];
 
-            try
-            {
-                _ = await db.ExecuteAsync("FT.INFO", syntacticIndex).ConfigureAwait(false);
-            }
-            catch (RedisServerException)
-            {
-                missing.Add(syntacticIndex);
-            }
-
-            try
-            {
-                _ = await db.ExecuteAsync("FT.INFO", semanticIndex).ConfigureAwait(false);
-            }
-            catch (RedisServerException)
-            {
-                missing.Add(semanticIndex);
-            }
+            _ = await TryGetIndexInfoAsync(db, syntacticIndex, missing).ConfigureAwait(false);
+            _ = await TryGetIndexInfoAsync(db, semanticIndex, missing).ConfigureAwait(false);
+            _ = await TryGetIndexInfoAsync(db, naturalLanguageSemanticIndex, missing).ConfigureAwait(false);
 
             // Check FalkorDB database exists via GRAPH.LIST
             IDatabase falkorDb = _falkorDb.GetDatabase();
@@ -169,64 +149,54 @@ public sealed partial class TenantIsolationVerifier
 
     private async Task<TenantIsolationCheckResult> CheckSyntacticIsolationAsync(
         string tenantId,
-        List<TenantInfo> otherActiveTenants,
         CancellationToken ct)
     {
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
-            if (otherActiveTenants.Count == 0)
-            {
-                sw.Stop();
-                return new TenantIsolationCheckResult("SyntacticIsolation", true, sw.Elapsed.TotalMilliseconds)
-                {
-                    Details = "Skipped \u2014 no other tenants to check against",
-                };
-            }
-
             IDatabase db = _redis.GetDatabase();
             string targetIndex = IndexSchemaDefinitions.GetSyntacticIndexName(tenantId);
             string targetPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId);
-            int? targetDocumentCount = await GetIndexDocumentCountAsync(db, targetIndex).ConfigureAwait(false);
-            List<string> leaks = [];
-            leaks.AddRange(await ScanHashPrefixForTenantFieldMismatchesAsync(targetPrefix, tenantId, ct).ConfigureAwait(false));
-            leaks.AddRange(await SearchIndexForTenantFieldMismatchesAsync(db, targetIndex, tenantId, ct).ConfigureAwait(false));
-
-            foreach (TenantInfo other in otherActiveTenants)
+            List<string> missing = [];
+            (bool found, RedisResult info) = await TryGetIndexInfoAsync(db, targetIndex, missing).ConfigureAwait(false);
+            if (!found)
             {
-                string otherKeyPrefix = IndexSchemaDefinitions.GetSyntacticKeyPrefix(other.Id);
-                string otherIndex = IndexSchemaDefinitions.GetSyntacticIndexName(other.Id);
-
-                // Check: does target tenant's index contain keys with other tenant's prefix?
-                long countInTarget = await SearchIndexForForeignKeysAsync(db, targetIndex, otherKeyPrefix, ct).ConfigureAwait(false);
-                if (countInTarget > 0)
-                {
-                    leaks.Add($"Tenant '{other.Id}' data found in '{tenantId}' syntactic index ({countInTarget} entries)");
-                }
-
-                // Check: does other tenant's index contain keys with target tenant's prefix?
-                long countInOther = await SearchIndexForForeignKeysAsync(db, otherIndex, IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId), ct).ConfigureAwait(false);
-                if (countInOther > 0)
-                {
-                    leaks.Add($"Tenant '{tenantId}' data found in '{other.Id}' syntactic index ({countInOther} entries)");
-                }
+                sw.Stop();
+                return CreateMissingResourcesResult("SyntacticIsolation", missing, tenantId, sw.Elapsed.TotalMilliseconds);
             }
 
+            int? targetDocumentCount = GetIndexDocumentCount(info);
+            List<string> problems = [];
+            AppendIndexMetadataProblems(
+                problems,
+                info,
+                targetIndex,
+                targetPrefix,
+                IndexSchemaDefinitions.GetSyntacticFieldIdentifiers());
+
+            (IReadOnlyList<string> mismatches, int scannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
+                    "syntactic",
+                    targetPrefix,
+                    tenantId,
+                    ct)
+                .ConfigureAwait(false);
+            problems.AddRange(mismatches);
+
             sw.Stop();
-            if (leaks.Count > 0)
+            if (problems.Count > 0)
             {
                 return new TenantIsolationCheckResult("SyntacticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
-                    Details = string.Join("; ", leaks),
-                    Remediation = "Investigate cross-tenant data leakage in RediSearch indexes",
+                    Details = string.Join("; ", problems),
+                    Remediation = "Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes",
                 };
             }
 
             return new TenantIsolationCheckResult("SyntacticIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = targetDocumentCount == 0
-                    ? "Tenant has zero indexed memory units — isolation checks are vacuously true"
-                    : $"No cross-tenant data detected across {otherActiveTenants.Count} other tenant(s)",
+                Details = targetDocumentCount == 0 && scannedCount == 0
+                    ? "Tenant has zero syntactic hashes/indexed memory units — isolation checks are vacuously true"
+                    : $"Target syntactic index metadata and {scannedCount} target-prefix hash(es) verified; indexed docs: {FormatDocumentCount(targetDocumentCount)}",
             };
         }
         catch (RedisConnectionException ex)
@@ -243,64 +213,80 @@ public sealed partial class TenantIsolationVerifier
 
     private async Task<TenantIsolationCheckResult> CheckSemanticIsolationAsync(
         string tenantId,
-        List<TenantInfo> otherActiveTenants,
         CancellationToken ct)
     {
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
-            if (otherActiveTenants.Count == 0)
+            IDatabase db = _redis.GetDatabase();
+            string rawIndex = IndexSchemaDefinitions.GetSemanticIndexName(tenantId);
+            string rawPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
+            string naturalLanguageIndex = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
+            string naturalLanguagePrefix = IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix(tenantId);
+
+            List<string> missing = [];
+            (bool rawFound, RedisResult rawInfo) = await TryGetIndexInfoAsync(db, rawIndex, missing).ConfigureAwait(false);
+            (bool naturalLanguageFound, RedisResult naturalLanguageInfo) = await TryGetIndexInfoAsync(db, naturalLanguageIndex, missing).ConfigureAwait(false);
+            if (!rawFound || !naturalLanguageFound)
             {
                 sw.Stop();
-                return new TenantIsolationCheckResult("SemanticIsolation", true, sw.Elapsed.TotalMilliseconds)
-                {
-                    Details = "Skipped \u2014 no other tenants to check against",
-                };
+                return CreateMissingResourcesResult("SemanticIsolation", missing, tenantId, sw.Elapsed.TotalMilliseconds);
             }
 
-            IDatabase db = _redis.GetDatabase();
-            string targetIndex = IndexSchemaDefinitions.GetSemanticIndexName(tenantId);
-            string targetPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId);
-            int? targetDocumentCount = await GetIndexDocumentCountAsync(db, targetIndex).ConfigureAwait(false);
-            List<string> leaks = [];
-            leaks.AddRange(await ScanHashPrefixForTenantFieldMismatchesAsync(targetPrefix, tenantId, ct).ConfigureAwait(false));
-            leaks.AddRange(await SearchIndexForTenantFieldMismatchesAsync(db, targetIndex, tenantId, ct).ConfigureAwait(false));
-
-            foreach (TenantInfo other in otherActiveTenants)
+            int? rawDocumentCount = GetIndexDocumentCount(rawInfo);
+            int? naturalLanguageDocumentCount = GetIndexDocumentCount(naturalLanguageInfo);
+            List<string> problems = [];
+            int? rawDimensions = AppendVectorIndexMetadataProblems(
+                problems,
+                rawInfo,
+                rawIndex,
+                rawPrefix,
+                IndexSchemaDefinitions.GetSemanticFieldIdentifiers());
+            int? naturalLanguageDimensions = AppendVectorIndexMetadataProblems(
+                problems,
+                naturalLanguageInfo,
+                naturalLanguageIndex,
+                naturalLanguagePrefix,
+                IndexSchemaDefinitions.GetNaturalLanguageSemanticFieldIdentifiers());
+            if (rawDimensions is not null
+                && naturalLanguageDimensions is not null
+                && rawDimensions.Value != naturalLanguageDimensions.Value)
             {
-                string otherKeyPrefix = IndexSchemaDefinitions.GetSemanticKeyPrefix(other.Id);
-                string otherIndex = IndexSchemaDefinitions.GetSemanticIndexName(other.Id);
-
-                // Check: does target tenant's index contain keys with other tenant's prefix?
-                long countInTarget = await SearchIndexForForeignKeysAsync(db, targetIndex, otherKeyPrefix, ct).ConfigureAwait(false);
-                if (countInTarget > 0)
-                {
-                    leaks.Add($"Tenant '{other.Id}' data found in '{tenantId}' semantic index ({countInTarget} entries)");
-                }
-
-                // Check: does other tenant's index contain keys with target tenant's prefix?
-                long countInOther = await SearchIndexForForeignKeysAsync(db, otherIndex, IndexSchemaDefinitions.GetSemanticKeyPrefix(tenantId), ct).ConfigureAwait(false);
-                if (countInOther > 0)
-                {
-                    leaks.Add($"Tenant '{tenantId}' data found in '{other.Id}' semantic index ({countInOther} entries)");
-                }
+                problems.Add(
+                    $"Raw semantic index '{rawIndex}' has {rawDimensions.Value} dimensions but natural-language semantic index '{naturalLanguageIndex}' has {naturalLanguageDimensions.Value}");
             }
+
+            (IReadOnlyList<string> rawMismatches, int rawScannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
+                    "raw semantic",
+                    rawPrefix,
+                    tenantId,
+                    ct)
+                .ConfigureAwait(false);
+            (IReadOnlyList<string> naturalLanguageMismatches, int naturalLanguageScannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
+                    "natural-language semantic",
+                    naturalLanguagePrefix,
+                    tenantId,
+                    ct)
+                .ConfigureAwait(false);
+            problems.AddRange(rawMismatches);
+            problems.AddRange(naturalLanguageMismatches);
 
             sw.Stop();
-            if (leaks.Count > 0)
+            if (problems.Count > 0)
             {
                 return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
-                    Details = string.Join("; ", leaks),
-                    Remediation = "Investigate cross-tenant data leakage in Redis Vector indexes",
+                    Details = string.Join("; ", problems),
+                    Remediation = "Repair or re-provision the tenant Redis Vector indexes and remove mismatched target-prefix hashes",
                 };
             }
 
+            int totalScanned = rawScannedCount + naturalLanguageScannedCount;
             return new TenantIsolationCheckResult("SemanticIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = targetDocumentCount == 0
-                    ? "Tenant has zero indexed memory units — isolation checks are vacuously true"
-                    : $"No cross-tenant data detected across {otherActiveTenants.Count} other tenant(s)",
+                Details = rawDocumentCount == 0 && naturalLanguageDocumentCount == 0 && totalScanned == 0
+                    ? "Tenant has zero vector hashes/indexed memory units across raw and natural-language semantic indexes — isolation checks are vacuously true"
+                    : $"Target raw and natural-language vector index metadata verified; scanned {rawScannedCount} raw and {naturalLanguageScannedCount} natural-language target-prefix hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
             };
         }
         catch (RedisConnectionException ex)
@@ -317,21 +303,12 @@ public sealed partial class TenantIsolationVerifier
 
     private async Task<TenantIsolationCheckResult> CheckGraphIsolationAsync(
         string tenantId,
-        List<TenantInfo> otherActiveTenants,
         CancellationToken ct)
     {
         Stopwatch sw = Stopwatch.StartNew();
         try
         {
-            if (otherActiveTenants.Count == 0)
-            {
-                sw.Stop();
-                return new TenantIsolationCheckResult("GraphIsolation", true, sw.Elapsed.TotalMilliseconds)
-                {
-                    Details = "Skipped \u2014 no other tenants to check against",
-                };
-            }
-
+            ct.ThrowIfCancellationRequested();
             IDatabase falkorDb = _falkorDb.GetDatabase();
 
             // Get all graph databases
@@ -343,14 +320,6 @@ public sealed partial class TenantIsolationVerifier
             if (!graphDatabases.Contains(tenantId))
             {
                 structuralProblems.Add($"Tenant '{tenantId}' graph database is missing from GRAPH.LIST");
-            }
-
-            foreach (TenantInfo other in otherActiveTenants)
-            {
-                if (!graphDatabases.Contains(other.Id))
-                {
-                    structuralProblems.Add($"Active tenant '{other.Id}' graph database is missing from GRAPH.LIST");
-                }
             }
 
             sw.Stop();
@@ -365,7 +334,7 @@ public sealed partial class TenantIsolationVerifier
 
             return new TenantIsolationCheckResult("GraphIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = $"Structural isolation verified — database '{tenantId}' and {otherActiveTenants.Count} peer database(s) were found",
+                Details = $"Target graph database '{tenantId}' exists; GRAPH.LIST returned {graphDatabases.Count} graph database(s)",
             };
         }
         catch (RedisConnectionException ex)
@@ -423,184 +392,41 @@ public sealed partial class TenantIsolationVerifier
         }
     }
 
-    private Task<TenantIsolationCheckResult> CheckInputValidationAsync(string tenantId, CancellationToken ct)
-    {
-        Stopwatch sw = Stopwatch.StartNew();
-        string[] malformedIds = ["", " ", "../escape", "tenant with spaces", null!];
-        List<string> failures = [];
-
-        // Test TenantIdGuard rejects malformed IDs
-        foreach (string badId in malformedIds)
-        {
-            try
-            {
-                TenantIdGuard.Validate(badId);
-                failures.Add($"TenantIdGuard accepted malformed ID: '{badId ?? "(null)"}'");
-            }
-            catch (ArgumentException)
-            {
-                // Expected — validation working correctly
-            }
-        }
-
-        // Test reserved names are rejected
-        foreach (string reserved in TenantIdGuard.ReservedNames)
-        {
-            try
-            {
-                TenantIdGuard.Validate(reserved);
-                failures.Add($"TenantIdGuard accepted reserved name: '{reserved}'");
-            }
-            catch (ArgumentException)
-            {
-                // Expected — validation working correctly
-            }
-        }
-
-        sw.Stop();
-        if (failures.Count > 0)
-        {
-            return Task.FromResult(new TenantIsolationCheckResult("InputValidation", false, sw.Elapsed.TotalMilliseconds)
-            {
-                Details = string.Join("; ", failures),
-                Remediation = "Fix TenantIdGuard validation to reject all malformed and reserved tenant IDs",
-            });
-        }
-
-        return Task.FromResult(new TenantIsolationCheckResult("InputValidation", true, sw.Elapsed.TotalMilliseconds)
-        {
-            Details = $"All {malformedIds.Length + TenantIdGuard.ReservedNames.Count} malformed/reserved IDs correctly rejected",
-        });
-    }
-
-    /// <summary>Checks if a RediSearch index contains documents with a foreign key prefix by scanning all indexed keys.</summary>
-    private async Task<IReadOnlyList<string>> ScanHashPrefixForTenantFieldMismatchesAsync(
+    /// <summary>Scans target tenant keys and flags hashes whose optional tenantId field contradicts the target tenant.</summary>
+    private async Task<(IReadOnlyList<string> Mismatches, int ScannedCount)> ScanHashPrefixForTenantFieldMismatchesAsync(
+        string storageName,
         string keyPrefix,
         string tenantId,
         CancellationToken ct)
     {
-        IServer? server = GetAnyServer(_redis);
-        if (server is null)
+        IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
+        if (servers.Count == 0)
         {
-            return [];
+            throw new RedisConnectionException(
+                ConnectionFailureType.UnableToConnect,
+                "No connected Redis server endpoint is available for tenant key cursor scan.");
         }
 
         IDatabase db = _redis.GetDatabase();
         List<string> mismatches = [];
-        await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
+        HashSet<string> scannedKeys = new(StringComparer.Ordinal);
+        int scannedCount = 0;
+        foreach (IServer server in servers)
         {
-            RedisValue storedTenantId = await db.HashGetAsync(key, "tenantId").ConfigureAwait(false);
-            if (storedTenantId.IsNullOrEmpty)
+            await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
             {
-                continue;
-            }
-
-            string actualTenantId = storedTenantId.ToString();
-            if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
-            {
-                mismatches.Add(
-                    $"Tenant '{tenantId}' physical key '{key}' has tenantId field '{actualTenantId}'");
-            }
-        }
-
-        return mismatches;
-    }
-
-    private static async Task<long> SearchIndexForForeignKeysAsync(IDatabase db, string indexName, string foreignKeyPrefix, CancellationToken ct)
-    {
-        const int PageSize = 250;
-        long foreignCount = 0;
-        long offset = 0;
-        long totalCount;
-
-        do
-        {
-            ct.ThrowIfCancellationRequested();
-
-            RedisResult result = await db.ExecuteAsync(
-                "FT.SEARCH",
-                indexName,
-                "*",
-                "NOCONTENT",
-                "LIMIT",
-                offset.ToString(CultureInfo.InvariantCulture),
-                PageSize.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
-            RedisResult[]? results = (RedisResult[]?)result;
-            if (results is null || results.Length == 0)
-            {
-                return 0;
-            }
-
-            totalCount = ParseRedisLong(results[0]);
-            if (results.Length == 1 || totalCount == 0)
-            {
-                return 0;
-            }
-
-            // results[0] = total count, results[1..] = document keys (NOCONTENT mode)
-            for (int i = 1; i < results.Length; i++)
-            {
-                string? key = results[i].ToString();
-                if (key is not null && key.StartsWith(foreignKeyPrefix, StringComparison.Ordinal))
-                {
-                    foreignCount++;
-                }
-            }
-
-            offset += results.Length - 1;
-        }
-
-        while (offset < totalCount);
-
-        return foreignCount;
-    }
-
-    private static async Task<IReadOnlyList<string>> SearchIndexForTenantFieldMismatchesAsync(
-        IDatabase db,
-        string indexName,
-        string tenantId,
-        CancellationToken ct)
-    {
-        const int PageSize = 250;
-        List<string> mismatches = [];
-        long offset = 0;
-        long totalCount;
-
-        do
-        {
-            ct.ThrowIfCancellationRequested();
-
-            RedisResult result = await db.ExecuteAsync(
-                "FT.SEARCH",
-                indexName,
-                "*",
-                "NOCONTENT",
-                "LIMIT",
-                offset.ToString(CultureInfo.InvariantCulture),
-                PageSize.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
-            RedisResult[]? results = (RedisResult[]?)result;
-            if (results is null || results.Length == 0)
-            {
-                return mismatches;
-            }
-
-            totalCount = ParseRedisLong(results[0]);
-            if (results.Length == 1 || totalCount == 0)
-            {
-                return mismatches;
-            }
-
-            for (int i = 1; i < results.Length; i++)
-            {
-                string? key = results[i].ToString();
-                if (string.IsNullOrWhiteSpace(key))
+                string? keyText = key.ToString();
+                if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
                 {
                     continue;
                 }
 
+                scannedCount++;
                 RedisValue storedTenantId = await db.HashGetAsync(key, "tenantId").ConfigureAwait(false);
                 if (storedTenantId.IsNullOrEmpty)
                 {
+                    mismatches.Add(
+                        $"{storageName} key '{key}' under tenant '{tenantId}' is missing tenantId field");
                     continue;
                 }
 
@@ -608,38 +434,105 @@ public sealed partial class TenantIsolationVerifier
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
                     mismatches.Add(
-                        $"Tenant '{tenantId}' index contains key '{key}' whose tenantId field is '{actualTenantId}'");
+                        $"{storageName} key '{key}' under tenant '{tenantId}' has tenantId field '{actualTenantId}'");
                 }
             }
-
-            offset += results.Length - 1;
         }
 
-        while (offset < totalCount);
-
-        return mismatches;
+        return (mismatches, scannedCount);
     }
 
-    private static async Task<int?> GetIndexDocumentCountAsync(IDatabase db, string indexName)
+    private static async Task<(bool Found, RedisResult Info)> TryGetIndexInfoAsync(
+        IDatabase db,
+        string indexName,
+        List<string> missing)
     {
-        RedisResult info = await db.ExecuteAsync("FT.INFO", indexName).ConfigureAwait(false);
-        return IndexSchemaDefinitions.TryGetDocumentCount(info, out int documentCount)
+        try
+        {
+            return (true, await db.ExecuteAsync("FT.INFO", indexName).ConfigureAwait(false));
+        }
+        catch (RedisServerException ex) when (IsUnknownIndex(ex))
+        {
+            missing.Add(indexName);
+            return (false, default!);
+        }
+    }
+
+    private static bool IsUnknownIndex(RedisServerException ex)
+        => ex.Message.Contains("Unknown index name", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("no such index", StringComparison.OrdinalIgnoreCase);
+
+    private static TenantIsolationCheckResult CreateMissingResourcesResult(
+        string checkName,
+        IReadOnlyList<string> missing,
+        string tenantId,
+        double durationMs)
+        => new(checkName, false, durationMs)
+        {
+            Details = $"Missing tenant isolation resources: {string.Join(", ", missing)}",
+            Remediation = $"Run tenant provisioning for '{tenantId}' to create or repair missing resources",
+        };
+
+    private static void AppendIndexMetadataProblems(
+        List<string> problems,
+        RedisResult info,
+        string indexName,
+        string expectedPrefix,
+        IReadOnlyCollection<string> expectedFields)
+    {
+        IReadOnlyList<string> prefixes = IndexSchemaDefinitions.GetIndexPrefixes(info);
+        if (prefixes.Count != 1 || !string.Equals(prefixes[0], expectedPrefix, StringComparison.Ordinal))
+        {
+            problems.Add($"Index '{indexName}' expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
+        }
+
+        HashSet<string> actualFields = new(IndexSchemaDefinitions.GetAttributeIdentifiers(info), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> expected = new(expectedFields, StringComparer.OrdinalIgnoreCase);
+        if (!actualFields.SetEquals(expected))
+        {
+            problems.Add(
+                $"Index '{indexName}' expected fields [{string.Join(", ", expected.OrderBy(v => v))}] but found [{string.Join(", ", actualFields.OrderBy(v => v))}]");
+        }
+    }
+
+    private static int? AppendVectorIndexMetadataProblems(
+        List<string> problems,
+        RedisResult info,
+        string indexName,
+        string expectedPrefix,
+        IReadOnlyCollection<string> expectedFields)
+    {
+        AppendIndexMetadataProblems(problems, info, indexName, expectedPrefix, expectedFields);
+        if (IndexSchemaDefinitions.TryGetVectorDimensions(info, "embedding", out int dimensions))
+        {
+            return dimensions;
+        }
+
+        problems.Add($"Index '{indexName}' embedding vector dimensions are missing from FT.INFO");
+        return null;
+    }
+
+    private static int? GetIndexDocumentCount(RedisResult info)
+        => IndexSchemaDefinitions.TryGetDocumentCount(info, out int documentCount)
             ? documentCount
             : null;
-    }
 
-    private static IServer? GetAnyServer(IConnectionMultiplexer redis)
+    private static string FormatDocumentCount(int? documentCount)
+        => documentCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";
+
+    private static IReadOnlyList<IServer> GetConnectedServers(IConnectionMultiplexer redis)
     {
+        List<IServer> servers = [];
         foreach (EndPoint endpoint in redis.GetEndPoints())
         {
             IServer server = redis.GetServer(endpoint);
             if (server.IsConnected)
             {
-                return server;
+                servers.Add(server);
             }
         }
 
-        return null;
+        return servers;
     }
 
     private static HashSet<string> ParseGraphList(RedisResult result)
@@ -666,18 +559,6 @@ public sealed partial class TenantIsolationVerifier
         }
 
         return databases;
-    }
-
-    private static long ParseRedisLong(RedisResult result)
-    {
-        if (result.Resp2Type == ResultType.Integer)
-        {
-            return (long)result;
-        }
-
-        return long.TryParse(result.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
-            ? parsed
-            : 0;
     }
 
     private static TenantIsolationCheckResult CreateBackendUnavailableResult(string checkName, Exception ex, double durationMs)
