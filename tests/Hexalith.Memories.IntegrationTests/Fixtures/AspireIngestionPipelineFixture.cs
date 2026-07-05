@@ -115,6 +115,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Audience matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
     public const string McpDevAudience = "hexalith-memories-mcp";
 
+    /// <summary>Symmetric signing key matching the Memories Server's test <c>Authentication:JwtBearer:SigningKey</c>
+    /// in <c>src/Hexalith.Memories.Server/appsettings.Development.json</c>.</summary>
+    public const string ServerDevSigningKey = "hexalith-memories-test-signing-key-32b";
+
+    /// <summary>Issuer matching the Memories Server's test <c>Authentication:JwtBearer:Issuer</c>.</summary>
+    public const string ServerDevIssuer = "hexalith-memories-test";
+
+    /// <summary>Audience matching the Memories Server's test <c>Authentication:JwtBearer:Audience</c>.</summary>
+    public const string ServerDevAudience = "hexalith-memories-server";
+
     /// <summary>
     /// Mints a Story 10.2 development bearer token signed with the symmetric key shared with the MCP
     /// resource's <c>appsettings.Development.json</c>. The resulting token carries a
@@ -154,6 +164,155 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         };
 
         return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
+
+    /// <summary>
+    /// Mints a Memories <b>Server</b>-realm bearer token (issuer/audience/key matching the server's test
+    /// <c>Authentication:JwtBearer</c> configuration) so the fixture's <see cref="MemoriesClient"/> can satisfy the
+    /// server's fallback authentication policy (Story 20.1) and per-tenant authorization filter (Story 20.2). This is
+    /// distinct from <see cref="MintDevBearer"/>, which targets the separate MCP realm.
+    /// </summary>
+    /// <param name="tenantId">Tenant to embed as the <c>tenant_id</c> claim. When null/blank an auth-only token is
+    /// produced for endpoints that require an authenticated principal but no specific tenant claim.</param>
+    /// <param name="lifetime">Optional token lifetime; defaults to 10 minutes.</param>
+    /// <returns>The compact-serialized JWT string.</returns>
+    public static string MintServerBearer(string? tenantId = null, TimeSpan? lifetime = null)
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime expires = now.Add(lifetime ?? TimeSpan.FromMinutes(10));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(ServerDevSigningKey));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["sub"] = string.IsNullOrWhiteSpace(tenantId) ? "integration-test-server" : $"integration-test-{tenantId}",
+        };
+        if (!string.IsNullOrWhiteSpace(tenantId))
+        {
+            claims["tenant_id"] = tenantId;
+        }
+
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = ServerDevIssuer,
+            Audience = ServerDevAudience,
+            IssuedAt = now,
+            NotBefore = now,
+            Expires = expires,
+            Claims = claims,
+            SigningCredentials = credentials,
+        };
+
+        return new JsonWebTokenHandler().CreateToken(descriptor);
+    }
+
+    /// <summary>
+    /// Attaches a per-request Memories Server bearer token to outbound <see cref="MemoriesClient"/> requests. The
+    /// tenant claim is derived from the outgoing request — route (<c>/api/tenants/{tenantId}/...</c>), query
+    /// (<c>?tenantId=</c>), or JSON body (<c>tenantId</c>) — so it always matches the tenant the request operates on.
+    /// Requests that already carry an <c>Authorization</c> header are left untouched, letting individual tests inject
+    /// their own token (e.g. expired- or wrong-tenant-token scenarios).
+    /// </summary>
+    private sealed class ServerBearerAuthHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.Headers.Authorization is null)
+            {
+                string? tenantId = await ResolveRequestTenantAsync(request, cancellationToken).ConfigureAwait(false);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Bearer",
+                    MintServerBearer(tenantId));
+            }
+
+            return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<string?> ResolveRequestTenantAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            // 1. Route: /api/tenants/{tenantId}/...
+            string path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            const string tenantsPrefix = "/api/tenants/";
+            if (path.StartsWith(tenantsPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                string remainder = path[tenantsPrefix.Length..];
+                int slash = remainder.IndexOf('/', StringComparison.Ordinal);
+                string segment = slash >= 0 ? remainder[..slash] : remainder;
+                if (!string.IsNullOrWhiteSpace(segment))
+                {
+                    return Uri.UnescapeDataString(segment);
+                }
+            }
+
+            // 2. Query: ?tenantId=...
+            string query = request.RequestUri?.Query ?? string.Empty;
+            foreach (string pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = pair.IndexOf('=', StringComparison.Ordinal);
+                if (eq > 0 && string.Equals(pair[..eq], "tenantId", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Uri.UnescapeDataString(pair[(eq + 1)..]);
+                }
+            }
+
+            // 3. JSON body: { "tenantId": "..." } (e.g. POST /api/tenants, POST /api/ingest).
+            if (request.Content is not null
+                && string.Equals(
+                    request.Content.Headers.ContentType?.MediaType,
+                    "application/json",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                byte[] payload = await request.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+
+                // Re-buffer the content so the pipeline can still send it after we consumed the stream.
+                var buffered = new ByteArrayContent(payload);
+                foreach (KeyValuePair<string, IEnumerable<string>> header in request.Content.Headers)
+                {
+                    buffered.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+
+                request.Content = buffered;
+                return TryReadTenantFromJson(payload);
+            }
+
+            return null;
+        }
+
+        private static string? TryReadTenantFromJson(byte[] payload)
+        {
+            if (payload.Length == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(payload);
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
+                foreach (JsonProperty property in document.RootElement.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, "tenantId", StringComparison.OrdinalIgnoreCase)
+                        && property.Value.ValueKind == JsonValueKind.String)
+                    {
+                        return property.Value.GetString();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Non-JSON or malformed body — fall back to an auth-only token.
+            }
+
+            return null;
+        }
     }
 
     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
@@ -656,8 +815,22 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             .WaitAsync(ResourceHealthyTimeout, cancellationToken)
             .ConfigureAwait(false);
 
-        MemoriesClient = _app.CreateHttpClient("memories");
-        MemoriesClient.Timeout = TimeSpan.FromSeconds(60);
+        // The Memories Server enforces a fallback authentication policy (Story 20.1) plus a per-tenant
+        // authorization filter (Story 20.2), so every non-anonymous call needs a server-realm bearer whose
+        // tenant claim matches the accessed tenant. Reuse Aspire's endpoint resolution for the base address, then
+        // route requests through ServerBearerAuthHandler, which mints and attaches that token per request.
+        Uri memoriesBaseAddress;
+        using (HttpClient endpointProbe = _app.CreateHttpClient("memories"))
+        {
+            memoriesBaseAddress = endpointProbe.BaseAddress
+                ?? throw new InvalidOperationException("The 'memories' resource did not expose an HTTP endpoint.");
+        }
+
+        MemoriesClient = new HttpClient(new ServerBearerAuthHandler(new HttpClientHandler()))
+        {
+            BaseAddress = memoriesBaseAddress,
+            Timeout = TimeSpan.FromSeconds(60),
+        };
 
         // The AppHost resource-health wait above is the backend readiness gate. Use the liveness
         // endpoint here so a slow aggregate health check cannot fail fixture initialization for

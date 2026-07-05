@@ -5,6 +5,9 @@
 
 namespace Hexalith.Memories.Mcp;
 
+using System.Net.Http.Headers;
+using System.Security.Claims;
+
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Mcp.Authentication;
 using Hexalith.Memories.Mcp.Health;
@@ -13,6 +16,7 @@ using Hexalith.Memories.Mcp.Tools;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -42,6 +46,13 @@ internal static class McpCompositionRoot
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<MemoriesMcpAuthenticationOptions>, ValidateMcpAuthenticationOptions>();
         services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>();
+
+        // Story 20.x — the upstream Memories Server enforces JWT auth + per-tenant authorization. Bind the
+        // server-realm signing material used to mint service-to-service tokens for upstream calls. Optional:
+        // when unset (production without the shared key) the token factory is a no-op.
+        services.AddOptions<MemoriesMcpUpstreamAuthenticationOptions>()
+            .BindConfiguration("Authentication:ServerUpstream");
+        services.AddSingleton<ServerUpstreamTokenFactory>();
         services.AddTransient<IClaimsTransformation, MemoriesMcpClaimsTransformation>();
         services.AddScoped<TenantClaimAuthorizationFilter>();
         services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
@@ -63,6 +74,7 @@ internal static class McpCompositionRoot
         {
             HttpClient invokeClient = Dapr.Client.DaprClient.CreateInvokeHttpClient(ResolveMemoriesServerAppId());
             MemoriesMcpDaprInvocationHandler.ApplyDaprApiToken(invokeClient);
+            ApplyServerUpstreamBearer(sp, invokeClient);
             return new MemoriesClient(
                 invokeClient,
                 sp.GetRequiredService<IOptions<MemoriesClientOptions>>(),
@@ -101,5 +113,32 @@ internal static class McpCompositionRoot
         return string.IsNullOrWhiteSpace(configured)
             ? MemoriesServerAppId
             : configured.Trim();
+    }
+
+    /// <summary>
+    /// Attaches a server-realm bearer token to the service-invocation client so upstream calls satisfy the
+    /// Memories Server's authentication policy and per-tenant authorization filter (Story 20.x). The token
+    /// carries the current caller's already-authorized tenant claim(s). No-op when the upstream realm is not
+    /// configured or when there is no ambient authenticated request (e.g. background health checks).
+    /// </summary>
+    /// <param name="serviceProvider">The request-scoped service provider.</param>
+    /// <param name="invokeClient">The DAPR service-invocation client to authorize.</param>
+    private static void ApplyServerUpstreamBearer(IServiceProvider serviceProvider, HttpClient invokeClient)
+    {
+        ClaimsPrincipal? caller = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext?.User;
+        if (caller?.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        string[] tenants = [.. caller
+            .FindAll(MemoriesMcpClaimsTransformation.TenantClaimType)
+            .Select(claim => claim.Value)];
+
+        string? token = serviceProvider.GetRequiredService<ServerUpstreamTokenFactory>().Mint(tenants);
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            invokeClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
     }
 }
