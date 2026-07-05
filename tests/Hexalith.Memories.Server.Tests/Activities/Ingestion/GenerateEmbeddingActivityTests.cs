@@ -57,6 +57,38 @@ public class GenerateEmbeddingActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_RemainsProviderAgnostic_CallsSingleTextFacadeOnceAndNeverBatch()
+    {
+        // Story 23.9 AC7: the strategy refactor must not leak provider-specific branching or the new batch API into the
+        // workflow activity. The activity embeds one content text through the single-text facade path exactly once.
+        float[] expectedVector = new float[768];
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        EmbeddingClient embeddingClient = CreateMockEmbeddingClient(expectedVector);
+        IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
+        IEmbeddingRateLimiterActor rateLimiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        ITenantConfigurationActor tenantConfigActor = Substitute.For<ITenantConfigurationActor>();
+        tenantConfigActor.GetEmbeddingConfigAsync().Returns(config);
+        rateLimiter.TryConsumeAsync().Returns(true);
+        actorProxyFactory.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(rateLimiter);
+        actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(tenantConfigActor);
+
+        GenerateEmbeddingActivity activity = CreateActivity(embeddingClient, actorProxyFactory);
+
+        await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new EmbeddingInput(TenantId, TestText));
+
+        await embeddingClient.Received(1).GenerateAsync(
+            TestText,
+            TenantId,
+            config,
+            Arg.Any<CancellationToken>());
+        await embeddingClient.DidNotReceive().GenerateBatchAsync(
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<string>(),
+            Arg.Any<TenantEmbeddingConfig>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_LocalRateLimitRefused_ThrowsAndDoesNotReportToActor()
     {
         EmbeddingClient embeddingClient = CreateMockEmbeddingClient([]);

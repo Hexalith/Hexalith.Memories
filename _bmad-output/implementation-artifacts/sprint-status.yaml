@@ -91,6 +91,7 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 22.6 senior developer review completed with automatic fixes (added graph-scoped semantic source-type recall and offset-pagination integration coverage; corrected File List omission for endpoint recall tests). 22.6 -> done.
 # 2026-07-05: Story 22.7 dev-story completed (22.7 -> review). Wired axis=nl standalone and explicit hybrid, added query/tenant fusion weights, syntactic RediSearch highlighting, and post-fusion IResultFuser seam. Unit/in-process suites pass; RedisStack runtime and solution build blockers recorded in story.
 # 2026-07-05: Story 22.7 senior developer review completed with automatic fixes (NL adapter unit coverage, stale docs, evidence table, File List hygiene). 22.7 -> done.
+# 2026-07-05: Story 23.9 created (epic-23 -> in-progress, 23.9 -> ready-for-dev) via create-story. EmbeddingClient provider strategy and batch API; must precede 23.1 content chunking per story_execution_order.epic-23.
 project: Hexalith.Memories
 project_key: NOKEY
 tracking_system: file-system
@@ -403,7 +404,7 @@ development_status:
   epic-22-retrospective: done
 
   # Epic 23: Ingestion Pipeline Scalability & Resilience (SCP 2026-07-04; closes A11,A12,A13,A14,A15,A33,A34,A35,A51)
-  epic-23: backlog
+  epic-23: in-progress
   23-1-content-chunking-and-batch-embedding: backlog
   23-2-claim-check-workflow-payloads: backlog
   23-3-retry-after-aware-429-orchestration: backlog
@@ -412,7 +413,7 @@ development_status:
   23-6-directory-batch-scalability: backlog
   23-7-index-provisioning-ownership: backlog
   23-8-workflow-config-determinism: backlog
-  23-9-embeddingclient-provider-strategy: backlog
+  23-9-embeddingclient-provider-strategy: done
   epic-23-retrospective: optional
 
   # Epic 24: Observability & Performance Hardening (SCP 2026-07-04; closes A19,A26,A36,A46)

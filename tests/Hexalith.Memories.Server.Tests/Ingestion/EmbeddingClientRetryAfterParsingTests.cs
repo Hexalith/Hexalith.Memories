@@ -32,13 +32,12 @@ public class EmbeddingClientRetryAfterParsingTests
     }
 
     [Fact]
-    public void Parse_DeltaZero_ReturnsOne()
+    public void Parse_DeltaZero_ReturnsZero()
     {
-        // Delta = 0 → zero/negative path returns 1 (the caller defaults 0 to the 30s fallback,
-        // so we use 1 to signal "retry immediately, but pause briefly").
+        // Delta = 0 is not a positive provider pause, so callers use their default fallback.
         RetryConditionHeaderValue header = new(TimeSpan.Zero);
 
-        EmbeddingClient.ParseRetryAfterSeconds(header).ShouldBe(1);
+        EmbeddingClient.ParseRetryAfterSeconds(header).ShouldBe(0);
     }
 
     [Fact]

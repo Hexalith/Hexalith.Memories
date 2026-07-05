@@ -88,7 +88,8 @@ public class EmbeddingClientTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public async Task GenerateAsync_NullOrEmptyText_ThrowsArgumentException(string? text)
+    [InlineData("   ")]
+    public async Task GenerateAsync_NullEmptyOrWhitespaceText_ThrowsArgumentException(string? text)
     {
         // Arrange
         IHttpClientFactory httpClientFactory = CreateHttpClientFactory(HttpStatusCode.OK, "{}");
@@ -100,6 +101,30 @@ public class EmbeddingClientTests
         // Act & Assert
         await Should.ThrowAsync<ArgumentException>(
             () => client.GenerateAsync(text!, TenantId, config, CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GenerateAsync_InvalidTenantId_ThrowsBeforeSecretLookup(string? tenantId)
+    {
+        // Arrange
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        EmbeddingClient client = new(
+            Substitute.For<IHttpClientFactory>(),
+            daprClient,
+            CreateConfiguration(),
+            CreateHostEnvironment());
+
+        // Act & Assert
+        await Should.ThrowAsync<ArgumentException>(
+            () => client.GenerateAsync(TestText, tenantId!, EmbeddingProviderDefaults.Google(), CancellationToken.None));
+        await daprClient.DidNotReceive().GetSecretAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<Dictionary<string, string>>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -165,7 +190,7 @@ public class EmbeddingClientTests
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
             () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("embedding.values");
-        ex.Message.ShouldContain(malformedJson);
+        ex.Message.ShouldNotContain(malformedJson);
     }
 
     [Fact]
@@ -266,7 +291,7 @@ public class EmbeddingClientTests
         EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
             () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
         ex.Message.ShouldContain("invalid JSON");
-        ex.Message.ShouldContain(invalidJson);
+        ex.Message.ShouldNotContain(invalidJson);
     }
 
     [Fact]
@@ -435,7 +460,7 @@ public class EmbeddingClientTests
     }
 
     [Fact]
-    public async Task GenerateAsync_Ollama_MultipleEmbeddings_ReturnsFirstVector()
+    public async Task GenerateAsync_Ollama_MultipleEmbeddings_ThrowsEmbeddingApiException()
     {
         // Arrange
         float[] firstVector = CreateVector(2560);
@@ -448,12 +473,10 @@ public class EmbeddingClientTests
 
         EmbeddingClient client = new(httpClientFactory, daprClient, CreateConfiguration(), CreateHostEnvironment(), tokenProvider);
 
-        // Act
-        float[] result = await client.GenerateAsync(TestText, TenantId, config, CancellationToken.None);
-
-        // Assert
-        result[0].ShouldBe(firstVector[0]);
-        result[2559].ShouldBe(firstVector[2559]);
+        // Act & Assert
+        EmbeddingApiException ex = await Should.ThrowAsync<EmbeddingApiException>(
+            () => client.GenerateAsync(TestText, TenantId, config, CancellationToken.None));
+        ex.Message.ShouldContain("Expected 1 embeddings but received 2");
     }
 
     [Fact]

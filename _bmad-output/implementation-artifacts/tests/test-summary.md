@@ -1,3 +1,55 @@
+# Test Automation Summary - Story 23.9 (EmbeddingClient Provider Strategy)
+
+- **Workflow:** `bmad-qa-generate-e2e-tests`
+- **Date:** 2026-07-05
+- **Story:** `_bmad-output/implementation-artifacts/23-9-embeddingclient-provider-strategy.md`
+- **Framework detected:** xUnit v3 + Shouldly + NSubstitute. No new framework introduced.
+- **Feature under test:** `EmbeddingClient` provider strategies, single and batch embedding generation, provider-owned Google/Ollama payloads/parsers, shared transport/auth retry/redaction behavior, fake batch embeddings, unsupported-provider handling, and activity boundary preservation. Story 23.9 has no UI/web scope, so browser E2E is not applicable.
+
+## Generated / Updated Tests
+
+### API / Service Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientBatchTests.cs` - added/extended batch-path coverage for Google `:batchEmbedContents`, Ollama `/api/embed` array input, ordered vector results, response-count mismatch, dimension mismatch, malformed/non-numeric responses, 429 Retry-After propagation, 401/403 credential refresh, redaction of every submitted text, fake batch embeddings, null/empty/whitespace input rejection, unsupported-provider rejection before secret lookup, mixed-case provider resolution, caller cancellation passthrough, and response read-failure wrapping.
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientTests.cs` - existing focused single-path coverage covers Google/Ollama request shape, response parsing, malformed JSON, dimension validation, transport/read failures, OIDC token refresh, blank/invalid bearer token rejection, secret/input redaction, fake embeddings, and provider identifier parsing.
+- [x] `tests/Hexalith.Memories.Server.Tests/Ingestion/EmbeddingClientConfigTests.cs` and `EmbeddingClientRetryAfterParsingTests.cs` - existing config/Retry-After coverage remains green for secret caching, auth refresh, configured endpoint/dimensions, unsupported-provider ordering, and retry delay parsing.
+
+### Activity Boundary Tests
+
+- [x] `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/GenerateEmbeddingActivityTests.cs` - confirms the ingestion activity remains provider-agnostic, calls the single-text facade exactly once, and does not call `GenerateBatchAsync`.
+
+### E2E Tests
+
+- [x] Backend/API E2E-style coverage is exercised through service and activity tests with captured HTTP requests and in-process xUnit execution.
+- [x] Browser UI E2E is not applicable. Story 23.9 has no UI/web work.
+
+## Coverage
+
+- API/service surfaces: Google and Ollama single and batch embedding paths covered.
+- Provider contracts: request URL/header/body shape, parser ordering, response-count mismatch, malformed payloads, and dimension mismatch covered.
+- Shared transport/auth/redaction: 429, Retry-After, 401/403 refresh, caller cancellation, read failure wrapping, and sensitive value/input redaction covered.
+- Workflow boundary: `GenerateEmbeddingActivity` remains facade-only and provider-agnostic.
+- UI features: 0 applicable.
+
+## Validation
+
+- [x] `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -m:1 /nodeReuse:false --no-restore` - passed, 0 warnings, 0 errors.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Ingestion.EmbeddingClientBatchTests -class Hexalith.Memories.Server.Tests.Ingestion.EmbeddingClientTests -class Hexalith.Memories.Server.Tests.Ingestion.EmbeddingClientConfigTests -class Hexalith.Memories.Server.Tests.Ingestion.EmbeddingClientRetryAfterParsingTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateEmbeddingActivityTests -class Hexalith.Memories.Server.Tests.Activities.Ingestion.GenerateEmbeddingActivityConfigTests` - 123 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -namespace Hexalith.Memories.Server.Tests.Ingestion -namespace Hexalith.Memories.Server.Tests.Activities.Ingestion` - 622 total, 0 failed.
+- [x] `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` - 2298 total, 0 failed, 1 pre-existing skip.
+- [ ] `DiffEngine_Disabled=true dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --no-build --no-restore` - blocked before execution by VSTest TCP listener setup: `System.Net.Sockets.SocketException (13): Permission denied`.
+- [ ] `git diff --check` - blocked by existing dirty tracked files that git reports as CRLF/trailing-whitespace lines in `sprint-status.yaml`, `EmbeddingClient.cs`, and `GenerateEmbeddingActivityTests.cs`. The test project build and in-process xUnit suite pass.
+
+## Checklist Result
+
+- API tests generated/updated where applicable: pass.
+- E2E tests generated where applicable: pass for backend/API service and activity surfaces; no browser UI exists.
+- Tests use standard xUnit v3/Shouldly/NSubstitute APIs, cover happy paths and critical error cases, have clear descriptions, use no hardcoded waits, and are independent: pass.
+- Tests saved to appropriate directories and summary includes coverage metrics: pass.
+- Standard `dotnet test` remains sandbox-blocked by VSTest TCP listener permissions, with xUnit v3 in-process validation passing.
+
+---
+
 # Test Automation Summary - Story 22.7 (Retrieval Feature Completion)
 
 - **Workflow:** `bmad-qa-generate-e2e-tests`
