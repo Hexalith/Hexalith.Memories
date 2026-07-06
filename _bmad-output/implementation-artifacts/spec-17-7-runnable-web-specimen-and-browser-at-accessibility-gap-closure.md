@@ -2,9 +2,9 @@
 title: '17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure'
 type: 'feature'
 created: '2026-07-06T19:16:56+02:00'
-status: 'in-review'
+status: 'done'
 baseline_revision: '3160c6bcde46c1c52cdaf30b64997352f7f4b178'
-final_revision: '8b9439ddb01aa80ee77390e19f88c07f96077b3b'
+final_revision: 'f92de344f06a1ba0fa19eb9bd854075b24ac2a04'
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
