@@ -7,50 +7,28 @@ namespace Hexalith.Memories.Server.Tests.Hosting;
 
 using System.Reflection;
 
+using Dapr.Common.Serialization;
 using Dapr.Workflow;
+using Dapr.Workflow.Client;
 
 using Hexalith.Memories.Server.Hosting;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Workflows;
+
+using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
 
 using Shouldly;
 
 public class WorkflowReplaySafetyHostedServiceTests
 {
     [Fact]
-    public void WorkflowStateMetadataField_StillExists_OnCurrentSdkSurface()
-    {
-        // Decision D2 (committed-branch review 2026-04-24): TryGetWorkflowName drills into
-        // WorkflowState's private _metadata field to read WorkflowMetadata.Name. This test fails
-        // fast if a future Dapr.Workflow SDK renames or removes the field — surfacing the drift
-        // at the unit-test level BEFORE the production startup probe logs Critical 9173 and fails
-        // open.
-        FieldInfo? metadata = typeof(WorkflowState)
-            .GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic);
-
-        metadata.ShouldNotBeNull(
-            "Dapr.Workflow SDK change detected: WorkflowState._metadata private field no longer exists. "
-            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated to the new surface "
-            + "or the gate will silently fail open via Critical event 9173 in production.");
-
-        // S6-P16 (re-review 2026-04-25): dropped the FullName assertion. Production code only
-        // depends on the field's existence + the metadata type's public Name property — a
-        // namespace relocation of WorkflowMetadata is operationally a no-op and should not break
-        // the SDK-drift sentinel.
-
-        // WorkflowMetadata.Name is expected to be a public instance property; if this assertion
-        // breaks, the drill-through path must follow the new accessor shape.
-        PropertyInfo? name = metadata.FieldType
-            .GetProperty("Name", BindingFlags.Instance | BindingFlags.Public);
-        name.ShouldNotBeNull(
-            "Dapr.Workflow.Client.WorkflowMetadata.Name is no longer a public instance property. "
-            + "WorkflowReplaySafetyHostedService.TryGetWorkflowName must be updated.");
-        name.PropertyType.ShouldBe(typeof(string));
-    }
-
-    [Fact]
     public void IsActive_TerminalStates_ReturnFalse()
     {
         WorkflowReplaySafetyHostedService.IsActive(WorkflowRuntimeStatus.Completed).ShouldBeFalse();
         WorkflowReplaySafetyHostedService.IsActive(WorkflowRuntimeStatus.Failed).ShouldBeFalse();
+        WorkflowReplaySafetyHostedService.IsActive(WorkflowRuntimeStatus.Canceled).ShouldBeFalse();
         WorkflowReplaySafetyHostedService.IsActive(WorkflowRuntimeStatus.Terminated).ShouldBeFalse();
     }
 
@@ -98,6 +76,10 @@ public class WorkflowReplaySafetyHostedServiceTests
             status: WorkflowRuntimeStatus.Completed).ShouldBeFalse();
 
         WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
+            exists: true,
+            status: WorkflowRuntimeStatus.Canceled).ShouldBeFalse();
+
+        WorkflowReplaySafetyHostedService.ShouldBlockForUnreadableWorkflowName(
             exists: false,
             status: WorkflowRuntimeStatus.Running).ShouldBeFalse();
     }
@@ -113,5 +95,124 @@ public class WorkflowReplaySafetyHostedServiceTests
         WorkflowReplaySafetyHostedService.PollInterval.ShouldBe(TimeSpan.FromSeconds(5));
         WorkflowReplaySafetyHostedService.TotalTimeout.ShouldBe(TimeSpan.FromMinutes(5));
         WorkflowReplaySafetyHostedService.PerQueryTimeout.ShouldBe(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_CountsOnlyRegistryTrackedActiveInstances()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>())
+            .Returns(
+            [
+                new IngestionWorkflowInFlightEntry("tenant-a", "active-instance", DateTimeOffset.UtcNow),
+                new IngestionWorkflowInFlightEntry("tenant-a", "completed-instance", DateTimeOffset.UtcNow),
+            ]);
+        workflowClient.GetWorkflowStateAsync("active-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateState("active-instance", WorkflowRuntimeStatus.Running)));
+        workflowClient.GetWorkflowStateAsync("completed-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateState("completed-instance", WorkflowRuntimeStatus.Completed)));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+
+        count.ShouldBe(1);
+        await registry.Received(1).RemoveAsync("completed-instance", Arg.Any<CancellationToken>());
+        await workflowClient.DidNotReceiveWithAnyArgs().ListInstanceIdsAsync(default, default, default);
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_WhenTrackedStateMissing_PrunesInstance()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>())
+            .Returns([new IngestionWorkflowInFlightEntry("tenant-a", "missing-instance", DateTimeOffset.UtcNow)]);
+        workflowClient.GetWorkflowStateAsync("missing-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<WorkflowState>(null!));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+
+        count.ShouldBe(0);
+        await registry.Received(1).RemoveAsync("missing-instance", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_WhenRegistryUninitialized_UsesEnumerationFallback()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(false);
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new WorkflowInstancePage(["active-instance", "other-instance", "completed-instance"], null)));
+        workflowClient.GetWorkflowStateAsync("active-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateState("active-instance", WorkflowRuntimeStatus.Running)));
+        workflowClient.GetWorkflowStateAsync("other-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateState("other-instance", WorkflowRuntimeStatus.Running, "OtherWorkflow")));
+        workflowClient.GetWorkflowStateAsync("completed-instance", false, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(CreateState("completed-instance", WorkflowRuntimeStatus.Completed)));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+
+        count.ShouldBe(1);
+        await registry.DidNotReceiveWithAnyArgs().MarkInitializedAsync(default);
+    }
+
+    [Fact]
+    public async Task TryCountInFlightAsync_WhenUninitializedFallbackFindsNoActiveInstances_MarksInitialized()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        registry.ListAsync(Arg.Any<CancellationToken>()).Returns([]);
+        registry.IsInitializedAsync(Arg.Any<CancellationToken>()).Returns(false);
+        workflowClient.ListInstanceIdsAsync(null, 100, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new WorkflowInstancePage([], null)));
+        WorkflowReplaySafetyHostedService service = CreateService(workflowClient, registry);
+
+        int? count = await service.TryCountInFlightAsync(CancellationToken.None);
+
+        count.ShouldBe(0);
+        await registry.Received(1).MarkInitializedAsync(Arg.Any<CancellationToken>());
+    }
+
+    private static WorkflowReplaySafetyHostedService CreateService(
+        IDaprWorkflowClient workflowClient,
+        IIngestionWorkflowInFlightRegistry registry)
+        => new(
+            workflowClient,
+            registry,
+            NullLogger<WorkflowReplaySafetyHostedService>.Instance,
+            TimeProvider.System);
+
+    private static WorkflowState CreateState(
+        string instanceId,
+        WorkflowRuntimeStatus status,
+        string workflowName = nameof(IngestionWorkflow))
+    {
+        Type metadataType = typeof(WorkflowState).Assembly.GetType("Dapr.Workflow.Client.WorkflowMetadata")!;
+        object metadata = Activator.CreateInstance(
+            metadataType,
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args:
+            [
+                instanceId,
+                workflowName,
+                status,
+                DateTime.UtcNow,
+                DateTime.UtcNow,
+                new JsonDaprSerializer(),
+            ],
+            culture: null)!;
+
+        return (WorkflowState)Activator.CreateInstance(
+            typeof(WorkflowState),
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            binder: null,
+            args: [metadata],
+            culture: null)!;
     }
 }

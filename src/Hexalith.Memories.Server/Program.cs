@@ -125,6 +125,8 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddDaprConversationClient();
 builder.Services.Configure<NaturalLanguageDescriptionOptions>(
     builder.Configuration.GetSection("NaturalLanguage"));
+builder.Services.Configure<CaseActivityOptions>(
+    builder.Configuration.GetSection(CaseActivityOptions.SectionName));
 
 // Options validator (Task 1.7): Production guard against conversation.echo (9161) + cross-tenant cache
 // acknowledgment gate (9164). The YAML reader discovers responseCacheTTL from deploy/dapr/components/*.yaml.
@@ -139,8 +141,8 @@ builder.Services.AddSingleton<IComponentYamlReader>(_ =>
 builder.Services.AddSingleton<IValidateOptions<NaturalLanguageDescriptionOptions>,
     NaturalLanguageDescriptionOptionsValidator>();
 
-// Story 9.2 Task 8.2: Redis-backed NL retry registry (sorted set nl-embedding-retry:{tenant}). The
-// registry + retry hosted service provide the degraded-LLM fallback path without blocking ingestion.
+// Story 9.2 Task 8.2 / Story 24.5: Redis-backed NL retry registry. The live/dead sorted sets use
+// stable memory-unit members, companion hashes hold payloads, and a tenant backlog set avoids key scans.
 builder.Services.AddSingleton<FailedNaturalLanguageEmbeddingRegistry>();
 builder.Services.AddSingleton<IFailedNaturalLanguageEmbeddingRegistry>(sp =>
     sp.GetRequiredService<FailedNaturalLanguageEmbeddingRegistry>());
@@ -230,6 +232,7 @@ builder.Services.AddSingleton<FailedUnitsRegistry>();
 builder.Services.AddSingleton<IFailedUnitsRegistry>(sp => sp.GetRequiredService<FailedUnitsRegistry>());
 builder.Services.AddSingleton<IngestionWorkflowConfigurationCapture>();
 builder.Services.AddSingleton<WorkflowTraceContextCapture>();
+builder.Services.AddSingleton<IIngestionWorkflowInFlightRegistry, RedisIngestionWorkflowInFlightRegistry>();
 builder.Services.AddSingleton<IIngestionWorkflowScheduler, DaprIngestionWorkflowScheduler>();
 builder.Services.AddSingleton<IIngestionWorkflowStateReader, DaprIngestionWorkflowStateReader>();
 builder.Services.AddSingleton<ReIngestionCoordinator>();
@@ -312,7 +315,8 @@ builder.Services.AddSingleton<HybridSearchService>(sp =>
 builder.Services.AddSingleton<CaseActivityService>(sp =>
     new CaseActivityService(
         sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
-        sp.GetRequiredService<ILogger<CaseActivityService>>()));
+        sp.GetRequiredService<ILogger<CaseActivityService>>(),
+        sp.GetRequiredService<IOptions<CaseActivityOptions>>()));
 builder.Services.AddScoped<CaseService>();
 // Story 8.3: streaming data exporter (case + tenant scope).
 builder.Services.AddScoped<Hexalith.Memories.Server.Export.TenantExportService>();
@@ -417,6 +421,7 @@ builder.Services.AddDaprWorkflow(options =>
     options.RegisterActivity<EnumerateMemoryUnitIdsActivity>();
     options.RegisterActivity<RepairUnitActivity>();
 });
+builder.Services.TryAddSingleton<IDaprWorkflowClient>(sp => sp.GetRequiredService<DaprWorkflowClient>());
 
 // Story 8.2: consistency services.
 builder.Services.AddScoped<IConsistencyInspectionService, ConsistencyInspectionService>();
@@ -2789,7 +2794,6 @@ app.MapGet("/api/search", async (
     GraphScopedSearch graphScopedSearch,
     HybridSearchService hybridSearchService,
     ITenantEmbeddingConfigProvider embeddingConfigProvider,
-    CaseActivityService activityService,
     CaseService caseService,
     TenantStatusGuard tenantGuard,
     IGraphQueryBuilder graphQueryBuilder,
@@ -2924,14 +2928,6 @@ app.MapGet("/api/search", async (
     {
         searchScope.MarkTenantRejected(errorCode);
         return result;
-    }
-
-    void RecordSearchActivity()
-    {
-        if (!string.IsNullOrWhiteSpace(caseId))
-        {
-            _ = activityService.RecordEventAsync(tenantId, caseId!, CaseActivityEventType.SearchExecuted, "system", $"Search '{query}' via {searchAxisTag}", null);
-        }
     }
 
     try
@@ -3074,7 +3070,6 @@ app.MapGet("/api/search", async (
 
             result = SearchResponseMetadataApplier.ApplySearch(result, "graph", tokenBudget);
             CompleteSearchSuccess("graph", result.Results.Count);
-            RecordSearchActivity();
             return Results.Ok(result);
         }
 
@@ -3286,7 +3281,6 @@ app.MapGet("/api/search", async (
                 searchScope.MarkPartial("HYBRID_DEGRADED");
             }
 
-            RecordSearchActivity();
             return Results.Ok(hybridResult);
         }
 
@@ -3391,7 +3385,6 @@ app.MapGet("/api/search", async (
 
             searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "nl", tokenBudget);
             CompleteSearchSuccess("nl", searchResult.Results.Count);
-            RecordSearchActivity();
             return Results.Ok(searchResult);
         }
 
@@ -3511,7 +3504,6 @@ app.MapGet("/api/search", async (
 
                 result = SearchResponseMetadataApplier.ApplySearch(result, "semantic", tokenBudget);
                 CompleteSearchSuccess("graph-scoped-semantic", result.Results.Count);
-                RecordSearchActivity();
                 return Results.Ok(result);
             }
 
@@ -3589,7 +3581,6 @@ app.MapGet("/api/search", async (
 
             syntacticResult = SearchResponseMetadataApplier.ApplySearch(syntacticResult, "syntactic", tokenBudget);
             CompleteSearchSuccess("graph-scoped-syntactic", syntacticResult.Results.Count);
-            RecordSearchActivity();
             return Results.Ok(syntacticResult);
         }
 
@@ -3669,7 +3660,6 @@ app.MapGet("/api/search", async (
 
             searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "semantic", tokenBudget);
             CompleteSearchSuccess("semantic", searchResult.Results.Count);
-            RecordSearchActivity();
             return Results.Ok(searchResult);
         }
 
@@ -3706,7 +3696,6 @@ app.MapGet("/api/search", async (
 
         syntacticDefault = SearchResponseMetadataApplier.ApplySearch(syntacticDefault, "syntactic", tokenBudget);
         CompleteSearchSuccess("syntactic", syntacticDefault.Results.Count);
-        RecordSearchActivity();
         return Results.Ok(syntacticDefault);
     }
     catch (Exception ex)

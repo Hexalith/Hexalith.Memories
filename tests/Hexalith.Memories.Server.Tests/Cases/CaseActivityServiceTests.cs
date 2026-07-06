@@ -40,6 +40,46 @@ public class CaseActivityServiceTests
         entries.ShouldContain(e => e.Name == "actor" && e.Value == "user-123");
         entries.ShouldContain(e => e.Name == "description" && e.Value == "Unit indexed");
         entries.ShouldContain(e => e.Name == "memoryUnitId" && e.Value == "mu-abc");
+        Convert.ToInt64(call.GetArguments()[3]).ShouldBe(CaseActivityOptions.DefaultStreamMaxLength);
+        ((bool)call.GetArguments()[4]!).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task RecordEventAsync_WhenIngestionFailed_ShouldUpdateSummary()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.StreamAddAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<NameValueEntry[]>(),
+            Arg.Any<RedisValue?>(),
+            Arg.Any<long?>(),
+            Arg.Any<bool>(),
+            Arg.Any<long?>(),
+            Arg.Any<StreamTrimMode>(),
+            Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("1712345678901-0"));
+        CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
+
+        // Act
+        bool result = await service.RecordEventAsync(
+            "tenant-1", "case-001",
+            CaseActivityEventType.IngestionFailed,
+            "system", "Failed", "mu-abc");
+
+        // Assert
+        result.ShouldBeTrue();
+        await db.Received(1).HashIncrementAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "failedCount",
+            1,
+            Arg.Any<CommandFlags>());
+        await db.Received(1).HashSetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
+            "1712345678901",
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -204,25 +244,12 @@ public class CaseActivityServiceTests
     }
 
     [Fact]
-    public async Task GetFailedCountAsync_ShouldCountOnlyIngestionFailedEvents()
+    public async Task GetFailedCountAsync_ShouldReadSummaryWithoutScanningStream()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        StreamEntry[] fakeEntries =
-        [
-            CreateStreamEntry("1-0", "caseCreated", "system", "Created", null),
-            CreateStreamEntry("2-0", "ingestionFailed", "system", "Failed 1", "mu-1"),
-            CreateStreamEntry("3-0", "memoryUnitIngested", "system", "Ingested", "mu-2"),
-            CreateStreamEntry("4-0", "ingestionFailed", "system", "Failed 2", "mu-3"),
-        ];
-        db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<int?>(),
-            Arg.Any<Order>(),
-            Arg.Any<CommandFlags>())
-            .Returns(_ => fakeEntries);
+        db.HashGetAsync("tenant-1:case:case-001:activity:summary", "failedCount", Arg.Any<CommandFlags>())
+            .Returns(new RedisValue("2"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -231,6 +258,7 @@ public class CaseActivityServiceTests
 
         // Assert
         count.ShouldBe(2);
+        await db.DidNotReceiveWithAnyArgs().StreamRangeAsync(default, default, default, default, default, default);
     }
 
     [Fact]
@@ -238,14 +266,16 @@ public class CaseActivityServiceTests
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.HashGetAsync("tenant-1:case:case-001:activity:summary", "failedCount", Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
         db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
+            "tenant-1:case:case-001:activity",
             Arg.Any<RedisValue?>(),
             Arg.Any<RedisValue?>(),
             Arg.Any<int?>(),
             Arg.Any<Order>(),
             Arg.Any<CommandFlags>())
-            .Returns(_ => Array.Empty<StreamEntry>());
+            .Returns([]);
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -257,17 +287,53 @@ public class CaseActivityServiceTests
     }
 
     [Fact]
+    public async Task GetFailedCountAsync_WhenSummaryMissing_BackfillsFromStream()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.HashGetAsync("tenant-1:case:case-001:activity:summary", "failedCount", Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        db.StreamRangeAsync(
+            "tenant-1:case:case-001:activity",
+            Arg.Any<RedisValue?>(),
+            Arg.Any<RedisValue?>(),
+            null,
+            Order.Ascending,
+            Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                CreateStreamEntry("1712345678900-0", "ingestionFailed", "system", "Failed", "mu-1"),
+                CreateStreamEntry("1712345678901-0", "memoryUnitIngested", "system", "Ingested", "mu-2"),
+                CreateStreamEntry("1712345678902-0", "ingestionFailed", "system", "Failed", "mu-3"),
+            ]);
+
+        CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
+
+        // Act
+        int count = await service.GetFailedCountAsync("tenant-1", "case-001");
+
+        // Assert
+        count.ShouldBe(2);
+        await db.Received(1).HashSetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "failedCount",
+            "2",
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+        await db.Received(1).HashSetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
+            "1712345678902",
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task GetFailedCountAsync_OnException_ShouldReturnZeroAndNotThrow()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<int?>(),
-            Arg.Any<Order>(),
-            Arg.Any<CommandFlags>())
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
             .ThrowsAsync(new RedisTimeoutException("Timed out", CommandStatus.Unknown));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
@@ -284,18 +350,11 @@ public class CaseActivityServiceTests
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        StreamEntry[] fakeEntries =
-        [
-            CreateStreamEntry("1712345678901-0", "memoryUnitIngested", "system", "Ingested", null),
-        ];
-        db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Is<int?>(c => c == 1),
-            Arg.Is<Order>(o => o == Order.Descending),
+        db.HashGetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
             Arg.Any<CommandFlags>())
-            .Returns(_ => fakeEntries);
+            .Returns(new RedisValue("1712345678901"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -305,6 +364,7 @@ public class CaseActivityServiceTests
         // Assert
         timestamp.ShouldNotBeNull();
         timestamp.Value.ShouldBe(DateTimeOffset.FromUnixTimeMilliseconds(1712345678901));
+        await db.DidNotReceiveWithAnyArgs().StreamRangeAsync(default, default, default, default, default, default);
     }
 
     [Fact]
@@ -312,14 +372,19 @@ public class CaseActivityServiceTests
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.HashGetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
+            Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
         db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
+            "tenant-1:case:case-001:activity",
             Arg.Any<RedisValue?>(),
             Arg.Any<RedisValue?>(),
             Arg.Any<int?>(),
             Arg.Any<Order>(),
             Arg.Any<CommandFlags>())
-            .Returns(_ => Array.Empty<StreamEntry>());
+            .Returns([]);
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -331,17 +396,55 @@ public class CaseActivityServiceTests
     }
 
     [Fact]
+    public async Task GetLastActivityTimestampAsync_WhenSummaryMissing_BackfillsFromStream()
+    {
+        // Arrange
+        (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
+        db.HashGetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
+            Arg.Any<CommandFlags>())
+            .Returns(RedisValue.Null);
+        db.StreamRangeAsync(
+            "tenant-1:case:case-001:activity",
+            Arg.Any<RedisValue?>(),
+            Arg.Any<RedisValue?>(),
+            null,
+            Order.Ascending,
+            Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                CreateStreamEntry("1712345678900-0", "caseCreated", "system", "Created", null),
+                CreateStreamEntry("1712345678905-0", "memoryUnitIngested", "system", "Ingested", "mu-1"),
+            ]);
+
+        CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
+
+        // Act
+        DateTimeOffset? timestamp = await service.GetLastActivityTimestampAsync("tenant-1", "case-001");
+
+        // Assert
+        timestamp.ShouldBe(DateTimeOffset.FromUnixTimeMilliseconds(1712345678905));
+        await db.Received(1).HashSetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "failedCount",
+            "0",
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+        await db.Received(1).HashSetAsync(
+            "tenant-1:case:case-001:activity:summary",
+            "lastActivityUnixMilliseconds",
+            "1712345678905",
+            Arg.Any<When>(),
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task GetLastActivityTimestampAsync_OnException_ShouldReturnNullAndNotThrow()
     {
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
-        db.StreamRangeAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<RedisValue?>(),
-            Arg.Any<int?>(),
-            Arg.Any<Order>(),
-            Arg.Any<CommandFlags>())
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
             .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);

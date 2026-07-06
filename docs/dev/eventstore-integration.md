@@ -455,23 +455,40 @@ unit remains searchable on the raw-semantic + syntactic + graph axes; only the b
 is delayed. `NaturalLanguageEmbeddingRetryHostedService` drains the queue on a configurable interval
 (default 60s, `NaturalLanguage:RetryIntervalSeconds`).
 
+Story 24.5 bounds the queue shape: live/dead sorted-set members are stable
+`memoryUnitId` values, payload JSON is stored in companion Redis hashes, and
+`nl-embedding-retry-tenants` tracks tenants with live backlog so retry polling
+does not scan Redis keys. Repeated enqueue for the same tenant + memory unit
+coalesces to one live entry with the latest payload/attempt state. If the live
+queue cap is exceeded, recoverable overflow entries move to the dead-letter
+queue instead of being silently deleted. The retry worker ignores stale dequeued
+copies when a newer payload hash exists for the same memory unit.
+
 **Operator commands:**
 
 ```bash
 # Backlog count (live queue)
 redis-cli ZCARD nl-embedding-retry:{tenant}
 
-# Oldest 10 entries with queue timestamps
+# Oldest 10 memory-unit ids with queue timestamps
 redis-cli ZRANGE nl-embedding-retry:{tenant} 0 9 WITHSCORES
+
+# Payload for a live memory unit
+redis-cli HGET nl-embedding-retry-payload:{tenant} {memoryUnitId}
 
 # Dead-letter count (records that exhausted MaxRetryAttempts)
 redis-cli ZCARD nl-embedding-retry-dead:{tenant}
 
-# Peek a dead-letter entry (operator can manually re-enqueue by copying to live queue)
+# Peek a dead-letter memory-unit id and payload
 redis-cli ZRANGE nl-embedding-retry-dead:{tenant} 0 0 WITHSCORES
+redis-cli HGET nl-embedding-retry-dead-payload:{tenant} {memoryUnitId}
 
-# Re-enqueue a dead-lettered entry — Redis ZADD to the live queue with a fresh score
-redis-cli ZADD nl-embedding-retry:{tenant} "$(date +%s%N | cut -c1-17)" '<record-json>'
+# Re-enqueue a dead-lettered entry with a fresh score
+redis-cli HSET nl-embedding-retry-payload:{tenant} {memoryUnitId} '<record-json>'
+redis-cli ZADD nl-embedding-retry:{tenant} "$(date +%s%N | cut -c1-17)" {memoryUnitId}
+redis-cli SADD nl-embedding-retry-tenants {tenant}
+redis-cli ZREM nl-embedding-retry-dead:{tenant} {memoryUnitId}
+redis-cli HDEL nl-embedding-retry-dead-payload:{tenant} {memoryUnitId}
 ```
 
 **Recommended Prometheus alerts:**
@@ -554,10 +571,15 @@ replay is deterministic — an in-flight 9.1-shape `IngestionWorkflow` history w
    for **≥2 minutes**. File / URL ingestion is unaffected — the SourceType-gated block never enters
    the new code path for those sources.
 2. **Code-level gate (fail-safe):** `WorkflowReplaySafetyHostedService` (`IHostedLifecycleService`
-   implementation — runs before any other hosted service) queries DAPR Workflow for active
-   workflow instances and delays startup by 5s polls until count reaches 0, with a 5-min total
-   timeout. Events `9171` (per-poll Warning), `9172` (single-shot Critical on timeout),
-   `9173` (sidecar unreachable — fail open per Improvement Z).
+   implementation — runs before any other hosted service) reads the app-owned
+   `ingestion-workflow:in-flight` registry populated by the ingestion scheduler. It checks only
+   those tracked DAPR instance ids, prunes missing or terminal entries after a DAPR status read, and
+   delays startup by 5s polls until count reaches 0, with a 5-min total timeout. On first rollout
+   after the registry is introduced, an uninitialized empty registry uses a one-time public DAPR
+   instance-id enumeration fallback; once no active ingestion workflows are found, the registry is
+   marked initialized and later startups avoid broad enumeration. Events `9171` (per-poll Warning),
+   `9172` (single-shot Critical on timeout), `9173` (registry/sidecar unreachable — fail open per
+   Improvement Z).
 
 ## Local dev — `conversation.echo`
 

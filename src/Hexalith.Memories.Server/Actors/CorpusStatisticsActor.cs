@@ -43,21 +43,21 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
     /// <inheritdoc/>
     public async Task<int> GetDocumentCountAsync()
     {
-        CorpusStatistics stats = await GetOrRefreshStatsAsync().ConfigureAwait(false);
+        CorpusStatistics stats = await GetCachedStatsAsync().ConfigureAwait(false);
         return stats.DocumentCount;
     }
 
     /// <inheritdoc/>
     public async Task<double> GetAverageDocumentLengthAsync()
     {
-        CorpusStatistics stats = await GetOrRefreshStatsAsync().ConfigureAwait(false);
+        CorpusStatistics stats = await GetCachedStatsAsync().ConfigureAwait(false);
         return stats.AverageDocumentLength;
     }
 
     /// <inheritdoc/>
     public async Task<CorpusStatistics> GetStatisticsAsync()
     {
-        return await GetOrRefreshStatsAsync().ConfigureAwait(false);
+        return await GetCachedStatsAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -153,14 +153,17 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
 
             CorpusStatistics stats = ParseFtInfoResult(raw, DateTimeOffset.UtcNow);
 
-            await StateManager.SetStateAsync(StateName, stats).ConfigureAwait(false);
-            LogStatsRefreshed(_logger, tenantId, stats.DocumentCount, stats.AverageDocumentLength);
+            bool persisted = await PersistStatsIfChangedAsync(stats).ConfigureAwait(false);
+            if (persisted)
+            {
+                LogStatsRefreshed(_logger, tenantId, stats.DocumentCount, stats.AverageDocumentLength);
+            }
         }
         catch (RedisServerException ex) when (IsMissingIndexError(ex))
         {
             // Index doesn't exist yet — set zero stats
             CorpusStatistics emptyStats = new(0, 0.0, DateTimeOffset.UtcNow);
-            await StateManager.SetStateAsync(StateName, emptyStats).ConfigureAwait(false);
+            _ = await PersistStatsIfChangedAsync(emptyStats).ConfigureAwait(false);
             LogIndexNotFound(_logger, tenantId, indexName);
         }
         catch (RedisConnectionException ex)
@@ -175,7 +178,7 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
         }
     }
 
-    private async Task<CorpusStatistics> GetOrRefreshStatsAsync()
+    private async Task<CorpusStatistics> GetCachedStatsAsync()
     {
         ConditionalValue<CorpusStatistics> result = await StateManager
             .TryGetStateAsync<CorpusStatistics>(StateName)
@@ -183,21 +186,10 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
 
         if (result.HasValue)
         {
-            return await PersistStatsBeforeReturnAsync(result.Value).ConfigureAwait(false);
+            return result.Value;
         }
 
-        // First call before timer fires — trigger inline refresh
-        await RefreshStatsCallbackAsync([]).ConfigureAwait(false);
-
-        ConditionalValue<CorpusStatistics> retryResult = await StateManager
-            .TryGetStateAsync<CorpusStatistics>(StateName)
-            .ConfigureAwait(false);
-
-        CorpusStatistics stats = retryResult.HasValue
-            ? retryResult.Value
-            : new CorpusStatistics(0, 0.0, DateTimeOffset.UtcNow);
-
-        return await PersistStatsBeforeReturnAsync(stats).ConfigureAwait(false);
+        return new CorpusStatistics(0, 0.0, DateTimeOffset.UtcNow);
     }
 
     private static bool IsMissingIndexError(RedisServerException ex)
@@ -254,11 +246,24 @@ internal sealed partial class CorpusStatisticsActor : Actor, ICorpusStatisticsAc
         return false;
     }
 
-    private async Task<CorpusStatistics> PersistStatsBeforeReturnAsync(CorpusStatistics stats)
+    private async Task<bool> PersistStatsIfChangedAsync(CorpusStatistics stats)
     {
+        ConditionalValue<CorpusStatistics> existing = await StateManager
+            .TryGetStateAsync<CorpusStatistics>(StateName)
+            .ConfigureAwait(false);
+
+        if (existing.HasValue && HasSameCorpusValues(existing.Value, stats))
+        {
+            return false;
+        }
+
         await StateManager.SetStateAsync(StateName, stats).ConfigureAwait(false);
-        return stats;
+        return true;
     }
+
+    private static bool HasSameCorpusValues(CorpusStatistics left, CorpusStatistics right)
+        => left.DocumentCount == right.DocumentCount
+            && left.AverageDocumentLength.Equals(right.AverageDocumentLength);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Corpus stats refreshed for tenant {TenantId}: docCount={DocumentCount}, avgDocLen={AverageDocumentLength:F2}")]
     private static partial void LogStatsRefreshed(ILogger logger, string tenantId, int documentCount, double averageDocumentLength);

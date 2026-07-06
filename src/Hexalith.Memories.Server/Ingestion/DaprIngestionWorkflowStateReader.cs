@@ -7,8 +7,13 @@ namespace Hexalith.Memories.Server.Ingestion;
 
 using Dapr.Workflow;
 
+using Microsoft.Extensions.Logging;
+
 /// <summary>Dapr-backed ingestion workflow state reader.</summary>
-internal sealed class DaprIngestionWorkflowStateReader(DaprWorkflowClient workflowClient) : IIngestionWorkflowStateReader
+internal sealed partial class DaprIngestionWorkflowStateReader(
+    IDaprWorkflowClient workflowClient,
+    IIngestionWorkflowInFlightRegistry inFlightRegistry,
+    ILogger<DaprIngestionWorkflowStateReader> logger) : IIngestionWorkflowStateReader
 {
     /// <inheritdoc />
     public async Task<WorkflowState?> GetWorkflowStateAsync(
@@ -17,8 +22,36 @@ internal sealed class DaprIngestionWorkflowStateReader(DaprWorkflowClient workfl
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
-        return await workflowClient
+        WorkflowState? state = await workflowClient
             .GetWorkflowStateAsync(instanceId, includeInputsAndOutputs, cancellationToken)
             .ConfigureAwait(false);
+
+        if (state is null || !state.Exists || IsTerminalStatus(state.RuntimeStatus))
+        {
+            await TryRemoveTrackedInstanceAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        }
+
+        return state;
     }
+
+    internal static bool IsTerminalStatus(WorkflowRuntimeStatus status)
+        => status == WorkflowRuntimeStatus.Completed
+            || status == WorkflowRuntimeStatus.Failed
+            || status == WorkflowRuntimeStatus.Canceled
+            || status == WorkflowRuntimeStatus.Terminated;
+
+    private async Task TryRemoveTrackedInstanceAsync(string instanceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await inFlightRegistry.RemoveAsync(instanceId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogInFlightPruneFailed(logger, ex, instanceId);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to prune tracked ingestion workflow {InstanceId} after a terminal or missing status read.")]
+    private static partial void LogInFlightPruneFailed(ILogger logger, Exception exception, string instanceId);
 }

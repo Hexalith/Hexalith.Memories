@@ -24,6 +24,7 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
     [Theory]
     [InlineData(WorkflowRuntimeStatus.Completed, true)]
     [InlineData(WorkflowRuntimeStatus.Failed, true)]
+    [InlineData(WorkflowRuntimeStatus.Canceled, true)]
     [InlineData(WorkflowRuntimeStatus.Terminated, true)]
     [InlineData(WorkflowRuntimeStatus.Running, false)]
     [InlineData(WorkflowRuntimeStatus.Pending, false)]

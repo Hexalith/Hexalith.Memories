@@ -444,7 +444,7 @@ development_status:
   24-2-read-path-caching-and-tenant-list-bounding: done
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
-  24-5-hot-path-write-amplification-cleanup: backlog
+  24-5-hot-path-write-amplification-cleanup: done
   epic-24-retrospective: optional
 
   # Epic 25: Architecture Factorization & Code Health

@@ -172,6 +172,7 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
     internal static bool IsTerminalStatus(WorkflowRuntimeStatus status)
         => status == WorkflowRuntimeStatus.Completed
             || status == WorkflowRuntimeStatus.Failed
+            || status == WorkflowRuntimeStatus.Canceled
             || status == WorkflowRuntimeStatus.Terminated;
 
     private async Task<WorkflowState?> TryGetWorkflowStateAsync(string instanceId, CancellationToken cancellationToken)

@@ -128,6 +128,11 @@ domain mutations. Redis case hashes, RediSearch syntactic memory-unit hashes,
 Redis Vector entries, FalkorDB nodes/edges, case activity streams, and tenant
 registry/read records are projections/read models that may be replayed, rebuilt,
 or retried after a projection failure.
+Case activity storage is bounded operational state: the Redis stream retains a
+configured maximum number of recent events, while failed-count and last-activity
+status reads use the companion summary hash instead of scanning the stream.
+Cases that predate the summary hash backfill it from the activity stream on the
+first missing-summary read.
 
 The syntactic hash `{tenantId}:mu:{memoryUnitId}` remains the operational input
 for the existing consistency repair workflow because that workflow repairs

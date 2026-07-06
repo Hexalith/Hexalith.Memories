@@ -12,8 +12,8 @@ using Hexalith.Memories.Contracts.V1;
 /// Redis boundary (testability).</summary>
 public interface IFailedNaturalLanguageEmbeddingRegistry
 {
-    /// <summary>Appends a record to the tail of <c>nl-embedding-retry:{tenantId}</c> (score =
-    /// <paramref name="record"/><c>.QueuedAtTicks</c> — FIFO dequeue order).</summary>
+    /// <summary>Adds or replaces a live retry entry keyed by <c>MemoryUnitId</c> in
+    /// <c>nl-embedding-retry:{tenantId}</c> and stores the payload in a companion Redis hash.</summary>
     /// <param name="record">The record to enqueue.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     Task EnqueueAsync(FailedNaturalLanguageEmbeddingRecord record, CancellationToken cancellationToken);
@@ -50,14 +50,14 @@ public interface IFailedNaturalLanguageEmbeddingRegistry
     /// <returns>The backlog count.</returns>
     Task<long> GetBacklogCountAsync(string tenantId, CancellationToken cancellationToken);
 
-    /// <summary>Reports the backing sorted-set memory footprint (bytes) via <c>MEMORY USAGE</c>. Reinstated
-    /// for the bounded payload-by-value fallback so operators can see queue bytes per tenant.</summary>
+    /// <summary>Reports the backing sorted-set and payload-hash memory footprint (bytes) via
+    /// <c>MEMORY USAGE</c>.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The memory usage in bytes (0 when unavailable).</returns>
     Task<long> GetBacklogBytesAsync(string tenantId, CancellationToken cancellationToken);
 
-    /// <summary>Enumerates tenants that currently have at least one backlog entry via <c>SCAN</c>.</summary>
+    /// <summary>Enumerates tenants that currently have at least one backlog entry via the tenant backlog set.</summary>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The tenant identifiers.</returns>
     IAsyncEnumerable<string> ListTenantsWithBacklogAsync(CancellationToken cancellationToken);

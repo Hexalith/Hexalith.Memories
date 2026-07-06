@@ -33,7 +33,7 @@ public class CorpusStatisticsActorTests
 
         // Assert
         docCount.ShouldBe(100);
-        await stateManager.Received(1).SetStateAsync("corpusStats", stats, Arg.Any<CancellationToken>());
+        await stateManager.DidNotReceiveWithAnyArgs().SetStateAsync(default!, default(CorpusStatistics)!);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class CorpusStatisticsActorTests
 
         // Assert
         avgDocLen.ShouldBe(5242.88);
-        await stateManager.Received(1).SetStateAsync("corpusStats", stats, Arg.Any<CancellationToken>());
+        await stateManager.DidNotReceiveWithAnyArgs().SetStateAsync(default!, default(CorpusStatistics)!);
     }
 
     [Fact]
@@ -68,7 +68,59 @@ public class CorpusStatisticsActorTests
         result.DocumentCount.ShouldBe(250);
         result.AverageDocumentLength.ShouldBe(4096.0);
         result.LastRefreshedAt.ShouldBe(refreshedAt);
-        await stateManager.Received(1).SetStateAsync("corpusStats", stats, Arg.Any<CancellationToken>());
+        await stateManager.DidNotReceiveWithAnyArgs().SetStateAsync(default!, default(CorpusStatistics)!);
+    }
+
+    [Fact]
+    public async Task GetStatisticsAsync_WithMissingState_ShouldReturnDefaultWithoutPersisting()
+    {
+        // Arrange
+        (CorpusStatisticsActor actor, IActorStateManager stateManager) = CreateActorWithMockState();
+        stateManager.TryGetStateAsync<CorpusStatistics>("corpusStats", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<CorpusStatistics>(false, default!));
+
+        // Act
+        CorpusStatistics result = await actor.GetStatisticsAsync();
+
+        // Assert
+        result.DocumentCount.ShouldBe(0);
+        result.AverageDocumentLength.ShouldBe(0.0);
+        await stateManager.DidNotReceiveWithAnyArgs().SetStateAsync(default!, default(CorpusStatistics)!);
+    }
+
+    [Fact]
+    public async Task RefreshStatsCallbackAsync_WhenValuesUnchanged_ShouldNotPersist()
+    {
+        // Arrange
+        (CorpusStatisticsActor actor, IActorStateManager stateManager, IDatabase db) = CreateActorWithMockStateAndRedis();
+        CorpusStatistics stats = new(100, 5242.88, DateTimeOffset.UtcNow);
+        SetupExistingState(stateManager, stats);
+        db.ExecuteAsync("FT.INFO", Arg.Any<object[]>()).Returns(CreateFtInfoRaw("100", "0.5"));
+
+        // Act
+        await actor.RefreshStatsCallbackAsync([]);
+
+        // Assert
+        await stateManager.DidNotReceiveWithAnyArgs().SetStateAsync(default!, default(CorpusStatistics)!);
+    }
+
+    [Fact]
+    public async Task RefreshStatsCallbackAsync_WithMissingState_ShouldPersistOnce()
+    {
+        // Arrange
+        (CorpusStatisticsActor actor, IActorStateManager stateManager, IDatabase db) = CreateActorWithMockStateAndRedis();
+        stateManager.TryGetStateAsync<CorpusStatistics>("corpusStats", Arg.Any<CancellationToken>())
+            .Returns(new ConditionalValue<CorpusStatistics>(false, default!));
+        db.ExecuteAsync("FT.INFO", Arg.Any<object[]>()).Returns(CreateFtInfoRaw("100", "0.5"));
+
+        // Act
+        await actor.RefreshStatsCallbackAsync([]);
+
+        // Assert
+        await stateManager.Received(1).SetStateAsync(
+            "corpusStats",
+            Arg.Is<CorpusStatistics>(s => s.DocumentCount == 100 && Math.Abs(s.AverageDocumentLength - 5242.88) < 0.01),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -183,8 +235,16 @@ public class CorpusStatisticsActorTests
 
     private static (CorpusStatisticsActor Actor, IActorStateManager StateManager) CreateActorWithMockState()
     {
+        (CorpusStatisticsActor actor, IActorStateManager stateManager, _) = CreateActorWithMockStateAndRedis();
+        return (actor, stateManager);
+    }
+
+    private static (CorpusStatisticsActor Actor, IActorStateManager StateManager, IDatabase Database) CreateActorWithMockStateAndRedis()
+    {
         IActorStateManager stateManager = Substitute.For<IActorStateManager>();
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        IDatabase db = Substitute.For<IDatabase>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
 
         ActorHost host = ActorHost.CreateForTest<CorpusStatisticsActor>(
             new ActorTestOptions { ActorId = new ActorId(TenantId) });
@@ -194,8 +254,17 @@ public class CorpusStatisticsActorTests
         PropertyInfo? prop = typeof(Actor).GetProperty("StateManager", BindingFlags.Public | BindingFlags.Instance);
         prop?.SetValue(actor, stateManager);
 
-        return (actor, stateManager);
+        return (actor, stateManager, db);
     }
+
+    private static RedisResult CreateFtInfoRaw(string documentCount, string documentTableSizeMb)
+        => RedisResult.Create(
+        [
+            RedisResult.Create(new RedisValue("num_docs")),
+            RedisResult.Create(new RedisValue(documentCount)),
+            RedisResult.Create(new RedisValue("doc_table_size_mb")),
+            RedisResult.Create(new RedisValue(documentTableSizeMb)),
+        ]);
 
     private static void SetupExistingState(IActorStateManager stateManager, CorpusStatistics stats)
     {

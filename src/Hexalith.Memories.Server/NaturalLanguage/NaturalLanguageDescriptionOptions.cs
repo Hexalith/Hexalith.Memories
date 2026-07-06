@@ -59,6 +59,12 @@ public sealed class NaturalLanguageDescriptionOptions
     /// Redis memory, protecting pre-mortem Failure δ.</summary>
     public int QueuedPayloadMaxBytes { get; set; } = 4096;
 
+    /// <summary>Gets or sets the maximum live retry entries retained per tenant.</summary>
+    public int LiveRetryQueueMaxEntries { get; set; } = 1000;
+
+    /// <summary>Gets or sets the maximum dead-letter retry entries retained per tenant.</summary>
+    public int DeadRetryQueueMaxEntries { get; set; } = 1000;
+
     /// <summary>Gets or sets whether operators have explicitly acknowledged cross-tenant LLM-response cache
     /// sharing at the DAPR sidecar level (Risk #16). REQUIRED to be <see langword="true"/> when the
     /// resolved component YAML specifies a non-zero <c>responseCacheTTL</c>. Default <see langword="false"/>.

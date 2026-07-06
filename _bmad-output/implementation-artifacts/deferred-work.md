@@ -49,6 +49,19 @@ treats them as historical noise: they remain readable in code review and continu
 to provide context, but the structured fields above are the source of truth for
 parsers and planning of migrated entries.
 
+## Story 24.5 Review Deferred Items (2026-07-06)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: Case activity stream append and summary-hash update should be made atomic if duplicate retry side effects become observable.
+  evidence: Story 24.5 bounded the stream and added summary backfill for missing legacy summaries, but `XADD` and summary hash updates remain separate Redis operations, so a failure between them can leave a read-model summary temporarily stale until rebuild/backfill.
+
+  - ID: 24.5-CASE-ACTIVITY-ATOMIC-SUMMARY
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: src/Hexalith.Memories.Server/Cases/CaseActivityService.cs
+  - Re-open trigger: duplicate case activity appends, stale failed-count/last-activity summaries, or Redis partial-write telemetry are observed after Story 24.5 ships.
+  - Evidence: Review pass found `RecordEventAsync` writes the stream and summary hash separately; Story 24.5 mitigated missing legacy summaries with backfill but did not introduce Lua/transactional atomicity for this projection summary.
+
 ## Deferred Register Backlog Home Rollup (2026-06-30)
 
 Sprint Change Proposal 2026-06-30 creates Epic 19 as the backlog home for active
@@ -1705,3 +1718,59 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   summary: Decide whether historical BMAD implementation-artifact records (stories 9.2/9.3/20.5) should be forward-referenced or updated so they stop citing pre-rename metric names.
   evidence: Story 24.4 renamed instruments (e.g. `memories_conversation_cache_hit_total` -> `memories.conversation.cache.hits`, `memories.rate_limit.rejections` -> `memories.rate.limit.rejections`), but `_bmad-output/implementation-artifacts/9-2-*.md`, `20-5-*.md`, and `7-5-*.md` still name the old instruments. These are point-in-time story records outside the spec's "source, tests, or docs" scope, so whether to rewrite history or add forward-reference notes is a judgment call the orchestrator owns.
 - **24.2-RV3 — Pre-existing: two `DeleteMemoryUnitProjectionActivityTests` fail at HEAD (unrelated to Story 24.2).** `RunAsync_HappyPath_ShouldDeleteAnnotationsBeforeTargetAndSyntacticHashLast` and `RunAsync_VectorDeleteFails_ShouldKeepSyntacticHashForRetry` fail on the full server slice (2 of 2441). Verified pre-existing by stashing the 24.2 review patches and re-running the class (still 2/3 failing), so NOT introduced by read-path caching — the delete-projection Redis hash/vector ordering area, likely from a later commit (24.3/24.4/CI). Flagged during the 24.2 code review for separate triage. Re-open trigger: whoever owns the delete-projection area investigates the NSubstitute in-order sequence assertion on annotation/target/syntactic-hash deletion.
+
+## Deferred from: bmad-dev-auto review of spec-24-5-hot-path-write-amplification-cleanup (2026-07-06)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: Case activity legacy `failedCount` one-time backfill is pre-empted by the write-path `HashIncrement`, so a legacy case whose first post-24.5 event is `IngestionFailed` permanently undercounts its pre-existing stream failures.
+  evidence: `GetFailedCountAsync` (src/Hexalith.Memories.Server/Cases/CaseActivityService.cs:141-147) backfills from the stream only when the `failedCount` summary field is absent, but `UpdateSummaryAsync` (:260-265) calls `HashIncrementAsync(failedCount)` on every `IngestionFailed`, creating the field at 1. A legacy case (no summary hash yet) whose first post-deploy event is a failure therefore reports `1` forever and never reconciles the older stream failures. A naive backfill-then-increment would double-count the just-appended event, so the fix needs an explicit "summary initialized" marker or a backfill-before-append restructuring. Related: `BackfillSummaryFromStreamAsync` (:185-232) also undercounts when a case exceeded `StreamMaxLength` and older failed entries were trimmed.
+  - ID: 24.5-CASE-ACTIVITY-BACKFILL-PREEMPTED
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/Cases/CaseActivityService.cs`
+  - Re-open trigger: an operator or dashboard reports a case `failedCount` lower than the observed `IngestionFailed` events, or the summary/stream reconciliation is redesigned.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: NL retry `EnqueueAsync` writes tenant backlog-set membership, payload hash, and sorted-set member as three non-atomic Redis ops, and the tenant set is pruned by a check-then-`SREM`; the resulting TOCTOU can strand a tenant's live retry entries and can orphan payload-hash fields on a crash.
+  evidence: `EnqueueAsync` (src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs:55-57) does `SetAdd(TenantBacklogKey)`, `HashSet(payload)`, `SortedSetAdd(member)` in sequence; `RemoveTenantBacklogIfEmptyAsync` (:341-348, called from Complete :139, dead-letter :190, trim :436, corrupt-remove :338) reads `SortedSetLength==0` then `SREM`. If a completion's length-read and `SREM` interleave around a concurrent enqueue's `SetAdd`/`SortedSetAdd`, the tenant is dropped from `nl-embedding-retry-tenants` while a live member remains; `ListTenantsWithBacklogAsync` (:270-286) then skips it and the legacy KEYS fallback runs only when the whole set is empty (:260), so the entry is retried only on that tenant's next enqueue. A crash between :56 and :57 also orphans a payload-hash field with no member (DequeueBatch reads members only), leaking `GetBacklogBytes`. A correct fix needs atomic (Lua) enqueue/prune rather than op reordering.
+  - ID: 24.5-NL-RETRY-TENANT-SET-ATOMICITY
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Re-open trigger: a tenant's queued NL retry stops being polled while a live member remains, or payload-hash memory grows without a matching sorted-set member.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: NL retry legacy-tenant discovery runs only when the new tenant-set is entirely empty, so pre-24.5 legacy tenant queues are never surfaced once any new enqueue populates the set.
+  evidence: `ListTenantsWithBacklogAsync` (src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs:259-268) calls `ListLegacyTenantsWithBacklogAsync` only inside `if (tenantIds.Length == 0)`. During a 24.5 rollout, the first new failure for any tenant populates `nl-embedding-retry-tenants`, after which legacy tenants (queues with no tenant-set entry) are never discovered and their retries stall until each receives a fresh failure. Running the legacy KEYS scan unconditionally each poll is barred by the story's "no key scans on hot paths" boundary, so the fix needs a one-time startup migration sweep.
+  - ID: 24.5-NL-RETRY-LEGACY-TENANT-DISCOVERY
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Re-open trigger: legacy NL retry work remains unprocessed after a 24.5 deployment that also enqueued new failures.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: NL retry `CompleteAsync`/`IncrementAttemptsAsync` skip their optimistic condition when the current payload-hash field is null (legacy JSON member or already-deleted), so an unconditional remove can silently clobber a concurrent fresh re-enqueue for the same memory unit.
+  evidence: In `CompleteAsync` (src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs:123-136) and `IncrementAttemptsAsync` (:168-176) the `Condition.HashEqual` guard is added only when `currentPayload.HasValue`; when it is null the transaction commits unconditionally and `SortedSetRemove(memoryUnitId)` + `HashDelete` run, so a fresh enqueue that wrote a payload + member for the same `MemoryUnitId` between the null `HashGet` and the transaction is deleted and the new failure is lost. Adding a `Condition.HashNotExists(payloadKey, memoryUnitId)` on the null branch would abort the transaction if a fresh payload appeared while still removing genuine legacy members; needs a regression test proving the concurrent-enqueue case.
+  - ID: 24.5-NL-RETRY-NULL-PAYLOAD-CLOBBER
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Re-open trigger: a freshly enqueued NL retry disappears during legacy-format migration, or the null-payload transaction path is hardened.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: The ingestion in-flight registry has no TTL or size cap and is pruned only by status polls or the startup gate, so un-polled fire-and-forget ingestions accumulate terminal entries unboundedly and inflate the next startup drain.
+  evidence: `RedisIngestionWorkflowInFlightRegistry.TrackAsync` (src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs:33-46) only ever adds; the `IngestionWorkflow` and its activities never call `RemoveAsync`, and the only prunes are `DaprIngestionWorkflowStateReader.GetWorkflowStateAsync` (fires only when a client polls `/api/ingest/{instanceId}`) and the startup gate. A long-lived server whose ingestions are never polled grows `ingestion-workflow:in-flight` (sorted set) and `:members` (hash) without bound; the next restart's `TryCountInFlightAsync` (src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs:113-160) then issues one sequential `GetWorkflowStateAsync` (10s per-query timeout) per dead entry and can exceed the 5-minute `TotalTimeout`, so the replay gate proceeds (`event 9172`) without confirming the drain. `RemoveAsync`'s lookup-miss fallback (`FindMembersByInstanceIdAsync`, :159-174) also degrades to a full O(N) sorted-set read, compounding the drain cost. Needs terminal-state removal on workflow completion plus a TTL/size bound and batched status reads.
+  - ID: 24.5-INFLIGHT-REGISTRY-UNBOUNDED
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs`
+  - Re-open trigger: the in-flight registry keys grow without bound, or the replay gate times out (`event 9172`) on a normal restart.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
+  summary: The replay-safety in-flight registry marks itself initialized on the first `TrackAsync` against shared Redis, so a multi-replica rolling upgrade can disable the one-time enumeration fallback for a sibling replica that still has untracked pre-24.5 in-flight workflows.
+  evidence: `TrackAsync` (src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs:45) unconditionally sets `InitializedKey`, and `WorkflowReplaySafetyHostedService.TryCountInFlightAsync` (src/Hexalith.Memories.Server/Hosting/WorkflowReplaySafetyHostedService.cs:122-132) runs the enumeration fallback only while the registry is empty AND uninitialized. In a rolling upgrade sharing one Redis, if the first upgraded replica proceeds past the 5-minute drain timeout (`event 9172`, already a Critical degraded state) with old pre-24.5 workflows still active and then schedules new work, `TrackAsync` sets the marker; a sibling replica starting afterward sees `IsInitialized=true`, skips enumeration, checks only tracked ids, and never observes the still-active untracked old workflows — the version-mismatch replay the gate exists to prevent. Marking initialized only after a confirmed zero-drain (not on track), or a rollout-scoped initialization signal, would close it.
+  - ID: 24.5-REPLAY-GATE-ROLLOUT-MARKER
+  - Status: open
+  - Source story: 24-5-hot-path-write-amplification-cleanup
+  - Target artifact: `src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs`
+  - Re-open trigger: a multi-replica rollout replays a pre-registry in-flight ingestion workflow after another replica passed the gate.

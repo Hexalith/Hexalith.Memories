@@ -5,36 +5,43 @@
 
 namespace Hexalith.Memories.Server.NaturalLanguage;
 
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using StackExchange.Redis;
 
-/// <summary>Story 9.2 Task 8.2 — Redis-backed implementation over the sorted-set
-/// <c>nl-embedding-retry:{tenantId}</c> (live queue) and <c>nl-embedding-retry-dead:{tenantId}</c>
-/// (dead-letter). Serialized payload is the JSON of <see cref="FailedNaturalLanguageEmbeddingRecord"/>
-/// — score is <see cref="FailedNaturalLanguageEmbeddingRecord.QueuedAtTicks"/> so dequeuing by rank
-/// (ascending) is natural FIFO.</summary>
+/// <summary>Redis-backed natural-language embedding retry queue.</summary>
 public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNaturalLanguageEmbeddingRegistry
 {
     internal const string LiveKeyPrefix = "nl-embedding-retry:";
     internal const string DeadKeyPrefix = "nl-embedding-retry-dead:";
+    internal const string LivePayloadKeyPrefix = "nl-embedding-retry-payload:";
+    internal const string DeadPayloadKeyPrefix = "nl-embedding-retry-dead-payload:";
+    internal const string TenantBacklogKey = "nl-embedding-retry-tenants";
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<FailedNaturalLanguageEmbeddingRegistry> _logger;
+    private readonly int _liveMaxEntries;
+    private readonly int _deadMaxEntries;
 
     public FailedNaturalLanguageEmbeddingRegistry(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
-        ILogger<FailedNaturalLanguageEmbeddingRegistry> logger)
+        ILogger<FailedNaturalLanguageEmbeddingRegistry> logger,
+        IOptions<NaturalLanguageDescriptionOptions>? options = null)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(logger);
         _redis = redis;
         _logger = logger;
+        NaturalLanguageDescriptionOptions value = (options ?? Options.Create(new NaturalLanguageDescriptionOptions())).Value;
+        _liveMaxEntries = ClampQueueMaxEntries(value.LiveRetryQueueMaxEntries);
+        _deadMaxEntries = ClampQueueMaxEntries(value.DeadRetryQueueMaxEntries);
     }
 
     /// <inheritdoc/>
@@ -45,7 +52,10 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
         string json = SerializeRecord(record);
         IDatabase db = _redis.GetDatabase();
-        await db.SortedSetAddAsync(LiveKey(record.TenantId), json, record.QueuedAtTicks).ConfigureAwait(false);
+        await db.SetAddAsync(TenantBacklogKey, record.TenantId).ConfigureAwait(false);
+        await db.HashSetAsync(LivePayloadKey(record.TenantId), record.MemoryUnitId, json).ConfigureAwait(false);
+        await db.SortedSetAddAsync(LiveKey(record.TenantId), record.MemoryUnitId, record.QueuedAtTicks).ConfigureAwait(false);
+        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries).ConfigureAwait(false);
         LogEnqueued(_logger, record.TenantId, record.MemoryUnitId, record.Attempts);
     }
 
@@ -60,23 +70,35 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
         int clamped = Math.Clamp(batchSize, 1, 100);
         IDatabase db = _redis.GetDatabase();
-        SortedSetEntry[] entries = await db
-            .SortedSetRangeByRankWithScoresAsync(LiveKey(tenantId), 0, clamped - 1, Order.Ascending)
+        RedisValue[] memoryUnitIds = await db
+            .SortedSetRangeByRankAsync(LiveKey(tenantId), 0, clamped - 1, Order.Ascending)
             .ConfigureAwait(false);
 
-        if (entries.Length == 0)
+        if (memoryUnitIds.Length == 0)
         {
             return [];
         }
 
-        List<FailedNaturalLanguageEmbeddingRecord> records = new(entries.Length);
-        foreach (SortedSetEntry entry in entries)
+        RedisValue[] payloads = await db.HashGetAsync(LivePayloadKey(tenantId), memoryUnitIds).ConfigureAwait(false);
+        List<FailedNaturalLanguageEmbeddingRecord> records = new(memoryUnitIds.Length);
+        List<RedisValue> corruptMembers = [];
+        for (int i = 0; i < memoryUnitIds.Length; i++)
         {
-            FailedNaturalLanguageEmbeddingRecord? parsed = TryDeserialize(entry.Element.ToString());
+            FailedNaturalLanguageEmbeddingRecord? parsed = payloads[i].HasValue
+                ? TryDeserialize(payloads[i].ToString())
+                : TryDeserialize(memoryUnitIds[i].ToString());
             if (parsed is not null)
             {
                 records.Add(parsed);
+                continue;
             }
+
+            corruptMembers.Add(memoryUnitIds[i]);
+        }
+
+        if (corruptMembers.Count > 0)
+        {
+            await RemoveLiveEntriesAsync(db, tenantId, [.. corruptMembers]).ConfigureAwait(false);
         }
 
         return records;
@@ -88,10 +110,34 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         ArgumentNullException.ThrowIfNull(record);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string json = SerializeRecord(record);
         IDatabase db = _redis.GetDatabase();
-        bool removed = await db.SortedSetRemoveAsync(LiveKey(record.TenantId), json).ConfigureAwait(false);
-        if (removed)
+        RedisKey payloadKey = LivePayloadKey(record.TenantId);
+        string expectedPayload = SerializeRecord(record);
+        RedisValue currentPayload = await db.HashGetAsync(payloadKey, record.MemoryUnitId).ConfigureAwait(false);
+        if (currentPayload.HasValue && currentPayload != expectedPayload)
+        {
+            LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
+            return;
+        }
+
+        ITransaction tx = db.CreateTransaction();
+        if (currentPayload.HasValue)
+        {
+            tx.AddCondition(Condition.HashEqual(payloadKey, record.MemoryUnitId, expectedPayload));
+        }
+
+        Task<long> removeTask = tx.SortedSetRemoveAsync(LiveKey(record.TenantId), LiveMembers(record));
+        _ = tx.HashDeleteAsync(payloadKey, record.MemoryUnitId);
+        bool committed = await tx.ExecuteAsync().ConfigureAwait(false);
+        if (!committed)
+        {
+            LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
+            return;
+        }
+
+        long removed = await removeTask.ConfigureAwait(false);
+        await RemoveTenantBacklogIfEmptyAsync(db, record.TenantId).ConfigureAwait(false);
+        if (removed > 0)
         {
             LogCompleted(_logger, record.TenantId, record.MemoryUnitId, record.Attempts);
         }
@@ -106,39 +152,58 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         ArgumentNullException.ThrowIfNull(record);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string existingJson = SerializeRecord(record);
         FailedNaturalLanguageEmbeddingRecord next = record with { Attempts = record.Attempts + 1 };
         string nextJson = SerializeRecord(next);
 
         IDatabase db = _redis.GetDatabase();
+        RedisKey livePayloadKey = LivePayloadKey(record.TenantId);
+        string expectedPayload = SerializeRecord(record);
+        RedisValue currentPayload = await db.HashGetAsync(livePayloadKey, record.MemoryUnitId).ConfigureAwait(false);
+        if (currentPayload.HasValue && currentPayload != expectedPayload)
+        {
+            LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
+            return false;
+        }
+
         ITransaction tx = db.CreateTransaction();
-        _ = tx.SortedSetRemoveAsync(LiveKey(record.TenantId), existingJson);
+        if (currentPayload.HasValue)
+        {
+            tx.AddCondition(Condition.HashEqual(livePayloadKey, record.MemoryUnitId, expectedPayload));
+        }
+
+        _ = tx.SortedSetRemoveAsync(LiveKey(record.TenantId), record.MemoryUnitId);
+        _ = tx.SortedSetRemoveAsync(LiveKey(record.TenantId), SerializeRecord(record));
+        _ = tx.HashDeleteAsync(livePayloadKey, record.MemoryUnitId);
 
         if (next.Attempts >= maxAttempts)
         {
-            _ = tx.SortedSetAddAsync(DeadKey(record.TenantId), nextJson, next.QueuedAtTicks);
+            _ = tx.HashSetAsync(DeadPayloadKey(record.TenantId), record.MemoryUnitId, nextJson);
+            _ = tx.SortedSetAddAsync(DeadKey(record.TenantId), record.MemoryUnitId, next.QueuedAtTicks);
             bool deadCommitted = await tx.ExecuteAsync().ConfigureAwait(false);
             if (!deadCommitted)
             {
-                LogTransactionAborted(_logger, record.TenantId, record.MemoryUnitId, "dead-letter");
-                throw new InvalidOperationException(
-                    $"Redis transaction aborted while moving {record.MemoryUnitId} to dead-letter for tenant {record.TenantId}.");
+                LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "dead-letter");
+                return false;
             }
 
             LogDeadLettered(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
+            await RemoveTenantBacklogIfEmptyAsync(db, record.TenantId).ConfigureAwait(false);
+            await TrimQueueAsync(db, DeadKey(record.TenantId), DeadPayloadKey(record.TenantId), _deadMaxEntries).ConfigureAwait(false);
             return true;
         }
 
-        _ = tx.SortedSetAddAsync(LiveKey(record.TenantId), nextJson, next.QueuedAtTicks);
+        _ = tx.HashSetAsync(LivePayloadKey(record.TenantId), record.MemoryUnitId, nextJson);
+        _ = tx.SortedSetAddAsync(LiveKey(record.TenantId), record.MemoryUnitId, next.QueuedAtTicks);
         bool liveCommitted = await tx.ExecuteAsync().ConfigureAwait(false);
         if (!liveCommitted)
         {
-            LogTransactionAborted(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
-            throw new InvalidOperationException(
-                $"Redis transaction aborted while incrementing attempts for {record.MemoryUnitId} on tenant {record.TenantId}.");
+            LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
+            return false;
         }
 
         LogAttemptIncremented(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
+        await db.SetAddAsync(TenantBacklogKey, record.TenantId).ConfigureAwait(false);
+        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries).ConfigureAwait(false);
         return false;
     }
 
@@ -158,12 +223,10 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         try
         {
             RedisResult result = await db.ExecuteAsync("MEMORY", "USAGE", LiveKey(tenantId)).ConfigureAwait(false);
-            if (result.IsNull)
-            {
-                return 0;
-            }
-
-            return (long)result;
+            long liveBytes = result.IsNull ? 0 : (long)result;
+            RedisResult payloadResult = await db.ExecuteAsync("MEMORY", "USAGE", LivePayloadKey(tenantId)).ConfigureAwait(false);
+            long payloadBytes = payloadResult.IsNull ? 0 : (long)payloadResult;
+            return liveBytes + payloadBytes;
         }
         catch (RedisException ex)
         {
@@ -190,25 +253,46 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     public async IAsyncEnumerable<string> ListTenantsWithBacklogAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        IServer? server = GetFirstConnectedServer();
-        if (server is null)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IDatabase db = _redis.GetDatabase();
+        RedisValue[] tenantIds = await db.SetMembersAsync(TenantBacklogKey).ConfigureAwait(false);
+        if (tenantIds.Length == 0)
         {
+            await foreach (string tenantId in ListLegacyTenantsWithBacklogAsync(db, cancellationToken).ConfigureAwait(false))
+            {
+                yield return tenantId;
+            }
+
             yield break;
         }
 
-        await foreach (RedisKey key in server.KeysAsync(pattern: LiveKeyPrefix + "*").WithCancellation(cancellationToken))
+        foreach (RedisValue tenantId in tenantIds)
         {
-            string keyStr = key.ToString();
-            if (keyStr.StartsWith(LiveKeyPrefix, StringComparison.Ordinal))
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!tenantId.HasValue)
             {
-                yield return keyStr[LiveKeyPrefix.Length..];
+                continue;
             }
+
+            string value = tenantId.ToString();
+            if (await db.SortedSetLengthAsync(LiveKey(value)).ConfigureAwait(false) <= 0)
+            {
+                _ = await db.SetRemoveAsync(TenantBacklogKey, tenantId).ConfigureAwait(false);
+                continue;
+            }
+
+            yield return value;
         }
     }
 
     internal static string LiveKey(string tenantId) => LiveKeyPrefix + tenantId;
 
     internal static string DeadKey(string tenantId) => DeadKeyPrefix + tenantId;
+
+    internal static string LivePayloadKey(string tenantId) => LivePayloadKeyPrefix + tenantId;
+
+    internal static string DeadPayloadKey(string tenantId) => DeadPayloadKeyPrefix + tenantId;
 
     internal static string SerializeRecord(FailedNaturalLanguageEmbeddingRecord record)
         => JsonSerializer.Serialize(record, MemoriesJsonContext.Options);
@@ -237,9 +321,66 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         }
     }
 
+    internal static int ClampQueueMaxEntries(int value) => Math.Clamp(value, 1, 100_000);
+
+    private static RedisValue[] LiveMembers(FailedNaturalLanguageEmbeddingRecord record)
+        => [record.MemoryUnitId, SerializeRecord(record)];
+
+    private static async Task RemoveLiveEntriesAsync(IDatabase db, string tenantId, RedisValue[] members)
+    {
+        if (members.Length == 0)
+        {
+            return;
+        }
+
+        _ = await db.SortedSetRemoveAsync(LiveKey(tenantId), members).ConfigureAwait(false);
+        _ = await db.HashDeleteAsync(LivePayloadKey(tenantId), members).ConfigureAwait(false);
+        await RemoveTenantBacklogIfEmptyAsync(db, tenantId).ConfigureAwait(false);
+    }
+
+    private static async Task RemoveTenantBacklogIfEmptyAsync(IDatabase db, string tenantId)
+    {
+        long remaining = await db.SortedSetLengthAsync(LiveKey(tenantId)).ConfigureAwait(false);
+        if (remaining == 0)
+        {
+            _ = await db.SetRemoveAsync(TenantBacklogKey, tenantId).ConfigureAwait(false);
+        }
+    }
+
+    private async IAsyncEnumerable<string> ListLegacyTenantsWithBacklogAsync(
+        IDatabase db,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        IServer? server = GetFirstConnectedServer();
+        if (server is null)
+        {
+            yield break;
+        }
+
+        await foreach (RedisKey key in server
+            .KeysAsync(database: db.Database, pattern: LiveKeyPrefix + "*", pageSize: 100)
+            .WithCancellation(cancellationToken))
+        {
+            string value = key.ToString();
+            if (value.Length <= LiveKeyPrefix.Length)
+            {
+                continue;
+            }
+
+            string tenantId = value[LiveKeyPrefix.Length..];
+            if (await db.SortedSetLengthAsync(LiveKey(tenantId)).ConfigureAwait(false) <= 0)
+            {
+                continue;
+            }
+
+            _ = await db.SetAddAsync(TenantBacklogKey, tenantId).ConfigureAwait(false);
+            yield return tenantId;
+        }
+    }
+
     private IServer? GetFirstConnectedServer()
     {
-        foreach (System.Net.EndPoint endpoint in _redis.GetEndPoints())
+        foreach (EndPoint endpoint in _redis.GetEndPoints())
         {
             IServer server = _redis.GetServer(endpoint);
             if (server.IsConnected)
@@ -249,6 +390,74 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         }
 
         return null;
+    }
+
+    private static async Task TrimLiveQueueAsync(IDatabase db, string tenantId, int liveMaxEntries, int deadMaxEntries)
+    {
+        long length = await db.SortedSetLengthAsync(LiveKey(tenantId)).ConfigureAwait(false);
+        long excess = length - liveMaxEntries;
+        if (excess <= 0)
+        {
+            return;
+        }
+
+        RedisValue[] oldestMembers = await db
+            .SortedSetRangeByRankAsync(LiveKey(tenantId), 0, excess - 1, Order.Ascending)
+            .ConfigureAwait(false);
+
+        if (oldestMembers.Length == 0)
+        {
+            return;
+        }
+
+        RedisValue[] payloads = await db.HashGetAsync(LivePayloadKey(tenantId), oldestMembers).ConfigureAwait(false);
+        List<RedisValue> removableMembers = new(oldestMembers.Length);
+        for (int i = 0; i < oldestMembers.Length; i++)
+        {
+            FailedNaturalLanguageEmbeddingRecord? record = payloads[i].HasValue
+                ? TryDeserialize(payloads[i].ToString())
+                : TryDeserialize(oldestMembers[i].ToString());
+            if (record is null)
+            {
+                removableMembers.Add(oldestMembers[i]);
+                continue;
+            }
+
+            string payload = payloads[i].HasValue ? payloads[i].ToString() : SerializeRecord(record);
+            _ = await db.HashSetAsync(DeadPayloadKey(tenantId), record.MemoryUnitId, payload).ConfigureAwait(false);
+            _ = await db.SortedSetAddAsync(DeadKey(tenantId), record.MemoryUnitId, record.QueuedAtTicks).ConfigureAwait(false);
+            removableMembers.Add(oldestMembers[i]);
+        }
+
+        if (removableMembers.Count > 0)
+        {
+            _ = await db.SortedSetRemoveAsync(LiveKey(tenantId), [.. removableMembers]).ConfigureAwait(false);
+            _ = await db.HashDeleteAsync(LivePayloadKey(tenantId), [.. removableMembers]).ConfigureAwait(false);
+            await RemoveTenantBacklogIfEmptyAsync(db, tenantId).ConfigureAwait(false);
+            await TrimQueueAsync(db, DeadKey(tenantId), DeadPayloadKey(tenantId), deadMaxEntries).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task TrimQueueAsync(IDatabase db, RedisKey queueKey, RedisKey payloadKey, int maxEntries)
+    {
+        long length = await db.SortedSetLengthAsync(queueKey).ConfigureAwait(false);
+        long excess = length - maxEntries;
+        if (excess <= 0)
+        {
+            return;
+        }
+
+        RedisValue[] oldestMemoryUnitIds = await db
+            .SortedSetRangeByRankAsync(queueKey, 0, excess - 1, Order.Ascending)
+            .ConfigureAwait(false);
+
+        if (oldestMemoryUnitIds.Length == 0)
+        {
+            return;
+        }
+
+        _ = await db.SortedSetRemoveAsync(queueKey, oldestMemoryUnitIds).ConfigureAwait(false);
+        _ = await db.HashDeleteAsync(payloadKey, oldestMemoryUnitIds).ConfigureAwait(false);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NL retry queue: enqueued {MemoryUnitId} for tenant {TenantId} (attempts={Attempts}).")]
@@ -266,6 +475,6 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     [LoggerMessage(Level = LogLevel.Debug, Message = "NL retry queue: MEMORY USAGE unavailable for tenant {TenantId} — returning 0.")]
     private static partial void LogMemoryUsageUnavailable(ILogger logger, Exception exception, string tenantId);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "NL retry queue: transaction aborted for {MemoryUnitId} on tenant {TenantId} during {Operation} — record may be left in an inconsistent state, caller must retry.")]
-    private static partial void LogTransactionAborted(ILogger logger, string tenantId, string memoryUnitId, string operation);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "NL retry queue: ignored stale {Operation} for {MemoryUnitId} on tenant {TenantId}; a newer retry payload exists.")]
+    private static partial void LogStaleRecordIgnored(ILogger logger, string tenantId, string memoryUnitId, string operation);
 }
