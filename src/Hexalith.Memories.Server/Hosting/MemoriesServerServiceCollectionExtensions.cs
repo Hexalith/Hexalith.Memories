@@ -22,6 +22,8 @@ using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Consistency;
+using Hexalith.Memories.Server.Diagnostics;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.HealthChecks;
@@ -54,6 +56,9 @@ internal static class MemoriesServerServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddDaprClient();
+        builder.Services.AddExceptionHandler<MemoriesServerExceptionHandler>();
+        builder.Services.AddProblemDetails();
+        builder.Services.TryAddTransient<TenantIdValidationEndpointFilter>();
         builder.Services.AddOptions<MemoriesServerAuthenticationOptions>()
             .BindConfiguration("Authentication:JwtBearer")
             .ValidateOnStart();

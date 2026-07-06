@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Search;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Endpoints;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -37,12 +38,9 @@ internal static class SearchEndpointDegradationResponses
             SearchEndpointDegradationLog.DescribeFailureReason(exception),
             PerAxisDegradationType);
         AppendRetryAfter(httpContext);
-        return Results.Json(
-            new ErrorResponse(
-                "BACKEND_UNAVAILABLE",
-                "Search backend is unavailable.",
-                "Retry the request; the backend auto-recovers when Redis reconnects."),
-            statusCode: StatusCodes.Status503ServiceUnavailable);
+        return ErrorResults.BackendUnavailableResult(
+            "Search backend is unavailable.",
+            "Retry the request; the backend auto-recovers when Redis reconnects.");
     }
 
     internal static IResult BuildGraphScopedAxisFailureResponse(

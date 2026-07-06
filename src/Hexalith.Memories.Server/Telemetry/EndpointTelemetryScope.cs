@@ -43,6 +43,8 @@ internal sealed class EndpointTelemetryScope : IDisposable
     private readonly int _successEventId;
     private readonly int _errorEventId;
     private readonly Action<EndpointTelemetryScope>? _recordMetricOnDispose;
+    private readonly Action<EndpointTelemetryScope>? _onDisposed;
+    private readonly bool _disposeActivityOnDispose;
     private bool _disposed;
 
     public EndpointTelemetryScope(
@@ -52,7 +54,9 @@ internal sealed class EndpointTelemetryScope : IDisposable
         int successEventId,
         int errorEventId,
         string tenantIdTag,
-        Action<EndpointTelemetryScope>? recordMetricOnDispose = null)
+        Action<EndpointTelemetryScope>? recordMetricOnDispose = null,
+        Action<EndpointTelemetryScope>? onDisposed = null,
+        bool disposeActivityOnDispose = false)
     {
         _logger = logger;
         _activity = activity;
@@ -61,6 +65,8 @@ internal sealed class EndpointTelemetryScope : IDisposable
         _errorEventId = errorEventId;
         _stopwatch = Stopwatch.StartNew();
         _recordMetricOnDispose = recordMetricOnDispose;
+        _onDisposed = onDisposed;
+        _disposeActivityOnDispose = disposeActivityOnDispose;
         TenantIdTag = tenantIdTag;
         User = AccessTelemetryLog.UserAnonymous;
         Outcome = AccessTelemetryLog.OutcomeOk;
@@ -285,6 +291,18 @@ internal sealed class EndpointTelemetryScope : IDisposable
                 // Unknown operation type — should never happen; emit via search channel as a safe default.
                 AccessTelemetryLog.LogSearchAccess(_logger, auditEvent);
                 break;
+        }
+
+        try
+        {
+            _onDisposed?.Invoke(this);
+        }
+        finally
+        {
+            if (_disposeActivityOnDispose)
+            {
+                _activity?.Dispose();
+            }
         }
     }
 }

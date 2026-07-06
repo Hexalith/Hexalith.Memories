@@ -62,17 +62,17 @@ internal static class IngestionEndpoints
             HttpContext httpContext,
             IngestionInput input) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
-            activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
-            string tenantIdTag = string.IsNullOrWhiteSpace(input.TenantId) ? MemoriesMeter.RejectedTenantTag : input.TenantId;
             long scheduledDocumentCount = 1;
-            using var scope = new EndpointTelemetryScope(
+            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
-                activity,
+                httpContext,
+                MemoriesActivitySource.IngestRequest,
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                tenantIdTag,
+                input.TenantId,
+                input.CaseId,
+                CreateIngestAuditQueryParams(input.SourceType, input.ContentType, IngestionPayloadClaimCheck.GetDeclaredPayloadLength(input)),
                 recordMetricOnDispose: s =>
                 {
                     if (s.Outcome == AccessTelemetryLog.OutcomeError)
@@ -84,9 +84,7 @@ internal static class IngestionEndpoints
                         TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
                     }
                 });
-            scope.CaseId = input.CaseId;
-            scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-            scope.QueryParams = CreateIngestAuditQueryParams(input.SourceType, input.ContentType, IngestionPayloadClaimCheck.GetDeclaredPayloadLength(input));
+            System.Diagnostics.Activity? activity = scope.Activity;
             activity?.SetTag(MemoriesActivitySource.TagTenantId, input.TenantId);
             activity?.SetTag(MemoriesActivitySource.TagCaseId, input.CaseId);
             activity?.SetTag(MemoriesActivitySource.TagSourceType, input.SourceType.ToString().ToLowerInvariant());
@@ -245,17 +243,17 @@ internal static class IngestionEndpoints
             UrlIngestionRequest request,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
-            activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
-            string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
             long scheduledDocumentCount = 1;
-            using var scope = new EndpointTelemetryScope(
+            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
-                activity,
+                httpContext,
+                MemoriesActivitySource.IngestRequest,
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                tenantIdTag,
+                request.TenantId,
+                request.CaseId,
+                CreateIngestAuditQueryParams(SourceType.Url, contentType: null, bytes: 0),
                 recordMetricOnDispose: s =>
                 {
                     if (s.Outcome == AccessTelemetryLog.OutcomeError)
@@ -267,9 +265,7 @@ internal static class IngestionEndpoints
                         TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
                     }
                 });
-            scope.CaseId = request.CaseId;
-            scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-            scope.QueryParams = CreateIngestAuditQueryParams(SourceType.Url, contentType: null, bytes: 0);
+            System.Diagnostics.Activity? activity = scope.Activity;
             activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
             activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
             activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.Url.ToString().ToLowerInvariant());
@@ -350,17 +346,17 @@ internal static class IngestionEndpoints
             DirectoryIngestionRequest request,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.IngestRequest);
-            activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationIngest);
-            string tenantIdTag = string.IsNullOrWhiteSpace(request.TenantId) ? MemoriesMeter.RejectedTenantTag : request.TenantId;
             long scheduledDocumentCount = 0;
-            using var scope = new EndpointTelemetryScope(
+            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
-                activity,
+                httpContext,
+                MemoriesActivitySource.IngestRequest,
                 AccessTelemetryLog.OperationIngest,
                 successEventId: 7502,
                 errorEventId: 7512,
-                tenantIdTag,
+                request.TenantId,
+                request.CaseId,
+                CreateIngestAuditQueryParams(SourceType.File, contentType: null, bytes: 0),
                 recordMetricOnDispose: s =>
                 {
                     if (s.Outcome == AccessTelemetryLog.OutcomeError)
@@ -372,9 +368,7 @@ internal static class IngestionEndpoints
                         TelemetryMetricsRecorder.RecordIngestSuccess(s.TenantIdTag, scheduledDocumentCount);
                     }
                 });
-            scope.CaseId = request.CaseId;
-            scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-            scope.QueryParams = CreateIngestAuditQueryParams(SourceType.File, contentType: null, bytes: 0);
+            System.Diagnostics.Activity? activity = scope.Activity;
             activity?.SetTag(MemoriesActivitySource.TagTenantId, request.TenantId);
             activity?.SetTag(MemoriesActivitySource.TagCaseId, request.CaseId);
             activity?.SetTag(MemoriesActivitySource.TagSourceType, SourceType.File.ToString().ToLowerInvariant());
@@ -444,10 +438,7 @@ internal static class IngestionEndpoints
                                 "Retry when the DAPR state store is healthy; no successful batch response was returned."),
                             statusCode: StatusCodes.Status503ServiceUnavailable),
                         "DAPR_UNAVAILABLE" => Results.Json(
-                            new ErrorResponse(
-                                "DAPR_UNAVAILABLE",
-                                "DAPR sidecar is not ready.",
-                                "Check service health via /healthz and retry."),
+                            ErrorResults.DaprUnavailable(),
                             statusCode: StatusCodes.Status503ServiceUnavailable),
                         "BATCH_SCHEDULING_FAILED" => Results.Json(
                             new ErrorResponse(

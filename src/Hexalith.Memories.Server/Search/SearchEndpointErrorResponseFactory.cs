@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Search;
 
 using Hexalith.Memories.Contracts.V1;
 
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Ingestion;
 
 /// <summary>Builds structured error responses for search endpoint failures.</summary>
@@ -49,9 +50,9 @@ internal static class SearchEndpointErrorResponseFactory
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        return new ErrorResponse(
-            "PAGINATION_LIMIT_EXCEEDED",
+        return ErrorResults.InvalidInput(
             exception.Message,
-            PaginationLimitSuggestion);
+            PaginationLimitSuggestion,
+            "PAGINATION_LIMIT_EXCEEDED");
     }
 }

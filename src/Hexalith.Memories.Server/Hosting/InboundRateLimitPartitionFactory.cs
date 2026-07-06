@@ -8,8 +8,8 @@ namespace Hexalith.Memories.Server.Hosting;
 using System.Globalization;
 using System.Threading.RateLimiting;
 
-using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Authentication;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.RateLimiting;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Telemetry;
@@ -35,10 +35,7 @@ internal static class InboundRateLimitPartitionFactory
 
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         await context.HttpContext.Response.WriteAsJsonAsync(
-            new ErrorResponse(
-                "RATE_LIMIT_EXCEEDED",
-                "The tenant request rate limit was exceeded.",
-                "Retry after the limiter window resets."),
+            ErrorResults.RateLimitExceeded(),
             cancellationToken).ConfigureAwait(false);
     }
 

@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Endpoints;
 
+using System.Diagnostics;
 using System.Globalization;
 
 using Hexalith.Memories.Contracts.V1;
@@ -18,6 +19,10 @@ using Microsoft.Extensions.Logging;
 /// <summary>Shared audit and telemetry helpers for the decomposed endpoint mappings.</summary>
 internal static class EndpointTelemetryHelpers
 {
+    internal const string EndpointAuditEmittedItemKey = "__Hexalith.Memories.EndpointAuditEmitted";
+
+    internal const string EndpointTelemetryErrorCodeItemKey = "__Hexalith.Memories.EndpointTelemetryErrorCode";
+
     internal static IReadOnlyDictionary<string, object?> CreateIngestAuditQueryParams(
         SourceType sourceType,
         string? contentType,
@@ -35,13 +40,42 @@ internal static class EndpointTelemetryHelpers
     internal static EndpointTelemetryScope CreateEndpointAuditScope(
         ILogger<AccessTelemetryCategory> auditLogger,
         HttpContext httpContext,
+        string activityName,
+        string operationType,
+        int successEventId,
+        int errorEventId,
+        string? tenantId,
+        string? caseId,
+        IReadOnlyDictionary<string, object?> queryParams,
+        Action<EndpointTelemetryScope>? recordMetricOnDispose = null)
+    {
+        Activity? activity = MemoriesActivitySource.Instance.StartActivity(activityName);
+        return CreateEndpointAuditScope(
+            auditLogger,
+            httpContext,
+            activity,
+            operationType,
+            successEventId,
+            errorEventId,
+            tenantId,
+            caseId,
+            queryParams,
+            recordMetricOnDispose,
+            disposeActivityOnDispose: true);
+    }
+
+    internal static EndpointTelemetryScope CreateEndpointAuditScope(
+        ILogger<AccessTelemetryCategory> auditLogger,
+        HttpContext httpContext,
         System.Diagnostics.Activity? activity,
         string operationType,
         int successEventId,
         int errorEventId,
         string? tenantId,
         string? caseId,
-        IReadOnlyDictionary<string, object?> queryParams)
+        IReadOnlyDictionary<string, object?> queryParams,
+        Action<EndpointTelemetryScope>? recordMetricOnDispose = null,
+        bool disposeActivityOnDispose = false)
     {
         string tenantIdTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
         activity?.SetTag(MemoriesActivitySource.TagOperation, operationType);
@@ -57,7 +91,10 @@ internal static class EndpointTelemetryHelpers
             operationType,
             successEventId,
             errorEventId,
-            tenantIdTag);
+            tenantIdTag,
+            recordMetricOnDispose,
+            _ => MarkEndpointAuditEmitted(httpContext),
+            disposeActivityOnDispose);
         scope.CaseId = caseId;
         scope.User = ResolvePrincipalAuditUser(httpContext, activity);
         scope.QueryParams = queryParams;
@@ -77,12 +114,21 @@ internal static class EndpointTelemetryHelpers
             ["workflowInstanceIdPrefix"] = PrefixIdentifier(instanceId, 32),
         };
 
-    internal static void MarkAuditFromHttpResult(EndpointTelemetryScope scope, IResult result)
+    internal static void MarkAuditFromHttpResult(EndpointTelemetryScope scope, IResult result, HttpContext? httpContext = null)
     {
         if (result is IStatusCodeHttpResult statusCodeResult
             && statusCodeResult.StatusCode is int statusCode
             && statusCode >= StatusCodes.Status400BadRequest)
         {
+            if (httpContext is not null
+                && httpContext.Items.TryGetValue(EndpointTelemetryErrorCodeItemKey, out object? errorCode)
+                && errorCode is string explicitErrorCode
+                && !string.IsNullOrWhiteSpace(explicitErrorCode))
+            {
+                scope.MarkValidationError(explicitErrorCode);
+                return;
+            }
+
             if (result is IValueHttpResult valueResult && valueResult.Value is ErrorResponse errorResponse)
             {
                 scope.MarkValidationError(errorResponse.Code);
@@ -97,6 +143,29 @@ internal static class EndpointTelemetryHelpers
                 _ => "HTTP_" + statusCode.ToString(CultureInfo.InvariantCulture),
             });
         }
+    }
+
+    internal static bool HasEndpointAuditEmitted(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        return httpContext.Items.TryGetValue(EndpointAuditEmittedItemKey, out object? emitted)
+            && emitted is true;
+    }
+
+    internal static void MarkEndpointTelemetryErrorCode(HttpContext httpContext, string errorCode)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+
+        httpContext.Items[EndpointTelemetryErrorCodeItemKey] = errorCode;
+    }
+
+    internal static void MarkEndpointAuditEmitted(HttpContext httpContext)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        httpContext.Items[EndpointAuditEmittedItemKey] = true;
     }
 
     internal static string PrefixIdentifier(string value, int maxLength)

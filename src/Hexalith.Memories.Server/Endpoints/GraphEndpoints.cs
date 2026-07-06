@@ -63,33 +63,28 @@ internal static class GraphEndpoints
             [FromQuery] int? tokenBudget = null,
             CancellationToken cancellationToken = default) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.TraverseRequest);
-            activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationTraverse);
-            using var scope = new EndpointTelemetryScope(
+            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
-                activity,
+                httpContext,
+                MemoriesActivitySource.TraverseRequest,
                 AccessTelemetryLog.OperationTraverse,
                 successEventId: 7503,
                 errorEventId: 7513,
-                tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
-            scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-            scope.CaseId = caseId;
-            scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+                tenantId,
+                caseId,
+                new Dictionary<string, object?>(System.StringComparer.Ordinal)
             {
                 ["startNodeId"] = startNodeId,
                 ["depth"] = depth,
                 ["edgeTypes"] = edgeTypes,
                 ["tokenBudget"] = tokenBudget,
-            };
-            activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+            });
 
             if (string.IsNullOrWhiteSpace(tenantId))
             {
                 scope.MarkValidationError("INVALID_TENANT_ID");
                 return Results.BadRequest(new ErrorResponse("INVALID_TENANT_ID", "TenantId is required.", "Provide a valid tenantId."));
             }
-
-            activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
 
             ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
             if (tenantValidationError is not null)

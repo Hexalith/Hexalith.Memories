@@ -97,20 +97,14 @@ internal static class ExportEndpoints
             }
             catch (Dapr.DaprException ex)
             {
-                return Results.Json(
-                    new ErrorResponse(
-                        "DAPR_UNAVAILABLE",
-                        $"Export dependency is unavailable: {ex.Message}",
-                        "Retry the export after Dapr connectivity is restored."),
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
+                return ErrorResults.DaprUnavailableResult(
+                    $"Export dependency is unavailable: {ex.Message}",
+                    "Retry the export after Dapr connectivity is restored.");
             }
             catch (StackExchange.Redis.RedisConnectionException ex)
             {
                 return Results.Json(
-                    new ErrorResponse(
-                        "EXPORT_BACKEND_UNAVAILABLE",
-                        $"Export backend is unavailable: {ex.Message}",
-                        "Check Redis/FalkorDB connectivity and retry the export."),
+                    ErrorResults.ExportBackendUnavailable($"Export backend is unavailable: {ex.Message}"),
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
@@ -159,20 +153,14 @@ internal static class ExportEndpoints
             }
             catch (Dapr.DaprException ex)
             {
-                return Results.Json(
-                    new ErrorResponse(
-                        "DAPR_UNAVAILABLE",
-                        $"Export dependency is unavailable: {ex.Message}",
-                        "Retry the export after Dapr connectivity is restored."),
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
+                return ErrorResults.DaprUnavailableResult(
+                    $"Export dependency is unavailable: {ex.Message}",
+                    "Retry the export after Dapr connectivity is restored.");
             }
             catch (StackExchange.Redis.RedisConnectionException ex)
             {
                 return Results.Json(
-                    new ErrorResponse(
-                        "EXPORT_BACKEND_UNAVAILABLE",
-                        $"Export backend is unavailable: {ex.Message}",
-                        "Check Redis/FalkorDB connectivity and retry the export."),
+                    ErrorResults.ExportBackendUnavailable($"Export backend is unavailable: {ex.Message}"),
                     statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 

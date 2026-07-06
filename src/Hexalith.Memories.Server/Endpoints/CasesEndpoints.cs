@@ -181,24 +181,20 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CaseAccess);
-            activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationCaseAccess);
-            using var scope = new EndpointTelemetryScope(
+            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
-                activity,
+                httpContext,
+                MemoriesActivitySource.CaseAccess,
                 AccessTelemetryLog.OperationCaseAccess,
                 successEventId: 7504,
                 errorEventId: 7514,
-                tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
-            scope.User = ResolvePrincipalAuditUser(httpContext, activity);
-            scope.CaseId = caseId;
-            scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+                tenantId,
+                caseId,
+                new Dictionary<string, object?>(System.StringComparer.Ordinal)
             {
                 ["memoryUnitId"] = memoryUnitId,
-            };
-            activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
-            activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
-            activity?.SetTag(MemoriesActivitySource.TagMemoryUnitId, memoryUnitId);
+            });
+            scope.Activity?.SetTag(MemoriesActivitySource.TagMemoryUnitId, memoryUnitId);
 
             try
             {
@@ -423,11 +419,10 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.case_member");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.CaseMember,
                 AccessTelemetryLog.OperationCaseMember,
                 successEventId: 7508,
                 errorEventId: 7518,
@@ -492,11 +487,10 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.case_member");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.CaseMember,
                 AccessTelemetryLog.OperationCaseMember,
                 successEventId: 7508,
                 errorEventId: 7518,
@@ -582,11 +576,10 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.DeleteRequest,
                 AccessTelemetryLog.OperationDelete,
                 successEventId: 7505,
                 errorEventId: 7515,
@@ -662,11 +655,10 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.DeleteRequest,
                 AccessTelemetryLog.OperationDelete,
                 successEventId: 7505,
                 errorEventId: 7515,
@@ -727,11 +719,10 @@ internal static class CasesEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.annotation");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.Annotation,
                 AccessTelemetryLog.OperationAnnotation,
                 successEventId: 7509,
                 errorEventId: 7519,

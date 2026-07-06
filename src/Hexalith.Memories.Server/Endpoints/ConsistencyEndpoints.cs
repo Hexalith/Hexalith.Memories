@@ -92,9 +92,9 @@ internal static class ConsistencyEndpoints
             }
             catch (Dapr.DaprException ex)
             {
-                return Results.Json(
-                    new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
-                    statusCode: 503);
+                return ErrorResults.DaprUnavailableResult(
+                    $"DAPR sidecar unavailable: {ex.Message}",
+                    "Check DAPR sidecar connectivity and retry.");
             }
 
             return Results.Accepted(
@@ -174,9 +174,7 @@ internal static class ConsistencyEndpoints
             }
             catch (RedisException ex)
             {
-                return Results.Json(
-                    new ErrorResponse("BACKEND_UNAVAILABLE", $"Backend unavailable: {ex.Message}", "Check Redis/FalkorDB connectivity and retry."),
-                    statusCode: 503);
+                return ErrorResults.BackendUnavailableResult($"Backend unavailable: {ex.Message}");
             }
         });
 
@@ -220,9 +218,9 @@ internal static class ConsistencyEndpoints
             }
             catch (Dapr.DaprException ex)
             {
-                return Results.Json(
-                    new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
-                    statusCode: 503);
+                return ErrorResults.DaprUnavailableResult(
+                    $"DAPR sidecar unavailable: {ex.Message}",
+                    "Check DAPR sidecar connectivity and retry.");
             }
 
             return Results.Accepted(

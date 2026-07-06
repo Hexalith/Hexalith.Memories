@@ -121,30 +121,7 @@ internal static class SearchEndpoints
                 return null;
             }
 
-            using System.Diagnostics.Activity? searchActivity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.SearchRequest);
-            searchActivity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationSearch);
-            string initialTenantTag = string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId;
             string? searchAxisTag = DetermineSearchAxisMetricTag(axis, startNodeId);
-            using var searchScope = new EndpointTelemetryScope(
-                auditLogger,
-                searchActivity,
-                AccessTelemetryLog.OperationSearch,
-                successEventId: 7501,
-                errorEventId: 7511,
-                tenantIdTag: initialTenantTag,
-                recordMetricOnDispose: s =>
-                {
-                    if (!string.IsNullOrWhiteSpace(searchAxisTag))
-                    {
-                        TelemetryMetricsRecorder.RecordSearch(s.TenantIdTag, searchAxisTag, s.ElapsedMs);
-                        if (s.Outcome == AccessTelemetryLog.OutcomeError)
-                        {
-                            rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
-                        }
-                    }
-            });
-            searchScope.User = ResolvePrincipalAuditUser(httpContext, searchActivity);
-            searchScope.CaseId = caseId;
             IReadOnlyDictionary<string, string>? attributeFilters = ReadAttributeFilters(httpContext.Request.Query);
             Dictionary<string, object?> searchQueryParams = new(System.StringComparer.Ordinal)
             {
@@ -164,8 +141,28 @@ internal static class SearchEndpoints
                 ["graphWeight"] = graphWeight,
                 ["nlWeight"] = nlWeight,
             };
-            searchScope.QueryParams = searchQueryParams;
-            searchActivity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+            using EndpointTelemetryScope searchScope = CreateEndpointAuditScope(
+                auditLogger,
+                httpContext,
+                MemoriesActivitySource.SearchRequest,
+                AccessTelemetryLog.OperationSearch,
+                successEventId: 7501,
+                errorEventId: 7511,
+                tenantId,
+                caseId,
+                searchQueryParams,
+                recordMetricOnDispose: s =>
+                {
+                    if (!string.IsNullOrWhiteSpace(searchAxisTag))
+                    {
+                        TelemetryMetricsRecorder.RecordSearch(s.TenantIdTag, searchAxisTag, s.ElapsedMs);
+                        if (s.Outcome == AccessTelemetryLog.OutcomeError)
+                        {
+                            rollingCounterStore.RecordSearchError(s.TenantIdTag, searchAxisTag);
+                        }
+                    }
+                });
+            System.Diagnostics.Activity? searchActivity = searchScope.Activity;
             if (!string.IsNullOrWhiteSpace(searchAxisTag))
             {
                 searchActivity?.SetTag(MemoriesActivitySource.TagAxis, searchAxisTag);

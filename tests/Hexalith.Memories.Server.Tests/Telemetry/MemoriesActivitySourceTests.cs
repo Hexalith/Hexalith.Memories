@@ -25,6 +25,11 @@ public sealed class MemoriesActivitySourceTests
         MemoriesActivitySource.IngestRequest.ShouldBe("memories.ingest");
         MemoriesActivitySource.TraverseRequest.ShouldBe("memories.traverse");
         MemoriesActivitySource.CaseAccess.ShouldBe("memories.case-access");
+        MemoriesActivitySource.DeleteRequest.ShouldBe("memories.delete");
+        MemoriesActivitySource.TenantLifecycle.ShouldBe("memories.tenant_lifecycle");
+        MemoriesActivitySource.TenantConfig.ShouldBe("memories.tenant_config");
+        MemoriesActivitySource.CaseMember.ShouldBe("memories.case_member");
+        MemoriesActivitySource.Annotation.ShouldBe("memories.annotation");
         MemoriesActivitySource.CliInvoke.ShouldBe("memories.cli.invoke");
     }
 

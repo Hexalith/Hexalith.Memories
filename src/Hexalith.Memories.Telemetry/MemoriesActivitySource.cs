@@ -33,6 +33,18 @@ public static class MemoriesActivitySource
     /// <summary>Delete operation activity name.</summary>
     public const string DeleteRequest = "memories.delete";
 
+    /// <summary>Tenant lifecycle endpoint activity name.</summary>
+    public const string TenantLifecycle = "memories.tenant_lifecycle";
+
+    /// <summary>Tenant configuration endpoint activity name.</summary>
+    public const string TenantConfig = "memories.tenant_config";
+
+    /// <summary>Case-member endpoint activity name.</summary>
+    public const string CaseMember = "memories.case_member";
+
+    /// <summary>Annotation endpoint activity name.</summary>
+    public const string Annotation = "memories.annotation";
+
     /// <summary>Optional child span wrapping the audit log write.</summary>
     public const string AuditEmit = "memories.audit.emit";
 

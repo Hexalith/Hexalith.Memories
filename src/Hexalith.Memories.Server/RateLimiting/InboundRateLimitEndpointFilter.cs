@@ -8,8 +8,8 @@ namespace Hexalith.Memories.Server.RateLimiting;
 using System.Globalization;
 using System.Threading.RateLimiting;
 
-using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Authentication;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Telemetry;
 
@@ -37,12 +37,7 @@ internal sealed class InboundRateLimitEndpointFilter(
         {
             TelemetryMetricsRecorder.RecordRateLimitRejection(tenantTag, "RATE_LIMIT_EXCEEDED");
             SetRetryAfterHeader(context.HttpContext, lease);
-            return Results.Json(
-                new ErrorResponse(
-                    "RATE_LIMIT_EXCEEDED",
-                    "The tenant request rate limit was exceeded.",
-                    "Retry after the limiter window resets."),
-                statusCode: StatusCodes.Status429TooManyRequests);
+            return ErrorResults.RateLimitExceededResult();
         }
 
         return await next(context).ConfigureAwait(false);

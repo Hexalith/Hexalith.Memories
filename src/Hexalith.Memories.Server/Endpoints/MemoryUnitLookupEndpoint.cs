@@ -6,7 +6,6 @@
 namespace Hexalith.Memories.Server.Endpoints;
 
 using System.Collections.Generic;
-using System.Security.Claims;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -19,6 +18,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
+
+using static Hexalith.Memories.Server.Endpoints.EndpointTelemetryHelpers;
 
 /// <summary>
 /// Story 18.5 — testable minimal-API handler for the exact source-URI-keyed memory-unit lookup
@@ -65,26 +66,19 @@ internal static class MemoryUnitLookupEndpoint
         ArgumentNullException.ThrowIfNull(lookup);
         ArgumentNullException.ThrowIfNull(httpContext);
 
-        using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.CaseAccess);
-        activity?.SetTag(MemoriesActivitySource.TagOperation, AccessTelemetryLog.OperationCaseAccess);
-        using var scope = new EndpointTelemetryScope(
+        using EndpointTelemetryScope scope = CreateEndpointAuditScope(
             auditLogger,
-            activity,
+            httpContext,
+            MemoriesActivitySource.CaseAccess,
             AccessTelemetryLog.OperationCaseAccess,
             successEventId: SuccessEventId,
             errorEventId: ErrorEventId,
-            tenantIdTag: string.IsNullOrWhiteSpace(tenantId) ? MemoriesMeter.RejectedTenantTag : tenantId);
-        scope.User = ResolveUser(httpContext, activity);
-        scope.CaseId = caseId;
-
-        // Record sourceUri only in the structured audit-param dictionary (mirrors how GetMemoryUnit records
-        // memoryUnitId); the metric tag dimension stays low-cardinality (tenant + operation only).
-        scope.QueryParams = new Dictionary<string, object?>(System.StringComparer.Ordinal)
+            tenantId,
+            caseId,
+            new Dictionary<string, object?>(System.StringComparer.Ordinal)
         {
             ["sourceUri"] = sourceUri,
-        };
-        activity?.SetTag(MemoriesActivitySource.TagTenantId, tenantId);
-        activity?.SetTag(MemoriesActivitySource.TagCaseId, caseId);
+        });
 
         try
         {
@@ -114,9 +108,7 @@ internal static class MemoryUnitLookupEndpoint
                 // AC6: a backend read failure must NOT degrade to a false not-found — a consumer acting on a
                 // bogus 404 may re-ingest into a duplicate. Surface a structured backend error instead.
                 scope.MarkValidationError("LOOKUP_BACKEND_UNAVAILABLE");
-                return Results.Json(
-                    new ErrorResponse("LOOKUP_BACKEND_UNAVAILABLE", "The lookup backend is temporarily unavailable.", "Retry shortly; do not treat this as 'no unit exists'."),
-                    statusCode: StatusCodes.Status503ServiceUnavailable);
+                return ErrorResults.LookupBackendUnavailableResult();
             }
 
             if (memoryUnitId is null)
@@ -133,29 +125,5 @@ internal static class MemoryUnitLookupEndpoint
             scope.MarkUnhandledException(ex);
             throw;
         }
-    }
-
-    private static string ResolveUser(HttpContext httpContext, System.Diagnostics.Activity? activity)
-    {
-        if (httpContext.User.Identity?.IsAuthenticated != true)
-        {
-            return AccessTelemetryLog.UserAnonymous;
-        }
-
-        string? user = httpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? httpContext.User.FindFirst("sub")?.Value
-            ?? httpContext.User.FindFirst("preferred_username")?.Value
-            ?? httpContext.User.FindFirst("name")?.Value;
-        if (string.IsNullOrWhiteSpace(user))
-        {
-            return AccessTelemetryLog.UserAnonymous;
-        }
-
-        if (string.Equals(user, AccessTelemetryLog.UserQuickstartWizard, StringComparison.Ordinal))
-        {
-            activity?.SetTag(MemoriesActivitySource.TagWizardOrigin, true);
-        }
-
-        return user;
     }
 }

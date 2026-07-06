@@ -31,6 +31,7 @@ app.MapDefaultEndpoints();
 // ServerEndpointAuthorizationTests guards this anonymous exception against broad route drift.
 app.MapActorsHandlers().AllowAnonymous();
 
+app.UseExceptionHandler();
 // Story 9.1: DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for plain-JSON
 // requests (guards the /api/ingest POST from accidental envelope unwrapping). EventStore now supplies
 // environment-backed topic metadata on the controller action, so the canonical MapSubscribeHandler()

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tenants;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Endpoints;
 
 using Microsoft.AspNetCore.Http;
 
@@ -55,5 +56,5 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
     /// <param name="error">The tenant status error produced by <see cref="ValidateTenantActiveAsync"/> or <see cref="ValidateTenantExistsAsync"/>.</param>
     /// <returns>An <see cref="IResult"/> with the appropriate HTTP status code.</returns>
     public static IResult ToHttpResult(ErrorResponse error)
-        => error.Code == "TENANT_NOT_FOUND" ? Results.NotFound(error) : Results.Conflict(error);
+        => ErrorResults.TenantStatusResult(error);
 }

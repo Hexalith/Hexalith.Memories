@@ -52,80 +52,31 @@ internal static class TenantLifecycleEndpoints
 
         app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
             ITenantEmbeddingConfigProvider embeddingConfigProvider,
-            TenantStatusGuard tenantGuard,
             string tenantId,
             CancellationToken cancellationToken) =>
         {
-            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-            if (tenantValidationError is not null)
-            {
-                return Results.BadRequest(tenantValidationError);
-            }
-
-            ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
-            if (tenantStatusError is not null)
-            {
-                return TenantStatusGuard.ToHttpResult(tenantStatusError);
-            }
-
             TenantEmbeddingConfig config = await embeddingConfigProvider.GetAsync(tenantId, cancellationToken);
             return Results.Ok(config);
-        });
+        }).AddEndpointFilter(TenantIdValidationEndpointFilter.For())
+            .AddEndpointFilter(TenantStatusEndpointFilter.ActiveOnly());
 
         app.MapPut("/api/tenants/{tenantId}/embedding-config",
             async (
                 IActorProxyFactory actorProxyFactory,
                 ITenantEmbeddingConfigProvider embeddingConfigProvider,
                 TenantSummaryCache summaryCache,
-                TenantStatusGuard tenantGuard,
-                ILogger<AccessTelemetryCategory> auditLogger,
                 HttpContext httpContext,
                 string tenantId,
                 TenantEmbeddingConfig config,
                 CancellationToken cancellationToken,
                 bool forceReindex = false) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_config");
-            using EndpointTelemetryScope scope = CreateEndpointAuditScope(
-                auditLogger,
-                httpContext,
-                activity,
-                AccessTelemetryLog.OperationTenantConfig,
-                successEventId: 7507,
-                errorEventId: 7517,
-                tenantId,
-                caseId: null,
-                new Dictionary<string, object?>(StringComparer.Ordinal)
-                {
-                    ["operation"] = "embedding-config-update",
-                    ["forceReindex"] = forceReindex,
-                    ["fieldCount"] = 7,
-                    ["changedFields"] = new[] { "provider", "model", "dimensions", "rateLimitPerMinute", "authMode", "baseUrlConfigured", "oidcConfigured" },
-                });
-
-            try
-            {
-            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-            if (tenantValidationError is not null)
-            {
-                scope.MarkValidationError(tenantValidationError.Code);
-                return Results.BadRequest(tenantValidationError);
-            }
-
-            ErrorResponse? tenantStatusError = await tenantGuard.ValidateTenantActiveAsync(tenantId, cancellationToken);
-            if (tenantStatusError is not null)
-            {
-                scope.MarkTenantRejected(tenantStatusError.Code);
-                return TenantStatusGuard.ToHttpResult(tenantStatusError);
-            }
-
             try
             {
                 EmbeddingProviderDefaults.Validate(config);
             }
             catch (ArgumentException ex)
             {
-                scope.MarkValidationError("INVALID_CONFIG");
                 return Results.BadRequest(new ErrorResponse("INVALID_CONFIG", ex.Message, "Fix the configuration values and retry."));
             }
 
@@ -142,7 +93,7 @@ internal static class TenantLifecycleEndpoints
             }
             catch (EmbeddingConfigChangeException ex)
             {
-                scope.MarkValidationError("EMBEDDING_CONFIG_CONFLICT");
+                MarkEndpointTelemetryErrorCode(httpContext, "EMBEDDING_CONFIG_CONFLICT");
                 return Results.Conflict(CreateEmbeddingConfigConflictResponse(
                     ex.TenantId,
                     ex.CurrentConfig ?? EmbeddingProviderDefaults.Google(),
@@ -155,7 +106,7 @@ internal static class TenantLifecycleEndpoints
                 string[] affectedFields = EmbeddingProviderDefaults.GetBreakingChangeFields(currentConfig, config);
                 if (affectedFields.Length > 0)
                 {
-                    scope.MarkValidationError("EMBEDDING_CONFIG_CONFLICT");
+                    MarkEndpointTelemetryErrorCode(httpContext, "EMBEDDING_CONFIG_CONFLICT");
                     return Results.Conflict(CreateEmbeddingConfigConflictResponse(
                         tenantId,
                         currentConfig,
@@ -165,13 +116,9 @@ internal static class TenantLifecycleEndpoints
 
                 throw;
             }
-            }
-            catch (Exception ex)
-            {
-                scope.MarkUnhandledException(ex);
-                throw;
-            }
-        });
+        }).AddEndpointFilter(EndpointTelemetryFilter.For(TenantConfigTelemetryDescriptor("embedding-config-update")))
+            .AddEndpointFilter(TenantIdValidationEndpointFilter.For())
+            .AddEndpointFilter(TenantStatusEndpointFilter.ActiveOnly());
 
         // Story 5.1: Tenant provisioning endpoints
         app.MapPost("/api/tenants", async (
@@ -181,11 +128,10 @@ internal static class TenantLifecycleEndpoints
             HttpContext httpContext,
             ILogger<global::Program> logger) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.TenantLifecycle,
                 AccessTelemetryLog.OperationTenantLifecycle,
                 successEventId: 7506,
                 errorEventId: 7516,
@@ -238,12 +184,7 @@ internal static class TenantLifecycleEndpoints
             catch (Dapr.DaprException)
             {
                 scope.MarkValidationError("DAPR_UNAVAILABLE");
-                return Results.Json(
-                    new ErrorResponse(
-                        "DAPR_UNAVAILABLE",
-                        "DAPR sidecar is not ready.",
-                        "Check service health via /healthz and retry."),
-                    statusCode: 503);
+                return ErrorResults.DaprUnavailableResult();
             }
 
             return Results.Accepted($"/api/tenants/{input.TenantId}/provision-status/{instanceId}",
@@ -265,11 +206,10 @@ internal static class TenantLifecycleEndpoints
             string instanceId,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.TenantLifecycle,
                 AccessTelemetryLog.OperationTenantLifecycle,
                 successEventId: 7506,
                 errorEventId: 7516,
@@ -377,11 +317,10 @@ internal static class TenantLifecycleEndpoints
             TenantUpdateInput? body,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_config");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.TenantConfig,
                 AccessTelemetryLog.OperationTenantConfig,
                 successEventId: 7507,
                 errorEventId: 7517,
@@ -424,11 +363,10 @@ internal static class TenantLifecycleEndpoints
             HttpContext httpContext,
             string tenantId) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity(MemoriesActivitySource.DeleteRequest);
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.DeleteRequest,
                 AccessTelemetryLog.OperationDelete,
                 successEventId: 7505,
                 errorEventId: 7515,
@@ -484,12 +422,7 @@ internal static class TenantLifecycleEndpoints
                 catch (Dapr.DaprException)
                 {
                     scope.MarkValidationError("DAPR_UNAVAILABLE");
-                    return Results.Json(
-                        new ErrorResponse(
-                            "DAPR_UNAVAILABLE",
-                            "DAPR sidecar is not ready.",
-                            "Check service health via /healthz and retry."),
-                        statusCode: 503);
+                    return ErrorResults.DaprUnavailableResult();
                 }
             }
 
@@ -554,12 +487,7 @@ internal static class TenantLifecycleEndpoints
                     }
                 }
 
-                return Results.Json(
-                    new ErrorResponse(
-                        "DAPR_UNAVAILABLE",
-                        "DAPR sidecar is not ready.",
-                        "Check service health via /healthz and retry."),
-                    statusCode: 503);
+                return ErrorResults.DaprUnavailableResult();
             }
 
             return Results.Accepted($"/api/tenants/{tenantId}/deletion-status/{instanceId}",
@@ -581,11 +509,10 @@ internal static class TenantLifecycleEndpoints
             string instanceId,
             CancellationToken cancellationToken) =>
         {
-            using System.Diagnostics.Activity? activity = MemoriesActivitySource.Instance.StartActivity("memories.tenant_lifecycle");
             using EndpointTelemetryScope scope = CreateEndpointAuditScope(
                 auditLogger,
                 httpContext,
-                activity,
+                MemoriesActivitySource.TenantLifecycle,
                 AccessTelemetryLog.OperationTenantLifecycle,
                 successEventId: 7506,
                 errorEventId: 7516,
@@ -635,24 +562,9 @@ internal static class TenantLifecycleEndpoints
         // Story 5.3: Tenant isolation verification
         app.MapPost("/api/tenants/{tenantId}/verify", async (
             TenantIsolationVerifier verifier,
-            TenantStatusGuard tenantGuard,
             string tenantId,
             CancellationToken cancellationToken) =>
         {
-            ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
-            if (tenantValidationError is not null)
-            {
-                return Results.BadRequest(tenantValidationError);
-            }
-
-            // Verification is diagnostic — allow it on non-Active tenants (Provisioning, Deleting, Failed)
-            // as long as the tenant exists in the registry. Existence-only check is correct here.
-            ErrorResponse? tenantExistsError = await tenantGuard.ValidateTenantExistsAsync(tenantId, cancellationToken);
-            if (tenantExistsError is not null)
-            {
-                return TenantStatusGuard.ToHttpResult(tenantExistsError);
-            }
-
             try
             {
                 TenantIsolationVerificationResult result = await verifier.VerifyAsync(tenantId, cancellationToken);
@@ -660,17 +572,17 @@ internal static class TenantLifecycleEndpoints
             }
             catch (Dapr.DaprException ex)
             {
-                return Results.Json(
-                    new ErrorResponse("DAPR_UNAVAILABLE", $"DAPR sidecar unavailable: {ex.Message}", "Check DAPR sidecar connectivity and retry."),
-                    statusCode: 503);
+                return ErrorResults.DaprUnavailableResult(
+                    $"DAPR sidecar unavailable: {ex.Message}",
+                    "Check DAPR sidecar connectivity and retry.");
             }
             catch (RedisException ex)
             {
-                return Results.Json(
-                    new ErrorResponse("BACKEND_UNAVAILABLE", $"Backend unavailable: {ex.Message}", "Check Redis/FalkorDB connectivity and retry."),
-                    statusCode: 503);
+                return ErrorResults.BackendUnavailableResult($"Backend unavailable: {ex.Message}");
             }
-        });
+        }).AddEndpointFilter(TenantIdValidationEndpointFilter.For())
+            // Verification is diagnostic: non-active registered tenants still reach the verifier.
+            .AddEndpointFilter(TenantStatusEndpointFilter.ExistsOnly());
 
         // Story 7.5 — telemetry summary endpoint (AC #6). Operator-facing read-only poke; DOES NOT emit
         // an AccessTelemetryEvent for itself (Task 5.5 — self-referential audit noise).
@@ -734,6 +646,33 @@ internal static class TenantLifecycleEndpoints
         });
 
         return app;
+    }
+
+    private static EndpointTelemetryDescriptor TenantConfigTelemetryDescriptor(string operation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+
+        return new EndpointTelemetryDescriptor(
+            AccessTelemetryLog.OperationTenantConfig,
+            MemoriesActivitySource.TenantConfig,
+            SuccessEventId: 7507,
+            ErrorEventId: 7517)
+        {
+            QueryParamsFactory = context =>
+            {
+                bool forceReindex = context.HttpContext.Request.Query.TryGetValue("forceReindex", out Microsoft.Extensions.Primitives.StringValues value)
+                    && bool.TryParse(value.ToString(), out bool parsed)
+                    && parsed;
+
+                return new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["operation"] = operation,
+                    ["forceReindex"] = forceReindex,
+                    ["fieldCount"] = 7,
+                    ["changedFields"] = new[] { "provider", "model", "dimensions", "rateLimitPerMinute", "authMode", "baseUrlConfigured", "oidcConfigured" },
+                };
+            },
+        };
     }
 
     private static object CreateEmbeddingConfigConflictResponse(

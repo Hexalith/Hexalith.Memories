@@ -9,6 +9,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Endpoints;
 
 using Microsoft.AspNetCore.Http;
 
@@ -124,12 +125,7 @@ public sealed partial class TenantAuthorizationEndpointFilter(
             reason,
             claimNames);
 
-        return Results.Json(
-            new ErrorResponse(
-                "TENANT_FORBIDDEN",
-                "The authenticated principal is not authorized for the requested tenant.",
-                "Use a bearer token containing an authorized tenant claim for this tenant."),
-            statusCode: StatusCodes.Status403Forbidden);
+        return ErrorResults.TenantForbiddenResult();
     }
 
     private static string FormatClaimNamesForLog(ClaimsPrincipal principal)

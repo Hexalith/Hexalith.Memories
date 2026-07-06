@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Server.Tenants;
 
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.AspNetCore.Http;
@@ -267,32 +267,11 @@ internal static class TenantEndpointHandlers
     }
 
     private static ErrorResponse? ValidateTenantId(string tenantId)
-    {
-        try
-        {
-            TenantIdGuard.Validate(tenantId);
-            return null;
-        }
-        catch (ArgumentException ex)
-        {
-            return new ErrorResponse(
-                "INVALID_TENANT_ID",
-                ex.Message,
-                "Use only alphanumeric characters and hyphens for tenant identifiers.");
-        }
-    }
+        => EndpointValidationHelpers.ValidateTenantId(tenantId);
 
     private static ErrorResponse CreateTenantNotFound(string tenantId)
-        => new(
-            "TENANT_NOT_FOUND",
-            $"Tenant '{tenantId}' not found.",
-            "Use GET /api/tenants to list available tenants.");
+        => ErrorResults.TenantNotFound(tenantId);
 
     private static IResult CreateDaprUnavailable()
-        => Results.Json(
-            new ErrorResponse(
-                "DAPR_UNAVAILABLE",
-                "DAPR sidecar is not ready.",
-                "Check service health via /healthz and retry."),
-            statusCode: 503);
+        => ErrorResults.DaprUnavailableResult();
 }
