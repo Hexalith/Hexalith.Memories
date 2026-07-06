@@ -41,7 +41,7 @@ test('browser artifacts and manual checklist evidence stay bounded and redacted'
   await writeEvidenceFile('copied-text-summary.json', {
     generatedBy: 'specimen-artifacts.spec.ts',
     route: agentPacket!.route,
-    copiedTextPolicy: 'component copy action and JSON view share the sanitized AgentPacketInspectorMapper payload',
+    copiedTextPolicy: 'Browser copied-text scan is bounded to the clean AgentPacketInspectorMapper fixture; sensitive-payload sanitization of the trust components is proven by bUnit Epic17SanitizationCanaryTests, not by browser-rendered copy here.',
     copiedTextLength: copyText!.length,
   });
 

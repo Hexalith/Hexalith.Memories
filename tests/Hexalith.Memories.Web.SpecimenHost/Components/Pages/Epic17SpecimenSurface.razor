@@ -88,6 +88,11 @@ else
                             </FluentLabel>
                         </MemoriesLensShell>
                         break;
+                    default:
+                        <FluentLabel Typo="Typography.Subject" data-testid="mem-specimen-unmapped">
+                            Unmapped specimen slug: @SpecimenRoute.Slug
+                        </FluentLabel>
+                        break;
                 }
             </section>
             <FluentLabel Typo="Typography.Body" data-testid="mem-specimen-callback-log">

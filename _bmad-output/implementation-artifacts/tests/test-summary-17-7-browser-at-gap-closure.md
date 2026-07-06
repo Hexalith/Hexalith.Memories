@@ -26,7 +26,7 @@ Date: 2026-07-06
 - E2E install from lockfile: passed.
 - TypeScript check: passed.
 - Playwright browser lane: passed, 5/5.
-- Artifact validator: passed, 9 bounded evidence artifacts scanned, including required transient browser artifacts and this committed summary.
+- Artifact validator: passed, 9 bounded evidence artifacts scanned (including required transient browser artifacts and this committed summary), plus AC4 required-field schema validation of the manual AT checklist.
 - Whitespace check: passed.
 
 ## Axe And Layout Evidence
@@ -36,10 +36,10 @@ Date: 2026-07-06
 - Axe manual-review notes: some routes record known `aria-prohibited-attr` incomplete/needs-review evidence. This remains fail-closed for full axe/WCAG release clearance.
 - Media/layout artifact: `tests/Hexalith.Memories.Web.E2E/test-results/evidence/media-layout-summary.json`
 - Viewports checked: 360x800, 768x1024, 1024x768, 1440x900.
-- Media modes checked: forced-colors active, reduced-motion reduce.
-- Reflow check: CSS zoom 400 percent specimen pass.
+- Media modes checked: forced-colors active, reduced-motion reduce. Emulation engagement is asserted from the browser's own `matchMedia` state, so a mode that fails to engage is fail-closed rather than a silent pass.
+- Reflow check: 320 CSS-pixel viewport (WCAG 1.4.10 reflow) specimen pass; horizontal reachability is measured without auto horizontal-scroll, so horizontal-scroll-only trust access fails.
 - Horizontal overflow evidence: required trust anchors remain visible and not horizontal-only; data-heavy route page-level overflow is recorded fail-closed for source-owned responsive remediation.
-- Touch-target evidence: measurements recorded where controls are measurable. Several Fluent custom-element controls measure below 44 CSS pixels in Chromium specimens, so source-owned remediation, manual target-device confirmation, or explicit release waiver remains fail-closed.
+- Touch-target evidence: a broadened interactive-control selector is measured at 360px; controls below 44 CSS pixels and zero-size/unmeasurable interactive controls are both recorded fail-closed, so source-owned remediation, manual target-device confirmation, or explicit release waiver remains required.
 
 ## Artifact Redaction
 
@@ -47,7 +47,7 @@ Date: 2026-07-06
 - Copied text summary: `tests/Hexalith.Memories.Web.E2E/test-results/evidence/copied-text-summary.json`
 - Screenshot: `tests/Hexalith.Memories.Web.E2E/test-results/evidence/evidence-cockpit.png`
 - Trace policy: `tests/Hexalith.Memories.Web.E2E/test-results/evidence/trace-policy.json`
-- Redaction scan result: passed. Text artifacts are scanned for authorization secrets, broad Windows/Linux local absolute paths, sensitive payload markers, tenant-sensitive diagnostics, provider diagnostics, stack traces, and restricted source details. The only non-text artifact is the bounded complete-fixture cockpit screenshot named in `artifact-summary.json`.
+- Redaction scan result: passed. The Playwright helper and the standalone `validate-artifacts.mjs` validator share one restricted-pattern list, scanning text artifacts for authorization secrets (including bare `eyJ…` JWTs), broad Windows/Linux local absolute paths, sensitive payload markers, tenant-sensitive diagnostics, provider diagnostics, JavaScript and .NET stack frames, and restricted source details. The browser copied-text scan is bounded to the clean agent-packet fixture; sensitive-payload sanitization of the trust components is proven by bUnit `Epic17SanitizationCanaryTests`. The only non-text artifact is the bounded complete-fixture cockpit screenshot named in `artifact-summary.json`.
 
 ## Manual Checklist / Fail-Closed Gaps
 
@@ -68,3 +68,4 @@ Date: 2026-07-06
 - Known `aria-prohibited-attr` axe incomplete findings remain fail-closed for full axe/WCAG release clearance.
 - Measured under-44px Fluent button/custom-element touch targets remain fail-closed for product-route release clearance.
 - Data-heavy route horizontal overflow remains fail-closed for full product-route responsive clearance.
+- The Memories web bUnit suite (including the Epic 17 machine-checked inventory guards) currently runs locally / pre-commit but is not yet wired into a CI test lane; see the deferred-work ledger. The browser E2E specimen lane, typecheck, and artifact validator do run in CI.

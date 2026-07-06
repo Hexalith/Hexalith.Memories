@@ -232,10 +232,13 @@ jobs:
           cache-dependency-path: tests/Hexalith.Memories.Web.E2E/package-lock.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        run: dotnet restore Hexalith.Memories.slnx
 
+      # Build the Debug configuration the Playwright webServer runs (see playwright.config.ts),
+      # so the browser lane exercises the same build this job produced instead of a discarded
+      # Release build. Release compile coverage for the host is already provided by the `build` job.
       - name: Build Memories web specimen host
-        run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Release --no-restore -m:1
+        run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Debug --no-restore -m:1
 
       - name: Install Memories web E2E dependencies
         run: npm ci

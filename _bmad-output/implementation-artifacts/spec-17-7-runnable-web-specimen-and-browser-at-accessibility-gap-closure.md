@@ -2,7 +2,7 @@
 title: '17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure'
 type: 'feature'
 created: '2026-07-06T19:16:56+02:00'
-status: 'done'
+status: 'in-review'
 baseline_revision: '3160c6bcde46c1c52cdaf30b64997352f7f4b178'
 final_revision: '8b9439ddb01aa80ee77390e19f88c07f96077b3b'
 review_loop_iteration: 0
@@ -100,6 +100,24 @@ warnings: []
   - `[medium]` `[patch]` Browser evidence summaries and inventory dispositions were updated to avoid over-claiming product-route, full axe/WCAG, touch-target, and AT clearance.
   - `[medium]` `[patch]` CI now runs the Memories web specimen E2E lane.
 
+### 2026-07-06 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 0, medium 5, low 5)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 4: (high 0, medium 0, low 4)
+- addressed_findings:
+  - `[medium]` `[patch]` Unified the redaction canary: `validateArtifactText` restricted patterns now match the sanitizer / `validate-artifacts.mjs` breadth (broad Windows/Linux absolute paths) and add bare `eyJ…` JWT and .NET stack-frame detection, closing the raw-copy-text and .NET-trace redaction gaps.
+  - `[medium]` `[patch]` Media forced-colors / reduced-motion `supported` is now derived from the browser's `matchMedia` state instead of a hardcoded `true`, so emulation that fails to engage is fail-closed rather than a silent pass.
+  - `[medium]` `[patch]` Trust-anchor horizontal reachability is measured after resetting scroll and without `scrollIntoViewIfNeeded`, so content only reachable by horizontal scrolling now fails the no-horizontal-only assertion instead of being pulled into view first.
+  - `[medium]` `[patch]` Reflow evidence uses a 320 CSS-pixel WCAG 1.4.10 viewport instead of the non-standard CSS `zoom: 400%`.
+  - `[low]` `[patch]` Touch-target selector broadened to more interactive Fluent roles; zero-size / unmeasurable interactive controls are recorded fail-closed and the tautological `every(measurable)` assertion was removed.
+  - `[medium]` `[patch]` `validate-artifacts.mjs` now schema-validates the AC4 manual-AT-checklist required fields (each present and non-empty), not just file presence and redaction.
+  - `[low]` `[patch]` The specimen surface switch gained a `default:` case (`mem-specimen-unmapped`) so a manifest slug with no render mapping fails loudly instead of rendering an empty surface.
+  - `[low]` `[patch]` Copied-text evidence claim scoped precisely: the browser scan is bounded to the clean agent-packet fixture and sensitive-payload sanitization is credited to bUnit `Epic17SanitizationCanaryTests`, removing the browser-proven-sanitization over-claim.
+  - `[low]` `[patch]` Removed a stale duplicate `<summary>` XML-doc block in `Epic17FormFixtures.cs`.
+  - `[low]` `[patch]` Aligned the CI E2E job's specimen-host build to the Debug configuration the Playwright webServer runs (dropped the discarded Release restore/build).
+
 ## Design Notes
 
 Use a specimen-host route prefix such as `/__memories/specimens/{surface}` so the browser lane is obviously non-product. Prefer a typed route manifest shared by host rendering and Playwright tests so selectors, surface names, and fixture families cannot drift.
@@ -135,17 +153,16 @@ Manual assistive-technology evidence is allowed to use a checklist method when N
 - `_bmad-output/implementation-artifacts/tests/test-summary-17-7-browser-at-gap-closure.md` -- adds the bounded evidence summary.
 - `_bmad-output/implementation-artifacts/deferred-work.md` and `sprint-status.yaml` -- record the incidental deferred finding and story status.
 
-**Review findings breakdown:** 9 medium patch findings were applied, 1 medium pre-existing finding was deferred, and 1 low finding was rejected as non-actionable for this story. Follow-up review is recommended because the review-driven fixes touched the E2E trust boundary, evidence policy, inventory claims, and CI lane.
+**Review findings breakdown:** Two review passes ran. The initial pass applied 9 medium patch findings, deferred 1 medium finding, and rejected 1 low finding. The follow-up pass applied 10 patch findings (5 medium, 5 low) that hardened the browser lane's evidence validity and redaction, deferred 1 medium finding, and rejected 4 low findings. Follow-up patches: unified/broadened redaction canary (bare-JWT + .NET stack frames); real `matchMedia`-derived media-emulation support; horizontal-only measurement no longer masked by auto-scroll; 320px WCAG reflow instead of CSS zoom; broadened touch-target selector with fail-closed unmeasurable accounting; AC4 manual-checklist schema validation; specimen-switch `default:` guard; precise copied-text scoping; duplicate XML-doc removal; and CI E2E build/webServer configuration alignment. The follow-up deferral (new ledger entry) records that `Hexalith.Memories.Web.Tests` — including the Epic 17 machine-checked inventory guards — is in the `.slnx` inventory but absent from every CI test lane, so those guards run locally/pre-commit but are not yet CI-enforced.
 
-**Verification performed:**
-- `dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj -m:1` -- passed, 0 warnings, 0 errors.
-- `dotnet build tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj -m:1` -- passed, 0 warnings, 0 errors.
-- `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests.dll` -- passed, 476 tests.
-- `npm --prefix tests/Hexalith.Memories.Web.E2E ci` -- passed, 0 vulnerabilities.
+**Verification performed (follow-up pass):**
 - `npm --prefix tests/Hexalith.Memories.Web.E2E run typecheck` -- passed.
-- `npm --prefix tests/Hexalith.Memories.Web.E2E run test` -- passed, 5 Chromium specs.
-- `npm --prefix tests/Hexalith.Memories.Web.E2E run validate:artifacts` -- passed, 9 bounded evidence artifacts.
-- `python3 - <<'PY' ... yaml.safe_load('.github/workflows/ci.yml') ... PY` -- passed.
-- `git diff --check` -- passed.
+- `CI=1 npm --prefix tests/Hexalith.Memories.Web.E2E run test` -- passed, 5/5 Chromium specs (baseline re-run before and after the patches).
+- `npm --prefix tests/Hexalith.Memories.Web.E2E run validate:artifacts` -- passed, 9 bounded evidence artifacts + AC4 manual-checklist schema validation.
+- `dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj -m:1 -v:m` -- passed, 0 warnings, 0 errors.
+- `dotnet build tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj -m:1 -v:m` -- passed, 0 warnings, 0 errors.
+- `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Web.Tests/bin/Debug/net10.0/Hexalith.Memories.Web.Tests.dll` -- passed, 476 tests.
+- `python3 ... yaml.safe_load('.github/workflows/ci.yml')` -- CI YAML parses.
+- `git diff --check` (working tree and since baseline) -- no whitespace errors.
 
-**Residual risks:** Product-route validation, OS screen-reader/live AT validation, non-Chromium browser coverage, source-owned horizontal overflow, source-owned under-44px touch target remediation, and the existing benchmark happy-state progress-bar axe issue remain fail-closed or deferred.
+**Residual risks:** Product-route validation, OS screen-reader/live AT validation, non-Chromium browser coverage, source-owned horizontal overflow, source-owned under-44px touch-target remediation, and the existing benchmark happy-state progress-bar axe issue remain fail-closed or deferred. Additionally, the Memories web bUnit + inventory-guard suite is not yet wired into a CI test lane (deferred, new ledger entry); it runs locally/pre-commit only, so the machine-checked over-claim guards are not currently CI-enforced.

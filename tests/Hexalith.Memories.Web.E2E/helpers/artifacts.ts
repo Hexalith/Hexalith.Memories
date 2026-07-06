@@ -3,12 +3,17 @@ import path from 'node:path';
 
 export const evidenceDirectory = path.resolve('test-results', 'evidence');
 
+// Keep this list in lockstep with `scripts/validate-artifacts.mjs` textPatterns and the
+// `sanitizeText` replacements below. The path/token breadth intentionally matches the
+// sanitizer so a raw (unsanitized) copy payload is scanned as strictly as written files.
 const restrictedPatterns: readonly RegExp[] = [
   /Bearer\s+[A-Za-z0-9._-]+/i,
+  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/,
   /\bredis:\/\/[^\s"')]+/i,
-  /[A-Za-z]:\\(?:Users|Temp|Windows|ProgramData)\\[^\s"')]+/i,
-  /\/home\/[^\s"')]+/i,
+  /[A-Za-z]:\\[^\s"')]+/i,
+  /\/(?:home|root|tmp|var|mnt|opt|etc|Users)\/[^\s"')]+/i,
   /\bat\s+[^\n]+\([^\n]+:\d+:\d+\)/,
+  /\bat\s+[^\n(]+\([^\n]*\)\s+in\s+[^\n]+:line\s+\d+/i,
   /provider\s+internal/i,
   /secret-axis-evidence/i,
   /memory-secret/i,
@@ -18,6 +23,7 @@ const restrictedPatterns: readonly RegExp[] = [
 export function sanitizeText(value: string): string {
   return value
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, '[REDACTED]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED]')
     .replace(/\bredis:\/\/[^\s"')]+/gi, '[REDACTED]')
     .replace(/[A-Za-z]:\\[^\s"')]+/g, '[REDACTED]')
     .replace(/\/(?:home|root|tmp|var|mnt|opt|etc|Users)\/[^\s"')]+/g, '[REDACTED]')

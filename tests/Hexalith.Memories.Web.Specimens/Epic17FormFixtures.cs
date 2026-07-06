@@ -9,11 +9,8 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Forms;
 
 /// <summary>
-/// Story 17.3 — reusable contract-aware form fixtures covering valid, invalid, dangerous, cross-tenant,
-/// and unauthorized submissions.
-/// </summary>
-/// <summary>
-/// Shared Story 17 contract-aware form fixtures consumed by bUnit tests and browser specimens.
+/// Shared Story 17 contract-aware form fixtures consumed by bUnit tests and browser specimens,
+/// covering valid, invalid, dangerous, cross-tenant, and unauthorized submissions.
 /// </summary>
 public static class Epic17FormFixtures
 {
