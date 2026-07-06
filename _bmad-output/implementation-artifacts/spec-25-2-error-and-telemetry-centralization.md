@@ -2,8 +2,9 @@
 title: '25.2 Error & Telemetry Centralization'
 type: 'refactor'
 created: '2026-07-06'
-status: 'in-review'
+status: 'done'
 baseline_revision: '3f906e2429877660165f03ca89e82c11e072f222'
+final_revision: '709e2e383dcbb9a37cbb5bcc2224d3f47c13f5ec'
 review_loop_iteration: 0
 followup_review_recommended: true
 context: ['{project-root}/_bmad-output/implementation-artifacts/epic-25-context.md']
