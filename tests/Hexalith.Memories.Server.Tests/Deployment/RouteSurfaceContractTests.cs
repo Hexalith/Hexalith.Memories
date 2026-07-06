@@ -19,12 +19,13 @@ using Shouldly;
 /// <c>docs/operations/route-surface.md</c>. The novel guard over the Story 18.2
 /// <see cref="DeploymentConfigurationContractTests"/> precedent is the <b>forward code → doc tie</b>: the
 /// <c>app.MapX("/api/…")</c> route literals are regex-extracted from the authoritative
-/// <c>src/Hexalith.Memories.Server/Program.cs</c> source (read via the repo-root marker walk) and each is
-/// asserted documented, so a newly added endpoint cannot slip through undocumented. A count tie defends
-/// against silent omission and phantom rows; the pub/sub, health, MCP, and <c>/process</c> ties anchor the
-/// remaining surface to code constants and source text. QA gap-closure additions also guard the AC2 Dapr
-/// service-invocation operation-mapping section, the AC4 publish-via-DAPR statement, and the <c>HXL002</c>
-/// experimental-handler marker (code ↔ doc), promoting those from review-enforced to test-enforced.</summary>
+/// <c>src/Hexalith.Memories.Server/Program.cs</c> and decomposed endpoint source files (read via the
+/// repo-root marker walk) and each is asserted documented, so a newly added endpoint cannot slip through
+/// undocumented. A count tie defends against silent omission and phantom rows; the pub/sub, health, MCP,
+/// and <c>/process</c> ties anchor the remaining surface to code constants and source text. QA gap-closure
+/// additions also guard the AC2 Dapr service-invocation operation-mapping section, the AC4 publish-via-DAPR
+/// statement, and the <c>HXL002</c> experimental-handler marker (code ↔ doc), promoting those from
+/// review-enforced to test-enforced.</summary>
 public sealed class RouteSurfaceContractTests
 {
     private const string DocRelativePath = "docs/operations/route-surface.md";
@@ -52,16 +53,16 @@ public sealed class RouteSurfaceContractTests
         // ties to the documented row form `<VERB> <path>` (a backtick code span) so illustrative prose that
         // mentions a path substring (e.g. the Dapr `method/api/…` operation example) cannot satisfy it — only
         // a real method+path table row can.
-        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
+        string routeSources = ReadMappedRouteSources();
         string doc = ReadDoc();
 
-        IReadOnlyList<(string Verb, string Path)> mappedRoutes = ExtractMappedRoutes(program);
-        mappedRoutes.Count.ShouldBeGreaterThan(0, "Failed to extract any app.MapX route literal from Program.cs — the extraction regex or marker walk is broken.");
+        IReadOnlyList<(string Verb, string Path)> mappedRoutes = ExtractMappedRoutes(routeSources);
+        mappedRoutes.Count.ShouldBeGreaterThan(0, "Failed to extract any app.MapX route literal from Program.cs or decomposed endpoint files — the extraction regex or marker walk is broken.");
 
         foreach ((string verb, string path) in mappedRoutes)
         {
             string documentedSpan = $"`{verb.ToUpperInvariant()} {path}`";
-            doc.ShouldContain(documentedSpan, Case.Sensitive, $"Mapped route '{verb.ToUpperInvariant()} {path}' from Program.cs is not documented as a row in {DocRelativePath}. Add it to the route-surface table.");
+            doc.ShouldContain(documentedSpan, Case.Sensitive, $"Mapped route '{verb.ToUpperInvariant()} {path}' from Program.cs or decomposed endpoint files is not documented as a row in {DocRelativePath}. Add it to the route-surface table.");
         }
     }
 
@@ -70,15 +71,36 @@ public sealed class RouteSurfaceContractTests
     {
         // Count tie: defends against silent omission (fewer rows than routes) AND phantom rows (more rows
         // than routes). Both counts are emitted so the Change Log delta is visible on failure.
-        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
+        string routeSources = ReadMappedRouteSources();
         string doc = ReadDoc();
 
-        int sourceApiRouteCount = ExtractMappedRoutes(program).Count(r => r.Path.StartsWith("/api/", System.StringComparison.Ordinal));
+        int sourceApiRouteCount = ExtractMappedRoutes(routeSources).Count(r => r.Path.StartsWith("/api/", System.StringComparison.Ordinal));
         int documentedApiRowCount = DocumentedApiRowRegex.Matches(doc).Count;
 
         documentedApiRowCount.ShouldBe(
             sourceApiRouteCount,
-            $"Documented /api/ route rows ({documentedApiRowCount}) must equal the mapped /api/ route literals in Program.cs ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
+            $"Documented /api/ route rows ({documentedApiRowCount}) must equal the mapped /api/ route literals in Program.cs and decomposed endpoint files ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
+    }
+
+    [Fact]
+    public void Program_InvokesAllDecomposedEndpointRegistrations()
+    {
+        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
+        string[] expectedRegistrations =
+        [
+            "MapIngestionEndpoints(",
+            "MapTenantLifecycleEndpoints(",
+            "MapExportEndpoints(",
+            "MapConsistencyEndpoints(",
+            "MapCasesEndpoints(",
+            "MapSearchEndpoints(",
+            "MapGraphEndpoints(",
+        ];
+
+        foreach (string registration in expectedRegistrations)
+        {
+            program.ShouldContain(registration, Case.Sensitive, $"Program.cs must invoke {registration} so decomposed routes are registered at runtime.");
+        }
     }
 
     [Fact]
@@ -120,10 +142,10 @@ public sealed class RouteSurfaceContractTests
     public void NoProcessOperation_IsAbsentFromCodeAndRefutedInDoc()
     {
         // AC1 refutation, code-tied: the negative claim is enforced against source, not just prose.
-        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
+        string program = ReadMappedRouteSources();
         string controller = ReadRepoFile("src", "Hexalith.Memories.EventStore", "EventIngestionController.cs");
 
-        program.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in Program.cs — the route-surface refutation in the doc is now false and must be reconciled.");
+        program.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in Program.cs or decomposed endpoint files — the route-surface refutation in the doc is now false and must be reconciled.");
         controller.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in EventIngestionController.cs — the route-surface refutation in the doc is now false and must be reconciled.");
 
         string doc = ReadDoc();
@@ -172,9 +194,9 @@ public sealed class RouteSurfaceContractTests
         // the `X-Memories-API-Experimental: HXL002` response header on those routes. Tie the experimental
         // marker bidirectionally (code ↔ doc) so a code-side removal of the experimental gate OR a doc-side
         // drop of the HXL002 framing fails the build — strengthening the previously review-only enforcement.
-        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
-        program.ShouldContain("X-Memories-API-Experimental", Case.Sensitive, "Program.cs must keep stamping the X-Memories-API-Experimental header on the experimental Handlers routes.");
-        program.ShouldContain("HXL002", Case.Sensitive, "Program.cs must keep the HXL002 experimental marker for the Handlers routes.");
+        string routeSources = ReadMappedRouteSources();
+        routeSources.ShouldContain("X-Memories-API-Experimental", Case.Sensitive, "Program.cs or decomposed endpoint files must keep stamping the X-Memories-API-Experimental header on the experimental Handlers routes.");
+        routeSources.ShouldContain("HXL002", Case.Sensitive, "Program.cs or decomposed endpoint files must keep the HXL002 experimental marker for the Handlers routes.");
 
         string doc = ReadDoc();
         doc.ShouldContain("X-Memories-API-Experimental: HXL002", Case.Sensitive, $"{DocRelativePath} must document the X-Memories-API-Experimental: HXL002 response header for the experimental Handlers routes.");
@@ -183,6 +205,21 @@ public sealed class RouteSurfaceContractTests
 
     private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)
         => MappedRouteRegex.Matches(program).Select(static m => (m.Groups[1].Value, m.Groups[2].Value)).ToList();
+
+    private static string ReadMappedRouteSources()
+    {
+        string serverRoot = Path.Combine(ResolveRepoRoot(), "src", "Hexalith.Memories.Server");
+        string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
+        string endpointsRoot = Path.Combine(serverRoot, "Endpoints");
+        Directory.Exists(endpointsRoot).ShouldBeTrue($"Endpoint source folder not found at {endpointsRoot}");
+
+        IEnumerable<string> endpointSources = Directory
+            .EnumerateFiles(endpointsRoot, "*Endpoints.cs", SearchOption.TopDirectoryOnly)
+            .OrderBy(static path => path, System.StringComparer.Ordinal)
+            .Select(File.ReadAllText);
+
+        return string.Join(System.Environment.NewLine, new[] { program }.Concat(endpointSources));
+    }
 
     private static string ReadDoc() => File.ReadAllText(ResolveDocPath());
 

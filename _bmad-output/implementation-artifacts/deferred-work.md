@@ -1780,3 +1780,33 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Target artifact: `src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs`
   - Evidence: `TrackAsync` sets the shared initialized marker before the startup gate has proven a zero-drain state, so another replica can skip enumeration fallback during a rolling upgrade.
   - Re-open trigger: a multi-replica rollout replays a pre-registry in-flight ingestion workflow after another replica passed the gate.
+
+## Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Ingestion endpoints dereference null JSON request bodies while setting telemetry before reaching the existing structured validation response.
+  evidence: The review traced `POST /api/ingest`, `/api/ingest/url`, and `/api/ingest/directory`; each path reads `input.TenantId` or `request.TenantId` before the existing `Validate*Request` helper can return `INVALID_INPUT`. This behavior existed in the original inline `Program.cs` handlers and was preserved by the decomposition.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Search source-type validation accepts numeric enum values that do not correspond to defined `SourceType` members.
+  evidence: The review traced `/api/search` validation and found `Enum.TryParse<SourceType>(sourceType, ignoreCase: true, out _)` without `Enum.IsDefined`; numeric values can parse and flow into search filters. This behavior existed before endpoint extraction and is outside the mechanical decomposition scope.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Graph traversal treats comma-only `edgeTypes` input as an empty explicit edge-type filter instead of defaulting or rejecting.
+  evidence: The review traced `/api/tenants/{tenantId}/traverse`; `edgeTypes=","` produces an empty split result and assigns an empty `parsedEdgeTypes` list. This behavior existed before endpoint extraction and can return no edges where the default traversal would have applied.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Edge-confidence promotion does not reject undefined `EdgeType` enum values after deserialization.
+  evidence: The review traced `/api/tenants/{tenantId}/edges/confidence`; the payload is deserialized into `ConfidencePromotionRequest` and field presence is validated, but `Enum.IsDefined(request.EdgeType)` is not checked before the graph update. This behavior existed before endpoint extraction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Tenant provision/deletion status endpoints do not translate Dapr sidecar outages into structured `DAPR_UNAVAILABLE` responses.
+  evidence: The review traced `GET /api/tenants/{tenantId}/provision-status/{instanceId}` and `GET /api/tenants/{tenantId}/deletion-status/{instanceId}`; `GetWorkflowStateAsync` exceptions flow to the generic unhandled-exception path. This behavior existed before endpoint extraction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Tenant deletion Dapr-unavailable rollback catches only `InvalidOperationException`, so other rollback failures can replace the intended 503 response.
+  evidence: The review traced the Dapr-unavailable branch in `DELETE /api/tenants/{tenantId}`; rollback errors other than `InvalidOperationException` are not swallowed or logged. This behavior existed before endpoint extraction and can leave a tenant in deleting state while returning an unexpected 500.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
+  summary: Large extracted endpoint and service-registration files remain candidates for further focused decomposition.
+  evidence: The review noted that behavior was moved into per-resource files, but `SearchEndpoints`, `CasesEndpoints`, `TenantLifecycleEndpoints`, and `MemoriesServerServiceCollectionExtensions` remain large. Story 25.1 intentionally stopped at per-resource mechanical extraction to preserve behavior; finer-grained slices should be a follow-up once the route surface is stable.
