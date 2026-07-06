@@ -1,0 +1,189 @@
+@page "/__memories/specimens/{SurfaceSlug}"
+
+@if (SpecimenRoute is null)
+{
+    <main data-testid="mem-specimen-not-found" aria-label="Unknown Memories specimen">
+        <FluentLabel Typo="Typography.Subject">Unknown specimen</FluentLabel>
+    </main>
+}
+else
+{
+    <main class="mem-specimen-route"
+          data-testid="mem-specimen-route"
+          data-surface="@SpecimenRoute.Surface"
+          data-slug="@SpecimenRoute.Slug"
+          data-component="@SpecimenRoute.ComponentName"
+          data-fixture-family="@SpecimenRoute.FixtureFamily"
+          data-selector-anchor="@SpecimenRoute.SelectorAnchor"
+          data-evidence-artifact="@SpecimenRoute.EvidenceArtifactPath"
+          aria-label="@SpecimenRoute.Surface">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+            <FluentLabel Typo="Typography.Subject" data-testid="mem-specimen-title">
+                @SpecimenRoute.Surface
+            </FluentLabel>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-specimen-metadata">
+                @SpecimenRoute.ComponentName · @SpecimenRoute.FixtureFamily · @SpecimenRoute.Route
+            </FluentLabel>
+            <section class="mem-specimen-surface-root" data-testid="mem-specimen-surface-root" aria-label="@($"{SpecimenRoute.Surface} surface")">
+                @switch (SpecimenRoute.Slug)
+                {
+                    case "evidence-cockpit":
+                        <MemoriesEvidenceCockpit Packet="@Packet" />
+                        break;
+                    case "trust-strip":
+                        <MemoriesTrustStrip Packet="@Packet" />
+                        break;
+                    case "scope-header":
+                        <MemoriesScopeHeader Packet="@Packet" />
+                        break;
+                    case "source-citation-stack":
+                        <MemoriesSourceCitationStack Packet="@Packet" />
+                        break;
+                    case "retrieval-axis-breakdown":
+                        <MemoriesRetrievalAxisBreakdown Packet="@Packet" />
+                        break;
+                    case "graph-path-summary":
+                        <MemoriesGraphPathSummary Packet="@Packet" />
+                        break;
+                    case "recovery-action-panel":
+                        <MemoriesRecoveryActionPanel Packet="@Packet" OnRecoveryAction="CaptureRecoveryActionAsync" />
+                        break;
+                    case "case-activity-trail":
+                        <MemoriesCaseActivityTrail Packet="@Packet" ReturnRoute="@SpecimenRoute.Route" OnReturn="CaptureReturnAsync" />
+                        break;
+                    case "ingestion-lifecycle-tracker":
+                        <MemoriesIngestionLifecycleTracker Packet="@Packet" ReturnRoute="@SpecimenRoute.Route" OnReturn="CaptureReturnAsync" OnRecoveryAction="CaptureRecoveryActionAsync" />
+                        break;
+                    case "operator-health-matrix":
+                        <MemoriesOperatorHealthMatrix Packet="@Packet" ReturnRoute="@SpecimenRoute.Route" OnReturn="CaptureReturnAsync" OnNextAction="CaptureRecoveryActionAsync" />
+                        break;
+                    case "benchmark-result-comparator":
+                        <MemoriesBenchmarkResultComparator Packet="@Packet" ReturnRoute="@SpecimenRoute.Route" OnReturn="CaptureReturnAsync" />
+                        break;
+                    case "agent-packet-inspector":
+                        <MemoriesAgentPacketInspector Packet="@Packet" ReturnRoute="@SpecimenRoute.Route" OnReturn="CaptureReturnAsync" OnCopy="CaptureCopyAsync" />
+                        break;
+                    case "evidence-grid":
+                        <MemoriesEvidenceGrid Packet="@Packet" OnRowAction="CaptureRowActionAsync" />
+                        break;
+                    case "command-surface":
+                        <MemoriesCommandSurface Packet="@Packet" Snapshot="@Snapshot" ActiveTenantId="tenant-a" ActiveCaseId="case-a" OnCommand="CaptureCommandAsync" />
+                        break;
+                    case "action-confirmation":
+                        <MemoriesActionConfirmation Command="@ConfirmationCommand" Snapshot="@Snapshot" OnConfirm="CaptureConfirmAsync" OnCancel="CaptureCancelAsync" />
+                        break;
+                    case "context-navigation":
+                        <MemoriesContextNavigation Packet="@Packet" Snapshot="@Snapshot" ActiveTenantId="tenant-a" ActiveCaseId="case-a" OnOpen="CaptureOpenAsync" OnReturn="CaptureReturnAsync" />
+                        break;
+                    case "interaction-form":
+                        <MemoriesInteractionForm Request="@FormRequest" OnSubmit="CaptureSubmitAsync" />
+                        break;
+                    case "filter-summary":
+                        <MemoriesFilterSummary Filters="@Filters" Packet="@Packet" FilteredCount="1" TotalCount="2" OnRemoveFilter="CaptureFilterAsync" OnReset="CaptureResetAsync" />
+                        break;
+                    case "lens-shell":
+                        <MemoriesLensShell Shell="@LensShell" OnReturn="CaptureReturnAsync">
+                            <FluentLabel Typo="Typography.Body" data-testid="mem-lens-shell-specimen-body">
+                                Specimen lens body
+                            </FluentLabel>
+                        </MemoriesLensShell>
+                        break;
+                }
+            </section>
+            <FluentLabel Typo="Typography.Body" data-testid="mem-specimen-callback-log">
+                @_callbackLog
+            </FluentLabel>
+        </FluentStack>
+    </main>
+}
+
+@code {
+    private string _callbackLog = "no interaction";
+
+    [Parameter]
+    public string? SurfaceSlug { get; set; }
+
+    private Epic17SpecimenRoute? SpecimenRoute => Epic17SpecimenManifest.FindBySlug(SurfaceSlug);
+
+    private EvidencePacket Packet => Epic17SpecimenFixtures.PacketFor(SpecimenRoute!);
+
+    private InteractionContextSnapshot Snapshot => Epic17SpecimenFixtures.Snapshot();
+
+    private MemoriesCommandView ConfirmationCommand => Epic17SpecimenFixtures.ConfirmationCommand();
+
+    private MemoriesFormRequest FormRequest => Epic17SpecimenFixtures.FormRequest();
+
+    private IReadOnlyList<MemoriesFilter> Filters => Epic17SpecimenFixtures.Filters();
+
+    private LensShellViewModel LensShell => LensShellMapper.Map(
+        Packet,
+        LensKind.CaseActivityTrail,
+        LensRole.Developer,
+        SpecimenRoute?.Route);
+
+    private Task CaptureRecoveryActionAsync(RecoveryActionInvocation invocation)
+    {
+        _callbackLog = $"recovery:{invocation.Kind}:{invocation.Target}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureReturnAsync(string route)
+    {
+        _callbackLog = $"return:{route}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureCopyAsync(string copyText)
+    {
+        _callbackLog = $"copy:{copyText.Length}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureRowActionAsync(EvidencePacketSource source)
+    {
+        _callbackLog = $"row:{source.MemoryUnitId}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureCommandAsync(MemoriesCommandInvocation invocation)
+    {
+        _callbackLog = $"command:{invocation.Kind}:{invocation.Target}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureOpenAsync(InteractionContextSnapshot snapshot)
+    {
+        _callbackLog = $"open:{snapshot.TargetKind}:{snapshot.TargetId}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureSubmitAsync(MemoriesFormRequest request)
+    {
+        _callbackLog = $"submit:{request.FormKind}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureFilterAsync(MemoriesFilter filter)
+    {
+        _callbackLog = $"filter:{filter.Axis}:{filter.ValueToken}";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureResetAsync()
+    {
+        _callbackLog = "reset";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureConfirmAsync()
+    {
+        _callbackLog = "confirm";
+        return Task.CompletedTask;
+    }
+
+    private Task CaptureCancelAsync()
+    {
+        _callbackLog = "cancel";
+        return Task.CompletedTask;
+    }
+}

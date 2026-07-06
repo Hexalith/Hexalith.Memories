@@ -206,6 +206,68 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  web-e2e-specimen:
+    name: web-e2e-specimen
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
+
+      - name: Initialize Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: tests/Hexalith.Memories.Web.E2E/package-lock.json
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+
+      - name: Build Memories web specimen host
+        run: dotnet build tests/Hexalith.Memories.Web.SpecimenHost/Hexalith.Memories.Web.SpecimenHost.csproj --configuration Release --no-restore -m:1
+
+      - name: Install Memories web E2E dependencies
+        run: npm ci
+        working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Install Chromium browser
+        run: npx playwright install --with-deps chromium
+        working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Type-check Memories web E2E workspace
+        run: npm run typecheck
+        working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Run Memories web specimen browser checks
+        run: npm run test
+        working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Validate Memories web browser artifacts
+        run: npm run validate:artifacts
+        working-directory: tests/Hexalith.Memories.Web.E2E
+
+      - name: Upload Memories web E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: memories-web-e2e-artifacts
+          path: |
+            tests/Hexalith.Memories.Web.E2E/test-results/**
+            tests/Hexalith.Memories.Web.E2E/playwright-report/**
+          if-no-files-found: warn
+          retention-days: 14
+
   integration-fast:
     name: integration-fast
     runs-on: ubuntu-latest

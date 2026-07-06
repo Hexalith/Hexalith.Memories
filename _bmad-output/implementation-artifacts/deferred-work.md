@@ -1980,3 +1980,13 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md`
   summary: Large extracted endpoint and service-registration files remain candidates for further focused decomposition.
   evidence: The review noted that behavior was moved into per-resource files, but `SearchEndpoints`, `CasesEndpoints`, `TenantLifecycleEndpoints`, and `MemoriesServerServiceCollectionExtensions` remain large. Story 25.1 intentionally stopped at per-resource mechanical extraction to preserve behavior; finer-grained slices should be a follow-up once the route surface is stable.
+
+## Deferred from: bmad-dev-auto review of spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure (2026-07-06)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md`
+  summary: The existing benchmark comparator happy-state progress indicator needs source-owned browser accessibility remediation before that state can be claimed axe-clean.
+  evidence: The Story 17.7 Playwright axe lane initially exposed an `aria-prohibited-attr` issue on the benchmark comparator progress indicator when rendered with the happy packet fixture. Story 17.7 source ownership is specimen/test-only, so the browser specimen uses the existing empty-state fixture and keeps the happy-state remediation deferred.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md`
+  summary: The existing benchmark comparator happy-state progress indicator remains source-owned browser accessibility follow-up work.
+  evidence: The Story 17.7 review confirmed the browser specimen intentionally avoids claiming the benchmark happy-state progress-bar path as axe-clean because the underlying RCL/Fluent progress indicator produced `aria-prohibited-attr` browser accessibility evidence outside this specimen/test-only story's source ownership.

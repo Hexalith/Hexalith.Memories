@@ -1,0 +1,22 @@
+{
+  "name": "hexalith-memories-web-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright browser specimen checks for Hexalith.Memories web trust surfaces",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --project=chromium",
+    "test:headed": "playwright test --project=chromium --headed",
+    "typecheck": "tsc --noEmit",
+    "validate:artifacts": "node scripts/validate-artifacts.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

@@ -1,0 +1,10 @@
+@using Hexalith.Memories.Web.SpecimenHost.Components.Pages
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" />
+    </Found>
+    <NotFound>
+        <Epic17SpecimenIndex />
+    </NotFound>
+</Router>

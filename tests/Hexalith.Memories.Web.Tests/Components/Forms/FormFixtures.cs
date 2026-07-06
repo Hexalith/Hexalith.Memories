@@ -7,30 +7,21 @@ namespace Hexalith.Memories.Web.Tests.Components.Forms;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Forms;
+using Hexalith.Memories.Web.Specimens;
 
-/// <summary>
-/// Story 17.3 — reusable contract-aware form fixtures covering valid, invalid, dangerous, cross-tenant,
-/// and unauthorized submissions.
-/// </summary>
 internal static class FormFixtures
 {
-    public static MemoriesFormField Tenant(string? value = "tenant-a")
-        => new("tenant", FormResourceKeys.TenantLabel, MemoriesFormFieldKind.TenantScope, value, Required: true);
+    public static MemoriesFormField Tenant(string? value = "tenant-a") => Epic17FormFixtures.Tenant(value);
 
-    public static MemoriesFormField Case(string? value = "case-a", bool required = true)
-        => new("case", FormResourceKeys.CaseLabel, MemoriesFormFieldKind.CaseScope, value, Required: required);
+    public static MemoriesFormField Case(string? value = "case-a", bool required = true) => Epic17FormFixtures.Case(value, required);
 
-    public static MemoriesFormField RequiredText(string key = "query", string? value = "policy context")
-        => new(key, "Form_Tenant_Label", MemoriesFormFieldKind.RequiredText, value);
+    public static MemoriesFormField RequiredText(string key = "query", string? value = "policy context") => Epic17FormFixtures.RequiredText(key, value);
 
-    public static MemoriesFormField EnumField(string key, string? value, params string[] allowed)
-        => new(key, "Form_Tenant_Label", MemoriesFormFieldKind.ContractEnum, value, AllowedTokens: allowed);
+    public static MemoriesFormField EnumField(string key, string? value, params string[] allowed) => Epic17FormFixtures.EnumField(key, value, allowed);
 
-    public static MemoriesFormField Range(string key, string? value, double min, double max)
-        => new(key, "Form_Tenant_Label", MemoriesFormFieldKind.NumericRange, value, Minimum: min, Maximum: max);
+    public static MemoriesFormField Range(string key, string? value, double min, double max) => Epic17FormFixtures.Range(key, value, min, max);
 
-    public static MemoriesFormField Toggle(string key, bool on)
-        => new(key, "Form_Tenant_Label", MemoriesFormFieldKind.DangerousToggle, on ? "true" : "false");
+    public static MemoriesFormField Toggle(string key, bool on) => Epic17FormFixtures.Toggle(key, on);
 
     public static MemoriesFormRequest Request(
         IReadOnlyList<MemoriesFormField>? fields = null,
@@ -41,13 +32,13 @@ internal static class FormFixtures
         EvidencePacketIsolationStatus isolation = EvidencePacketIsolationStatus.Authorized,
         bool acknowledged = false,
         MemoriesFormKind kind = MemoriesFormKind.Search)
-        => new(
-            kind,
+        => Epic17FormFixtures.Request(
+            fields,
             requestedTenant,
             requestedCase,
             currentTenant,
             currentCase,
             isolation,
-            fields ?? [Tenant(), Case(), RequiredText()],
-            acknowledged);
+            acknowledged,
+            kind);
 }

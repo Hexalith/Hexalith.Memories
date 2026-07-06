@@ -1,0 +1,21 @@
+@page "/__memories/specimens"
+
+<main data-testid="mem-specimen-index" aria-label="Memories specimen index">
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="10">
+        <FluentLabel Typo="Typography.Subject">Memories Epic 17 specimens</FluentLabel>
+        <FluentLabel Typo="Typography.Body" data-testid="mem-specimen-count">
+            @Epic17SpecimenManifest.Routes.Count surfaces
+        </FluentLabel>
+        <ol>
+            @foreach (Epic17SpecimenRoute specimen in Epic17SpecimenManifest.Routes)
+            {
+                <li data-testid="mem-specimen-index-item"
+                    data-slug="@specimen.Slug"
+                    data-selector-anchor="@specimen.SelectorAnchor"
+                    data-fixture-family="@specimen.FixtureFamily">
+                    <a href="@specimen.Route">@specimen.Surface</a>
+                </li>
+            }
+        </ol>
+    </FluentStack>
+</main>

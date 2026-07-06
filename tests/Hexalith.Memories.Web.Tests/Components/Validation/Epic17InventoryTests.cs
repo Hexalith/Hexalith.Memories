@@ -56,6 +56,8 @@ public sealed class Epic17InventoryTests
             row.FixtureFamily.ShouldNotBeNullOrWhiteSpace();
             row.SelectorAnchor.ShouldNotBeNullOrWhiteSpace();
             row.ValidationLevel.ShouldBe(Epic17ValidationInventory.ComponentSpecimen);
+            row.SpecimenRoute.ShouldStartWith("/__memories/specimens/");
+            row.EvidenceArtifactPath.ShouldBe("_bmad-output/implementation-artifacts/tests/test-summary-17-7-browser-at-gap-closure.md");
 
             // Fail closed: a component-specimen claim must always name how the browser dimensions are dispositioned.
             row.BrowserDisposition.ShouldNotBeNullOrWhiteSpace();
@@ -68,6 +70,25 @@ public sealed class Epic17InventoryTests
         // There is no runnable Memories web host; nothing may be claimed as product-route validation.
         Epic17ValidationInventory.Surfaces
             .ShouldAllBe(s => s.ValidationLevel != "product-route");
+    }
+
+    [Fact]
+    public void BrowserEvidenceRows_AreNonEmptyAndEachCarriesRequiredDisposition()
+    {
+        Epic17ValidationInventory.BrowserEvidence.ShouldNotBeEmpty();
+
+        foreach (Epic17ValidationInventory.BrowserEvidenceRow row in Epic17ValidationInventory.BrowserEvidence)
+        {
+            row.Dimension.ShouldNotBeNullOrWhiteSpace();
+            row.EvidenceKind.ShouldBe(Epic17ValidationInventory.BrowserSpecimen);
+            row.Scope.ShouldNotBeNullOrWhiteSpace();
+            row.ArtifactPath.ShouldBe("_bmad-output/implementation-artifacts/tests/test-summary-17-7-browser-at-gap-closure.md");
+            row.Severity.ShouldBeOneOf("High", "Medium", "Low");
+            row.Owner.ShouldNotBeNullOrWhiteSpace();
+            row.WaiverState.ShouldNotBeNullOrWhiteSpace();
+            row.ReleaseDisposition.ShouldNotBeNullOrWhiteSpace();
+            row.ReleaseDisposition.ShouldNotContain("product-route validation is claimed");
+        }
     }
 
     [Fact]
@@ -87,18 +108,26 @@ public sealed class Epic17InventoryTests
     }
 
     [Fact]
-    public void ToolingGaps_RecordTheKnownBrowserAndAssistiveTechnologyDimensions()
+    public void BrowserEvidenceAndToolingGaps_RecordTheKnownBrowserAndAssistiveTechnologyDimensions()
     {
-        string allChecks = string.Join(" | ", Epic17ValidationInventory.Gaps.Select(static g => g.Check))
+        string allChecks = string.Join(
+                " | ",
+                Epic17ValidationInventory.BrowserEvidence.Select(static e => e.Dimension)
+                    .Concat(Epic17ValidationInventory.Gaps.Select(static g => g.Check)))
             .ToUpperInvariant();
 
-        // Each dimension the ACs require but bUnit cannot run must be explicitly tracked, not omitted.
+        // Each dimension must be either evidence-backed by the specimen lane or carried forward fail-closed.
         allChecks.ShouldContain("PLAYWRIGHT");
         allChecks.ShouldContain("AXE");
+        allChecks.ShouldContain("INCOMPLETE");
         allChecks.ShouldContain("CONTRAST");
         allChecks.ShouldContain("FORCED-COLORS");
         allChecks.ShouldContain("REDUCED-MOTION");
         allChecks.ShouldContain("ZOOM");
+        allChecks.ShouldContain("OVERFLOW");
+        allChecks.ShouldContain("TOUCH");
+        allChecks.ShouldContain("44X44");
+        allChecks.ShouldContain("PRODUCT-ROUTE");
         allChecks.ShouldContain("SCREEN-READER");
     }
 

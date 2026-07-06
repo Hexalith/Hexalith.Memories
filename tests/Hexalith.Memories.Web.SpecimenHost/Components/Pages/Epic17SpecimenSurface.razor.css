@@ -1,0 +1,5 @@
+.mem-specimen-route,
+.mem-specimen-surface-root {
+    max-width: 100%;
+    overflow-x: auto;
+}

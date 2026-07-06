@@ -7,6 +7,7 @@
     <HexalithFrontComposerFromSource Condition="'$(HexalithFrontComposerFromSource)' == '' and Exists('$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj')">true</HexalithFrontComposerFromSource>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.Web.Specimens\Hexalith.Memories.Web.Specimens.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Web\Hexalith.Memories.Web.csproj" />
     <ProjectReference Include="$(HexalithFrontComposerRoot)\src\Hexalith.FrontComposer.Testing\Hexalith.FrontComposer.Testing.csproj" Condition="'$(HexalithFrontComposerFromSource)' == 'true'" SetConfiguration="Configuration=$(Configuration)" />
     <PackageReference Include="Hexalith.FrontComposer.Testing" Condition="'$(HexalithFrontComposerFromSource)' != 'true'" />

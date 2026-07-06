@@ -288,14 +288,14 @@ development_status:
   epic-16-retrospective: done
 
   # Epic 17: Future Web UX Composition & Accessibility
-  epic-17: in-progress
+  epic-17: done
   17-1-evidence-cockpit-and-trust-components: done
   17-2-recovery-and-feedback-state-grammar: done
   17-3-contract-aware-web-interaction-patterns: done
   17-4-role-specific-web-inspection-lenses: done
   17-5-responsive-and-accessible-web-validation: done
   17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: done
-  17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure: backlog
+  17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure: done
   epic-17-retrospective: done
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
