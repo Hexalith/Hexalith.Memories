@@ -1728,6 +1728,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/Cases/CaseActivityService.cs`
+  - Evidence: `GetFailedCountAsync` only backfills while the `failedCount` field is absent, but `UpdateSummaryAsync` creates that field with `HashIncrementAsync` on the first post-deploy failure; legacy stream failures can therefore remain unreconciled.
   - Re-open trigger: an operator or dashboard reports a case `failedCount` lower than the observed `IngestionFailed` events, or the summary/stream reconciliation is redesigned.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
@@ -1737,6 +1738,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Evidence: `EnqueueAsync` writes tenant-set membership, payload hash, and sorted-set member as separate Redis operations, while `RemoveTenantBacklogIfEmptyAsync` uses a check-then-remove sequence that can interleave with enqueue.
   - Re-open trigger: a tenant's queued NL retry stops being polled while a live member remains, or payload-hash memory grows without a matching sorted-set member.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
@@ -1746,6 +1748,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Evidence: `ListTenantsWithBacklogAsync` calls the legacy tenant discovery path only when the new tenant set is empty, so any new enqueue can hide existing legacy queues until each legacy tenant receives fresh work.
   - Re-open trigger: legacy NL retry work remains unprocessed after a 24.5 deployment that also enqueued new failures.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
@@ -1755,6 +1758,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/NaturalLanguage/FailedNaturalLanguageEmbeddingRegistry.cs`
+  - Evidence: `CompleteAsync` and `IncrementAttemptsAsync` add the optimistic `HashEqual` condition only when the current payload exists; the null-payload branch can remove a concurrently re-enqueued payload/member for the same memory unit.
   - Re-open trigger: a freshly enqueued NL retry disappears during legacy-format migration, or the null-payload transaction path is hardened.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
@@ -1764,6 +1768,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs`
+  - Evidence: `TrackAsync` adds entries but workflows never remove terminal entries directly; cleanup depends on polling or startup gating, which can leave unpolled terminal ingestions in Redis indefinitely.
   - Re-open trigger: the in-flight registry keys grow without bound, or the replay gate times out (`event 9172`) on a normal restart.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-5-hot-path-write-amplification-cleanup.md`
@@ -1773,4 +1778,5 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: open
   - Source story: 24-5-hot-path-write-amplification-cleanup
   - Target artifact: `src/Hexalith.Memories.Server/Ingestion/RedisIngestionWorkflowInFlightRegistry.cs`
+  - Evidence: `TrackAsync` sets the shared initialized marker before the startup gate has proven a zero-drain state, so another replica can skip enumeration fallback during a rolling upgrade.
   - Re-open trigger: a multi-replica rollout replays a pre-registry in-flight ingestion workflow after another replica passed the gate.

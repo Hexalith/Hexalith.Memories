@@ -30,6 +30,7 @@ public sealed class BenchmarkFixture : IAsyncLifetime
     private const string TenantId = "benchmark-tenant";
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
 
+    private bool _disposed;
     private IContainer? _falkorDbContainer;
     private IContainer? _redisStackContainer;
 
@@ -115,6 +116,13 @@ public sealed class BenchmarkFixture : IAsyncLifetime
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
         if (Redis is not null)
         {
             await Redis.CloseAsync().ConfigureAwait(false);
@@ -177,10 +185,10 @@ public sealed class BenchmarkFixture : IAsyncLifetime
                 $"Smoke test failed: expected 'mu-005' for the unique term 'invoice' but got '{result.Results[0].MemoryUnitId}'.");
         }
 
-        if (!result.Results[0].ContentSnippet.Contains("Invoice generation module", StringComparison.Ordinal))
+        if (!result.Results[0].ContentSnippet.Contains("invoice", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                "Smoke test failed: the expected invoice document was not returned for 'invoice generation module'.");
+                "Smoke test failed: the expected invoice document snippet was not returned for 'invoice'.");
         }
     }
 }

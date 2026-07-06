@@ -44,10 +44,10 @@ public class DeleteMemoryUnitProjectionActivityTests
         builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
         Received.InOrder(() =>
         {
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001"))), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
         });
@@ -63,8 +63,8 @@ public class DeleteMemoryUnitProjectionActivityTests
         DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder);
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", []);
 
-        redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
-            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
+        redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<long>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
 
         // Act / Assert — the failure surfaces for workflow retry and the syntactic hash survives,
         // so a replayed cleanup still finds the record and converges instead of diverging silently.
@@ -127,6 +127,9 @@ public class DeleteMemoryUnitProjectionActivityTests
 
         return (falkorDb, db);
     }
+
+    private static bool ContainsOnly(RedisKey[] keys, string expected)
+        => keys.Length == 1 && keys[0].ToString() == expected;
 
     private static RedisResult CreateEmptyFalkorDbResult() => RedisResult.Create(
     [
