@@ -42,85 +42,6 @@
 
 generated: 2026-07-05T17:40:39+02:00
 last_updated: 2026-07-06
-# 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
-# 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
-# 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
-# 2026-06-25: Story 18.4 created (18.4 → ready-for-dev) via create-story. Release-sensitive feat (only such story in epic 18).
-# 2026-06-25: Story 18.5 created (18.5 → ready-for-dev) via create-story. Additive feat (sourceUri→MemoryUnitId keyed lookup endpoint); consumes the 18.6 stability contract per 2026-06-27 sequencing correction.
-# 2026-06-25: Story 18.6 created (18.6 → ready-for-dev) via create-story. Docs/test contract story for MemoryUnitId stability; independent contract prerequisite for 18.5 lookup per 2026-06-27 sequencing correction.
-# 2026-06-25: Story 18.7 created (18.7 → ready-for-dev) via create-story. Docs/test contract story for MemoriesClient mockability (D9 concrete client, HttpClient seam + non-sealed/virtual guarantee); independent, no release impact.
-# 2026-06-25: Story 18.8 created (18.8 → ready-for-dev) via create-story. Docs/test contract story for cross-module Dapr event intake; no release impact, no multi-topic/direct-REST scope.
-# 2026-06-25: Epic 18 retrospective completed (epic-18-retrospective → done; epic-18 in-progress → done at close-out). Retro: epic-18-retro-2026-06-25.md. 8 action items recorded; Epic 17 follow-through statuses updated.
-# 2026-06-27: Story 0.4 added as a planning-history migration of the minimum build/test CI preflight from Story 11.1. No new implementation story file required; completion evidence remains in 11-1-github-actions-build-and-test-pipeline.md.
-# 2026-06-30: Epic 19 backlog rows added by approved Sprint Change Proposal 2026-06-30. Epic owns deferred-register backlog homes and residual hardening; no story files created yet.
-# 2026-06-30: Story 19.1 created (epic-19 → in-progress, 19.1 → ready-for-dev) via create-story. Classification sweep of active open/carried-forward deferred-work entries; no production code scope.
-# 2026-06-30: Story 19.2 created (19.2 → ready-for-dev) via create-story. Decision sweep for MEM-2-ASPIRATE / MEM-3-OPENAPI (recommended: accept-as-not-needed, grounded in maintained docs + drift-guard tests); no production code scope.
-# 2026-06-30: Story 19.3 created (19.3 → ready-for-dev) via create-story. Release-quality decision sweep for 12.4-RV20 + 15.1-RV1..16 (17 entries; recommended: accept-until-trigger, zero implement-now per anti-over-promotion guardrail); no production code scope.
-# 2026-06-30: Story 19.4 created (19.4 → ready-for-dev) via create-story. Provider-registry / migration-marker residual decision sweep; recommended decision-only path unless a third-provider or next-provider-migration trigger exists.
-# 2026-07-04: Epics 20-26 backlog rows added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation). 50 stories closing audit findings A1-A51; no story files created yet. Decision-first stories: 21.1 (consistency model), 24.3 (physical isolation). Overlaps existing deferred entries Story-9.3-MemoriesServerAuthN (A1) and D8 TenantAuthorizationMiddleware (A2) — cross-linked, not duplicated.
-# 2026-07-04: Epic 19 retrospective completed (epic-19-retrospective -> done; epic-19 in-progress -> done). Retro: epic-19-retro-2026-07-04.md. 4 action items recorded; 19-5 is noted as a completed one-shot CI submodule metadata cleanup artifact outside the registered Epic 19 story rows.
-# 2026-07-04: Sprint planning reconcile completed against committed concrete epics inventory because working-tree epics.md is currently a placeholder/template. Epic 2 corrected from in-progress to done; 27 epics, 147 stories, and 27 retrospectives validated.
-# 2026-07-04: Implementation-readiness cleanup approved by Jerome and applied. Added readiness_accounting metadata and story_execution_order for Epic 17, Epic 18, and Epic 23.
-# 2026-07-04: Story 20.1 created (epic-20 -> in-progress, 20.1 -> ready-for-dev) via create-story. Server authentication foundation; closes A1 and cross-links Story-9.3-MemoriesServerAuthN.
-# 2026-07-04: Story 20.1 senior developer review completed with automatic fixes (Dapr actor runtime anonymous route guard). 20.1 -> done.
-# 2026-07-04: Story 20.2 created (20.2 -> ready-for-dev) via create-story. Tenant authorization filter and principal-derived audit identity; closes A2 and cross-links D8 TenantAuthorizationMiddleware.
-# 2026-07-04: Story 20.3 created (20.3 -> ready-for-dev) via create-story. Tenant-scoped workflow and batch status endpoints; closes A6 raw WorkflowState/status leakage.
-# 2026-07-04: Story 20.4 created (20.4 -> ready-for-dev) via create-story. MCP production signing-key hardening; closes A20 static HS256 production risk.
-# 2026-07-04: Story 20.5 created (20.5 -> ready-for-dev) via create-story. Inbound per-tenant rate limiting, quotas, and audit completeness; closes A41 only when retention/TTL is implemented or explicitly deferred.
-# 2026-07-04: Story 20.6 created (20.6 -> ready-for-dev) via create-story. RediSearch query-injection hardening; closes A31 by consolidating dialect-2 escaping across syntactic and semantic axes.
-# 2026-07-04: Story 21.1 created (epic-21 -> in-progress, 21.1 -> ready-for-dev) via create-story. Decision-first consistency model ratification; frames A3 and gates dependent Epic 21 implementation.
-# 2026-07-04: Story 21.1 senior developer review completed with automatic fixes (residual old-model wording and File List hygiene). 21.1 -> done.
-# 2026-07-04: Story 21.2 created (21.2 -> ready-for-dev) via create-story. Transactional multi-backend mutation implementation for A3; consumes Story 21.1 EventStore source-of-truth decision.
-# 2026-07-04: Story 21.2 senior developer review completed with automatic fixes (annotation child workflow compensation, tenant lifecycle command boundary, File List hygiene). 21.2 -> done.
-# 2026-07-04: Story 21.3 created (21.3 -> ready-for-dev) via create-story. Natural-language vector namespace separation for A4; requires disjoint NL prefix, existing-data migration, raw index rebuild, and phantom consistency discrepancy regression coverage.
-# 2026-07-04: Story 21.4 created (21.4 -> ready-for-dev) via create-story. Key-schema single source of truth for A44; requires Build*Key helpers, production literal purge, parse helpers, and CI-visible guard.
-# 2026-07-04: Story 21.5 created (21.5 -> ready-for-dev) via create-story. Deletion completeness for A16/A17; requires aggregate-case-map cleanup, router cache invalidation/revalidation, and tenant deletion sweeps for eventstore, embedding-migration, and orphan memory/vector keys.
-# 2026-07-04: Story 21.5 senior developer review completed with automatic fix (registered DeleteCaseRouteMappingsActivity with Dapr workflow worker). 21.5 -> done.
-# 2026-07-04: Story 21.6 created (21.6 -> ready-for-dev) via create-story. Event routing retry/dead-letter posture for tenant-not-found and deleting/unavailable tenants; closes A27 while preserving unknown-source non-retry behavior.
-# 2026-07-04: Story 21.7 created (21.7 -> ready-for-dev) via create-story. Dedup race and duplicate workflow-instance handling; closes A28 with atomic permanent dedup save, loser compensation, and duplicate scheduler mapping.
-# 2026-07-04: Story 21.7 senior developer review completed with automatic fixes (atomic owner-checked dedup release, duplicate detector false-positive guard, File List hygiene). 21.7 -> done.
-# 2026-07-04: Story 21.8 created (21.8 -> ready-for-dev) via create-story. Tenant registry CAS and rollback integrity; closes A47 with ETag status updates and atomic entry+index registry commits.
-# 2026-07-04: Story 21.9 created (21.9 -> ready-for-dev) via create-story. Blue/green embedding migration; closes A5 with non-destructive staging, atomic cutover, real rollback, SET NX ownership, TTL/heartbeat marker, and abort path.
-# 2026-07-04: Story 21.9 senior developer review completed with automatic fixes (resume preserves rollback marker fields, tenant deletion drops staging RediSearch indexes). 21.9 -> done.
-# 2026-07-04: Story 21.10 created (21.10 -> ready-for-dev) via create-story. Migration subsystem test coverage; closes A22 with unit/store/tool coverage plus Redis-backed 768-to-1024 real-vector migration, marker end-state, rollback-unavailable, and abort-path proof.
-# 2026-07-05: Story 22.1 created (epic-22 -> in-progress, 22.1 -> ready-for-dev) via create-story. Semantic-axis pagination; closes A8 by requiring axis=semantic to honor Offset with offset+max KNN candidate fetch and Redis-backed pagination proof.
-# 2026-07-05: Story 22.2 created (22.2 -> ready-for-dev) via create-story. Bounded, cancellable graph traversal; closes A9 by requiring server-side FalkorDB timeout propagation, query limits, and semantic-only default graph-scoped traversal.
-# 2026-07-05: Story 22.2 senior developer review completed with automatic fixes (graph-scoped count-query timeout, latency logging, File List/test-summary hygiene). 22.2 -> done.
-# 2026-07-05: Story 22.3 created (22.3 -> ready-for-dev) via create-story. Graph-scoped and hybrid pagination correctness; closes A29 with graph-scope pushdown, honest totals, and explicit deep-pagination cap errors.
-# 2026-07-05: Story 22.3 senior developer review completed with automatic fixes (scoped INKEYS tenant-key validation, empty scoped graph response query preservation). 22.3 -> done.
-# 2026-07-05: Story 22.4 created (22.4 -> ready-for-dev) via create-story. Fusion case attribution, score calibration, and pinned BM25-family scorer; closes A30 by requiring hybrid CaseId preservation, explicit RediSearch scorer selection, and deterministic scale-free fusion.
-# 2026-07-05: Story 22.4 senior developer review completed with automatic fixes (File List hygiene, evidence-table statuses, stale contract summary comment). 22.4 -> done.
-# 2026-07-05: Story 22.5 created (22.5 -> ready-for-dev) via create-story. Case-scoped traversal path integrity; closes A48 by requiring BuildTraverseFromNode to apply the all-path-nodes case predicate used by BuildTraverseWithEdges.
-# 2026-07-05: Story 22.5 senior developer review completed with automatic fixes (evidence table, File List, status sync). 22.5 -> done.
-# 2026-07-05: Story 22.6 created (22.6 -> ready-for-dev) via create-story. Post-filter recall; closes A49 by requiring filtered semantic and graph-scoped semantic search to preserve recall beyond the initial KNN window without unbounded scans.
-# 2026-07-05: Story 22.6 dev-story completed (22.6 -> review). Bounded post-filter KNN candidate-window expansion for metadata/source-type recall; removed fake @sourceType semantic pre-filter (deferred to service-side post-filter); made scoped-KNN reply parser RESP2/RESP3-robust (fixes graph-scoped semantic path). Unit + Redis/FalkorDB integration recall proofs added. Flagged out-of-scope follow-up: SyntacticSearchService.ParseRawSearchResult shares the same latent RESP3 incompatibility.
-# 2026-07-05: Story 22.6 senior developer review completed with automatic fixes (added graph-scoped semantic source-type recall and offset-pagination integration coverage; corrected File List omission for endpoint recall tests). 22.6 -> done.
-# 2026-07-05: Story 22.7 dev-story completed (22.7 -> review). Wired axis=nl standalone and explicit hybrid, added query/tenant fusion weights, syntactic RediSearch highlighting, and post-fusion IResultFuser seam. Unit/in-process suites pass; RedisStack runtime and solution build blockers recorded in story.
-# 2026-07-05: Story 22.7 senior developer review completed with automatic fixes (NL adapter unit coverage, stale docs, evidence table, File List hygiene). 22.7 -> done.
-# 2026-07-05: Story 23.9 created (epic-23 -> in-progress, 23.9 -> ready-for-dev) via create-story. EmbeddingClient provider strategy and batch API; must precede 23.1 content chunking per story_execution_order.epic-23.
-# 2026-07-05: Story 23.1 created (23.1 -> ready-for-dev) via create-story. Content chunking and batch embedding; consumes 23.9 provider batch API and closes A12.
-# 2026-07-05: Story 23.2 created (23.2 -> ready-for-dev) via create-story. Claim-check workflow payloads; keeps large content/vectors out of workflow history and closes A11.
-# 2026-07-05: Story 23.2 senior developer review completed with automatic fixes (duplicate-path payload cleanup, File List hygiene). 23.2 -> done.
-# 2026-07-05: Story 23.4 created (23.4 -> ready-for-dev) via create-story. Non-URL re-ingestion; requires persisted source-byte payload reference or clear unsupported legacy/expired-record error; closes A14.
-# 2026-07-05: Story 23.5 created (23.5 -> ready-for-dev) via create-story. Rate-limiter admission simplification; requires single admission operation per provider call/batch plus tenant config caching; closes A15.
-# 2026-07-05: Story 23.6 created (23.6 -> ready-for-dev) via create-story. Directory batch scalability; requires bounded state checkpointing, bounded-parallel scheduling, and SupportedExtensions allowlist; closes A33.
-# 2026-07-05: Story 23.6 dev-story completed (23.6 -> review). Added SupportedExtensions allowlist enforcement, bounded directory scheduling (default 4, clamp 1..32), checkpointed batch state (default every 50 scheduled files, clamp 1..250), deterministic final file accounting, and unscheduled claim-check payload cleanup. Required server builds, focused xUnit fallback slices, full server in-process regression (2383 total, 0 failed, 1 skipped), and git diff check passed.
-# 2026-07-05: Story 23.6 senior developer review completed with automatic fixes (cancellation cleanup for unscheduled claim-check payloads, scheduler token propagation, File List hygiene). 23.6 -> done.
-# 2026-07-05: Story 23.7 created (23.7 -> ready-for-dev) via create-story. Index-provisioning ownership; requires memoized per-tenant index readiness, no per-document FT.CREATE, no Thread.Sleep, and no per-ingest index-exists warning noise; closes A34.
-# 2026-07-05: Story 23.8 dev-story completed (23.8 -> review). Captured ingestion retry/NL workflow config into durable inputs, removed mutable static reads from IngestionWorkflow, covered live scheduling paths and annotation child workflow config propagation, and added determinism/source-guard tests.
-# 2026-07-05: Story 23.8 senior developer review completed by direct fallback after the child review session exited during discovery; no blocking findings remained. 23.8 -> done.
-# 2026-07-05: Story 24.1 created (epic-24 -> in-progress, 24.1 -> ready-for-dev) by direct create-story fallback. Trace propagation across workflow boundary; closes A19 workflow tracing portion and reinforces NFR28.
-# 2026-07-05: Story 24.1 dev-story completed by direct fallback after child session drift was reversed (24.1 -> review). Added workflow trace context propagation, linked workflow activity spans, Dapr.Workflow source registration/docs, and focused Tier-2 guard coverage; closest Tier-3 Aspire trace run blocked before assertions by fixture tenant-provisioning 401.
-# 2026-07-05: Story 24.1 automate guardrails completed by source-of-truth validation after tmux session cleanup. Added REST ingest scheduling-boundary trace capture coverage, scheduler trace edge cases, linked-activity error-path coverage, broader workflow replay source guards, and test-summary evidence; focused server slice passed 47/47.
-# 2026-07-05: Story 24.1 senior developer review completed with automatic fixes (registered semantic activity linked-span coverage and omitted trace-context back-compat test); 24.1 -> done.
-# 2026-07-05: Story 24.2 created (24.2 -> ready-for-dev) via create-story. Read-path caching and tenant-list bounding; closes A26 by requiring write-invalidated short-TTL tenant status/config/summary caches plus paged, bounded-concurrency tenant listing.
-# 2026-07-05: Story 24.2 dev-story completed (24.2 -> review). Added short-TTL tenant status/config/fusion/summary caches with local write invalidation, paged tenant-list headers/body compatibility, bounded summary enrichment, and full server regression evidence (2431 total, 0 failed, 1 skipped).
-# 2026-07-05: Sprint planning regenerated from epics.md; existing advanced statuses and action_items preserved.
-# 2026-07-06: Epic 0 retrospective completed (epic-0-retrospective -> done). Retro: epic-0-retro-2026-07-06.md. 4 action items recorded.
-# 2026-07-06: Epic 0 evidence map added. Artifact: _bmad-output/implementation-artifacts/epic-0-evidence-map.md. Retrospective action item 1 marked done.
-# 2026-07-06: Cross-tenant negative-evidence carry-forward guard added to epics.md and proposal artifact; retrospective action item 4 moved to in-progress.
-# 2026-07-06: Story 17.7 added by Sprint Change Proposal 2026-07-06 (Epic 17 browser/AT gap closure). Epic 17 reopened to in-progress; 17.7 remains backlog until create-story.
-# 2026-07-06: Epic 23 retrospective completed (epic-23-retrospective -> done; epic-23 in-progress -> done). Retro: epic-23-retro-2026-07-06.md. 5 action items recorded; Epic 22 follow-through statuses updated.
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -446,13 +367,13 @@ development_status:
   epic-23-retrospective: done
 
   # Epic 24: Observability & Performance Hardening
-  epic-24: in-progress
+  epic-24: done
   24-1-trace-propagation-across-the-workflow-boundary: done
   24-2-read-path-caching-and-tenant-list-bounding: done
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  epic-24-retrospective: optional
+  epic-24-retrospective: done
 
   # Epic 25: Architecture Factorization & Code Health
   epic-25: backlog
@@ -624,11 +545,11 @@ action_items:
   - epic: 23
     action: "Turn File List and evidence-table checking into a pre-review source guard or checklist that runs before remediation story review"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # 2026-07-06 (Epic 24): review checks continued to catch hygiene gaps; executable pre-review guard still needed.
   - epic: 23
     action: "Keep Epic 23 ingestion invariants on Epic 24 and Epic 25 review checklists"
     owner: "Amelia, Winston, Murat"
-    status: open
+    status: in-progress  # 2026-07-06 (Epic 24): Epic 24 preserved the invariants; Epic 25 carry-forward remains active.
   - epic: 23
     action: "Resolve or formally accept the AppHost/EventStore.Aspire integration validation blocker before treating full-stack Redis/FalkorDB proof as available"
     owner: "Amelia, Winston"
@@ -640,4 +561,28 @@ action_items:
   - epic: 23
     action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler or explicit captured config for every new ingestion entry point"
     owner: "Amelia"
+    status: in-progress  # 2026-07-06 (Epic 24): trace propagation and hot-path cleanup preserved explicit scheduler/state-reader paths; keep active for future ingestion entry points.
+  - epic: 24
+    action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 24
+    action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 24
+    action: "Convert Story 24.3 verifier residuals into explicit backlog decisions for graph leakage evidence, vector dimensions, semantic marker false positives, and remediation semantics"
+    owner: "Winston, Murat"
+    status: open
+  - epic: 24
+    action: "Convert Story 24.5 concurrency and rollout residuals into explicit backlog decisions for case activity summaries, NL retry atomicity, in-flight registry bounds, and rollout marker behavior"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 24
+    action: "Validate the committed Memories Grafana dashboard in a live or documented-equivalent Prometheus/Grafana path"
+    owner: "Murat, Paige"
+    status: open
+  - epic: 24
+    action: "Reconcile Epic 25 tracking before continuing code-health execution, including the Epic 25 row, Story 25.1, and the 25.3 automation branch mismatch"
+    owner: "Amelia, John"
     status: open
