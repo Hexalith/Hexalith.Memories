@@ -34,7 +34,7 @@
    Disregard any severity assigned by a reviewing subagent. Review subagents operate under by-design information asymmetry and do not have enough context to set final severity for this workflow.
    - `low` -- none or cosmetic
    - `medium` -- tolerable
-   - `high` -- intolerable
+   - `high` -- intolerable, including story/spec scope drift that reuses a historical broad slice as a template or masks multiple independently demonstrable slices in one story when the project artifacts forbid that pattern
 
 5. **Route** each finding into exactly one triage bucket:
    - **decision_needed** -- There is an ambiguous choice that requires human input. The code cannot be correctly patched without knowing the user's intent. Only possible if `{review_mode}` = `"full"`.

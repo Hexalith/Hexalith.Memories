@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-05
+last_updated: 2026-07-06
 # 2026-06-24: Story 18.1 created (epic-18 → in-progress, 18.1 → ready-for-dev) via create-story.
 # 2026-06-24: Story 18.2 created (18.2 → ready-for-dev) via create-story.
 # 2026-06-25: Story 18.3 created (18.3 → ready-for-dev) via create-story.
@@ -116,6 +116,11 @@ last_updated: 2026-07-05
 # 2026-07-05: Story 24.2 created (24.2 -> ready-for-dev) via create-story. Read-path caching and tenant-list bounding; closes A26 by requiring write-invalidated short-TTL tenant status/config/summary caches plus paged, bounded-concurrency tenant listing.
 # 2026-07-05: Story 24.2 dev-story completed (24.2 -> review). Added short-TTL tenant status/config/fusion/summary caches with local write invalidation, paged tenant-list headers/body compatibility, bounded summary enrichment, and full server regression evidence (2431 total, 0 failed, 1 skipped).
 # 2026-07-05: Sprint planning regenerated from epics.md; existing advanced statuses and action_items preserved.
+# 2026-07-06: Epic 0 retrospective completed (epic-0-retrospective -> done). Retro: epic-0-retro-2026-07-06.md. 4 action items recorded.
+# 2026-07-06: Epic 0 evidence map added. Artifact: _bmad-output/implementation-artifacts/epic-0-evidence-map.md. Retrospective action item 1 marked done.
+# 2026-07-06: Cross-tenant negative-evidence carry-forward guard added to epics.md and proposal artifact; retrospective action item 4 moved to in-progress.
+# 2026-07-06: Story 17.7 added by Sprint Change Proposal 2026-07-06 (Epic 17 browser/AT gap closure). Epic 17 reopened to in-progress; 17.7 remains backlog until create-story.
+# 2026-07-06: Epic 23 retrospective completed (epic-23-retrospective -> done; epic-23 in-progress -> done). Retro: epic-23-retro-2026-07-06.md. 5 action items recorded; Epic 22 follow-through statuses updated.
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -186,9 +191,10 @@ readiness_accounting:
 
 story_execution_order:
   epic-17:
-    reason: "Story 17.6 is the conformance gate for future Epic 17 web work."
+    reason: "Story 17.6 is the conformance gate for future Epic 17 web work; Story 17.7 closes the browser/AT validation gaps after that gate."
     order:
       - 17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening
+      - 17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure
       - 17-2-recovery-and-feedback-state-grammar
       - 17-3-contract-aware-web-interaction-patterns
       - 17-4-role-specific-web-inspection-lenses
@@ -220,7 +226,7 @@ development_status:
   0-2-minimal-case-bootstrap: done
   0-3-tenant-and-case-validation-guard: done
   0-4-minimum-build-test-ci-preflight: done
-  epic-0-retrospective: optional
+  epic-0-retrospective: done
 
   # Epic 1: First Tenant-Scoped Memory Ingestion and Search
   epic-1: done
@@ -361,13 +367,14 @@ development_status:
   epic-16-retrospective: done
 
   # Epic 17: Future Web UX Composition & Accessibility
-  epic-17: done
+  epic-17: in-progress
   17-1-evidence-cockpit-and-trust-components: done
   17-2-recovery-and-feedback-state-grammar: done
   17-3-contract-aware-web-interaction-patterns: done
   17-4-role-specific-web-inspection-lenses: done
   17-5-responsive-and-accessible-web-validation: done
   17-6-frontcomposer-fluent-ui-blazor-v5-conformance-hardening: done
+  17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure: backlog
   epic-17-retrospective: done
 
   # Epic 18: Downstream Consumer Integration Contract Hardening
@@ -426,7 +433,7 @@ development_status:
   epic-22-retrospective: done
 
   # Epic 23: Ingestion Pipeline Scalability & Resilience
-  epic-23: in-progress
+  epic-23: done
   23-9-embeddingclient-provider-strategy: done
   23-1-content-chunking-and-batch-embedding: done
   23-2-claim-check-workflow-payloads: done
@@ -436,7 +443,7 @@ development_status:
   23-6-directory-batch-scalability: done
   23-7-index-provisioning-ownership: done
   23-8-workflow-config-determinism: done
-  epic-23-retrospective: optional
+  epic-23-retrospective: done
 
   # Epic 24: Observability & Performance Hardening
   epic-24: in-progress
@@ -470,6 +477,22 @@ development_status:
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:
+  - epic: 0
+    action: "Maintain a compact Epic 0 evidence map that links each Epic 0 story row to its canonical proof artifact"
+    owner: "Paige, Amelia"
+    status: done  # 2026-07-06: Map added at _bmad-output/implementation-artifacts/epic-0-evidence-map.md.
+  - epic: 0
+    action: "Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure creation during Epic 1 and Epic 5 rework"
+    owner: "Winston, Amelia"
+    status: open
+  - epic: 0
+    action: "Strengthen story creation and review checks so historical broad slices are not reused as templates"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 0
+    action: "Keep cross-tenant negative validation evidence attached to future scope-sensitive changes"
+    owner: "Murat, Amelia"
+    status: in-progress  # 2026-07-06: Cross-tenant negative-evidence carry-forward guard added to epics.md and captured in sprint-change-proposal-2026-07-06-cross-tenant-negative-evidence.md; remains active for future scope-sensitive stories.
   - epic: 17
     action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema, and freshness metadata instead of unavailable boundaries"
     owner: "Amelia, Winston"
@@ -477,11 +500,11 @@ action_items:
   - epic: 17
     action: "Define and schedule a runnable web host / specimen app and at least one manual screen-reader pass to close the fail-closed browser/AT gaps in Epic17ValidationInventory.Gaps (Playwright/axe, forced-colors, reduced-motion, zoom/reflow, touch-target)"
     owner: "Sally, Murat"
-    status: open
+    status: done  # 2026-07-06: Story 17.7 added to epics.md and sprint-status.yaml; implementation remains tracked by the new backlog story.
   - epic: 17
     action: "Triage the 17.1-CR1..17.1-CR18 deferred items and deferred architectural decisions (command-palette scope, refresh persistence, mobile grid, role authorization model) into bounded follow-up stories or accept with rationale in deferred-work.md"
     owner: "Amelia, Sally"
-    status: open
+    status: done  # 2026-07-06: deferred-work.md now records structured dispositions for 17.1-CR1..CR18 and the command-palette, refresh-persistence, mobile-grid, and role-authorization decisions.
   - epic: 17
     action: "Record the xUnit v3 in-process test workaround (DiffEngine_Disabled=true, VSTest TCP-listener limitation) in the web project dev notes / contributing guidance"
     owner: "Paige, Amelia"
@@ -581,11 +604,11 @@ action_items:
   - epic: 22
     action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # 2026-07-06 (Epic 23): reviews applied the check and caught repeated File List/evidence gaps; prevention still needs source-guard or checklist hardening.
   - epic: 22
     action: "Carry Epic 22 retrieval invariants into Epic 23 ingestion stories"
     owner: "Amelia, Winston, Murat"
-    status: open
+    status: done  # 2026-07-06 (Epic 23): chunking, claim-check, search, and index-readiness stories preserved RRF, NL axis, scoped key, recall, case-attribution, and case-scope invariants.
   - epic: 22
     action: "Resolve or explicitly accept the AppHost/EventStore duplicate assembly validation blocker before using full-solution build as ingestion close-out evidence"
     owner: "Amelia, Winston"
@@ -593,8 +616,28 @@ action_items:
   - epic: 22
     action: "Keep raw Redis command response parsing on review checklists for search and ingestion indexing changes"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-07-06 (Epic 23): raw Redis/schema behavior stayed on review evidence for chunked semantic storage and tenant index readiness work.
   - epic: 22
     action: "Keep Story 23.9 before Story 23.1 in story creation and implementation"
+    owner: "Amelia"
+    status: done  # 2026-07-06 (Epic 23): story_execution_order.epic-23 was followed; provider batch API was completed before content chunking.
+  - epic: 23
+    action: "Turn File List and evidence-table checking into a pre-review source guard or checklist that runs before remediation story review"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 23
+    action: "Keep Epic 23 ingestion invariants on Epic 24 and Epic 25 review checklists"
+    owner: "Amelia, Winston, Murat"
+    status: open
+  - epic: 23
+    action: "Resolve or formally accept the AppHost/EventStore.Aspire integration validation blocker before treating full-stack Redis/FalkorDB proof as available"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 23
+    action: "Add an Epic 23 documentation verification pass for rate limiting, failure recovery, directory ingestion, index readiness, and workflow determinism"
+    owner: "Paige, Amelia"
+    status: open
+  - epic: 23
+    action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler or explicit captured config for every new ingestion entry point"
     owner: "Amelia"
     status: open

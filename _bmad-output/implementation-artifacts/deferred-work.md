@@ -1618,6 +1618,176 @@ Fresh three-layer review of the Story 15.6 scaffolding hardening sweep surfaced 
 - **17.1-CR17. `Sources[].SourceUri` rendered without trust-mark badging (external URL vs local memory reference)** (`MemoriesSourceCitationStack.razor`). Rationale: not in AC3; needs a UX call on visual trust marks before implementing.
 - **17.1-CR18. Graph path summary uses raw `<dl>/<dt>/<dd>` rather than `FluentDescriptionList`** (`MemoriesGraphPathSummary.razor`). Rationale: FrontComposer primitive preference; current markup is semantically correct.
 
+### Triage: Story 17.1 deferred web items and architecture decisions (2026-07-06)
+
+Correct-course trigger: Epic 17 retrospective action item 3 asked for `17.1-CR1` through `17.1-CR18` and the deferred web architecture decisions (command-palette scope, refresh persistence, mobile grid, role authorization model) to be moved into bounded follow-up stories or explicitly accepted here. This triage uses direct adjustment: completed Epic 17 history is not reopened, and no production backend/API scope is introduced.
+
+Follow-up homes:
+
+| Home | Items | Boundary |
+|---|---|---|
+| Story 25.7: Evidence Cockpit UX Conformance | `17.1-CR1`, `17.1-CR16`, `17.1-CR18` | Existing backlog story; keep it to FrontComposer/Fluent V5 conformance, localization, and mapper usage. |
+| Future web story: Evidence Metadata and Trust Semantics Surfacing | `17.1-CR2`, `17.1-CR4`, `17.1-CR5`, `17.1-CR6`, `17.1-CR17` | Render already-contractual scope/source/summary/degradation fields after UX placement is approved; do not invent new evidence semantics. |
+| Future web story: Omitted Details Expansion UX | `17.1-CR3` | Design and implement an explicit omitted-details disclosure/expansion pattern before exposing detail groups or handles. |
+| Future web story: Command Surface Scope and Redaction Safety | `17.1-CR8`, `17.1-CR9`, `17-WEB-AD1-COMMAND-PALETTE-SCOPE` | Decide global/page/role command-palette scope and prove copy/export/MCP-inspect redaction parity before command actions are productized. |
+| Story 17.7: Runnable Web Specimen and Browser/AT Accessibility Gap Closure | `17.1-CR7`, `17.1-CR10`, `17.1-CR11`, `17-WEB-AD3-MOBILE-GRID-STRATEGY` | Existing backlog story; closes browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, mobile grid, focus, and screen-reader claims with evidence. |
+| Future web story: Tenant-Scoped Refresh Persistence Policy | `17-WEB-AD2-REFRESH-PERSISTENCE` | Decide whether tenant/case/filter/source/grid state survives browser refresh, and prove stale-scope invalidation before implementation. |
+| Accepted or resolved in this ledger | `17.1-CR12`, `17.1-CR13`, `17.1-CR14`, `17.1-CR15`, `17-WEB-AD4-ROLE-AUTHORIZATION-MODEL` | Defensive-only, already covered, or intentionally not a current product/security requirement. |
+
+- ID: 17.1-CR1
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs`; `src/Hexalith.Memories.Web/Resources/*`
+  - Re-open trigger: before Story 25.7 closes or any new Evidence Cockpit display copy is added outside the resource/localizer path.
+  - Rationale: Localization is a cross-RCL conformance concern, not a one-line EvidenceDisplay patch. Story 25.7 is the bounded home because it already owns hardcoded English and Evidence Cockpit conformance.
+
+- ID: 17.1-CR2
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesScopeHeader.razor`; `src/Hexalith.Memories.Web/Components/Evidence/EvidencePacketViewMapping.cs`
+  - Re-open trigger: before the web surface claims to render the full Evidence Packet scope contract or adds a permissions-context chip/detail surface.
+  - Rationale: `permissionsContext` placement is a UX information-architecture decision. It should be implemented with the other metadata surfacing work so scope, permission, and isolation signals stay coherent.
+
+- ID: 17.1-CR3
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Omitted Details Expansion UX); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor`
+  - Re-open trigger: before omitted detail groups or expansion handles are exposed in any web cockpit, lens, copy/export, or command surface.
+  - Rationale: Omitted detail expansion needs a deliberate disclosure pattern with token-budget, authorization, and backend-degradation semantics; adding ad hoc fields to the Trust Strip would make the state grammar harder to reason about.
+
+- ID: 17.1-CR4
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`
+  - Re-open trigger: when annotations, cross-case source visibility, or case-name inspection becomes part of a selected web workflow.
+  - Rationale: Source annotation and case metadata are valuable only when their placement is designed with trust marks and cross-case visibility; keep them in the metadata surfacing story rather than broadening Story 25.7.
+
+- ID: 17.1-CR5
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor`
+  - Re-open trigger: before the web surface ships an empty-tenant, empty-result, or indexed-memory-unit distinction to users.
+  - Rationale: Result-summary counts affect user interpretation of empty and partial states. They belong with the metadata surfacing story so empty-result language, counts, and indexed-unit signals are tested together.
+
+- ID: 17.1-CR6
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesTrustStrip.razor`
+  - Re-open trigger: before the Trust Strip adds a precedence ladder for `Degraded` or `AllEnabledAxesUnavailable`, or any new surface claims all-axis availability status.
+  - Rationale: These flags overlap with `State` and recovery semantics. They should be layered only after UX approves precedence and display rules.
+
+- ID: 17.1-CR7
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `tests/Hexalith.Memories.Web.Tests/Components/Validation/*`
+  - Re-open trigger: before any product-route accessibility claim, release note, or stakeholder acceptance says the web surface is validated beyond component-specimen bUnit evidence.
+  - Rationale: Forced-colors, focus return, touch target, and no-overlap checks need a runnable host or specimen app. Component tests alone cannot close browser/AT validation.
+
+- ID: 17.1-CR8
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`
+  - Re-open trigger: before an Inspect Source command/button is reintroduced or wired to command-palette activation.
+  - Rationale: The dead-button removal closed the immediate path, but command wiring can reintroduce rank-label leakage. Keep the fix coupled to the command-surface story.
+
+- ID: 17.1-CR9
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs`
+  - Re-open trigger: before copy, export, or MCP-inspect commands are exposed from the web cockpit or command palette.
+  - Rationale: Redaction parity tests are vacuous until the relevant command primitives exist. They become mandatory acceptance evidence for the command-surface story.
+
+- ID: 17.1-CR10
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs`
+  - Re-open trigger: when a runnable host/specimen app exists or web actions introduce real loading-to-complete, complete-to-degraded, or recovery transition paths.
+  - Rationale: Transition-state accessibility is meaningful only when state changes happen in a running interaction surface; current isolated fixture rendering does not exercise those paths.
+
+- ID: 17.1-CR11
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor`
+  - Re-open trigger: during the first screen-reader pass or host-level landmark/heading audit for the web cockpit.
+  - Rationale: Landmark verbosity is a real browser/assistive-technology concern. It should be fixed with screen-reader evidence rather than guessed from host-less markup.
+
+- ID: 17.1-CR12
+  - Status: accepted
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs`
+  - Re-open trigger: the Evidence Packet source-ranking contract allows duplicate ranks, absent ranks, or a separate user-visible order that can diverge from `data-source-rank`.
+  - Rationale: The current rank-stable contract makes the attribute assertion an adequate proxy. Tightening to DOM-iteration assertions is defensive polish until the ordering contract changes.
+
+- ID: 17.1-CR13
+  - Status: accepted
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs`
+  - Re-open trigger: source counts become externally supplied, nullable, unbounded, or otherwise no longer contract-controlled non-negative integers.
+  - Rationale: The contract precludes negative source counts. Adding defensive negative or `int.MaxValue` labels now would spend scope on an unreachable state.
+
+- ID: 17.1-CR14
+  - Status: accepted
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`; `src/Hexalith.Memories.Web/Components/Evidence/MemoriesRetrievalAxisBreakdown.razor`
+  - Re-open trigger: `SourceType` or axis values become provider-authored, user-authored, localized free text, or otherwise leave the controlled-vocabulary contract.
+  - Rationale: Current values are enum-like controlled contract terms. Applying `SafeText` everywhere is acceptable future hardening, but not needed until the contract loosens.
+
+- ID: 17.1-CR15
+  - Status: resolved
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidencePacketFixtures.cs`; `tests/Hexalith.Memories.Web.Tests/Components/Evidence/EvidenceCockpitTests.cs`
+  - Re-open trigger: stale-state fixture coverage is removed or a new stale-state rendering path bypasses the existing fixture and per-state assertions.
+  - Evidence: Story 17.1 review patch added the `Stale` fixture as part of the broader empty/stale/degraded/partial/weak fixture expansion, and current tests still reference `EvidencePacketFixtures.StalePacket()` in Evidence Cockpit, recovery, filters, lenses, and responsive/accessibility suites.
+
+- ID: 17.1-CR16
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css`
+  - Re-open trigger: before Story 25.7 closes or any Trust Strip layout is changed.
+  - Rationale: This is a narrow FrontComposer/Fluent primitive preference issue. Story 25.7 is already the conformance story and can remove the raw `flex-wrap` exception or record an allowlist reason.
+
+- ID: 17.1-CR17
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Evidence Metadata and Trust Semantics Surfacing); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesSourceCitationStack.razor`
+  - Re-open trigger: before source trust marks, external/local source distinction, or cross-case source cues are productized.
+  - Rationale: Trust-mark badging needs a UX decision alongside source metadata and case visibility. Implementing it alone would risk adding a visual security claim without a shared legend.
+
+- ID: 17.1-CR18
+  - Status: carried-forward
+  - Source story: 17-1-evidence-cockpit-and-trust-components
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor`
+  - Re-open trigger: before Story 25.7 closes or graph path summary markup is changed.
+  - Rationale: Current `<dl>/<dt>/<dd>` markup is semantically valid, but the Fluent/FrontComposer primitive preference belongs in the existing conformance backlog story.
+
+- ID: 17-WEB-AD1-COMMAND-PALETTE-SCOPE
+  - Status: carried-forward
+  - Source story: epic-17-retro-2026-06-24
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Command Surface Scope and Redaction Safety); `src/Hexalith.Memories.Web/Components/Interaction/*`
+  - Re-open trigger: before the Memories web command palette becomes user-facing or a web action needs global, page-local, or role-density-scoped discovery.
+  - Rationale: Command-palette scope changes user reachability, disabled reasons, tenant/case reset behavior, and redaction obligations. It is bounded with the command-surface story instead of patched inside a display component.
+
+- ID: 17-WEB-AD2-REFRESH-PERSISTENCE
+  - Status: carried-forward
+  - Source story: epic-17-retro-2026-06-24
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (future web story: Tenant-Scoped Refresh Persistence Policy); `src/Hexalith.Memories.Web/Components/Interaction/*`
+  - Re-open trigger: before preserving tenant, case, filter, selected packet/source, grid sort/page, or expanded evidence across browser refresh is claimed or implemented.
+  - Rationale: Refresh persistence is not just convenience state; it can leak stale tenant/case context if it is not tenant-scoped and invalidated. It needs an explicit state-policy story before implementation; Story 17.7 can validate browser behavior but does not decide persistence semantics.
+
+- ID: 17-WEB-AD3-MOBILE-GRID-STRATEGY
+  - Status: carried-forward
+  - Source story: epic-17-retro-2026-06-24
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 17.7 Runnable Web Specimen and Browser/AT Accessibility Gap Closure); `src/Hexalith.Memories.Web/Components/Lenses/*`; `src/Hexalith.Memories.Web/Components/Evidence/*`
+  - Re-open trigger: before a mobile product surface claims data grids, timelines, or source lists remain usable without horizontal scrolling at phone/tablet widths.
+  - Rationale: Mobile grid/card/timeline behavior needs real viewport evidence and trust-field preservation checks. Keep it tied to the runnable host validation story.
+
+- ID: 17-WEB-AD4-ROLE-AUTHORIZATION-MODEL
+  - Status: accepted
+  - Source story: epic-17-retro-2026-06-24
+  - Target artifact: `_bmad-output/implementation-artifacts/17-4-role-specific-web-inspection-lenses.md`; `docs/dev/adr-10.2-004-auth-granularity.md`; `_bmad-output/planning-artifacts/epics.md` (Epic 20 authorization evidence)
+  - Re-open trigger: a product/security requirement introduces role-scoped web permissions, per-tool scopes, read-only agent access, or separate ingestion delegation.
+  - Rationale: Current role-specific web lenses are evidence-density profiles over the same canonical Evidence Packet, not a permission model. The accepted auth model is authenticated caller plus matching tenant claim, with per-tool/role scopes deferred until a real consumer requires them. Adding role authorization now would invent policy outside the current product requirement.
+
 ## Parties Consumer Integration Intake (2026-05-27)
 
 Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course intake and carried forward into Epic 18 (Sprint Change Proposal 2026-05-27). Each entry maps an `MEM-n` ask to the Epic 18 story that closes its verified residual gap.

@@ -101,6 +101,9 @@ You will systematically re-do the entire story creation process, but with a crit
 #### **2.3 Previous Story Intelligence (if applicable)**
 
 - If `story_num > 1`, load the previous story file
+- Also scan epics and process notes for historical-scope guard language such as
+  "historical completed scope", "broad technical", "bundled infrastructure",
+  "not valid patterns for future story creation", "must split", or "do not reopen".
 - Extract **actionable intelligence**:
   - Dev notes and learnings
   - Review feedback and corrections needed
@@ -108,6 +111,13 @@ You will systematically re-do the entire story creation process, but with a crit
   - Testing approaches that worked/didn't work
   - Problems encountered and solutions found
   - Code patterns and conventions established
+- Classify each previous or historical story reference as reusable pattern,
+  historical reference only, or anti-template.
+- Treat any historical broad slice as an anti-template unless the current epics
+  explicitly approve reusing its scope shape.
+- If the story copies a historical broad slice, hides several vertical outcomes
+  in one task list, or lacks observable evidence per slice, record a Critical
+  Miss and revise the story before finalizing.
 
 #### **2.4 Git History Analysis (if available)**
 

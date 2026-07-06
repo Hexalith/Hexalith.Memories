@@ -27,6 +27,14 @@ so that {{benefit}}.
 - Source tree components to touch
 - Testing standards summary
 
+### Historical Scope Guard
+
+- Previous or historical stories used as context:
+- Reusable patterns:
+- Historical reference only:
+- Anti-templates explicitly not reused:
+- Required split or observable evidence rule:
+
 ### Project Structure Notes
 
 - Alignment with unified project structure (paths, modules, naming)

@@ -26,7 +26,7 @@ failed_layers: '' # set at runtime: comma-separated list of layers that failed o
      > {diff_output}
 
    - **Acceptance Auditor** (only if `{review_mode}` = `"full"`) — prompt:
-     > You are an Acceptance Auditor. Review the provided diff against `{spec_file}` and any loaded context docs. Check for: violations of acceptance criteria, deviations from spec intent, missing implementation of specified behavior, contradictions between spec constraints and actual code. Output findings as a Markdown list. Each finding: one-line title, which AC/constraint it violates, and evidence from the diff.
+     > You are an Acceptance Auditor. Review the provided diff against `{spec_file}` and any loaded context docs. Check for: violations of acceptance criteria, deviations from spec intent, missing implementation of specified behavior, contradictions between spec constraints and actual code, and story-process guardrail violations. In particular, flag any evidence that the story or implementation reused a historical broad technical slice as a template, widened beyond an independently demonstrable vertical slice, ignored a Historical Scope Guard, or accepted internal-only implementation evidence where the spec requires observable API/CLI/contract/trace/integration proof. Output findings as a Markdown list. Each finding: one-line title, which AC/constraint it violates, and evidence from the diff.
      >
      > Diff:
      > {diff_output}

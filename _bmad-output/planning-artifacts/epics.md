@@ -864,6 +864,8 @@ So that memory units can be searched by semantic similarity.
 
 **Historical Scope Guard:** Do not reopen Story 1.5 as a single implementation unit. If indexing rework resumes, create separate numeric stories for the documented slices before implementation starts, keep each slice independently testable against tenant-scoped infrastructure, and require observable proof per slice (CLI-visible, contract-visible, or integration-harness output) — internal unit tests alone are not sufficient completion evidence.
 
+**Rework Ownership Gate:** Any Epic 1 indexing rework must prove it only validates or verifies tenant infrastructure readiness before writing. It must not call `FT.CREATE`, create Redis Vector indexes, create FalkorDB tenant databases, or otherwise create/mutate tenant infrastructure lifecycle state from ingestion, indexing, search, graph, CLI, or MCP paths. Missing or incompatible tenant infrastructure is a `TENANT_NOT_PROVISIONED` or equivalent structured validation/operational inconsistency, not a trigger for on-demand resource creation.
+
 **Readiness tooling guard:** Do not create a new implementation story file that reuses this broad historical story key for new work. New implementation must use newly numbered split stories with externally observable completion evidence.
 
 As a developer,
@@ -1546,6 +1548,8 @@ So that each tenant has isolated infrastructure with rollback protection if prov
 **Then** it completes in <5 minutes (single CLI command, per Kenji's journey)
 
 **Ownership Boundary:** Story 5.1 is the canonical full tenant lifecycle story for provisioning semantics, rollback behavior, verification, and lifecycle ownership. If Story 0.1 has already implemented the complete workflow, Story 5.1 should verify, extend, or mark the full lifecycle criteria as satisfied rather than duplicating divergent provisioning logic.
+
+**Rework Ownership Gate:** Any Epic 5 tenant lifecycle rework may change tenant infrastructure creation only inside `TenantProvisioningWorkflow` and its tenant provisioning, verification, rollback, or deletion activities. It must update schema definitions, provisioning/deletion activities, verification behavior, and lifecycle tests together. Feature paths such as ingestion, indexing, search, graph, CLI, and MCP remain consumers of active tenant infrastructure and must fail clearly when required infrastructure is missing or inactive.
 
 ### Story 5.2: Tenant Deletion Workflow
 
@@ -3328,7 +3332,7 @@ Future web users can inspect evidence, scope, sources, graph context, case activ
 
 **UX implementation boundary:** Epic 17 web work is FrontComposer-first and Fluent UI Blazor V5-only. Components must consume FrontComposer shell/composition primitives and Fluent UI Blazor V5 primitives before creating Memories-specific wrappers. Raw semantic markup and scoped CSS may be used only for unavoidable container/layout gaps with no component equivalent, and must not recreate Fluent theme primitives, controls, status treatments, typography ramps, color roles, or spacing systems. Any exception requires an explicit conformance-test allowlist entry and removal condition.
 
-**Readiness note:** Story 17.6 is the current conformance gate for the host-less web RCL. It does not close product-route browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, or manual screen-reader validation gaps; those remain future web-host validation work and must be sprint-selected separately.
+**Readiness note:** Story 17.6 is the current conformance gate for the host-less web RCL. It does not close product-route browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, or manual screen-reader validation gaps. Story 17.7 is the scheduled browser/assistive-technology gap-closure story for those fail-closed dimensions.
 
 **Execution gate:** Any future Epic 17 implementation or reopened Story 17.2-17.5 work must verify Story 17.6 completion evidence first and must reuse its conformance tests. If `story_execution_order` is present in sprint status, tooling must treat 17.6 as the preflight regardless of numeric suffix.
 
@@ -3533,6 +3537,57 @@ So that Epic 17 cannot drift into a parallel design system or raw HTML/CSS imple
 - Fluent UI package upgrade beyond the current pinned V5 prerelease
 - New Evidence Packet semantics
 - Backend, CLI, MCP, storage, ingestion, search, or tenant-isolation behavior
+- Recursive submodule initialization or casual submodule changes
+
+### Story 17.7: Runnable Web Specimen and Browser/AT Accessibility Gap Closure
+
+As a user of the future web surface,
+I want Epic 17 trust workflows to run in a browser-backed specimen with automated and manual accessibility evidence,
+So that the fail-closed browser and assistive-technology gaps in `Epic17ValidationInventory.Gaps` are closed by evidence rather than waived by component-specimen coverage.
+
+**Acceptance Criteria:**
+
+**Given** Story 17.6 conformance evidence is complete
+**When** the browser validation host is created
+**Then** a minimal runnable Memories web specimen app exposes existing Epic 17 RCL components through stable fixture routes for Evidence Cockpit, Trust Strip, Scope Header, Source Citation Stack, Retrieval Axis Breakdown, Graph Path Summary, Recovery Action Panel, Evidence Grid, Command Surface, Interaction Form, Filter Summary, Case Activity Trail, Ingestion Lifecycle Tracker, Operator Health Matrix, Benchmark Result Comparator, Agent Packet Inspector, and Lens Shell
+**And** the specimen uses existing contract fixtures and does not introduce new Evidence Packet semantics, backend dependencies, product workflows, public APIs, package versions, or FrontComposer framework changes.
+
+**Given** Playwright validation runs against the specimen
+**When** each route is scanned
+**Then** smoke checks and `@axe-core/playwright` scans fail on zero target nodes, record selector/route/fixture metadata, and cover accessible names, ARIA validity, heading order, focusable controls, color contrast where supported, and WCAG 2.2 AA tags where the local axe/tooling stack supports them.
+
+**Given** browser media and layout validation runs
+**When** the specimen is tested at the Epic 17 viewport set and required media conditions
+**Then** forced-colors/high-contrast, reduced-motion, zoom/reflow, and 44x44px touch-target checks produce bounded evidence for trust-critical fields and controls, with any unsupported browser/tooling dimension kept fail-closed in the evidence matrix rather than treated as passed.
+
+**Given** manual accessibility validation is performed
+**When** at least one screen-reader pass is completed for a trust workflow
+**Then** the evidence names the workflow script, viewport, browser, operating system, screen reader or checklist method, tester/date, pass/fail result, defects, severity, owner, waiver state, and release disposition; preferred initial pass is NVDA with Edge or Chrome on Windows unless unavailable.
+
+**Given** browser, axe, screenshot, trace, copied-text, and manual evidence artifacts are produced
+**When** they are archived or summarized
+**Then** they are bounded, relative-path-safe, sanitized for secrets, bearer tokens, raw payload fragments, tenant-sensitive diagnostics, local absolute paths, provider internals, stack traces, and restricted source details, and the redaction scan result is included in the evidence summary.
+
+**Given** the story completes
+**When** `Epic17ValidationInventory.Gaps` is reviewed
+**Then** the prior Playwright/axe, color-contrast, forced-colors, reduced-motion, zoom/reflow, touch-target, screen-reader, and live keyboard focus-trap/focus-return gaps are either resolved with evidence rows or remain fail-closed with explicit owner, severity, waiver state, and release disposition.
+
+**Target artifacts:**
+
+- `tests/Hexalith.Memories.Web.SpecimenHost/**` or the equivalent test-only runnable specimen host path selected during implementation
+- `tests/Hexalith.Memories.Web.E2E/**` or the equivalent Playwright project path selected during implementation
+- `tests/Hexalith.Memories.Web.Tests/Components/Validation/Epic17ValidationInventory.cs`
+- `tests/Hexalith.Memories.Web.Tests/Components/Validation/Epic17InventoryTests.cs`
+- `_bmad-output/implementation-artifacts/tests/test-summary-17-7-browser-at-gap-closure.md`
+- `_bmad-output/implementation-artifacts/17-7-runnable-web-specimen-and-browser-at-accessibility-gap-closure.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+**Out of scope:**
+
+- Production web application launch or product-route commitment beyond a test/specimen host
+- New Evidence Packet semantics, backend calls, ingestion/search behavior, MCP behavior, CLI behavior, storage behavior, or tenant-isolation policy changes
+- Broad FrontComposer framework redesign
+- Fluent UI package upgrade beyond the current pinned V5 prerelease
 - Recursive submodule initialization or casual submodule changes
 
 
@@ -3892,6 +3947,8 @@ So that embedding-provider expansion and live migration do not inherit stale ass
 Epics 20-26 are added by Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation), driven by the audit evidence file `research/architecture-audit-2026-07-04.md` (findings A1-A51). They are remediation epics: each story closes one or more audit findings and must preserve the strengths the audit recorded (health-check depth, contract serialization sweep, Testcontainers/Aspire end-state fixtures, ingestion compensation skeleton, disciplined secrets handling) rather than regress them. No completed epic is reopened. Two stories are decision-first (21.1 consistency model, 24.3 physical isolation) and gate their epic's implementation until the architecture decision is ratified.
 
 **Audit-anchor preflight:** Before any Epic 20-26 story is selected, created, or implemented, re-verify the current code anchors and implementation-state assumptions cited by that story against the repository. Story files must record the re-verification date, moved or renamed anchors, and how the implementation adapts. If an anchor is stale enough to change scope or acceptance evidence, update the story from current code evidence before development begins.
+
+**Cross-tenant negative-evidence carry-forward (2026-07-06):** Any future scope-sensitive Epic 20-26 story must keep cross-tenant negative validation evidence attached to the change instead of treating it as historical proof. Scope-sensitive includes tenant/case route grouping or versioning, endpoint filters, auth or claim normalization, tenant status guards, MCP tool executors, evidence-packet scope metadata, web evidence rendering, tenant verifier logic, key or index routing, graph/search/case attribution, and any refactor that moves those paths. Story files and Dev Agent Records must cite the prior evidence they preserve, including Story 20.2 denial-before-dependency tests and Story 24.3 verifier fail-closed/tenant-marker evidence when those areas are affected, list the impacted surfaces, and include focused negative tests or an explicit accepted blocker. A scope-sensitive story cannot close on happy-path or refactor-green tests alone.
 
 ## Epic 20: API Security & Tenant Authorization
 Operator and downstream consumers get an authenticated, tenant-authorized server boundary: every endpoint requires an authenticated principal, tenant access is verified against principal claims (not caller-supplied parameters), the audit identity is trustworthy, MCP cannot run on a development signing key in production, inbound load is bounded per tenant, and audit coverage spans all mutating operations.

@@ -267,8 +267,19 @@ Activation is complete. If `activation_steps_prepend` or `activation_steps_appen
     <action>Find {{previous_story_num}}: scan {implementation_artifacts} for the story file in epic {{epic_num}} with the highest story number less than {{story_num}}</action>
     <action>Load previous story file: {implementation_artifacts}/{{epic_num}}-{{previous_story_num}}-*.md</action> **PREVIOUS STORY INTELLIGENCE:** -
   Dev notes and learnings from previous story - Review feedback and corrections needed - Files that were created/modified and their
-  patterns - Testing approaches that worked/didn't work - Problems encountered and solutions found - Code patterns established <action>Extract
-  all learnings that could impact current story implementation</action>
+  patterns - Testing approaches that worked/didn't work - Problems encountered and solutions found - Code patterns established
+    <action>Classify each previous story or historical reference as one of:
+      - reusable pattern: safe to emulate for story shape and evidence
+      - historical reference only: useful for dependency/evidence context, but not a template
+      - anti-template: broad technical or bundled historical slice that must not be copied
+    </action>
+    <action>If epics or process notes mark a previous story as historical completed scope, broad technical scope, bundled infrastructure, or "not valid patterns for future story creation", then:
+      - do not copy its task structure, AC density, or file-scope breadth into the new story
+      - split analogous work into newly numbered vertical stories before creating implementation-ready context
+      - require externally observable API/CLI/contract/trace/integration evidence for each split slice
+      - document the exclusion in Dev Notes under Historical Scope Guard
+    </action>
+    <action>Extract only the learnings that help the current story implement a narrow, independently demonstrable slice.</action>
   </check>
 
   <!-- Git intelligence for previous work patterns -->
