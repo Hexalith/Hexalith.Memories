@@ -50,7 +50,7 @@ internal static class TenantLifecycleEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/api/tenants/{tenantId}/embedding-config", async (
+        app.MapGet(MemoriesRoutes.TenantEmbeddingConfig, async (
             ITenantEmbeddingConfigProvider embeddingConfigProvider,
             string tenantId,
             CancellationToken cancellationToken) =>
@@ -60,7 +60,7 @@ internal static class TenantLifecycleEndpoints
         }).AddEndpointFilter(TenantIdValidationEndpointFilter.For())
             .AddEndpointFilter(TenantStatusEndpointFilter.ActiveOnly());
 
-        app.MapPut("/api/tenants/{tenantId}/embedding-config",
+        app.MapPut(MemoriesRoutes.TenantEmbeddingConfig,
             async (
                 IActorProxyFactory actorProxyFactory,
                 ITenantEmbeddingConfigProvider embeddingConfigProvider,
@@ -121,7 +121,7 @@ internal static class TenantLifecycleEndpoints
             .AddEndpointFilter(TenantStatusEndpointFilter.ActiveOnly());
 
         // Story 5.1: Tenant provisioning endpoints
-        app.MapPost("/api/tenants", async (
+        app.MapPost(MemoriesRoutes.Tenants, async (
             DaprWorkflowClient workflowClient,
             TenantProvisioningInput input,
             ILogger<AccessTelemetryCategory> auditLogger,
@@ -197,7 +197,7 @@ internal static class TenantLifecycleEndpoints
             }
         });
 
-        app.MapGet("/api/tenants/{tenantId}/provision-status/{instanceId}", async (
+        app.MapGet(MemoriesRoutes.TenantProvisionStatus, async (
             DaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             ILogger<AccessTelemetryCategory> auditLogger,
@@ -258,7 +258,7 @@ internal static class TenantLifecycleEndpoints
 
         // Story 5.5 AC1 / FR41: enriched tenant listing — per-tenant counts + index health + activity.
         // Contract change (pre-Gate-2): now returns TenantSummary[] instead of TenantInfo[].
-        app.MapGet("/api/tenants", async (
+        app.MapGet(MemoriesRoutes.Tenants, async (
             TenantRegistryService registry,
             TenantMetricsService metrics,
             ITenantEmbeddingConfigProvider embeddingConfigProvider,
@@ -284,7 +284,7 @@ internal static class TenantLifecycleEndpoints
             return Results.Ok(summaries);
         });
 
-        app.MapGet("/api/tenants/{tenantId}", async (TenantRegistryService registry, string tenantId) =>
+        app.MapGet(MemoriesRoutes.Tenant, async (TenantRegistryService registry, string tenantId) =>
         {
             ErrorResponse? tenantValidationError = ValidateTenantId(tenantId);
             if (tenantValidationError is not null)
@@ -302,10 +302,10 @@ internal static class TenantLifecycleEndpoints
         });
 
         // Story 5.5 AC2 / FR45: composed configuration view (embedding + metrics + health).
-        app.MapGet("/api/tenants/{tenantId}/configuration", TenantEndpointHandlers.GetTenantConfigurationAsync);
+        app.MapGet(MemoriesRoutes.TenantConfiguration, TenantEndpointHandlers.GetTenantConfigurationAsync);
 
         // Story 5.5 AC3 / FR42: PATCH display name (rate-limit updates go through PUT /embedding-config).
-        app.MapPatch("/api/tenants/{tenantId}", async (
+        app.MapPatch(MemoriesRoutes.Tenant, async (
             TenantRegistryService registry,
             TenantStatusGuard tenantGuard,
             TenantMetricsService metrics,
@@ -356,7 +356,7 @@ internal static class TenantLifecycleEndpoints
         });
 
         // Story 5.2: Tenant deletion endpoints
-        app.MapDelete("/api/tenants/{tenantId}", async (
+        app.MapDelete(MemoriesRoutes.Tenant, async (
             DaprWorkflowClient workflowClient,
             TenantRegistryService registry,
             ILogger<AccessTelemetryCategory> auditLogger,
@@ -500,7 +500,7 @@ internal static class TenantLifecycleEndpoints
             }
         });
 
-        app.MapGet("/api/tenants/{tenantId}/deletion-status/{instanceId}", async (
+        app.MapGet(MemoriesRoutes.TenantDeletionStatus, async (
             DaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             ILogger<AccessTelemetryCategory> auditLogger,
@@ -560,7 +560,7 @@ internal static class TenantLifecycleEndpoints
         });
 
         // Story 5.3: Tenant isolation verification
-        app.MapPost("/api/tenants/{tenantId}/verify", async (
+        app.MapPost(MemoriesRoutes.TenantVerify, async (
             TenantIsolationVerifier verifier,
             string tenantId,
             CancellationToken cancellationToken) =>
@@ -586,7 +586,7 @@ internal static class TenantLifecycleEndpoints
 
         // Story 7.5 — telemetry summary endpoint (AC #6). Operator-facing read-only poke; DOES NOT emit
         // an AccessTelemetryEvent for itself (Task 5.5 — self-referential audit noise).
-        app.MapGet("/api/tenants/{tenantId}/telemetry/summary", async (
+        app.MapGet(MemoriesRoutes.TenantTelemetrySummary, async (
             string tenantId,
             TelemetrySummaryService summaryService,
             TenantStatusGuard tenantGuard,
@@ -610,7 +610,7 @@ internal static class TenantLifecycleEndpoints
 
         // Story 9.3 — handler registry + mismatch detector endpoints. Experimental HXL002 surface.
         // Story 20.1: Server fallback authorization now requires bearer authentication for these API routes.
-        app.MapGet("/api/handlers", async (
+        app.MapGet(MemoriesRoutes.Handlers, async (
             HttpContext http,
             Hexalith.Memories.Server.Handlers.HandlerRegistryService registryService,
             CancellationToken cancellationToken) =>
@@ -620,7 +620,7 @@ internal static class TenantLifecycleEndpoints
             return Results.Ok(snapshot);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/handlers/mismatches", async (
+        app.MapGet(MemoriesRoutes.TenantHandlerMismatches, async (
             HttpContext http,
             string tenantId,
             Hexalith.Memories.Server.Handlers.HandlerMismatchDetector detector,

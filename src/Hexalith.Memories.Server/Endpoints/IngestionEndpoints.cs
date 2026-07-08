@@ -53,7 +53,7 @@ internal static class IngestionEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapPost("/api/ingest", async (
+        app.MapPost(MemoriesRoutes.Ingest, async (
             IIngestionWorkflowScheduler workflowScheduler,
             TenantStatusGuard tenantGuard,
             IngestDedupReservation ingestReservation,
@@ -161,7 +161,7 @@ internal static class IngestionEndpoints
             .AddEndpointFilter<TenantAuthorizationEndpointFilter>()
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
-        app.MapGet("/api/ingest/{instanceId}", async (
+        app.MapGet(MemoriesRoutes.IngestStatus, async (
             IIngestionWorkflowStateReader workflowStateReader,
             HttpContext httpContext,
             ILogger<TenantAuthorizationEndpointFilter> authorizationLogger,
@@ -231,7 +231,7 @@ internal static class IngestionEndpoints
             return Results.Ok(status);
         });
 
-        app.MapPost("/api/ingest/url", async (
+        app.MapPost(MemoriesRoutes.IngestUrl, async (
             DaprWorkflowClient workflowClient,
             IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
             WorkflowTraceContextCapture workflowTraceContextCapture,
@@ -337,7 +337,7 @@ internal static class IngestionEndpoints
         }).AddEndpointFilter<TenantAuthorizationEndpointFilter>()
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
-        app.MapPost("/api/ingest/directory", async (
+        app.MapPost(MemoriesRoutes.IngestDirectory, async (
             DirectoryIngestionService directoryService,
             TenantStatusGuard tenantGuard,
             ILoggerFactory loggerFactory,
@@ -478,7 +478,7 @@ internal static class IngestionEndpoints
         }).AddEndpointFilter<TenantAuthorizationEndpointFilter>()
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
-        app.MapGet("/api/ingest/batches/{batchId}", async (
+        app.MapGet(MemoriesRoutes.IngestBatchStatus, async (
             DaprClient daprClient,
             IIngestionWorkflowStateReader workflowStateReader,
             HttpContext httpContext,

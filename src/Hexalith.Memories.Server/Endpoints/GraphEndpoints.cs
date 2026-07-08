@@ -50,7 +50,7 @@ internal static class GraphEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/api/tenants/{tenantId}/traverse", async (
+        app.MapGet(MemoriesRoutes.Traverse, async (
             string tenantId,
             GraphTraversalService traversalService,
             ILogger<global::Program> logger,
@@ -180,7 +180,7 @@ internal static class GraphEndpoints
             }
         });
 
-        app.MapPatch("/api/tenants/{tenantId}/edges/confidence", async (
+        app.MapPatch(MemoriesRoutes.EdgeConfidence, async (
             string tenantId,
             JsonElement requestBody,
             GraphTraversalService traversalService,

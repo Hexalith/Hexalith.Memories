@@ -68,8 +68,8 @@ internal class StubMemoriesClient : MemoriesClient
         int depth = 2,
         string? caseId = null,
         IReadOnlyList<EdgeType>? edgeTypes = null,
-        CancellationToken ct = default,
-        int? tokenBudget = null)
+        int? tokenBudget = null,
+        CancellationToken ct = default)
     {
         var capture = new TraversalRequest(tenantId, startNodeId, depth, caseId, edgeTypes, tokenBudget);
         TraversalRequests.Add(capture);

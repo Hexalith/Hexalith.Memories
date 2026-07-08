@@ -61,14 +61,9 @@ public class MemoriesClient
 
         while (true)
         {
-            using HttpResponseMessage response = await _httpClient
-                .GetAsync($"api/tenants?offset={offset.ToString(CultureInfo.InvariantCulture)}&limit={TenantListPageLimit.ToString(CultureInfo.InvariantCulture)}", ct)
-                .ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-                throw new MemoriesRemoteException(response.StatusCode, error);
-            }
+            string path = $"{MemoriesRoutes.TenantsPath()}?offset={offset.ToString(CultureInfo.InvariantCulture)}&limit={TenantListPageLimit.ToString(CultureInfo.InvariantCulture)}";
+            using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+            await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
             IReadOnlyList<TenantSummary> page = await ReadTenantSummaryPageAsync(response, ct).ConfigureAwait(false);
             tenants.AddRange(page);
@@ -135,13 +130,8 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        using HttpResponseMessage response = await _httpClient.GetAsync(MemoriesRoutes.CasesPath(tenantId), ct).ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         IReadOnlyList<Case>? cases = await response.Content
             .ReadFromJsonAsync<IReadOnlyList<Case>>(MemoriesJsonContext.Options, ct)
@@ -173,35 +163,7 @@ public class MemoriesClient
             tokenBudget: request.TokenBudget,
             attributeFilters: null);
 
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            HybridSearchResult? result = await response.Content
-                .ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return result ?? throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with an empty body.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as HybridSearchResult.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        return await SendAsync<HybridSearchResult>(path, ct).ConfigureAwait(false);
     }
 
     /// <summary>Runs a single-axis search (syntactic, semantic, or graph). Story 7.2 addition.</summary>
@@ -228,35 +190,7 @@ public class MemoriesClient
             tokenBudget: request.TokenBudget,
             attributeFilters: request.AttributeFilters);
 
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            SearchResult? result = await response.Content
-                .ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return result ?? throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with an empty body.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as SearchResult.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        return await SendAsync<SearchResult>(path, ct).ConfigureAwait(false);
     }
 
     /// <summary>Fetches a single memory unit for <c>search inspect</c>. Story 7.2 addition.</summary>
@@ -275,36 +209,7 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/{Uri.EscapeDataString(memoryUnitId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            MemoryUnit? unit = await response.Content
-                .ReadFromJsonAsync<MemoryUnit>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return unit ?? throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with an empty body.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as MemoryUnit.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        return await SendAsync<MemoryUnit>(MemoriesRoutes.CaseMemoryUnitPath(tenantId, caseId, memoryUnitId), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -329,7 +234,7 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/by-source-uri?sourceUri={Uri.EscapeDataString(sourceUri)}";
+        string path = $"{MemoriesRoutes.CaseMemoryUnitBySourceUriPath(tenantId, caseId)}?sourceUri={Uri.EscapeDataString(sourceUri)}";
         using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
 
         // A structured 404 is the deterministic "no committed unit for this URI" signal — surface it as null
@@ -340,34 +245,10 @@ public class MemoriesClient
             return null;
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
-        try
-        {
-            MemoryUnitIdLookupResponse? result = await response.Content
-                .ReadFromJsonAsync<MemoryUnitIdLookupResponse>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return result?.MemoryUnitId ?? throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with an empty body.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as MemoryUnitIdLookupResponse.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        MemoryUnitIdLookupResponse result = await ReadRequiredAsync<MemoryUnitIdLookupResponse>(response, ct).ConfigureAwait(false);
+        return result.MemoryUnitId;
     }
 
     /// <summary>
@@ -394,14 +275,10 @@ public class MemoriesClient
 
         var input = new TenantProvisioningInput(tenantId, displayName);
         using HttpResponseMessage response = await _httpClient
-            .PostAsJsonAsync("api/tenants", input, MemoriesJsonContext.Options, ct)
+            .PostAsJsonAsync(MemoriesRoutes.TenantsPath(), input, MemoriesJsonContext.Options, ct)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         return await ReadInstanceIdAsync(response, "workflowInstanceId", ct).ConfigureAwait(false);
     }
@@ -417,35 +294,15 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _httpClient.GetAsync(MemoriesRoutes.TenantPath(tenantId), ct).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
-        try
-        {
-            return await response.Content
-                .ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as TenantInfo.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        return await ReadOptionalAsync<TenantInfo>(response, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -467,40 +324,14 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         var input = new CreateCaseInput(tenantId, name, description);
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases";
 
         using HttpResponseMessage response = await _httpClient
-            .PostAsJsonAsync(path, input, MemoriesJsonContext.Options, ct)
+            .PostAsJsonAsync(MemoriesRoutes.CasesPath(tenantId), input, MemoriesJsonContext.Options, ct)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
-        try
-        {
-            Case? created = await response.Content
-                .ReadFromJsonAsync<Case>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return created ?? throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with an empty body.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."));
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw new MemoriesRemoteException(
-                response.StatusCode,
-                new ErrorResponse(
-                    Code: "INVALID_RESPONSE",
-                    Message: "Server returned a 2xx response with a body that could not be parsed as Case.",
-                    Suggestion: "Check that the server version matches the client's Contracts.V1 version."),
-                jsonException);
-        }
+        return await ReadRequiredAsync<Case>(response, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -606,14 +437,10 @@ public class MemoriesClient
         };
 
         using HttpResponseMessage response = await _httpClient
-            .PostAsJsonAsync("api/ingest", input, MemoriesJsonContext.Options, ct)
+            .PostAsJsonAsync(MemoriesRoutes.IngestPath(), input, MemoriesJsonContext.Options, ct)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         return await ReadInstanceIdAsync(response, "instanceId", ct).ConfigureAwait(false);
     }
@@ -667,6 +494,116 @@ public class MemoriesClient
             innerException);
 
     /// <summary>
+    /// Story 25.3 — the single generic send/decode path behind the standard "GET → deserialize
+    /// <typeparamref name="T"/> or throw" client methods. Issues a GET to <paramref name="relativePath"/>,
+    /// maps any non-2xx to a <see cref="MemoriesRemoteException"/> via <see cref="ErrorResponseDecoder"/>, and
+    /// decodes a required non-null <typeparamref name="T"/> from the 2xx body (empty/unparseable bodies become
+    /// a structured <c>INVALID_RESPONSE</c>).
+    /// </summary>
+    /// <typeparam name="T">The response contract type to decode.</typeparam>
+    /// <param name="relativePath">The relative request path (built from <see cref="MemoriesRoutes"/>), query included.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The decoded, non-null response.</returns>
+    private async Task<T> SendAsync<T>(string relativePath, CancellationToken ct)
+    {
+        using HttpResponseMessage response = await _httpClient.GetAsync(relativePath, ct).ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<T>(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Throws a <see cref="MemoriesRemoteException"/> carrying the decoded <see cref="ErrorResponse"/> when <paramref name="response"/> is not a success status.</summary>
+    /// <param name="response">The HTTP response to inspect.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A task that completes when the status has been validated.</returns>
+    private static async Task ThrowIfNotSuccessAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await ToRemoteExceptionAsync(response, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Decodes the error body of a non-2xx <paramref name="response"/> into a <see cref="MemoriesRemoteException"/>.</summary>
+    /// <param name="response">The non-success HTTP response.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The exception to throw (never null).</returns>
+    private static async Task<MemoriesRemoteException> ToRemoteExceptionAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
+        return new MemoriesRemoteException(response.StatusCode, error);
+    }
+
+    /// <summary>
+    /// Deserializes a required non-null <typeparamref name="T"/> from a 2xx body. A null (empty) body or a
+    /// parse failure is mapped to a structured <c>INVALID_RESPONSE</c> whose message names
+    /// <c>typeof(<typeparamref name="T"/>).Name</c>. Cancellation is rethrown, not masked.
+    /// </summary>
+    /// <typeparam name="T">The response contract type to decode.</typeparam>
+    /// <param name="response">The success HTTP response.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The decoded, non-null value.</returns>
+    private static async Task<T> ReadRequiredAsync<T>(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            T? value = await response.Content
+                .ReadFromJsonAsync<T>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+            return value ?? throw CreateInvalidResponseException(
+                response.StatusCode,
+                $"Server returned a 2xx response with an empty body where a {typeof(T).Name} was expected.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+            or System.IO.IOException
+            or HttpRequestException
+            or NotSupportedException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                $"Server returned a 2xx response with a body that could not be parsed as {typeof(T).Name}.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Deserializes an optional <typeparamref name="T"/> from a 2xx body, returning <see langword="null"/> when
+    /// the body itself is null/empty. A parse failure is mapped to a structured <c>INVALID_RESPONSE</c>.
+    /// Cancellation is rethrown, not masked.
+    /// </summary>
+    /// <typeparam name="T">The response contract type to decode.</typeparam>
+    /// <param name="response">The success HTTP response.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The decoded value, or <see langword="null"/> when the body is empty.</returns>
+    private static async Task<T?> ReadOptionalAsync<T>(HttpResponseMessage response, CancellationToken ct)
+        where T : class
+    {
+        try
+        {
+            return await response.Content
+                .ReadFromJsonAsync<T>(MemoriesJsonContext.Options, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException
+            or System.IO.IOException
+            or HttpRequestException
+            or NotSupportedException)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                $"Server returned a 2xx response with a body that could not be parsed as {typeof(T).Name}.",
+                ex);
+        }
+    }
+
+    /// <summary>
     /// Probes the <c>/health</c> endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
     /// server answered with a 2xx status code.
     /// </summary>
@@ -716,7 +653,8 @@ public class MemoriesClient
         int? tokenBudget,
         IReadOnlyDictionary<string, string>? attributeFilters)
     {
-        var builder = new StringBuilder("api/search?tenantId=");
+        var builder = new StringBuilder(MemoriesRoutes.SearchPath());
+        builder.Append("?tenantId=");
         builder.Append(Uri.EscapeDataString(tenantId));
 
         if (!string.IsNullOrEmpty(query))
@@ -803,38 +741,7 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/telemetry/summary";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            TelemetrySummary? summary = await response.Content
-                .ReadFromJsonAsync<TelemetrySummary>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return summary ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty telemetry summary body.");
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException
-            or System.IO.IOException
-            or HttpRequestException
-            or NotSupportedException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as TelemetrySummary.",
-                ex);
-        }
+        return await SendAsync<TelemetrySummary>(MemoriesRoutes.TenantTelemetrySummaryPath(tenantId), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -846,37 +753,7 @@ public class MemoriesClient
     [System.Diagnostics.CodeAnalysis.Experimental("HXL002")]
     public virtual async Task<HandlerRegistrationSnapshot> ListHandlersAsync(CancellationToken ct)
     {
-        using HttpResponseMessage response = await _httpClient.GetAsync("api/handlers", ct).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            HandlerRegistrationSnapshot? snapshot = await response.Content
-                .ReadFromJsonAsync<HandlerRegistrationSnapshot>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return snapshot ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty handler snapshot body.");
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException
-            or System.IO.IOException
-            or HttpRequestException
-            or NotSupportedException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as HandlerRegistrationSnapshot.",
-                ex);
-        }
+        return await SendAsync<HandlerRegistrationSnapshot>(MemoriesRoutes.HandlersPath(), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -891,38 +768,7 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/handlers/mismatches";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            HandlerMismatchReport? report = await response.Content
-                .ReadFromJsonAsync<HandlerMismatchReport>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return report ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty handler mismatch report body.");
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex) when (ex is System.Text.Json.JsonException
-            or System.IO.IOException
-            or HttpRequestException
-            or NotSupportedException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as HandlerMismatchReport.",
-                ex);
-        }
+        return await SendAsync<HandlerMismatchReport>(MemoriesRoutes.TenantHandlerMismatchesPath(tenantId), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -937,22 +783,25 @@ public class MemoriesClient
     /// <param name="tokenBudget">Optional maximum output tokens; null means no server-side budget truncation.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The traversal result with ordered nodes, edges, and gap markers.</returns>
-    /// <remarks>Stable since Story 10.2.</remarks>
+    /// <remarks>
+    /// Stable since Story 10.2. Story 25.3 (A21) corrected the parameter order so <paramref name="ct"/> trails
+    /// <paramref name="tokenBudget"/>, matching every sibling client method and the server endpoint — a breaking
+    /// change to the positional signature (named-argument callers are unaffected).
+    /// </remarks>
     public virtual async Task<TraversalResult> TraverseAsync(
         string tenantId,
         string startNodeId,
         int depth = 2,
         string? caseId = null,
         IReadOnlyList<EdgeType>? edgeTypes = null,
-        CancellationToken ct = default,
-        int? tokenBudget = null)
+        int? tokenBudget = null,
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
 
-        var builder = new StringBuilder("api/tenants/");
-        builder.Append(Uri.EscapeDataString(tenantId));
-        builder.Append("/traverse?startNodeId=");
+        var builder = new StringBuilder(MemoriesRoutes.TraversePath(tenantId));
+        builder.Append("?startNodeId=");
         builder.Append(Uri.EscapeDataString(startNodeId));
         builder.Append("&depth=");
         builder.Append(depth.ToString(CultureInfo.InvariantCulture));
@@ -978,31 +827,7 @@ public class MemoriesClient
             builder.Append(tokenBudget.Value.ToString(CultureInfo.InvariantCulture));
         }
 
-        using HttpResponseMessage response = await _httpClient
-            .GetAsync(builder.ToString(), ct)
-            .ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            TraversalResult? result = await response.Content
-                .ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return result ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty traversal body.");
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as TraversalResult.",
-                jsonException);
-        }
+        return await SendAsync<TraversalResult>(builder.ToString(), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1019,30 +844,7 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            Case? caseResult = await response.Content
-                .ReadFromJsonAsync<Case>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return caseResult ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty case body.");
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as Case.",
-                jsonException);
-        }
+        return await SendAsync<Case>(MemoriesRoutes.CasePath(tenantId, caseId), ct).ConfigureAwait(false);
     }
 
     private static string CamelCase(string value)
@@ -1069,23 +871,19 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify";
+        string path = MemoriesRoutes.ConsistencyVerifyPath(tenantId);
         ConsistencyVerificationRequest body = request ?? new ConsistencyVerificationRequest(tenantId);
 
         using HttpResponseMessage response = await _httpClient
             .PostAsJsonAsync(path, body, MemoriesJsonContext.Options, ct)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         return await ReadWorkflowStatusUriAsync(
             response,
             propertyName: "workflowInstanceId",
-            relativePath: $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify",
+            relativePath: path,
             ct).ConfigureAwait(false);
     }
 
@@ -1104,33 +902,18 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/verify/{Uri.EscapeDataString(instanceId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _httpClient
+            .GetAsync(MemoriesRoutes.ConsistencyVerifyStatusPath(tenantId, instanceId), ct)
+            .ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
-        try
-        {
-            return await response.Content
-                .ReadFromJsonAsync<ConsistencyVerificationStatus>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as ConsistencyVerificationStatus.",
-                jsonException);
-        }
+        return await ReadOptionalAsync<ConsistencyVerificationStatus>(response, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1153,31 +936,7 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/inspect/{Uri.EscapeDataString(memoryUnitId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
-
-        try
-        {
-            ConsistencyInspectionResult? result = await response.Content
-                .ReadFromJsonAsync<ConsistencyInspectionResult>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-            return result ?? throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with an empty inspection body.");
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as ConsistencyInspectionResult.",
-                jsonException);
-        }
+        return await SendAsync<ConsistencyInspectionResult>(MemoriesRoutes.ConsistencyInspectPath(tenantId, memoryUnitId), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1195,23 +954,19 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair";
+        string path = MemoriesRoutes.ConsistencyRepairPath(tenantId);
         ConsistencyRepairRequest body = request ?? new ConsistencyRepairRequest(tenantId);
 
         using HttpResponseMessage response = await _httpClient
             .PostAsJsonAsync(path, body, MemoriesJsonContext.Options, ct)
             .ConfigureAwait(false);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         return await ReadWorkflowStatusUriAsync(
             response,
             propertyName: "workflowInstanceId",
-            relativePath: $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair",
+            relativePath: path,
             ct).ConfigureAwait(false);
     }
 
@@ -1230,33 +985,18 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/consistency/repair/{Uri.EscapeDataString(instanceId)}";
-        using HttpResponseMessage response = await _httpClient.GetAsync(path, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _httpClient
+            .GetAsync(MemoriesRoutes.ConsistencyRepairStatusPath(tenantId, instanceId), ct)
+            .ConfigureAwait(false);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-            throw new MemoriesRemoteException(response.StatusCode, error);
-        }
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
-        try
-        {
-            return await response.Content
-                .ReadFromJsonAsync<ConsistencyRepairStatus>(MemoriesJsonContext.Options, ct)
-                .ConfigureAwait(false);
-        }
-        catch (System.Text.Json.JsonException jsonException)
-        {
-            throw CreateInvalidResponseException(
-                response.StatusCode,
-                "Server returned a 2xx response with a body that could not be parsed as ConsistencyRepairStatus.",
-                jsonException);
-        }
+        return await ReadOptionalAsync<ConsistencyRepairStatus>(response, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1275,7 +1015,7 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/export";
+        string path = MemoriesRoutes.CaseExportPath(tenantId, caseId);
         HttpRequestMessage request = new(HttpMethod.Get, path);
         HttpResponseMessage response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -1285,8 +1025,7 @@ public class MemoriesClient
         {
             try
             {
-                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-                throw new MemoriesRemoteException(response.StatusCode, error);
+                throw await ToRemoteExceptionAsync(response, ct).ConfigureAwait(false);
             }
             finally
             {
@@ -1308,7 +1047,7 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        string path = $"api/tenants/{Uri.EscapeDataString(tenantId)}/export";
+        string path = MemoriesRoutes.TenantExportPath(tenantId);
         HttpRequestMessage request = new(HttpMethod.Get, path);
         HttpResponseMessage response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
@@ -1318,8 +1057,7 @@ public class MemoriesClient
         {
             try
             {
-                ErrorResponse error = await ErrorResponseDecoder.DecodeAsync(response, ct).ConfigureAwait(false);
-                throw new MemoriesRemoteException(response.StatusCode, error);
+                throw await ToRemoteExceptionAsync(response, ct).ConfigureAwait(false);
             }
             finally
             {

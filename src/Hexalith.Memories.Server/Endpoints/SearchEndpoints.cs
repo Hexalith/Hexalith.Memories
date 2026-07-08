@@ -53,7 +53,7 @@ internal static class SearchEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapGet("/api/search", async (
+        app.MapGet(MemoriesRoutes.Search, async (
             SyntacticSearchService syntacticService,
             SemanticSearchService semanticService,
             NaturalLanguageSemanticSearchService naturalLanguageService,

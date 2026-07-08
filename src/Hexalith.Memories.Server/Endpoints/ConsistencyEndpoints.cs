@@ -51,7 +51,7 @@ internal static class ConsistencyEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         // Story 8.2: consistency verification & repair endpoints
-        app.MapPost("/api/tenants/{tenantId}/consistency/verify", async (
+        app.MapPost(MemoriesRoutes.ConsistencyVerify, async (
             IConsistencyWorkflowService workflowService,
             TenantStatusGuard tenantGuard,
             string tenantId,
@@ -102,7 +102,7 @@ internal static class ConsistencyEndpoints
                 new { workflowInstanceId = instanceId });
         });
 
-        app.MapGet("/api/tenants/{tenantId}/consistency/verify/{instanceId}", async (
+        app.MapGet(MemoriesRoutes.ConsistencyVerifyStatus, async (
             IConsistencyWorkflowService workflowService,
             TenantStatusGuard tenantGuard,
             string tenantId,
@@ -133,7 +133,7 @@ internal static class ConsistencyEndpoints
             return status is null ? Results.NotFound() : Results.Ok(status);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}", async (
+        app.MapGet(MemoriesRoutes.ConsistencyInspect, async (
             IConsistencyInspectionService inspectionService,
             TenantStatusGuard tenantGuard,
             string tenantId,
@@ -178,7 +178,7 @@ internal static class ConsistencyEndpoints
             }
         });
 
-        app.MapPost("/api/tenants/{tenantId}/consistency/repair", async (
+        app.MapPost(MemoriesRoutes.ConsistencyRepair, async (
             IConsistencyWorkflowService workflowService,
             TenantStatusGuard tenantGuard,
             string tenantId,
@@ -228,7 +228,7 @@ internal static class ConsistencyEndpoints
                 new { workflowInstanceId = instanceId });
         });
 
-        app.MapGet("/api/tenants/{tenantId}/consistency/repair/{instanceId}", async (
+        app.MapGet(MemoriesRoutes.ConsistencyRepairStatus, async (
             IConsistencyWorkflowService workflowService,
             TenantStatusGuard tenantGuard,
             string tenantId,

@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.EventStore;
@@ -30,9 +31,11 @@ public sealed class RouteSurfaceContractTests
 {
     private const string DocRelativePath = "docs/operations/route-surface.md";
 
-    // Matches `app.MapGet("/api/…"`, `app.MapPost("/…"`, etc. Captures the HTTP verb word and route template.
+    // Matches `app.MapGet("/api/…"` (inline literal) OR `app.MapGet(MemoriesRoutes.X` (Story 25.3 route-table
+    // reference). Group 1 = HTTP verb; Group 2 = inline route template (if a literal); Group 3 = MemoriesRoutes
+    // member name (if a table reference, resolved to its value via reflection in ExtractMappedRoutes).
     private static readonly Regex MappedRouteRegex =
-        new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*""(/[^""]+)""", RegexOptions.Compiled);
+        new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*(?:""(/[^""]+)""|MemoriesRoutes\.([A-Za-z0-9_]+))", RegexOptions.Compiled);
 
     // Matches a documented route row's backtick-wrapped `METHOD /api/…` code span.
     private static readonly Regex DocumentedApiRowRegex =
@@ -204,7 +207,41 @@ public sealed class RouteSurfaceContractTests
     }
 
     private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)
-        => MappedRouteRegex.Matches(program).Select(static m => (m.Groups[1].Value, m.Groups[2].Value)).ToList();
+    {
+        // Story 25.3: routes are registered against MemoriesRoutes constants rather than inline literals, so a
+        // matched `MemoriesRoutes.X` reference is resolved to its `/api/…` value via reflection. Inline literals
+        // (should any remain) still resolve directly, keeping the code → doc tie and the 46-route count intact.
+        IReadOnlyDictionary<string, string> routeConstants = RouteConstantsByName();
+        List<(string Verb, string Path)> routes = [];
+        foreach (Match match in MappedRouteRegex.Matches(program))
+        {
+            string verb = match.Groups[1].Value;
+            string path;
+            if (match.Groups[2].Success)
+            {
+                path = match.Groups[2].Value;
+            }
+            else
+            {
+                string member = match.Groups[3].Value;
+                routeConstants.ContainsKey(member).ShouldBeTrue(
+                    $"A route registration references MemoriesRoutes.{member}, but no matching public string constant exists on MemoriesRoutes — the route table and its consumers have drifted.");
+                path = routeConstants[member];
+            }
+
+            routes.Add((verb, path));
+        }
+
+        return routes;
+    }
+
+    // Reflects the public string constants declared on MemoriesRoutes into a name → value map so the extractor
+    // can resolve `MemoriesRoutes.X` route references back to their concrete `/api/…` templates.
+    private static IReadOnlyDictionary<string, string> RouteConstantsByName()
+        => typeof(Hexalith.Memories.Contracts.V1.MemoriesRoutes)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static f => f.IsLiteral && !f.IsInitOnly && f.FieldType == typeof(string))
+            .ToDictionary(static f => f.Name, static f => (string)f.GetRawConstantValue()!, System.StringComparer.Ordinal);
 
     private static string ReadMappedRouteSources()
     {

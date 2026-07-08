@@ -54,7 +54,7 @@ internal static class ExportEndpoints
         // BEFORE response headers are committed so 400/404 errors return a clean JSON body. Once
         // StartAsync is called, the response is streaming and mid-stream errors only manifest as a
         // truncated body (the client's JSON parse surfaces the failure).
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/export", async (
+        app.MapGet(MemoriesRoutes.CaseExport, async (
             HttpContext context,
             Hexalith.Memories.Server.Export.TenantExportService exportService,
             string tenantId,
@@ -119,7 +119,7 @@ internal static class ExportEndpoints
             return Results.Empty;
         });
 
-        app.MapGet("/api/tenants/{tenantId}/export", async (
+        app.MapGet(MemoriesRoutes.TenantExport, async (
             HttpContext context,
             Hexalith.Memories.Server.Export.TenantExportService exportService,
             string tenantId) =>

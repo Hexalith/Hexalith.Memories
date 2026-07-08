@@ -129,8 +129,8 @@ internal sealed class TraverseRelationsTool
                 clampedDepth,
                 caseId,
                 parsedEdgeTypes,
-                cancellationToken,
-                tokenBudget: effectiveTokenBudget).ConfigureAwait(false);
+                tokenBudget: effectiveTokenBudget,
+                ct: cancellationToken).ConfigureAwait(false);
             return McpToolResultSerializer.Success(result);
         }
         catch (OperationCanceledException)

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Authentication;
 
+using Hexalith.Memories.Contracts.V1;
+
 using Microsoft.AspNetCore.Http;
 
 /// <summary>Authorizes tenant-scoped path and query API routes before endpoint business logic executes.</summary>
@@ -38,14 +40,14 @@ public sealed class TenantAuthorizationMiddleware(
     private static string? GetTenantId(HttpContext context)
     {
         PathString path = context.Request.Path;
-        if (path.StartsWithSegments("/api/tenants", out PathString remaining))
+        if (path.StartsWithSegments(MemoriesRoutes.Tenants, out PathString remaining))
         {
             string value = remaining.Value ?? string.Empty;
             string[] segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
             return segments.Length > 0 ? segments[0] : null;
         }
 
-        if (path.Equals("/api/search", StringComparison.OrdinalIgnoreCase)
+        if (path.Equals(MemoriesRoutes.Search, StringComparison.OrdinalIgnoreCase)
             && context.Request.Query.TryGetValue("tenantId", out Microsoft.Extensions.Primitives.StringValues tenantValues))
         {
             return tenantValues.ToString();

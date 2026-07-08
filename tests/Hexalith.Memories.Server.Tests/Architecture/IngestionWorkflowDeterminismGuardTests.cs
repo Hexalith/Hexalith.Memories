@@ -59,12 +59,17 @@ public static partial class IngestionWorkflowDeterminismGuardTests
     public static void DirectUrlIngestion_CapturesTraceContextBeforeDirectWorkflowSchedule()
     {
         string repoRoot = ResolveRepoRoot();
-        string programPath = Path.Combine(
+
+        // Story 25.1 moved the direct URL ingestion endpoint out of Program.cs into the decomposed
+        // IngestionEndpoints.cs; this guard follows the code so it keeps verifying the capture-before-schedule
+        // ordering at its real home.
+        string endpointsPath = Path.Combine(
             repoRoot,
             "src",
             "Hexalith.Memories.Server",
-            "Program.cs");
-        string source = StripComments(File.ReadAllText(programPath));
+            "Endpoints",
+            "IngestionEndpoints.cs");
+        string source = StripComments(File.ReadAllText(endpointsPath));
 
         int captureIndex = source.IndexOf(
             "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",

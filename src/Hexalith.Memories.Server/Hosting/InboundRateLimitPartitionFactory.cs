@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Hosting;
 using System.Globalization;
 using System.Threading.RateLimiting;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.RateLimiting;
@@ -58,15 +59,15 @@ internal static class InboundRateLimitPartitionFactory
     private static bool IsRateLimitedApiPath(HttpContext httpContext)
     {
         PathString path = httpContext.Request.Path;
-        if (!path.StartsWithSegments("/api"))
+        if (!path.StartsWithSegments(MemoriesRoutes.ApiPrefix))
         {
             return false;
         }
 
         if (HttpMethods.IsPost(httpContext.Request.Method)
-            && (path.Equals("/api/ingest", StringComparison.OrdinalIgnoreCase)
-                || path.Equals("/api/ingest/url", StringComparison.OrdinalIgnoreCase)
-                || path.Equals("/api/ingest/directory", StringComparison.OrdinalIgnoreCase)))
+            && (path.Equals(MemoriesRoutes.Ingest, StringComparison.OrdinalIgnoreCase)
+                || path.Equals(MemoriesRoutes.IngestUrl, StringComparison.OrdinalIgnoreCase)
+                || path.Equals(MemoriesRoutes.IngestDirectory, StringComparison.OrdinalIgnoreCase)))
         {
             return false;
         }

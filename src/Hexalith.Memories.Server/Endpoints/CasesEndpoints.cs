@@ -53,7 +53,7 @@ internal static class CasesEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapPost("/api/tenants/{tenantId}/cases", async (
+        app.MapPost(MemoriesRoutes.Cases, async (
             string tenantId,
             CreateCaseInput input,
             CaseService caseService,
@@ -77,7 +77,7 @@ internal static class CasesEndpoints
             return Results.Created($"/api/tenants/{tenantId}/cases/{created.Id}", created);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases", async (
+        app.MapGet(MemoriesRoutes.Cases, async (
             string tenantId,
             int? limit,
             CaseService caseService,
@@ -97,7 +97,7 @@ internal static class CasesEndpoints
             return Results.Ok(cases);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}", async (
+        app.MapGet(MemoriesRoutes.Case, async (
             string tenantId,
             string caseId,
             CaseService caseService,
@@ -118,7 +118,7 @@ internal static class CasesEndpoints
                 : Results.Ok(caseResult);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/status", async (
+        app.MapGet(MemoriesRoutes.CaseStatus, async (
             string tenantId,
             string caseId,
             CaseService caseService,
@@ -140,7 +140,7 @@ internal static class CasesEndpoints
         });
 
         // Story 6.3 FR11: list failed memory units for a case (most-recent first, paged).
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/failed-units", async (
+        app.MapGet(MemoriesRoutes.CaseFailedUnits, async (
             string tenantId,
             string caseId,
             int? limit,
@@ -171,7 +171,7 @@ internal static class CasesEndpoints
         // Story 6.3 FR11: detail endpoint for a single memory unit. When the indexed-MU hash is missing AND a
         // failed-unit hash exists, synthesize a Failed MemoryUnit projection (content="" since it was never
         // extracted/persisted). Tenant-mismatch guard inside CaseService.
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}", async (
+        app.MapGet(MemoriesRoutes.CaseMemoryUnit, async (
             string tenantId,
             string caseId,
             string memoryUnitId,
@@ -263,13 +263,13 @@ internal static class CasesEndpoints
         // segment is a sibling of the `{memoryUnitId}` template above; ASP.NET Core gives literal segments higher
         // precedence, so this route wins for that path (asserted in MemoryUnitLookupEndpointTests). Reads the permanent
         // dedup record by exact key (no search delegation); structured 404 on miss, 503 on backend failure (AC6).
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri", MemoryUnitLookupEndpoint.HandleAsync);
+        app.MapGet(MemoriesRoutes.CaseMemoryUnitBySourceUri, MemoryUnitLookupEndpoint.HandleAsync);
 
         // Story 6.3 FR12: re-ingest a single failed memory unit. Atomic claim via Lua deletes the failed-unit
         // hash, sorted-set entry, AND the dedup key in one round-trip; if the claim fails (already gone),
         // returns 409. The new workflow re-uses the original memory-unit-id via the DAPR workflow `instanceId`
         // parameter — annotations and graph edges survive.
-        app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest", async (
+        app.MapPost(MemoriesRoutes.CaseMemoryUnitReIngest, async (
             string tenantId,
             string caseId,
             string memoryUnitId,
@@ -325,7 +325,7 @@ internal static class CasesEndpoints
 
         // Story 6.3 FR12: bulk re-ingestion. Per-unit failures are isolated — one missing or conflicted unit
         // does not abort the batch. Body: { "all": true, "limit": 50 } OR { "memoryUnitIds": ["a","b"] }.
-        app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest", async (
+        app.MapPost(MemoriesRoutes.CaseFailedUnitsReIngest, async (
             string tenantId,
             string caseId,
             ReIngestRequest request,
@@ -381,7 +381,7 @@ internal static class CasesEndpoints
             return Results.Ok(response);
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/activity", async (
+        app.MapGet(MemoriesRoutes.CaseActivity, async (
             string tenantId,
             string caseId,
             int? limit,
@@ -409,7 +409,7 @@ internal static class CasesEndpoints
             return Results.Ok(events);
         });
 
-        app.MapPut("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
+        app.MapPut(MemoriesRoutes.CaseMember, async (
             string tenantId,
             string caseId,
             string memberId,
@@ -478,7 +478,7 @@ internal static class CasesEndpoints
             }
         });
 
-        app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", async (
+        app.MapDelete(MemoriesRoutes.CaseMember, async (
             string tenantId,
             string caseId,
             string memberId,
@@ -535,7 +535,7 @@ internal static class CasesEndpoints
             }
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/members", async (
+        app.MapGet(MemoriesRoutes.CaseMembers, async (
             string tenantId,
             string caseId,
             CaseService caseService,
@@ -566,7 +566,7 @@ internal static class CasesEndpoints
             return Results.Ok(members);
         });
 
-        app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}", async (
+        app.MapDelete(MemoriesRoutes.CaseMemoryUnit, async (
             string tenantId,
             string caseId,
             string memoryUnitId,
@@ -646,7 +646,7 @@ internal static class CasesEndpoints
             }
         });
 
-        app.MapDelete("/api/tenants/{tenantId}/cases/{caseId}", async (
+        app.MapDelete(MemoriesRoutes.Case, async (
             string tenantId,
             string caseId,
             CaseService caseService,
@@ -709,7 +709,7 @@ internal static class CasesEndpoints
             }
         });
 
-        app.MapPost("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations", async (
+        app.MapPost(MemoriesRoutes.CaseMemoryUnitAnnotations, async (
             string tenantId,
             string caseId,
             string memoryUnitId,
@@ -803,7 +803,7 @@ internal static class CasesEndpoints
             }
         });
 
-        app.MapGet("/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations", async (
+        app.MapGet(MemoriesRoutes.CaseMemoryUnitAnnotations, async (
             string tenantId,
             string caseId,
             string memoryUnitId,
