@@ -23,7 +23,7 @@
     <!-- Story 10.1: Model Context Protocol C# SDK 1.2.0 (Microsoft-collaboration release).
          Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
     <PackageVersion Update="ModelContextProtocol" Version="1.4.0" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
     <!-- DAPR AI SDKs -->
     <PackageVersion Include="Dapr.AI" Version="1.18.4" />
     <PackageVersion Include="Dapr.AI.Microsoft.Extensions" Version="1.18.4" />
