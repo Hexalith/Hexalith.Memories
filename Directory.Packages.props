@@ -20,9 +20,9 @@
     <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests. Bumped to 1.15.3
          alongside the rest of the OTel core/exporter stack (Story 10.1 NU1902 sweep). -->
     <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.16.0" />
-    <!-- Story 10.1: Model Context Protocol C# SDK 1.2.0 (Microsoft-collaboration release).
+    <!-- Story 10.1: Model Context Protocol C# SDK 1.4.1 (Microsoft-collaboration release).
          Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
-    <PackageVersion Update="ModelContextProtocol" Version="1.4.0" />
+    <PackageVersion Update="ModelContextProtocol" Version="1.4.1" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="1.4.1" />
     <!-- DAPR AI SDKs -->
     <PackageVersion Include="Dapr.AI" Version="1.18.4" />

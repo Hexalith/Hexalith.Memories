@@ -22,7 +22,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Warnings are build failures** - `Nullable=enable`, `ImplicitUsings=enable`, and `TreatWarningsAsErrors=true` are set at repo root.
 - **Dapr 1.18.4 is load-bearing** - workflows, actors, pub/sub, state, service invocation, client APIs, and Dapr AI all use the aligned `1.18.4` package set.
 - **Aspire owns local orchestration** - AppHost uses `Aspire.AppHost.Sdk/13.3.3`, `Aspire.Hosting.Testing` `13.4.6`, and `CommunityToolkit.Aspire.Hosting.Dapr` `13.4.0-preview.1.260602-0230`.
-- **MCP SDK 1.4.0 backs the agent surface** - `ModelContextProtocol` and `ModelContextProtocol.AspNetCore` must remain aligned.
+- **MCP SDK 1.4.1 backs the agent surface** - `ModelContextProtocol` and `ModelContextProtocol.AspNetCore` must remain aligned.
 - **OpenTelemetry is split by package maturity** - core/exporter/hosting/in-memory packages are `1.16.0`; ASP.NET Core instrumentation is `1.15.2`; HTTP/runtime instrumentation is `1.15.1`; StackExchange.Redis instrumentation is `1.15.1-beta.2`.
 - **Redis Stack + FalkorDB are the storage backends** - RediSearch, Redis Vector, Redis state/pubsub, and FalkorDB graph storage are wired through AppHost/Dapr.
 - **Kreuzberg 4.9.9 handles content extraction** - ingestion activities should use the existing extraction path rather than adding parallel document parsers.
