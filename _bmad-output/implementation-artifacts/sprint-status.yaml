@@ -383,7 +383,7 @@ development_status:
   25-4-contract-persistence-separation-and-route-versioning: in-progress
   25-5-cli-consolidation: done
   25-6-mcp-tool-executor: done
-  25-7-evidence-cockpit-ux-conformance: backlog
+  25-7-evidence-cockpit-ux-conformance: done
   25-8-dead-code-and-topology-cleanup: backlog
   epic-25-retrospective: optional
 

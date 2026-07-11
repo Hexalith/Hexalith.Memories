@@ -1,8 +1,9 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 <article class="mem-evidence-cockpit"
          data-testid="mem-evidence-cockpit"
-         aria-label="Evidence cockpit">
+         aria-label="@Localizer[EvidenceResourceKeys.CockpitLabel]">
     <MemoriesScopeHeader Packet="EffectivePacket" />
     <MemoriesTrustStrip Packet="EffectivePacket"
                         Mode="@StripMode" />
@@ -23,44 +24,78 @@
         </div>
     }
 
-    <section class="mem-evidence-result"
-             data-testid="mem-evidence-result"
-             aria-label="Evidence result">
-        <h2>Evidence</h2>
-        @if (IsLoading)
-        {
-            <p role="status" data-testid="mem-evidence-loading">Loading evidence</p>
-        }
-        else if (!string.IsNullOrWhiteSpace(ErrorMessage))
-        {
-            <p role="alert" data-testid="mem-evidence-error">
-                Evidence unavailable. @EvidenceDisplay.SafeText(ErrorMessage, "Reason redacted.")
-            </p>
-        }
-        else
-        {
-            <p data-testid="mem-evidence-query">
-                <strong>Query:</strong> @EvidenceDisplay.SafeText(EffectivePacket.Result.Query, "no query")
-            </p>
-            <p data-testid="mem-evidence-summary">@EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, "summary unavailable")</p>
-        }
-    </section>
-
-    @if (HasRealPacket)
+    @if (!HasRealPacket)
     {
-        @* Story 17.2 — Recovery Action Panel renders the recovery state grammar and gated actions from
-           the canonical Evidence Packet. AnnounceAssertively is false so it does not compete with the
-           precedence banner's assertive alert above. *@
-        <MemoriesRecoveryActionPanel Packet="EffectivePacket"
-                                     AnnounceAssertively="false"
-                                     OnRecoveryAction="OnRecoveryAction" />
+        <section class="mem-evidence-result"
+                 data-testid="mem-evidence-result"
+                 aria-label="@Localizer[EvidenceResourceKeys.ResultLabel]">
+            <FluentText Weight="TextWeight.Semibold">@Localizer[EvidenceResourceKeys.ResultSection]</FluentText>
+            @if (IsLoading)
+            {
+                <FluentText role="status" data-testid="mem-evidence-loading">@Localizer[EvidenceResourceKeys.Loading]</FluentText>
+            }
+            else if (HasError)
+            {
+                <FluentText role="alert" data-testid="mem-evidence-error">
+                    @Localizer[
+                        EvidenceResourceKeys.Error,
+                        EvidenceDisplay.SafeText(ErrorMessage, Localizer[EvidenceResourceKeys.ReasonRedacted])]
+                </FluentText>
+            }
+            else
+            {
+                <FluentText role="status" data-testid="mem-evidence-unavailable">@Localizer[EvidenceResourceKeys.Unavailable]</FluentText>
+            }
+        </section>
     }
-
-    @if (ShouldComposeEvidenceChildren)
+    else
     {
-        <MemoriesSourceCitationStack Packet="EffectivePacket" />
-        <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
-        <MemoriesGraphPathSummary Packet="EffectivePacket" />
+        <FluentAccordion ExpandMode="AccordionExpandMode.Multi"
+                         HeadingLevel="2"
+                         data-testid="mem-evidence-accordion">
+            <FluentAccordionItem Header="@Localizer[EvidenceResourceKeys.ResultSection]"
+                                 @bind-Expanded="_isEvidenceExpanded"
+                                 data-testid="mem-evidence-result-item">
+                <section class="mem-evidence-result"
+                         data-testid="mem-evidence-result"
+                         aria-label="@Localizer[EvidenceResourceKeys.ResultLabel]">
+                    <FluentText data-testid="mem-evidence-query">
+                        <strong>@Localizer[EvidenceResourceKeys.QueryLabel]:</strong>
+                        @EvidenceDisplay.SafeText(EffectivePacket.Result.Query, Localizer[EvidenceResourceKeys.NoQuery])
+                    </FluentText>
+                    <FluentText data-testid="mem-evidence-summary">
+                        @EvidenceDisplay.SafeText(EffectivePacket.Result.Summary, Localizer[EvidenceResourceKeys.SummaryUnavailable])
+                    </FluentText>
+                </section>
+            </FluentAccordionItem>
+
+            <FluentAccordionItem Header="@Localizer[EvidenceResourceKeys.RecoverySection]"
+                                 @bind-Expanded="_isRecoveryExpanded"
+                                 data-testid="mem-evidence-recovery-item">
+                @* Story 17.2 — AnnounceAssertively remains false so the panel does not compete with
+                   the precedence banner's assertive alert above. Keep recovery expanded initially so
+                   the accordion conversion preserves the previously visible recovery/live-region surface. *@
+                <MemoriesRecoveryActionPanel Packet="EffectivePacket"
+                                             AnnounceAssertively="false"
+                                             OnRecoveryAction="OnRecoveryAction" />
+            </FluentAccordionItem>
+
+            @if (ShouldComposeEvidenceChildren)
+            {
+                <FluentAccordionItem Header="@Localizer[EvidenceResourceKeys.SourcesSection]"
+                                     data-testid="mem-evidence-sources-item">
+                    <MemoriesSourceCitationStack Packet="EffectivePacket" />
+                </FluentAccordionItem>
+                <FluentAccordionItem Header="@Localizer[EvidenceResourceKeys.AxesSection]"
+                                     data-testid="mem-evidence-axes-item">
+                    <MemoriesRetrievalAxisBreakdown Packet="EffectivePacket" />
+                </FluentAccordionItem>
+                <FluentAccordionItem Header="@Localizer[EvidenceResourceKeys.GraphSection]"
+                                     data-testid="mem-evidence-graph-item">
+                    <MemoriesGraphPathSummary Packet="EffectivePacket" />
+                </FluentAccordionItem>
+            }
+        </FluentAccordion>
     }
 </article>
 
@@ -69,7 +104,7 @@
     public EvidencePacket? Packet { get; set; }
 
     [Parameter]
-    public string TenantId { get; set; } = "unknown tenant";
+    public string TenantId { get; set; } = string.Empty;
 
     [Parameter]
     public string? CaseId { get; set; }
@@ -87,8 +122,14 @@
     [Parameter]
     public EventCallback<RecoveryActionInvocation> OnRecoveryAction { get; set; }
 
+    private const string UnknownTenantId = "unknown";
+
     private EvidencePacket? _cachedUnavailablePacket;
-    private string? _cachedUnavailableSignature;
+    private string? _cachedUnavailableTenantId;
+    private string? _cachedUnavailableCaseId;
+    private bool _cachedUnavailableIsError;
+    private bool _isEvidenceExpanded = true;
+    private bool _isRecoveryExpanded = true;
 
     private EvidencePacket EffectivePacket => Packet ?? GetUnavailablePacket();
 
@@ -99,7 +140,9 @@
                 ? MemoriesTrustStrip.TrustStripMode.Error
                 : MemoriesTrustStrip.TrustStripMode.Packet;
 
-    private bool HasRealPacket => Packet is not null && !IsLoading && string.IsNullOrWhiteSpace(ErrorMessage);
+    private bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+    private bool HasRealPacket => Packet is not null && !IsLoading && !HasError;
 
     private bool ShouldComposeEvidenceChildren => HasRealPacket
         && !EvidenceDisplay.IsRestrictiveScope(EffectivePacket.Scope.IsolationStatus)
@@ -111,74 +154,48 @@
 
     private EvidencePacket GetUnavailablePacket()
     {
-        string signature = $"{TenantId}|{CaseId}|{IsLoading}|{ErrorMessage}";
-        if (_cachedUnavailablePacket is not null && _cachedUnavailableSignature == signature)
+        bool hasError = HasError;
+        string effectiveTenantId = string.IsNullOrWhiteSpace(TenantId)
+            ? UnknownTenantId
+            : TenantId;
+        string? effectiveCaseId = string.IsNullOrWhiteSpace(CaseId) ? null : CaseId;
+        if (_cachedUnavailablePacket is not null
+            && string.Equals(_cachedUnavailableTenantId, effectiveTenantId, StringComparison.Ordinal)
+            && string.Equals(_cachedUnavailableCaseId, effectiveCaseId, StringComparison.Ordinal)
+            && _cachedUnavailableIsError == hasError)
         {
             return _cachedUnavailablePacket;
         }
 
-        bool hasError = !string.IsNullOrWhiteSpace(ErrorMessage);
-        _cachedUnavailablePacket = new EvidencePacket(
-            Scope: new EvidencePacketScope(
-                TenantId: TenantId,
-                CaseId: CaseId,
-                IsolationStatus: EvidencePacketIsolationStatus.Unknown,
-                PermissionsContext: string.IsNullOrWhiteSpace(CaseId) ? "tenant" : "tenant-case"),
-            Result: new EvidencePacketResultSummary(
-                Query: string.Empty,
-                TotalCount: 0,
-                ReturnedCount: 0,
-                HasIndexedMemoryUnits: null,
-                Summary: null),
-            Sources: [],
-            Evidence: new EvidencePacketEvidence(
-                EvidenceStrength: EvidencePacketEvidenceStrength.None,
-                Caveat: "Evidence packet is not available.",
-                AxesUsed: [],
-                UnavailableAxes: [],
-                Degraded: hasError,
-                AllEnabledAxesUnavailable: null,
-                AxisEvidence: []),
-            Graph: new EvidencePacketGraphSummary(
-                Available: false,
-                RelatedPath: [],
-                EdgeTypes: [],
-                GapMarkers: []),
-            State: EvidencePacketState.Empty,
-            OmittedDetails: new EvidencePacketOmittedDetails(
-                OmittedCount: 0,
-                EstimatedTokensTotal: 0,
-                Reason: EvidencePacketOmissionReason.None,
-                FieldNames: [],
-                DetailGroups: [],
-                ExpansionHandles: []),
-            Recovery: []);
-        _cachedUnavailableSignature = signature;
+        _cachedUnavailablePacket = EvidencePacketMapper.Unavailable(effectiveTenantId, effectiveCaseId, isError: hasError);
+        _cachedUnavailableTenantId = effectiveTenantId;
+        _cachedUnavailableCaseId = effectiveCaseId;
+        _cachedUnavailableIsError = hasError;
         return _cachedUnavailablePacket;
     }
 
-    private static RestrictiveBannerView? ResolveRestrictiveBanner(EvidencePacket packet)
+    private RestrictiveBannerView? ResolveRestrictiveBanner(EvidencePacket packet)
     {
         // Restrictive precedence ladder (Advanced Elicitation #3): unauthorized > schema-mismatch / missing-source
         // > redacted/compressed > degraded/partial > supported. Only the most restrictive banner renders.
         if (EvidenceDisplay.IsRestrictiveScope(packet.Scope.IsolationStatus) || packet.State == EvidencePacketState.Unauthorized)
         {
-            return new RestrictiveBannerView("unauthorized", "Authorization required for this tenant and case scope.", MessageBarIntent.Error);
+            return new RestrictiveBannerView("unauthorized", Localizer[EvidenceResourceKeys.UnauthorizedBanner], MessageBarIntent.Error);
         }
 
         if (packet.Evidence.Degraded || packet.Evidence.AllEnabledAxesUnavailable == true)
         {
-            return new RestrictiveBannerView("missing-source", "Evidence retrieval is degraded for this scope.", MessageBarIntent.Warning);
+            return new RestrictiveBannerView("missing-source", Localizer[EvidenceResourceKeys.MissingSourceBanner], MessageBarIntent.Warning);
         }
 
         if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.Redaction or EvidencePacketOmissionReason.Policy)
         {
-            return new RestrictiveBannerView("redacted", "Evidence details were redacted by policy.", MessageBarIntent.Warning);
+            return new RestrictiveBannerView("redacted", Localizer[EvidenceResourceKeys.RedactedBanner], MessageBarIntent.Warning);
         }
 
         if (packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined)
         {
-            return new RestrictiveBannerView("compressed", "Evidence packet is token-budget compressed.", MessageBarIntent.Warning);
+            return new RestrictiveBannerView("compressed", Localizer[EvidenceResourceKeys.CompressedBanner], MessageBarIntent.Warning);
         }
 
         if (packet.State is EvidencePacketState.Degraded
@@ -189,7 +206,7 @@
         {
             return new RestrictiveBannerView(
                 "degraded",
-                $"Evidence is {EvidenceDisplay.Label(packet.State).ToLowerInvariant()} for this scope.",
+                Localizer[EvidenceResourceKeys.DegradedBanner, EvidenceDisplay.Label(packet.State, Localizer)],
                 MessageBarIntent.Warning);
         }
 

@@ -1,44 +1,46 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 <section class="mem-evidence-section"
          data-testid="mem-graph-summary"
-         aria-label="Graph path summary">
-    <h3>Graph context</h3>
-    <p data-testid="mem-graph-order-basis">Order basis: @OrderBasisText</p>
+         aria-label="@Localizer[EvidenceResourceKeys.GraphSection]">
+    <FluentText data-testid="mem-graph-order-basis">
+        @Localizer[EvidenceResourceKeys.OrderBasis, OrderBasisText]
+    </FluentText>
     @if (IsRestricted)
     {
-        <p role="status" data-testid="mem-graph-restricted">Graph context is not available in the current scope.</p>
+        <FluentText role="status" data-testid="mem-graph-restricted">@Localizer[EvidenceResourceKeys.GraphRestricted]</FluentText>
     }
     else if (!Packet.Graph.Available)
     {
-        <p role="status">Graph context unavailable</p>
+        <FluentText role="status">@Localizer[EvidenceResourceKeys.GraphUnavailable]</FluentText>
     }
     else
     {
         <dl>
-            <dt>Path</dt>
+            <dt>@Localizer[EvidenceResourceKeys.PathField]</dt>
             <dd>
                 @if (Packet.Graph.RelatedPath.Count == 0)
                 {
-                    <span>no traversal path</span>
+                    <span>@Localizer[EvidenceResourceKeys.NoTraversalPath]</span>
                 }
                 else
                 {
                     @for (int i = 0; i < Packet.Graph.RelatedPath.Count; i++)
                     {
-                        <span data-testid="mem-graph-node">@EvidenceDisplay.SafeText(Packet.Graph.RelatedPath[i], "node unavailable")</span>
+                        <span data-testid="mem-graph-node">@EvidenceDisplay.SafeText(Packet.Graph.RelatedPath[i], Localizer[EvidenceResourceKeys.NodeUnavailable])</span>
                         if (i < Packet.Graph.RelatedPath.Count - 1)
                         {
                             <span aria-hidden="true"> -&gt; </span>
-                            <span class="visually-hidden"> then </span>
+                            <span class="visually-hidden"> @Localizer[EvidenceResourceKeys.GraphThen] </span>
                         }
                     }
                 }
             </dd>
-            <dt>Edge types</dt>
-            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? "edge type unavailable" : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.EdgeTypes), "edge type unavailable"))</dd>
-            <dt>Gap markers</dt>
-            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? "no gap markers" : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.GapMarkers), "no gap markers"))</dd>
+            <dt>@Localizer[EvidenceResourceKeys.EdgeTypesField]</dt>
+            <dd>@(Packet.Graph.EdgeTypes.Count == 0 ? Localizer[EvidenceResourceKeys.EdgeTypeUnavailable] : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.EdgeTypes), Localizer[EvidenceResourceKeys.EdgeTypeUnavailable]))</dd>
+            <dt>@Localizer[EvidenceResourceKeys.GapMarkersField]</dt>
+            <dd>@(Packet.Graph.GapMarkers.Count == 0 ? Localizer[EvidenceResourceKeys.NoGapMarkers] : EvidenceDisplay.SafeText(string.Join(", ", Packet.Graph.GapMarkers), Localizer[EvidenceResourceKeys.NoGapMarkers]))</dd>
         </dl>
     }
 </section>
@@ -51,5 +53,7 @@
     private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
         || Packet.State == EvidencePacketState.Unauthorized;
 
-    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
+    private string OrderBasisText => IsRestricted
+        ? Localizer[EvidenceResourceKeys.Unavailable]
+        : Localizer[EvidenceResourceKeys.PacketOrder];
 }

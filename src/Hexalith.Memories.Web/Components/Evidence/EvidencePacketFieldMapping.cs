@@ -8,7 +8,7 @@ namespace Hexalith.Memories.Web.Components.Evidence;
 /// <summary>Documents the explicit Evidence Packet field source for one rendered cockpit value.</summary>
 /// <param name="DisplayField">Rendered field identifier.</param>
 /// <param name="ContractSource">Canonical Evidence Packet source field.</param>
-/// <param name="UnavailableFallback">Fallback rendered when the source field is absent or unavailable.</param>
+/// <param name="UnavailableFallback">Localization resource key for the fallback rendered when the source field is absent or unavailable.</param>
 public sealed record EvidencePacketFieldMapping(
     string DisplayField,
     string ContractSource,

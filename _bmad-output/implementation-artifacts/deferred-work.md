@@ -1635,11 +1635,12 @@ Follow-up homes:
 | Accepted or resolved in this ledger | `17.1-CR12`, `17.1-CR13`, `17.1-CR14`, `17.1-CR15`, `17-WEB-AD4-ROLE-AUTHORIZATION-MODEL` | Defensive-only, already covered, or intentionally not a current product/security requirement. |
 
 - ID: 17.1-CR1
-  - Status: carried-forward
+  - Status: resolved
   - Source story: 17-1-evidence-cockpit-and-trust-components
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/EvidenceDisplay.cs`; `src/Hexalith.Memories.Web/Resources/*`
-  - Re-open trigger: before Story 25.7 closes or any new Evidence Cockpit display copy is added outside the resource/localizer path.
-  - Rationale: Localization is a cross-RCL conformance concern, not a one-line EvidenceDisplay patch. Story 25.7 is the bounded home because it already owns hardcoded English and Evidence Cockpit conformance.
+  - Re-open trigger: any new Evidence Cockpit visible or assistive copy bypasses `EvidenceResourceKeys` and the EN/FR resource bundle.
+  - Rationale: Story 25.7 routed cockpit headings, banners, enum labels, counts, freshness, timestamps, scores, captions, fallbacks, and accessible names through `IStringLocalizer<MemoriesWebResources>` with EN/FR parity tests.
+  - Evidence: `EvidenceResourceKeys.cs`, localized Evidence components/helpers, and `EvidenceCockpitTests.Localization_EveryEvidenceKeyResolvesInEnglishAndFrench` plus the French multi-state rendering test.
 
 - ID: 17.1-CR2
   - Status: carried-forward
@@ -1740,11 +1741,12 @@ Follow-up homes:
   - Evidence: Story 17.1 review patch added the `Stale` fixture as part of the broader empty/stale/degraded/partial/weak fixture expansion, and current tests still reference `EvidencePacketFixtures.StalePacket()` in Evidence Cockpit, recovery, filters, lenses, and responsive/accessibility suites.
 
 - ID: 17.1-CR16
-  - Status: carried-forward
+  - Status: resolved
   - Source story: 17-1-evidence-cockpit-and-trust-components
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css`
-  - Re-open trigger: before Story 25.7 closes or any Trust Strip layout is changed.
-  - Rationale: This is a narrow FrontComposer/Fluent primitive preference issue. Story 25.7 is already the conformance story and can remove the raw `flex-wrap` exception or record an allowlist reason.
+  - Re-open trigger: Trust Strip wrapping is moved out of `FluentStack Wrap="true"` into hand-authored layout CSS.
+  - Rationale: Story 25.7 keeps wrapping in the Fluent V5 stack primitive and verifies that the cockpit stylesheet contains no raw `flex-wrap` declaration.
+  - Evidence: `MemoriesTrustStrip.razor` and `Epic17ConformanceRemediationTests.TrustStrip_UsesFluentStackWrappingInsteadOfRawFlexWrap`.
 
 - ID: 17.1-CR17
   - Status: carried-forward
@@ -1754,11 +1756,16 @@ Follow-up homes:
   - Rationale: Trust-mark badging needs a UX decision alongside source metadata and case visibility. Implementing it alone would risk adding a visual security claim without a shared legend.
 
 - ID: 17.1-CR18
-  - Status: carried-forward
+  - Status: accepted
   - Source story: 17-1-evidence-cockpit-and-trust-components
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 25.7 Evidence Cockpit UX Conformance); `src/Hexalith.Memories.Web/Components/Evidence/MemoriesGraphPathSummary.razor`
-  - Re-open trigger: before Story 25.7 closes or graph path summary markup is changed.
-  - Rationale: Current `<dl>/<dt>/<dd>` markup is semantically valid, but the Fluent/FrontComposer primitive preference belongs in the existing conformance backlog story.
+  - Re-open trigger: the pinned Fluent UI package or FrontComposer adds a description-list primitive.
+  - Rationale: Story 25.7 verified that the pinned Fluent V5 assembly has no `FluentDescriptionList`; the semantic `<dl>/<dt>/<dd>` fallback remains explicitly allowlisted under owner Story 25.7.
+  - Evidence: `Epic17ConformanceAllowlist` description-list entries and `Epic17ConformanceRemediationTests.GraphSummary_PinnedFluentPackageHasNoDescriptionListPrimitive`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md`
+  summary: Non-cockpit grid and lens callers still consume locale-insensitive `EvidenceDisplay` overloads.
+  evidence: The reviewed cockpit and its Evidence child components use localized overloads, but `Components/Grid` and `Components/Lenses` retain pre-existing calls to the invariant enum, timestamp, freshness, and score formatters; localizing those mapper-driven surfaces requires a separate cross-RCL design rather than widening Story 25.7.
 
 - ID: 17-WEB-AD1-COMMAND-PALETTE-SCOPE
   - Status: carried-forward
@@ -2000,3 +2007,9 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - source_spec: `_bmad-output/implementation-artifacts/spec-25-6-mcp-tool-executor.md`
   summary: Generic MCP tool failures direct operators to inspect server logs, but the current tool/executor path does not log the original exception.
   evidence: `McpErrorMapper.MapGeneric` emits a sanitized suggestion to inspect MCP server logs, while the pre-existing tool catch blocks and the new shared executor map the exception without an `ILogger` emission; adding redacted source-generated diagnostics requires focused logging and telemetry ownership beyond this behavior-preserving refactor.
+
+## Deferred from: bmad-dev-auto follow-up review of spec-25-7-evidence-cockpit-ux-conformance (2026-07-11)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md`
+  summary: The trust strip still renders the packet's confidence (evidence strength) and freshness for an unauthorized or unknown-isolation packet, even though the source-count badge is now fail-closed to "sources unavailable"; the residual confidence/freshness badges leak a coarse "strong evidence exists" inference past the authorization wall.
+  evidence: `MemoriesTrustStrip.razor` gates the source-count badge on `Packet.State == Unauthorized || IsRestrictiveScope(Packet.Scope.IsolationStatus)` but gates `ConfidenceLabel`, `FreshnessText`, and `TokenBudgetText` only on `ShowPacketValues` (Packet mode), so a restrictive packet carrying real `EvidenceStrength`/`Freshness` still shows "Confidence: Strong" and the actual freshness while the count is suppressed. The exposure is pre-existing — the trust strip has always rendered confidence/freshness in Packet mode — and was surfaced incidentally because Story 25.7 hardened only the source-count badge. The intent scopes fail-closed suppression to source/axis/graph detail and explicitly forbids introducing new trust semantics, so tightening the trust-summary badges is out of scope for this story and needs a focused fail-closed trust-surface decision.

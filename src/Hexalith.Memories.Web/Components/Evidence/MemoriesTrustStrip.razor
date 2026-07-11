@@ -1,25 +1,31 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 <section class="mem-trust-strip"
          data-testid="mem-trust-strip"
          data-strip-mode="@Mode"
-         aria-label="Evidence trust summary">
-    <FcStatusBadge Slot="@ConfidenceSlot"
-                   Label="@ConfidenceLabel"
-                   ColumnHeader="Confidence" />
-    <FcStatusBadge Slot="BadgeSlot.Neutral"
-                   Label="@FreshnessText"
-                   ColumnHeader="Freshness" />
-    <span data-testid="mem-trust-source-count"
-          aria-label="Source count: @SourceCountText">
-        @SourceCountText
-    </span>
-    <FcStatusBadge Slot="@HealthSlot"
-                   Label="@HealthLabel"
-                   ColumnHeader="Evidence health" />
-    <FcStatusBadge Slot="@TokenBudgetSlot"
-                   Label="@TokenBudgetText"
-                   ColumnHeader="Token budget" />
+         aria-label="@Localizer[EvidenceResourceKeys.TrustLabel]">
+    <FluentStack Orientation="Orientation.Horizontal"
+                 HorizontalGap="8"
+                 Wrap="true"
+                 VerticalAlignment="VerticalAlignment.Center">
+        <FcStatusBadge Slot="@ConfidenceSlot"
+                       Label="@ConfidenceLabel"
+                       ColumnHeader="@Localizer[EvidenceResourceKeys.ConfidenceColumn]" />
+        <FcStatusBadge Slot="BadgeSlot.Neutral"
+                       Label="@FreshnessText"
+                       ColumnHeader="@Localizer[EvidenceResourceKeys.FreshnessColumn]" />
+        <FluentText data-testid="mem-trust-source-count"
+                    aria-label="@Localizer[EvidenceResourceKeys.SourceCountLabel, SourceCountText]">
+            @SourceCountText
+        </FluentText>
+        <FcStatusBadge Slot="@HealthSlot"
+                       Label="@HealthLabel"
+                       ColumnHeader="@Localizer[EvidenceResourceKeys.HealthColumn]" />
+        <FcStatusBadge Slot="@TokenBudgetSlot"
+                       Label="@TokenBudgetText"
+                       ColumnHeader="@Localizer[EvidenceResourceKeys.TokenBudgetColumn]" />
+    </FluentStack>
 </section>
 
 @code {
@@ -33,16 +39,20 @@
     private bool ShowPacketValues => Mode == TrustStripMode.Packet;
 
     private string ConfidenceLabel => ShowPacketValues
-        ? EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength)
-        : Mode == TrustStripMode.Loading ? "Loading" : "Unavailable";
+        ? EvidenceDisplay.Label(Packet.Evidence.EvidenceStrength, Localizer)
+        : Mode == TrustStripMode.Loading
+            ? Localizer[EvidenceResourceKeys.LoadingState]
+            : Localizer[EvidenceResourceKeys.Unavailable];
 
     private BadgeSlot ConfidenceSlot => ShowPacketValues
         ? EvidenceDisplay.SlotForEvidenceStrength(Packet.Evidence.EvidenceStrength)
         : BadgeSlot.Neutral;
 
     private string HealthLabel => ShowPacketValues
-        ? EvidenceDisplay.Label(Packet.State)
-        : Mode == TrustStripMode.Loading ? "Loading" : "Unavailable";
+        ? EvidenceDisplay.Label(Packet.State, Localizer)
+        : Mode == TrustStripMode.Loading
+            ? Localizer[EvidenceResourceKeys.LoadingState]
+            : Localizer[EvidenceResourceKeys.Unavailable];
 
     private BadgeSlot HealthSlot => ShowPacketValues
         ? EvidenceDisplay.SlotForState(Packet.State)
@@ -52,24 +62,27 @@
     {
         get
         {
-            if (!ShowPacketValues || EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus))
+            if (!ShowPacketValues
+                || EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
+                || Packet.State == EvidencePacketState.Unauthorized)
             {
-                return EvidenceDisplay.SourceCountLabel(0, sourcesAvailable: false);
+                return EvidenceDisplay.SourceCountLabel(0, sourcesAvailable: false, Localizer);
             }
 
-            return EvidenceDisplay.SourceCountLabel(Packet.Sources.Count, sourcesAvailable: true);
+            return EvidenceDisplay.SourceCountLabel(Packet.Sources.Count, sourcesAvailable: true, Localizer);
         }
     }
 
     private string TokenBudgetText => ShowPacketValues
-        ? EvidenceDisplay.TokenBudgetLabel(Packet)
-        : "Unavailable";
+        ? EvidenceDisplay.TokenBudgetLabel(Packet, Localizer)
+        : Localizer[EvidenceResourceKeys.Unavailable];
 
     private string FreshnessText => ShowPacketValues
-        ? EvidenceDisplay.FreshnessLabel(Packet)
-        : "Unavailable";
+        ? EvidenceDisplay.FreshnessLabel(Packet, Localizer)
+        : Localizer[EvidenceResourceKeys.Unavailable];
 
-    private BadgeSlot TokenBudgetSlot => TokenBudgetText == "compressed"
+    private BadgeSlot TokenBudgetSlot => ShowPacketValues
+        && Packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined
         ? BadgeSlot.Warning
         : BadgeSlot.Neutral;
 

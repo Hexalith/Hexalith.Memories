@@ -11,6 +11,9 @@ using System.Text.RegularExpressions;
 
 using Hexalith.FrontComposer.Contracts.Attributes;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.Localization;
 
 internal static partial class EvidenceDisplay
 {
@@ -45,6 +48,26 @@ internal static partial class EvidenceDisplay
         return buffer.ToString();
     }
 
+    public static string Label(Enum value, IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(localizer);
+
+        string key = value switch
+        {
+            EvidencePacketState state => EvidenceResourceKeys.State(state),
+            EvidencePacketEvidenceStrength strength => EvidenceResourceKeys.Strength(strength),
+            EvidencePacketIsolationStatus isolation => EvidenceResourceKeys.Isolation(isolation),
+            EvidencePacketFreshnessState freshness => EvidenceResourceKeys.Freshness(freshness),
+            SourceType sourceType => EvidenceResourceKeys.SourceType(sourceType),
+            _ => EvidenceResourceKeys.Unavailable,
+        };
+        LocalizedString localized = localizer[key];
+        return localized.ResourceNotFound
+            ? localizer[EvidenceResourceKeys.Unavailable]
+            : localized;
+    }
+
     public static string SourceCountLabel(int count, bool sourcesAvailable)
     {
         if (!sourcesAvailable)
@@ -53,6 +76,19 @@ internal static partial class EvidenceDisplay
         }
 
         return count == 1 ? "1 source" : string.Create(CultureInfo.InvariantCulture, $"{count} sources");
+    }
+
+    public static string SourceCountLabel(
+        int count,
+        bool sourcesAvailable,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(localizer);
+        return !sourcesAvailable
+            ? localizer[EvidenceResourceKeys.SourceCountUnavailable]
+            : count == 1
+                ? localizer[EvidenceResourceKeys.SourceCountOne]
+                : localizer[EvidenceResourceKeys.SourceCountMany, count];
     }
 
     public static string TokenBudgetLabel(EvidencePacket packet)
@@ -64,6 +100,19 @@ internal static partial class EvidenceDisplay
             : "within budget";
     }
 
+    public static string TokenBudgetLabel(
+        EvidencePacket packet,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+        ArgumentNullException.ThrowIfNull(localizer);
+
+        string key = packet.OmittedDetails.Reason is EvidencePacketOmissionReason.TokenBudget or EvidencePacketOmissionReason.Combined
+            ? EvidenceResourceKeys.TokenBudgetCompressed
+            : EvidenceResourceKeys.TokenBudgetWithin;
+        return localizer[key];
+    }
+
     public static string FreshnessLabel(EvidencePacket packet)
     {
         ArgumentNullException.ThrowIfNull(packet);
@@ -71,6 +120,17 @@ internal static partial class EvidenceDisplay
         EvidencePacketFreshness? freshness = packet.Metadata?.Freshness
             ?? packet.Sources.FirstOrDefault(static source => source.Freshness is not null)?.Freshness;
         return FreshnessLabel(freshness);
+    }
+
+    public static string FreshnessLabel(
+        EvidencePacket packet,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+
+        EvidencePacketFreshness? freshness = packet.Metadata?.Freshness
+            ?? packet.Sources.FirstOrDefault(static source => source.Freshness is not null)?.Freshness;
+        return FreshnessLabel(freshness, localizer);
     }
 
     public static string FreshnessLabel(EvidencePacketFreshness? freshness)
@@ -93,10 +153,51 @@ internal static partial class EvidenceDisplay
             : state;
     }
 
+    public static string FreshnessLabel(
+        EvidencePacketFreshness? freshness,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(localizer);
+        if (freshness is null)
+        {
+            return localizer[EvidenceResourceKeys.FreshnessUnavailable];
+        }
+
+        string state = Label(freshness.State, localizer);
+        if (freshness.LastCheckedAt.HasValue)
+        {
+            return localizer[
+                EvidenceResourceKeys.FreshnessChecked,
+                state,
+                TimestampLabel(freshness.LastCheckedAt, localizer)];
+        }
+
+        if (!freshness.AgeSeconds.HasValue)
+        {
+            return state;
+        }
+
+        return freshness.AgeSeconds.Value < 0
+            ? localizer[EvidenceResourceKeys.FreshnessUnavailable]
+            : localizer[EvidenceResourceKeys.FreshnessAge, state, freshness.AgeSeconds.Value];
+    }
+
     public static string TimestampLabel(DateTimeOffset? timestamp, string fallback = "timestamp unavailable")
         => timestamp.HasValue
             ? timestamp.Value.ToString("O", CultureInfo.InvariantCulture)
             : fallback;
+
+    public static string TimestampLabel(
+        DateTimeOffset? timestamp,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(localizer);
+        return timestamp.HasValue
+            ? localizer[
+                EvidenceResourceKeys.TimestampValue,
+                timestamp.Value.ToString("O", CultureInfo.InvariantCulture)]
+            : localizer[EvidenceResourceKeys.TimestampUnavailable];
+    }
 
     public static BadgeSlot SlotForState(EvidencePacketState state)
         => state switch
@@ -144,6 +245,18 @@ internal static partial class EvidenceDisplay
         }
 
         return score.Value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
+    public static string ScoreLabel(
+        double? score,
+        IStringLocalizer<MemoriesWebResources> localizer)
+    {
+        ArgumentNullException.ThrowIfNull(localizer);
+        return !score.HasValue || !double.IsFinite(score.Value)
+            ? localizer[EvidenceResourceKeys.ScoreUnavailable]
+            : localizer[
+                EvidenceResourceKeys.ScoreValue,
+                score.Value.ToString("0.###", CultureInfo.CurrentCulture)];
     }
 
     // Restrictive scope semantics: Story 17.1 treats EvidencePacketIsolationStatus.Unknown the same

@@ -93,15 +93,15 @@ internal static class Epic17ConformanceAllowlist
         new("_Imports.razor", RazorDirectives, "Global usings for the RCL; no rendered markup."),
 
         new("Components/Evidence/MemoriesEvidenceCockpit.razor", FluentWithSemanticMarkup,
-            "Composes scope/trust/recovery child components and a FluentMessageBar restrictive banner; remaining raw markup is landmarks and a section heading."),
-        new("Components/Evidence/MemoriesGraphPathSummary.razor", SemanticContainerMarkup,
-            "Description-list graph summary over EvidenceDisplay-sanitised text; landmark, heading, and visually-hidden separator only."),
-        new("Components/Evidence/MemoriesRetrievalAxisBreakdown.razor", SemanticContainerMarkup,
-            "Ordered list of retrieval axes with description-list detail; landmark and heading only."),
+            "Composes one FluentAccordion with V5 Header/Expanded members plus FluentMessageBar/FluentLabel and child components; remaining raw markup is semantic landmarks."),
+        new("Components/Evidence/MemoriesGraphPathSummary.razor", FluentWithSemanticMarkup,
+            "FluentText copy over the allowlisted semantic description-list fallback and visually-hidden separator."),
+        new("Components/Evidence/MemoriesRetrievalAxisBreakdown.razor", FluentWithSemanticMarkup,
+            "FluentText copy over an ordered retrieval-axis list with semantic description-list detail."),
         new("Components/Evidence/MemoriesScopeHeader.razor", FluentWithSemanticMarkup,
             "FcStatusBadge isolation chip inside a landmark header; remaining markup is semantic scope captions."),
-        new("Components/Evidence/MemoriesSourceCitationStack.razor", SemanticContainerMarkup,
-            "Ordered list of ranked source citations with description-list detail; landmark and heading only."),
+        new("Components/Evidence/MemoriesSourceCitationStack.razor", FluentWithSemanticMarkup,
+            "FluentText copy over an ordered ranked-source list with semantic description-list detail."),
         new("Components/Evidence/MemoriesTrustStrip.razor", FluentWithSemanticMarkup,
             "FcStatusBadge trust chips inside a landmark section; remaining markup is a labelled source-count span."),
 
@@ -219,14 +219,6 @@ internal static class Epic17ConformanceAllowlist
         owner,
         "Remove when FrontComposer or Fluent UI ships a description-list primitive.");
 
-    private static AllowlistEntry Heading(string file, string element, string owner) => new(
-        file,
-        "<" + element,
-        "Section heading required for the valid, non-skipping heading outline asserted by Epic17AccessibilitySweepTests.",
-        "No Fluent UI V5 component emits native heading elements (FluentLabel renders <label>/<span>, not <h*>).",
-        owner,
-        "Remove when Fluent UI ships a component that emits semantic <h*> heading levels.");
-
     private static List<AllowlistEntry> BuildExceptions()
     {
         const string Cockpit = "Components/Evidence/MemoriesEvidenceCockpit.razor";
@@ -246,18 +238,15 @@ internal static class Epic17ConformanceAllowlist
             // Evidence Cockpit (Story 17.1).
             Landmark(Cockpit, "article", "17.1"),
             Landmark(Cockpit, "section", "17.1"),
-            Heading(Cockpit, "h2", "17.1"),
 
-            // Graph Path Summary (Story 17.1).
-            Landmark(Graph, "section", "17.1"),
-            Heading(Graph, "h3", "17.1"),
-            DescriptionList(Graph, "dl", "17.1"),
-            DescriptionList(Graph, "dt", "17.1"),
-            DescriptionList(Graph, "dd", "17.1"),
+            // Graph Path Summary (Story 25.7): the pinned Fluent V5 package exposes no description-list primitive.
+            Landmark(Graph, "section", "25.7"),
+            DescriptionList(Graph, "dl", "25.7"),
+            DescriptionList(Graph, "dt", "25.7"),
+            DescriptionList(Graph, "dd", "25.7"),
 
             // Retrieval Axis Breakdown (Story 17.1).
             Landmark(Axis, "section", "17.1"),
-            Heading(Axis, "h3", "17.1"),
             ListItem(Axis, "ol", "17.1"),
             ListItem(Axis, "li", "17.1"),
             DescriptionList(Axis, "dl", "17.1"),
@@ -269,7 +258,6 @@ internal static class Epic17ConformanceAllowlist
 
             // Source Citation Stack (Story 17.1).
             Landmark(Source, "section", "17.1"),
-            Heading(Source, "h3", "17.1"),
             ListItem(Source, "ol", "17.1"),
             ListItem(Source, "li", "17.1"),
             DescriptionList(Source, "dl", "17.1"),

@@ -14,6 +14,47 @@ public static partial class EvidencePacketMapper
 {
     private const string DefaultCaveat = "Scores measure query-result relevance, not factual accuracy or data completeness.";
 
+    /// <summary>Creates the canonical unavailable packet used while evidence is loading or cannot be retrieved.</summary>
+    /// <param name="tenantId">The requested tenant identifier.</param>
+    /// <param name="caseId">The requested case identifier, or <see langword="null"/> for tenant scope.</param>
+    /// <param name="isError">Whether retrieval failed rather than still being pending.</param>
+    /// <returns>An empty, fail-closed packet with unknown isolation and no recovery actions.</returns>
+    public static EvidencePacket Unavailable(string tenantId, string? caseId = null, bool isError = false)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        if (caseId is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        }
+
+        return new EvidencePacket(
+            new EvidencePacketScope(
+                tenantId,
+                caseId,
+                EvidencePacketIsolationStatus.Unknown,
+                caseId is null ? "tenant" : "tenant-case"),
+            new EvidencePacketResultSummary(string.Empty, 0, 0, null, null),
+            [],
+            new EvidencePacketEvidence(
+                EvidencePacketEvidenceStrength.None,
+                "Evidence packet is not available.",
+                [],
+                [],
+                isError,
+                null,
+                []),
+            new EvidencePacketGraphSummary(false, [], [], []),
+            EvidencePacketState.Empty,
+            new EvidencePacketOmittedDetails(
+                0,
+                0,
+                EvidencePacketOmissionReason.None,
+                [],
+                [],
+                []),
+            []);
+    }
+
     /// <summary>Maps a single-axis search result into an evidence packet.</summary>
     /// <param name="result">The lower-level search result.</param>
     /// <param name="scope">The explicit tenant and case scope for the request.</param>

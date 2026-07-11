@@ -1,17 +1,19 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 <section class="mem-evidence-section"
          data-testid="mem-source-stack"
-         aria-label="Source citation stack">
-    <h3>Sources</h3>
-    <p data-testid="mem-source-order-basis">Order basis: @OrderBasisText</p>
+         aria-label="@Localizer[EvidenceResourceKeys.SourcesSection]">
+    <FluentText data-testid="mem-source-order-basis">
+        @Localizer[EvidenceResourceKeys.OrderBasis, OrderBasisText]
+    </FluentText>
     @if (IsRestricted)
     {
-        <p role="status" data-testid="mem-source-restricted">Source citations are not available in the current scope.</p>
+        <FluentText role="status" data-testid="mem-source-restricted">@Localizer[EvidenceResourceKeys.SourcesRestricted]</FluentText>
     }
     else if (Sources.Count == 0)
     {
-        <p role="status">Sources unavailable</p>
+        <FluentText role="status">@Localizer[EvidenceResourceKeys.SourcesUnavailable]</FluentText>
     }
     else
     {
@@ -20,19 +22,19 @@
             {
                 <li data-testid="mem-source-item" data-source-rank="@source.Rank">
                     <div>
-                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, "source unavailable")</strong>
-                        <span>@EvidenceDisplay.SafeText(source.SourceType.ToString(), "unknown type")</span>
+                        <strong>@EvidenceDisplay.SafeText(source.SourceUri, Localizer[EvidenceResourceKeys.SourceUnavailable])</strong>
+                        <span>@EvidenceDisplay.Label(source.SourceType, Localizer)</span>
                     </div>
-                    <p>@EvidenceDisplay.SafeText(source.Snippet, "snippet unavailable")</p>
+                    <FluentText>@EvidenceDisplay.SafeText(source.Snippet, Localizer[EvidenceResourceKeys.SnippetUnavailable])</FluentText>
                     <dl>
-                        <dt>Freshness</dt>
-                        <dd>@EvidenceDisplay.FreshnessLabel(source.Freshness ?? Packet.Metadata?.Freshness)</dd>
-                        <dt>Timestamp</dt>
-                        <dd>@EvidenceDisplay.TimestampLabel(source.Timestamp)</dd>
-                        <dt>Score</dt>
-                        <dd>@EvidenceDisplay.ScoreLabel(source.Score)</dd>
-                        <dt>Memory unit</dt>
-                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, "memory unit unavailable")</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.FreshnessField]</dt>
+                        <dd>@EvidenceDisplay.FreshnessLabel(source.Freshness ?? Packet.Metadata?.Freshness, Localizer)</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.TimestampField]</dt>
+                        <dd>@EvidenceDisplay.TimestampLabel(source.Timestamp, Localizer)</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.ScoreField]</dt>
+                        <dd>@EvidenceDisplay.ScoreLabel(source.Score, Localizer)</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.MemoryUnitField]</dt>
+                        <dd>@EvidenceDisplay.SafeText(source.MemoryUnitId, Localizer[EvidenceResourceKeys.MemoryUnitUnavailable])</dd>
                     </dl>
                 </li>
             }
@@ -53,5 +55,7 @@
     // Advanced Elicitation #4: contract has no ordering signal — preserve packet order
     // and surface that explicitly. When the contract starts emitting an order basis,
     // replace this constant with the contract-sourced value.
-    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
+    private string OrderBasisText => IsRestricted
+        ? Localizer[EvidenceResourceKeys.Unavailable]
+        : Localizer[EvidenceResourceKeys.PacketOrder];
 }

@@ -13,6 +13,56 @@ using Shouldly;
 
 public sealed class EvidencePacketMapperTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Unavailable_InvalidTenantId_ThrowsArgumentException(string? tenantId)
+    {
+        Should.Throw<ArgumentException>(() => EvidencePacketMapper.Unavailable(tenantId!));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void Unavailable_InvalidCaseId_ThrowsArgumentException(string caseId)
+    {
+        Should.Throw<ArgumentException>(() => EvidencePacketMapper.Unavailable("tenant-a", caseId));
+    }
+
+    [Theory]
+    [InlineData(null, "tenant", false)]
+    [InlineData("case-a", "tenant-case", true)]
+    public void Unavailable_ShouldCreateCanonicalFailClosedShape(
+        string? caseId,
+        string permissionsContext,
+        bool isError)
+    {
+        EvidencePacket packet = EvidencePacketMapper.Unavailable("tenant-a", caseId, isError);
+
+        packet.Scope.TenantId.ShouldBe("tenant-a");
+        packet.Scope.CaseId.ShouldBe(caseId);
+        packet.Scope.IsolationStatus.ShouldBe(EvidencePacketIsolationStatus.Unknown);
+        packet.Scope.PermissionsContext.ShouldBe(permissionsContext);
+        packet.Result.ShouldBe(new EvidencePacketResultSummary(string.Empty, 0, 0, null, null));
+        packet.Sources.ShouldBeEmpty();
+        packet.Evidence.EvidenceStrength.ShouldBe(EvidencePacketEvidenceStrength.None);
+        packet.Evidence.Caveat.ShouldBe("Evidence packet is not available.");
+        packet.Evidence.AxesUsed.ShouldBeEmpty();
+        packet.Evidence.UnavailableAxes.ShouldBeEmpty();
+        packet.Evidence.Degraded.ShouldBe(isError);
+        packet.Evidence.AxisEvidence.ShouldBeEmpty();
+        packet.Graph.ShouldBe(new EvidencePacketGraphSummary(false, [], [], []));
+        packet.State.ShouldBe(EvidencePacketState.Empty);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.None);
+        packet.OmittedDetails.OmittedCount.ShouldBe(0);
+        packet.OmittedDetails.EstimatedTokensTotal.ShouldBe(0);
+        packet.OmittedDetails.FieldNames.ShouldBeEmpty();
+        packet.OmittedDetails.DetailGroups.ShouldBeEmpty();
+        packet.OmittedDetails.ExpansionHandles.ShouldBeEmpty();
+        packet.Recovery.ShouldBeEmpty();
+    }
+
     [Fact]
     public void FromSearchResult_ShouldMapScopeSourcesEvidenceAndTokenBudgetOmissions()
     {
@@ -685,4 +735,3 @@ public sealed class EvidencePacketMapperTests
         },
     };
 }
-

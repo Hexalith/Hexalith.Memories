@@ -1,4 +1,5 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 @*
     Story 17.6 — scope captions use Fluent typography (FluentLabel) and FluentStack layout instead of
@@ -9,24 +10,24 @@
 
 <header class="mem-evidence-scope"
         data-testid="mem-evidence-scope"
-        aria-label="Evidence scope">
+        aria-label="@Localizer[EvidenceResourceKeys.ScopeLabel]">
     <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" Wrap="true" VerticalAlignment="VerticalAlignment.Center">
         <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
-            <FluentLabel Typo="Typography.Body">Tenant</FluentLabel>
-            <FluentLabel Typo="Typography.Subject">
-                <strong data-testid="mem-scope-tenant">@EvidenceDisplay.SafeText(Packet.Scope.TenantId, "unknown tenant")</strong>
+            <FluentLabel Size="LabelSize.Small">@Localizer[EvidenceResourceKeys.TenantLabel]</FluentLabel>
+            <FluentLabel Size="LabelSize.Medium" Weight="LabelWeight.Semibold">
+                <strong data-testid="mem-scope-tenant">@TenantText</strong>
             </FluentLabel>
         </FluentStack>
         <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
-            <FluentLabel Typo="Typography.Body">Case</FluentLabel>
-            <FluentLabel Typo="Typography.Subject">
-                <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, "tenant scope"))</strong>
+            <FluentLabel Size="LabelSize.Small">@Localizer[EvidenceResourceKeys.CaseLabel]</FluentLabel>
+            <FluentLabel Size="LabelSize.Medium" Weight="LabelWeight.Semibold">
+                <strong data-testid="mem-scope-case">@(EvidenceDisplay.SafeText(Packet.Scope.CaseId, Localizer[EvidenceResourceKeys.TenantScope]))</strong>
             </FluentLabel>
         </FluentStack>
         <div data-testid="mem-scope-isolation">
             <FcStatusBadge Slot="@EvidenceDisplay.SlotForIsolation(Packet.Scope.IsolationStatus)"
-                           Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus)"
-                           ColumnHeader="Scope" />
+                           Label="@EvidenceDisplay.Label(Packet.Scope.IsolationStatus, Localizer)"
+                           ColumnHeader="@Localizer[EvidenceResourceKeys.ScopeColumn]" />
         </div>
     </FluentStack>
 </header>
@@ -35,4 +36,9 @@
     [Parameter]
     [EditorRequired]
     public EvidencePacket Packet { get; set; } = default!;
+
+    private string TenantText => Packet.Scope.IsolationStatus == EvidencePacketIsolationStatus.Unknown
+        && string.Equals(Packet.Scope.TenantId, "unknown", StringComparison.Ordinal)
+            ? Localizer[EvidenceResourceKeys.UnknownTenant]
+            : EvidenceDisplay.SafeText(Packet.Scope.TenantId, Localizer[EvidenceResourceKeys.UnknownTenant]);
 }

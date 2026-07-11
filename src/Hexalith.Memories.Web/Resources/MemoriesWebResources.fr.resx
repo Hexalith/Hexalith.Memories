@@ -984,4 +984,111 @@
   <data name="Packet_Field_McpSchema" xml:space="preserve">
     <value>Schéma MCP</value>
   </data>
+
+  <!-- Story 25.7 — textes visibles et accessibles du cockpit de preuves. -->
+  <data name="Evidence_Cockpit_Label" xml:space="preserve"><value>Cockpit de preuves</value></data>
+  <data name="Evidence_Scope_Label" xml:space="preserve"><value>Portée des preuves</value></data>
+  <data name="Evidence_Tenant_Label" xml:space="preserve"><value>Locataire</value></data>
+  <data name="Evidence_Case_Label" xml:space="preserve"><value>Dossier</value></data>
+  <data name="Evidence_Scope_Column" xml:space="preserve"><value>Portée</value></data>
+  <data name="Evidence_Trust_Label" xml:space="preserve"><value>Résumé de confiance des preuves</value></data>
+  <data name="Evidence_Confidence_Column" xml:space="preserve"><value>Confiance</value></data>
+  <data name="Evidence_Freshness_Column" xml:space="preserve"><value>Fraîcheur</value></data>
+  <data name="Evidence_SourceCount_Label" xml:space="preserve"><value>Nombre de sources : {0}</value></data>
+  <data name="Evidence_Health_Column" xml:space="preserve"><value>État des preuves</value></data>
+  <data name="Evidence_TokenBudget_Column" xml:space="preserve"><value>Budget de jetons</value></data>
+  <data name="Evidence_Result_Section" xml:space="preserve"><value>Preuves</value></data>
+  <data name="Evidence_Recovery_Section" xml:space="preserve"><value>Récupération et retour</value></data>
+  <data name="Evidence_Sources_Section" xml:space="preserve"><value>Sources</value></data>
+  <data name="Evidence_Axes_Section" xml:space="preserve"><value>Axes de recherche</value></data>
+  <data name="Evidence_Graph_Section" xml:space="preserve"><value>Contexte de graphe</value></data>
+  <data name="Evidence_Result_Label" xml:space="preserve"><value>Résultat des preuves</value></data>
+  <data name="Evidence_Query_Label" xml:space="preserve"><value>Requête</value></data>
+  <data name="Evidence_Loading" xml:space="preserve"><value>Chargement des preuves</value></data>
+  <data name="Evidence_Error" xml:space="preserve"><value>Preuves indisponibles. {0}</value></data>
+  <data name="Evidence_UnknownTenant" xml:space="preserve"><value>locataire inconnu</value></data>
+  <data name="Evidence_TenantScope" xml:space="preserve"><value>portée locataire</value></data>
+  <data name="Evidence_NoQuery" xml:space="preserve"><value>aucune requête</value></data>
+  <data name="Evidence_SummaryUnavailable" xml:space="preserve"><value>résumé indisponible</value></data>
+  <data name="Evidence_ReasonRedacted" xml:space="preserve"><value>Raison masquée.</value></data>
+  <data name="Evidence_Unavailable" xml:space="preserve"><value>Indisponible</value></data>
+  <data name="Evidence_SourceUnavailable" xml:space="preserve"><value>source indisponible</value></data>
+  <data name="Evidence_UnknownSourceType" xml:space="preserve"><value>type inconnu</value></data>
+  <data name="Evidence_SnippetUnavailable" xml:space="preserve"><value>extrait indisponible</value></data>
+  <data name="Evidence_MemoryUnitUnavailable" xml:space="preserve"><value>unité de mémoire indisponible</value></data>
+  <data name="Evidence_AxisUnavailable" xml:space="preserve"><value>axe indisponible</value></data>
+  <data name="Evidence_RankingReasonUnavailable" xml:space="preserve"><value>raison du classement indisponible</value></data>
+  <data name="Evidence_NormalizationUnavailable" xml:space="preserve"><value>normalisation indisponible</value></data>
+  <data name="Evidence_NoUnavailableAxes" xml:space="preserve"><value>aucun axe indisponible</value></data>
+  <data name="Evidence_NoCaveat" xml:space="preserve"><value>aucune réserve</value></data>
+  <data name="Evidence_NodeUnavailable" xml:space="preserve"><value>nœud indisponible</value></data>
+  <data name="Evidence_NoTraversalPath" xml:space="preserve"><value>aucun chemin de parcours</value></data>
+  <data name="Evidence_EdgeTypeUnavailable" xml:space="preserve"><value>type d'arête indisponible</value></data>
+  <data name="Evidence_NoGapMarkers" xml:space="preserve"><value>aucun marqueur de lacune</value></data>
+  <data name="Evidence_ScoreUnavailable" xml:space="preserve"><value>score indisponible</value></data>
+  <data name="Evidence_TimestampUnavailable" xml:space="preserve"><value>horodatage indisponible</value></data>
+  <data name="Evidence_FreshnessUnavailable" xml:space="preserve"><value>Indisponible</value></data>
+  <data name="Evidence_SourcesUnavailable" xml:space="preserve"><value>Sources indisponibles</value></data>
+  <data name="Evidence_SourcesRestricted" xml:space="preserve"><value>Les citations de sources ne sont pas disponibles dans la portée actuelle.</value></data>
+  <data name="Evidence_AxesUnavailable" xml:space="preserve"><value>Preuves par axe indisponibles</value></data>
+  <data name="Evidence_AxesRestricted" xml:space="preserve"><value>Les preuves par axe ne sont pas disponibles dans la portée actuelle.</value></data>
+  <data name="Evidence_GraphUnavailable" xml:space="preserve"><value>Contexte de graphe indisponible</value></data>
+  <data name="Evidence_GraphRestricted" xml:space="preserve"><value>Le contexte de graphe n'est pas disponible dans la portée actuelle.</value></data>
+  <data name="Evidence_Freshness_Field" xml:space="preserve"><value>Fraîcheur</value></data>
+  <data name="Evidence_Timestamp_Field" xml:space="preserve"><value>Horodatage</value></data>
+  <data name="Evidence_Score_Field" xml:space="preserve"><value>Score</value></data>
+  <data name="Evidence_MemoryUnit_Field" xml:space="preserve"><value>Unité de mémoire</value></data>
+  <data name="Evidence_NormalizedScore_Field" xml:space="preserve"><value>Score normalisé</value></data>
+  <data name="Evidence_RankingReason_Field" xml:space="preserve"><value>Raison du classement</value></data>
+  <data name="Evidence_Normalization_Field" xml:space="preserve"><value>Normalisation</value></data>
+  <data name="Evidence_Path_Field" xml:space="preserve"><value>Chemin</value></data>
+  <data name="Evidence_EdgeTypes_Field" xml:space="preserve"><value>Types d'arêtes</value></data>
+  <data name="Evidence_GapMarkers_Field" xml:space="preserve"><value>Marqueurs de lacune</value></data>
+  <data name="Evidence_Graph_Then" xml:space="preserve"><value>puis</value></data>
+  <data name="Evidence_OrderBasis" xml:space="preserve"><value>Base de l'ordre : {0}</value></data>
+  <data name="Evidence_PacketOrder" xml:space="preserve"><value>ordre du paquet</value></data>
+  <data name="Evidence_UnavailableAxes" xml:space="preserve"><value>Axes indisponibles : {0}</value></data>
+  <data name="Evidence_SourceCountUnavailable" xml:space="preserve"><value>sources indisponibles</value></data>
+  <data name="Evidence_SourceCountOne" xml:space="preserve"><value>1 source</value></data>
+  <data name="Evidence_SourceCountMany" xml:space="preserve"><value>{0} sources</value></data>
+  <data name="Evidence_FreshnessChecked" xml:space="preserve"><value>{0} ; vérifiée le {1}</value></data>
+  <data name="Evidence_FreshnessAge" xml:space="preserve"><value>{0} ; âge {1} s</value></data>
+  <data name="Evidence_TimestampValue" xml:space="preserve"><value>{0}</value></data>
+  <data name="Evidence_ScoreValue" xml:space="preserve"><value>{0}</value></data>
+  <data name="Evidence_TokenBudgetCompressed" xml:space="preserve"><value>compressé</value></data>
+  <data name="Evidence_TokenBudgetWithin" xml:space="preserve"><value>dans le budget</value></data>
+  <data name="Evidence_LoadingState" xml:space="preserve"><value>Chargement</value></data>
+  <data name="Evidence_Banner_Unauthorized" xml:space="preserve"><value>Autorisation requise pour cette portée locataire et dossier.</value></data>
+  <data name="Evidence_Banner_MissingSource" xml:space="preserve"><value>La récupération des preuves est dégradée pour cette portée.</value></data>
+  <data name="Evidence_Banner_Redacted" xml:space="preserve"><value>Les détails des preuves ont été masqués par la politique.</value></data>
+  <data name="Evidence_Banner_Compressed" xml:space="preserve"><value>Le paquet de preuves est compressé selon le budget de jetons.</value></data>
+  <data name="Evidence_Banner_Degraded" xml:space="preserve"><value>Les preuves sont à l'état « {0} » pour cette portée.</value></data>
+  <data name="Evidence_State_Complete" xml:space="preserve"><value>Complet</value></data>
+  <data name="Evidence_State_Partial" xml:space="preserve"><value>Partiel</value></data>
+  <data name="Evidence_State_Weak" xml:space="preserve"><value>Faible</value></data>
+  <data name="Evidence_State_Empty" xml:space="preserve"><value>Vide</value></data>
+  <data name="Evidence_State_Stale" xml:space="preserve"><value>Obsolète</value></data>
+  <data name="Evidence_State_Degraded" xml:space="preserve"><value>Dégradé</value></data>
+  <data name="Evidence_State_Unauthorized" xml:space="preserve"><value>Non autorisé</value></data>
+  <data name="Evidence_State_PendingExpansion" xml:space="preserve"><value>Extension en attente</value></data>
+  <data name="Evidence_Strength_None" xml:space="preserve"><value>Aucune</value></data>
+  <data name="Evidence_Strength_Unknown" xml:space="preserve"><value>Inconnue</value></data>
+  <data name="Evidence_Strength_Weak" xml:space="preserve"><value>Faible</value></data>
+  <data name="Evidence_Strength_Moderate" xml:space="preserve"><value>Modérée</value></data>
+  <data name="Evidence_Strength_Strong" xml:space="preserve"><value>Forte</value></data>
+  <data name="Evidence_Isolation_Authorized" xml:space="preserve"><value>Autorisé</value></data>
+  <data name="Evidence_Isolation_Unknown" xml:space="preserve"><value>Inconnu</value></data>
+  <data name="Evidence_Isolation_Unauthorized" xml:space="preserve"><value>Non autorisé</value></data>
+  <data name="Evidence_Freshness_Unknown" xml:space="preserve"><value>Inconnue</value></data>
+  <data name="Evidence_Freshness_Current" xml:space="preserve"><value>Actuelle</value></data>
+  <data name="Evidence_Freshness_Stale" xml:space="preserve"><value>Obsolète</value></data>
+  <data name="Evidence_Freshness_Expired" xml:space="preserve"><value>Expirée</value></data>
+  <data name="Evidence_Freshness_Pending" xml:space="preserve"><value>Vérification en cours</value></data>
+  <data name="Evidence_SourceType_File" xml:space="preserve"><value>Fichier</value></data>
+  <data name="Evidence_SourceType_Url" xml:space="preserve"><value>URL</value></data>
+  <data name="Evidence_SourceType_Event" xml:space="preserve"><value>Événement</value></data>
+  <data name="Evidence_SourceType_Command" xml:space="preserve"><value>Commande</value></data>
+  <data name="Evidence_SourceType_Projection" xml:space="preserve"><value>Projection</value></data>
+  <data name="Evidence_SourceType_Discussion" xml:space="preserve"><value>Discussion</value></data>
+  <data name="Evidence_SourceType_Annotation" xml:space="preserve"><value>Annotation</value></data>
 </root>

@@ -21,6 +21,8 @@ using Hexalith.Memories.Web.Tests.Components.Evidence;
 using Hexalith.Memories.Web.Tests.Components.Forms;
 using Hexalith.Memories.Web.Tests.Components.Lenses;
 
+using Microsoft.FluentUI.AspNetCore.Components;
+
 using Shouldly;
 
 /// <summary>
@@ -184,26 +186,23 @@ public sealed class Epic17AccessibilitySweepTests : Epic17ValidationTestBase
 
     [Theory]
     [MemberData(nameof(HeadingOutlineStates))]
-    public void Cockpit_ComposedHeadings_FollowValidOutlineOrder_NoSkippedLevels(string fixtureName)
+    public void Cockpit_ComposedAccordionHeaders_UseOneLevelTwoOutlineWithStableNames(string fixtureName)
     {
-        // AC2 (heading order): the cockpit composes <h2>Evidence over the <h3> source/axis/graph sections.
-        // A valid outline opens at its shallowest level, has a single top heading, and never skips a level.
-        string markup = Render<MemoriesEvidenceCockpit>(parameters => parameters
-            .Add(c => c.Packet, CockpitHeadingFixture(fixtureName))).Markup;
+        // Story 25.7: the Fluent accordion owns the sibling section headings. HeadingLevel=2 gives every
+        // item one consistent native outline level when the web component hydrates; Header is the current
+        // Fluent V5 member and must always carry a readable localized name.
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(c => c.Packet, CockpitHeadingFixture(fixtureName)));
 
-        IReadOnlyList<int> levels = HeadingLevels(markup);
-        levels.ShouldNotBeEmpty($"Cockpit '{fixtureName}' rendered no headings.");
-
-        int top = levels.Min();
-        levels[0].ShouldBe(top, $"Cockpit '{fixtureName}' does not open with its top-level heading.");
-        levels.Count(l => l == top).ShouldBe(1, $"Cockpit '{fixtureName}' renders more than one top-level heading.");
-
-        for (int i = 1; i < levels.Count; i++)
-        {
-            (levels[i] - levels[i - 1]).ShouldBeLessThanOrEqualTo(
-                1,
-                $"Cockpit '{fixtureName}' skips a heading level (h{levels[i - 1]} → h{levels[i]}).");
-        }
+        IRenderedComponent<FluentAccordion> accordion = component.FindComponent<FluentAccordion>();
+        accordion.Instance.HeadingLevel.ShouldBe(2);
+        IReadOnlyList<IRenderedComponent<FluentAccordionItem>> items = component.FindComponents<FluentAccordionItem>();
+        items.ShouldNotBeEmpty($"Cockpit '{fixtureName}' rendered no accordion headers.");
+        items.ShouldAllBe(static item => !string.IsNullOrWhiteSpace(item.Instance.Header));
+        items[0].Instance.Header.ShouldBe("Evidence");
+        items[0].Instance.Expanded.ShouldBeTrue();
+        items[1].Instance.Header.ShouldBe("Recovery and feedback");
+        items[1].Instance.Expanded.ShouldBeTrue();
     }
 
     [Fact]
@@ -270,10 +269,6 @@ public sealed class Epic17AccessibilitySweepTests : Epic17ValidationTestBase
             "Unauthorized" => LensPacketFixtures.Unauthorized(),
             _ => throw new InvalidOperationException($"Unknown fixture '{name}'."),
         };
-
-    private static IReadOnlyList<int> HeadingLevels(string markup)
-        => [.. QueryAll(markup, "h1, h2, h3, h4, h5, h6")
-            .Select(static h => int.Parse(h.TagName[1..], CultureInfo.InvariantCulture))];
 
     private static (string Anchor, EvidencePacket Packet) AnchorFor(string surface)
         => surface switch

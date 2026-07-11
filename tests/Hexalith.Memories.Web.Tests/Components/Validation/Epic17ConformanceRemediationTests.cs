@@ -6,6 +6,8 @@
 namespace Hexalith.Memories.Web.Tests.Components.Validation;
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 
 using AngleSharp.Dom;
 
@@ -14,6 +16,8 @@ using Bunit;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
 using Hexalith.Memories.Web.Tests.Components.Evidence;
+
+using Microsoft.FluentUI.AspNetCore.Components;
 
 using Shouldly;
 
@@ -33,6 +37,49 @@ using Shouldly;
 public sealed class Epic17ConformanceRemediationTests : Epic17ValidationTestBase
 {
     private const string RestrictiveState = "[data-testid='mem-evidence-restrictive-state']";
+
+    [Fact]
+    public void EvidenceCockpit_RealPacket_UsesCurrentFluentV5AccordionMembers()
+    {
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(c => c.Packet, EvidencePacketFixtures.CompressedPacket()));
+
+        IRenderedComponent<FluentAccordion> accordion = component.FindComponent<FluentAccordion>();
+        accordion.Instance.ExpandMode.ShouldBe(AccordionExpandMode.Multi);
+        IReadOnlyList<IRenderedComponent<FluentAccordionItem>> items = component.FindComponents<FluentAccordionItem>();
+        items.Count.ShouldBeGreaterThan(1);
+        items.ShouldAllBe(static item => !string.IsNullOrWhiteSpace(item.Instance.Header));
+        items[0].Instance.Expanded.ShouldBeTrue();
+        items[1].Instance.Expanded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void TrustStrip_UsesFluentStackWrappingInsteadOfRawFlexWrap()
+    {
+        IRenderedComponent<MemoriesTrustStrip> component = Render<MemoriesTrustStrip>(parameters => parameters
+            .Add(c => c.Packet, EvidencePacketFixtures.CompletePacket()));
+
+        component.FindComponent<FluentStack>().Instance.Wrap.ShouldBeTrue();
+        string cockpitCss = File.ReadAllText(Path.Combine(
+            Epic17ConformanceAllowlist.WebProjectDirectory(),
+            "Components",
+            "Evidence",
+            "MemoriesEvidenceCockpit.razor.css"));
+        cockpitCss.ShouldNotContain("flex-wrap", Shouldly.Case.Insensitive);
+    }
+
+    [Fact]
+    public void GraphSummary_PinnedFluentPackageHasNoDescriptionListPrimitive()
+    {
+        typeof(FluentAccordion).Assembly
+            .GetType("Microsoft.FluentUI.AspNetCore.Components.FluentDescriptionList", throwOnError: false)
+            .ShouldBeNull();
+
+        Epic17ConformanceAllowlist.Exceptions.ShouldContain(entry =>
+            entry.File.EndsWith("MemoriesGraphPathSummary.razor", StringComparison.Ordinal)
+            && entry.Pattern == "<dl"
+            && entry.OwnerStory == "25.7");
+    }
 
     [Fact]
     public void RestrictiveBanner_Unauthorized_RendersFluentMessageBarWithErrorIntent()
@@ -106,6 +153,14 @@ public sealed class Epic17ConformanceRemediationTests : Epic17ValidationTestBase
             .TextContent.ShouldContain("tenant-a");
         QueryAll(markup, "[data-testid='mem-scope-case']").ShouldHaveSingleItem()
             .TextContent.ShouldContain("case-a");
+
+        foreach (string file in Epic17ConformanceAllowlist.SourceFiles()
+            .Where(static file => file.StartsWith("Components/Evidence/", StringComparison.Ordinal)
+                && file.EndsWith(".razor", StringComparison.Ordinal)))
+        {
+            File.ReadAllText(Path.Combine(Epic17ConformanceAllowlist.WebProjectDirectory(), file))
+                .ShouldNotContain("Typo=", Shouldly.Case.Insensitive);
+        }
     }
 
     private static EvidencePacket ResolveFixture(string fixtureName) => fixtureName switch

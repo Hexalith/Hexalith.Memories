@@ -5,6 +5,9 @@
 
 namespace Hexalith.Memories.Web.Tests.Components.Evidence;
 
+using System.Globalization;
+using System.Reflection;
+
 using AngleSharp.Dom;
 
 using Bunit;
@@ -12,6 +15,11 @@ using Bunit;
 using Hexalith.FrontComposer.Testing;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Web.Components.Evidence;
+using Hexalith.Memories.Web.Resources;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 using Shouldly;
 
@@ -34,6 +42,100 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
     }
 
     [Fact]
+    public void MemoriesEvidenceCockpit_RealPacket_ShouldRenderOneMultiExpandAccordionWithPrimaryExpanded()
+    {
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(p => p.Packet, EvidencePacketFixtures.CompressedPacket()));
+
+        IRenderedComponent<FluentAccordion> accordion = component.FindComponent<FluentAccordion>();
+        accordion.Instance.ExpandMode.ShouldBe(AccordionExpandMode.Multi);
+        accordion.Instance.HeadingLevel.ShouldBe(2);
+
+        IReadOnlyList<IRenderedComponent<FluentAccordionItem>> items = component.FindComponents<FluentAccordionItem>();
+        items.Select(static item => item.Instance.Header).ShouldBe(
+            ["Evidence", "Recovery and feedback", "Sources", "Retrieval axes", "Graph context"]);
+        items[0].Instance.Expanded.ShouldBeTrue();
+        items[1].Instance.Expanded.ShouldBeTrue();
+        items.Skip(2).ShouldAllBe(static item => !item.Instance.Expanded);
+    }
+
+    [Fact]
+    public void MemoriesEvidenceCockpit_IdleState_ShouldNotAnnounceAnError()
+    {
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>();
+
+        component.Find("[data-testid='mem-evidence-unavailable']").TextContent.ShouldContain("Unavailable");
+        component.FindAll("[data-testid='mem-evidence-error']").ShouldBeEmpty();
+        component.FindAll("[role='alert']").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task MemoriesEvidenceCockpit_UserCollapsedPrimary_ShouldStayCollapsedAfterParentRerender()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(p => p.Packet, packet));
+        IRenderedComponent<FluentAccordionItem> primary = component.FindComponents<FluentAccordionItem>()[0];
+
+        await component.InvokeAsync(() => primary.Instance.SetExpandedAsync(false));
+        component.Render(parameters => parameters.Add(p => p.Packet, packet));
+
+        component.FindComponents<FluentAccordionItem>()[0].Instance.Expanded.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task MemoriesEvidenceCockpit_UserCollapsedRecovery_ShouldStayCollapsedAfterParentRerender()
+    {
+        // Symmetric to the primary-item persistence guard: the recovery accordion item is also two-way
+        // bound (@bind-Expanded="_isRecoveryExpanded"), so a user collapse must survive a parent rerender.
+        EvidencePacket packet = EvidencePacketFixtures.CompletePacket();
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(p => p.Packet, packet));
+        IRenderedComponent<FluentAccordionItem> recovery = component.FindComponents<FluentAccordionItem>()[1];
+
+        await component.InvokeAsync(() => recovery.Instance.SetExpandedAsync(false));
+        component.Render(parameters => parameters.Add(p => p.Packet, packet));
+
+        component.FindComponents<FluentAccordionItem>()[1].Instance.Expanded.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void MemoriesEvidenceCockpit_UnavailableState_ShouldLocalizeUnknownTenantScope()
+    {
+        // The idle/loading/error states feed the canonical unavailable packet whose blank tenant renders
+        // through the localized "unknown tenant" fallback. This pins the sentinel + localization contract so
+        // the two independent "unknown" literals (the cockpit sentinel and the scope-header special case) can
+        // no longer drift and leak an untranslated tenant into the most common empty state.
+        Render<MemoriesEvidenceCockpit>()
+            .Find("[data-testid='mem-scope-tenant']").TextContent.ShouldContain("unknown tenant");
+
+        WithCulture("fr-FR", () =>
+        {
+            IElement tenant = Render<MemoriesEvidenceCockpit>().Find("[data-testid='mem-scope-tenant']");
+            tenant.TextContent.ShouldContain("locataire inconnu");
+            tenant.TextContent.ShouldNotContain("unknown");
+        });
+    }
+
+    [Fact]
+    public void EvidenceDisplay_FreshnessLabel_ShouldLocalizePositiveAgeWithoutTimestamp()
+    {
+        // The positive-age branch (no LastCheckedAt) is the only freshness path with no direct output
+        // assertion; pin its localized {state}/{age} substitution in English and French.
+        IStringLocalizer<MemoriesWebResources> localizer =
+            Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
+        var freshness = new EvidencePacketFreshness(EvidencePacketFreshnessState.Current, AgeSeconds: 120);
+
+        EvidenceDisplay.FreshnessLabel(freshness, localizer).ShouldBe("Current; age 120 s");
+        WithCulture("fr-FR", () =>
+        {
+            string localized = EvidenceDisplay.FreshnessLabel(freshness, localizer);
+            localized.ShouldContain("Actuelle");
+            localized.ShouldContain("âge 120 s");
+        });
+    }
+
+    [Fact]
     public void MemoriesEvidenceCockpit_LoadingState_ShouldKeepScopeBeforeStatusAndShowUnavailableTrustValues()
     {
         IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
@@ -51,6 +153,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.FindAll("[data-testid='mem-source-stack']").ShouldBeEmpty();
         component.FindAll("[data-testid='mem-axis-breakdown']").ShouldBeEmpty();
         component.FindAll("[data-testid='mem-graph-summary']").ShouldBeEmpty();
+        component.FindComponents<FluentAccordion>().ShouldBeEmpty();
     }
 
     [Fact]
@@ -70,17 +173,36 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         component.FindAll("[data-testid='mem-source-stack']").ShouldBeEmpty();
         component.FindAll("[data-testid='mem-axis-breakdown']").ShouldBeEmpty();
         component.FindAll("[data-testid='mem-graph-summary']").ShouldBeEmpty();
+        component.FindComponents<FluentAccordion>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void MemoriesEvidenceCockpit_UnavailableCache_ShouldNotAliasDelimitedTenantAndCaseValues()
+    {
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(p => p.TenantId, "tenant|case")
+            .Add(p => p.CaseId, "one"));
+
+        component.Render(parameters => parameters
+            .Add(p => p.TenantId, "tenant")
+            .Add(p => p.CaseId, "case|one"));
+
+        EvidencePacket packet = component.FindComponent<MemoriesScopeHeader>().Instance.Packet;
+        packet.Scope.TenantId.ShouldBe("tenant");
+        packet.Scope.CaseId.ShouldBe("case|one");
     }
 
     [Fact]
     public void MemoriesTrustStrip_CompressedPacket_ShouldRenderVisibleLabelsAndAccessibleNames()
     {
+        IStringLocalizer<MemoriesWebResources> localizer =
+            Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
         IRenderedComponent<MemoriesTrustStrip> component = Render<MemoriesTrustStrip>(parameters => parameters
             .Add(p => p.Packet, EvidencePacketFixtures.CompressedPacket())
             .Add(p => p.Mode, MemoriesTrustStrip.TrustStripMode.Packet));
 
         component.Markup.ShouldContain("aria-label=\"Confidence: Strong\"");
-        component.Markup.ShouldContain($"aria-label=\"Freshness: {EvidenceDisplay.FreshnessLabel(EvidencePacketFixtures.CompressedPacket())}\"");
+        component.Markup.ShouldContain($"aria-label=\"Freshness: {EvidenceDisplay.FreshnessLabel(EvidencePacketFixtures.CompressedPacket(), localizer)}\"");
         component.Markup.ShouldContain("aria-label=\"Evidence health: Pending expansion\"");
         component.Markup.ShouldContain("aria-label=\"Token budget: compressed\"");
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("1 source");
@@ -106,7 +228,7 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
 
         EvidencePacketFieldMapping freshness = mappings.Single(static x => x.DisplayField == "trust.freshness");
         freshness.ContractSource.ShouldContain("EvidencePacket.Metadata.Freshness");
-        freshness.UnavailableFallback.ShouldBe(EvidenceDisplay.FreshnessUnavailable);
+        freshness.UnavailableFallback.ShouldBe(EvidenceResourceKeys.FreshnessUnavailable);
 
         // Every UI display field shown to operators must be tracked.
         string[] requiredFields =
@@ -153,6 +275,142 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         markup.ShouldNotContain("https://docs.example/restricted");
 
         component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("sources unavailable");
+    }
+
+    [Fact]
+    public void MemoriesTrustStrip_UnauthorizedStateWithAuthorizedScope_ShouldHideSourceCount()
+    {
+        EvidencePacket packet = EvidencePacketFixtures.UnauthorizedPacket() with
+        {
+            Scope = EvidencePacketFixtures.UnauthorizedPacket().Scope with
+            {
+                IsolationStatus = EvidencePacketIsolationStatus.Authorized,
+            },
+        };
+        IRenderedComponent<MemoriesTrustStrip> component = Render<MemoriesTrustStrip>(parameters => parameters
+            .Add(p => p.Packet, packet));
+
+        component.Find("[data-testid='mem-trust-source-count']").TextContent.ShouldContain("sources unavailable");
+        component.Markup.ShouldNotContain("1 source");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MemoriesEvidenceCockpit_UnavailableInput_ShouldUseCanonicalMapperShape(bool error)
+    {
+        IRenderedComponent<MemoriesEvidenceCockpit> component = Render<MemoriesEvidenceCockpit>(parameters => parameters
+            .Add(p => p.TenantId, "tenant-a")
+            .Add(p => p.CaseId, "case-a")
+            .Add(p => p.IsLoading, !error)
+            .Add(p => p.ErrorMessage, error ? "safe failure" : null));
+
+        EvidencePacket packet = component.FindComponent<MemoriesScopeHeader>().Instance.Packet;
+        packet.ShouldBe(EvidencePacketMapper.Unavailable("tenant-a", "case-a", isError: error));
+        packet.State.ShouldBe(EvidencePacketState.Empty);
+        packet.Evidence.Degraded.ShouldBe(error);
+        packet.OmittedDetails.Reason.ShouldBe(EvidencePacketOmissionReason.None);
+    }
+
+    [Fact]
+    public void Localization_EveryEvidenceKeyResolvesInEnglishAndFrench()
+    {
+        IStringLocalizer<MemoriesWebResources> localizer =
+            Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
+
+        foreach (string cultureName in new[] { "en", "fr" })
+        {
+            WithCulture(cultureName, () =>
+            {
+                foreach (string key in AllEvidenceKeys())
+                {
+                    LocalizedString value = localizer[key];
+                    value.ResourceNotFound.ShouldBeFalse($"Missing {cultureName} localization resource for key '{key}'.");
+                    value.Value.ShouldNotBeNullOrWhiteSpace();
+                    value.Value.ShouldNotBe(key);
+                }
+            });
+        }
+    }
+
+    [Fact]
+    public void MemoriesEvidenceCockpit_FrenchCulture_ShouldLocalizeAllOwnedStatesWithoutKeyLeakage()
+    {
+        WithCulture("fr-FR", () =>
+        {
+            string complete = Render<MemoriesEvidenceCockpit>(parameters => parameters
+                .Add(p => p.Packet, EvidencePacketFixtures.CompletePacket())).Markup;
+            complete.ShouldContain("Cockpit de preuves");
+            complete.ShouldContain("Locataire");
+            complete.ShouldContain("Confiance");
+            complete.ShouldContain("Preuves");
+            complete.ShouldContain("Axes de recherche");
+            complete.ShouldContain("Contexte de graphe");
+            complete.ShouldContain("Fichier");
+            complete.ShouldContain("Fraîcheur");
+            complete.ShouldContain("Horodatage");
+            complete.ShouldContain("Unité de mémoire");
+
+            string loading = Render<MemoriesEvidenceCockpit>(parameters => parameters
+                .Add(p => p.TenantId, "tenant-a")
+                .Add(p => p.CaseId, "case-a")
+                .Add(p => p.IsLoading, true)).Markup;
+            loading.ShouldContain("Chargement des preuves");
+            loading.ShouldNotContain("Loading evidence");
+
+            string error = Render<MemoriesEvidenceCockpit>(parameters => parameters
+                .Add(p => p.TenantId, "tenant-a")
+                .Add(p => p.ErrorMessage, "Failed with Bearer secret-token")).Markup;
+            error.ShouldContain("Preuves indisponibles");
+            error.ShouldNotContain("Bearer ");
+
+            string degraded = Render<MemoriesEvidenceCockpit>(parameters => parameters
+                .Add(p => p.Packet, EvidencePacketFixtures.DegradedPacket())).Markup;
+            degraded.ShouldContain("La récupération des preuves est dégradée pour cette portée.");
+
+            string unauthorized = Render<MemoriesEvidenceCockpit>(parameters => parameters
+                .Add(p => p.Packet, EvidencePacketFixtures.UnauthorizedPacket())).Markup;
+            unauthorized.ShouldContain("Autorisation requise pour cette portée locataire et dossier.");
+
+            foreach (string key in AllEvidenceKeys())
+            {
+                complete.ShouldNotContain(key);
+                loading.ShouldNotContain(key);
+                error.ShouldNotContain(key);
+                degraded.ShouldNotContain(key);
+                unauthorized.ShouldNotContain(key);
+            }
+        });
+    }
+
+    [Fact]
+    public void EvidenceDisplay_FrenchCulture_ShouldLocalizeEnumsScoresFreshnessAndTimestamps()
+    {
+        IStringLocalizer<MemoriesWebResources> localizer =
+            Services.GetRequiredService<IStringLocalizer<MemoriesWebResources>>();
+
+        WithCulture("fr-FR", () =>
+        {
+            var timestamp = new DateTimeOffset(2026, 7, 5, 7, 0, 0, TimeSpan.Zero);
+            var freshness = new EvidencePacketFreshness(
+                EvidencePacketFreshnessState.Current,
+                LastCheckedAt: timestamp);
+
+            EvidenceDisplay.Label(EvidencePacketState.PendingExpansion, localizer)
+                .ShouldBe("Extension en attente");
+            EvidenceDisplay.Label((EvidencePacketState)999, localizer).ShouldBe("Indisponible");
+            EvidenceDisplay.ScoreLabel(0.123d, localizer).ShouldBe("0,123");
+            EvidenceDisplay.ScoreLabel(null, localizer).ShouldBe("score indisponible");
+            EvidenceDisplay.ScoreLabel(double.NaN, localizer).ShouldBe("score indisponible");
+            EvidenceDisplay.ScoreLabel(double.PositiveInfinity, localizer).ShouldBe("score indisponible");
+            EvidenceDisplay.ScoreLabel(double.NegativeInfinity, localizer).ShouldBe("score indisponible");
+            EvidenceDisplay.TimestampLabel(timestamp, localizer).ShouldContain("2026-07-05T07:00:00.0000000+00:00");
+            EvidenceDisplay.FreshnessLabel(freshness, localizer).ShouldContain("Actuelle");
+            EvidenceDisplay.FreshnessLabel(freshness, localizer).ShouldContain("2026-07-05T07:00:00.0000000+00:00");
+            EvidenceDisplay.FreshnessLabel(
+                new EvidencePacketFreshness(EvidencePacketFreshnessState.Current, AgeSeconds: -1),
+                localizer).ShouldBe("Indisponible");
+        });
     }
 
     [Fact]
@@ -314,6 +572,40 @@ public sealed class EvidenceCockpitTests : FrontComposerTestBase
         scope.ShouldBeGreaterThanOrEqualTo(0);
         result.ShouldBeGreaterThanOrEqualTo(0);
         scope.ShouldBeLessThan(result);
+    }
+
+    private static IEnumerable<string> AllEvidenceKeys()
+    {
+        IEnumerable<string> constants = typeof(EvidenceResourceKeys)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(static field => field.IsLiteral && !field.IsInitOnly && field.FieldType == typeof(string))
+            .Select(static field => (string)field.GetRawConstantValue()!);
+
+        return constants
+            .Concat(Enum.GetValues<EvidencePacketState>().Select(EvidenceResourceKeys.State))
+            .Concat(Enum.GetValues<EvidencePacketEvidenceStrength>().Select(EvidenceResourceKeys.Strength))
+            .Concat(Enum.GetValues<EvidencePacketIsolationStatus>().Select(EvidenceResourceKeys.Isolation))
+            .Concat(Enum.GetValues<EvidencePacketFreshnessState>().Select(EvidenceResourceKeys.Freshness))
+            .Concat(Enum.GetValues<SourceType>().Select(EvidenceResourceKeys.SourceType))
+            .Distinct(StringComparer.Ordinal);
+    }
+
+    private static void WithCulture(string cultureName, Action action)
+    {
+        CultureInfo previousCulture = CultureInfo.CurrentCulture;
+        CultureInfo previousUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            var culture = CultureInfo.GetCultureInfo(cultureName);
+            CultureInfo.CurrentCulture = culture;
+            CultureInfo.CurrentUICulture = culture;
+            action();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+            CultureInfo.CurrentUICulture = previousUiCulture;
+        }
     }
 
     private enum SampleAcronymEnum

@@ -1,17 +1,19 @@
 @namespace Hexalith.Memories.Web.Components.Evidence
+@inject IStringLocalizer<MemoriesWebResources> Localizer
 
 <section class="mem-evidence-section"
          data-testid="mem-axis-breakdown"
-         aria-label="Retrieval axis breakdown">
-    <h3>Retrieval axes</h3>
-    <p data-testid="mem-axis-order-basis">Order basis: @OrderBasisText</p>
+         aria-label="@Localizer[EvidenceResourceKeys.AxesSection]">
+    <FluentText data-testid="mem-axis-order-basis">
+        @Localizer[EvidenceResourceKeys.OrderBasis, OrderBasisText]
+    </FluentText>
     @if (IsRestricted)
     {
-        <p role="status" data-testid="mem-axis-restricted">Axis evidence is not available in the current scope.</p>
+        <FluentText role="status" data-testid="mem-axis-restricted">@Localizer[EvidenceResourceKeys.AxesRestricted]</FluentText>
     }
     else if (Packet.Evidence.AxisEvidence.Count == 0)
     {
-        <p role="status">Axis evidence unavailable</p>
+        <FluentText role="status">@Localizer[EvidenceResourceKeys.AxesUnavailable]</FluentText>
     }
     else
     {
@@ -19,14 +21,14 @@
             @foreach (EvidencePacketAxisEvidence axis in Packet.Evidence.AxisEvidence)
             {
                 <li data-testid="mem-axis-item" data-axis="@axis.Axis">
-                    <strong>@EvidenceDisplay.SafeText(axis.Axis, "axis unavailable")</strong>
+                    <strong>@EvidenceDisplay.SafeText(axis.Axis, Localizer[EvidenceResourceKeys.AxisUnavailable])</strong>
                     <dl>
-                        <dt>Normalized score</dt>
-                        <dd>@EvidenceDisplay.ScoreLabel(axis.Score)</dd>
-                        <dt>Ranking reason</dt>
-                        <dd>@EvidenceDisplay.SafeText(axis.Description, "ranking reason unavailable")</dd>
-                        <dt>Normalization</dt>
-                        <dd>@EvidenceDisplay.SafeText(axis.NormalizationMethod, "normalization unavailable")</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.NormalizedScoreField]</dt>
+                        <dd>@EvidenceDisplay.ScoreLabel(axis.Score, Localizer)</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.RankingReasonField]</dt>
+                        <dd>@EvidenceDisplay.SafeText(axis.Description, Localizer[EvidenceResourceKeys.RankingReasonUnavailable])</dd>
+                        <dt>@Localizer[EvidenceResourceKeys.NormalizationField]</dt>
+                        <dd>@EvidenceDisplay.SafeText(axis.NormalizationMethod, Localizer[EvidenceResourceKeys.NormalizationUnavailable])</dd>
                     </dl>
                 </li>
             }
@@ -34,11 +36,11 @@
     }
     @if (!IsRestricted && Packet.Evidence.UnavailableAxes.Count > 0)
     {
-        <p role="status">Unavailable axes: @EvidenceDisplay.SafeText(string.Join(", ", Packet.Evidence.UnavailableAxes), "no unavailable axes")</p>
+        <FluentText role="status">@Localizer[EvidenceResourceKeys.UnavailableAxes, EvidenceDisplay.SafeText(string.Join(", ", Packet.Evidence.UnavailableAxes), Localizer[EvidenceResourceKeys.NoUnavailableAxes])]</FluentText>
     }
     @if (!IsRestricted && !string.IsNullOrWhiteSpace(Packet.Evidence.Caveat))
     {
-        <p data-testid="mem-axis-caveat">@EvidenceDisplay.SafeText(Packet.Evidence.Caveat, "no caveat")</p>
+        <FluentText data-testid="mem-axis-caveat">@EvidenceDisplay.SafeText(Packet.Evidence.Caveat, Localizer[EvidenceResourceKeys.NoCaveat])</FluentText>
     }
 </section>
 
@@ -50,5 +52,7 @@
     private bool IsRestricted => EvidenceDisplay.IsRestrictiveScope(Packet.Scope.IsolationStatus)
         || Packet.State == EvidencePacketState.Unauthorized;
 
-    private string OrderBasisText => IsRestricted ? "unavailable" : "packet order";
+    private string OrderBasisText => IsRestricted
+        ? Localizer[EvidenceResourceKeys.Unavailable]
+        : Localizer[EvidenceResourceKeys.PacketOrder];
 }
