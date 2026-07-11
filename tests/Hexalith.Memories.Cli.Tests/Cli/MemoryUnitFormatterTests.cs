@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.Text.Json;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Contracts.V1;
 
@@ -60,7 +61,7 @@ public sealed class MemoryUnitFormatterTests
         MemoryUnit unit = BuildUnit(includeMetadata: true);
         using var writer = new StringWriter() { NewLine = "\n" };
 
-        new MemoryUnitJsonFormatter().Write(unit, writer);
+        new JsonEnvelopeFormatter<MemoryUnit>(SearchInspectCommand.CommandName).Write(unit, writer);
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
 
         doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);

@@ -381,7 +381,7 @@ development_status:
   25-2-error-and-telemetry-centralization: done
   25-3-shared-route-table-and-client-consolidation: review
   25-4-contract-persistence-separation-and-route-versioning: in-progress
-  25-5-cli-consolidation: backlog
+  25-5-cli-consolidation: done
   25-6-mcp-tool-executor: backlog
   25-7-evidence-cockpit-ux-conformance: backlog
   25-8-dead-code-and-topology-cleanup: backlog

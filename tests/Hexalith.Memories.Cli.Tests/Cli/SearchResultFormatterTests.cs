@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Cli.Tests.Cli;
 using System.Collections.Generic;
 using System.Text.Json;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Contracts.V1;
 
@@ -59,7 +60,7 @@ public sealed class SearchResultFormatterTests
         HybridSearchResult payload = BuildHybridResult(withExplain: true);
         using var writer = new StringWriter() { NewLine = "\n" };
 
-        new HybridSearchResultJsonFormatter().Write(payload, writer);
+        new JsonEnvelopeFormatter<HybridSearchResult>(SearchQueryCommand.CommandName).Write(payload, writer);
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
 
         doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);

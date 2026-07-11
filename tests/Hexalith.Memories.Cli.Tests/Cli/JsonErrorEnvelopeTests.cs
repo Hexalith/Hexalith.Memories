@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.Text.Json;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Output.Json;
@@ -86,7 +87,7 @@ public sealed class JsonErrorEnvelopeTests
             ReindexRequired = false,
         }];
 
-        new TenantListJsonFormatter().Write(payload, writer);
+        new JsonEnvelopeFormatter<IReadOnlyList<TenantSummary>>(TenantListCommand.CommandName).Write(payload, writer);
 
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
         doc.RootElement.TryGetProperty("error", out _).ShouldBeFalse();

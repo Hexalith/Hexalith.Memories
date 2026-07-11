@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.Text.Json;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Output.Json;
 using Hexalith.Memories.Contracts.V1;
@@ -46,7 +47,7 @@ public sealed class TenantListFormatterTests
         using var writer = new StringWriter() { NewLine = "\n" };
         IReadOnlyList<TenantSummary> tenants = [CreateSummary("t-1", "Tenant One")];
 
-        new TenantListJsonFormatter().Write(tenants, writer);
+        new JsonEnvelopeFormatter<IReadOnlyList<TenantSummary>>(TenantListCommand.CommandName).Write(tenants, writer);
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
 
         doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);
@@ -59,7 +60,8 @@ public sealed class TenantListFormatterTests
     public void Json_EmptyList_EmitsEmptyDataArray()
     {
         using var writer = new StringWriter() { NewLine = "\n" };
-        new TenantListJsonFormatter().Write(Array.Empty<TenantSummary>(), writer);
+        new JsonEnvelopeFormatter<IReadOnlyList<TenantSummary>>(TenantListCommand.CommandName)
+            .Write(Array.Empty<TenantSummary>(), writer);
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
 
         doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);

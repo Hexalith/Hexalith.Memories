@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Cli.Tests.Cli;
 
 using System.Text.Json;
 
+using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Output.Formatters;
 using Hexalith.Memories.Cli.Output.Json;
 
@@ -23,7 +24,7 @@ public sealed class ConfigShowFormatterTests
             TokenConfigured: true);
         using var writer = new StringWriter() { NewLine = "\n" };
 
-        new ConfigShowJsonFormatter().Write(data, writer);
+        new JsonEnvelopeFormatter<ConfigShowData>(ConfigShowCommand.CommandName).Write(data, writer);
         using JsonDocument doc = JsonDocument.Parse(writer.ToString());
 
         doc.RootElement.GetProperty("schemaVersion").GetInt32().ShouldBe(1);

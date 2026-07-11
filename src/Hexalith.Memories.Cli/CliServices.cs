@@ -93,86 +93,89 @@ public static class CliServices
         RegisterFormatters<IReadOnlyList<TenantSummary>>(
             services,
             new TenantListHumanFormatter(),
-            new TenantListJsonFormatter(),
+            new JsonEnvelopeFormatter<IReadOnlyList<TenantSummary>>(TenantListCommand.CommandName),
             new TenantListTableFormatter());
 
         RegisterFormatters<ConfigShowData>(
             services,
             new ConfigShowHumanFormatter(),
-            new ConfigShowJsonFormatter(),
+            new JsonEnvelopeFormatter<ConfigShowData>(ConfigShowCommand.CommandName),
             new ConfigShowTableFormatter());
 
         RegisterFormatters<TelemetrySummary>(
             services,
             new StatusTelemetryHumanFormatter(),
-            new StatusTelemetryJsonFormatter(),
+            new JsonEnvelopeFormatter<TelemetrySummary>(StatusTelemetryCommand.CommandName),
             new StatusTelemetryTableFormatter());
 
         RegisterFormatters<HandlerRegistrationSnapshot>(
             services,
             new HandlerRegistrationSnapshotHumanFormatter(),
-            new HandlerRegistrationSnapshotJsonFormatter(),
+            new JsonEnvelopeFormatter<HandlerRegistrationSnapshot>(HandlersListCommand.CommandName),
             new HandlerRegistrationSnapshotTableFormatter());
 
         RegisterFormatters<HandlerMismatchReport>(
             services,
             new HandlerMismatchReportHumanFormatter(),
-            new HandlerMismatchReportJsonFormatter(),
+            new JsonEnvelopeFormatter<HandlerMismatchReport>(HandlersMismatchesCommand.CommandName),
             new HandlerMismatchReportTableFormatter());
 
         RegisterFormatters<HybridSearchResult>(
             services,
             new HybridSearchResultHumanFormatter(),
-            new HybridSearchResultJsonFormatter(),
+            new JsonEnvelopeFormatter<HybridSearchResult>(SearchQueryCommand.CommandName),
             new HybridSearchResultTableFormatter());
 
         RegisterFormatters<SearchResult>(
             services,
             new SearchResultHumanFormatter(),
-            new SearchResultJsonFormatter(),
+            new JsonEnvelopeFormatter<SearchResult>(SearchQueryCommand.CommandName),
             new SearchResultTableFormatter());
 
         RegisterFormatters<MemoryUnit>(
             services,
             new MemoryUnitHumanFormatter(),
-            new MemoryUnitJsonFormatter(),
+            new JsonEnvelopeFormatter<MemoryUnit>(SearchInspectCommand.CommandName),
             new MemoryUnitTableFormatter());
 
         // Story 18.5: source-URI lookup result formatters (human + json).
         RegisterFormatters<MemoryUnitIdLookupResponse>(
             services,
             new MemoryUnitIdLookupHumanFormatter(),
-            new MemoryUnitIdLookupJsonFormatter());
+            new JsonEnvelopeFormatter<MemoryUnitIdLookupResponse>(SearchLookupCommand.CommandName));
 
         // Story 8.2: consistency formatters.
         RegisterFormatters<ConsistencyInspectionResult>(
             services,
             new ConsistencyInspectionHumanFormatter(),
-            new ConsistencyInspectionJsonFormatter(),
+            new JsonEnvelopeFormatter<ConsistencyInspectionResult>(ConsistencyInspectCommand.CommandName),
             new ConsistencyInspectionTableFormatter());
 
         RegisterFormatters<ConsistencyVerificationResult>(
             services,
             new ConsistencyVerificationResultHumanFormatter(),
-            new ConsistencyVerificationResultJsonFormatter(),
+            new JsonEnvelopeFormatter<ConsistencyVerificationResult>(ConsistencyVerifyCommand.CommandName),
             new ConsistencyVerificationResultTableFormatter());
 
         RegisterFormatters<ConsistencyRepairResult>(
             services,
             new ConsistencyRepairResultHumanFormatter(),
-            new ConsistencyRepairResultJsonFormatter(),
+            new JsonEnvelopeFormatter<ConsistencyRepairResult>(ConsistencyRepairCommand.CommandName),
             new ConsistencyRepairResultTableFormatter());
 
         RegisterFormatters<ConsistencyWorkflowState>(
             services,
             new ConsistencyWorkflowStateHumanFormatter(),
-            new ConsistencyWorkflowStateJsonFormatter(),
+            new JsonEnvelopeFormatter<ConsistencyWorkflowState>(ConsistencyVerifyCommand.CommandName),
             new ConsistencyWorkflowStateTableFormatter());
 
         RegisterFormatters<ConsistencyCommandReceipt>(
             services,
             new ConsistencyReceiptHumanFormatter(),
-            new ConsistencyReceiptJsonFormatter(),
+            new JsonEnvelopeFormatter<ConsistencyCommandReceipt>(receipt =>
+                receipt.Kind == "repair"
+                    ? ConsistencyRepairCommand.CommandName
+                    : ConsistencyVerifyCommand.CommandName),
             new ConsistencyReceiptTableFormatter());
 
         // Story 8.2: consistency verify/repair poll cadence — overridable by tests.

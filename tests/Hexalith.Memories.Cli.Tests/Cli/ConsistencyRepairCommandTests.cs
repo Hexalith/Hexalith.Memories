@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
+using System.Text.Json;
+
 using Hexalith.Memories.Cli.Commands;
 using Hexalith.Memories.Cli.Execution;
 using Hexalith.Memories.Cli.Output;
@@ -60,6 +62,22 @@ public sealed class ConsistencyRepairCommandTests
     }
 
     [Fact]
+    public async Task Run_JsonFormat_EmitsRepairReceiptCommandName()
+    {
+        ConsistencyStubClient stub = new() { RepairInstanceId = "repair-consistency-acme-json" };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Json, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme", "--yes"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        using JsonDocument document = JsonDocument.Parse(stdout.ToString());
+        document.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyRepairCommand.CommandName);
+        document.RootElement.GetProperty("data").GetProperty("kind").GetString().ShouldBe("repair");
+    }
+
+    [Fact]
     public async Task Run_WithWaitAndYes_PollsUntilCompletionAndPrintsResult()
     {
         ConsistencyStubClient stub = new()
@@ -100,6 +118,41 @@ public sealed class ConsistencyRepairCommandTests
         stub.RepairStatusCalls.ShouldBeGreaterThan(0);
         stdout.ToString().ShouldContain("Consistency repair completed");
         stdout.ToString().ShouldContain("repaired count");
+    }
+
+    [Fact]
+    public async Task Run_JsonFormatWithWait_EmitsRepairResultCommandName()
+    {
+        ConsistencyStubClient stub = new()
+        {
+            RepairInstanceId = "repair-consistency-acme-json-wait",
+            RepairStatusSequence =
+            [
+                ConsistencyVerifyCommandTests.CreateRepairStatus(
+                    "repair-consistency-acme-json-wait",
+                    "Completed",
+                    new ConsistencyRepairResult(
+                        "acme",
+                        TotalDiscrepancies: 1,
+                        RepairedCount: 1,
+                        UnrepairableCount: 0,
+                        Actions: [],
+                        PassesExecuted: 1,
+                        StartedAt: DateTimeOffset.UtcNow.AddSeconds(-1),
+                        CompletedAt: DateTimeOffset.UtcNow,
+                        Duration: TimeSpan.FromSeconds(1))),
+            ],
+        };
+        (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Json, stub);
+
+        int exit = await InvokeAsync(services, ["repair", "--tenant", "acme", "--yes", "--wait"]);
+
+        exit.ShouldBe(CliExitCodes.Success);
+        stderr.ToString().ShouldBeEmpty();
+        using JsonDocument document = JsonDocument.Parse(stdout.ToString());
+        document.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyRepairCommand.CommandName);
+        document.RootElement.GetProperty("data").GetProperty("repairedCount").GetInt32().ShouldBe(1);
     }
 
     [Fact]
