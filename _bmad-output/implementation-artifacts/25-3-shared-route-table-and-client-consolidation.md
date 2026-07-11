@@ -4,7 +4,7 @@ baseline_commit: deb9dd79109c3c1cdfa9597574487d0ee6a41671
 
 # Story 25.3: Shared Route Table & Client Consolidation
 
-Status: review
+Status: in-progress
 
 <!-- Epic: 25 — Architecture Factorization & Code Health. Closes audit finding A21 (High). Behavior-preserving refactor; commit as `refactor(...)`, not `feat`. -->
 
@@ -58,8 +58,8 @@ so that a route rename cannot silently break consumers and the client's exceptio
 
 ### Review Findings
 
-- [x] [Review][Patch] Formalize the approved breaking `TraverseAsync` contract — Administrator chose the breaking API on 2026-07-11: AC5/AC8 and the premise correction now authorize the reordered signature and necessary MCP adaptation. Commit the review remediation with a breaking-change marker so the next release is major; published tag `v1.44.1` was not rewritten [_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md:27]
-- [ ] [Review][Patch] Remove the five unrelated submodule pointer advances from this no-submodule story [references/Hexalith.EventStore:1]
+- [ ] [Review][Patch] Formalize the approved breaking `TraverseAsync` contract — AC5/AC8 and the premise correction authorize the reordered signature and necessary MCP adaptation, but remediation commit `eb959d7` used `feat(tests):` rather than a breaking-change marker, so the required major-release signal remains open; published tag `v1.44.1` was not rewritten [_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md:27]
+- [x] [Review][Defer] Remove the five unrelated submodule pointer advances from this no-submodule story [references/Hexalith.EventStore:1] — deferred, commit `8e92fe7` is published and later `main` commits depend on newer gitlinks; the user finalized the remediation without authorizing history rewriting or dependency rollback
 - [x] [Review][Patch] Source emitted `Location` URIs and authorization route labels from `MemoriesRoutes` so the next route rename cannot leave them stale — already resolved by the later route-versioning work on current `main`; verified no endpoint `/api` literals remain and route-surface tests pass 11/11 [src/Hexalith.Memories.Server/Endpoints/CasesEndpoints.cs:77]
 - [x] [Review][Patch] Reject whitespace and dot-segment route values before URI resolution can normalize a case export into a broader tenant export [src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs:334]
 - [x] [Review][Patch] Cover the generic decoder's real empty body, cancellation, and `IOException`/`HttpRequestException`/`NotSupportedException` mappings — the tests exposed and the patch fixed early content buffering by using `ResponseHeadersRead` [tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSendDecodeTests.cs:47]
@@ -249,5 +249,5 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
 
 | Date | Change |
 | ---- | ------ |
-| 2026-07-11 | Code-review remediation: approved and documented the breaking `TraverseAsync` disposition; rejected invalid/dot route segments; made generic GET decoding use `ResponseHeadersRead`; covered true empty content, cancellation, content-read failures, and exact handler routes; confirmed later route-versioning work already removed stale server locations. One historical submodule-pointer finding remains pending because removing it from published commit `8e92fe7` requires a history decision. |
+| 2026-07-11 | Code-review remediation: approved and documented the breaking `TraverseAsync` disposition; rejected invalid/dot route segments; made generic GET decoding use `ResponseHeadersRead`; covered true empty content, cancellation, content-read failures, and exact handler routes; confirmed later route-versioning work already removed stale server locations. Historical submodule-pointer removal is deferred because `8e92fe7` is published and later `main` depends on newer gitlinks. Remediation commit `eb959d7` did not carry the required breaking marker, so the story remains in progress. |
 | 2026-07-08 | Story 25.3 implemented: `MemoriesRoutes` single-source route table (Contracts.V1); 46 server registrations + 6 middleware literals + all client paths sourced from it; 22 client decode blocks consolidated behind generic `SendAsync<T>` (Variant-B, `typeof(T).Name` messages); `TraverseAsync` parameter order corrected (`ct` last) as an **accepted breaking reorder** (compat overload proven CS0121-ambiguous; requires `BREAKING CHANGE:` footer / major bump). Route-surface drift guard updated to resolve route constants; repointed a stale 25.1 ingestion-determinism guard. Added `MemoriesRoutes`/`SendAsync` coverage + a client no-literal guard. Full Release build 0/0; Contracts 619, Cli 424, Server 2509 (1 pre-existing skip), Mcp 90 — all green. |
