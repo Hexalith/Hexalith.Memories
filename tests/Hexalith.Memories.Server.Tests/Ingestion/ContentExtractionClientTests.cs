@@ -55,7 +55,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert — Kreuzberg may normalize whitespace
         result.ExtractedContent.Trim().ShouldBe(originalText.Trim());
@@ -75,7 +75,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert
         result.ExtractedContent.ShouldNotBeNullOrWhiteSpace();
@@ -95,7 +95,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert — raw markdown preserved, not rendered to HTML
         result.ExtractedContent.ShouldContain("# Heading");
@@ -116,7 +116,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert — verify hash matches independently computed value
         string expectedHash = ComputeExpectedSha256(result.ExtractedContent);
@@ -136,7 +136,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act — should not throw, defaults to application/octet-stream
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert
         result.ExtractedContent.ShouldNotBeNullOrWhiteSpace();
@@ -155,7 +155,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act — should not throw, defaults to application/octet-stream
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert
         result.ExtractedContent.ShouldNotBeNullOrWhiteSpace();
@@ -191,7 +191,7 @@ public class ContentExtractionClientTests
             SourceType.File);
 
         // Act
-        Contracts.V1.ExtractionResult result = await _client.ExtractAsync(input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await _client.ExtractAsync(input);
 
         // Assert
         DateTimeOffset after = DateTimeOffset.UtcNow;

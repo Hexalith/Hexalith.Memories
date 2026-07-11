@@ -24,7 +24,7 @@ using Shouldly;
 
 /// <summary>
 /// Story 7.5 Task 9.1 — Tier-2 HTTP-contract coverage for
-/// <c>GET /api/tenants/{tenantId}/telemetry/summary</c> (AC #6). Exercises the endpoint through
+/// <c>GET /api/v1/tenants/{tenantId}/telemetry/summary</c> (AC #6). Exercises the endpoint through
 /// <see cref="TelemetryWebAppFactory"/> — fake <see cref="DaprClient"/> governs the
 /// <see cref="TenantStatusGuard"/> 404 vs happy-path branch, while the fake Redis/FalkorDB
 /// multiplexers produce unavailable-but-non-throwing reads so <see cref="TelemetrySummaryService"/>
@@ -47,7 +47,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
         // TenantRegistryService.GetTenantAsync → null → TenantStatusGuard returns TENANT_NOT_FOUND → HTTP 404.
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/tenants/unknown-tenant/telemetry/summary", CancellationToken.None);
+        HttpResponseMessage response = await client.GetAsync("/api/v1/tenants/unknown-tenant/telemetry/summary", CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
@@ -61,7 +61,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
     {
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/tenants/bad~tenant/telemetry/summary", CancellationToken.None);
+        HttpResponseMessage response = await client.GetAsync("/api/v1/tenants/bad~tenant/telemetry/summary", CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
@@ -75,7 +75,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(k => k.Contains(TenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
@@ -84,7 +84,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
             .Returns(entry);
 
         using HttpClient client = _factory.CreateClient();
-        HttpResponseMessage response = await client.GetAsync($"/api/tenants/{TenantId}/telemetry/summary", CancellationToken.None);
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/tenants/{TenantId}/telemetry/summary", CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -126,7 +126,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(k => k.Contains(TenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
@@ -135,7 +135,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
             .Returns(entry);
 
         using HttpClient client = _factory.CreateClient();
-        HttpResponseMessage response = await client.GetAsync($"/api/tenants/{TenantId}/telemetry/summary", CancellationToken.None);
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/tenants/{TenantId}/telemetry/summary", CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 

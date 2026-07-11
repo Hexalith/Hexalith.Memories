@@ -1,6 +1,7 @@
 using Dapr.AspNetCore;
 using Dapr.Actors;
 
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Hosting;
@@ -33,11 +34,24 @@ app.MapActorsHandlers().AllowAnonymous();
 
 app.UseExceptionHandler();
 // Story 9.1: DAPR pub/sub subscription middleware order. UseCloudEvents() is a no-op for plain-JSON
-// requests (guards the /api/ingest POST from accidental envelope unwrapping). EventStore now supplies
+// requests (guards the /api/v1/ingest POST from accidental envelope unwrapping). EventStore now supplies
 // environment-backed topic metadata on the controller action, so the canonical MapSubscribeHandler()
 // route emits the resolved topic without a handwritten /dapr/subscribe endpoint.
 app.UseMiddleware<Hexalith.Memories.EventStore.CloudEventEnvelopeCaptureMiddleware>();
 app.UseCloudEvents();
+// Preserve normal 404 semantics for unmatched API paths before the fallback authorization policy runs.
+// This is especially important for the intentional V1 cutover: unversioned REST paths are not aliases and
+// must not be mistaken for mapped endpoints merely because fallback authentication would otherwise challenge.
+app.Use(async (context, next) =>
+{
+    if (context.GetEndpoint() is null && context.Request.Path.StartsWithSegments("/api", StringComparison.Ordinal))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    await next(context);
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<TenantAuthorizationMiddleware>();

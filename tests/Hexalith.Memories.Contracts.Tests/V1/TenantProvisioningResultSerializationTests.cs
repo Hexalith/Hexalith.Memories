@@ -47,7 +47,7 @@ public class TenantProvisioningResultSerializationTests
     {
         var result = new TenantProvisioningResult("tenant-1", TenantStatus.Failed, "Failed")
         {
-            CompensatedBackends = ["RediSearch", "RedisVector"],
+            CompensatedAxes = ["RediSearch", "RedisVector"],
         };
         string json = JsonSerializer.Serialize(result, MemoriesJsonContext.Options);
 
@@ -70,16 +70,16 @@ public class TenantProvisioningResultSerializationTests
     {
         var original = new TenantProvisioningResult("tenant-1", TenantStatus.Failed, "Rollback complete")
         {
-            CompensatedBackends = ["RediSearch", "FalkorDB"],
+            CompensatedAxes = ["RediSearch", "FalkorDB"],
         };
         string json = JsonSerializer.Serialize(original, MemoriesJsonContext.Options);
         TenantProvisioningResult? deserialized = JsonSerializer.Deserialize<TenantProvisioningResult>(json, MemoriesJsonContext.Options);
 
         deserialized.ShouldNotBeNull();
-        deserialized.CompensatedBackends.ShouldNotBeNull();
-        deserialized.CompensatedBackends.Count.ShouldBe(2);
-        deserialized.CompensatedBackends[0].ShouldBe("RediSearch");
-        deserialized.CompensatedBackends[1].ShouldBe("FalkorDB");
+        deserialized.CompensatedAxes.ShouldNotBeNull();
+        deserialized.CompensatedAxes.Count.ShouldBe(2);
+        deserialized.CompensatedAxes[0].ShouldBe("RediSearch");
+        deserialized.CompensatedAxes[1].ShouldBe("FalkorDB");
     }
 
     [Fact]

@@ -60,7 +60,7 @@ public sealed class CaseMutationEndpointE2ETests : IDisposable
         CreateCaseInput input = new("ignored-body-tenant", "Claims Pilot", "First investigation case");
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            $"/api/tenants/{TenantId}/cases",
+            $"/api/v1/tenants/{TenantId}/cases",
             input,
             MemoriesJsonContext.Options);
 
@@ -106,7 +106,7 @@ public sealed class CaseMutationEndpointE2ETests : IDisposable
         CreateCaseInput input = new("ignored-body-tenant", string.Empty, "Missing name");
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            $"/api/tenants/{TenantId}/cases",
+            $"/api/v1/tenants/{TenantId}/cases",
             input,
             MemoriesJsonContext.Options);
 
@@ -126,7 +126,7 @@ public sealed class CaseMutationEndpointE2ETests : IDisposable
         CreateCaseInput input = new("ignored-body-tenant", "Gateway Failure", null);
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            $"/api/tenants/{TenantId}/cases",
+            $"/api/v1/tenants/{TenantId}/cases",
             input,
             MemoriesJsonContext.Options);
 
@@ -156,7 +156,7 @@ public sealed class CaseMutationEndpointE2ETests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key == $"tenant-registry-{tenantId}"),
                 Arg.Any<ConsistencyMode?>(),

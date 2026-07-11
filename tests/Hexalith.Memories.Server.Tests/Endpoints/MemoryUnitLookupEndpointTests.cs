@@ -194,7 +194,7 @@ public sealed class MemoryUnitLookupEndpointTests
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage response = await client.GetAsync(
-            $"api/tenants/{Tenant}/cases/{Case}/memory-units/by-source-uri?sourceUri={Uri.EscapeDataString(SourceUri)}");
+            $"api/v1/tenants/{Tenant}/cases/{Case}/memory-units/by-source-uri?sourceUri={Uri.EscapeDataString(SourceUri)}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         MemoryUnitIdLookupResponse? payload = await response.Content

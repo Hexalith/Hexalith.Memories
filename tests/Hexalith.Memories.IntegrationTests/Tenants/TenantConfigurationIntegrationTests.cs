@@ -36,7 +36,7 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task ListTenants_ReturnsEnrichedSummaryWithCountsAndIndexHealth()
     {
         // Given a tenant with indexed memory units,
-        // When GET /api/tenants,
+        // When GET /api/v1/tenants,
         // Then the response contains a TenantSummary[] with memoryUnitCount > 0,
         // indexSizes populated, reindexRequired=false, and lastActivityAt set.
         _ = _fixture;
@@ -47,9 +47,9 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task ListTenants_WhenOneBackendStopped_TenantStillListedWithUnknownOnThatAxis()
     {
         // Given the Redis Vector backend is stopped,
-        // When GET /api/tenants,
-        // Then the tenant still appears in the list, IndexSizes.RedisVectorKeyCount == null,
-        // and IndexStatus.RedisVector == IndexHealth.Unknown. Other backends report Ready.
+        // When GET /api/v1/tenants,
+        // Then the tenant still appears in the list, IndexSizes.SemanticKeyCount == null,
+        // and IndexStatus.Semantic == IndexHealth.Unknown. Other backends report Ready.
         _ = _fixture;
         await Task.CompletedTask;
     }
@@ -59,7 +59,7 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task GetConfiguration_ReturnsComposedView_WithFullEmbeddingConfig()
     {
         // Given a provisioned tenant,
-        // When GET /api/tenants/{id}/configuration,
+        // When GET /api/v1/tenants/{id}/configuration,
         // Then the response body is a TenantConfigurationView containing the full
         // TenantEmbeddingConfig (including apiSecretKeyName as a non-sensitive name),
         // IndexStatus=Ready on all three backends, memoryUnitCount, lastActivityAt, createdAt.
@@ -79,9 +79,9 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task PatchDisplayName_UpdatesRegistryAndReflectsInSubsequentGet()
     {
         // Given a provisioned tenant with displayName "Old",
-        // When PATCH /api/tenants/{id} with {"displayName":"New"},
+        // When PATCH /api/v1/tenants/{id} with {"displayName":"New"},
         // Then the response is 200 with the updated TenantSummary,
-        // subsequent GET /api/tenants/{id} reflects "New",
+        // subsequent GET /api/v1/tenants/{id} reflects "New",
         // and log capture contains the Information operational-log entry with
         // oldValue="Old", newValue="New", actor containing remote IP, durationMs > 0.
         _ = _fixture;
@@ -92,7 +92,7 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task PatchDisplayName_NonActiveTenant_Returns409()
     {
         // Given a tenant in Provisioning / Deleting / Failed state,
-        // When PATCH /api/tenants/{id},
+        // When PATCH /api/v1/tenants/{id},
         // Then the response is 409 with code TENANT_PROVISIONING / TENANT_DELETING / TENANT_FAILED.
         _ = _fixture;
         await Task.CompletedTask;
@@ -103,10 +103,10 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task PutEmbeddingConfig_BreakingChange_WithoutForceReindex_Returns409()
     {
         // Given a tenant with dimensions=768,
-        // When PUT /api/tenants/{id}/embedding-config with dimensions=1536 and forceReindex=false,
+        // When PUT /api/v1/tenants/{id}/embedding-config with dimensions=1536 and forceReindex=false,
         // Then response is 409 with error code EMBEDDING_CONFIG_BREAKING_CHANGE,
         // affectedFields contains "dimensions",
-        // and subsequent GET /api/tenants/{id} shows reindexRequired=false (unchanged).
+        // and subsequent GET /api/v1/tenants/{id} shows reindexRequired=false (unchanged).
         _ = _fixture;
         await Task.CompletedTask;
     }
@@ -123,7 +123,7 @@ public sealed class TenantConfigurationIntegrationTests
     public async Task PutEmbeddingConfig_RateLimitChange_PropagatesToRateLimiterOnNextIngest()
     {
         // Given a tenant with rateLimitPerMinute=1500,
-        // When PUT /api/tenants/{id}/embedding-config with rateLimitPerMinute=200,
+        // When PUT /api/v1/tenants/{id}/embedding-config with rateLimitPerMinute=200,
         // Then GenerateEmbeddingActivity calls IEmbeddingRateLimiterActor.TryConsumeWithCeilingAsync(200)
         // after the configured embedding-config cache freshness bound.
         _ = _fixture;
@@ -140,7 +140,7 @@ public sealed class TenantConfigurationIntegrationTests
     {
         // Given a provisioned tenant using Google provider + gemini-embedding-001,
         // When a memory unit is ingested end-to-end,
-        // Then GET /api/tenants/{tid}/cases/{cid}/memory-units/{muid} returns the MU with
+        // Then GET /api/v1/tenants/{tid}/cases/{cid}/memory-units/{muid} returns the MU with
         //   embeddingProvider="google:gemini-embedding-001"
         //   embeddingModel="gemini-embedding-001"
         // And Redis hash inspection of {tid}:mu:{muid} shows both "embeddingProvider" and

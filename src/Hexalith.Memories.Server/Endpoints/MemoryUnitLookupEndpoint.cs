@@ -23,7 +23,7 @@ using static Hexalith.Memories.Server.Endpoints.EndpointTelemetryHelpers;
 
 /// <summary>
 /// Story 18.5 — testable minimal-API handler for the exact source-URI-keyed memory-unit lookup
-/// (<c>GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>). Extracted from
+/// (<c>GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>). Extracted from
 /// <c>Program.cs</c> (mirroring <see cref="Hexalith.Memories.Server.Tenants.TenantEndpointHandlers"/>) so the
 /// success / structured-not-found / invalid-tenant / backend-error branches can be unit-tested without a host.
 /// Resolves through <see cref="SourceUriMemoryUnitLookup"/> by exact key — it never delegates to the search
@@ -40,7 +40,7 @@ internal static class MemoryUnitLookupEndpoint
     private const int SuccessEventId = 7504;
     private const int ErrorEventId = 7514;
 
-    /// <summary>Handles <c>GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>.</summary>
+    /// <summary>Handles <c>GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>.</summary>
     /// <param name="lookup">The exact source-URI lookup seam over the permanent dedup record.</param>
     /// <param name="auditLogger">The access-telemetry audit logger.</param>
     /// <param name="httpContext">The current HTTP context (user resolution).</param>

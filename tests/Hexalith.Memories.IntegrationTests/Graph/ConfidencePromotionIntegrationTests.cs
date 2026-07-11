@@ -15,7 +15,7 @@ using Shouldly;
 
 /// <summary>
 /// Integration tests for confidence promotion (FR51).
-/// Tests the PATCH /api/tenants/{tenantId}/edges/confidence endpoint
+/// Tests the PATCH /api/v1/tenants/{tenantId}/edges/confidence endpoint
 /// and verifies audit trail fields on promoted edges.
 /// </summary>
 [Collection("AspireIngestionPipeline")]
@@ -54,7 +54,7 @@ public sealed class ConfidencePromotionIntegrationTests
 
         // Verify via traversal that edge now shows updated fields
         using HttpResponseMessage traverseResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=1&edgeTypes=references");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=1&edgeTypes=references");
         TraversalResult? traverseResult = await traverseResponse.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
         traverseResult.ShouldNotBeNull();
         TraversalNode startNode = traverseResult.Nodes.Single(n => n.MemoryUnitId == "MU-A");
@@ -89,7 +89,7 @@ public sealed class ConfidencePromotionIntegrationTests
         result.NewConfidence.ShouldBe(0.9f);
 
         using HttpResponseMessage traverseResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=1&edgeTypes=causedBy");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=1&edgeTypes=causedBy");
         TraversalResult? traverseResult = await traverseResponse.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
         traverseResult.ShouldNotBeNull();
         TraversalNode startNode = traverseResult.Nodes.Single(n => n.MemoryUnitId == "MU-A");
@@ -231,14 +231,14 @@ public sealed class ConfidencePromotionIntegrationTests
         string json = JsonSerializer.Serialize(request, MemoriesJsonContext.Options);
         using StringContent content = new(json, Encoding.UTF8, "application/json");
         return await _fixture.MemoriesClient.PatchAsync(
-            $"/api/tenants/{tenantId}/edges/confidence", content);
+            $"/api/v1/tenants/{tenantId}/edges/confidence", content);
     }
 
     private async Task<HttpResponseMessage> PatchConfidenceRawAsync(string tenantId, string requestJson)
     {
         using StringContent content = new(requestJson, Encoding.UTF8, "application/json");
         return await _fixture.MemoriesClient.PatchAsync(
-            $"/api/tenants/{tenantId}/edges/confidence", content);
+            $"/api/v1/tenants/{tenantId}/edges/confidence", content);
     }
 
     private async Task CreateCaseAsync(FalkorDB falkor, string tenantId, string caseId)

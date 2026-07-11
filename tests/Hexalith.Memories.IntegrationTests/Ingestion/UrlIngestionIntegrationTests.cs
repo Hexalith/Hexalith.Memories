@@ -21,9 +21,9 @@ public sealed class UrlIngestionIntegrationTests
         // Scenario (Story 6.1 AC1):
         //   1. Stand up a local Kestrel stub that serves a small markdown page on a random port.
         //   2. Configure Ingestion:UrlFetcher:AllowPrivateHosts=true for this test.
-        //   3. POST /api/ingest/url pointing at http://127.0.0.1:{port}/doc.md.
-        //   4. Poll GET /api/ingest/{instanceId} until RuntimeStatus=Completed.
-        //   5. Assert IngestionResult.Status=Indexed and /api/search returns the indexed unit.
+        //   3. POST /api/v1/ingest/url pointing at http://127.0.0.1:{port}/doc.md.
+        //   4. Poll GET /api/v1/ingest/{instanceId} until RuntimeStatus=Completed.
+        //   5. Assert IngestionResult.Status=Indexed and /api/v1/search returns the indexed unit.
         _ = _fixture;
     }
 
@@ -40,7 +40,7 @@ public sealed class UrlIngestionIntegrationTests
     public void UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling()
     {
         // Scenario (Story 6.1 AC3):
-        //   POST /api/ingest/url with http://169.254.169.254/ → 400 INVALID_URL,
+        //   POST /api/v1/ingest/url with http://169.254.169.254/ → 400 INVALID_URL,
         //   and no workflow is scheduled (verify by inspecting the workflow state store).
         _ = _fixture;
     }

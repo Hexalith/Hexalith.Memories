@@ -52,7 +52,7 @@ internal static class ErrorResults
     /// <returns>The error response.</returns>
     public static ErrorResponse TenantNotFound(
         string tenantId,
-        string suggestion = "Use GET /api/tenants to list available tenants.")
+        string suggestion = "Use GET " + MemoriesRoutes.Tenants + " to list available tenants.")
         => new("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", suggestion);
 
     /// <summary>Maps a tenant-state envelope to its stable HTTP status.</summary>

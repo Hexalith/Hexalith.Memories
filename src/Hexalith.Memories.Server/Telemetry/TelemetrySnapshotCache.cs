@@ -140,9 +140,9 @@ public sealed class TelemetrySnapshotCache
                     .ConfigureAwait(false);
                 long naturalLanguageQueueBytes = await GetNaturalLanguageQueueBytesSafeAsync(tenant.Id).ConfigureAwait(false);
 
-                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "syntactic", sizes.RediSearchKeyCount);
-                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "semantic", sizes.RedisVectorKeyCount);
-                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "graph", sizes.FalkorDbNodeCount);
+                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "syntactic", sizes.SyntacticKeyCount);
+                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "semantic", sizes.SemanticKeyCount);
+                AddIndexSizeMeasurement(indexSizeMeasurements, tenant.Id, "graph", sizes.GraphNodeCount);
 
                 queueDepthMeasurements.Add(new Measurement<int>(
                     queueDepth,

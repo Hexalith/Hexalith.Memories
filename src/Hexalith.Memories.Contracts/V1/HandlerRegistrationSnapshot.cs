@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 /// <summary>Story 9.3 — point-in-time snapshot of every registered handler returned by
-/// <c>GET /api/handlers</c>. Experimental surface (see diagnostic HXL002).</summary>
+/// <c>GET /api/v1/handlers</c>. Experimental surface (see diagnostic HXL002).</summary>
 public sealed record HandlerRegistrationSnapshot
 {
     [JsonPropertyName("pubSubName")]

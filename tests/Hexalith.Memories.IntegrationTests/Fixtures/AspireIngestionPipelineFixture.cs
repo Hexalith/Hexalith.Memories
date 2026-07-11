@@ -209,7 +209,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>
     /// Attaches a per-request Memories Server bearer token to outbound <see cref="MemoriesClient"/> requests. The
-    /// tenant claim is derived from the outgoing request — route (<c>/api/tenants/{tenantId}/...</c>), query
+    /// tenant claim is derived from the outgoing request — route (<c>/api/v1/tenants/{tenantId}/...</c>), query
     /// (<c>?tenantId=</c>), or JSON body (<c>tenantId</c>) — so it always matches the tenant the request operates on.
     /// Requests that already carry an <c>Authorization</c> header are left untouched, letting individual tests inject
     /// their own token (e.g. expired- or wrong-tenant-token scenarios).
@@ -235,9 +235,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
-            // 1. Route: /api/tenants/{tenantId}/...
+            // 1. Route: /api/v1/tenants/{tenantId}/...
             string path = request.RequestUri?.AbsolutePath ?? string.Empty;
-            const string tenantsPrefix = "/api/tenants/";
+            const string tenantsPrefix = "/api/v1/tenants/";
             if (path.StartsWith(tenantsPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 string remainder = path[tenantsPrefix.Length..];
@@ -260,7 +260,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 }
             }
 
-            // 3. JSON body: { "tenantId": "..." } (e.g. POST /api/tenants, POST /api/ingest).
+            // 3. JSON body: { "tenantId": "..." } (e.g. POST /api/v1/tenants, POST /api/v1/ingest).
             if (request.Content is not null
                 && string.Equals(
                     request.Content.Headers.ContentType?.MediaType,
@@ -448,7 +448,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public static readonly TimeSpan DefaultTenantActivationTimeout = TimeSpan.FromMinutes(2);
 
     /// <summary>
-    /// Provisions a new tenant via <c>POST /api/tenants</c> and waits for it to reach
+    /// Provisions a new tenant via <c>POST /api/v1/tenants</c> and waits for it to reach
     /// <see cref="TenantStatus.Active"/>. Use in tests that need a tenant in place before
     /// calling case, search, or ingestion endpoints — <see cref="Hexalith.Memories.Server.Tenants.TenantStatusGuard"/>
     /// rejects operations against unknown or non-Active tenants with 404/409.
@@ -477,7 +477,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         using HttpResponseMessage provisionResponse = await MemoriesClient.PostAsJsonAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             payload,
             MemoriesJsonContext.Options,
             cancellationToken).ConfigureAwait(false);
@@ -488,7 +488,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         {
             string body = await provisionResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             throw new InvalidOperationException(
-                $"Unexpected POST /api/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
+                $"Unexpected POST /api/v1/tenants response for '{id}': {(int)provisionResponse.StatusCode} {provisionResponse.ReasonPhrase}. Body: {body}");
         }
 
         await WaitForTenantActiveAsync(
@@ -526,7 +526,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         await SaveDaprStateAsync(
             client,
             $"tenant-registry-{tenantId}",
-            entry,
+            PersistenceModelMapper.ToStored(entry),
             cancellationToken).ConfigureAwait(false);
 
         List<string> index = await GetDaprStateAsync<List<string>>(
@@ -544,7 +544,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
     }
 
-    /// <summary>Polls <c>GET /api/tenants/{tenantId}</c> until the tenant reports <see cref="TenantStatus.Active"/>.</summary>
+    /// <summary>Polls <c>GET /api/v1/tenants/{tenantId}</c> until the tenant reports <see cref="TenantStatus.Active"/>.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <param name="timeout">Max wait duration.</param>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
@@ -578,7 +578,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             try
             {
                 using HttpResponseMessage tenantResponse = await MemoriesClient.GetAsync(
-                    $"/api/tenants/{tenantId}",
+                    $"/api/v1/tenants/{tenantId}",
                     cancellationToken).ConfigureAwait(false);
                 lastStatusCode = tenantResponse.StatusCode;
                 if (tenantResponse.StatusCode == HttpStatusCode.OK)

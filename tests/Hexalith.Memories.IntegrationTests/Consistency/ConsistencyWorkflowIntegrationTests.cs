@@ -118,7 +118,7 @@ public sealed class ConsistencyWorkflowIntegrationTests
     private async Task<ConsistencyVerificationStatus> StartAndWaitForVerificationAsync(string tenantId)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/consistency/verify",
+            $"/api/v1/tenants/{tenantId}/consistency/verify",
             new ConsistencyVerificationRequest(tenantId, BatchSize: 10),
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -130,7 +130,7 @@ public sealed class ConsistencyWorkflowIntegrationTests
     private async Task<ConsistencyRepairStatus> StartAndWaitForRepairAsync(string tenantId)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/consistency/repair",
+            $"/api/v1/tenants/{tenantId}/consistency/repair",
             new ConsistencyRepairRequest(tenantId, BatchSize: 10),
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -147,7 +147,7 @@ public sealed class ConsistencyWorkflowIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/tenants/{tenantId}/consistency/verify/{instanceId}");
+                $"/api/v1/tenants/{tenantId}/consistency/verify/{instanceId}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
             ConsistencyVerificationStatus? status = await response.Content.ReadFromJsonAsync<ConsistencyVerificationStatus>(
@@ -174,7 +174,7 @@ public sealed class ConsistencyWorkflowIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/tenants/{tenantId}/consistency/repair/{instanceId}");
+                $"/api/v1/tenants/{tenantId}/consistency/repair/{instanceId}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
             ConsistencyRepairStatus? status = await response.Content.ReadFromJsonAsync<ConsistencyRepairStatus>(

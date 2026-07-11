@@ -21,8 +21,7 @@ public enum ConfidenceSource
     Logprobs,
 
     /// <summary>The confidence value is absent because the provider does not expose a numeric signal
-    /// (e.g., Anthropic Claude, <c>conversation.echo</c> in local dev). The paired
-    /// <see cref="V1"/>.<c>NaturalLanguageDescriptionResult.EstimatedConfidence</c> is
+    /// (e.g., Anthropic Claude, <c>conversation.echo</c> in local dev). The paired confidence value is
     /// <see langword="null"/>. UIs render this distinctly (e.g., "AI-inferred (estimate unavailable)").</summary>
     Constant,
 

@@ -94,7 +94,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         matching.Results.ShouldContain(r => r.ContentSnippet.Contains(indexedText, StringComparison.Ordinal));
 
         using HttpResponseMessage wrongSubjectResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(searchQuery)}&subject=claim-999");
+            $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(searchQuery)}&subject=claim-999");
         wrongSubjectResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         SearchResult? wrongSubject = await wrongSubjectResponse.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
@@ -138,7 +138,7 @@ public sealed class EventIngestionPipelineIntegrationTests
     {
         using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/tenants",
+                "/api/v1/tenants",
                 new TenantProvisioningInput(tenantId, displayName),
                 MemoriesJsonContext.Options);
 
@@ -147,7 +147,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         Stopwatch timeout = Stopwatch.StartNew();
         while (timeout.Elapsed < ActivationTimeout)
         {
-            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
+            using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}");
             if (tenantResponse.StatusCode == HttpStatusCode.OK)
             {
                 TenantInfo? tenant = await tenantResponse.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
@@ -169,7 +169,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         string lastPayload = string.Empty;
         while (timeout.Elapsed < WorkflowTimeout)
         {
-            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync($"/api/ingest/{instanceId}");
+            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync($"/api/v1/ingest/{instanceId}");
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {
                 lastPayload = await statusResponse.Content.ReadAsStringAsync();
@@ -255,7 +255,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         while (timeout.Elapsed < SearchTimeout)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/{Uri.EscapeDataString(memoryUnitId)}");
+                $"/api/v1/tenants/{Uri.EscapeDataString(tenantId)}/cases/{Uri.EscapeDataString(caseId)}/memory-units/{Uri.EscapeDataString(memoryUnitId)}");
             lastStatusCode = response.StatusCode;
             lastBody = await response.Content.ReadAsStringAsync();
 
@@ -310,7 +310,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         while (timeout.Elapsed < SearchTimeout)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}");
+                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}");
             lastStatusCode = response.StatusCode;
             lastBody = await response.Content.ReadAsStringAsync();
             if (response.StatusCode == HttpStatusCode.OK)
@@ -323,7 +323,7 @@ public sealed class EventIngestionPipelineIntegrationTests
             }
 
             using HttpResponseMessage unfiltered = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}");
+                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}");
             lastUnfilteredBody = await unfiltered.Content.ReadAsStringAsync();
 
             await Task.Delay(TimeSpan.FromMilliseconds(500));
@@ -341,7 +341,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         while (timeout.Elapsed < duration)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}");
+                $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(query)}&subject={Uri.EscapeDataString(subject)}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
             SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);

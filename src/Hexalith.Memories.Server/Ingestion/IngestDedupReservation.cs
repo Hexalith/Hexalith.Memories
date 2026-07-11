@@ -34,7 +34,7 @@ internal enum IngestReservationOutcome
 internal readonly record struct IngestReservationResult(IngestReservationOutcome Outcome, string? ExistingInstanceId);
 
 /// <summary>
-/// Closes the REST <c>/api/ingest</c> race (MEM-4) by atomically reserving the dedup identity before the
+/// Closes the REST <c>/api/v1/ingest</c> race (MEM-4) by atomically reserving the dedup identity before the
 /// ingestion workflow is scheduled, reusing the proven Redis <c>SET … NX</c> primitive. The reservation lives
 /// on a dedicated <c>ingest-reserve:</c> key namespace whose value is the winning workflow's instance id, so
 /// the losing concurrent ingest returns that instance id (and thus observes the same <c>MemoryUnitId</c>)

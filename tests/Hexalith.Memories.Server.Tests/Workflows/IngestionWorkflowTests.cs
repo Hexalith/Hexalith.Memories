@@ -1390,14 +1390,14 @@ public class IngestionWorkflowTests
         // Story 9.2 Task 5: when SourceType = Event the workflow also calls the NL activities.
         // Stubbing unconditionally is safe — the workflow only invokes them for Event inputs so
         // File/Url tests never exercise these branches.
-        context.CallActivityAsync<Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionResult>(
+        context.CallActivityAsync<Hexalith.Memories.Server.Workflows.Contracts.NaturalLanguageDescriptionResult>(
                 nameof(GenerateNaturalLanguageDescriptionActivity),
-                Arg.Any<Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionInput>(),
+                Arg.Any<Hexalith.Memories.Server.Workflows.Contracts.NaturalLanguageDescriptionInput>(),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
                 callLog?.Add(nameof(GenerateNaturalLanguageDescriptionActivity));
-                return Task.FromResult(new Hexalith.Memories.Contracts.V1.NaturalLanguageDescriptionResult(
+                return Task.FromResult(new Hexalith.Memories.Server.Workflows.Contracts.NaturalLanguageDescriptionResult(
                     "A business action happened.",
                     EstimatedConfidence: null,
                     Hexalith.Memories.Contracts.V1.ConfidenceSource.Constant,
@@ -1418,7 +1418,7 @@ public class IngestionWorkflowTests
             });
         context.CallActivityAsync<IndexResult>(
                 nameof(IndexNaturalLanguageSemanticActivity),
-                Arg.Any<Hexalith.Memories.Contracts.V1.NaturalLanguageIndexInput>(),
+                Arg.Any<Hexalith.Memories.Server.Workflows.Contracts.NaturalLanguageIndexInput>(),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
@@ -1427,7 +1427,7 @@ public class IngestionWorkflowTests
             });
         context.CallActivityAsync<bool>(
                 nameof(QueueNaturalLanguageEmbeddingRetryActivity),
-                Arg.Any<Hexalith.Memories.Contracts.V1.QueueNaturalLanguageEmbeddingRetryInput>(),
+                Arg.Any<Hexalith.Memories.Server.Workflows.Contracts.QueueNaturalLanguageEmbeddingRetryInput>(),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(true));
 

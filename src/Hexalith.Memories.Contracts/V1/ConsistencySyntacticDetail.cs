@@ -6,10 +6,10 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Extracted fields from the syntactic <c>{tenantId}:mu:{id}</c> Redis hash, surfaced by the
+/// Extracted fields from the syntactic index entry, surfaced by the
 /// per-unit inspection endpoint. All fields come from <c>IndexSyntacticActivity</c>'s write
-/// pattern. Empty strings for fields that are absent on the hash (the hash may have been
-/// written by an older ingestion version before a field was introduced).
+/// pattern. Empty strings represent fields that are absent from older index entries written
+/// before a field was introduced.
 /// </summary>
 /// <param name="ContentHash">Content hash used for idempotency / dedup.</param>
 /// <param name="IngestedAt">When the unit was ingested.</param>

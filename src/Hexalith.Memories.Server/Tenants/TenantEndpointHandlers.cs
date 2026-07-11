@@ -17,7 +17,7 @@ using Microsoft.AspNetCore.Http;
 /// </summary>
 internal static class TenantEndpointHandlers
 {
-    /// <summary>Builds the enriched tenant summary used by <c>GET /api/tenants</c>.</summary>
+    /// <summary>Builds the enriched tenant summary used by <c>GET /api/v1/tenants</c>.</summary>
     /// <param name="tenant">The tenant record from the registry.</param>
     /// <param name="metrics">Tenant metrics service.</param>
     /// <param name="embeddingConfigProvider">Cached tenant embedding configuration provider.</param>
@@ -112,7 +112,7 @@ internal static class TenantEndpointHandlers
         };
     }
 
-    /// <summary>Handles <c>GET /api/tenants/{tenantId}/configuration</c>.</summary>
+    /// <summary>Handles <c>GET /api/v1/tenants/{tenantId}/configuration</c>.</summary>
     internal static async Task<IResult> GetTenantConfigurationAsync(
         TenantRegistryService registry,
         TenantStatusGuard tenantGuard,
@@ -168,7 +168,7 @@ internal static class TenantEndpointHandlers
         return Results.Ok(view);
     }
 
-    /// <summary>Handles <c>PATCH /api/tenants/{tenantId}</c> for display-name updates.</summary>
+    /// <summary>Handles <c>PATCH /api/v1/tenants/{tenantId}</c> for display-name updates.</summary>
     internal static async Task<IResult> PatchDisplayNameAsync(
         TenantRegistryService registry,
         TenantStatusGuard tenantGuard,

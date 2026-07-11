@@ -34,11 +34,11 @@ public sealed class TelemetryHealthExclusionTests
     }
 
     [Theory]
-    [InlineData("/api/search")]
-    [InlineData("/api/ingest")]
-    [InlineData("/api/tenants/demo/traverse")]
-    [InlineData("/api/tenants/demo/cases/c1/memory-units/mu-1")]
-    [InlineData("/api/tenants/demo/telemetry/summary")]
+    [InlineData("/api/v1/search")]
+    [InlineData("/api/v1/ingest")]
+    [InlineData("/api/v1/tenants/demo/traverse")]
+    [InlineData("/api/v1/tenants/demo/cases/c1/memory-units/mu-1")]
+    [InlineData("/api/v1/tenants/demo/telemetry/summary")]
     [InlineData("/")]
     [InlineData("/metrics")]
     public void ShouldTraceHttpRequest_OperationPaths_ReturnsTrue(string path)

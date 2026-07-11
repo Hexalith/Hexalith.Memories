@@ -14,6 +14,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -81,7 +82,9 @@ internal sealed class PersistFailedUnitActivity : WorkflowTraceLinkedActivity<Fa
             input.RetryCount,
             input.ErrorMessage,
             input.LastRetryAt);
-        string detailsJson = JsonSerializer.Serialize(details, MemoriesJsonContext.Options);
+        string detailsJson = JsonSerializer.Serialize(
+            PersistenceModelMapper.ToStored(details),
+            MemoriesPersistenceJsonContext.Options);
 
         RedisValue[] argv =
         [
@@ -100,9 +103,13 @@ internal sealed class PersistFailedUnitActivity : WorkflowTraceLinkedActivity<Fa
             FieldFailureDetailsJson, detailsJson,
             FieldSourcePayloadReferenceJson, input.SourcePayloadReference is null
                 ? string.Empty
-                : JsonSerializer.Serialize(input.SourcePayloadReference, MemoriesJsonContext.Options),
+                : JsonSerializer.Serialize(
+                    PersistenceModelMapper.ToStored(input.SourcePayloadReference),
+                    MemoriesPersistenceJsonContext.Options),
             FieldMetadataJson, input.Metadata is { Count: > 0 }
-                ? JsonSerializer.Serialize(new Dictionary<string, MetadataField>(input.Metadata, StringComparer.Ordinal), MemoriesJsonContext.Options)
+                ? JsonSerializer.Serialize(
+                    PersistenceModelMapper.ToStored(input.Metadata),
+                    MemoriesPersistenceJsonContext.Options)
                 : string.Empty,
             FieldCausationId, input.CausationId ?? string.Empty,
             FieldCorrelationId, input.CorrelationId ?? string.Empty,

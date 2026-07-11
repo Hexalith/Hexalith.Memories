@@ -259,9 +259,9 @@ next to the orchestrator config.
 - Consistency verification across backends — shipped by Story 8.2 (FR73).
 - Data export functionality — shipped by Story 8.3 (FR71).
 - Per-tenant index health — use
-  [`GET /api/tenants/{tenantId}/configuration`](../../src/Hexalith.Memories.Server/Tenants/)
+  [`GET /api/v1/tenants/{tenantId}/configuration`](../../src/Hexalith.Memories.Server/Tenants/)
   (Story 5.5) or
-  [`GET /api/tenants/{tenantId}/telemetry/summary`](../../src/Hexalith.Memories.Server/Telemetry/)
+  [`GET /api/v1/tenants/{tenantId}/telemetry/summary`](../../src/Hexalith.Memories.Server/Telemetry/)
   (Story 7.5). Probing every tenant's index per probe would be O(tenants × axes)
   of backend load — off-contract.
 - A separate `/metrics` Prometheus endpoint — metrics flow via the OTLP exporter

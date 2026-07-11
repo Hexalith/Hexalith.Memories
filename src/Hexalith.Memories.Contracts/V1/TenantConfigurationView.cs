@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Composed operator-facing configuration view returned by <c>GET /api/tenants/{tenantId}/configuration</c>
+/// Composed operator-facing configuration view returned by <c>GET /api/v1/tenants/{tenantId}/configuration</c>
 /// (Story 5.5 AC2 / FR45). Embeds the full <see cref="TenantEmbeddingConfig"/> directly — no duplicate
 /// projection record (Amendment C): <see cref="TenantEmbeddingConfig.ApiSecretKeyName"/> is the
 /// <em>name/identifier</em> of the secret in the secret store, not the secret value, and is safe to return.

@@ -29,7 +29,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
     {
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=invalid");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=invalid");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -43,7 +43,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
     {
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,invalid");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,invalid");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -57,7 +57,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
     {
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=caused_by");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=caused_by");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -73,7 +73,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
         await SeedSemanticAndStructuralGraphAsync(tenantId, "case-empty");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TraversalResult? result = await response.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
@@ -92,7 +92,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
         await SeedSemanticAndStructuralGraphAsync(tenantId, "case-space");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,%20correlatedWith");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,%20correlatedWith");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TraversalResult? result = await response.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
@@ -111,7 +111,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
         await SeedSemanticAndStructuralGraphAsync(tenantId, "case-valid");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,correlatedWith");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2&edgeTypes=causedBy,correlatedWith");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TraversalResult? result = await response.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
@@ -137,7 +137,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
         await SeedSemanticAndStructuralGraphAsync(tenantId, "case-default");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=mu-001&depth=2");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TraversalResult? result = await response.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);

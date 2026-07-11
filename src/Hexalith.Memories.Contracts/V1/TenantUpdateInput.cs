@@ -6,9 +6,9 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Input body for <c>PATCH /api/tenants/{tenantId}</c> (Story 5.5 AC3 / FR42).
+/// Input body for <c>PATCH /api/v1/tenants/{tenantId}</c> (Story 5.5 AC3 / FR42).
 /// Currently carries only <see cref="DisplayName"/> (Amendment Q: rate-limit updates flow through
-/// the existing <c>PUT /api/tenants/{tenantId}/embedding-config</c> endpoint — keeping the two
+/// the existing <c>PUT /api/v1/tenants/{tenantId}/embedding-config</c> endpoint — keeping the two
 /// persistence targets separate avoids a cross-store partial-failure mode for zero user benefit).
 /// </summary>
 /// <param name="DisplayName">The new display name for the tenant.</param>

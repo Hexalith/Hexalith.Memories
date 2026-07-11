@@ -468,7 +468,7 @@ public class TenantIsolationVerifierTests
         foreach (TenantInfo tenant in tenants)
         {
             TenantRegistryEntry entry = new(tenant, null);
-            daprClient.GetStateAsync<TenantRegistryEntry?>("statestore", $"tenant-registry-{tenant.Id}", cancellationToken: Arg.Any<CancellationToken>())
+            daprClient.GetStateAsync<StoredTenantRegistryEntry?>("statestore", $"tenant-registry-{tenant.Id}", cancellationToken: Arg.Any<CancellationToken>())
                 .Returns(entry);
         }
 

@@ -175,7 +175,7 @@ public sealed class ConsistencyVerifyCommandTests
         doc.RootElement.GetProperty("command").GetString().ShouldBe(ConsistencyVerifyCommand.CommandName);
         doc.RootElement.GetProperty("data").GetProperty("workflowInstanceId").GetString().ShouldBe("verify-consistency-acme-xyz");
         doc.RootElement.GetProperty("data").GetProperty("kind").GetString().ShouldBe("verify");
-        doc.RootElement.GetProperty("data").GetProperty("statusUrl").GetString().ShouldEndWith("/api/tenants/acme/consistency/verify/verify-consistency-acme-xyz");
+        doc.RootElement.GetProperty("data").GetProperty("statusUrl").GetString().ShouldEndWith("/api/v1/tenants/acme/consistency/verify/verify-consistency-acme-xyz");
     }
 
     [Fact]
@@ -429,7 +429,7 @@ internal sealed class ConsistencyStubClient : MemoriesClient
     {
         VerifyStartCalls++;
         LastVerifyRequest = request;
-        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/tenants/{tenantId}/consistency/verify/{VerifyInstanceId}"));
+        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/v1/tenants/{tenantId}/consistency/verify/{VerifyInstanceId}"));
     }
 
     public override Task<ConsistencyVerificationStatus?> GetConsistencyVerificationStatusAsync(
@@ -472,7 +472,7 @@ internal sealed class ConsistencyStubClient : MemoriesClient
     {
         RepairStartCalls++;
         LastRepairRequest = request;
-        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/tenants/{tenantId}/consistency/repair/{RepairInstanceId}"));
+        return Task.FromResult(new Uri($"http://127.0.0.1:65001/api/v1/tenants/{tenantId}/consistency/repair/{RepairInstanceId}"));
     }
 
     public override Task<ConsistencyRepairStatus?> GetConsistencyRepairStatusAsync(

@@ -39,7 +39,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput input = new("ignored-body-tenant", "Claims Pilot", "First investigation case");
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             input,
             MemoriesJsonContext.Options);
 
@@ -56,9 +56,9 @@ public sealed partial class CaseEndpointIntegrationTests
         created.CreatedAt.ShouldBeGreaterThanOrEqualTo(beforeCreate.AddSeconds(-1));
         created.LastUpdated.ShouldBeGreaterThanOrEqualTo(created.CreatedAt);
         createResponse.Headers.Location.ShouldNotBeNull();
-        createResponse.Headers.Location!.ToString().ShouldContain($"/api/tenants/{tenantId}/cases/{created.Id}");
+        createResponse.Headers.Location!.ToString().ShouldContain($"/api/v1/tenants/{tenantId}/cases/{created.Id}");
 
-        using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}/cases");
+        using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}/cases");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         List<CaseRecord>? cases = await listResponse.Content.ReadFromJsonAsync<List<CaseRecord>>(MemoriesJsonContext.Options);
@@ -78,7 +78,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string caseId = $"01{Guid.NewGuid():N}"[..26].ToUpperInvariant();
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
@@ -94,7 +94,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput createInput = new(tenantId, "Claims Pilot", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             createInput,
             MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -114,7 +114,7 @@ public sealed partial class CaseEndpointIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             ingestionInput,
             MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -126,7 +126,7 @@ public sealed partial class CaseEndpointIntegrationTests
         await WaitForContainsEdgeAsync(tenantId, created.Id);
 
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{created.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{created.Id}");
         getResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         CaseRecord? reloaded = await getResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
@@ -141,7 +141,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Member Test Case", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -152,7 +152,7 @@ public sealed partial class CaseEndpointIntegrationTests
         // PUT member -- should return 201 (new)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-alice",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-alice",
             memberInput,
             MemoriesJsonContext.Options);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -164,7 +164,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         // GET members -- should return one member
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         List<CaseMember>? members = await listResponse.Content.ReadFromJsonAsync<List<CaseMember>>(MemoriesJsonContext.Options);
         members.ShouldNotBeNull();
@@ -173,12 +173,12 @@ public sealed partial class CaseEndpointIntegrationTests
 
         // DELETE member -- should return 204
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-alice");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-alice");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         // GET members after delete -- should return empty
         using HttpResponseMessage listAfterDelete = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members");
         listAfterDelete.StatusCode.ShouldBe(HttpStatusCode.OK);
         List<CaseMember>? membersAfterDelete = await listAfterDelete.Content.ReadFromJsonAsync<List<CaseMember>>(MemoriesJsonContext.Options);
         membersAfterDelete.ShouldNotBeNull();
@@ -192,7 +192,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Idempotent Member Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -204,21 +204,21 @@ public sealed partial class CaseEndpointIntegrationTests
 
         // First PUT -- 201
         using HttpResponseMessage firstPut = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-bob",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-bob",
             memberInput,
             MemoriesJsonContext.Options);
         firstPut.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Second PUT (same member) -- 200 (idempotent)
         using HttpResponseMessage secondPut = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-bob",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-bob",
             memberInput,
             MemoriesJsonContext.Options);
         secondPut.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // List should show exactly one entry
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members");
         List<CaseMember>? members = await listResponse.Content.ReadFromJsonAsync<List<CaseMember>>(MemoriesJsonContext.Options);
         members.ShouldNotBeNull();
         members.Count.ShouldBe(1);
@@ -230,7 +230,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Missing MemberType Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -239,7 +239,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         using StringContent requestBody = new("{\"memberId\":\"user-alice\"}", Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
             requestBody);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -255,7 +255,7 @@ public sealed partial class CaseEndpointIntegrationTests
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/nonexistent-case/members/user-alice",
+            $"/api/v1/tenants/{tenantId}/cases/nonexistent-case/members/user-alice",
             memberInput,
             MemoriesJsonContext.Options);
 
@@ -272,7 +272,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -281,7 +281,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         // DELETE a member that doesn't exist
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/nonexistent-user");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/nonexistent-user");
 
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? error = await deleteResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -296,7 +296,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Members Key Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -306,14 +306,14 @@ public sealed partial class CaseEndpointIntegrationTests
         // Add a member (creates :members key)
         var memberInput = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
             memberInput,
             MemoriesJsonContext.Options);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // List cases -- should return exactly one case (not counting :members key)
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases");
+            $"/api/v1/tenants/{tenantId}/cases");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         List<CaseRecord>? cases = await listResponse.Content.ReadFromJsonAsync<List<CaseRecord>>(MemoriesJsonContext.Options);
         cases.ShouldNotBeNull();
@@ -328,7 +328,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Status Member Count", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -339,19 +339,19 @@ public sealed partial class CaseEndpointIntegrationTests
         var member1 = new AddCaseMemberInput("user-alice", CaseMemberType.User);
         var member2 = new AddCaseMemberInput("admin-role", CaseMemberType.Role);
         using HttpResponseMessage put1 = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/user-alice",
             member1,
             MemoriesJsonContext.Options);
         put1.StatusCode.ShouldBe(HttpStatusCode.Created);
         using HttpResponseMessage put2 = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/admin-role",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/admin-role",
             member2,
             MemoriesJsonContext.Options);
         put2.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // GET status -- should include memberCount=2
         using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/status");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/status");
         statusResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         CaseStatusDetail? status = await statusResponse.Content.ReadFromJsonAsync<CaseStatusDetail>(MemoriesJsonContext.Options);
         status.ShouldNotBeNull();
@@ -365,7 +365,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Limit Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -386,7 +386,7 @@ public sealed partial class CaseEndpointIntegrationTests
         // The 1001st member via HTTP should return 400
         var memberInput = new AddCaseMemberInput("user-overflow", CaseMemberType.User);
         using HttpResponseMessage overflowResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-overflow",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-overflow",
             memberInput,
             MemoriesJsonContext.Options);
 
@@ -402,7 +402,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Limit Replay Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -420,7 +420,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         var replayInput = new AddCaseMemberInput("user-0000", CaseMemberType.User);
         using HttpResponseMessage replayResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/user-0000",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/user-0000",
             replayInput,
             MemoriesJsonContext.Options);
 
@@ -437,7 +437,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Concurrency Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -449,7 +449,7 @@ public sealed partial class CaseEndpointIntegrationTests
         var memberInput = new AddCaseMemberInput("user-concurrent", CaseMemberType.User);
         Task<HttpResponseMessage>[] tasks = Enumerable.Range(0, 10)
             .Select(_ => _fixture.MemoriesClient.PutAsJsonAsync(
-                $"/api/tenants/{tenantId}/cases/{caseId}/members/user-concurrent",
+                $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-concurrent",
                 memberInput,
                 MemoriesJsonContext.Options))
             .ToArray();
@@ -485,7 +485,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput caseInput = new("ignored", "Annotation Validation Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             caseInput,
             MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -509,7 +509,7 @@ public sealed partial class CaseEndpointIntegrationTests
             "correction");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{targetMuId}/annotations",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{targetMuId}/annotations",
             annotationInput,
             MemoriesJsonContext.Options);
 
@@ -535,7 +535,7 @@ public sealed partial class CaseEndpointIntegrationTests
             "correction");
 
         using HttpResponseMessage createAnnotationResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
             annotationInput,
             MemoriesJsonContext.Options);
 
@@ -576,11 +576,11 @@ public sealed partial class CaseEndpointIntegrationTests
             "clarification");
 
         using HttpResponseMessage firstResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
             firstAnnotation,
             MemoriesJsonContext.Options);
         using HttpResponseMessage secondResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{targetMuId}/annotations",
             secondAnnotation,
             MemoriesJsonContext.Options);
 
@@ -601,7 +601,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string caseId = await GetCaseIdForMemoryUnitAsync(tenantId, targetMuId);
 
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", "Other Annotation Case", null),
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -609,14 +609,14 @@ public sealed partial class CaseEndpointIntegrationTests
         otherCase.ShouldNotBeNull();
 
         using HttpResponseMessage missingResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/missing-annotation-target/annotations");
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/missing-annotation-target/annotations");
         missingResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? missingError = await missingResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
         missingError.ShouldNotBeNull();
         missingError.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
 
         using HttpResponseMessage wrongCaseResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{otherCase.Id}/memory-units/{targetMuId}/annotations");
+            $"/api/v1/tenants/{tenantId}/cases/{otherCase.Id}/memory-units/{targetMuId}/annotations");
         wrongCaseResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? wrongCaseError = await wrongCaseResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
         wrongCaseError.ShouldNotBeNull();
@@ -633,7 +633,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string searchToken = $"delete-mu-{Guid.NewGuid():N}";
         CreateCaseInput caseInput = new("ignored", "Delete MU Test", null);
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createCaseResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
@@ -650,7 +650,7 @@ public sealed partial class CaseEndpointIntegrationTests
             IngestedBy = "integration@test.local",
         };
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+            "/api/v1/ingest", ingestionInput, MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         AcceptedResponse? accepted = await ingestResponse.Content.ReadFromJsonAsync<AcceptedResponse>(MemoriesJsonContext.Options);
         accepted.ShouldNotBeNull();
@@ -665,7 +665,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         // Delete MU
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{muId}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{muId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         // Verify case now has 0 MUs
@@ -684,13 +684,13 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete MU 404 Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/nonexistent-mu-id");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/nonexistent-mu-id");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -701,7 +701,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string searchToken = $"wrong-case-{Guid.NewGuid():N}";
 
         using HttpResponseMessage createCaseAResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", "Delete MU Case A", null),
             MemoriesJsonContext.Options);
         createCaseAResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -709,7 +709,7 @@ public sealed partial class CaseEndpointIntegrationTests
         caseA.ShouldNotBeNull();
 
         using HttpResponseMessage createCaseBResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", "Delete MU Case B", null),
             MemoriesJsonContext.Options);
         createCaseBResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -728,18 +728,18 @@ public sealed partial class CaseEndpointIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+            "/api/v1/ingest", ingestionInput, MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForContainsEdgeAsync(tenantId, caseA.Id);
         string muId = await GetFirstMemoryUnitIdAsync(tenantId, caseA.Id);
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{caseB.Id}/memory-units/{muId}");
+            $"/api/v1/tenants/{tenantId}/cases/{caseB.Id}/memory-units/{muId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         using HttpResponseMessage getCaseAResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{caseA.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{caseA.Id}");
         getCaseAResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         CaseRecord? reloadedCaseA = await getCaseAResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         reloadedCaseA.ShouldNotBeNull();
@@ -761,7 +761,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput caseInput = new("ignored", "Deleting Status Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
@@ -775,7 +775,7 @@ public sealed partial class CaseEndpointIntegrationTests
             ]);
 
         using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/status");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/status");
         statusResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         CaseStatusDetail? status = await statusResponse.Content.ReadFromJsonAsync<CaseStatusDetail>(MemoriesJsonContext.Options);
@@ -791,7 +791,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput caseInput = new("ignored", "Delete MU Conflict Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
@@ -808,7 +808,7 @@ public sealed partial class CaseEndpointIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+            "/api/v1/ingest", ingestionInput, MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForContainsEdgeAsync(tenantId, createdCase.Id);
@@ -823,7 +823,7 @@ public sealed partial class CaseEndpointIntegrationTests
             ]);
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{muId}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/memory-units/{muId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         ErrorResponse? error = await deleteResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -837,20 +837,20 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Empty Case Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
         // Delete empty case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify case is gone
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         getResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -862,7 +862,7 @@ public sealed partial class CaseEndpointIntegrationTests
         CreateCaseInput caseInput = new("ignored", "Delete Populated Case Test", null);
 
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
@@ -879,19 +879,19 @@ public sealed partial class CaseEndpointIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+            "/api/v1/ingest", ingestionInput, MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForContainsEdgeAsync(tenantId, createdCase.Id);
         string muId = await GetFirstMemoryUnitIdAsync(tenantId, createdCase.Id);
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await WaitForCaseDeletedAsync(tenantId, createdCase.Id, [muId]);
 
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         getResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         IDatabase redisDb = _fixture.RedisConnection.GetDatabase();
@@ -914,7 +914,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Case Members Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
@@ -922,19 +922,19 @@ public sealed partial class CaseEndpointIntegrationTests
         // Add a member
         var memberInput = new AddCaseMemberInput("user-cleanup-test", CaseMemberType.User);
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}/members/user-cleanup-test",
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}/members/user-cleanup-test",
             memberInput, MemoriesJsonContext.Options);
         putResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Delete case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify case is gone
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         getResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         // Verify members key is cleaned up
@@ -950,7 +950,7 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/nonexistent-case-id");
+            $"/api/v1/tenants/{tenantId}/cases/nonexistent-case-id");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -960,20 +960,20 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Delete Case List Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
         // Delete case
         using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Verify list no longer returns it
         using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/cases");
+            $"/api/v1/tenants/{tenantId}/cases");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         List<CaseRecord>? cases = await listResponse.Content.ReadFromJsonAsync<List<CaseRecord>>(MemoriesJsonContext.Options);
         cases.ShouldNotBeNull();
@@ -986,20 +986,20 @@ public sealed partial class CaseEndpointIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
         CreateCaseInput caseInput = new("ignored", "Idempotent Delete Test", null);
         using HttpResponseMessage createResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
+            $"/api/v1/tenants/{tenantId}/cases", caseInput, MemoriesJsonContext.Options);
         createResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
         CaseRecord? createdCase = await createResponse.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
         createdCase.ShouldNotBeNull();
 
         // First delete
         using HttpResponseMessage deleteResponse1 = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse1.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await WaitForCaseDeletedAsync(tenantId, createdCase.Id);
 
         // Second delete
         using HttpResponseMessage deleteResponse2 = await _fixture.MemoriesClient.DeleteAsync(
-            $"/api/tenants/{tenantId}/cases/{createdCase.Id}");
+            $"/api/v1/tenants/{tenantId}/cases/{createdCase.Id}");
         deleteResponse2.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
@@ -1027,7 +1027,7 @@ public sealed partial class CaseEndpointIntegrationTests
     private async Task<string> CreateIndexedMemoryUnitAsync(string tenantId, string caseName, string searchToken)
     {
         using HttpResponseMessage createCaseResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", caseName, null),
             MemoriesJsonContext.Options);
         createCaseResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -1046,7 +1046,7 @@ public sealed partial class CaseEndpointIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             ingestionInput,
             MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -1071,7 +1071,7 @@ public sealed partial class CaseEndpointIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations");
+                $"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/annotations");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
             List<MemoryUnit>? annotations = await response.Content.ReadFromJsonAsync<List<MemoryUnit>>(MemoriesJsonContext.Options);
@@ -1154,7 +1154,7 @@ public sealed partial class CaseEndpointIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/tenants/{tenantId}/cases/{caseId}");
+                $"/api/v1/tenants/{tenantId}/cases/{caseId}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
             CaseRecord? record = await response.Content.ReadFromJsonAsync<CaseRecord>(MemoriesJsonContext.Options);
             record.ShouldNotBeNull();
@@ -1183,7 +1183,7 @@ public sealed partial class CaseEndpointIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={tenantId}&caseId={caseId}&query={Uri.EscapeDataString(searchToken)}");
+                $"/api/v1/search?tenantId={tenantId}&caseId={caseId}&query={Uri.EscapeDataString(searchToken)}");
             response.StatusCode.ShouldBe(HttpStatusCode.OK);
             SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
             result.ShouldNotBeNull();

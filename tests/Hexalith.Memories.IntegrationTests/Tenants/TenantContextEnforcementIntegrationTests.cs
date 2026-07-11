@@ -49,7 +49,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     public async Task EmbeddingConfig_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync("/api/tenants/unknown-tenant-xyz/embedding-config");
+            .GetAsync("/api/v1/tenants/unknown-tenant-xyz/embedding-config");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? error = await response.Content
@@ -65,7 +65,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         await _fixture.SeedTenantRegistryEntryAsync(tenantId, TenantStatus.Provisioning);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync($"/api/tenants/{tenantId}/embedding-config");
+            .GetAsync($"/api/v1/tenants/{tenantId}/embedding-config");
 
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         ErrorResponse? error = await response.Content
@@ -78,7 +78,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     public async Task ProvisionStatus_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync("/api/tenants/unknown-tenant-xyz/provision-status/provision-unknown-tenant-xyz-abc");
+            .GetAsync("/api/v1/tenants/unknown-tenant-xyz/provision-status/provision-unknown-tenant-xyz-abc");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -88,12 +88,12 @@ public sealed class TenantContextEnforcementIntegrationTests
     {
         // AC1 edge case: deletion-status must remain callable for Deleting tenants (that's its purpose).
         string tenantId = await _fixture.ProvisionActiveTenantAsync($"tenant-delete-status-{Guid.NewGuid():N}");
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         string workflowInstanceId = await ReadWorkflowInstanceIdAsync(deleteResponse.Content);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync($"/api/tenants/{tenantId}/deletion-status/{workflowInstanceId}");
+            .GetAsync($"/api/v1/tenants/{tenantId}/deletion-status/{workflowInstanceId}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
@@ -107,7 +107,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         await _fixture.SeedTenantRegistryEntryAsync(tenantId, TenantStatus.Failed);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsync($"/api/tenants/{tenantId}/verify", null);
+            .PostAsync($"/api/v1/tenants/{tenantId}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
@@ -116,7 +116,7 @@ public sealed class TenantContextEnforcementIntegrationTests
     public async Task Verify_UnknownTenant_Returns404TenantNotFound()
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsync("/api/tenants/unknown-tenant-xyz/verify", null);
+            .PostAsync("/api/v1/tenants/unknown-tenant-xyz/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? error = await response.Content
@@ -135,7 +135,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         //   1. Provision tenants A and B.
         //   2. Ingest a memory unit under tenant A (say mu-xyz).
         //   3. Plant corruption by direct Redis write: HSET tenant-a:mu:mu-xyz tenantId tenant-b.
-        //   4. GET /api/tenants/tenant-a/cases/{caseId}/memory-units/mu-xyz
+        //   4. GET /api/v1/tenants/tenant-a/cases/{caseId}/memory-units/mu-xyz
         //   5. Assert the endpoint returns 404 (not 200 — no data leakage).
         //   6. The production path records TENANT_MISMATCH via TenantMismatchMonitor; this
         //      integration fixture asserts the externally enforceable no-leakage boundary.
@@ -146,7 +146,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         await SeedMemoryUnitHashAsync(tenantA, caseId, memoryUnitId, "Corrupted tenant payload.", storedTenantId: tenantB);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync($"/api/tenants/{tenantA}/cases/{caseId}/memory-units/{memoryUnitId}");
+            .GetAsync($"/api/v1/tenants/{tenantA}/cases/{caseId}/memory-units/{memoryUnitId}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
@@ -161,7 +161,7 @@ public sealed class TenantContextEnforcementIntegrationTests
         await SeedMemoryUnitHashAsync(tenantB, "case-1", "mu-b", phrase, storedTenantId: tenantB);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync($"/api/search?tenantId={tenantA}&axis=syntactic&query={Uri.EscapeDataString(phrase)}");
+            .GetAsync($"/api/v1/search?tenantId={tenantA}&axis=syntactic&query={Uri.EscapeDataString(phrase)}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         SearchResult? result = await response.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);

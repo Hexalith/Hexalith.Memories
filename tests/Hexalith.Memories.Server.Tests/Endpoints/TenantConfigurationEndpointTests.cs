@@ -95,8 +95,8 @@ public class TenantConfigurationEndpointTests
         deserialized.ShouldNotBeNull();
         deserialized.Id.ShouldBe("acme");
         deserialized.MemoryUnitCount.ShouldBe(42L);
-        deserialized.IndexSizes.RediSearchKeyCount.ShouldBe(100L);
-        deserialized.IndexStatus.FalkorDb.ShouldBe(IndexHealth.Ready);
+        deserialized.IndexSizes.SyntacticKeyCount.ShouldBe(100L);
+        deserialized.IndexStatus.Graph.ShouldBe(IndexHealth.Ready);
         deserialized.ReindexRequired.ShouldBeFalse();
         deserialized.LastActivityAt.ShouldNotBeNull();
     }
@@ -215,11 +215,11 @@ public class TenantConfigurationEndpointTests
     {
         TenantRegistryEntry existing = CreateEntry("acme", "Acme", TenantStatus.Active);
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
-            .Returns(existing, (TenantRegistryEntry?)null);
+            .Returns(existing, (StoredTenantRegistryEntry?)null);
 
         TenantRegistryService registry = new(daprClient, CreateLogger<TenantRegistryService>());
         TenantStatusGuard guard = new(registry);
@@ -247,7 +247,7 @@ public class TenantConfigurationEndpointTests
     {
         TenantRegistryEntry existing = CreateEntry("acme", "Acme", TenantStatus.Active);
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
@@ -281,12 +281,12 @@ public class TenantConfigurationEndpointTests
         TenantRegistryEntry active = CreateEntry("acme", "Acme", TenantStatus.Active);
         TenantRegistryEntry deleting = CreateEntry("acme", "Acme", TenantStatus.Deleting, "delete-acme");
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
             .Returns(active, deleting);
-        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAndETagAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
@@ -323,12 +323,12 @@ public class TenantConfigurationEndpointTests
     {
         TenantRegistryEntry active = CreateEntry("acme", "Acme", TenantStatus.Active);
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
             .Returns(active, active);
-        daprClient.GetStateAndETagAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAndETagAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())
@@ -336,7 +336,7 @@ public class TenantConfigurationEndpointTests
         daprClient.TrySaveStateAsync(
                 "statestore",
                 "tenant-registry-acme",
-                Arg.Any<TenantRegistryEntry>(),
+                Arg.Any<StoredTenantRegistryEntry>(),
                 Arg.Any<string>(),
                 cancellationToken: Arg.Any<CancellationToken>())
             .Returns(false);

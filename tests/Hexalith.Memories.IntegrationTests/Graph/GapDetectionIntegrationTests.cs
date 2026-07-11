@@ -44,7 +44,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -79,7 +79,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=5");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=5");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -111,7 +111,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=5&caseId={Uri.EscapeDataString(caseId)}");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=5&caseId={Uri.EscapeDataString(caseId)}");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -143,7 +143,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act 1: Traverse before ingestion — B is a gap
         using HttpResponseMessage response1 = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
         TraversalResult? result1 = await response1.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
         result1.ShouldNotBeNull();
         result1.GapMarkers.Count.ShouldBe(1);
@@ -154,7 +154,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act 2: Traverse after ingestion — B should be a full node
         using HttpResponseMessage response2 = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
         TraversalResult? result2 = await response2.Content.ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options);
         result2.ShouldNotBeNull();
         result2.Nodes.Select(n => n.MemoryUnitId).ShouldContain("MU-A");
@@ -183,7 +183,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -210,7 +210,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -237,7 +237,7 @@ public sealed class GapDetectionIntegrationTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3&edgeTypes=causedBy,correlatedWith");
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId=MU-A&depth=3&edgeTypes=causedBy,correlatedWith");
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

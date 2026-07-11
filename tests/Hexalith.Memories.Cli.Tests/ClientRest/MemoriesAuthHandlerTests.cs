@@ -47,7 +47,7 @@ public class MemoriesAuthHandlerTests
         using var client = new HttpClient(authHandler) { BaseAddress = new Uri(endpoint) };
 
         // Act
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tenants");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/tenants");
         using HttpResponseMessage response = await client.SendAsync(request);
 
         // Assert
@@ -65,7 +65,7 @@ public class MemoriesAuthHandlerTests
         using var client = new HttpClient(authHandler) { BaseAddress = new Uri(IngressEndpoint) };
 
         // Act
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tenants");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/tenants");
         using HttpResponseMessage response = await client.SendAsync(request);
 
         // Assert
@@ -85,7 +85,7 @@ public class MemoriesAuthHandlerTests
         using var client = new HttpClient(authHandler) { BaseAddress = new Uri(LocalhostEndpoint) };
 
         // Act
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tenants");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/tenants");
         using HttpResponseMessage response = await client.SendAsync(request);
 
         // Assert
@@ -102,7 +102,7 @@ public class MemoriesAuthHandlerTests
         (MemoriesAuthHandler authHandler, TestDelegatingHandler innerHandler) = BuildPipeline(TokenValue);
         using var client = new HttpClient(authHandler) { BaseAddress = new Uri(DockerServiceEndpoint) };
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tenants");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/tenants");
 
         InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
             () => client.SendAsync(request));
@@ -121,7 +121,7 @@ public class MemoriesAuthHandlerTests
         using var client = new HttpClient(authHandler) { BaseAddress = new Uri(endpoint) };
 
         // Act
-        using var request = new HttpRequestMessage(HttpMethod.Get, "api/tenants");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/tenants");
         using HttpResponseMessage response = await client.SendAsync(request);
 
         // Assert

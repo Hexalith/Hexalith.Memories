@@ -39,7 +39,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/wf-tenant-b",
+            "/api/v1/ingest/wf-tenant-b",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -60,7 +60,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/wf-tenant-a",
+            "/api/v1/ingest/wf-tenant-a",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -87,7 +87,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/missing",
+            "/api/v1/ingest/missing",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -102,7 +102,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/unreadable",
+            "/api/v1/ingest/unreadable",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -125,7 +125,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/wf-bad-input",
+            "/api/v1/ingest/wf-bad-input",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -148,7 +148,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/batches/batch-tenant-b",
+            "/api/v1/ingest/batches/batch-tenant-b",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -171,7 +171,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/batches/missing-batch",
+            "/api/v1/ingest/batches/missing-batch",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -194,7 +194,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/batches/batch-malformed-tenant",
+            "/api/v1/ingest/batches/batch-malformed-tenant",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -221,7 +221,7 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateAuthorizedClient("tenant-a");
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/ingest/batches/batch-tenant-a",
+            "/api/v1/ingest/batches/batch-tenant-a",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

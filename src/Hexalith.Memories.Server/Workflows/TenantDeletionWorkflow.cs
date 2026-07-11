@@ -102,16 +102,16 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
                 nameof(DeleteRediSearchActivity),
                 input,
                 retryOptions);
-            deletedBackends.Add("RediSearch");
-            LogBackendDeleted(logger, input.TenantId, "RediSearch");
+            deletedBackends.Add("syntactic");
+            LogBackendDeleted(logger, input.TenantId, "syntactic");
 
             // Drop Redis Vector index (with DD — deletes vec:* hashes)
             await context.CallActivityAsync<bool>(
                 nameof(DeleteRedisVectorActivity),
                 input,
                 retryOptions);
-            deletedBackends.Add("RedisVector");
-            LogBackendDeleted(logger, input.TenantId, "RedisVector");
+            deletedBackends.Add("semantic");
+            LogBackendDeleted(logger, input.TenantId, "semantic");
 
             // Batched FalkorDB deletion
             int batchNumber = 0;
@@ -164,7 +164,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
 
                         return new TenantDeletionResult(input.TenantId, TenantStatus.Failed, failureMessage)
                         {
-                            DeletedBackends = deletedBackends,
+                            DeletedAxes = deletedBackends,
                         };
                     }
                 }
@@ -175,16 +175,16 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
                 nameof(DeleteFalkorDbGraphFinalizerActivity),
                 input,
                 retryOptions);
-            deletedBackends.Add("FalkorDB");
-            LogBackendDeleted(logger, input.TenantId, "FalkorDB");
+            deletedBackends.Add("graph");
+            LogBackendDeleted(logger, input.TenantId, "graph");
 
             // Clean up remaining Redis data keys (case:*, dedup:*)
             await context.CallActivityAsync<bool>(
                 nameof(DeleteTenantDataKeysActivity),
                 input,
                 retryOptions);
-            deletedBackends.Add("RedisDataKeys");
-            LogBackendDeleted(logger, input.TenantId, "RedisDataKeys");
+            deletedBackends.Add("state");
+            LogBackendDeleted(logger, input.TenantId, "state");
 
             // 5. Remove from registry
             await context.CallActivityAsync<bool>(
@@ -201,7 +201,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
 
             return new TenantDeletionResult(input.TenantId, TenantStatus.Active, "Tenant deleted successfully.")
             {
-                DeletedBackends = deletedBackends,
+                DeletedAxes = deletedBackends,
             };
         }
         catch (WorkflowTaskFailedException ex)
@@ -231,14 +231,14 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
                     TenantStatus.CompensationFailed,
                     $"Deletion failed: {failureMessage}. Cleanup status update also failed: {statusUpdateFailureMessage}. Cleaned backends: [{string.Join(", ", deletedBackends)}]. Re-trigger DELETE to resume.")
                 {
-                    DeletedBackends = deletedBackends,
+                    DeletedAxes = deletedBackends,
                 };
             }
 
             return new TenantDeletionResult(input.TenantId, TenantStatus.Failed,
                 $"Deletion failed: {failureMessage}. Cleaned backends: [{string.Join(", ", deletedBackends)}]. Re-trigger DELETE to resume.")
             {
-                DeletedBackends = deletedBackends,
+                DeletedAxes = deletedBackends,
             };
         }
     }

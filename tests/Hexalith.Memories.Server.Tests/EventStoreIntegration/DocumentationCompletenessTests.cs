@@ -99,6 +99,6 @@ public sealed class DocumentationCompletenessTests
 
         // Worked example must include a publish call + a search call so readers see the end-to-end flow.
         content.ShouldContain("PublishEventAsync", Case.Sensitive, "Worked example must include DAPR publish call.");
-        content.ShouldContain("/api/search", Case.Sensitive, "Worked example must end with a search against Memories.");
+        content.ShouldContain("/api/v1/search", Case.Sensitive, "Worked example must end with a search against Memories.");
     }
 }

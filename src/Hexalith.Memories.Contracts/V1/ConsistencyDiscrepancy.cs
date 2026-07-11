@@ -12,9 +12,9 @@ namespace Hexalith.Memories.Contracts.V1;
 /// corrective action would converge the unit.
 /// </summary>
 /// <param name="MemoryUnitId">The memory unit identifier (ULID).</param>
-/// <param name="SyntacticPresent">Whether the unit is present in the RediSearch index.</param>
-/// <param name="SemanticPresent">Whether the unit is present in Redis Vector.</param>
-/// <param name="GraphPresent">Whether the unit is present in FalkorDB.</param>
+/// <param name="SyntacticPresent">Whether the unit is present on the syntactic axis.</param>
+/// <param name="SemanticPresent">Whether the unit is present on the semantic axis.</param>
+/// <param name="GraphPresent">Whether the unit is present on the graph axis.</param>
 /// <param name="Recommendation">Repair plan for this unit.</param>
 public sealed record ConsistencyDiscrepancy(
     string MemoryUnitId,

@@ -33,7 +33,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     {
         using HttpClient client = CreateClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/api/handlers", TestContext.Current.CancellationToken);
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/handlers", TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
@@ -46,7 +46,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
 
-        using HttpResponseMessage response = await client.GetAsync("/api/handlers", TestContext.Current.CancellationToken);
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/handlers", TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         response.Headers.TryGetValues("X-Memories-API-Experimental", out IEnumerable<string>? values).ShouldBeTrue();
@@ -62,7 +62,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
             ServerTestBearerToken.Create(tenants: ["tenant-a"]));
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/tenant-a",
+            "/api/v1/tenants/tenant-a",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -72,9 +72,9 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     }
 
     [Theory]
-    [InlineData("/api/tenants/tenant-b/handlers/mismatches")]
-    [InlineData("/api/tenants/tenant-b/telemetry/summary")]
-    [InlineData("/api/tenants/tenant-b/cases/case-1/memory-units/memory-1")]
+    [InlineData("/api/v1/tenants/tenant-b/handlers/mismatches")]
+    [InlineData("/api/v1/tenants/tenant-b/telemetry/summary")]
+    [InlineData("/api/v1/tenants/tenant-b/cases/case-1/memory-units/memory-1")]
     public async Task TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState(string path)
     {
         using HttpClient client = CreateClient();
@@ -102,7 +102,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
             ServerTestBearerToken.Create(tenants: ["tenant-a"]));
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/bad~tenant/handlers/mismatches",
+            "/api/v1/tenants/bad~tenant/handlers/mismatches",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -129,7 +129,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         string startNode = axis == "graph" ? "&startNodeId=memory-1" : string.Empty;
 
         using HttpResponseMessage response = await client.GetAsync(
-            $"/api/search?tenantId=tenant-b&query=fraud&axis={axis}{startNode}",
+            $"/api/v1/search?tenantId=tenant-b&query=fraud&axis={axis}{startNode}",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -150,7 +150,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
             ServerTestBearerToken.Create(tenants: ["tenant-a"]));
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/search?tenantId=bad~tenant&query=fraud&axis=syntactic",
+            "/api/v1/search?tenantId=bad~tenant&query=fraud&axis=syntactic",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -163,9 +163,9 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     }
 
     [Theory]
-    [InlineData("/api/ingest", "document")]
-    [InlineData("/api/ingest/url", "url")]
-    [InlineData("/api/ingest/directory", "directory")]
+    [InlineData("/api/v1/ingest", "document")]
+    [InlineData("/api/v1/ingest/url", "url")]
+    [InlineData("/api/v1/ingest/directory", "directory")]
     public async Task TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies(
         string path,
         string requestKind)
@@ -191,9 +191,9 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     }
 
     [Theory]
-    [InlineData("/api/ingest", "document")]
-    [InlineData("/api/ingest/url", "url")]
-    [InlineData("/api/ingest/directory", "directory")]
+    [InlineData("/api/v1/ingest", "document")]
+    [InlineData("/api/v1/ingest/url", "url")]
+    [InlineData("/api/v1/ingest/directory", "directory")]
     public async Task TenantScopedIngestSchedulingEndpoint_WithMalformedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies(
         string path,
         string requestKind)
@@ -224,7 +224,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         using HttpClient client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-a-jwt");
 
-        using HttpResponseMessage response = await client.GetAsync("/api/handlers", TestContext.Current.CancellationToken);
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/handlers", TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/problem+json");
@@ -261,7 +261,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     public void ApiRoutes_DoNotCarryAnonymousMetadata()
     {
         List<RouteEndpoint> apiRoutes = GetRouteEndpoints()
-            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) == true)
+            .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase) == true)
             .ToList();
 
         apiRoutes.Count.ShouldBeGreaterThan(0);

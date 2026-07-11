@@ -91,15 +91,15 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
         {
             await context.CallActivityAsync<bool>(
                 nameof(ProvisionRediSearchActivity), input, provisionRetryOptions);
-            completedBackends.Add("RediSearch");
+            completedBackends.Add("syntactic");
 
             await context.CallActivityAsync<bool>(
                 nameof(ProvisionRedisVectorActivity), input, provisionRetryOptions);
-            completedBackends.Add("RedisVector");
+            completedBackends.Add("semantic");
 
             await context.CallActivityAsync<bool>(
                 nameof(ProvisionFalkorDbActivity), input, provisionRetryOptions);
-            completedBackends.Add("FalkorDB");
+            completedBackends.Add("graph");
 
             // Verify all backends (no retry — verification is deterministic)
             await context.CallActivityAsync<bool>(nameof(VerifyTenantActivity), input);
@@ -133,19 +133,19 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
                 long compensationStartedTimestamp = Stopwatch.GetTimestamp();
                 LogCompensationStarted(logger, input.TenantId, string.Join(", ", completedBackends), DateTimeOffset.UtcNow);
 
-                if (completedBackends.Contains("RediSearch"))
+                if (completedBackends.Contains("syntactic"))
                 {
                     await context.CallActivityAsync<bool>(
                         nameof(DeleteRediSearchIndexActivity), input, compensationRetryOptions);
                 }
 
-                if (completedBackends.Contains("RedisVector"))
+                if (completedBackends.Contains("semantic"))
                 {
                     await context.CallActivityAsync<bool>(
                         nameof(DeleteRedisVectorIndexActivity), input, compensationRetryOptions);
                 }
 
-                if (completedBackends.Contains("FalkorDB"))
+                if (completedBackends.Contains("graph"))
                 {
                     await context.CallActivityAsync<bool>(
                         nameof(DeleteFalkorDbGraphActivity), input, compensationRetryOptions);
@@ -166,7 +166,7 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
                 return new TenantProvisioningResult(input.TenantId, TenantStatus.Failed,
                     $"Provisioning failed: {ex.FailureDetails?.ErrorMessage}. Cleanup completed.")
                 {
-                    CompensatedBackends = completedBackends,
+                    CompensatedAxes = completedBackends,
                 };
             }
             catch (WorkflowTaskFailedException compensationEx)
@@ -194,7 +194,7 @@ public sealed partial class TenantProvisioningWorkflow : Workflow<TenantProvisio
                 return new TenantProvisioningResult(input.TenantId, TenantStatus.CompensationFailed,
                     $"Provisioning failed AND cleanup failed. Orphaned resources in: [{string.Join(", ", completedBackends)}]. Manual cleanup required.")
                 {
-                    CompensatedBackends = [],
+                    CompensatedAxes = [],
                 };
             }
         }

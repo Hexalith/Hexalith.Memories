@@ -5,11 +5,13 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Text.Json.Serialization;
+
 /// <summary>
-/// Details extracted from the semantic <c>{tenantId}:vec:{id}</c> Redis hash.
+/// Details extracted from the semantic index entry.
 /// </summary>
 /// <param name="EmbeddingDimensions">Number of float dimensions in the stored vector (bytes / 4).</param>
-/// <param name="VectorHashKey">The Redis key of the vector hash (for operator debugging).</param>
+/// <param name="SemanticIndexKey">The semantic index key used for operator diagnostics.</param>
 public sealed record ConsistencySemanticDetail(
     int EmbeddingDimensions,
-    string VectorHashKey);
+    [property: JsonPropertyName("vectorHashKey")] string SemanticIndexKey);

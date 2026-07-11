@@ -13,7 +13,8 @@ public sealed record TenantDeletionResult(
     TenantStatus Status,
     string Message)
 {
-    /// <summary>Gets the list of backends that were successfully cleaned up during deletion.</summary>
+    /// <summary>Gets the list of retrieval-axis deletion steps completed successfully.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? DeletedBackends { get; init; }
+    [JsonPropertyName("deletedBackends")]
+    public IReadOnlyList<string>? DeletedAxes { get; init; }
 }

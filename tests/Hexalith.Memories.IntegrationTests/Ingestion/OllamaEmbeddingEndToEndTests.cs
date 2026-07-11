@@ -118,7 +118,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         };
 
         using HttpResponseMessage ingestResponse = await fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             input,
             MemoriesJsonContext.Options);
 
@@ -144,7 +144,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         // Story 14.4 / 13.7-RV2: build query strings via Uri.EscapeDataString so interpolated values
         // (even though current values are GUID-N hex) cannot inject reserved URL characters.
         string searchUri =
-            $"/api/search?tenantId={Uri.EscapeDataString(tenantId)}" +
+            $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}" +
             $"&query={Uri.EscapeDataString(canary)}" +
             "&axis=hybrid&axes=syntactic,semantic&maxResults=5";
         using HttpResponseMessage searchResponse = await fixture.MemoriesClient.GetAsync(searchUri);
@@ -187,7 +187,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         };
 
         using HttpResponseMessage response = await fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/embedding-config?forceReindex=true",
+            $"/api/v1/tenants/{tenantId}/embedding-config?forceReindex=true",
             config,
             MemoriesJsonContext.Options);
 
@@ -197,7 +197,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
     private static async Task CreateCaseAsync(AspireIngestionPipelineFixture fixture, string tenantId, string caseId)
     {
         using HttpResponseMessage response = await fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput(tenantId, caseId, "Story 13.7 Ollama provider test case."),
             MemoriesJsonContext.Options);
 
@@ -224,7 +224,7 @@ public sealed class OllamaEmbeddingEndToEndTests : IAsyncLifetime
         {
             try
             {
-                using var workflowRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/ingest/{instanceId}");
+                using var workflowRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
                 workflowRequest.Headers.Authorization = new AuthenticationHeaderValue(
                     "Bearer",
                     AspireIngestionPipelineFixture.MintServerBearer(tenantId));

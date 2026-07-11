@@ -10,6 +10,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -139,7 +140,9 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             record.RetryCount,
             record.ErrorMessage,
             record.LastRetryAt);
-        string detailsJson = JsonSerializer.Serialize(details, MemoriesJsonContext.Options);
+        string detailsJson = JsonSerializer.Serialize(
+            PersistenceModelMapper.ToStored(details),
+            MemoriesPersistenceJsonContext.Options);
 
         RedisValue[] argv =
         [
@@ -158,9 +161,13 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
             PersistFailedUnitActivity.FieldFailureDetailsJson, detailsJson,
             PersistFailedUnitActivity.FieldSourcePayloadReferenceJson, record.SourcePayloadReference is null
                 ? string.Empty
-                : JsonSerializer.Serialize(record.SourcePayloadReference, MemoriesJsonContext.Options),
+                : JsonSerializer.Serialize(
+                    PersistenceModelMapper.ToStored(record.SourcePayloadReference),
+                    MemoriesPersistenceJsonContext.Options),
             PersistFailedUnitActivity.FieldMetadataJson, record.Metadata is { Count: > 0 }
-                ? JsonSerializer.Serialize(new Dictionary<string, MetadataField>(record.Metadata, StringComparer.Ordinal), MemoriesJsonContext.Options)
+                ? JsonSerializer.Serialize(
+                    PersistenceModelMapper.ToStored(record.Metadata),
+                    MemoriesPersistenceJsonContext.Options)
                 : string.Empty,
             PersistFailedUnitActivity.FieldCausationId, record.CausationId ?? string.Empty,
             PersistFailedUnitActivity.FieldCorrelationId, record.CorrelationId ?? string.Empty,
@@ -265,12 +272,12 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
 
         try
         {
-            Dictionary<string, MetadataField>? metadata = JsonSerializer.Deserialize<Dictionary<string, MetadataField>>(
+            Dictionary<string, StoredMetadataField>? metadata = JsonSerializer.Deserialize<Dictionary<string, StoredMetadataField>>(
                 metadataJson,
-                MemoriesJsonContext.Options);
+                MemoriesPersistenceJsonContext.Options);
             return metadata is null || metadata.Count == 0
                 ? null
-                : new Dictionary<string, MetadataField>(metadata, StringComparer.Ordinal);
+                : PersistenceModelMapper.ToContract(metadata);
         }
         catch (JsonException)
         {
@@ -287,9 +294,10 @@ public sealed class FailedUnitsRegistry : IFailedUnitsRegistry
 
         try
         {
-            return JsonSerializer.Deserialize<WorkflowPayloadReference>(
+            StoredWorkflowPayloadReference? stored = JsonSerializer.Deserialize<StoredWorkflowPayloadReference>(
                 referenceJson,
-                MemoriesJsonContext.Options);
+                MemoriesPersistenceJsonContext.Options);
+            return stored is null ? null : PersistenceModelMapper.ToContract(stored);
         }
         catch (JsonException)
         {

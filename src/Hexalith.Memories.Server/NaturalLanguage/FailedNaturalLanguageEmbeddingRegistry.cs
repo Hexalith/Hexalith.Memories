@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -295,13 +296,15 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     internal static string DeadPayloadKey(string tenantId) => DeadPayloadKeyPrefix + tenantId;
 
     internal static string SerializeRecord(FailedNaturalLanguageEmbeddingRecord record)
-        => JsonSerializer.Serialize(record, MemoriesJsonContext.Options);
+        => JsonSerializer.Serialize(record, MemoriesPersistenceJsonContext.Options);
 
     internal static FailedNaturalLanguageEmbeddingRecord? TryDeserialize(string payload)
     {
         try
         {
-            FailedNaturalLanguageEmbeddingRecord? record = JsonSerializer.Deserialize<FailedNaturalLanguageEmbeddingRecord>(payload, MemoriesJsonContext.Options);
+            FailedNaturalLanguageEmbeddingRecord? record = JsonSerializer.Deserialize<FailedNaturalLanguageEmbeddingRecord>(
+                payload,
+                MemoriesPersistenceJsonContext.Options);
 
             // Review P12: a corrupted or partially-persisted record (null/empty TenantId or
             // MemoryUnitId) must not flow into the retry pipeline — downstream activities would

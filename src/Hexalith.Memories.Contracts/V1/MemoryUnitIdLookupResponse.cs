@@ -7,7 +7,7 @@ namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
 /// Story 18.5 — additive response body for the exact source-URI-keyed memory-unit lookup
-/// (<c>GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>). Carries the canonical
+/// (<c>GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>). Carries the canonical
 /// <see cref="MemoryUnitId"/> resolved by exact key from the permanent dedup record. A genuine miss is
 /// signalled by a structured <c>404</c> (<c>MEMORY_UNIT_NOT_FOUND</c>), never by a populated body with an
 /// empty id.

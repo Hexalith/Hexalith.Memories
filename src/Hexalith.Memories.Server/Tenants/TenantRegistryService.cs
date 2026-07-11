@@ -15,6 +15,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore.Domain.Commands;
 using Hexalith.Memories.Server.Caching;
 using Hexalith.Memories.Server.EventStoreIntegration;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -98,9 +99,7 @@ public sealed partial class TenantRegistryService
 
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
-            (TenantRegistryEntry? existing, string entryEtag) = await _daprClient
-                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-                .ConfigureAwait(false);
+            (TenantRegistryEntry? existing, string entryEtag) = await GetStoredEntryAndETagAsync(stateKey, ct).ConfigureAwait(false);
             (List<string>? existingIndex, string indexEtag) = await _daprClient
                 .GetStateAndETagAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
                 .ConfigureAwait(false);
@@ -121,7 +120,7 @@ public sealed partial class TenantRegistryService
                     await _daprClient.ExecuteStateTransactionAsync(
                             StoreName,
                             [
-                                CreateUpsertRequest(stateKey, existing, entryEtag),
+                                CreateUpsertRequest(stateKey, PersistenceModelMapper.ToStored(existing), entryEtag),
                                 CreateUpsertRequest(IndexKey, index, indexEtag),
                             ],
                             metadata: null!,
@@ -158,7 +157,7 @@ public sealed partial class TenantRegistryService
                 await _daprClient.ExecuteStateTransactionAsync(
                         StoreName,
                         [
-                            CreateUpsertRequest(stateKey, entry, entryEtag),
+                            CreateUpsertRequest(stateKey, PersistenceModelMapper.ToStored(entry), entryEtag),
                             CreateUpsertRequest(IndexKey, index, indexEtag),
                         ],
                         metadata: null!,
@@ -176,9 +175,7 @@ public sealed partial class TenantRegistryService
             return entry;
         }
 
-        TenantRegistryEntry? current = await _daprClient
-            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-            .ConfigureAwait(false);
+        TenantRegistryEntry? current = await GetStoredEntryAsync(stateKey, ct).ConfigureAwait(false);
         List<string>? currentIndex = await _daprClient
             .GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
             .ConfigureAwait(false);
@@ -201,9 +198,7 @@ public sealed partial class TenantRegistryService
     public async Task<TenantRegistryEntry?> GetTenantEntryAsync(string tenantId, CancellationToken ct)
     {
         string stateKey = GetTenantStateKey(tenantId);
-        TenantRegistryEntry? entry = await _daprClient
-            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-            .ConfigureAwait(false);
+        TenantRegistryEntry? entry = await GetStoredEntryAsync(stateKey, ct).ConfigureAwait(false);
 
         if (entry is null)
         {
@@ -244,9 +239,7 @@ public sealed partial class TenantRegistryService
 
         for (int attempt = 0; attempt < MaxStatusUpdateRetries; attempt++)
         {
-            (TenantRegistryEntry? entry, string etag) = await _daprClient
-                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-                .ConfigureAwait(false);
+            (TenantRegistryEntry? entry, string etag) = await GetStoredEntryAndETagAsync(stateKey, ct).ConfigureAwait(false);
 
             if (entry is null)
             {
@@ -275,7 +268,7 @@ public sealed partial class TenantRegistryService
                 WorkflowInstanceId = ResolveWorkflowInstanceId(status, workflowInstanceId, entry.WorkflowInstanceId),
             };
             bool saved = await _daprClient
-                .TrySaveStateAsync(StoreName, stateKey, updatedEntry, etag, cancellationToken: ct)
+                .TrySaveStateAsync(StoreName, stateKey, PersistenceModelMapper.ToStored(updatedEntry), etag, cancellationToken: ct)
                 .ConfigureAwait(false);
 
             if (saved)
@@ -313,9 +306,7 @@ public sealed partial class TenantRegistryService
 
         for (int attempt = 0; attempt < MaxDeletionStartRetries; attempt++)
         {
-            (TenantRegistryEntry? existing, string etag) = await _daprClient
-                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-                .ConfigureAwait(false);
+            (TenantRegistryEntry? existing, string etag) = await GetStoredEntryAndETagAsync(stateKey, ct).ConfigureAwait(false);
 
             if (existing is null)
             {
@@ -359,7 +350,7 @@ public sealed partial class TenantRegistryService
             };
 
             bool saved = await _daprClient
-                .TrySaveStateAsync(StoreName, stateKey, updated, etag, cancellationToken: ct)
+                .TrySaveStateAsync(StoreName, stateKey, PersistenceModelMapper.ToStored(updated), etag, cancellationToken: ct)
                 .ConfigureAwait(false);
 
             if (saved)
@@ -371,9 +362,7 @@ public sealed partial class TenantRegistryService
             }
         }
 
-        TenantRegistryEntry? current = await _daprClient
-            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-            .ConfigureAwait(false);
+        TenantRegistryEntry? current = await GetStoredEntryAsync(stateKey, ct).ConfigureAwait(false);
         SetStatusCache(tenantId, current);
         _summaryCache?.Invalidate(tenantId);
         return current;
@@ -466,9 +455,7 @@ public sealed partial class TenantRegistryService
 
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
-            (TenantRegistryEntry? existing, string etag) = await _daprClient
-                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-                .ConfigureAwait(false);
+            (TenantRegistryEntry? existing, string etag) = await GetStoredEntryAndETagAsync(stateKey, ct).ConfigureAwait(false);
 
             if (existing is null)
             {
@@ -506,7 +493,7 @@ public sealed partial class TenantRegistryService
                 LastUpdated = occurredAt,
             };
             bool saved = await _daprClient
-                .TrySaveStateAsync(StoreName, stateKey, updated, etag, cancellationToken: ct)
+                .TrySaveStateAsync(StoreName, stateKey, PersistenceModelMapper.ToStored(updated), etag, cancellationToken: ct)
                 .ConfigureAwait(false);
 
             if (saved)
@@ -548,9 +535,7 @@ public sealed partial class TenantRegistryService
         string stateKey = GetTenantStateKey(tenantId);
         for (int attempt = 0; attempt < MaxTenantRegistrationRetries; attempt++)
         {
-            (TenantRegistryEntry? existing, string entryEtag) = await _daprClient
-                .GetStateAndETagAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-                .ConfigureAwait(false);
+            (TenantRegistryEntry? existing, string entryEtag) = await GetStoredEntryAndETagAsync(stateKey, ct).ConfigureAwait(false);
             (List<string>? existingIndex, string indexEtag) = await _daprClient
                 .GetStateAndETagAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
                 .ConfigureAwait(false);
@@ -590,9 +575,7 @@ public sealed partial class TenantRegistryService
             }
         }
 
-        TenantRegistryEntry? current = await _daprClient
-            .GetStateAsync<TenantRegistryEntry?>(StoreName, stateKey, cancellationToken: ct)
-            .ConfigureAwait(false);
+        TenantRegistryEntry? current = await GetStoredEntryAsync(stateKey, ct).ConfigureAwait(false);
         List<string>? currentIndex = await _daprClient
             .GetStateAsync<List<string>?>(StoreName, IndexKey, cancellationToken: ct)
             .ConfigureAwait(false);
@@ -610,6 +593,24 @@ public sealed partial class TenantRegistryService
 
     private static string GetTenantStateKey(string tenantId)
         => $"tenant-registry-{tenantId}";
+
+    private async Task<TenantRegistryEntry?> GetStoredEntryAsync(string stateKey, CancellationToken cancellationToken)
+    {
+        StoredTenantRegistryEntry? stored = await _daprClient
+            .GetStateAsync<StoredTenantRegistryEntry?>(StoreName, stateKey, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return stored is null ? null : PersistenceModelMapper.ToContract(stored);
+    }
+
+    private async Task<(TenantRegistryEntry? Entry, string Etag)> GetStoredEntryAndETagAsync(
+        string stateKey,
+        CancellationToken cancellationToken)
+    {
+        (StoredTenantRegistryEntry? stored, string etag) = await _daprClient
+            .GetStateAndETagAsync<StoredTenantRegistryEntry?>(StoreName, stateKey, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return (stored is null ? null : PersistenceModelMapper.ToContract(stored), etag);
+    }
 
     private static List<string> NormalizeIndex(List<string>? index)
         => index is null ? [] : [.. index.Distinct(StringComparer.Ordinal)];
@@ -671,7 +672,7 @@ public sealed partial class TenantRegistryService
     private static StateTransactionRequest CreateUpsertRequest<T>(string key, T value, string etag)
         => new(
             key,
-            JsonSerializer.SerializeToUtf8Bytes(value, MemoriesJsonContext.Options),
+            JsonSerializer.SerializeToUtf8Bytes(value, MemoriesPersistenceJsonContext.Options),
             StateOperationType.Upsert,
             etag,
             metadata: null!,

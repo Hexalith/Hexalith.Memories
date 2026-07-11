@@ -36,11 +36,11 @@ public class TenantDeletionWorkflowTests
 
         result.Status.ShouldBe(TenantStatus.Active);
         result.Message.ShouldContain("deleted successfully");
-        result.DeletedBackends.ShouldNotBeNull();
-        result.DeletedBackends.ShouldContain("RediSearch");
-        result.DeletedBackends.ShouldContain("RedisVector");
-        result.DeletedBackends.ShouldContain("FalkorDB");
-        result.DeletedBackends.ShouldContain("RedisDataKeys");
+        result.DeletedAxes.ShouldNotBeNull();
+        result.DeletedAxes.ShouldContain("syntactic");
+        result.DeletedAxes.ShouldContain("semantic");
+        result.DeletedAxes.ShouldContain("graph");
+        result.DeletedAxes.ShouldContain("state");
 
         // Verify activity call order
         Received.InOrder(() =>
@@ -154,9 +154,9 @@ public class TenantDeletionWorkflowTests
         TenantDeletionResult result = await workflow.RunAsync(context, input);
 
         result.Status.ShouldBe(TenantStatus.Failed);
-        result.DeletedBackends.ShouldNotBeNull();
-        result.DeletedBackends.ShouldContain("RediSearch");
-        result.DeletedBackends.ShouldNotContain("RedisVector");
+        result.DeletedAxes.ShouldNotBeNull();
+        result.DeletedAxes.ShouldContain("syntactic");
+        result.DeletedAxes.ShouldNotContain("semantic");
 
         // Verify status was updated to Failed
         await context.Received().CallActivityAsync<bool>(
@@ -201,8 +201,8 @@ public class TenantDeletionWorkflowTests
         TenantDeletionResult result = await workflow.RunAsync(context, input);
 
         result.Status.ShouldBe(TenantStatus.CompensationFailed);
-        result.DeletedBackends.ShouldNotBeNull();
-        result.DeletedBackends.ShouldContain("RediSearch");
+        result.DeletedAxes.ShouldNotBeNull();
+        result.DeletedAxes.ShouldContain("syntactic");
     }
 
     [Fact]
@@ -299,9 +299,9 @@ public class TenantDeletionWorkflowTests
         result.Status.ShouldBe(TenantStatus.Failed);
         result.Message.ShouldContain("maximum iterations");
         result.Message.ShouldContain("1000 nodes remain");
-        result.DeletedBackends.ShouldNotBeNull();
-        result.DeletedBackends.ShouldContain("RediSearch");
-        result.DeletedBackends.ShouldContain("RedisVector");
+        result.DeletedAxes.ShouldNotBeNull();
+        result.DeletedAxes.ShouldContain("syntactic");
+        result.DeletedAxes.ShouldContain("semantic");
 
         // Verify status was updated to Failed
         await context.Received().CallActivityAsync<bool>(

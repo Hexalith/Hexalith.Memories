@@ -244,7 +244,7 @@ public sealed class PipelinePersistencePerformanceTests
     private async Task RaiseRateLimitBudgetAsync(string tenantId, int unitCount)
     {
         using HttpResponseMessage getResponse = await _fixture.MemoriesClient
-            .GetAsync($"/api/tenants/{tenantId}/embedding-config")
+            .GetAsync($"/api/v1/tenants/{tenantId}/embedding-config")
             .ConfigureAwait(false);
 
         getResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -258,7 +258,7 @@ public sealed class PipelinePersistencePerformanceTests
         int desiredRateLimit = Math.Max(currentConfig.RateLimitPerMinute, Math.Max(600, unitCount * 20));
         using HttpResponseMessage putResponse = await _fixture.MemoriesClient
             .PutAsJsonAsync(
-                $"/api/tenants/{tenantId}/embedding-config",
+                $"/api/v1/tenants/{tenantId}/embedding-config",
                 currentConfig with { RateLimitPerMinute = desiredRateLimit },
                 MemoriesJsonContext.Options)
             .ConfigureAwait(false);
@@ -270,7 +270,7 @@ public sealed class PipelinePersistencePerformanceTests
     {
         using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/tenants",
+                "/api/v1/tenants",
                 new TenantProvisioningInput(tenantId, $"Tenant {tenantId}"),
                 MemoriesJsonContext.Options)
             .ConfigureAwait(false);
@@ -281,7 +281,7 @@ public sealed class PipelinePersistencePerformanceTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}")
+                .GetAsync($"/api/v1/tenants/{tenantId}")
                 .ConfigureAwait(false);
 
             if (tenantResponse.StatusCode == HttpStatusCode.OK)
@@ -306,7 +306,7 @@ public sealed class PipelinePersistencePerformanceTests
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                $"/api/tenants/{tenantId}/cases",
+                $"/api/v1/tenants/{tenantId}/cases",
                 new CreateCaseInput(tenantId, $"{scenarioLabel} {Guid.NewGuid():N}", "Story 6.4 performance benchmark"),
                 MemoriesJsonContext.Options)
             .ConfigureAwait(false);
@@ -326,7 +326,7 @@ public sealed class PipelinePersistencePerformanceTests
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/ingest/url",
+                "/api/v1/ingest/url",
                 new UrlIngestionRequest
                 {
                     TenantId = tenantId,
@@ -359,7 +359,7 @@ public sealed class PipelinePersistencePerformanceTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}/cases/{caseId}/status")
+                .GetAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/status")
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)

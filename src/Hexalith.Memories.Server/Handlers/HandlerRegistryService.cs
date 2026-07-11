@@ -18,7 +18,7 @@ using Hexalith.Memories.Server.Tenants;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-/// <summary>Story 9.3 — read-only handler registry service backing <c>GET /api/handlers</c>. Returns
+/// <summary>Story 9.3 — read-only handler registry service backing <c>GET /api/v1/handlers</c>. Returns
 /// ONE <see cref="HandlerRegistration"/> per <c>SourceToTenantMap</c> entry whose routed tenant is
 /// active (not Deleting/Deleted/NotFound).</summary>
 /// <remarks>Graceful per-tenant degradation (Finding S): individual tenant observation-store reads are

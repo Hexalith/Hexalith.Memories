@@ -142,7 +142,7 @@ path, with no per-module ingestion code:
 `Hexalith module -> Dapr pub/sub component -> Memories Server sidecar -> POST /events/ingest -> EventIngestionService -> DaprWorkflowClient.ScheduleNewWorkflowAsync(IngestionWorkflow)`
 
 A publisher only needs Dapr pub/sub write access to the shared topic and a `source` prefix that is mapped
-in `SourceToTenantMap`. The REST `POST /api/ingest` path remains for **external content** ingestion only;
+in `SourceToTenantMap`. The REST `POST /api/v1/ingest` path remains for **external content** ingestion only;
 Hexalith module event streams always use the pub/sub path above.
 
 **Shared-topic `SourceToTenantMap` example (two Hexalith modules on one topic).** Both `hexalith/tenants`
@@ -204,7 +204,7 @@ segment or fall back to the full type string (the router handles this automatica
 
 `cloudevent.subject` is copied into `IngestionInput.Metadata` and flows through the same exact-match
 metadata index path used by search filters. Queries filtering on `cloudevent.subject` return events
-for a specific aggregate without scanning the entire topic's backlog. Use `GET /api/search?...&subject=<value>`
+for a specific aggregate without scanning the entire topic's backlog. Use `GET /api/v1/search?...&subject=<value>`
 to drive the dedicated exact-match TAG filter instead of a fuzzy metadata text match.
 
 ---
@@ -381,7 +381,7 @@ Expected server behavior (all green):
 5. Within 5 s (NFR6), the memory unit is searchable:
 
 ```bash
-curl "$MEMORIES_URL/api/search?tenantId=acme-claims&query=claim-42&axis=syntactic"
+curl "$MEMORIES_URL/api/v1/search?tenantId=acme-claims&query=claim-42&axis=syntactic"
 # → HybridSearchResult containing the new memory unit
 ```
 
@@ -682,7 +682,7 @@ hot-path behaviour; it reports what the server already sees. Experimental surfac
 ### §11.1 Listing registered handlers
 
 ```bash
-$ curl http://localhost:5000/api/handlers
+$ curl http://localhost:5000/api/v1/handlers
 {
   "pubSubName": "pubsub",
   "topic": "events",
@@ -719,7 +719,7 @@ confirm traffic is landing.
 
 ### §11.2 Mismatch categories
 
-`GET /api/tenants/{tenantId}/handlers/mismatches` returns four categories with severity +
+`GET /api/v1/tenants/{tenantId}/handlers/mismatches` returns four categories with severity +
 actionable suggestion. Each `Suggestion` ends with a runbook URL of the form
 `https://docs.hexalith.dev/memories/runbooks/handler-{category-kebab-case}`.
 

@@ -65,13 +65,13 @@ Skip the step with `--skip-boot-check` when a fixture already bootstrapped the s
 
 ### [4/6] Provisioning sample tenant
 
-Checks whether the tenant already exists via `GET /api/tenants/{id}`. If present + Active, reports `SKIP` (idempotent). Otherwise, POSTs `/api/tenants` with `TenantProvisioningInput { TenantId, DisplayName }` and polls for Active status (timeout: 30 seconds).
+Checks whether the tenant already exists via `GET /api/v1/tenants/{id}`. If present + Active, reports `SKIP` (idempotent). Otherwise, POSTs `/api/v1/tenants` with `TenantProvisioningInput { TenantId, DisplayName }` and polls for Active status (timeout: 30 seconds).
 
 **Tenant-id format**: validation is server-delegated — alphanumeric with hyphens. If you pass `--tenant "has spaces!"`, the server rejects with `INVALID_TENANT_ID` and the wizard renders that catalog entry.
 
 ### [5/6] Ingesting sample document
 
-Lists cases in the tenant; reuses an existing `quickstart-default` case if present, otherwise creates one. POSTs the embedded sample document (~200 words of generic memory-system prose) to `/api/ingest`. Content type is `text/plain` and the request is tagged with metadata `{"origin": "quickstart", "wizardVersion": "7.4"}`.
+Lists cases in the tenant; reuses an existing `quickstart-default` case if present, otherwise creates one. POSTs the embedded sample document (~200 words of generic memory-system prose) to `/api/v1/ingest`. Content type is `text/plain` and the request is tagged with metadata `{"origin": "quickstart", "wizardVersion": "7.4"}`.
 
 The sample body is embedded in the CLI binary — there is no file-IO dependency. It is deliberately generic-descriptive (no PII, credentials, internal URLs) per anti-pattern #13.
 

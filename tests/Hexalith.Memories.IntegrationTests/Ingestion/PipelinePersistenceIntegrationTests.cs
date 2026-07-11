@@ -384,7 +384,7 @@ public sealed class PipelinePersistenceIntegrationTests
     {
         using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/tenants",
+                "/api/v1/tenants",
                 new TenantProvisioningInput(tenantId, $"Tenant {tenantId}"),
                 MemoriesJsonContext.Options)
             .ConfigureAwait(false);
@@ -395,7 +395,7 @@ public sealed class PipelinePersistenceIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}")
+                .GetAsync($"/api/v1/tenants/{tenantId}")
                 .ConfigureAwait(false);
 
             if (tenantResponse.StatusCode == HttpStatusCode.OK)
@@ -420,7 +420,7 @@ public sealed class PipelinePersistenceIntegrationTests
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                $"/api/tenants/{tenantId}/cases",
+                $"/api/v1/tenants/{tenantId}/cases",
                 new CreateCaseInput(tenantId, $"Case {Guid.NewGuid():N}", "Story 6.4 restart validation"),
                 MemoriesJsonContext.Options)
             .ConfigureAwait(false);
@@ -437,7 +437,7 @@ public sealed class PipelinePersistenceIntegrationTests
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/ingest/url",
+                "/api/v1/ingest/url",
                 new UrlIngestionRequest
                 {
                     TenantId = tenantId,
@@ -471,7 +471,7 @@ public sealed class PipelinePersistenceIntegrationTests
         };
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsJsonAsync("/api/ingest", input, MemoriesJsonContext.Options)
+            .PostAsJsonAsync("/api/v1/ingest", input, MemoriesJsonContext.Options)
             .ConfigureAwait(false);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -484,7 +484,7 @@ public sealed class PipelinePersistenceIntegrationTests
     private async Task<string> ReingestFailedUnitAsync(string tenantId, string caseId, string memoryUnitId)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsync($"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest", content: null)
+            .PostAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest", content: null)
             .ConfigureAwait(false);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -502,7 +502,7 @@ public sealed class PipelinePersistenceIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/ingest/{instanceId}").ConfigureAwait(false);
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/v1/ingest/{instanceId}").ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 lastPayload = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -664,7 +664,7 @@ public sealed class PipelinePersistenceIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}/cases/{caseId}/status")
+                .GetAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/status")
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)
@@ -695,7 +695,7 @@ public sealed class PipelinePersistenceIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}/cases/{caseId}/failed-units")
+                .GetAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/failed-units")
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)
@@ -727,7 +727,7 @@ public sealed class PipelinePersistenceIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}")
+                .GetAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}")
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)
@@ -752,7 +752,7 @@ public sealed class PipelinePersistenceIntegrationTests
     private async Task<TenantEmbeddingConfig> GetTenantEmbeddingConfigAsync(string tenantId)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .GetAsync($"/api/tenants/{tenantId}/embedding-config")
+            .GetAsync($"/api/v1/tenants/{tenantId}/embedding-config")
             .ConfigureAwait(false);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -766,7 +766,7 @@ public sealed class PipelinePersistenceIntegrationTests
     private async Task UpdateTenantEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PutAsJsonAsync($"/api/tenants/{tenantId}/embedding-config", config, MemoriesJsonContext.Options)
+            .PutAsJsonAsync($"/api/v1/tenants/{tenantId}/embedding-config", config, MemoriesJsonContext.Options)
             .ConfigureAwait(false);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -784,7 +784,7 @@ public sealed class PipelinePersistenceIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage response = await _fixture.MemoriesClient
-                .GetAsync($"/api/search?tenantId={tenantId}&query={encodedQuery}&axis=hybrid&axes=syntactic")
+                .GetAsync($"/api/v1/search?tenantId={tenantId}&query={encodedQuery}&axis=hybrid&axes=syntactic")
                 .ConfigureAwait(false);
 
             if (response.StatusCode == HttpStatusCode.OK)

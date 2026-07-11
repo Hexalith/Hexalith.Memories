@@ -57,7 +57,7 @@ public sealed class IngestionPipelineTests
 
         // Act
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsJsonAsync("/api/ingest", input, MemoriesJsonContext.Options);
+            .PostAsJsonAsync("/api/v1/ingest", input, MemoriesJsonContext.Options);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -91,7 +91,7 @@ public sealed class IngestionPipelineTests
         ((int)storedChunkStartOffset).ShouldBe(0);
         ((int)storedChunkEndOffset).ShouldBeGreaterThan(0);
 
-        using var stateRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/ingest/{accepted.InstanceId}");
+        using var stateRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{accepted.InstanceId}");
         stateRequest.Headers.Authorization = new AuthenticationHeaderValue(
             "Bearer",
             AspireIngestionPipelineFixture.MintServerBearer(tenantId));
@@ -115,7 +115,7 @@ public sealed class IngestionPipelineTests
         };
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
-            .PostAsJsonAsync("/api/ingest", input, MemoriesJsonContext.Options);
+            .PostAsJsonAsync("/api/v1/ingest", input, MemoriesJsonContext.Options);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 

@@ -69,7 +69,7 @@ public sealed class CliErrorMessagesIntegrationTests
         JsonElement error = doc.RootElement.GetProperty("error");
         string code = error.GetProperty("code").GetString()!;
 
-        // The /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId} endpoint intentionally
+        // The /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId} endpoint intentionally
         // does NOT run TenantStatusGuard (failed units must remain inspectable for tenants in unusual
         // states), so the validation order for a nonexistent tenant resolves to MEMORY_UNIT_NOT_FOUND —
         // the first miss the endpoint can observe without a tenant-registry lookup.

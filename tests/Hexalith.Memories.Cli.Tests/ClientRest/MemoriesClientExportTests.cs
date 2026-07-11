@@ -88,7 +88,7 @@ public class MemoriesClientExportTests
 
         handler.Requests.ShouldHaveSingleItem();
         handler.Requests[0].Method.ShouldBe(HttpMethod.Get);
-        handler.Requests[0].RequestUri!.AbsolutePath.ShouldBe("/api/tenants/acme/export");
+        handler.Requests[0].RequestUri!.AbsolutePath.ShouldBe("/api/v1/tenants/acme/export");
     }
 
     private static MemoriesClient CreateClient(TestDelegatingHandler handler)

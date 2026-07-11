@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Request body for POST /api/ingest/directory — batch ingestion of files on the server filesystem.</summary>
+/// <summary>Request body for POST /api/v1/ingest/directory — batch ingestion of files on the server filesystem.</summary>
 public sealed record DirectoryIngestionRequest
 {
     public required string TenantId { get; init; }

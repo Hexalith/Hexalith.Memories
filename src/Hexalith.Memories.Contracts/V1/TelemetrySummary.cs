@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 
 /// <summary>
 /// Story 7.5 — point-in-time per-tenant telemetry snapshot returned by
-/// <c>GET /api/tenants/{tenantId}/telemetry/summary</c> (ADR-7.5-003).
+/// <c>GET /api/v1/tenants/{tenantId}/telemetry/summary</c> (ADR-7.5-003).
 /// Operator-facing poke, NOT a metrics backend; Aspire Dashboard + OTLP collector remain the source of truth.
 /// </summary>
 public sealed record TelemetrySummary

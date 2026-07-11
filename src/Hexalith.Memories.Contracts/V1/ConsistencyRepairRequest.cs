@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Request payload for <c>POST /api/tenants/{tenantId}/consistency/repair</c>.
+/// Request payload for <c>POST /api/v1/tenants/{tenantId}/consistency/repair</c>.
 /// </summary>
 /// <param name="TenantId">The tenant to repair.</param>
 /// <param name="BatchSize">Optional per-batch size; must be in [10, 5000] when provided.</param>

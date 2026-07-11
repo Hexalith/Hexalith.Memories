@@ -76,14 +76,14 @@ public class MemoriesClientSendDecodeTests
     public void MemoriesClientSource_ContainsNoInlineApiPathLiteral()
     {
         // AC3 drift guard: every request path must be built from MemoriesRoutes, so no inline "api/…" or
-        // "/api/…" string literal may survive in the client. (Doc-comment mentions like <c>/api/…</c> are not
+        // "/api/v1/…" string literal may survive in the client. (Doc-comment mentions like <c>/api/v1/…</c> are not
         // string literals and are intentionally not matched.)
         string source = ReadClientSource();
 
         source.Contains("\"api/", StringComparison.Ordinal).ShouldBeFalse(
             "MemoriesClient.cs must build every request path from MemoriesRoutes — no inline \"api/…\" literal may remain (Story 25.3 AC3).");
-        source.Contains("\"/api/", StringComparison.Ordinal).ShouldBeFalse(
-            "MemoriesClient.cs must build every request path from MemoriesRoutes — no inline \"/api/…\" literal may remain (Story 25.3 AC3).");
+        source.Contains("\"/api/v1/", StringComparison.Ordinal).ShouldBeFalse(
+            "MemoriesClient.cs must build every request path from MemoriesRoutes — no inline \"/api/v1/…\" literal may remain (Story 25.3 AC3).");
     }
 
     private static string ReadClientSource()

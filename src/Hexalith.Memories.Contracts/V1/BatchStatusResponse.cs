@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Aggregated status response for GET /api/ingest/batches/{batchId}.</summary>
+/// <summary>Aggregated status response for GET /api/v1/ingest/batches/{batchId}.</summary>
 /// <param name="BatchId">The batch identifier.</param>
 /// <param name="TenantId">The owning tenant.</param>
 /// <param name="CaseId">The owning case.</param>

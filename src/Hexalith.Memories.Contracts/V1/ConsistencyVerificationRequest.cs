@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Request payload for <c>POST /api/tenants/{tenantId}/consistency/verify</c>.
+/// Request payload for <c>POST /api/v1/tenants/{tenantId}/consistency/verify</c>.
 /// Body is optional — an empty body is accepted and defaults <see cref="BatchSize"/>
 /// to <c>null</c> (the workflow then uses the default of 500).
 /// </summary>

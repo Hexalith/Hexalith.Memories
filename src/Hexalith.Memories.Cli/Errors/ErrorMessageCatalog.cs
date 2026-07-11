@@ -79,7 +79,7 @@ public static class ErrorMessageCatalog
             // TODO(7.x): replace with "memories case list --tenant <id>" once the case group is wired.
             ["CASE_NOT_FOUND"] = new(
                 CliMessage: null,
-                CliSuggestion: "List tenants with 'memories tenant list' and verify the case via the server's REST API at GET /api/tenants/{tenantId}/cases.",
+                CliSuggestion: "List tenants with 'memories tenant list' and verify the case via the server's REST API at GET /api/v1/tenants/{tenantId}/cases.",
                 ExitCode: 1),
 
             // search inspect — cross-case lookup mismatch.
@@ -357,7 +357,7 @@ public static class ErrorMessageCatalog
                 ExitCode: 1),
             ["CONSISTENCY_WORKFLOW_TIMEOUT"] = new(
                 CliMessage: null,
-                CliSuggestion: "The workflow has exceeded the CLI's 30-minute poll budget. Poll status separately via the server's GET /api/tenants/{id}/consistency/verify/{instanceId}.",
+                CliSuggestion: "The workflow has exceeded the CLI's 30-minute poll budget. Poll status separately via the server's GET /api/v1/tenants/{id}/consistency/verify/{instanceId}.",
                 ExitCode: 2),
             ["CONFIRMATION_REQUIRED"] = new(
                 CliMessage: null,

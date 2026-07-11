@@ -69,8 +69,8 @@ the case **had** 50 failures historically and **has** 0 unresolved. **Not a bug.
 ## Re-Ingestion Contract
 
 ```
-POST /api/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest
-POST /api/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest
+POST /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/{memoryUnitId}/re-ingest
+POST /api/v1/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest
    body: { "memoryUnitIds": ["m1","m2"] }   OR
          { "all": true, "limit": 500 }
 ```
@@ -138,5 +138,5 @@ Queued | Extracting | Embedding | Indexing
 - Re-ingestion of a unit whose source is gone (file deleted, URL 404) fails identically — same
   memory-unit-id, retry-count reset to the new instance's budget.
 - Dedup key is **not** cleared on `DELETE /memory-units/{id}` for indexed units — re-ingestion via
-  `POST /api/ingest` of the same source URI hits the duplicate short-circuit. To re-ingest a deleted
+  `POST /api/v1/ingest` of the same source URI hits the duplicate short-circuit. To re-ingest a deleted
   unit, use the failed-units re-ingest endpoint (which clears the key). This asymmetry is intentional.

@@ -21,7 +21,7 @@ using NSubstitute;
 using Shouldly;
 
 /// <summary>Story 9.1 Risk #1 — prove <c>app.UseCloudEvents()</c> does NOT break the existing
-/// <c>/api/ingest</c> POST when the request arrives with <c>Content-Type: application/json</c> (plain JSON,
+/// <c>/api/v1/ingest</c> POST when the request arrives with <c>Content-Type: application/json</c> (plain JSON,
 /// not a CloudEvents envelope). The Dapr CloudEvents middleware is a no-op for non-CloudEvents content
 /// types — this guard test pins that behavior so a future middleware re-ordering can't silently regress
 /// the plain-JSON ingestion path.</summary>

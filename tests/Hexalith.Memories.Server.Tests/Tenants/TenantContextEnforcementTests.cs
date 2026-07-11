@@ -348,9 +348,11 @@ public sealed class TenantContextEnforcementTests
         ILogger<TenantRegistryService> logger = Substitute.For<ILogger<TenantRegistryService>>();
 
         string tenantId = tenant?.Id ?? "missing";
-        TenantRegistryEntry? entry = tenant is not null ? new TenantRegistryEntry(tenant, null) : null;
+        StoredTenantRegistryEntry? entry = tenant is not null
+            ? PersistenceModelMapper.ToStored(new TenantRegistryEntry(tenant, null))
+            : null;
 
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 $"tenant-registry-{tenantId}",
                 cancellationToken: Arg.Any<CancellationToken>())

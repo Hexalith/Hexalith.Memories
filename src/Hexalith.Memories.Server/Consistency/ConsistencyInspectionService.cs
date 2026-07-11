@@ -23,7 +23,7 @@ using StackExchange.Redis;
 
 /// <summary>
 /// Synchronous per-memory-unit consistency probe. Shared by the inspection endpoint
-/// (<c>GET /api/tenants/{tenantId}/consistency/inspect/{id}</c>) AND by
+/// (<c>GET /api/v1/tenants/{tenantId}/consistency/inspect/{id}</c>) AND by
 /// <c>RepairUnitActivity</c> (for the fresh re-verify before repair — Risk #1).
 /// </summary>
 /// <remarks>

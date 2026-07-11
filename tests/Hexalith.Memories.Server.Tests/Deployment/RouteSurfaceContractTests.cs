@@ -19,7 +19,7 @@ using Shouldly;
 /// <summary>Story 18.3 AC3 — drift guard for the invocable route/operation-surface contract published at
 /// <c>docs/operations/route-surface.md</c>. The novel guard over the Story 18.2
 /// <see cref="DeploymentConfigurationContractTests"/> precedent is the <b>forward code → doc tie</b>: the
-/// <c>app.MapX("/api/…")</c> route literals are regex-extracted from the authoritative
+/// <c>app.MapX("/api/v1/…")</c> route literals are regex-extracted from the authoritative
 /// <c>src/Hexalith.Memories.Server/Program.cs</c> and decomposed endpoint source files (read via the
 /// repo-root marker walk) and each is asserted documented, so a newly added endpoint cannot slip through
 /// undocumented. A count tie defends against silent omission and phantom rows; the pub/sub, health, MCP,
@@ -31,15 +31,15 @@ public sealed class RouteSurfaceContractTests
 {
     private const string DocRelativePath = "docs/operations/route-surface.md";
 
-    // Matches `app.MapGet("/api/…"` (inline literal) OR `app.MapGet(MemoriesRoutes.X` (Story 25.3 route-table
+    // Matches `app.MapGet("/api/v1/…"` (inline literal) OR `app.MapGet(MemoriesRoutes.X` (Story 25.3 route-table
     // reference). Group 1 = HTTP verb; Group 2 = inline route template (if a literal); Group 3 = MemoriesRoutes
     // member name (if a table reference, resolved to its value via reflection in ExtractMappedRoutes).
     private static readonly Regex MappedRouteRegex =
         new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*(?:""(/[^""]+)""|MemoriesRoutes\.([A-Za-z0-9_]+))", RegexOptions.Compiled);
 
-    // Matches a documented route row's backtick-wrapped `METHOD /api/…` code span.
+    // Matches a documented route row's backtick-wrapped `METHOD /api/v1/…` code span.
     private static readonly Regex DocumentedApiRowRegex =
-        new(@"`(?:GET|POST|PUT|DELETE|PATCH) (/api/[^`]+)`", RegexOptions.Compiled);
+        new(@"`(?:GET|POST|PUT|DELETE|PATCH) (/api/v1/[^`]+)`", RegexOptions.Compiled);
 
     [Fact]
     public void RouteSurfaceDoc_Exists()
@@ -54,7 +54,7 @@ public sealed class RouteSurfaceContractTests
         // Forward tie (code → doc): derive the route list from source so a newly added endpoint that is not
         // documented fails the build, rather than relying on a hand-maintained literal list. The assertion
         // ties to the documented row form `<VERB> <path>` (a backtick code span) so illustrative prose that
-        // mentions a path substring (e.g. the Dapr `method/api/…` operation example) cannot satisfy it — only
+        // mentions a path substring (e.g. the Dapr `method/api/v1/…` operation example) cannot satisfy it — only
         // a real method+path table row can.
         string routeSources = ReadMappedRouteSources();
         string doc = ReadDoc();
@@ -77,12 +77,12 @@ public sealed class RouteSurfaceContractTests
         string routeSources = ReadMappedRouteSources();
         string doc = ReadDoc();
 
-        int sourceApiRouteCount = ExtractMappedRoutes(routeSources).Count(r => r.Path.StartsWith("/api/", System.StringComparison.Ordinal));
+        int sourceApiRouteCount = ExtractMappedRoutes(routeSources).Count(r => r.Path.StartsWith("/api/v1/", System.StringComparison.Ordinal));
         int documentedApiRowCount = DocumentedApiRowRegex.Matches(doc).Count;
 
         documentedApiRowCount.ShouldBe(
             sourceApiRouteCount,
-            $"Documented /api/ route rows ({documentedApiRowCount}) must equal the mapped /api/ route literals in Program.cs and decomposed endpoint files ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
+            $"Documented /api/v1/ route rows ({documentedApiRowCount}) must equal the mapped /api/v1/ route literals in Program.cs and decomposed endpoint files ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public sealed class RouteSurfaceContractTests
         // canonical service-invocation form and the worked translation example (previously review-enforced).
         string doc = ReadDoc();
         doc.ShouldContain("/v1.0/invoke/memories/method/", Case.Sensitive, $"{DocRelativePath} must document the Dapr service-invocation operation mapping (/v1.0/invoke/memories/method/<path>) that satisfies AC2's 'Dapr operation semantics'.");
-        doc.ShouldContain("method/api/search", Case.Sensitive, $"{DocRelativePath} must keep the worked Dapr-operation translation example (operation 'method/api/search') so an ACL author can map a table row to an operation.");
+        doc.ShouldContain("method/api/v1/search", Case.Sensitive, $"{DocRelativePath} must keep the worked Dapr-operation translation example (operation 'method/api/v1/search') so an ACL author can map a table row to an operation.");
     }
 
     [Fact]
@@ -209,7 +209,7 @@ public sealed class RouteSurfaceContractTests
     private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)
     {
         // Story 25.3: routes are registered against MemoriesRoutes constants rather than inline literals, so a
-        // matched `MemoriesRoutes.X` reference is resolved to its `/api/…` value via reflection. Inline literals
+        // matched `MemoriesRoutes.X` reference is resolved to its `/api/v1/…` value via reflection. Inline literals
         // (should any remain) still resolve directly, keeping the code → doc tie and the 46-route count intact.
         IReadOnlyDictionary<string, string> routeConstants = RouteConstantsByName();
         List<(string Verb, string Path)> routes = [];
@@ -236,7 +236,7 @@ public sealed class RouteSurfaceContractTests
     }
 
     // Reflects the public string constants declared on MemoriesRoutes into a name → value map so the extractor
-    // can resolve `MemoriesRoutes.X` route references back to their concrete `/api/…` templates.
+    // can resolve `MemoriesRoutes.X` route references back to their concrete `/api/v1/…` templates.
     private static IReadOnlyDictionary<string, string> RouteConstantsByName()
         => typeof(Hexalith.Memories.Contracts.V1.MemoriesRoutes)
             .GetFields(BindingFlags.Public | BindingFlags.Static)

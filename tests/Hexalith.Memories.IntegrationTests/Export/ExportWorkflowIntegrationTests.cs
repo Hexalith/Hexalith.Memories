@@ -49,7 +49,7 @@ public sealed class ExportWorkflowIntegrationTests
         IReadOnlyList<string> memoryUnitIds = await GetCaseMemoryUnitIdsAsync(tenantId, caseId);
         memoryUnitIds.Count.ShouldBeGreaterThanOrEqualTo(3);
 
-        using JsonDocument document = await ReadExportDocumentAsync($"/api/tenants/{tenantId}/cases/{caseId}/export");
+        using JsonDocument document = await ReadExportDocumentAsync($"/api/v1/tenants/{tenantId}/cases/{caseId}/export");
         JsonElement root = document.RootElement;
 
         JsonElement manifest = root.GetProperty("manifest");
@@ -88,7 +88,7 @@ public sealed class ExportWorkflowIntegrationTests
         await WaitForContainsEdgeAsync(tenantId, secondCaseId, expectedCount: 1);
         await Task.Delay(TimeSpan.FromSeconds(1));
 
-        using JsonDocument document = await ReadExportDocumentAsync($"/api/tenants/{tenantId}/export");
+        using JsonDocument document = await ReadExportDocumentAsync($"/api/v1/tenants/{tenantId}/export");
         JsonElement root = document.RootElement;
 
         JsonElement manifest = root.GetProperty("manifest");
@@ -114,7 +114,7 @@ public sealed class ExportWorkflowIntegrationTests
     private async Task<string> CreateCaseAsync(string tenantId, string caseName)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", caseName, null),
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -138,7 +138,7 @@ public sealed class ExportWorkflowIntegrationTests
         };
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             input,
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);

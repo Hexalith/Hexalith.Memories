@@ -16,7 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 /// <summary>
 /// Builds <c>memories status telemetry</c>. Story 7.5 wires the CLI-side reader for
-/// <c>GET /api/tenants/{id}/telemetry/summary</c> behind the <c>status</c> command group.
+/// <c>GET /api/v1/tenants/{id}/telemetry/summary</c> behind the <c>status</c> command group.
 /// </summary>
 public static class StatusTelemetryCommand
 {

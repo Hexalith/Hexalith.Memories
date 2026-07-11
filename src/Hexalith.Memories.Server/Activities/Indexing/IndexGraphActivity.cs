@@ -9,6 +9,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.Logging;
 
@@ -72,7 +73,9 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
             input.EmbeddingDimensions,
             input.IngestedBy,
             input.IngestedAt,
-            JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options));
+            JsonSerializer.Serialize(
+                PersistenceModelMapper.ToStored(input.Metadata),
+                MemoriesPersistenceJsonContext.Options));
         NFalkorDB.ResultSet mergeResult = await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
         TryEmitStubResolvedTelemetry(mergeResult, input, nowUtc);
 

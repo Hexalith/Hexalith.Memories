@@ -54,7 +54,7 @@ public sealed class IntegrationActivityProcessorBreadcrumbFilterTests
         using ActivityListener listener = Listener();
         ActivitySource.AddActivityListener(listener);
 
-        using Activity? activity = src.StartActivity("GET /api/search", ActivityKind.Server);
+        using Activity? activity = src.StartActivity("GET /api/v1/search", ActivityKind.Server);
         activity.ShouldNotBeNull();
 
         Extensions.IntegrationActivityProcessor.ShouldEmitActivityBreadcrumb(activity).ShouldBeTrue();

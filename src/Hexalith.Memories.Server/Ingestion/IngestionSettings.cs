@@ -8,7 +8,7 @@ namespace Hexalith.Memories.Server.Ingestion;
 /// <summary>Ingestion-wide settings bound from the "Ingestion" configuration section.</summary>
 public sealed class IngestionSettings
 {
-    /// <summary>Gets or sets the allow-list of absolute directory roots that POST /api/ingest/directory may traverse. Empty by default — endpoint is disabled until an operator opts in.</summary>
+    /// <summary>Gets or sets the allow-list of absolute directory roots that POST /api/v1/ingest/directory may traverse. Empty by default — endpoint is disabled until an operator opts in.</summary>
     public string[] AllowedDirectoryRoots { get; set; } = [];
 
     /// <summary>Gets or sets the maximum number of candidate files per directory batch.</summary>

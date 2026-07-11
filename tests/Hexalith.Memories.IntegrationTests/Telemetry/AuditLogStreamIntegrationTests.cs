@@ -79,7 +79,7 @@ public sealed class AuditLogStreamIntegrationTests
             invokeAsync: async client =>
             {
                 using HttpResponseMessage r = await client.GetAsync(
-                    $"/api/search?tenantId={tenantId}&query={query}&axis=syntactic");
+                    $"/api/v1/search?tenantId={tenantId}&query={query}&axis=syntactic");
                 r.StatusCode.ShouldBe(HttpStatusCode.OK);
 
                 SearchResult? result = await r.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
@@ -113,7 +113,7 @@ public sealed class AuditLogStreamIntegrationTests
                 };
 
                 using HttpResponseMessage r = await client.PostAsJsonAsync(
-                    "/api/ingest",
+                    "/api/v1/ingest",
                     input,
                     options: MemoriesJsonContext.Options);
                 r.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -132,7 +132,7 @@ public sealed class AuditLogStreamIntegrationTests
             expectedErrorCode: "MISSING_START_NODE",
             invokeAsync: async client =>
             {
-                using HttpResponseMessage r = await client.GetAsync($"/api/tenants/{tenantId}/traverse?depth=1");
+                using HttpResponseMessage r = await client.GetAsync($"/api/v1/tenants/{tenantId}/traverse?depth=1");
                 r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
             });
     }
@@ -150,7 +150,7 @@ public sealed class AuditLogStreamIntegrationTests
             invokeAsync: async client =>
             {
                 using HttpResponseMessage r = await client.GetAsync(
-                    $"/api/tenants/{tenantId}/cases/case-missing/memory-units/memory-unit-missing");
+                    $"/api/v1/tenants/{tenantId}/cases/case-missing/memory-units/memory-unit-missing");
                 r.StatusCode.ShouldBe(HttpStatusCode.NotFound);
             });
     }
@@ -182,7 +182,7 @@ public sealed class AuditLogStreamIntegrationTests
         using (Activity? firstAttempt = retrySource.StartActivity("telemetry-retry-attempt-1"))
         {
             using HttpResponseMessage first = await _fixture.MemoriesClient.GetAsync(
-                $"/api/search?tenantId={tenantId}&axis=graph&depth=1");
+                $"/api/v1/search?tenantId={tenantId}&axis=graph&depth=1");
             first.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         }
 
@@ -190,7 +190,7 @@ public sealed class AuditLogStreamIntegrationTests
 
         using Activity? secondAttempt = retrySource.StartActivity("telemetry-retry-attempt-2");
         using HttpResponseMessage second = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&axis=syntactic&query={secondAttemptQuery}");
+            $"/api/v1/search?tenantId={tenantId}&axis=syntactic&query={secondAttemptQuery}");
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
         SearchResult? retryResult = await second.Content.ReadFromJsonAsync<SearchResult>(MemoriesJsonContext.Options);
         retryResult.ShouldNotBeNull();
@@ -255,7 +255,7 @@ public sealed class AuditLogStreamIntegrationTests
         int sentinelLogStart = _fixture.LogEntryCount;
         string sentinelQuery = $"health-probe-sentinel-{Guid.NewGuid():N}";
         using (HttpResponseMessage sentinelResp = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={sentinelTenantId}&query={sentinelQuery}&axis=syntactic"))
+            $"/api/v1/search?tenantId={sentinelTenantId}&query={sentinelQuery}&axis=syntactic"))
         {
             sentinelResp.StatusCode.ShouldBe(HttpStatusCode.OK);
         }
@@ -322,11 +322,11 @@ public sealed class AuditLogStreamIntegrationTests
         // Mix a successful search with a valid-tenant traverse validation error so both Information and
         // Warning audit events are covered on the deployed stack.
         using HttpResponseMessage searchResp = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=schema-probe-{Guid.NewGuid():N}&axis=syntactic");
+            $"/api/v1/search?tenantId={tenantId}&query=schema-probe-{Guid.NewGuid():N}&axis=syntactic");
         searchResp.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         using HttpResponseMessage traverseResp = await _fixture.MemoriesClient.GetAsync(
-            $"/api/tenants/{tenantId}/traverse?depth=1");
+            $"/api/v1/tenants/{tenantId}/traverse?depth=1");
         traverseResp.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         TimeSpan timeout = AuditEventStreamReader.ResolveTimeout();

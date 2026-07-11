@@ -60,7 +60,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         using HttpClient client = CreateAuthorizedClient();
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             request,
             MemoriesJsonContext.Options,
             TestContext.Current.CancellationToken);
@@ -69,7 +69,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         string instanceId = await ReadInstanceIdAsync(response);
         instanceId.ShouldNotBeNullOrWhiteSpace();
         response.Headers.Location.ShouldNotBeNull();
-        response.Headers.Location!.ToString().ShouldBe($"/api/ingest/{instanceId}");
+        response.Headers.Location!.ToString().ShouldBe($"/api/v1/ingest/{instanceId}");
 
         await _scheduler.Received(1).ScheduleAsync(
             instanceId,
@@ -106,7 +106,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
             });
         using ActivityListener listener = CreateServerTraceListener();
         using HttpClient client = CreateAuthorizedClient();
-        using HttpRequestMessage httpRequest = new(HttpMethod.Post, "/api/ingest")
+        using HttpRequestMessage httpRequest = new(HttpMethod.Post, "/api/v1/ingest")
         {
             Content = JsonContent.Create(request, options: MemoriesJsonContext.Options),
         };
@@ -139,7 +139,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         using HttpClient client = CreateAuthorizedClient();
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             request,
             MemoriesJsonContext.Options,
             TestContext.Current.CancellationToken);
@@ -171,7 +171,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key == $"tenant-registry-{TenantId}"),
                 Arg.Any<ConsistencyMode?>(),

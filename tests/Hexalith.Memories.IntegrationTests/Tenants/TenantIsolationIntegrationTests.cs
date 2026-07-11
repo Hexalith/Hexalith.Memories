@@ -33,13 +33,13 @@ public sealed class TenantIsolationIntegrationTests
     public async Task VerifyTenant_WithTwoProvisionedTenants_CoreIsolationChecksShouldPass()
     {
         // Arrange: Provision tenant A and B, ingest memory units into both
-        // Act: POST /api/tenants/tenant-a/verify
+        // Act: POST /api/v1/tenants/tenant-a/verify
         // Assert: AllPassed == true, all individual checks passed
         string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
         _ = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/tenants/{tenantA}/verify", null);
+            $"/api/v1/tenants/{tenantA}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TenantIsolationVerificationResult? result = await response.Content
@@ -59,7 +59,7 @@ public sealed class TenantIsolationIntegrationTests
         _ = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/tenants/{tenantA}/verify", null);
+            $"/api/v1/tenants/{tenantA}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TenantIsolationVerificationResult? result = await response.Content
@@ -79,7 +79,7 @@ public sealed class TenantIsolationIntegrationTests
         _ = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/tenants/{tenantA}/verify", null);
+            $"/api/v1/tenants/{tenantA}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TenantIsolationVerificationResult? result = await response.Content
@@ -96,7 +96,7 @@ public sealed class TenantIsolationIntegrationTests
         // Run verify with malformed tenant ID, confirm rejection
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            "/api/tenants/tenant_with_underscore/verify", null);
+            "/api/v1/tenants/tenant_with_underscore/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
@@ -107,7 +107,7 @@ public sealed class TenantIsolationIntegrationTests
         // Run verify with non-existent tenant ID
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            "/api/tenants/nonexistent-tenant/verify", null);
+            "/api/v1/tenants/nonexistent-tenant/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? error = await response.Content
@@ -123,11 +123,11 @@ public sealed class TenantIsolationIntegrationTests
         string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
         string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
 
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantB}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantB}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/tenants/{tenantA}/verify", null);
+            $"/api/v1/tenants/{tenantA}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TenantIsolationVerificationResult? result = await response.Content
@@ -149,7 +149,7 @@ public sealed class TenantIsolationIntegrationTests
         await SeedMemoryUnitHashAsync(tenantA, "case-1", "mu-leak", "Planted cross-tenant payload.", tenantB);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/tenants/{tenantA}/verify", null);
+            $"/api/v1/tenants/{tenantA}/verify", null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         TenantIsolationVerificationResult? result = await response.Content

@@ -100,7 +100,7 @@ public class MemoriesClientLookupTests
         Uri? uri = capturedUri();
         uri.ShouldNotBeNull();
         string pathAndQuery = uri.PathAndQuery;
-        pathAndQuery.ShouldContain("api/tenants/te%2Fnant/cases/ca%20se/memory-units/by-source-uri");
+        pathAndQuery.ShouldContain("api/v1/tenants/te%2Fnant/cases/ca%20se/memory-units/by-source-uri");
         pathAndQuery.ShouldContain("sourceUri=file%3A%2F%2F%2Fdoc.pdf");
     }
 

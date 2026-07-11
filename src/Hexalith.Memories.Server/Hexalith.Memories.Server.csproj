@@ -14,6 +14,8 @@
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
     <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    <Using Include="Hexalith.Memories.Contracts.V1" />
+    <Using Include="Hexalith.Memories.Server.Workflows.Contracts" />
   </ItemGroup>
 
   <ItemGroup>

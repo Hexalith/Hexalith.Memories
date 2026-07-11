@@ -5,16 +5,18 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
+using System.Text.Json.Serialization;
+
 /// <summary>
-/// Per-backend health state for a tenant (Story 5.5 AC1/AC2).
+/// Per-retrieval-axis health state for a tenant (Story 5.5 AC1/AC2).
 /// Paired with <see cref="TenantIndexSizes"/> for operator listing;
 /// <see cref="IndexHealth.Unknown"/> on an axis implies the corresponding
 /// count in <see cref="TenantIndexSizes"/> is <see langword="null"/>.
 /// </summary>
-/// <param name="RediSearch">Health of the RediSearch syntactic index.</param>
-/// <param name="RedisVector">Health of the Redis Vector semantic index.</param>
-/// <param name="FalkorDb">Health of the FalkorDB graph.</param>
+/// <param name="Syntactic">Health of the syntactic index.</param>
+/// <param name="Semantic">Health of the semantic index.</param>
+/// <param name="Graph">Health of the graph index.</param>
 public sealed record TenantIndexStatus(
-    IndexHealth RediSearch,
-    IndexHealth RedisVector,
-    IndexHealth FalkorDb);
+    [property: JsonPropertyName("rediSearch")] IndexHealth Syntactic,
+    [property: JsonPropertyName("redisVector")] IndexHealth Semantic,
+    [property: JsonPropertyName("falkorDb")] IndexHealth Graph);

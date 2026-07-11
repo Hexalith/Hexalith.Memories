@@ -24,7 +24,7 @@ public class ExtractContentActivityTests
         // Arrange
         IContentExtractionClient client = Substitute.For<IContentExtractionClient>();
         ExtractionInput input = CreateTestInput();
-        Contracts.V1.ExtractionResult expected = new(
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult expected = new(
             "extracted text",
             "abc123",
             DateTimeOffset.UtcNow);
@@ -35,7 +35,7 @@ public class ExtractContentActivityTests
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
         // Act
-        Contracts.V1.ExtractionResult result = await activity.RunAsync(context, input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await activity.RunAsync(context, input);
 
         // Assert
         result.ShouldBe(expected);
@@ -80,13 +80,13 @@ public class ExtractContentActivityTests
             MemoryUnitId = "mu-1",
             PayloadReference = sourceReference,
         };
-        Contracts.V1.ExtractionResult extracted = new("extracted text", "abc123", DateTimeOffset.UtcNow);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult extracted = new("extracted text", "abc123", DateTimeOffset.UtcNow);
         client.ExtractAsync(Arg.Any<ExtractionInput>(), Arg.Any<CancellationToken>()).Returns(extracted);
 
         ExtractContentActivity activity = new(client, CreateGate(), payloadStore);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
 
-        Contracts.V1.ExtractionResult result = await activity.RunAsync(context, input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await activity.RunAsync(context, input);
 
         result.ExtractedContent.ShouldBeEmpty();
         result.ExtractedContentReference.ShouldBe(extractedReference);
@@ -143,11 +143,11 @@ public class ExtractContentActivityTests
             PayloadReference = sourceReference,
         };
         client.ExtractAsync(Arg.Any<ExtractionInput>(), Arg.Any<CancellationToken>())
-            .Returns(new Contracts.V1.ExtractionResult("event text", "abc123", DateTimeOffset.UtcNow));
+            .Returns(new Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult("event text", "abc123", DateTimeOffset.UtcNow));
 
         ExtractContentActivity activity = new(client, CreateGate(), payloadStore);
 
-        Contracts.V1.ExtractionResult result = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
+        Hexalith.Memories.Server.Workflows.Contracts.ExtractionResult result = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input);
 
         result.ExtractedContentReference.ShouldBe(extractedReference);
         await payloadStore.Received(1).ReadAsync(

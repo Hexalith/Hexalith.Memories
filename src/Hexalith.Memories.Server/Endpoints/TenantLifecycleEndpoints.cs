@@ -187,7 +187,7 @@ internal static class TenantLifecycleEndpoints
                 return ErrorResults.DaprUnavailableResult();
             }
 
-            return Results.Accepted($"/api/tenants/{input.TenantId}/provision-status/{instanceId}",
+            return Results.Accepted(MemoriesRoutes.TenantProvisionStatusLocation(input.TenantId, instanceId),
                 new { workflowInstanceId = instanceId });
             }
             catch (Exception ex)
@@ -239,7 +239,7 @@ internal static class TenantLifecycleEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "PROVISIONING_STATUS_NOT_FOUND",
                     $"Provisioning workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    "Use the workflowInstanceId returned by POST /api/tenants for the same tenant."));
+                    $"Use the workflowInstanceId returned by POST {MemoriesRoutes.Tenants} for the same tenant."));
             }
 
             WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);
@@ -297,7 +297,7 @@ internal static class TenantLifecycleEndpoints
                 ? Results.NotFound(new ErrorResponse(
                     "TENANT_NOT_FOUND",
                     $"Tenant '{tenantId}' not found.",
-                    "Use GET /api/tenants to list available tenants."))
+                    $"Use GET {MemoriesRoutes.Tenants} to list available tenants."))
                 : Results.Ok(tenant);
         });
 
@@ -390,7 +390,7 @@ internal static class TenantLifecycleEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "TENANT_NOT_FOUND",
                     $"Tenant '{tenantId}' not found.",
-                    "Use GET /api/tenants to list available tenants."));
+                    $"Use GET {MemoriesRoutes.Tenants} to list available tenants."));
             }
 
             if (tenantEntry.Tenant.Status == TenantStatus.Provisioning)
@@ -411,7 +411,7 @@ internal static class TenantLifecycleEndpoints
                     if (existingState?.Exists == true && !existingState.IsWorkflowCompleted)
                     {
                         return Results.Accepted(
-                            $"/api/tenants/{tenantId}/deletion-status/{tenantEntry.WorkflowInstanceId}",
+                            MemoriesRoutes.TenantDeletionStatusLocation(tenantId, tenantEntry.WorkflowInstanceId),
                             new
                             {
                                 workflowInstanceId = tenantEntry.WorkflowInstanceId,
@@ -440,7 +440,7 @@ internal static class TenantLifecycleEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "TENANT_NOT_FOUND",
                     $"Tenant '{tenantId}' not found.",
-                    "Use GET /api/tenants to list available tenants."));
+                    $"Use GET {MemoriesRoutes.Tenants} to list available tenants."));
             }
 
             if (deletionClaim.Tenant.Status == TenantStatus.Provisioning)
@@ -454,11 +454,12 @@ internal static class TenantLifecycleEndpoints
 
             if (!string.Equals(deletionClaim.WorkflowInstanceId, instanceId, StringComparison.Ordinal))
             {
+                string claimedInstanceId = deletionClaim.WorkflowInstanceId ?? instanceId;
                 return Results.Accepted(
-                    $"/api/tenants/{tenantId}/deletion-status/{deletionClaim.WorkflowInstanceId}",
+                    MemoriesRoutes.TenantDeletionStatusLocation(tenantId, claimedInstanceId),
                     new
                     {
-                        workflowInstanceId = deletionClaim.WorkflowInstanceId,
+                        workflowInstanceId = claimedInstanceId,
                         message = "Deletion already in progress.",
                     });
             }
@@ -490,7 +491,7 @@ internal static class TenantLifecycleEndpoints
                 return ErrorResults.DaprUnavailableResult();
             }
 
-            return Results.Accepted($"/api/tenants/{tenantId}/deletion-status/{instanceId}",
+            return Results.Accepted(MemoriesRoutes.TenantDeletionStatusLocation(tenantId, instanceId),
                 new { workflowInstanceId = instanceId });
             }
             catch (Exception ex)
@@ -542,7 +543,7 @@ internal static class TenantLifecycleEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "DELETION_STATUS_NOT_FOUND",
                     $"Deletion workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    "Use the workflowInstanceId returned by DELETE /api/tenants/{tenantId} for the same tenant."));
+                    $"Use the workflowInstanceId returned by DELETE {MemoriesRoutes.Tenant} for the same tenant."));
             }
 
             WorkflowState? state = await workflowClient.GetWorkflowStateAsync(instanceId);

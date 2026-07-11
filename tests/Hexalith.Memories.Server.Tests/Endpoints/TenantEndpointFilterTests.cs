@@ -193,8 +193,10 @@ public sealed class TenantEndpointFilterTests
     private static TenantStatusGuard CreateGuardReturning(string tenantId, TenantInfo? tenant)
     {
         DaprClient daprClient = Substitute.For<DaprClient>();
-        TenantRegistryEntry? entry = tenant is null ? null : new TenantRegistryEntry(tenant, null);
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        StoredTenantRegistryEntry? entry = tenant is null
+            ? null
+            : PersistenceModelMapper.ToStored(new TenantRegistryEntry(tenant, null));
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 $"tenant-registry-{tenantId}",
                 cancellationToken: Arg.Any<CancellationToken>())

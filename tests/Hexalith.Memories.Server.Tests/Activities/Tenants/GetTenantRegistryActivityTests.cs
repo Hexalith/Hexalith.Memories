@@ -24,7 +24,7 @@ public class GetTenantRegistryActivityTests
 
         var expected = new TenantInfo("test-tenant", "Test Tenant", TenantStatus.Active, DateTimeOffset.UtcNow);
         var entry = new TenantRegistryEntry(expected, null);
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-test-tenant",
                 cancellationToken: Arg.Any<CancellationToken>())
@@ -47,11 +47,11 @@ public class GetTenantRegistryActivityTests
         ILogger<TenantRegistryService> serviceLogger = Substitute.For<ILogger<TenantRegistryService>>();
         TenantRegistryService registry = new(daprClient, serviceLogger);
 
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-nonexistent",
                 cancellationToken: Arg.Any<CancellationToken>())
-            .Returns((TenantRegistryEntry?)null);
+            .Returns((StoredTenantRegistryEntry?)null);
 
         GetTenantRegistryActivity activity = new(registry);
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();

@@ -55,7 +55,7 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
         using HttpClient client = CreateAuthorizedClient();
 
         using HttpResponseMessage response = await client.PostAsync(
-            $"/api/tenants/{TenantId}/cases/{CaseId}/memory-units/mu-legacy/re-ingest",
+            $"/api/v1/tenants/{TenantId}/cases/{CaseId}/memory-units/mu-legacy/re-ingest",
             content: null);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -98,7 +98,7 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
         ReIngestRequest request = new(["mu-ok", "mu-unsupported", "mu-missing", "mu-conflict"]);
 
         using HttpResponseMessage response = await client.PostAsJsonAsync(
-            $"/api/tenants/{TenantId}/cases/{CaseId}/failed-units/re-ingest",
+            $"/api/v1/tenants/{TenantId}/cases/{CaseId}/failed-units/re-ingest",
             request,
             MemoriesJsonContext.Options);
 
@@ -149,7 +149,7 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key == $"tenant-registry-{TenantId}"),
                 Arg.Any<ConsistencyMode?>(),

@@ -58,7 +58,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedIndexedDocumentAsync(tenantId, "mu-default-explain", content);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -81,7 +81,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedIndexedDocumentAsync(tenantId, "mu-semantic-explain", content);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=semantic&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=semantic&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -105,7 +105,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedSyntacticHashAsync(tenantId, "mu-graph-explain-b", "Graph explain beta content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&axis=graph&startNodeId=mu-graph-explain-a&depth=1&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&axis=graph&startNodeId=mu-graph-explain-a&depth=1&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -130,7 +130,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedIndexedDocumentAsync(tenantId, "mu-syntactic-scope-b", content, caseId);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=syntactic&startNodeId=mu-syntactic-scope-a&depth=1&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=syntactic&startNodeId=mu-syntactic-scope-a&depth=1&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -154,7 +154,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedIndexedDocumentAsync(tenantId, "mu-semantic-scope-b", content, caseId);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=semantic&startNodeId=mu-semantic-scope-a&depth=1&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=semantic&startNodeId=mu-semantic-scope-a&depth=1&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -177,7 +177,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-explain-b", "Hybrid graph explain beta");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-explain-a&depth=1&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-explain-a&depth=1&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -204,7 +204,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-no-explain-b", "Hybrid graph hidden explain beta");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-no-explain-a&depth=1&explain=false");
+            $"/api/v1/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-no-explain-a&depth=1&explain=false");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -224,7 +224,7 @@ public sealed class ExplainSearchApiIntegrationTests
         await SeedIndexedDocumentAsync(tenantId, "mu-hybrid-fallback", content);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=hybrid&axes=semantic,graph&explain=true");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(content)}&axis=hybrid&axes=semantic,graph&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 

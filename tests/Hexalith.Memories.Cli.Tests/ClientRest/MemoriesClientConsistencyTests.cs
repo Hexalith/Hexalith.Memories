@@ -30,9 +30,9 @@ public class MemoriesClientConsistencyTests
     {
         const string TenantId = "tenant-1";
         const string InstanceId = "verify-consistency-tenant-1-abc123";
-        Uri expected = new(Endpoint, $"api/tenants/{TenantId}/consistency/verify/{InstanceId}");
+        Uri expected = new(Endpoint, $"api/v1/tenants/{TenantId}/consistency/verify/{InstanceId}");
 
-        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/tenants/{TenantId}/consistency/verify/{InstanceId}", UriKind.Relative));
+        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/v1/tenants/{TenantId}/consistency/verify/{InstanceId}", UriKind.Relative));
 
         Uri result = await client.StartConsistencyVerificationAsync(
             TenantId,
@@ -136,8 +136,8 @@ public class MemoriesClientConsistencyTests
     {
         const string TenantId = "tenant-1";
         const string InstanceId = "repair-consistency-tenant-1-xyz789";
-        Uri expected = new(Endpoint, $"api/tenants/{TenantId}/consistency/repair/{InstanceId}");
-        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/tenants/{TenantId}/consistency/repair/{InstanceId}", UriKind.Relative));
+        Uri expected = new(Endpoint, $"api/v1/tenants/{TenantId}/consistency/repair/{InstanceId}");
+        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/v1/tenants/{TenantId}/consistency/repair/{InstanceId}", UriKind.Relative));
 
         Uri result = await client.StartConsistencyRepairAsync(
             TenantId,

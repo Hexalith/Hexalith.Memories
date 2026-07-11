@@ -43,7 +43,7 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         using HttpClient client = CreateClient(tenants: ["acme"]);
 
         using HttpResponseMessage first = await client.GetAsync(
-            "/api/search?tenantId=acme&query=&axis=hybrid",
+            "/api/v1/search?tenantId=acme&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
         first.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
@@ -53,7 +53,7 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         _factory.ActorProxyFactory.ClearReceivedCalls();
 
         using HttpResponseMessage rejected = await client.GetAsync(
-            "/api/search?tenantId=acme&query=&axis=hybrid",
+            "/api/v1/search?tenantId=acme&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
 
         rejected.StatusCode.ShouldBe((HttpStatusCode)429);
@@ -78,17 +78,17 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         using HttpClient client = CreateClient(tenants: ["tenant-a", "tenant-b"]);
 
         using HttpResponseMessage tenantAFirst = await client.GetAsync(
-            "/api/search?tenantId=tenant-a&query=&axis=hybrid",
+            "/api/v1/search?tenantId=tenant-a&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
         tenantAFirst.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         using HttpResponseMessage tenantBFirst = await client.GetAsync(
-            "/api/search?tenantId=tenant-b&query=&axis=hybrid",
+            "/api/v1/search?tenantId=tenant-b&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
         tenantBFirst.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         using HttpResponseMessage tenantASecond = await client.GetAsync(
-            "/api/search?tenantId=tenant-a&query=&axis=hybrid",
+            "/api/v1/search?tenantId=tenant-a&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
         tenantASecond.StatusCode.ShouldBe((HttpStatusCode)429);
     }
@@ -109,13 +109,13 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         };
 
         using HttpResponseMessage first = await client.PostAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         first.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         using HttpResponseMessage rejected = await client.PostAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         rejected.StatusCode.ShouldBe((HttpStatusCode)429);
@@ -140,12 +140,12 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         };
 
         using HttpResponseMessage first = await client.GetAsync(
-            "/api/search?tenantId=acme&query=&axis=hybrid",
+            "/api/v1/search?tenantId=acme&query=&axis=hybrid",
             TestContext.Current.CancellationToken);
         first.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         using HttpResponseMessage rejected = await client.PostAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         rejected.StatusCode.ShouldBe((HttpStatusCode)429);
@@ -174,19 +174,19 @@ public sealed class ServerEndpointRateLimitTests : IDisposable
         TenantProvisioningInput input = new("tenant-a", string.Empty);
 
         using HttpResponseMessage first = await firstPrincipal.PostAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         first.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         using HttpResponseMessage otherPrincipalFirst = await secondPrincipal.PostAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         otherPrincipalFirst.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         using HttpResponseMessage firstPrincipalSecond = await firstPrincipal.PostAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
         firstPrincipalSecond.StatusCode.ShouldBe((HttpStatusCode)429);

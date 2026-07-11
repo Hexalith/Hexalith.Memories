@@ -43,7 +43,7 @@ public sealed class ConsistencyInspectionHumanFormatter : IOutputFormatter<Consi
         {
             writer.WriteLine("Semantic detail:");
             writer.WriteLine($"  embeddingDimensions: {value.SemanticDetail.EmbeddingDimensions}");
-            writer.WriteLine($"  vectorHashKey:       {value.SemanticDetail.VectorHashKey}");
+            writer.WriteLine($"  vectorHashKey:       {value.SemanticDetail.SemanticIndexKey}");
         }
 
         if (value.GraphDetail is not null)

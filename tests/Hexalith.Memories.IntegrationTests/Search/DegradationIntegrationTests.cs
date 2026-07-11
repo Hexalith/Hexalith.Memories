@@ -70,7 +70,7 @@ public sealed class DegradationIntegrationTests
     {
         // Scenario:
         //   1. Stop Redis Stack.
-        //   2. GET /api/search?axis=syntactic.
+        //   2. GET /api/v1/search?axis=syntactic.
         //   3. Expect 503 with ErrorResponse.Code == "BACKEND_UNAVAILABLE" and
         //      Retry-After: 5 header.
         _ = _fixture;

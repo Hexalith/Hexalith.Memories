@@ -56,7 +56,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using Activity? root = TestRootSource.StartActivity("search-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/search?tenantId=&query=foo", traceId));
+        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/v1/search?tenantId=&query=foo", traceId));
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
@@ -117,7 +117,7 @@ public sealed class AuditLogStreamTests : IDisposable
             IngestedBy = "tests",
         };
 
-        HttpRequestMessage request = BuildRequest(HttpMethod.Post, "/api/ingest", traceId);
+        HttpRequestMessage request = BuildRequest(HttpMethod.Post, "/api/v1/ingest", traceId);
         request.Content = System.Net.Http.Json.JsonContent.Create(input, options: MemoriesJsonContext.Options);
         HttpResponseMessage response = await client.SendAsync(request);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -156,7 +156,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using Activity? root = TestRootSource.StartActivity("search-user-header-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/search?tenantId=&query=foo", traceId);
+        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/v1/search?tenantId=&query=foo", traceId);
         request.Headers.Add("x-user-id", "reader-42");
 
         HttpResponseMessage response = await client.SendAsync(request);
@@ -173,7 +173,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using Activity? root = TestRootSource.StartActivity("traverse-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/traverse", traceId));
+        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/v1/tenants/acme/traverse", traceId));
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
@@ -193,7 +193,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using Activity? root = TestRootSource.StartActivity("case-access-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId));
+        HttpResponseMessage response = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/v1/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId));
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         AccessTelemetryEvent auditEvent = GetSingleAuditEvent(traceId);
@@ -215,7 +215,7 @@ public sealed class AuditLogStreamTests : IDisposable
         using Activity? root = TestRootSource.StartActivity("case-access-user-header-test");
         string traceId = root?.TraceId.ToString() ?? string.Empty;
 
-        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId);
+        HttpRequestMessage request = BuildRequest(HttpMethod.Get, "/api/v1/tenants/acme/cases/c1/memory-units/by-source-uri?sourceUri=", traceId);
         request.Headers.Add("x-user-id", "reader-42");
 
         HttpResponseMessage response = await client.SendAsync(request);
@@ -253,13 +253,13 @@ public sealed class AuditLogStreamTests : IDisposable
         using (Activity? root1 = TestRootSource.StartActivity("search-leg"))
         {
             searchTraceId = root1?.TraceId.ToString() ?? string.Empty;
-            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/search?tenantId=&query=one", searchTraceId));
+            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/v1/search?tenantId=&query=one", searchTraceId));
         }
 
         using (Activity? root2 = TestRootSource.StartActivity("traverse-leg"))
         {
             traverseTraceId = root2?.TraceId.ToString() ?? string.Empty;
-            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/tenants/acme/traverse", traverseTraceId));
+            _ = await client.SendAsync(BuildRequest(HttpMethod.Get, "/api/v1/tenants/acme/traverse", traverseTraceId));
         }
 
         AccessTelemetryEvent searchEvent = GetSingleAuditEvent(searchTraceId);

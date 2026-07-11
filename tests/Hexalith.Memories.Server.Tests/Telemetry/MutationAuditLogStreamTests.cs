@@ -30,7 +30,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         TenantProvisioningInput input = new("acme", string.Empty);
 
         using HttpResponseMessage response = await client.PostAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
 
@@ -51,7 +51,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         TenantUpdateInput input = new(string.Empty);
 
         using HttpResponseMessage response = await client.PatchAsync(
-            "/api/tenants/acme",
+            "/api/v1/tenants/acme",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
 
@@ -79,7 +79,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
             baseUrl: "https://example.invalid/embeddings");
 
         using HttpResponseMessage response = await client.PutAsync(
-            "/api/tenants/unknown-tenant/embedding-config?forceReindex=true",
+            "/api/v1/tenants/unknown-tenant/embedding-config?forceReindex=true",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
 
@@ -100,11 +100,11 @@ public sealed class MutationAuditLogStreamTests : IDisposable
 
     [Theory]
     [InlineData(
-        "/api/tenants/unknown-tenant/provision-status/provision-other-1234567890abcdef",
+        "/api/v1/tenants/unknown-tenant/provision-status/provision-other-1234567890abcdef",
         "tenant-provision-status",
         "TENANT_NOT_FOUND")]
     [InlineData(
-        "/api/tenants/unknown-tenant/deletion-status/delete-other-1234567890abcdef",
+        "/api/v1/tenants/unknown-tenant/deletion-status/delete-other-1234567890abcdef",
         "tenant-deletion-status",
         "TENANT_NOT_FOUND")]
     public async Task TenantWorkflowStatus_UnknownTenant_EmitsTenantLifecycleAudit(
@@ -134,7 +134,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         using HttpResponseMessage response = await client.DeleteAsync(
-            "/api/tenants/unknown-tenant",
+            "/api/v1/tenants/unknown-tenant",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -154,7 +154,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         using StringContent content = new("{}", Encoding.UTF8, "application/json");
 
         using HttpResponseMessage response = await client.PutAsync(
-            "/api/tenants/acme/cases/case-1/members/member-1",
+            "/api/v1/tenants/acme/cases/case-1/members/member-1",
             content,
             TestContext.Current.CancellationToken);
 
@@ -175,7 +175,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         using HttpResponseMessage response = await client.DeleteAsync(
-            "/api/tenants/acme/cases/bad%20case/members/member-1",
+            "/api/v1/tenants/acme/cases/bad%20case/members/member-1",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -196,7 +196,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         CreateAnnotationInput input = new("acme", "case-1", "memory-1", string.Empty, "operator-1");
 
         using HttpResponseMessage response = await client.PostAsync(
-            "/api/tenants/acme/cases/case-1/memory-units/memory-1/annotations",
+            "/api/v1/tenants/acme/cases/case-1/memory-units/memory-1/annotations",
             JsonContent.Create(input, options: MemoriesJsonContext.Options),
             TestContext.Current.CancellationToken);
 
@@ -217,7 +217,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         using HttpResponseMessage response = await client.DeleteAsync(
-            "/api/tenants/acme/cases/bad%20case/memory-units/memory-1",
+            "/api/v1/tenants/acme/cases/bad%20case/memory-units/memory-1",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -235,7 +235,7 @@ public sealed class MutationAuditLogStreamTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         using HttpResponseMessage response = await client.DeleteAsync(
-            "/api/tenants/acme/cases/bad%20case",
+            "/api/v1/tenants/acme/cases/bad%20case",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);

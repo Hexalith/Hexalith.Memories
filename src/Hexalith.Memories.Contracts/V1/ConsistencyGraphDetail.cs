@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Details from the FalkorDB <c>MemoryUnit</c> node. Edge counts surface the unit's
+/// Details from the graph-axis memory-unit node. Edge counts surface the unit's
 /// graph connectivity for operator diagnosis.
 /// </summary>
 /// <param name="OutgoingEdgeCount">Number of edges where this unit is the source.</param>

@@ -39,7 +39,7 @@ public sealed class MemoriesClientTraverseTests
 
         Uri? uri = handler.Requests[0].RequestUri;
         uri.ShouldNotBeNull();
-        uri.AbsolutePath.ShouldBe("/api/tenants/acme/traverse");
+        uri.AbsolutePath.ShouldBe("/api/v1/tenants/acme/traverse");
         uri.Query.ShouldContain("startNodeId=mu-1");
         uri.Query.ShouldContain("depth=4");
         uri.Query.ShouldContain("caseId=case-1");
@@ -105,7 +105,7 @@ public sealed class MemoriesClientTraverseTests
 
         Uri? uri = handler.Requests[0].RequestUri;
         uri.ShouldNotBeNull();
-        uri.AbsolutePath.ShouldBe("/api/tenants/acme/cases/case-1");
+        uri.AbsolutePath.ShouldBe("/api/v1/tenants/acme/cases/case-1");
     }
 
     [Fact]

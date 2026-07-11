@@ -69,7 +69,7 @@ public sealed class CliTenantListIntegrationTests
     {
         using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/tenants",
+                "/api/v1/tenants",
                 new TenantProvisioningInput(tenantId, displayName),
                 MemoriesJsonContext.Options)
             ;
@@ -80,7 +80,7 @@ public sealed class CliTenantListIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}")
+                .GetAsync($"/api/v1/tenants/{tenantId}")
                 ;
 
             if (tenantResponse.StatusCode == HttpStatusCode.OK)

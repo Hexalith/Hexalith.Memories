@@ -12,7 +12,7 @@ using Shouldly;
 
 /// <summary>
 /// Story 10.2 Task 13.1 — Tier-2 endpoint-wiring coverage for the token-budget plumbing
-/// applied between <c>/api/search</c> and the search services. Exercises
+/// applied between <c>/api/v1/search</c> and the search services. Exercises
 /// <see cref="SearchResponseMetadataApplier"/> directly because that class is the in-memory
 /// surface the search endpoint defers to once a search service has produced a result.
 /// </summary>

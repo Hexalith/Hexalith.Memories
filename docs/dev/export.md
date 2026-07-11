@@ -41,8 +41,8 @@ a tenant externally (e.g. with `jq`).
 
 | Endpoint      | Path                                                | Consumer                                       | Success status           | Typical latency   |
 | ------------- | --------------------------------------------------- | ---------------------------------------------- | ------------------------ | ----------------- |
-| Case export   | `GET /api/tenants/{tenantId}/cases/{caseId}/export` | `memories export case` CLI; operator scripts   | `200 OK` + streamed JSON | ~1 s per 1K units |
-| Tenant export | `GET /api/tenants/{tenantId}/export`                | `memories export tenant` CLI; operator scripts | `200 OK` + streamed JSON | ~1 s per 1K units |
+| Case export   | `GET /api/v1/tenants/{tenantId}/cases/{caseId}/export` | `memories export case` CLI; operator scripts   | `200 OK` + streamed JSON | ~1 s per 1K units |
+| Tenant export | `GET /api/v1/tenants/{tenantId}/export`                | `memories export tenant` CLI; operator scripts | `200 OK` + streamed JSON | ~1 s per 1K units |
 
 All responses carry these headers:
 
@@ -298,8 +298,8 @@ If resumable exports, scheduled exports, or exports that outlive a single
 HTTP connection become required, the 8.3 shape is replaced by a
 workflow-backed variant:
 
-- `POST /api/tenants/{tenantId}/export` returns a workflow instance id.
-- `GET /api/tenants/{tenantId}/export/{instanceId}` polls status.
+- `POST /api/v1/tenants/{tenantId}/export` returns a workflow instance id.
+- `GET /api/v1/tenants/{tenantId}/export/{instanceId}` polls status.
 - On completion a pre-signed blob URL is returned.
 
 **The JSON schema stays v1** — only the transport envelope changes.

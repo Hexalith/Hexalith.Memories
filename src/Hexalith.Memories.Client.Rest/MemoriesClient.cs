@@ -214,7 +214,7 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 18.5 — resolves the canonical <c>MemoryUnitId</c> for a known source URI by exact key via
-    /// <c>GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>. This is a deterministic
+    /// <c>GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>. This is a deterministic
     /// keyed lookup, NOT a search — the Parties caller uses it so graph mode no longer degrades when the
     /// canonical match falls outside a free-text search's top hits.
     /// </summary>
@@ -252,11 +252,11 @@ public class MemoriesClient
     }
 
     /// <summary>
-    /// Schedules a tenant-provisioning workflow via <c>POST /api/tenants</c>. Fire-and-forget semantics — the
+    /// Schedules a tenant-provisioning workflow via <c>POST /api/v1/tenants</c>. Fire-and-forget semantics — the
     /// server returns <c>202 Accepted</c> with the workflow instance id before the tenant is fully active.
     /// Callers observe completion via <see cref="GetTenantAsync(string, CancellationToken)"/> — polling for
     /// <see cref="TenantStatus.Active"/> — or by calling the server's
-    /// <c>GET /api/tenants/{tenantId}/provision-status/{instanceId}</c> endpoint directly.
+    /// <c>GET /api/v1/tenants/{tenantId}/provision-status/{instanceId}</c> endpoint directly.
     /// </summary>
     /// <param name="tenantId">The desired tenant identifier.</param>
     /// <param name="displayName">The tenant display name.</param>
@@ -306,7 +306,7 @@ public class MemoriesClient
     }
 
     /// <summary>
-    /// Creates a case within a tenant via <c>POST /api/tenants/{tenantId}/cases</c>.
+    /// Creates a case within a tenant via <c>POST /api/v1/tenants/{tenantId}/cases</c>.
     /// </summary>
     /// <param name="tenantId">The tenant id.</param>
     /// <param name="name">The case display name.</param>
@@ -335,7 +335,7 @@ public class MemoriesClient
     }
 
     /// <summary>
-    /// Submits a file ingestion via <c>POST /api/ingest</c>. Returns the workflow instance id; the ingestion
+    /// Submits a file ingestion via <c>POST /api/v1/ingest</c>. Returns the workflow instance id; the ingestion
     /// runs asynchronously on the server.
     /// </summary>
     /// <param name="tenantId">The tenant id.</param>
@@ -366,7 +366,7 @@ public class MemoriesClient
         => IngestCoreAsync(tenantId, caseId, sourceUri, content, contentType, ingestedBy, metadata, idempotencyToken: null, ct);
 
     /// <summary>
-    /// Submits a file ingestion via <c>POST /api/ingest</c> with an explicit idempotency token. Returns the
+    /// Submits a file ingestion via <c>POST /api/v1/ingest</c> with an explicit idempotency token. Returns the
     /// workflow instance id; the ingestion runs asynchronously on the server. Story 18.4 additive overload.
     /// </summary>
     /// <param name="tenantId">The tenant id.</param>
@@ -726,7 +726,7 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 7.5 — fetches the per-tenant telemetry summary from
-    /// <c>GET /api/tenants/{tenantId}/telemetry/summary</c>.
+    /// <c>GET /api/v1/tenants/{tenantId}/telemetry/summary</c>.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -745,7 +745,7 @@ public class MemoriesClient
     }
 
     /// <summary>
-    /// Story 9.3 — enumerate registered event handlers via <c>GET /api/handlers</c>. Experimental
+    /// Story 9.3 — enumerate registered event handlers via <c>GET /api/v1/handlers</c>. Experimental
     /// HXL002 surface. Suppress with <c>#pragma warning disable HXL002</c> at opt-in call sites.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
@@ -758,7 +758,7 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 9.3 — detect handler mismatches for a tenant via
-    /// <c>GET /api/tenants/{tenantId}/handlers/mismatches</c>. Experimental HXL002 surface.
+    /// <c>GET /api/v1/tenants/{tenantId}/handlers/mismatches</c>. Experimental HXL002 surface.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="ct">Cancellation token.</param>
@@ -773,7 +773,7 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 10.1 — fetches a graph traversal from the starting memory unit via
-    /// <c>GET /api/tenants/{tenantId}/traverse</c>.
+    /// <c>GET /api/v1/tenants/{tenantId}/traverse</c>.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="startNodeId">The memory unit id to start traversal from.</param>
@@ -832,7 +832,7 @@ public class MemoriesClient
 
     /// <summary>
     /// Story 10.1 — fetches case summary for the MCP <c>get_case_info</c> tool via
-    /// <c>GET /api/tenants/{tenantId}/cases/{caseId}</c>.
+    /// <c>GET /api/v1/tenants/{tenantId}/cases/{caseId}</c>.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="caseId">The case identifier.</param>

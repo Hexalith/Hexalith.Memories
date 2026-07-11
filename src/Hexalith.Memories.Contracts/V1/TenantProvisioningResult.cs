@@ -17,7 +17,8 @@ public sealed record TenantProvisioningResult(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ErrorCode { get; init; }
 
-    /// <summary>Gets the list of backends that were cleaned up during compensation, if provisioning failed.</summary>
+    /// <summary>Gets the list of retrieval-axis provisioning steps cleaned up during compensation, if provisioning failed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? CompensatedBackends { get; init; }
+    [JsonPropertyName("compensatedBackends")]
+    public IReadOnlyList<string>? CompensatedAxes { get; init; }
 }

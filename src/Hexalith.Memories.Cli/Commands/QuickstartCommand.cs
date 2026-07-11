@@ -422,7 +422,7 @@ Examples:
             return DryRunResult(
                 console,
                 stepId: 4,
-                message: $"Would POST /api/tenants with id='{tenantId}'.");
+                message: $"Would POST /api/v1/tenants with id='{tenantId}'.");
         }
 
         long startTimestamp = Stopwatch.GetTimestamp();
@@ -506,7 +506,7 @@ Examples:
             return DryRunResult(
                 console,
                 stepId: 5,
-                message: $"Would POST /api/ingest for tenant '{tenantId}' with the embedded sample document.");
+                message: $"Would POST /api/v1/ingest for tenant '{tenantId}' with the embedded sample document.");
         }
 
         long startTimestamp = Stopwatch.GetTimestamp();

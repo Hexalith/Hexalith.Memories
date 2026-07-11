@@ -90,7 +90,7 @@ public class TenantExportServiceTests
         redis ??= CreateConnectedRedis();
 
         DaprClient daprClient = Substitute.For<DaprClient>();
-        daprClient.GetStateAsync<TenantRegistryEntry?>(
+        daprClient.GetStateAsync<StoredTenantRegistryEntry?>(
                 "statestore",
                 "tenant-registry-acme",
                 cancellationToken: Arg.Any<CancellationToken>())

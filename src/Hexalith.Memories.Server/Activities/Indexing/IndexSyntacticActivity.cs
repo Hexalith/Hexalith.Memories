@@ -15,6 +15,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
@@ -56,7 +57,9 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
         string sourceType = ToCamelCase(input.SourceType);
         string metadataText = FlattenMetadata(input.Metadata);
         string attributeTags = FlattenMetadataTags(input.Metadata);
-        string metadataJson = JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options);
+        string metadataJson = JsonSerializer.Serialize(
+            PersistenceModelMapper.ToStored(input.Metadata),
+            MemoriesPersistenceJsonContext.Options);
         string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
         string ingestedAt = input.IngestedAt.ToString("o");
 

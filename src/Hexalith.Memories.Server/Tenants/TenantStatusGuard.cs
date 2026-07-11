@@ -23,7 +23,7 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
         TenantInfo? tenant = await registry.GetTenantForStatusGuardAsync(tenantId, ct).ConfigureAwait(false);
         if (tenant is null)
         {
-            return new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", "List available tenants with GET /api/tenants");
+            return new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", $"List available tenants with GET {MemoriesRoutes.Tenants}");
         }
 
         return tenant.Status switch
@@ -45,7 +45,7 @@ public sealed class TenantStatusGuard(TenantRegistryService registry)
     {
         TenantInfo? tenant = await registry.GetTenantForStatusGuardAsync(tenantId, ct).ConfigureAwait(false);
         return tenant is null
-            ? new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", "List available tenants with GET /api/tenants")
+            ? new ErrorResponse("TENANT_NOT_FOUND", $"Tenant '{tenantId}' not found.", $"List available tenants with GET {MemoriesRoutes.Tenants}")
             : null;
     }
 

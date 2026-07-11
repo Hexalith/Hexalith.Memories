@@ -22,7 +22,7 @@ public sealed class TenantEventRoutingOptions
 
     /// <summary>Gets or sets a value indicating whether the routed (index) tenants in
     /// <see cref="SourceToTenantMap"/> are auto-provisioned at startup when missing. Default: <c>false</c>
-    /// (production registers index tenants explicitly via <c>POST /api/tenants</c> and the routing validator
+    /// (production registers index tenants explicitly via <c>POST /api/v1/tenants</c> and the routing validator
     /// fail-fasts on unknown tenants). Dev/single-process hosts that own a well-known curated index (e.g. the
     /// Tenants AppHost provisioning <c>tenants-index</c>) set this <c>true</c> so the index exists before the
     /// first event arrives.</summary>

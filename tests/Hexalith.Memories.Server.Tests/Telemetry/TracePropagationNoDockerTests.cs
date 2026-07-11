@@ -107,7 +107,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         // The traceparent header carries the test-root trace id so the ASP.NET Core pipeline attaches
         // its inbound span (and all children) to the same trace — letting us isolate this test's
         // activities from any other parallel test classes that also emit on this source.
-        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/search?tenantId=&query=foo", root.TraceId);
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/v1/search?tenantId=&query=foo", root.TraceId);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         Activity searchActivity = GetMemoriesSearchActivity(root.TraceId);
@@ -145,7 +145,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         using HttpClient client = _factory.CreateClient();
         using TestRootScope root = new();
 
-        _ = await SendWithTraceparentAsync(client, "/api/search?tenantId=&query=foo", root.TraceId);
+        _ = await SendWithTraceparentAsync(client, "/api/v1/search?tenantId=&query=foo", root.TraceId);
 
         Activity searchActivity = GetMemoriesSearchActivity(root.TraceId);
 
@@ -167,7 +167,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         using HttpClient client = _factory.CreateClient();
         using TestRootScope root = new();
 
-        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/search?tenantId=&query=foo&caseId=case-42", root.TraceId);
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/v1/search?tenantId=&query=foo&caseId=case-42", root.TraceId);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         Activity searchActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.SearchRequest);
@@ -180,7 +180,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         using HttpClient client = _factory.CreateClient();
         using TestRootScope root = new();
 
-        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/tenants/acme/traverse?caseId=case-42", root.TraceId);
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, "/api/v1/tenants/acme/traverse?caseId=case-42", root.TraceId);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         Activity traverseActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.TraverseRequest);
@@ -196,7 +196,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
@@ -207,7 +207,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         using HttpClient client = _factory.CreateClient();
         using TestRootScope root = new();
 
-        HttpResponseMessage response = await SendWithTraceparentAsync(client, $"/api/search?tenantId={tenantId}&query=foo&axis=bogus", root.TraceId);
+        HttpResponseMessage response = await SendWithTraceparentAsync(client, $"/api/v1/search?tenantId={tenantId}&query=foo&axis=bogus", root.TraceId);
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         Activity searchActivity = GetMemoriesActivity(root.TraceId, MemoriesActivitySource.SearchRequest);

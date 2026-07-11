@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Request body for POST /api/ingest/url — ingests a single URL into the pipeline.</summary>
+/// <summary>Request body for POST /api/v1/ingest/url — ingests a single URL into the pipeline.</summary>
 public sealed record UrlIngestionRequest
 {
     public required string TenantId { get; init; }

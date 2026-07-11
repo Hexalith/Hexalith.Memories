@@ -8,8 +8,8 @@ namespace Hexalith.Memories.Contracts.V1;
 using System.Text.Json.Serialization;
 
 /// <summary>
-/// Repair-plan classification for a single memory unit across the three backends
-/// (syntactic RediSearch, semantic Redis Vector, graph FalkorDB). Emitted by
+/// Repair-plan classification for a single memory unit across the syntactic, semantic,
+/// and graph retrieval axes. Emitted by
 /// <c>RepairPlanCalculator</c> based on the presence booleans returned by
 /// <c>VerifyConsistencyActivity</c>. Drives the action dispatched by
 /// <c>RepairUnitActivity</c>.
@@ -17,7 +17,7 @@ using System.Text.Json.Serialization;
 [JsonConverter(typeof(CamelCaseStringEnumConverter<ConsistencyRepairRecommendation>))]
 public enum ConsistencyRepairRecommendation
 {
-    /// <summary>Unit is consistent across all three backends; no action required.</summary>
+    /// <summary>Unit is consistent across all three retrieval axes; no action required.</summary>
     NoOp,
 
     /// <summary>Syntactic + graph present; semantic missing. Re-create the vector entry.</summary>

@@ -127,8 +127,8 @@ public sealed class OpenTelemetryRegistrationTests
     [Fact]
     public void ShouldTraceHttpRequest_IncludesApplicationEndpoints()
     {
-        Extensions.ShouldTraceHttpRequest(ContextFor("/api/search")).ShouldBeTrue();
-        Extensions.ShouldTraceHttpRequest(ContextFor("/api/ingest")).ShouldBeTrue();
+        Extensions.ShouldTraceHttpRequest(ContextFor("/api/v1/search")).ShouldBeTrue();
+        Extensions.ShouldTraceHttpRequest(ContextFor("/api/v1/ingest")).ShouldBeTrue();
         Extensions.ShouldTraceHttpRequest(ContextFor("/")).ShouldBeTrue();
     }
 

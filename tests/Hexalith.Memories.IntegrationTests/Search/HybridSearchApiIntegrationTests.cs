@@ -38,7 +38,7 @@ public sealed class HybridSearchApiIntegrationTests
         await SeedSyntacticHashAsync(tenantId, "mu-hybrid-b", "Beta content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-a&depth=1");
+            $"/api/v1/search?tenantId={tenantId}&query=graph-traversal&axis=hybrid&axes=graph&graphStartNodeId=mu-hybrid-a&depth=1");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -65,7 +65,7 @@ public sealed class HybridSearchApiIntegrationTests
         }
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=pagination%20common%20window%20document&axis=hybrid&axes=syntactic&maxResults=5&offset=120");
+            $"/api/v1/search?tenantId={tenantId}&query=pagination%20common%20window%20document&axis=hybrid&axes=syntactic&maxResults=5&offset=120");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -84,7 +84,7 @@ public sealed class HybridSearchApiIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=pagination&axis=hybrid&axes=syntactic&maxResults=1&offset=1000");
+            $"/api/v1/search?tenantId={tenantId}&query=pagination&axis=hybrid&axes=syntactic&maxResults=1&offset=1000");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 

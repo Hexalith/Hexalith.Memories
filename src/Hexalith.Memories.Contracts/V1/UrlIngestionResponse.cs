@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Response for POST /api/ingest/url — mirrors the shape used by POST /api/ingest.</summary>
+/// <summary>Response for POST /api/v1/ingest/url — mirrors the shape used by POST /api/v1/ingest.</summary>
 /// <param name="InstanceId">Workflow instance identifier.</param>
 /// <param name="SourceUri">The URL that was scheduled for ingestion.</param>
 /// <param name="MemoryUnitId">Reserved for future correlation; always null for URL ingestion until workflow starts.</param>

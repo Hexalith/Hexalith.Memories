@@ -62,7 +62,7 @@ public sealed class CliSearchIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient
-            .PostAsJsonAsync("/api/ingest", ingestionInput, MemoriesJsonContext.Options);
+            .PostAsJsonAsync("/api/v1/ingest", ingestionInput, MemoriesJsonContext.Options);
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         AcceptedResponse? accepted = await ingestResponse.Content
@@ -106,7 +106,7 @@ public sealed class CliSearchIntegrationTests
     {
         using HttpResponseMessage provisionResponse = await _fixture.MemoriesClient
             .PostAsJsonAsync(
-                "/api/tenants",
+                "/api/v1/tenants",
                 new TenantProvisioningInput(tenantId, displayName),
                 MemoriesJsonContext.Options);
 
@@ -116,7 +116,7 @@ public sealed class CliSearchIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage tenantResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/tenants/{tenantId}");
+                .GetAsync($"/api/v1/tenants/{tenantId}");
 
             if (tenantResponse.StatusCode == HttpStatusCode.OK)
             {
@@ -141,7 +141,7 @@ public sealed class CliSearchIntegrationTests
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage statusResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/ingest/{instanceId}");
+                .GetAsync($"/api/v1/ingest/{instanceId}");
 
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {

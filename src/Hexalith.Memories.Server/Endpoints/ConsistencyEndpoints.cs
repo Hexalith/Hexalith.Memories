@@ -98,7 +98,7 @@ internal static class ConsistencyEndpoints
             }
 
             return Results.Accepted(
-                $"/api/tenants/{tenantId}/consistency/verify/{instanceId}",
+                MemoriesRoutes.ConsistencyVerifyStatusLocation(tenantId, instanceId),
                 new { workflowInstanceId = instanceId });
         });
 
@@ -126,7 +126,7 @@ internal static class ConsistencyEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "CONSISTENCY_VERIFY_NOT_FOUND",
                     $"Verification workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    "Use the workflowInstanceId returned by POST /api/tenants/{tenantId}/consistency/verify for the same tenant."));
+                    $"Use the workflowInstanceId returned by POST {MemoriesRoutes.ConsistencyVerify} for the same tenant."));
             }
 
             ConsistencyVerificationStatus? status = await workflowService.GetVerificationStatusAsync(instanceId, cancellationToken);
@@ -224,7 +224,7 @@ internal static class ConsistencyEndpoints
             }
 
             return Results.Accepted(
-                $"/api/tenants/{tenantId}/consistency/repair/{instanceId}",
+                MemoriesRoutes.ConsistencyRepairStatusLocation(tenantId, instanceId),
                 new { workflowInstanceId = instanceId });
         });
 
@@ -252,7 +252,7 @@ internal static class ConsistencyEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "CONSISTENCY_REPAIR_NOT_FOUND",
                     $"Repair workflow '{instanceId}' was not found for tenant '{tenantId}'.",
-                    "Use the workflowInstanceId returned by POST /api/tenants/{tenantId}/consistency/repair for the same tenant."));
+                    $"Use the workflowInstanceId returned by POST {MemoriesRoutes.ConsistencyRepair} for the same tenant."));
             }
 
             ConsistencyRepairStatus? status = await workflowService.GetRepairStatusAsync(instanceId, cancellationToken);

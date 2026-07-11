@@ -91,8 +91,8 @@ internal static class ExportEndpoints
             {
                 string code = ex.Message.Contains("Case '", StringComparison.Ordinal) ? "CASE_NOT_FOUND" : "TENANT_NOT_FOUND";
                 string recovery = code == "CASE_NOT_FOUND"
-                    ? "List available cases with GET /api/tenants/{tenantId}/cases."
-                    : "List available tenants with GET /api/tenants.";
+                    ? $"List available cases with GET {MemoriesRoutes.Cases}."
+                    : $"List available tenants with GET {MemoriesRoutes.Tenants}.";
                 return Results.NotFound(new ErrorResponse(code, ex.Message, recovery));
             }
             catch (Dapr.DaprException ex)
@@ -149,7 +149,7 @@ internal static class ExportEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "TENANT_NOT_FOUND",
                     ex.Message,
-                    "List available tenants with GET /api/tenants."));
+                    $"List available tenants with GET {MemoriesRoutes.Tenants}."));
             }
             catch (Dapr.DaprException ex)
             {

@@ -69,7 +69,7 @@ Examples:
     {
         const string nudge =
             "Get started: provisioning a tenant via 'memories tenant create' will be wired in a later story; "
-            + "for now, provision via the server's REST API at POST /api/tenants. "
+            + "for now, provision via the server's REST API at POST /api/v1/tenants. "
             + "Run 'memories quickstart' for a guided setup.";
 
         switch (console.Format)

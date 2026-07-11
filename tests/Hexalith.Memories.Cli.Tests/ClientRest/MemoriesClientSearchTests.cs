@@ -187,7 +187,7 @@ public sealed class MemoriesClientSearchTests
 
         Uri? uri = handler.Requests[0].RequestUri;
         uri.ShouldNotBeNull();
-        uri.AbsolutePath.ShouldBe("/api/tenants/acme/cases/case-1/memory-units/mu-abc");
+        uri.AbsolutePath.ShouldBe("/api/v1/tenants/acme/cases/case-1/memory-units/mu-abc");
     }
 
     [Fact]

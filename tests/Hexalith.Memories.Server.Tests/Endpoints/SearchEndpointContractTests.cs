@@ -52,7 +52,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=hybrid&axes=,,,");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=hybrid&axes=,,,");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -69,7 +69,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=semantic");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=semantic");
 
         response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -85,7 +85,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=semantic&startNodeId=mu-1");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=semantic&startNodeId=mu-1");
 
         response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -101,7 +101,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=hybrid&axes=semantic");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=hybrid&axes=semantic");
 
         response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -117,7 +117,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=nl");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=nl");
 
         response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -132,7 +132,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&axis=graph&startNodeId=mu-1&offset=901&maxResults=100");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&axis=graph&startNodeId=mu-1&offset=901&maxResults=100");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -147,7 +147,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/search?tenantId=acme-search&query=foo&axis=hybrid&axes=syntactic&offset=901&maxResults=100");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=foo&axis=hybrid&axes=syntactic&offset=901&maxResults=100");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -194,7 +194,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/search?tenantId=acme-search&query=calibration&axis=hybrid&axes=syntactic");
+            "/api/v1/search?tenantId=acme-search&query=calibration&axis=hybrid&axes=syntactic");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
@@ -247,7 +247,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true");
+            "/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
@@ -279,7 +279,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         using HttpClient client = factory.CreateClient();
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true&syntacticWeight=1&semanticWeight=0&nlWeight=0&graphWeight=0");
+            "/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true&syntacticWeight=1&semanticWeight=0&nlWeight=0&graphWeight=0");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
@@ -320,8 +320,8 @@ public sealed class SearchEndpointContractTests : IDisposable
         });
         using HttpClient client = factory.CreateClient();
 
-        using HttpResponseMessage first = await client.GetAsync("/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
-        using HttpResponseMessage second = await client.GetAsync("/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
+        using HttpResponseMessage first = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
+        using HttpResponseMessage second = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic");
 
         first.StatusCode.ShouldBe(HttpStatusCode.OK);
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -344,13 +344,13 @@ public sealed class SearchEndpointContractTests : IDisposable
                 cancellationToken: Arg.Any<CancellationToken>())
             .Returns(["tenant-a", "tenant-b"]);
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 "tenant-registry-tenant-b",
                 cancellationToken: Arg.Any<CancellationToken>())
             .Returns(tenantB);
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 "tenant-registry-tenant-a",
                 cancellationToken: Arg.Any<CancellationToken>())
@@ -363,7 +363,7 @@ public sealed class SearchEndpointContractTests : IDisposable
             .Returns(actor);
         using HttpClient client = _factory.CreateClient();
 
-        using HttpResponseMessage response = await client.GetAsync("/api/tenants?offset=1&limit=1");
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/tenants?offset=1&limit=1");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         GetSingleHeaderValue(response, "X-Hexalith-Total-Count").ShouldBe("2");
@@ -374,7 +374,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         summaries.ShouldNotBeNull();
         summaries.Length.ShouldBe(1);
         summaries[0].Id.ShouldBe("tenant-b");
-        await _factory.DaprClient.DidNotReceive().GetStateAsync<TenantRegistryEntry?>(
+        await _factory.DaprClient.DidNotReceive().GetStateAsync<StoredTenantRegistryEntry?>(
             StoreName,
             "tenant-registry-tenant-a",
             cancellationToken: Arg.Any<CancellationToken>());
@@ -388,7 +388,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         using HttpResponseMessage response = await client.GetAsync(
-            "/api/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&syntacticWeight=0&semanticWeight=0&nlWeight=0&graphWeight=0");
+            "/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&syntacticWeight=0&semanticWeight=0&nlWeight=0&graphWeight=0");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -409,7 +409,7 @@ public sealed class SearchEndpointContractTests : IDisposable
 
         using HttpClient client = _factory.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/api/tenants/acme-search/traverse?startNodeId=mu-1");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/tenants/acme-search/traverse?startNodeId=mu-1");
 
         response.StatusCode.ShouldBe(HttpStatusCode.GatewayTimeout);
         ErrorResponse error = await ReadErrorResponseAsync(response);
@@ -426,7 +426,7 @@ public sealed class SearchEndpointContractTests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),

@@ -13,6 +13,7 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Serialization;
 using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -86,7 +87,7 @@ internal sealed partial class RedisSearchIndexMaintenanceAdapter : ISearchIndexM
         string attributeTags = FlattenAttributeTags(entry.Attributes);
         string metadataJson = JsonSerializer.Serialize(
             entry.Attributes ?? new Dictionary<string, string>(StringComparer.Ordinal),
-            MemoriesJsonContext.Options);
+            MemoriesPersistenceJsonContext.Options);
         string contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(entry.Text)));
 
         HashEntry[] hashEntries =

@@ -127,7 +127,7 @@ internal static class IngestionEndpoints
                     if (reservation.Outcome == IngestReservationOutcome.DuplicateInFlight)
                     {
                         string winnerInstanceId = reservation.ExistingInstanceId!;
-                        return Results.Accepted($"/api/ingest/{winnerInstanceId}", new { instanceId = winnerInstanceId });
+                        return Results.Accepted(MemoriesRoutes.IngestStatusLocation(winnerInstanceId), new { instanceId = winnerInstanceId });
                     }
 
                     // Reserved → we own the reservation; FailOpen (Redis down, ADR 9.1-B) → proceed anyway.
@@ -139,7 +139,7 @@ internal static class IngestionEndpoints
                     string instanceId = await workflowScheduler
                         .ScheduleAsync(candidateInstanceId, input, CancellationToken.None)
                         .ConfigureAwait(false);
-                    return Results.Accepted($"/api/ingest/{instanceId}", new { instanceId });
+                    return Results.Accepted(MemoriesRoutes.IngestStatusLocation(instanceId), new { instanceId });
                 }
                 catch
                 {
@@ -202,7 +202,7 @@ internal static class IngestionEndpoints
                 _ = TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
                     httpContext,
                     null,
-                    "/api/ingest/{instanceId}",
+                    MemoriesRoutes.IngestStatus,
                     authorizationLogger,
                     out IResult? unreadableTenantResult);
                 return unreadableTenantResult!;
@@ -211,7 +211,7 @@ internal static class IngestionEndpoints
             if (!TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
                     httpContext,
                     storedTenantId,
-                    "/api/ingest/{instanceId}",
+                    MemoriesRoutes.IngestStatus,
                     authorizationLogger,
                     out IResult? authorizationResult))
             {
@@ -326,7 +326,7 @@ internal static class IngestionEndpoints
                     IngestionEndpointLog.RedactUrl(url));
 
                 return Results.Accepted(
-                    $"/api/ingest/{instanceId}",
+                    MemoriesRoutes.IngestStatusLocation(instanceId),
                     new UrlIngestionResponse(instanceId, request.Url));
             }
             catch (Exception ex)
@@ -429,7 +429,7 @@ internal static class IngestionEndpoints
                             new ErrorResponse(
                                 "BATCH_TOO_LARGE",
                                 "Batch exceeds the maximum supported number of files.",
-                                "Ingest smaller sub-directories, or call POST /api/ingest per file."),
+                                $"Ingest smaller sub-directories, or call POST {MemoriesRoutes.Ingest} per file."),
                             statusCode: StatusCodes.Status400BadRequest),
                         "BATCH_TRACKING_UNAVAILABLE" => Results.Json(
                             new ErrorResponse(
@@ -467,7 +467,7 @@ internal static class IngestionEndpoints
                     outcome.Skipped.Count);
 
                 return Results.Accepted(
-                    $"/api/ingest/batches/{outcome.BatchId}",
+                    MemoriesRoutes.IngestBatchStatusLocation(outcome.BatchId),
                     outcome);
             }
             catch (Exception ex)
@@ -509,13 +509,13 @@ internal static class IngestionEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "BATCH_NOT_FOUND",
                     $"Batch '{batchId}' was not found or has expired.",
-                    "Verify the batchId returned by POST /api/ingest/directory."));
+                    $"Verify the batchId returned by POST {MemoriesRoutes.IngestDirectory}."));
             }
 
             if (!TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
                 httpContext,
                 state.TenantId,
-                "/api/ingest/batches/{batchId}",
+                MemoriesRoutes.IngestBatchStatus,
                 authorizationLogger,
                 out IResult? authorizationResult))
             {

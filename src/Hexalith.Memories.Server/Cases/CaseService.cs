@@ -24,6 +24,7 @@ using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 
@@ -494,7 +495,9 @@ internal sealed class CaseService
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
         var member = new CaseMember(input.MemberId, input.MemberType, now);
-        string json = JsonSerializer.Serialize(member, MemoriesJsonContext.Options);
+        string json = JsonSerializer.Serialize(
+            PersistenceModelMapper.ToStored(member),
+            MemoriesPersistenceJsonContext.Options);
 
         // Atomic idempotent add via HSETNX -- no TOCTOU race
         bool created = await db.HashSetAsync(membersKey, input.MemberId, json, When.NotExists).ConfigureAwait(false);
@@ -768,7 +771,10 @@ internal sealed class CaseService
                 return false;
             }
 
-            member = JsonSerializer.Deserialize<CaseMember>(payload, MemoriesJsonContext.Options);
+            StoredCaseMember? storedMember = JsonSerializer.Deserialize<StoredCaseMember>(
+                payload,
+                MemoriesPersistenceJsonContext.Options);
+            member = storedMember is null ? null : PersistenceModelMapper.ToContract(storedMember);
             if (member is null ||
                 !string.Equals(member.MemberId, storedMemberId, StringComparison.Ordinal) ||
                 !string.Equals(member.MemberId, memberId, StringComparison.Ordinal) ||
@@ -1025,7 +1031,10 @@ internal sealed class CaseService
 
         try
         {
-            return JsonSerializer.Deserialize<FailureDetails>(json, MemoriesJsonContext.Options);
+            StoredFailureDetails? stored = JsonSerializer.Deserialize<StoredFailureDetails>(
+                json,
+                MemoriesPersistenceJsonContext.Options);
+            return stored is null ? null : PersistenceModelMapper.ToContract(stored);
         }
         catch (JsonException)
         {
@@ -1042,9 +1051,10 @@ internal sealed class CaseService
 
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, MetadataField>>(
+            Dictionary<string, StoredMetadataField>? stored = JsonSerializer.Deserialize<Dictionary<string, StoredMetadataField>>(
                 metadataJson,
-                MemoriesJsonContext.Options) ?? [];
+                MemoriesPersistenceJsonContext.Options);
+            return stored is null ? [] : PersistenceModelMapper.ToContract(stored);
         }
         catch (JsonException)
         {

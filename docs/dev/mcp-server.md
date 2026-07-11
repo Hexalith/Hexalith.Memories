@@ -60,7 +60,7 @@ For local smoke tests, mint a development token with:
 
 Current Memories Server ingress for MCP traffic is DAPR service invocation from `memories-mcp` to
 the Server app-id `memories` by default, secured by DAPR API token mode when
-`DAPR_API_TOKEN_MODE=enabled`. The Server itself also requires JWT bearer authentication on `/api/**`
+`DAPR_API_TOKEN_MODE=enabled`. The Server itself also requires JWT bearer authentication on `/api/v1/**`
 and applies tenant authorization at tenant-scoped boundaries. Adding any second direct Server
 ingress (admin UI, ops dashboard, direct REST client, public CLI endpoint) must preserve those
 authentication and tenant-authorization guardrails.
@@ -102,7 +102,7 @@ Returns `{ "workflowInstanceId": "..." }` on success.
 | `depth` | integer | no | `3` | Clamped to `[0, 10]`. |
 | `edgeType` | string | no | — | Comma-separated edge type list. Invalid values reject client-side with `INVALID_EDGE_TYPE` — no server round-trip. Valid values: `causedBy`, `correlatedWith`, `references`, `contains`, `annotates`. |
 | `tokenBudget` | integer | no | — | Server-side output budget. Traversal truncates leaves before the primary path where possible and reports `primaryPathIntact`. |
-| `caseId` | string | no | — | Optional graph scope. **Note:** the original epic AC #4 said `graph_scope (object, optional)`. 10.1 flattens this to a single `caseId` string for LLM ergonomics and to match the underlying `GET /api/tenants/{tenantId}/traverse` endpoint shape. See _Graph scope parameter simplification_ below. |
+| `caseId` | string | no | — | Optional graph scope. **Note:** the original epic AC #4 said `graph_scope (object, optional)`. 10.1 flattens this to a single `caseId` string for LLM ergonomics and to match the underlying `GET /api/v1/tenants/{tenantId}/traverse` endpoint shape. See _Graph scope parameter simplification_ below. |
 
 ### `get_case_info`
 
@@ -224,7 +224,7 @@ crash blocking AppHost startup):
 ## Graph scope parameter simplification
 
 Epic AC #4 originally specified `graph_scope (object, optional)` for `traverse_relations`. The
-current server endpoint (`GET /api/tenants/{tenantId}/traverse`) accepts only `caseId` +
+current server endpoint (`GET /api/v1/tenants/{tenantId}/traverse`) accepts only `caseId` +
 `edgeTypes` (comma-separated) as query parameters. A nested `graph_scope` object on the MCP tool
 schema would (a) require the LLM to construct nested JSON per-call — more tokens, lower tool-call
 success rate, and (b) introduce a contract mismatch between the declared schema (object) and the

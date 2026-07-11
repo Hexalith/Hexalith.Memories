@@ -45,7 +45,7 @@ public sealed class SemanticSearchApiIntegrationTests
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=test&axis=not-a-real-axis");
+            $"/api/v1/search?tenantId={tenantId}&query=test&axis=not-a-real-axis");
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
@@ -62,7 +62,7 @@ public sealed class SemanticSearchApiIntegrationTests
         await SeedDocumentAsync(tenantId, "mu-default", "routing default axis content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=routing default axis content");
+            $"/api/v1/search?tenantId={tenantId}&query=routing default axis content");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -79,7 +79,7 @@ public sealed class SemanticSearchApiIntegrationTests
         await SeedDocumentAsync(tenantId, "mu-semantic", "routing semantic axis content");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=routing semantic axis content&axis=semantic");
+            $"/api/v1/search?tenantId={tenantId}&query=routing semantic axis content&axis=semantic");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -100,7 +100,7 @@ public sealed class SemanticSearchApiIntegrationTests
         await SeedDocumentAsync(tenantId, "mu-api-page-03", "story 22 semantic api pagination rank 90");
         await SeedDocumentAsync(tenantId, "mu-api-page-04", "story 22 semantic api pagination rank 62");
 
-        string path = $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&maxResults=2";
+        string path = $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&maxResults=2";
 
         using HttpResponseMessage firstResponse = await _fixture.MemoriesClient.GetAsync(path);
         using HttpResponseMessage secondResponse = await _fixture.MemoriesClient.GetAsync($"{path}&offset=2");
@@ -149,7 +149,7 @@ public sealed class SemanticSearchApiIntegrationTests
         await SeedDocumentAsync(tenantId, "mu-api-far-2", "api farther metadata match 2", embeddingVector: farVector, metadata: matching);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&metadataQuery=acme&maxResults=2");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&metadataQuery=acme&maxResults=2");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
@@ -179,7 +179,7 @@ public sealed class SemanticSearchApiIntegrationTests
         await SeedDocumentAsync(tenantId, "mu-api-url-2", "api farther source match 2", sourceType: SourceType.Url, embeddingVector: farVector);
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&sourceType=url&maxResults=2");
+            $"/api/v1/search?tenantId={tenantId}&query={Uri.EscapeDataString(Query)}&axis=semantic&sourceType=url&maxResults=2");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 

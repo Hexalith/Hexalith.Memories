@@ -13,7 +13,7 @@ using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Telemetry;
 
 /// <summary>
-/// Story 7.5 — composes the <c>GET /api/tenants/{tenantId}/telemetry/summary</c> response (AC #6).
+/// Story 7.5 — composes the <c>GET /api/v1/tenants/{tenantId}/telemetry/summary</c> response (AC #6).
 /// Reader over <see cref="TelemetrySnapshotCache"/> (the same cached substrate that feeds the observable
 /// gauges) and <see cref="RollingCounterStore"/> (search + ingest counter deltas).
 /// ADR-7.5-003: operator-facing poke, NOT a metrics backend.
@@ -59,15 +59,15 @@ public sealed class TelemetrySummaryService
             AsOf = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             IndexSizes = new TelemetryIndexSizes
             {
-                Syntactic = snapshot.IndexSizes.RediSearchKeyCount,
-                Semantic = snapshot.IndexSizes.RedisVectorKeyCount,
-                Graph = snapshot.IndexSizes.FalkorDbNodeCount,
+                Syntactic = snapshot.IndexSizes.SyntacticKeyCount,
+                Semantic = snapshot.IndexSizes.SemanticKeyCount,
+                Graph = snapshot.IndexSizes.GraphNodeCount,
             },
             IndexHealth = new TelemetryIndexHealth
             {
-                Syntactic = snapshot.IndexStatus.RediSearch,
-                Semantic = snapshot.IndexStatus.RedisVector,
-                Graph = snapshot.IndexStatus.FalkorDb,
+                Syntactic = snapshot.IndexStatus.Syntactic,
+                Semantic = snapshot.IndexStatus.Semantic,
+                Graph = snapshot.IndexStatus.Graph,
             },
             SearchMetrics = searchMetrics,
             IngestionMetrics = ingestionMetrics,

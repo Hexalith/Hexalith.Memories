@@ -6,7 +6,7 @@
 namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
-/// Enriched tenant projection returned by <c>GET /api/tenants</c> (Story 5.5 AC1 / FR41).
+/// Enriched tenant projection returned by <c>GET /api/v1/tenants</c> (Story 5.5 AC1 / FR41).
 /// Field superset of <see cref="TenantInfo"/> (which remains the canonical minimal tenant record
 /// used by workflows/actors — <em>do not modify <see cref="TenantInfo"/></em>).
 /// <para>

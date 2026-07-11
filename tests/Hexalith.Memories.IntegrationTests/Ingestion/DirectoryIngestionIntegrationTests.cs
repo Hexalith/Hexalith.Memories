@@ -21,8 +21,8 @@ public sealed class DirectoryIngestionIntegrationTests
         // Scenario (Story 6.1 AC5, AC6):
         //   1. Create a temp directory with 5 supported files (.md, .pdf, .txt) + 2 unsupported (.exe, .iso).
         //   2. Inject the temp directory into Ingestion:AllowedDirectoryRoots via the Aspire fixture.
-        //   3. POST /api/ingest/directory; assert 202 with 5 enqueued, 2 skipped.
-        //   4. Poll GET /api/ingest/batches/{batchId} until all instances terminal.
+        //   3. POST /api/v1/ingest/directory; assert 202 with 5 enqueued, 2 skipped.
+        //   4. Poll GET /api/v1/ingest/batches/{batchId} until all instances terminal.
         //   5. Assert 5 indexed.
         _ = _fixture;
     }

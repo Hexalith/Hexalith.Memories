@@ -7,18 +7,18 @@ namespace Hexalith.Memories.Contracts.V1;
 
 /// <summary>
 /// Result of a synchronous per-unit inspection via
-/// <c>GET /api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}</c>.
-/// Returned only when the unit is present in at least one backend; otherwise
+/// <c>GET /api/v1/tenants/{tenantId}/consistency/inspect/{memoryUnitId}</c>.
+/// Returned only when the unit is present on at least one retrieval axis; otherwise
 /// the endpoint returns 404 with an <see cref="ErrorResponse"/>.
 /// </summary>
 /// <param name="TenantId">The tenant identifier.</param>
 /// <param name="MemoryUnitId">The memory unit identifier (ULID).</param>
-/// <param name="SyntacticPresent">Whether the unit is present in RediSearch.</param>
-/// <param name="SemanticPresent">Whether the unit is present in Redis Vector.</param>
-/// <param name="GraphPresent">Whether the unit is present in FalkorDB.</param>
-/// <param name="SyntacticDetail">Detail from the <c>{tenantId}:mu:{id}</c> hash; <c>null</c> if absent.</param>
-/// <param name="SemanticDetail">Detail from the <c>{tenantId}:vec:{id}</c> hash; <c>null</c> if absent.</param>
-/// <param name="GraphDetail">Detail from the FalkorDB node; <c>null</c> if absent.</param>
+/// <param name="SyntacticPresent">Whether the unit is present on the syntactic axis.</param>
+/// <param name="SemanticPresent">Whether the unit is present on the semantic axis.</param>
+/// <param name="GraphPresent">Whether the unit is present on the graph axis.</param>
+/// <param name="SyntacticDetail">Syntactic-axis detail; <c>null</c> if absent.</param>
+/// <param name="SemanticDetail">Semantic-axis detail; <c>null</c> if absent.</param>
+/// <param name="GraphDetail">Graph-axis detail; <c>null</c> if absent.</param>
 /// <param name="Recommendation">Repair recommendation (<c>NoOp</c> when fully consistent).</param>
 /// <param name="CheckedAt">Timestamp of the probe (UTC).</param>
 public sealed record ConsistencyInspectionResult(

@@ -29,7 +29,7 @@ actor is independent per tenant; one tenant cannot consume another's budget.
 Embedding activities read tenant embedding configuration through a process-local,
 tenant-keyed cache. The default cache TTL is **30 seconds** and is bounded to the
 range 1-300 seconds by `Ingestion:EmbeddingConfigCache:CacheTtlSeconds`. Operator
-updates via `PUT /api/tenants/{tenantId}/embedding-config` are therefore observed
+updates via `PUT /api/v1/tenants/{tenantId}/embedding-config` are therefore observed
 within that configured bound. The cache stores the `TenantEmbeddingConfig` contract,
 including the provider secret key name, but it does not store provider secret values.
 

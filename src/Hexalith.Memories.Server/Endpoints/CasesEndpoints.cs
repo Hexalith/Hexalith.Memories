@@ -74,7 +74,7 @@ internal static class CasesEndpoints
             }
 
             Case created = await caseService.CreateCaseAsync(validatedInput, cancellationToken);
-            return Results.Created($"/api/tenants/{tenantId}/cases/{created.Id}", created);
+            return Results.Created(MemoriesRoutes.CaseLocation(tenantId, created.Id), created);
         });
 
         app.MapGet(MemoriesRoutes.Cases, async (
@@ -317,7 +317,7 @@ internal static class CasesEndpoints
                     attempt.Message ?? "Cannot re-ingest this non-URL failed unit because the original source content is unavailable.",
                     attempt.Suggestion ?? "Re-ingest from the original file or event source if available, or ingest the content again.")),
                 ReIngestionAttemptOutcome.Scheduled => Results.Accepted(
-                    $"/api/ingest/{attempt.WorkflowInstanceId}",
+                    MemoriesRoutes.IngestStatusLocation(attempt.WorkflowInstanceId!),
                     new { newWorkflowInstanceId = attempt.WorkflowInstanceId, memoryUnitId }),
                 _ => throw new InvalidOperationException($"Unsupported re-ingestion outcome '{attempt.Outcome}'."),
             };
@@ -462,7 +462,7 @@ internal static class CasesEndpoints
             {
                 (CaseMember member, bool created) = await caseService.AddMemberAsync(tenantId, caseId, validatedInput, cancellationToken);
                 return created
-                    ? Results.Created($"/api/tenants/{tenantId}/cases/{caseId}/members/{memberId}", member)
+                    ? Results.Created(MemoriesRoutes.CaseMemberLocation(tenantId, caseId, memberId), member)
                     : Results.Ok(member);
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("maximum"))
@@ -614,7 +614,7 @@ internal static class CasesEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "CASE_NOT_FOUND",
                     $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                    $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+                    $"Use GET /{MemoriesRoutes.CasesPath(tenantId)} to list available cases."));
             }
 
             if (targetCase.Status == CaseStatus.Deleting)
@@ -637,7 +637,7 @@ internal static class CasesEndpoints
                 : Results.NotFound(new ErrorResponse(
                     "MEMORY_UNIT_NOT_FOUND",
                     $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
-                    $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+                    $"Use GET {MemoriesRoutes.Search}?tenantId={Uri.EscapeDataString(tenantId)}&caseId={Uri.EscapeDataString(caseId)} to find available memory units."));
             }
             catch (Exception ex)
             {
@@ -700,7 +700,7 @@ internal static class CasesEndpoints
                 : Results.NotFound(new ErrorResponse(
                     "CASE_NOT_FOUND",
                     $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                    $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+                    $"Use GET /{MemoriesRoutes.CasesPath(tenantId)} to list available cases."));
             }
             catch (Exception ex)
             {
@@ -751,7 +751,7 @@ internal static class CasesEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "CASE_NOT_FOUND",
                     $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                    $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+                    $"Use GET /{MemoriesRoutes.CasesPath(tenantId)} to list available cases."));
             }
 
             if (targetCase.Status == CaseStatus.Deleting)
@@ -772,11 +772,11 @@ internal static class CasesEndpoints
                     return Results.NotFound(new ErrorResponse(
                         "MEMORY_UNIT_NOT_FOUND",
                         $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
-                        $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+                        $"Use GET {MemoriesRoutes.Search}?tenantId={Uri.EscapeDataString(tenantId)}&caseId={Uri.EscapeDataString(caseId)} to find available memory units."));
                 }
 
                 return Results.Accepted(
-                    $"/api/ingest/{result.Value.WorkflowInstanceId}",
+                    MemoriesRoutes.IngestStatusLocation(result.Value.WorkflowInstanceId),
                     new { memoryUnit = result.Value.Annotation, instanceId = result.Value.WorkflowInstanceId });
             }
             catch (InvalidOperationException ex) when (ex.Message == "MEMORY_UNIT_NOT_INDEXED")
@@ -822,7 +822,7 @@ internal static class CasesEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "CASE_NOT_FOUND",
                     $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                    $"Use GET /api/tenants/{tenantId}/cases to list available cases."));
+                    $"Use GET /{MemoriesRoutes.CasesPath(tenantId)} to list available cases."));
             }
 
             MemoryUnit? targetMemoryUnit = await caseService.GetMemoryUnitAsync(tenantId, memoryUnitId, cancellationToken);
@@ -831,7 +831,7 @@ internal static class CasesEndpoints
                 return Results.NotFound(new ErrorResponse(
                     "MEMORY_UNIT_NOT_FOUND",
                     $"Memory unit '{memoryUnitId}' not found in case '{caseId}'.",
-                    $"Use GET /api/search?tenantId={tenantId}&caseId={caseId} to find available memory units."));
+                    $"Use GET {MemoriesRoutes.Search}?tenantId={Uri.EscapeDataString(tenantId)}&caseId={Uri.EscapeDataString(caseId)} to find available memory units."));
             }
 
             List<MemoryUnit> annotations = await caseService.ListAnnotationsAsync(tenantId, memoryUnitId, cancellationToken);

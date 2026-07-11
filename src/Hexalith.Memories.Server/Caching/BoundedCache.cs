@@ -11,7 +11,7 @@ using System.Collections.Concurrent;
 /// Eviction helper for the short-lived per-process read caches (Story 24.2 review P4).
 /// The tenant read caches are <see cref="ConcurrentDictionary{TKey,TValue}"/> instances with lazy
 /// per-key expiry only; without a bound, distinct-key probing (e.g. negative tenant-status entries
-/// seeded by <c>/api/search</c> with attacker-controlled but valid-format tenant ids) grows the
+/// seeded by <c>/api/v1/search</c> with attacker-controlled but valid-format tenant ids) grows the
 /// dictionary without limit. This helper caps that growth before each insert.
 /// </summary>
 internal static class BoundedCache

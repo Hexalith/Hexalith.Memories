@@ -7,7 +7,7 @@ authoritative description of the ingest dedup/idempotency guarantees.
 - **Status:** Stable (graduated out of `HXL001` — see [experimental-apis.md](./experimental-apis.md))
 - **Client:** [`MemoriesClient.IngestAsync`](../../src/Hexalith.Memories.Client.Rest/MemoriesClient.cs) (`Hexalith.Memories.Client.Rest`, NuGet-publishable)
 - **Contract:** [`IngestionInput`](../../src/Hexalith.Memories.Contracts/V1/IngestionInput.cs) (`Hexalith.Memories.Contracts`, NuGet-publishable)
-- **Ingress:** `POST /api/ingest` → `IngestionWorkflow` (Dapr Workflow)
+- **Ingress:** `POST /api/v1/ingest` → `IngestionWorkflow` (Dapr Workflow)
 
 ---
 
@@ -40,7 +40,7 @@ No breaking signature change, no `BREAKING CHANGE:` footer — this is a `feat:`
 Two near-simultaneous ingests of the same dedup identity resolve to **exactly one** memory unit; the loser
 observes the winner's `MemoryUnitId`.
 
-The REST `/api/ingest` ingress performs an **atomic preflight reservation** (Redis `SET … NX`) on a dedicated
+The REST `/api/v1/ingest` ingress performs an **atomic preflight reservation** (Redis `SET … NX`) on a dedicated
 `ingest-reserve:{dedupKey}` key whose value is the winning workflow's instance id, **before** scheduling the
 workflow:
 

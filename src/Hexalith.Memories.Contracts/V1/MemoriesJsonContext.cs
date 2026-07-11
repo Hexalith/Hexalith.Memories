@@ -64,17 +64,13 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(IReadOnlyList<EvidencePacketExpansionHandle>))]
 [JsonSerializable(typeof(IReadOnlyList<EvidencePacketRecoveryAction>))]
 [JsonSerializable(typeof(IReadOnlyList<EvidencePacketSource>))]
-[JsonSerializable(typeof(ExtractionInput))]
 [JsonSerializable(typeof(FusedScoredResult))]
 [JsonSerializable(typeof(FusionWeights))]
 [JsonSerializable(typeof(HybridSearchResult))]
 [JsonSerializable(typeof(OmittedReason))]
-[JsonSerializable(typeof(ExtractionResult))]
 [JsonSerializable(typeof(FailureDetails))]
 [JsonSerializable(typeof(GraphEdge))]
 [JsonSerializable(typeof(IReadOnlyList<ScoredResult>))]
-[JsonSerializable(typeof(IndexInput))]
-[JsonSerializable(typeof(IndexResult))]
 [JsonSerializable(typeof(IngestionActivityRetryConfiguration))]
 [JsonSerializable(typeof(IngestionInput))]
 [JsonSerializable(typeof(IngestionResult))]
@@ -105,8 +101,6 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(TenantStatusUpdateInput))]
 [JsonSerializable(typeof(TenantDeletionInput))]
 [JsonSerializable(typeof(TenantDeletionResult))]
-[JsonSerializable(typeof(BatchedGraphDeletionInput))]
-[JsonSerializable(typeof(BatchedGraphDeletionResult))]
 [JsonSerializable(typeof(IReadOnlyList<TenantInfo>))]
 [JsonSerializable(typeof(TenantIsolationCheckResult))]
 [JsonSerializable(typeof(TenantIsolationVerificationResult))]
@@ -121,8 +115,6 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(TenantUpdateInput))]
 // Story 6.3: retry / failure visibility / re-ingestion contracts.
 [JsonSerializable(typeof(CaseIngestionCounts))]
-[JsonSerializable(typeof(CounterTransitionInput))]
-[JsonSerializable(typeof(FailedUnitInput))]
 [JsonSerializable(typeof(FailedUnitSummary))]
 [JsonSerializable(typeof(FailedUnitsPage))]
 [JsonSerializable(typeof(IReadOnlyList<FailedUnitSummary>))]
@@ -131,8 +123,6 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(BulkReIngestionResponse))]
 [JsonSerializable(typeof(IReadOnlyList<ReIngestedUnitInfo>))]
 // Story 6.1: URL and directory ingestion contracts.
-[JsonSerializable(typeof(UrlFetchResult))]
-[JsonSerializable(typeof(FetchUrlInput))]
 [JsonSerializable(typeof(UrlIngestionRequest))]
 [JsonSerializable(typeof(UrlIngestionResponse))]
 [JsonSerializable(typeof(DirectoryIngestionRequest))]
@@ -179,15 +169,8 @@ using System.Text.Json.Serialization.Metadata;
 // Story 9.2: dual embedding + NL description contracts.
 [JsonSerializable(typeof(ConfidenceSource))]
 [JsonSerializable(typeof(EmbeddingContentKind))]
-[JsonSerializable(typeof(NaturalLanguageDescriptionInput))]
-[JsonSerializable(typeof(NaturalLanguageDescriptionResult))]
 [JsonSerializable(typeof(NaturalLanguageWorkflowOptions))]
-[JsonSerializable(typeof(NaturalLanguageIndexInput))]
 [JsonSerializable(typeof(NaturalLanguageEmbeddingStatus))]
-[JsonSerializable(typeof(QueueNaturalLanguageEmbeddingRetryInput))]
-[JsonSerializable(typeof(FailedNaturalLanguageEmbeddingRecord))]
-[JsonSerializable(typeof(NaturalLanguageEmbeddingRetryInput))]
-[JsonSerializable(typeof(NaturalLanguageEmbeddingRetryResult))]
 // Story 9.2 Review D7: typed identifier for informational consistency notes.
 [JsonSerializable(typeof(ConsistencyNoteKind))]
 // Story 9.3: handler registry + mismatch report contracts.
@@ -207,10 +190,10 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(SearchIndexEntryRemoved))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
-/// <summary>Shared JSON serialization options for all Memories contracts.</summary>
+/// <summary>Shared JSON serialization options for Memories V1 wire contracts.</summary>
 public static class MemoriesJsonContext
 {
-    /// <summary>Gets the shared serializer options for Memories contracts and workflow payloads.</summary>
+    /// <summary>Gets the shared serializer options for Memories V1 wire contracts.</summary>
     public static JsonSerializerOptions Options { get; } = CreateOptions();
 
     private static JsonSerializerOptions CreateOptions()

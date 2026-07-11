@@ -241,14 +241,15 @@ public sealed class HandlerRegistryServiceTests
     private static DaprClient BuildDaprClientReturningTenant(string tenantId, TenantRegistryEntry? entry)
     {
         DaprClient client = Substitute.For<DaprClient>();
+        StoredTenantRegistryEntry? storedEntry = entry is null ? null : PersistenceModelMapper.ToStored(entry);
         client
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 Arg.Any<string>(),
                 Arg.Is<string>(s => s.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<TenantRegistryEntry?>(entry));
+            .Returns(Task.FromResult(storedEntry));
         return client;
     }
 }

@@ -38,10 +38,10 @@ server). Do NOT create per-request sources.
 
 | Activity               | Emitted by                                 | Tags                                                                |
 | ---------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
-| `memories.search`      | `GET /api/search`                          | `memories.tenant_id`, `memories.operation`, `memories.axis`         |
-| `memories.ingest`      | `POST /api/ingest` (+`/url`, `/directory`) | `memories.tenant_id`, `memories.operation`, `memories.source_type`  |
-| `memories.traverse`    | `GET /api/tenants/{id}/traverse`           | `memories.tenant_id`, `memories.operation`                          |
-| `memories.case-access` | `GET /api/.../memory-units/{id}`           | `memories.tenant_id`, `memories.case_id`, `memories.memory_unit_id` |
+| `memories.search`      | `GET /api/v1/search`                          | `memories.tenant_id`, `memories.operation`, `memories.axis`         |
+| `memories.ingest`      | `POST /api/v1/ingest` (+`/url`, `/directory`) | `memories.tenant_id`, `memories.operation`, `memories.source_type`  |
+| `memories.traverse`    | `GET /api/v1/tenants/{id}/traverse`           | `memories.tenant_id`, `memories.operation`                          |
+| `memories.case-access` | `GET /api/v1/.../memory-units/{id}`           | `memories.tenant_id`, `memories.case_id`, `memories.memory_unit_id` |
 | `memories.cli.invoke`  | CLI root span (opt-in)                     | `memories.command`                                                  |
 
 ---
@@ -443,7 +443,7 @@ against a running Aspire stack in five steps:
         --axis syntactic
     ```
 
-    (Or hit the REST endpoint directly: `curl http://localhost:5000/api/search?tenant=acme&query=canary&axis=syntactic`.)
+    (Or hit the REST endpoint directly: `curl http://localhost:5000/api/v1/search?tenant=acme&query=canary&axis=syntactic`.)
 
 3. **Open the Aspire dashboard Traces view** at the URL printed on boot, pick the most recent
    trace, and expand the child spans. You should see at least one span per backend Redis call.

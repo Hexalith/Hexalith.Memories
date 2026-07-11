@@ -11,6 +11,7 @@ using Dapr.Actors.Runtime;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.Logging;
 
@@ -55,7 +56,7 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
         if (current is null)
         {
             TenantEmbeddingConfig initialConfig = config with { ReindexRequired = false };
-            await StateManager.SetStateAsync(StateName, initialConfig).ConfigureAwait(false);
+            await StateManager.SetStateAsync(StateName, PersistenceModelMapper.ToStored(initialConfig)).ConfigureAwait(false);
             return;
         }
 
@@ -75,7 +76,7 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
 
         bool reindexRequired = current.ReindexRequired || (affectedFields.Length > 0 && forceReindex);
         TenantEmbeddingConfig configToStore = config with { ReindexRequired = reindexRequired };
-        await StateManager.SetStateAsync(StateName, configToStore).ConfigureAwait(false);
+        await StateManager.SetStateAsync(StateName, PersistenceModelMapper.ToStored(configToStore)).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -83,15 +84,15 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
     {
         ArgumentNullException.ThrowIfNull(weights);
         weights.Validate();
-        await StateManager.SetStateAsync(FusionWeightsStateName, weights).ConfigureAwait(false);
+        await StateManager.SetStateAsync(FusionWeightsStateName, PersistenceModelMapper.ToStored(weights)).ConfigureAwait(false);
     }
 
     private async Task<TenantEmbeddingConfig?> TryGetStoredEmbeddingConfigAsync()
     {
         try
         {
-            ConditionalValue<TenantEmbeddingConfig> result = await StateManager
-                .TryGetStateAsync<TenantEmbeddingConfig>(StateName)
+            ConditionalValue<StoredTenantEmbeddingConfig> result = await StateManager
+                .TryGetStateAsync<StoredTenantEmbeddingConfig>(StateName)
                 .ConfigureAwait(false);
 
             if (!result.HasValue)
@@ -101,8 +102,9 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
 
             try
             {
-                EmbeddingProviderDefaults.Validate(result.Value);
-                return result.Value;
+                TenantEmbeddingConfig config = PersistenceModelMapper.ToContract(result.Value);
+                EmbeddingProviderDefaults.Validate(config);
+                return config;
             }
             catch (ArgumentException ex)
             {
@@ -127,8 +129,8 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
     {
         try
         {
-            ConditionalValue<FusionWeights> result = await StateManager
-                .TryGetStateAsync<FusionWeights>(FusionWeightsStateName)
+            ConditionalValue<StoredFusionWeights> result = await StateManager
+                .TryGetStateAsync<StoredFusionWeights>(FusionWeightsStateName)
                 .ConfigureAwait(false);
 
             if (!result.HasValue)
@@ -138,8 +140,9 @@ internal sealed class TenantConfigurationActor : Actor, ITenantConfigurationActo
 
             try
             {
-                result.Value.Validate();
-                return result.Value;
+                FusionWeights weights = PersistenceModelMapper.ToContract(result.Value);
+                weights.Validate();
+                return weights;
             }
             catch (ArgumentException ex)
             {

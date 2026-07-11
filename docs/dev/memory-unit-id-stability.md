@@ -77,7 +77,7 @@ Story 18.4 added explicit idempotency tokens. They **augment, never replace** th
 Downstream consumers SHOULD resolve the current id through the Story 18.5 lookup rather than maintaining an unbounded historical list of `MemoryUnitId`s:
 
 - **Client:** `MemoriesClient.LookupMemoryUnitIdBySourceUriAsync(tenantId, caseId, sourceUri, ct)` — returns `string?` (`null` on a structured 404 miss; throws for other non-success statuses, never silently a miss).
-- **Route:** `GET /api/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri?sourceUri=...` — a deterministic keyed read over the permanent dedup record, **not** a free-text search.
+- **Route:** `GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri?sourceUri=...` — a deterministic keyed read over the permanent dedup record, **not** a free-text search.
 
 ### When to key/dedup by `sourceUri` instead of only `MemoryUnitId`
 

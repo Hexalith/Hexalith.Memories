@@ -40,6 +40,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Hexalith.Memories.Server.Workflows.Contracts" />
+    <Using Include="Hexalith.Memories.Server.Serialization" />
   </ItemGroup>
 
 </Project>

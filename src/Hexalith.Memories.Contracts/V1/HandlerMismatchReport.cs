@@ -10,7 +10,7 @@ using System.Linq;
 using System.Text.Json.Serialization;
 
 /// <summary>Story 9.3 — tenant-scoped mismatch report returned by
-/// <c>GET /api/tenants/{tenantId}/handlers/mismatches</c>. Experimental surface (HXL002).</summary>
+/// <c>GET /api/v1/tenants/{tenantId}/handlers/mismatches</c>. Experimental surface (HXL002).</summary>
 public sealed record HandlerMismatchReport
 {
     [JsonPropertyName("tenantId")]

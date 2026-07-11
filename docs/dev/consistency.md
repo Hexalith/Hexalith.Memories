@@ -34,11 +34,11 @@ state.
 
 | Endpoint | Path | Predicate | Typical consumer | Success status |
 | --- | --- | --- | --- | --- |
-| Verify | `POST /api/tenants/{tenantId}/consistency/verify` | Accepts optional `batchSize` in [10, 5000] | `memories consistency verify` CLI; operator scripts | `202 Accepted` with `workflowInstanceId` |
-| Verify status | `GET /api/tenants/{tenantId}/consistency/verify/{instanceId}` | Instance id must start with `verify-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
-| Inspect | `GET /api/tenants/{tenantId}/consistency/inspect/{memoryUnitId}` | Memory unit id is an opaque, non-blank identifier; it is not ULID-only | `memories consistency inspect` CLI | `200 OK` with `ConsistencyInspectionResult` |
-| Repair | `POST /api/tenants/{tenantId}/consistency/repair` | Accepts optional `batchSize` + `includeUnrepairable` | `memories consistency repair --yes` CLI | `202 Accepted` with `workflowInstanceId` |
-| Repair status | `GET /api/tenants/{tenantId}/consistency/repair/{instanceId}` | Instance id must start with `repair-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
+| Verify | `POST /api/v1/tenants/{tenantId}/consistency/verify` | Accepts optional `batchSize` in [10, 5000] | `memories consistency verify` CLI; operator scripts | `202 Accepted` with `workflowInstanceId` |
+| Verify status | `GET /api/v1/tenants/{tenantId}/consistency/verify/{instanceId}` | Instance id must start with `verify-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
+| Inspect | `GET /api/v1/tenants/{tenantId}/consistency/inspect/{memoryUnitId}` | Memory unit id is an opaque, non-blank identifier; it is not ULID-only | `memories consistency inspect` CLI | `200 OK` with `ConsistencyInspectionResult` |
+| Repair | `POST /api/v1/tenants/{tenantId}/consistency/repair` | Accepts optional `batchSize` + `includeUnrepairable` | `memories consistency repair --yes` CLI | `202 Accepted` with `workflowInstanceId` |
+| Repair status | `GET /api/v1/tenants/{tenantId}/consistency/repair/{instanceId}` | Instance id must start with `repair-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
 
 Typical latency: probe time per unit is ~1–2 ms per backend. A tenant with N units
 takes ~3·N·2 ms = ~6N ms total (bounded by the batch fan-out). Expected wall-clock

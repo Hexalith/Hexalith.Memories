@@ -34,7 +34,7 @@ public sealed class CliCommandExecutorErrorTests
     public async Task ServerReportedTenantNotFound_Human_EmitsMultiLineStderrAndExitsDomain()
     {
         (CliCommandExecutor executor, StringWriter stdout, StringWriter stderr) = BuildExecutor(OutputFormat.Human);
-        ErrorResponse error = new("TENANT_NOT_FOUND", "Tenant 'acme' does not exist.", "List available tenants with GET /api/tenants");
+        ErrorResponse error = new("TENANT_NOT_FOUND", "Tenant 'acme' does not exist.", "List available tenants with GET /api/v1/tenants");
 
         int exitCode = await executor.ExecuteAsync(
             "tenant list",

@@ -86,31 +86,31 @@ public class TenantMetricsServiceTests
 
         if (syntacticUp)
         {
-            sizes.RediSearchKeyCount.ShouldBe(10L);
-            status.RediSearch.ShouldBe(IndexHealth.Ready);
+            sizes.SyntacticKeyCount.ShouldBe(10L);
+            status.Syntactic.ShouldBe(IndexHealth.Ready);
         }
         else
         {
-            sizes.RediSearchKeyCount.ShouldBeNull();
-            status.RediSearch.ShouldBe(IndexHealth.Unknown);
+            sizes.SyntacticKeyCount.ShouldBeNull();
+            status.Syntactic.ShouldBe(IndexHealth.Unknown);
         }
 
         if (semanticUp)
         {
-            sizes.RedisVectorKeyCount.ShouldBe(20L);
-            status.RedisVector.ShouldBe(IndexHealth.Ready);
+            sizes.SemanticKeyCount.ShouldBe(20L);
+            status.Semantic.ShouldBe(IndexHealth.Ready);
         }
         else
         {
-            sizes.RedisVectorKeyCount.ShouldBeNull();
-            status.RedisVector.ShouldBe(IndexHealth.Unknown);
+            sizes.SemanticKeyCount.ShouldBeNull();
+            status.Semantic.ShouldBe(IndexHealth.Unknown);
         }
 
         // FalkorDB path is environment-dependent without a real server; tolerance-contract suffices.
-        (status.FalkorDb == IndexHealth.Unknown
-            || status.FalkorDb == IndexHealth.Missing
-            || status.FalkorDb == IndexHealth.Ready
-            || status.FalkorDb == IndexHealth.Degraded).ShouldBeTrue();
+        (status.Graph == IndexHealth.Unknown
+            || status.Graph == IndexHealth.Missing
+            || status.Graph == IndexHealth.Ready
+            || status.Graph == IndexHealth.Degraded).ShouldBeTrue();
     }
 
     [Fact]
@@ -127,10 +127,10 @@ public class TenantMetricsServiceTests
 
         (TenantIndexSizes sizes, TenantIndexStatus status) = await service.GetIndexSizesAsync(TenantId, CancellationToken.None);
 
-        sizes.RediSearchKeyCount.ShouldBeNull();
-        status.RediSearch.ShouldBe(IndexHealth.Missing);
-        sizes.RedisVectorKeyCount.ShouldBeNull();
-        status.RedisVector.ShouldBe(IndexHealth.Missing);
+        sizes.SyntacticKeyCount.ShouldBeNull();
+        status.Syntactic.ShouldBe(IndexHealth.Missing);
+        sizes.SemanticKeyCount.ShouldBeNull();
+        status.Semantic.ShouldBe(IndexHealth.Missing);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class TenantMetricsServiceTests
 
         (_, TenantIndexStatus status) = await service.GetIndexSizesAsync(TenantId, CancellationToken.None);
 
-        status.RediSearch.ShouldBe(IndexHealth.Degraded);
+        status.Syntactic.ShouldBe(IndexHealth.Degraded);
     }
 
     [Fact]
@@ -165,8 +165,8 @@ public class TenantMetricsServiceTests
 
         (TenantIndexSizes sizes, TenantIndexStatus status) = await service.GetIndexSizesAsync(TenantId, CancellationToken.None);
 
-        sizes.RediSearchKeyCount.ShouldBeNull();
-        status.RediSearch.ShouldBe(IndexHealth.Degraded);
+        sizes.SyntacticKeyCount.ShouldBeNull();
+        status.Syntactic.ShouldBe(IndexHealth.Degraded);
     }
 
     // GetLastActivityAtAsync

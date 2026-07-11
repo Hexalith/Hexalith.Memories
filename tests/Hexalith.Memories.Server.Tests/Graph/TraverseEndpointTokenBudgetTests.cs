@@ -12,7 +12,7 @@ using Shouldly;
 
 /// <summary>
 /// Story 10.2 Task 13.2 — Tier-2 endpoint-wiring coverage for the token-budget plumbing
-/// applied between <c>/api/tenants/{tenantId}/traverse</c> and <c>GraphTraversalService</c>.
+/// applied between <c>/api/v1/tenants/{tenantId}/traverse</c> and <c>GraphTraversalService</c>.
 /// Exercises <see cref="TraverseResponseMetadataApplier"/> directly because that helper is
 /// the in-memory surface the traverse endpoint defers to once the service has produced a
 /// <see cref="TraversalResult"/>.

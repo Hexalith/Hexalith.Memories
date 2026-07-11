@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.EventStoreIntegration;
 using Dapr;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Hosting;
@@ -118,7 +119,7 @@ internal sealed partial class EventStoreRoutingConfigValidator : IHostedService
             LogUnknownTenants(_logger, joined);
             throw new InvalidOperationException(
                 $"EventStore routing configuration references {missing.Count} unknown tenant(s): {joined}. "
-                + "Register the tenants with POST /api/tenants or remove them from EventStoreIntegration:Routing:SourceToTenantMap.");
+                + $"Register the tenants with POST {MemoriesRoutes.Tenants} or remove them from EventStoreIntegration:Routing:SourceToTenantMap.");
         }
 
         LogValidated(_logger, options.SourceToTenantMap.Count);

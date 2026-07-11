@@ -230,7 +230,7 @@ internal static class SearchEndpoints
                             Results.NotFound(new ErrorResponse(
                                 "CASE_NOT_FOUND",
                                 $"Case '{caseId}' not found in tenant '{tenantId}'.",
-                                $"Use GET /api/tenants/{tenantId}/cases to list available cases.")));
+                                $"Use GET /{MemoriesRoutes.CasesPath(tenantId)} to list available cases.")));
                     }
                 }
 

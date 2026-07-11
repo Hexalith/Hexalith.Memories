@@ -65,7 +65,7 @@ public sealed class DirectoryIngestionEndpointE2ETests : IDisposable
             using HttpClient client = CreateAuthorizedClient();
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                "/api/ingest/directory",
+                "/api/v1/ingest/directory",
                 CreateRequest(root),
                 MemoriesJsonContext.Options,
                 TestContext.Current.CancellationToken);
@@ -80,7 +80,7 @@ public sealed class DirectoryIngestionEndpointE2ETests : IDisposable
             outcome.InstanceIds.Distinct(StringComparer.Ordinal).Count().ShouldBe(6);
             outcome.Skipped.ShouldContain(item => item.Path == unsupportedPath && item.Reason == "UNSUPPORTED_EXTENSION");
             response.Headers.Location.ShouldNotBeNull();
-            response.Headers.Location!.ToString().ShouldBe($"/api/ingest/batches/{outcome.BatchId}");
+            response.Headers.Location!.ToString().ShouldBe($"/api/v1/ingest/batches/{outcome.BatchId}");
 
             List<IngestionInput> scheduledInputs;
             lock (_gate)
@@ -109,7 +109,7 @@ public sealed class DirectoryIngestionEndpointE2ETests : IDisposable
             finalState.Files.Select(file => file.SourceUri).ShouldBe(finalState.Files.Select(file => file.SourceUri).Order(StringComparer.Ordinal));
 
             using HttpResponseMessage statusResponse = await client.GetAsync(
-                $"/api/ingest/batches/{outcome.BatchId}",
+                $"/api/v1/ingest/batches/{outcome.BatchId}",
                 TestContext.Current.CancellationToken);
 
             statusResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -153,7 +153,7 @@ public sealed class DirectoryIngestionEndpointE2ETests : IDisposable
             using HttpClient client = CreateAuthorizedClient();
 
             using HttpResponseMessage response = await client.PostAsJsonAsync(
-                "/api/ingest/directory",
+                "/api/v1/ingest/directory",
                 CreateRequest(root),
                 MemoriesJsonContext.Options,
                 TestContext.Current.CancellationToken);
@@ -220,7 +220,7 @@ public sealed class DirectoryIngestionEndpointE2ETests : IDisposable
             WorkflowInstanceId: null);
 
         _factory.DaprClient
-            .GetStateAsync<TenantRegistryEntry?>(
+            .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
                 Arg.Is<string>(key => key == $"tenant-registry-{TenantId}"),
                 Arg.Any<ConsistencyMode?>(),

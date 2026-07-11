@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.Contracts.V1;
 
-/// <summary>Synchronous summary returned by POST /api/ingest/directory.</summary>
+/// <summary>Synchronous summary returned by POST /api/v1/ingest/directory.</summary>
 /// <param name="BatchId">Server-generated ULID; correlates to each scheduled workflow's CorrelationId.</param>
 /// <param name="Discovered">Total files the enumerator saw (after recursive traversal).</param>
 /// <param name="Enqueued">Number of IngestionWorkflow instances scheduled (one per accepted file).</param>

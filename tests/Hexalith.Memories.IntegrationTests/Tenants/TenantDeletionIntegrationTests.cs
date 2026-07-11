@@ -36,7 +36,7 @@ public sealed class TenantDeletionIntegrationTests
     {
         string tenantId = $"tenant-{Guid.NewGuid():N}";
 
-        using HttpResponseMessage response = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage response = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         ErrorResponse? error = await response.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -49,8 +49,8 @@ public sealed class TenantDeletionIntegrationTests
     {
         string tenantId = await ProvisionTenantAsync();
 
-        Task<HttpResponseMessage> firstDelete = _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
-        Task<HttpResponseMessage> secondDelete = _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        Task<HttpResponseMessage> firstDelete = _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
+        Task<HttpResponseMessage> secondDelete = _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         HttpResponseMessage[] responses = await Task.WhenAll(firstDelete, secondDelete);
 
         try
@@ -107,19 +107,19 @@ public sealed class TenantDeletionIntegrationTests
         await redisDb.HashSetAsync(orphanLegacyNaturalLanguageKey, "caseId", caseId);
 
         using HttpResponseMessage memberResponse = await _fixture.MemoriesClient.PutAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases/{caseId}/members/user-cleanup",
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/user-cleanup",
             new AddCaseMemberInput("user-cleanup", CaseMemberType.User),
             MemoriesJsonContext.Options);
         memberResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         string? workflowInstanceId = (await ReadDeleteResponseAsync(deleteResponse.Content)).WorkflowInstanceId;
         workflowInstanceId.ShouldNotBeNullOrWhiteSpace();
 
         await WaitForTenantDeletedAsync(tenantId);
 
-        using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync("/api/tenants");
+        using HttpResponseMessage listResponse = await _fixture.MemoriesClient.GetAsync("/api/v1/tenants");
         listResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         IReadOnlyList<TenantInfo>? tenants = await listResponse.Content.ReadFromJsonAsync<IReadOnlyList<TenantInfo>>(MemoriesJsonContext.Options);
         tenants.ShouldNotBeNull();
@@ -179,7 +179,7 @@ public sealed class TenantDeletionIntegrationTests
         preDeleteCount.ShouldBeGreaterThanOrEqualTo(nodeCount);
 
         // Delete tenant
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         await WaitForTenantDeletedAsync(tenantId);
@@ -207,11 +207,11 @@ public sealed class TenantDeletionIntegrationTests
 
         // Verify search works before deletion
         using HttpResponseMessage preDeleteSearch = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=searchzero");
+            $"/api/v1/search?tenantId={tenantId}&query=searchzero");
         preDeleteSearch.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // Delete tenant
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         await WaitForTenantDeletedAsync(tenantId);
 
@@ -219,7 +219,7 @@ public sealed class TenantDeletionIntegrationTests
         // TenantStatusGuard.ToHttpResult, TENANT_NOT_FOUND maps to 404; 409 Conflict is reserved for
         // non-Active-but-existing states (Deleting/Provisioning/Failed).
         using HttpResponseMessage postDeleteSearch = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=searchzero");
+            $"/api/v1/search?tenantId={tenantId}&query=searchzero");
         postDeleteSearch.StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         ErrorResponse? error = await postDeleteSearch.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
@@ -239,7 +239,7 @@ public sealed class TenantDeletionIntegrationTests
         string caseId = await CreateCaseAsync(tenantId, "Guard test case");
 
         // Start deletion — tenant transitions to Deleting atomically before workflow starts
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         deleteResponse.StatusCode.ShouldBe(HttpStatusCode.Accepted);
 
         // Immediately try ingestion — should be rejected with 409
@@ -255,7 +255,7 @@ public sealed class TenantDeletionIntegrationTests
         };
 
         using HttpResponseMessage ingestResponse = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest", ingestInput, MemoriesJsonContext.Options);
+            "/api/v1/ingest", ingestInput, MemoriesJsonContext.Options);
 
         // Tenant is either Deleting (409) or already deleted (409 TENANT_NOT_FOUND)
         ingestResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict);
@@ -265,7 +265,7 @@ public sealed class TenantDeletionIntegrationTests
 
         // Immediately try search — should also be rejected
         using HttpResponseMessage searchResponse = await _fixture.MemoriesClient.GetAsync(
-            $"/api/search?tenantId={tenantId}&query=guard-test");
+            $"/api/v1/search?tenantId={tenantId}&query=guard-test");
         searchResponse.StatusCode.ShouldBe(HttpStatusCode.Conflict);
         ErrorResponse? searchError = await searchResponse.Content.ReadFromJsonAsync<ErrorResponse>(MemoriesJsonContext.Options);
         searchError.ShouldNotBeNull();
@@ -313,7 +313,7 @@ public sealed class TenantDeletionIntegrationTests
         (await redisDb.KeyExistsAsync(dedupKey)).ShouldBeTrue();
 
         // Cleanup: delete tenant fully to avoid orphaned state
-        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/tenants/{tenantId}");
+        using HttpResponseMessage deleteResponse = await _fixture.MemoriesClient.DeleteAsync($"/api/v1/tenants/{tenantId}");
         if (deleteResponse.StatusCode == HttpStatusCode.Accepted)
         {
             await WaitForTenantDeletedAsync(tenantId);
@@ -326,7 +326,7 @@ public sealed class TenantDeletionIntegrationTests
         TenantProvisioningInput input = new(tenantId, $"Tenant {tenantId}");
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/tenants",
+            "/api/v1/tenants",
             input,
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
@@ -341,7 +341,7 @@ public sealed class TenantDeletionIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}");
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 TenantInfo? tenant = await response.Content.ReadFromJsonAsync<TenantInfo>(MemoriesJsonContext.Options);
@@ -363,7 +363,7 @@ public sealed class TenantDeletionIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/tenants/{tenantId}");
+            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/v1/tenants/{tenantId}");
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 return;
@@ -378,7 +378,7 @@ public sealed class TenantDeletionIntegrationTests
     private async Task<string> CreateCaseAsync(string tenantId, string caseName)
     {
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            $"/api/tenants/{tenantId}/cases",
+            $"/api/v1/tenants/{tenantId}/cases",
             new CreateCaseInput("ignored", caseName, null),
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -402,7 +402,7 @@ public sealed class TenantDeletionIntegrationTests
         };
 
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/ingest",
+            "/api/v1/ingest",
             input,
             MemoriesJsonContext.Options);
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);

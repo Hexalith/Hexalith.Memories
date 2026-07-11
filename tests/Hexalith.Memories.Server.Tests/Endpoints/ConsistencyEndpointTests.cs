@@ -57,7 +57,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/unknown-tenant/consistency/verify",
+            "/api/v1/tenants/unknown-tenant/consistency/verify",
             new { },
             CancellationToken.None);
 
@@ -74,7 +74,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/bad~tenant/consistency/verify",
+            "/api/v1/tenants/bad~tenant/consistency/verify",
             new { },
             CancellationToken.None);
 
@@ -92,7 +92,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/verify",
+            "/api/v1/tenants/acme-consistency/consistency/verify",
             new ConsistencyVerificationRequest("acme-consistency", BatchSize: 9),
             CancellationToken.None);
 
@@ -110,13 +110,13 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/verify",
+            "/api/v1/tenants/acme-consistency/consistency/verify",
             new ConsistencyVerificationRequest("acme-consistency", BatchSize: 250),
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         response.Headers.Location.ShouldNotBeNull();
-        response.Headers.Location!.ToString().ShouldStartWith("/api/tenants/acme-consistency/consistency/verify/");
+        response.Headers.Location!.ToString().ShouldStartWith("/api/v1/tenants/acme-consistency/consistency/verify/");
 
         using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
         string workflowInstanceId = body.RootElement.GetProperty("workflowInstanceId").GetString().ShouldNotBeNull();
@@ -135,7 +135,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/acme-consistency/consistency/verify/repair-consistency-acme-consistency-abcd",
+            "/api/v1/tenants/acme-consistency/consistency/verify/repair-consistency-acme-consistency-abcd",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -181,7 +181,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/acme-consistency/consistency/verify/verify-consistency-acme-consistency-abc123",
+            "/api/v1/tenants/acme-consistency/consistency/verify/verify-consistency-acme-consistency-abc123",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -205,7 +205,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/acme-consistency/consistency/inspect/01HM5Q9WXGK6T8Q4Z5Y6V7W8XI", // invalid char 'I'
+            "/api/v1/tenants/acme-consistency/consistency/inspect/01HM5Q9WXGK6T8Q4Z5Y6V7W8XI", // invalid char 'I'
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -227,7 +227,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            $"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -260,7 +260,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            $"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -282,7 +282,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/repair",
+            "/api/v1/tenants/acme-consistency/consistency/repair",
             new ConsistencyRepairRequest("acme-consistency", BatchSize: 10_000),
             CancellationToken.None);
 
@@ -300,13 +300,13 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/repair",
+            "/api/v1/tenants/acme-consistency/consistency/repair",
             new ConsistencyRepairRequest("acme-consistency", BatchSize: 125, IncludeUnrepairable: true),
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         response.Headers.Location.ShouldNotBeNull();
-        response.Headers.Location!.ToString().ShouldStartWith("/api/tenants/acme-consistency/consistency/repair/");
+        response.Headers.Location!.ToString().ShouldStartWith("/api/v1/tenants/acme-consistency/consistency/repair/");
 
         using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(CancellationToken.None));
         string workflowInstanceId = body.RootElement.GetProperty("workflowInstanceId").GetString().ShouldNotBeNull();
@@ -353,7 +353,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            "/api/tenants/acme-consistency/consistency/repair/repair-consistency-acme-consistency-abc123",
+            "/api/v1/tenants/acme-consistency/consistency/repair/repair-consistency-acme-consistency-abc123",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -389,12 +389,12 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         _ = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/verify",
+            "/api/v1/tenants/acme-consistency/consistency/verify",
             new ConsistencyVerificationRequest("acme-consistency"),
             CancellationToken.None);
-        _ = await client.GetAsync($"/api/tenants/acme-consistency/consistency/inspect/{ValidUlid}", CancellationToken.None);
+        _ = await client.GetAsync($"/api/v1/tenants/acme-consistency/consistency/inspect/{ValidUlid}", CancellationToken.None);
         _ = await client.PostAsJsonAsync(
-            "/api/tenants/acme-consistency/consistency/repair",
+            "/api/v1/tenants/acme-consistency/consistency/repair",
             new ConsistencyRepairRequest("acme-consistency", IncludeUnrepairable: true),
             CancellationToken.None);
 
@@ -424,7 +424,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
                 WorkflowInstanceId: null);
 
             DaprClient
-                .GetStateAsync<TenantRegistryEntry?>(
+                .GetStateAsync<StoredTenantRegistryEntry?>(
                     StoreName,
                     Arg.Is<string>(k => k.Contains(tenantId, StringComparison.Ordinal)),
                     Arg.Any<ConsistencyMode?>(),

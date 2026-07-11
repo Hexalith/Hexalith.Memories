@@ -187,7 +187,7 @@ server = server
     .WithReference(conversationLlm);
 #pragma warning restore CS0618
 
-// Story 6.1: dev-only default allow-list for POST /api/ingest/directory so developers can batch-ingest
+// Story 6.1: dev-only default allow-list for POST /api/v1/ingest/directory so developers can batch-ingest
 // the repo-local test-data/ folder without touching config. Production deployments must NOT rely on this
 // — appsettings.json keeps AllowedDirectoryRoots empty, so the endpoint is disabled by default.
 string testDataRoot = EnsureTestDataRoot();
@@ -282,7 +282,7 @@ static string EnsureTestDataRoot()
     {
         File.WriteAllText(
             readme,
-            "# test-data\n\nDev-only allow-list root for POST /api/ingest/directory. Safe to add sample files here; the endpoint is still disabled in production by default (appsettings.json AllowedDirectoryRoots=[]).\n");
+            "# test-data\n\nDev-only allow-list root for POST /api/v1/ingest/directory. Safe to add sample files here; the endpoint is still disabled in production by default (appsettings.json AllowedDirectoryRoots=[]).\n");
     }
 
     return testData;
