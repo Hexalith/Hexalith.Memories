@@ -186,6 +186,10 @@ No new/changed dependencies. Everything uses the pinned stack (`net10.0`/C# 14, 
 
 ## Dev Agent Record
 
+### Implementation Plan
+
+- Preserve published history and add an append-only Conventional Commit carrying both a `!` marker and a `BREAKING CHANGE:` footer for the approved `TraverseAsync` parameter reorder; validate the new commit with the repository-pinned commitlint configuration before closing the review finding.
+
 ### Agent Model Used
 
 Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
