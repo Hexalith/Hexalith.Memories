@@ -1,2 +1,5 @@
 [features]
 hooks = true
+
+[mcp_servers.fluent-ui-blazor]
+command = "fluentui-mcp"
