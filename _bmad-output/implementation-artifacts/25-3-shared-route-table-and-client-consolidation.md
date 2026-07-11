@@ -4,7 +4,7 @@ baseline_commit: deb9dd79109c3c1cdfa9597574487d0ee6a41671
 
 # Story 25.3: Shared Route Table & Client Consolidation
 
-Status: in-progress
+Status: review
 
 <!-- Epic: 25 — Architecture Factorization & Code Health. Closes audit finding A21 (High). Behavior-preserving refactor; commit as `refactor(...)`, not `feat`. -->
 
@@ -58,7 +58,7 @@ so that a route rename cannot silently break consumers and the client's exceptio
 
 ### Review Findings
 
-- [ ] [Review][Patch] Formalize the approved breaking `TraverseAsync` contract — AC5/AC8 and the premise correction authorize the reordered signature and necessary MCP adaptation, but remediation commit `eb959d7` used `feat(tests):` rather than a breaking-change marker, so the required major-release signal remains open; published tag `v1.44.1` was not rewritten [_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md:27]
+- [x] [Review][Patch] Formalize the approved breaking `TraverseAsync` contract — AC5/AC8 and the premise correction authorize the reordered signature and necessary MCP adaptation, but remediation commit `eb959d7` used `feat(tests):` rather than a breaking-change marker, so the required major-release signal remains open; published tag `v1.44.1` was not rewritten [_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md:27]
 - [x] [Review][Defer] Remove the five unrelated submodule pointer advances from this no-submodule story [references/Hexalith.EventStore:1] — deferred, commit `8e92fe7` is published and later `main` commits depend on newer gitlinks; the user finalized the remediation without authorizing history rewriting or dependency rollback
 - [x] [Review][Patch] Source emitted `Location` URIs and authorization route labels from `MemoriesRoutes` so the next route rename cannot leave them stale — already resolved by the later route-versioning work on current `main`; verified no endpoint `/api` literals remain and route-surface tests pass 11/11 [src/Hexalith.Memories.Server/Endpoints/CasesEndpoints.cs:77]
 - [x] [Review][Patch] Reject whitespace and dot-segment route values before URI resolution can normalize a case export into a broader tenant export [src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs:334]
@@ -186,6 +186,10 @@ No new/changed dependencies. Everything uses the pinned stack (`net10.0`/C# 14, 
 
 ## Dev Agent Record
 
+### Implementation Plan
+
+- Preserve published history and add an append-only Conventional Commit carrying both a `!` marker and a `BREAKING CHANGE:` footer for the approved `TraverseAsync` parameter reorder; validate the new commit with the repository-pinned commitlint configuration before closing the review finding.
+
 ### Agent Model Used
 
 Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
@@ -197,6 +201,7 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
 
 ### Completion Notes List
 
+- **2026-07-11 breaking-release signal resolved:** Added append-only commit `30dab92` (`refactor(client)!: signal traversal API reorder`) with an explicit `BREAKING CHANGE:` footer, preserving published history while causing the next semantic release to recognize the approved `TraverseAsync` API break. Commitlint passes for the commit and the `v1.46.0..HEAD` range. Fresh validation: Release solution build 0 warnings/0 errors; Docker-free .NET inventory 4,283 passed / 1 environment-specific skip; Python tooling suites 104/104 passed; `git diff --check` clean.
 - **2026-07-11 review remediation:** Administrator approved the breaking `TraverseAsync` reorder; AC5/AC8 and the premise correction now match that decision. Route builders reject whitespace and `.`/`..` segments, preventing `HttpClient` dot-segment normalization from widening a case-export request to tenant export. Generic GET decoding uses `ResponseHeadersRead`, allowing the documented `IOException`/`HttpRequestException`/`NotSupportedException` mapping to execute; focused tests now cover those failures, true empty content, cancellation, and exact handler routes. Current `main` already contains the absolute `MemoriesRoutes` location builders from later route-versioning work. Verification: Release solution build 0 warnings/0 errors; Contracts 579/579; CLI 445/445; route surface 11/11.
 - **A21 closed.** HTTP routes are single-sourced in `MemoriesRoutes` (Contracts.V1): 37 template constants (leading-slash, `{placeholder}` tokens) consumed by the server, plus segment-escaping `*Path` builders consumed by the client. Contracts stays a pure library (no ASP.NET/routing package added; not registered in `MemoriesJsonContext`).
 - **Server:** all 46 `app.MapX` registrations across the 7 `*Endpoints.cs` files now reference `MemoriesRoutes.*` (byte-identical templates); the 6 non-mapping literals in `TenantAuthorizationMiddleware`/`InboundRateLimitPartitionFactory` are sourced from the table. In-handler `Location`/response-header interpolations and auth-log/error-message strings were intentionally left as-is — AC 2 scopes to the 46 registrations + 6 middleware literals, and those other literals include human-readable error text that should not be forced through the route table.
@@ -249,5 +254,6 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
 
 | Date | Change |
 | ---- | ------ |
+| 2026-07-11 | Closed the final review finding with append-only breaking-change commit `30dab92`, preserving published history while supplying the required major-release signal; commitlint, Release build, all 4,283 Docker-free .NET tests (1 environment-specific skip), and all 104 tooling tests passed. Story moved to review. |
 | 2026-07-11 | Code-review remediation: approved and documented the breaking `TraverseAsync` disposition; rejected invalid/dot route segments; made generic GET decoding use `ResponseHeadersRead`; covered true empty content, cancellation, content-read failures, and exact handler routes; confirmed later route-versioning work already removed stale server locations. Historical submodule-pointer removal is deferred because `8e92fe7` is published and later `main` depends on newer gitlinks. Remediation commit `eb959d7` did not carry the required breaking marker, so the story remains in progress. |
 | 2026-07-08 | Story 25.3 implemented: `MemoriesRoutes` single-source route table (Contracts.V1); 46 server registrations + 6 middleware literals + all client paths sourced from it; 22 client decode blocks consolidated behind generic `SendAsync<T>` (Variant-B, `typeof(T).Name` messages); `TraverseAsync` parameter order corrected (`ct` last) as an **accepted breaking reorder** (compat overload proven CS0121-ambiguous; requires `BREAKING CHANGE:` footer / major bump). Route-surface drift guard updated to resolve route constants; repointed a stale 25.1 ingestion-determinism guard. Added `MemoriesRoutes`/`SendAsync` coverage + a client no-literal guard. Full Release build 0/0; Contracts 619, Cli 424, Server 2509 (1 pre-existing skip), Mcp 90 — all green. |
