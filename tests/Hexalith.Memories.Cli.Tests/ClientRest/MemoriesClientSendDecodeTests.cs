@@ -96,6 +96,46 @@ public class MemoriesClientSendDecodeTests
         exception.InnerException.ShouldBeSameAs(failure);
     }
 
+    [Theory]
+    [InlineData("io")]
+    [InlineData("http")]
+    [InlineData("unsupported")]
+    public async Task SendOptionalDecode_ContentReadFailure_ThrowsInvalidResponseWithOriginalCause(string failureKind)
+    {
+        Exception failure = failureKind switch
+        {
+            "io" => new IOException("read failed"),
+            "http" => new HttpRequestException("transport failed"),
+            "unsupported" => new NotSupportedException("unsupported content"),
+            _ => throw new ArgumentOutOfRangeException(nameof(failureKind)),
+        };
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, new ThrowingHttpContent(() => failure));
+
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.GetTenantAsync("acme", CancellationToken.None));
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+        exception.InnerException.ShouldBeSameAs(failure);
+    }
+
+    [Fact]
+    public async Task SendDecode_ResponseBodyStalls_RespectsConfiguredHttpTimeout()
+    {
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.OK,
+            new StallingHttpContent(),
+            TimeSpan.FromMilliseconds(100));
+
+        Task<Hexalith.Memories.Contracts.V1.Case> request = client.GetCaseAsync(
+            "acme",
+            "case-1",
+            CancellationToken.None);
+        Task completed = await Task.WhenAny(request, Task.Delay(TimeSpan.FromSeconds(2)));
+
+        completed.ShouldBeSameAs(request, "The configured HTTP timeout must remain effective after response headers arrive.");
+        await Should.ThrowAsync<TaskCanceledException>(async () => await request.ConfigureAwait(false));
+    }
+
     [Fact]
     public async Task SendDecode_CancelledContentRead_RethrowsCancellation()
     {
@@ -118,14 +158,14 @@ public class MemoriesClientSendDecodeTests
     public void MemoriesClientSource_ContainsNoInlineApiPathLiteral()
     {
         // AC3 drift guard: every request path must be built from MemoriesRoutes, so no inline "api/…" or
-        // "/api/v1/…" string literal may survive in the client. (Doc-comment mentions like <c>/api/v1/…</c> are not
+        // absolute "/api…" string literal may survive in the client. (Doc-comment mentions like <c>/api/v1/…</c> are not
         // string literals and are intentionally not matched.)
         string source = ReadClientSource();
 
         source.Contains("\"api/", StringComparison.Ordinal).ShouldBeFalse(
             "MemoriesClient.cs must build every request path from MemoriesRoutes — no inline \"api/…\" literal may remain (Story 25.3 AC3).");
-        source.Contains("\"/api/v1/", StringComparison.Ordinal).ShouldBeFalse(
-            "MemoriesClient.cs must build every request path from MemoriesRoutes — no inline \"/api/v1/…\" literal may remain (Story 25.3 AC3).");
+        source.Contains("\"/api", StringComparison.Ordinal).ShouldBeFalse(
+            "MemoriesClient.cs must build every request path from MemoriesRoutes — no quoted absolute \"/api…\" literal may remain (Story 25.3 AC3).");
     }
 
     private static string ReadClientSource()
@@ -149,14 +189,21 @@ public class MemoriesClientSendDecodeTests
     private static MemoriesClient CreateClient(HttpStatusCode status, string body)
         => CreateClient(status, new StringContent(body, Encoding.UTF8, "application/json"));
 
-    private static MemoriesClient CreateClient(HttpStatusCode status, HttpContent content)
+    private static MemoriesClient CreateClient(
+        HttpStatusCode status,
+        HttpContent content,
+        TimeSpan? timeout = null)
     {
         var handler = new TestDelegatingHandler((_, _) =>
             Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = content,
             }));
-        var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = Endpoint,
+            Timeout = timeout ?? TimeSpan.FromSeconds(100),
+        };
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
         return new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance);
     }

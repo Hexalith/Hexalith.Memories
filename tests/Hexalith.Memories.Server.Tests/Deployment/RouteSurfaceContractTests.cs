@@ -16,10 +16,12 @@ using Hexalith.Memories.ServiceDefaults.Health;
 
 using Shouldly;
 
+using MemoriesRoutes = Hexalith.Memories.Contracts.V1.MemoriesRoutes;
+
 /// <summary>Story 18.3 AC3 — drift guard for the invocable route/operation-surface contract published at
 /// <c>docs/operations/route-surface.md</c>. The novel guard over the Story 18.2
 /// <see cref="DeploymentConfigurationContractTests"/> precedent is the <b>forward code → doc tie</b>: the
-/// <c>app.MapX("/api/v1/…")</c> route literals are regex-extracted from the authoritative
+/// direct <c>app.MapX(MemoriesRoutes.X, …)</c> route references are regex-extracted from the authoritative
 /// <c>src/Hexalith.Memories.Server/Program.cs</c> and decomposed endpoint source files (read via the
 /// repo-root marker walk) and each is asserted documented, so a newly added endpoint cannot slip through
 /// undocumented. A count tie defends against silent omission and phantom rows; the pub/sub, health, MCP,
@@ -31,11 +33,12 @@ public sealed class RouteSurfaceContractTests
 {
     private const string DocRelativePath = "docs/operations/route-surface.md";
 
-    // Matches `app.MapGet("/api/v1/…"` (inline literal) OR `app.MapGet(MemoriesRoutes.X` (Story 25.3 route-table
-    // reference). Group 1 = HTTP verb; Group 2 = inline route template (if a literal); Group 3 = MemoriesRoutes
-    // member name (if a table reference, resolved to its value via reflection in ExtractMappedRoutes).
+    // Matches only a direct `app.MapGet(MemoriesRoutes.X, …)` route-table reference. Requiring the comma
+    // immediately after the member rejects both inline literals and composed expressions such as
+    // `MemoriesRoutes.Search + "/internal"`, preserving the single-source route invariant.
+    // Group 1 = HTTP verb; Group 2 = MemoriesRoutes member name.
     private static readonly Regex MappedRouteRegex =
-        new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*(?:""(/[^""]+)""|MemoriesRoutes\.([A-Za-z0-9_]+))", RegexOptions.Compiled);
+        new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*MemoriesRoutes\.([A-Za-z0-9_]+)\s*,", RegexOptions.Compiled);
 
     // Matches a documented route row's backtick-wrapped `METHOD /api/v1/…` code span.
     private static readonly Regex DocumentedApiRowRegex =
@@ -104,6 +107,21 @@ public sealed class RouteSurfaceContractTests
         {
             program.ShouldContain(registration, Case.Sensitive, $"Program.cs must invoke {registration} so decomposed routes are registered at runtime.");
         }
+    }
+
+    [Fact]
+    public void RouteExtractor_AcceptsOnlyDirectRouteTableMembers()
+    {
+        const string Source = """
+            app.MapGet(MemoriesRoutes.Search, Handler);
+            app.MapGet(MemoriesRoutes.Search + "/internal", Handler);
+            app.MapGet("/api/v1/search", Handler);
+            """;
+
+        IReadOnlyList<(string Verb, string Path)> routes = ExtractMappedRoutes(Source);
+
+        routes.Count.ShouldBe(1);
+        routes[0].ShouldBe(("Get", MemoriesRoutes.Search));
     }
 
     [Fact]
@@ -208,26 +226,17 @@ public sealed class RouteSurfaceContractTests
 
     private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)
     {
-        // Story 25.3: routes are registered against MemoriesRoutes constants rather than inline literals, so a
-        // matched `MemoriesRoutes.X` reference is resolved to its `/api/v1/…` value via reflection. Inline literals
-        // (should any remain) still resolve directly, keeping the code → doc tie and the 46-route count intact.
+        // Story 25.3: routes are registered directly against MemoriesRoutes constants rather than inline or
+        // composed paths, so a matched `MemoriesRoutes.X` reference is resolved to its concrete value.
         IReadOnlyDictionary<string, string> routeConstants = RouteConstantsByName();
         List<(string Verb, string Path)> routes = [];
         foreach (Match match in MappedRouteRegex.Matches(program))
         {
             string verb = match.Groups[1].Value;
-            string path;
-            if (match.Groups[2].Success)
-            {
-                path = match.Groups[2].Value;
-            }
-            else
-            {
-                string member = match.Groups[3].Value;
-                routeConstants.ContainsKey(member).ShouldBeTrue(
-                    $"A route registration references MemoriesRoutes.{member}, but no matching public string constant exists on MemoriesRoutes — the route table and its consumers have drifted.");
-                path = routeConstants[member];
-            }
+            string member = match.Groups[2].Value;
+            routeConstants.ContainsKey(member).ShouldBeTrue(
+                $"A route registration references MemoriesRoutes.{member}, but no matching public string constant exists on MemoriesRoutes — the route table and its consumers have drifted.");
+            string path = routeConstants[member];
 
             routes.Add((verb, path));
         }

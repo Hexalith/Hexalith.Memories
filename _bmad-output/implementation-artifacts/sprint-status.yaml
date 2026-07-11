@@ -379,7 +379,7 @@ development_status:
   epic-25: in-progress
   25-1-program-cs-decomposition: done
   25-2-error-and-telemetry-centralization: done
-  25-3-shared-route-table-and-client-consolidation: review
+  25-3-shared-route-table-and-client-consolidation: done
   25-4-contract-persistence-separation-and-route-versioning: in-progress
   25-5-cli-consolidation: done
   25-6-mcp-tool-executor: done

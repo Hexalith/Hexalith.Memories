@@ -77,6 +77,17 @@ public class MemoriesClientLookupTests
     }
 
     [Fact]
+    public async Task LookupAsync_200NullMemoryUnitId_ThrowsInvalidResponse_NotNull()
+    {
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, "{\"memoryUnitId\":null}");
+
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.LookupMemoryUnitIdBySourceUriAsync("acme", "case-1", "file:///doc.pdf", CancellationToken.None));
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+    }
+
+    [Fact]
     public async Task LookupAsync_200UnparseableBody_ThrowsInvalidResponse()
     {
         // A 2xx whose body is not valid MemoryUnitIdLookupResponse JSON must map to a structured

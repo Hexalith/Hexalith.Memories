@@ -248,7 +248,9 @@ public class MemoriesClient
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
 
         MemoryUnitIdLookupResponse result = await ReadRequiredAsync<MemoryUnitIdLookupResponse>(response, ct).ConfigureAwait(false);
-        return result.MemoryUnitId;
+        return result.MemoryUnitId ?? throw CreateInvalidResponseException(
+            response.StatusCode,
+            "Server returned a 2xx MemoryUnitIdLookupResponse with a null MemoryUnitId.");
     }
 
     /// <summary>
@@ -294,15 +296,7 @@ public class MemoriesClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
 
-        using HttpResponseMessage response = await _httpClient.GetAsync(MemoriesRoutes.TenantPath(tenantId), ct).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-
-        return await ReadOptionalAsync<TenantInfo>(response, ct).ConfigureAwait(false);
+        return await SendOptionalAsync<TenantInfo>(MemoriesRoutes.TenantPath(tenantId), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -506,11 +500,76 @@ public class MemoriesClient
     /// <returns>The decoded, non-null response.</returns>
     private async Task<T> SendAsync<T>(string relativePath, CancellationToken ct)
     {
-        using HttpResponseMessage response = await _httpClient
-            .GetAsync(relativePath, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
-        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-        return await ReadRequiredAsync<T>(response, ct).ConfigureAwait(false);
+        return await ExecuteWithinHttpTimeoutAsync(
+            async effectiveCt =>
+            {
+                using HttpResponseMessage response = await _httpClient
+                    .GetAsync(relativePath, HttpCompletionOption.ResponseHeadersRead, effectiveCt)
+                    .ConfigureAwait(false);
+                await ThrowIfNotSuccessAsync(response, effectiveCt).ConfigureAwait(false);
+                return await ReadRequiredAsync<T>(response, effectiveCt).ConfigureAwait(false);
+            },
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Issues a GET and decodes an optional response while preserving the structured error surface for
+    /// content-read failures. A 404 remains the explicit not-found signal.
+    /// </summary>
+    /// <typeparam name="T">The optional response contract type.</typeparam>
+    /// <param name="relativePath">The relative request path.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The decoded response, or <see langword="null"/> for 404 or an empty 2xx body.</returns>
+    private async Task<T?> SendOptionalAsync<T>(string relativePath, CancellationToken ct)
+        where T : class
+    {
+        return await ExecuteWithinHttpTimeoutAsync(
+            async effectiveCt =>
+            {
+                using HttpResponseMessage response = await _httpClient
+                    .GetAsync(relativePath, HttpCompletionOption.ResponseHeadersRead, effectiveCt)
+                    .ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return null;
+                }
+
+                await ThrowIfNotSuccessAsync(response, effectiveCt).ConfigureAwait(false);
+                return await ReadOptionalAsync<T>(response, effectiveCt).ConfigureAwait(false);
+            },
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Keeps the configured <see cref="HttpClient.Timeout"/> effective through response-body reads when
+    /// <see cref="HttpCompletionOption.ResponseHeadersRead"/> is used.
+    /// </summary>
+    /// <typeparam name="T">The operation result type.</typeparam>
+    /// <param name="operation">The request and response-body operation.</param>
+    /// <param name="ct">Caller cancellation token.</param>
+    /// <returns>The completed operation result.</returns>
+    private async Task<T> ExecuteWithinHttpTimeoutAsync<T>(
+        Func<CancellationToken, Task<T>> operation,
+        CancellationToken ct)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (_httpClient.Timeout != Timeout.InfiniteTimeSpan)
+        {
+            timeoutCts.CancelAfter(_httpClient.Timeout);
+        }
+
+        try
+        {
+            return await operation(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception)
+            when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new TaskCanceledException(
+                "The request timed out before the response body was read.",
+                exception,
+                timeoutCts.Token);
+        }
     }
 
     /// <summary>Throws a <see cref="MemoriesRemoteException"/> carrying the decoded <see cref="ErrorResponse"/> when <paramref name="response"/> is not a success status.</summary>
@@ -904,18 +963,9 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
 
-        using HttpResponseMessage response = await _httpClient
-            .GetAsync(MemoriesRoutes.ConsistencyVerifyStatusPath(tenantId, instanceId), ct)
-            .ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-
-        return await ReadOptionalAsync<ConsistencyVerificationStatus>(response, ct).ConfigureAwait(false);
+        return await SendOptionalAsync<ConsistencyVerificationStatus>(
+            MemoriesRoutes.ConsistencyVerifyStatusPath(tenantId, instanceId),
+            ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -987,18 +1037,9 @@ public class MemoriesClient
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
 
-        using HttpResponseMessage response = await _httpClient
-            .GetAsync(MemoriesRoutes.ConsistencyRepairStatusPath(tenantId, instanceId), ct)
-            .ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-
-        return await ReadOptionalAsync<ConsistencyRepairStatus>(response, ct).ConfigureAwait(false);
+        return await SendOptionalAsync<ConsistencyRepairStatus>(
+            MemoriesRoutes.ConsistencyRepairStatusPath(tenantId, instanceId),
+            ct).ConfigureAwait(false);
     }
 
     /// <summary>

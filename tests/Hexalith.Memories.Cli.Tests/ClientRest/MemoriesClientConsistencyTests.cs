@@ -32,7 +32,11 @@ public class MemoriesClientConsistencyTests
         const string InstanceId = "verify-consistency-tenant-1-abc123";
         Uri expected = new(Endpoint, $"api/v1/tenants/{TenantId}/consistency/verify/{InstanceId}");
 
-        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/v1/tenants/{TenantId}/consistency/verify/{InstanceId}", UriKind.Relative));
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.Accepted,
+            location: new Uri($"/api/v1/tenants/{TenantId}/consistency/verify/{InstanceId}", UriKind.Relative),
+            expectedMethod: HttpMethod.Post,
+            expectedPath: $"/api/v1/tenants/{TenantId}/consistency/verify");
 
         Uri result = await client.StartConsistencyVerificationAsync(
             TenantId,
@@ -74,7 +78,11 @@ public class MemoriesClientConsistencyTests
                 Duration: TimeSpan.FromMinutes(1)));
 
         string body = JsonSerializer.Serialize(state, MemoriesJsonContext.Options);
-        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.OK,
+            body,
+            expectedMethod: HttpMethod.Get,
+            expectedPath: $"/api/v1/tenants/tenant-1/consistency/verify/{InstanceId}");
 
         ConsistencyVerificationStatus? result = await client.GetConsistencyVerificationStatusAsync(
             "tenant-1", InstanceId, CancellationToken.None);
@@ -106,7 +114,11 @@ public class MemoriesClientConsistencyTests
             CheckedAt: DateTimeOffset.UtcNow);
 
         string body = JsonSerializer.Serialize(expected, MemoriesJsonContext.Options);
-        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.OK,
+            body,
+            expectedMethod: HttpMethod.Get,
+            expectedPath: $"/api/v1/tenants/{TenantId}/consistency/inspect/{MemoryUnitId}");
 
         ConsistencyInspectionResult result = await client.InspectConsistencyAsync(
             TenantId, MemoryUnitId, CancellationToken.None);
@@ -137,7 +149,11 @@ public class MemoriesClientConsistencyTests
         const string TenantId = "tenant-1";
         const string InstanceId = "repair-consistency-tenant-1-xyz789";
         Uri expected = new(Endpoint, $"api/v1/tenants/{TenantId}/consistency/repair/{InstanceId}");
-        MemoriesClient client = CreateClient(HttpStatusCode.Accepted, location: new Uri($"/api/v1/tenants/{TenantId}/consistency/repair/{InstanceId}", UriKind.Relative));
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.Accepted,
+            location: new Uri($"/api/v1/tenants/{TenantId}/consistency/repair/{InstanceId}", UriKind.Relative),
+            expectedMethod: HttpMethod.Post,
+            expectedPath: $"/api/v1/tenants/{TenantId}/consistency/repair");
 
         Uri result = await client.StartConsistencyRepairAsync(
             TenantId,
@@ -159,7 +175,11 @@ public class MemoriesClientConsistencyTests
             new ConsistencyWorkflowProgress("repairing", 1, 2),
             null);
         string body = JsonSerializer.Serialize(state, MemoriesJsonContext.Options);
-        MemoriesClient client = CreateClient(HttpStatusCode.OK, body);
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.OK,
+            body,
+            expectedMethod: HttpMethod.Get,
+            expectedPath: $"/api/v1/tenants/tenant-1/consistency/repair/{InstanceId}");
 
         ConsistencyRepairStatus? result = await client.GetConsistencyRepairStatusAsync(
             "tenant-1", InstanceId, CancellationToken.None);
@@ -171,10 +191,26 @@ public class MemoriesClientConsistencyTests
         result.Progress.CurrentPhase.ShouldBe("repairing");
     }
 
-    private static MemoriesClient CreateClient(HttpStatusCode status, string body = "", Uri? location = null)
+    private static MemoriesClient CreateClient(
+        HttpStatusCode status,
+        string body = "",
+        Uri? location = null,
+        HttpMethod? expectedMethod = null,
+        string? expectedPath = null)
     {
-        var handler = new TestDelegatingHandler((_, _) =>
+        var handler = new TestDelegatingHandler((request, _) =>
         {
+            if (expectedMethod is not null)
+            {
+                request.Method.ShouldBe(expectedMethod);
+            }
+
+            if (expectedPath is not null)
+            {
+                request.RequestUri.ShouldNotBeNull();
+                request.RequestUri.AbsolutePath.ShouldBe(expectedPath);
+            }
+
             HttpResponseMessage response = new(status)
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
