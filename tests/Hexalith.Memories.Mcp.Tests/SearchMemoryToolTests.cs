@@ -59,6 +59,19 @@ public sealed class SearchMemoryToolTests
     }
 
     [Fact]
+    public async Task MismatchedTenant_ReturnsAuthorizationErrorWithoutCallingClient()
+    {
+        var stub = new StubMemoriesClient();
+        SearchMemoryTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.SearchAsync("other-tenant", "needle", cancellationToken: TestContext.Current.CancellationToken);
+
+        stub.SearchRequests.ShouldBeEmpty();
+        stub.HybridSearchRequests.ShouldBeEmpty();
+        AssertIsErrorWithCode(result, "TENANT_FORBIDDEN");
+    }
+
+    [Fact]
     public async Task ServerTenantNotFound_MapsToErrorPrefix()
     {
         var stub = new StubMemoriesClient
@@ -263,8 +276,5 @@ public sealed class SearchMemoryToolTests
     }
 
     private static SearchMemoryTool CreateTool(StubMemoriesClient stub)
-    {
-        var (authorization, accessor) = McpToolTestFactory.CreateAuth();
-        return new SearchMemoryTool(stub, new McpErrorMapper(), authorization, accessor);
-    }
+        => new(stub, McpToolTestFactory.CreateExecutor());
 }

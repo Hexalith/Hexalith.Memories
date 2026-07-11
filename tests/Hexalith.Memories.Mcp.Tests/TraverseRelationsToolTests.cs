@@ -73,6 +73,18 @@ public sealed class TraverseRelationsToolTests
         AssertIsErrorWithCode(result, "INVALID_INPUT");
     }
 
+    [Fact]
+    public async Task MismatchedTenant_ReturnsAuthorizationErrorWithoutCallingClient()
+    {
+        var stub = new StubMemoriesClient();
+        TraverseRelationsTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.TraverseAsync("other-tenant", "mu-1", cancellationToken: TestContext.Current.CancellationToken);
+
+        stub.TraversalRequests.ShouldBeEmpty();
+        AssertIsErrorWithCode(result, "TENANT_FORBIDDEN");
+    }
+
     private static void AssertIsErrorWithCode(CallToolResult result, string expectedCode)
     {
         result.IsError.ShouldBe(true);
@@ -80,8 +92,5 @@ public sealed class TraverseRelationsToolTests
     }
 
     private static TraverseRelationsTool CreateTool(StubMemoriesClient stub)
-    {
-        var (authorization, accessor) = McpToolTestFactory.CreateAuth();
-        return new TraverseRelationsTool(stub, new McpErrorMapper(), authorization, accessor);
-    }
+        => new(stub, McpToolTestFactory.CreateExecutor());
 }

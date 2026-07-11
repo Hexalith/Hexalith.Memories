@@ -15,18 +15,24 @@ using Microsoft.Extensions.Options;
 
 internal static class McpToolTestFactory
 {
-    public static (TenantClaimAuthorizationFilter Authorization, IAuthorizedTenantAccessor Accessor) CreateAuth(string tenantId = "acme")
+    public static McpToolExecutor CreateExecutor(params string[] tenantIds)
     {
+        if (tenantIds.Length == 0)
+        {
+            tenantIds = ["acme"];
+        }
+
         var context = new DefaultHttpContext();
         context.User = new ClaimsPrincipal(new ClaimsIdentity(
-            [new Claim(MemoriesMcpClaimsTransformation.TenantClaimType, tenantId)],
+            tenantIds.Select(tenantId => new Claim(MemoriesMcpClaimsTransformation.TenantClaimType, tenantId)),
             "Bearer"));
         var httpContextAccessor = new HttpContextAccessor { HttpContext = context };
+        var errorMapper = new McpErrorMapper();
         var authorization = new TenantClaimAuthorizationFilter(
             httpContextAccessor,
-            new McpErrorMapper(),
+            errorMapper,
             Options.Create(new MemoriesMcpAuthenticationOptions()),
             NullLogger<TenantClaimAuthorizationFilter>.Instance);
-        return (authorization, new AuthorizedTenantAccessor(httpContextAccessor));
+        return new McpToolExecutor(authorization, errorMapper);
     }
 }

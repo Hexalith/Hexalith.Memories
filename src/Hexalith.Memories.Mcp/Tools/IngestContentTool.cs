@@ -9,7 +9,6 @@ using System.ComponentModel;
 using System.Text;
 
 using Hexalith.Memories.Client.Rest;
-using Hexalith.Memories.Mcp.Authentication;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -28,29 +27,19 @@ internal sealed class IngestContentTool
     internal const string DefaultSourceUri = "mcp://content";
 
     private readonly MemoriesClient _client;
-    private readonly McpErrorMapper _mapper;
-    private readonly TenantClaimAuthorizationFilter _tenantAuthorization;
-    private readonly IAuthorizedTenantAccessor _authorizedTenantAccessor;
+    private readonly McpToolExecutor _executor;
 
     /// <summary>Initializes a new instance of the <see cref="IngestContentTool"/> class.</summary>
     /// <param name="client">The Memories REST client (DAPR-routed).</param>
-    /// <param name="mapper">The error mapper.</param>
-    /// <param name="tenantAuthorization">The tenant-claim authorization filter.</param>
-    /// <param name="authorizedTenantAccessor">The authorized tenant accessor.</param>
+    /// <param name="executor">The shared MCP tool executor.</param>
     public IngestContentTool(
         MemoriesClient client,
-        McpErrorMapper mapper,
-        TenantClaimAuthorizationFilter tenantAuthorization,
-        IAuthorizedTenantAccessor authorizedTenantAccessor)
+        McpToolExecutor executor)
     {
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentNullException.ThrowIfNull(mapper);
-        ArgumentNullException.ThrowIfNull(tenantAuthorization);
-        ArgumentNullException.ThrowIfNull(authorizedTenantAccessor);
+        ArgumentNullException.ThrowIfNull(executor);
         _client = client;
-        _mapper = mapper;
-        _tenantAuthorization = tenantAuthorization;
-        _authorizedTenantAccessor = authorizedTenantAccessor;
+        _executor = executor;
     }
 
     /// <summary>The MCP tool method invoked by LLM agents.</summary>
@@ -84,83 +73,66 @@ internal sealed class IngestContentTool
     {
         const string toolName = "ingest_content";
 
-        if (string.IsNullOrWhiteSpace(tenantId))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "tenantId is required.",
-                "Provide a non-empty tenantId.",
-                toolName);
-        }
+        return await _executor.RunAsync(
+            tenantId,
+            toolName,
+            mapper =>
+            {
+                if (string.IsNullOrWhiteSpace(tenantId))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "tenantId is required.",
+                        "Provide a non-empty tenantId.",
+                        toolName);
+                }
 
-        if (string.IsNullOrWhiteSpace(caseId))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "caseId is required.",
-                "Provide a non-empty caseId.",
-                toolName);
-        }
+                if (string.IsNullOrWhiteSpace(caseId))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "caseId is required.",
+                        "Provide a non-empty caseId.",
+                        toolName);
+                }
 
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "content is required.",
-                "Provide a non-empty content payload.",
-                toolName);
-        }
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "content is required.",
+                        "Provide a non-empty content payload.",
+                        toolName);
+                }
 
-        if (sourceType != McpSourceType.File)
-        {
-            return _mapper.MapValidation(
-                "UNSUPPORTED_SOURCE_TYPE",
-                $"sourceType '{sourceType}' is not yet supported by the MCP ingest_content tool.",
-                "Use sourceType=file in Story 10.1; url and event ingestion ship in Story 10.2.",
-                toolName);
-        }
+                return sourceType != McpSourceType.File
+                    ? mapper.MapValidation(
+                        "UNSUPPORTED_SOURCE_TYPE",
+                        $"sourceType '{sourceType}' is not yet supported by the MCP ingest_content tool.",
+                        "Use sourceType=file in Story 10.1; url and event ingestion ship in Story 10.2.",
+                        toolName)
+                    : null;
+            },
+            async (authorizedTenant, token) =>
+            {
+                byte[] payload = Encoding.UTF8.GetBytes(content);
+                string effectiveSourceUri = string.IsNullOrWhiteSpace(sourceUri) ? DefaultSourceUri : sourceUri;
+                string effectiveContentType = string.IsNullOrWhiteSpace(contentType) ? DefaultContentType : contentType;
+                string effectiveIngestedBy = string.IsNullOrWhiteSpace(ingestedBy) ? DefaultIngestedBy : ingestedBy;
 
-        if (!_tenantAuthorization.TryAuthorizeTenant(tenantId, toolName, out _, out CallToolResult? authorizationError))
-        {
-            return authorizationError!;
-        }
-
-        if (!_authorizedTenantAccessor.TryGetAuthorizedTenant(out string authorizedTenant))
-        {
-            return _mapper.MapAuthorization(tenantId, toolName, McpErrorMapper.TenantForbiddenCode);
-        }
-
-        byte[] payload = Encoding.UTF8.GetBytes(content);
-        string effectiveSourceUri = string.IsNullOrWhiteSpace(sourceUri) ? DefaultSourceUri : sourceUri;
-        string effectiveContentType = string.IsNullOrWhiteSpace(contentType) ? DefaultContentType : contentType;
-        string effectiveIngestedBy = string.IsNullOrWhiteSpace(ingestedBy) ? DefaultIngestedBy : ingestedBy;
-
-        try
-        {
-            // Story 18.4: MemoriesClient.IngestAsync graduated out of HXL001 — no suppression needed.
-            string instanceId = await _client.IngestAsync(
-                authorizedTenant,
-                caseId,
-                effectiveSourceUri,
-                payload,
-                effectiveContentType,
-                effectiveIngestedBy,
-                metadata: null,
-                cancellationToken).ConfigureAwait(false);
-            return McpToolResultSerializer.Success(new IngestContentResponse(instanceId));
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (MemoriesRemoteException ex)
-        {
-            return _mapper.Map(ex, toolName);
-        }
-        catch (Exception ex)
-        {
-            return _mapper.MapGeneric(ex, toolName);
-        }
+                // Story 18.4: MemoriesClient.IngestAsync graduated out of HXL001 — no suppression needed.
+                string instanceId = await _client.IngestAsync(
+                    authorizedTenant,
+                    caseId,
+                    effectiveSourceUri,
+                    payload,
+                    effectiveContentType,
+                    effectiveIngestedBy,
+                    metadata: null,
+                    token).ConfigureAwait(false);
+                return McpToolResultSerializer.Success(new IngestContentResponse(instanceId));
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The success response shape — narrow object so JSON consumers can rely on the field name.</summary>

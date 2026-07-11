@@ -89,6 +89,18 @@ public sealed class IngestContentToolTests
         AssertIsErrorWithCode(result, "UNSUPPORTED_SOURCE_TYPE");
     }
 
+    [Fact]
+    public async Task MismatchedTenant_ReturnsAuthorizationErrorWithoutCallingClient()
+    {
+        var stub = new StubMemoriesClient();
+        IngestContentTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.IngestAsync("other-tenant", "case-1", "content", cancellationToken: TestContext.Current.CancellationToken);
+
+        stub.IngestCalls.ShouldBeEmpty();
+        AssertIsErrorWithCode(result, "TENANT_FORBIDDEN");
+    }
+
     private static void AssertIsErrorWithCode(CallToolResult result, string expectedCode)
     {
         result.IsError.ShouldBe(true);
@@ -96,8 +108,5 @@ public sealed class IngestContentToolTests
     }
 
     private static IngestContentTool CreateTool(StubMemoriesClient stub)
-    {
-        var (authorization, accessor) = McpToolTestFactory.CreateAuth();
-        return new IngestContentTool(stub, new McpErrorMapper(), authorization, accessor);
-    }
+        => new(stub, McpToolTestFactory.CreateExecutor());
 }

@@ -9,7 +9,6 @@ using System.ComponentModel;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Mcp.Authentication;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -27,29 +26,19 @@ internal sealed class SearchMemoryTool
     internal const int MaxResultsLowerBound = 1;
 
     private readonly MemoriesClient _client;
-    private readonly McpErrorMapper _mapper;
-    private readonly TenantClaimAuthorizationFilter _tenantAuthorization;
-    private readonly IAuthorizedTenantAccessor _authorizedTenantAccessor;
+    private readonly McpToolExecutor _executor;
 
     /// <summary>Initializes a new instance of the <see cref="SearchMemoryTool"/> class.</summary>
     /// <param name="client">The Memories REST client (DAPR-routed).</param>
-    /// <param name="mapper">The error mapper.</param>
-    /// <param name="tenantAuthorization">The tenant-claim authorization filter.</param>
-    /// <param name="authorizedTenantAccessor">The authorized tenant accessor.</param>
+    /// <param name="executor">The shared MCP tool executor.</param>
     public SearchMemoryTool(
         MemoriesClient client,
-        McpErrorMapper mapper,
-        TenantClaimAuthorizationFilter tenantAuthorization,
-        IAuthorizedTenantAccessor authorizedTenantAccessor)
+        McpToolExecutor executor)
     {
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentNullException.ThrowIfNull(mapper);
-        ArgumentNullException.ThrowIfNull(tenantAuthorization);
-        ArgumentNullException.ThrowIfNull(authorizedTenantAccessor);
+        ArgumentNullException.ThrowIfNull(executor);
         _client = client;
-        _mapper = mapper;
-        _tenantAuthorization = tenantAuthorization;
-        _authorizedTenantAccessor = authorizedTenantAccessor;
+        _executor = executor;
     }
 
     /// <summary>The MCP tool method invoked by LLM agents.</summary>
@@ -83,90 +72,73 @@ internal sealed class SearchMemoryTool
     {
         const string toolName = "search_memory";
 
-        if (string.IsNullOrWhiteSpace(tenantId))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "tenantId is required.",
-                "Provide a non-empty tenantId.",
-                toolName);
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "query is required.",
-                "Provide a non-empty query string.",
-                toolName);
-        }
-
-        if (!_tenantAuthorization.TryAuthorizeTenant(tenantId, toolName, out _, out CallToolResult? authorizationError))
-        {
-            return authorizationError!;
-        }
-
-        if (!_authorizedTenantAccessor.TryGetAuthorizedTenant(out string authorizedTenant))
-        {
-            return _mapper.MapAuthorization(tenantId, toolName, McpErrorMapper.TenantForbiddenCode);
-        }
-
-        int clampedMax = Math.Clamp(maxResults, MaxResultsLowerBound, MaxResultsUpperBound);
-        int? effectiveTokenBudget = tokenBudget is > 0 ? tokenBudget : null;
-
-        try
-        {
-            if (axes == SearchAxis.Hybrid)
+        return await _executor.RunAsync(
+            tenantId,
+            toolName,
+            mapper =>
             {
-                var hybridRequest = new HybridSearchRequest(
+                if (string.IsNullOrWhiteSpace(tenantId))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "tenantId is required.",
+                        "Provide a non-empty tenantId.",
+                        toolName);
+                }
+
+                return string.IsNullOrWhiteSpace(query)
+                    ? mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "query is required.",
+                        "Provide a non-empty query string.",
+                        toolName)
+                    : null;
+            },
+            async (authorizedTenant, token) =>
+            {
+                int clampedMax = Math.Clamp(maxResults, MaxResultsLowerBound, MaxResultsUpperBound);
+                int? effectiveTokenBudget = tokenBudget is > 0 ? tokenBudget : null;
+
+                if (axes == SearchAxis.Hybrid)
+                {
+                    var hybridRequest = new HybridSearchRequest(
+                        TenantId: authorizedTenant,
+                        Query: query,
+                        CaseId: @case,
+                        MaxResults: clampedMax,
+                        Explain: explain,
+                        TokenBudget: effectiveTokenBudget);
+
+                    HybridSearchResult hybrid = await _client.HybridSearchAsync(hybridRequest, token)
+                        .ConfigureAwait(false);
+                    hybrid = hybrid with
+                    {
+                        EvidencePacket = EvidencePacketMapper.FromHybridSearchResult(
+                            hybrid,
+                            CreateEvidenceScope(authorizedTenant, @case)),
+                    };
+                    return McpToolResultSerializer.Success(hybrid);
+                }
+
+                var request = new SearchRequest(
                     TenantId: authorizedTenant,
+                    Axis: AxisToWire(axes),
                     Query: query,
                     CaseId: @case,
                     MaxResults: clampedMax,
                     Explain: explain,
                     TokenBudget: effectiveTokenBudget);
 
-                HybridSearchResult hybrid = await _client.HybridSearchAsync(hybridRequest, cancellationToken)
-                    .ConfigureAwait(false);
-                hybrid = hybrid with
+                SearchResult result = await _client.SearchAsync(request, token).ConfigureAwait(false);
+                result = result with
                 {
-                    EvidencePacket = EvidencePacketMapper.FromHybridSearchResult(
-                        hybrid,
+                    EvidencePacket = EvidencePacketMapper.FromSearchResult(
+                        result,
                         CreateEvidenceScope(authorizedTenant, @case)),
                 };
-                return McpToolResultSerializer.Success(hybrid);
-            }
-
-            var request = new SearchRequest(
-                TenantId: authorizedTenant,
-                Axis: AxisToWire(axes),
-                Query: query,
-                CaseId: @case,
-                MaxResults: clampedMax,
-                Explain: explain,
-                TokenBudget: effectiveTokenBudget);
-
-            SearchResult result = await _client.SearchAsync(request, cancellationToken).ConfigureAwait(false);
-            result = result with
-            {
-                EvidencePacket = EvidencePacketMapper.FromSearchResult(
-                    result,
-                    CreateEvidenceScope(authorizedTenant, @case)),
-            };
-            return McpToolResultSerializer.Success(result);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (MemoriesRemoteException ex)
-        {
-            return _mapper.Map(ex, toolName);
-        }
-        catch (Exception ex)
-        {
-            return _mapper.MapGeneric(ex, toolName);
-        }
+                return McpToolResultSerializer.Success(result);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static string AxisToWire(SearchAxis axis) => axis switch

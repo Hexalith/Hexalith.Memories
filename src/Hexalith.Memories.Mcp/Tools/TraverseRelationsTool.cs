@@ -9,7 +9,6 @@ using System.ComponentModel;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
-using Hexalith.Memories.Mcp.Authentication;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -25,29 +24,19 @@ internal sealed class TraverseRelationsTool
     internal const int DepthUpperBound = 10;
 
     private readonly MemoriesClient _client;
-    private readonly McpErrorMapper _mapper;
-    private readonly TenantClaimAuthorizationFilter _tenantAuthorization;
-    private readonly IAuthorizedTenantAccessor _authorizedTenantAccessor;
+    private readonly McpToolExecutor _executor;
 
     /// <summary>Initializes a new instance of the <see cref="TraverseRelationsTool"/> class.</summary>
     /// <param name="client">The Memories REST client.</param>
-    /// <param name="mapper">The error mapper.</param>
-    /// <param name="tenantAuthorization">The tenant-claim authorization filter.</param>
-    /// <param name="authorizedTenantAccessor">The authorized tenant accessor.</param>
+    /// <param name="executor">The shared MCP tool executor.</param>
     public TraverseRelationsTool(
         MemoriesClient client,
-        McpErrorMapper mapper,
-        TenantClaimAuthorizationFilter tenantAuthorization,
-        IAuthorizedTenantAccessor authorizedTenantAccessor)
+        McpToolExecutor executor)
     {
         ArgumentNullException.ThrowIfNull(client);
-        ArgumentNullException.ThrowIfNull(mapper);
-        ArgumentNullException.ThrowIfNull(tenantAuthorization);
-        ArgumentNullException.ThrowIfNull(authorizedTenantAccessor);
+        ArgumentNullException.ThrowIfNull(executor);
         _client = client;
-        _mapper = mapper;
-        _tenantAuthorization = tenantAuthorization;
-        _authorizedTenantAccessor = authorizedTenantAccessor;
+        _executor = executor;
     }
 
     /// <summary>The MCP tool method.</summary>
@@ -77,74 +66,61 @@ internal sealed class TraverseRelationsTool
         CancellationToken cancellationToken = default)
     {
         const string toolName = "traverse_relations";
+        IReadOnlyList<EdgeType>? parsedEdgeTypes = null;
 
-        if (string.IsNullOrWhiteSpace(tenantId))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "tenantId is required.",
-                "Provide a non-empty tenantId.",
-                toolName);
-        }
+        return await _executor.RunAsync(
+            tenantId,
+            toolName,
+            mapper =>
+            {
+                if (string.IsNullOrWhiteSpace(tenantId))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "tenantId is required.",
+                        "Provide a non-empty tenantId.",
+                        toolName);
+                }
 
-        if (string.IsNullOrWhiteSpace(from))
-        {
-            return _mapper.MapValidation(
-                "INVALID_INPUT",
-                "from is required.",
-                "Provide the memory unit id to start traversal from.",
-                toolName);
-        }
+                if (string.IsNullOrWhiteSpace(from))
+                {
+                    return mapper.MapValidation(
+                        "INVALID_INPUT",
+                        "from is required.",
+                        "Provide the memory unit id to start traversal from.",
+                        toolName);
+                }
 
-        if (!TryParseEdgeTypes(edgeType, out IReadOnlyList<EdgeType>? parsedEdgeTypes, out string? invalidValue))
-        {
-            string validList = string.Join(
-                ", ",
-                Enum.GetValues<EdgeType>().Select(static et => char.ToLowerInvariant(et.ToString()[0]) + et.ToString()[1..]));
-            return _mapper.MapValidation(
-                "INVALID_EDGE_TYPE",
-                $"Unknown edge type: '{invalidValue}'.",
-                $"Use comma-separated camelCase edge type names (valid: {validList}).",
-                toolName);
-        }
+                if (TryParseEdgeTypes(edgeType, out parsedEdgeTypes, out string? invalidValue))
+                {
+                    return null;
+                }
 
-        if (!_tenantAuthorization.TryAuthorizeTenant(tenantId, toolName, out _, out CallToolResult? authorizationError))
-        {
-            return authorizationError!;
-        }
+                string validList = string.Join(
+                    ", ",
+                    Enum.GetValues<EdgeType>().Select(static et => char.ToLowerInvariant(et.ToString()[0]) + et.ToString()[1..]));
+                return mapper.MapValidation(
+                    "INVALID_EDGE_TYPE",
+                    $"Unknown edge type: '{invalidValue}'.",
+                    $"Use comma-separated camelCase edge type names (valid: {validList}).",
+                    toolName);
+            },
+            async (authorizedTenant, token) =>
+            {
+                int clampedDepth = Math.Clamp(depth, DepthLowerBound, DepthUpperBound);
+                int? effectiveTokenBudget = tokenBudget is > 0 ? tokenBudget : null;
 
-        if (!_authorizedTenantAccessor.TryGetAuthorizedTenant(out string authorizedTenant))
-        {
-            return _mapper.MapAuthorization(tenantId, toolName, McpErrorMapper.TenantForbiddenCode);
-        }
-
-        int clampedDepth = Math.Clamp(depth, DepthLowerBound, DepthUpperBound);
-        int? effectiveTokenBudget = tokenBudget is > 0 ? tokenBudget : null;
-
-        try
-        {
-            TraversalResult result = await _client.TraverseAsync(
-                authorizedTenant,
-                from,
-                clampedDepth,
-                caseId,
-                parsedEdgeTypes,
-                tokenBudget: effectiveTokenBudget,
-                ct: cancellationToken).ConfigureAwait(false);
-            return McpToolResultSerializer.Success(result);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (MemoriesRemoteException ex)
-        {
-            return _mapper.Map(ex, toolName);
-        }
-        catch (Exception ex)
-        {
-            return _mapper.MapGeneric(ex, toolName);
-        }
+                TraversalResult result = await _client.TraverseAsync(
+                    authorizedTenant,
+                    from,
+                    clampedDepth,
+                    caseId,
+                    parsedEdgeTypes,
+                    tokenBudget: effectiveTokenBudget,
+                    ct: token).ConfigureAwait(false);
+                return McpToolResultSerializer.Success(result);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
     private static bool TryParseEdgeTypes(string? raw, out IReadOnlyList<EdgeType>? parsed, out string? invalidValue)

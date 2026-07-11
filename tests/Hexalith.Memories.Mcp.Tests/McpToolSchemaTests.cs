@@ -7,9 +7,13 @@ namespace Hexalith.Memories.Mcp.Tests;
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Text.Json;
 
+using Hexalith.Memories.Mcp;
 using Hexalith.Memories.Mcp.Authentication;
 using Hexalith.Memories.Mcp.Tools;
 
@@ -43,6 +47,12 @@ public sealed class McpToolSchemaTests
         GetCaseInfoName,
     ];
 
+    private static readonly IReadOnlyDictionary<short, OpCode> OpCodesByValue = typeof(OpCodes)
+        .GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Where(field => field.FieldType == typeof(OpCode))
+        .Select(field => (OpCode)field.GetValue(null)!)
+        .ToDictionary(opCode => opCode.Value);
+
     [Fact]
     public void RegisteredTools_ContainExactlyTheFourEpicTools()
     {
@@ -73,6 +83,29 @@ public sealed class McpToolSchemaTests
         foreach (McpServerTool tool in tools)
         {
             tool.ProtocolTool.Description.ShouldNotBeNullOrWhiteSpace($"tool '{tool.ProtocolTool.Name}'");
+        }
+    }
+
+    [Fact]
+    public void EveryRegisteredTool_DependsOnSharedExecutor()
+    {
+        Type[] registeredToolTypes = typeof(SearchMemoryTool).Assembly
+            .GetTypes()
+            .Where(type => type.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Any(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null))
+            .ToArray();
+
+        registeredToolTypes.Length.ShouldBe(ExpectedToolNames.Length);
+        foreach (Type toolType in registeredToolTypes)
+        {
+            toolType.GetConstructors()
+                .ShouldHaveSingleItem()
+                .GetParameters()
+                .ShouldContain(parameter => parameter.ParameterType == typeof(McpToolExecutor));
+
+            MethodInfo toolMethod = toolType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
+                .Single(method => method.GetCustomAttribute<McpServerToolAttribute>() is not null);
+            CallsSharedExecutor(toolMethod).ShouldBeTrue($"tool '{toolType.Name}' must invoke McpToolExecutor.RunAsync");
         }
     }
 
@@ -188,6 +221,58 @@ public sealed class McpToolSchemaTests
         return properties;
     }
 
+    private static bool CallsSharedExecutor(MethodInfo toolMethod)
+    {
+        Type? stateMachineType = toolMethod.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
+        MethodInfo implementationMethod = stateMachineType?.GetMethod(
+            "MoveNext",
+            BindingFlags.Instance | BindingFlags.NonPublic) ?? toolMethod;
+        byte[] instructions = implementationMethod.GetMethodBody()?.GetILAsByteArray() ?? [];
+
+        for (int index = 0; index < instructions.Length;)
+        {
+            short value = instructions[index++];
+            if (value == 0xFE)
+            {
+                value = (short)(0xFE00 | instructions[index++]);
+            }
+
+            OpCodesByValue.TryGetValue(value, out OpCode opCode)
+                .ShouldBeTrue($"unknown IL opcode 0x{value:X4} in {implementationMethod.Name}");
+
+            if (opCode == OpCodes.Call || opCode == OpCodes.Callvirt)
+            {
+                int metadataToken = BitConverter.ToInt32(instructions, index);
+                MethodBase? calledMethod = implementationMethod.Module.ResolveMethod(
+                    metadataToken,
+                    implementationMethod.DeclaringType?.GetGenericArguments(),
+                    implementationMethod.GetGenericArguments());
+                if (calledMethod?.DeclaringType == typeof(McpToolExecutor)
+                    && string.Equals(calledMethod.Name, nameof(McpToolExecutor.RunAsync), StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            index += GetOperandSize(opCode.OperandType, instructions, index);
+        }
+
+        return false;
+    }
+
+    private static int GetOperandSize(OperandType operandType, byte[] instructions, int operandIndex)
+        => operandType switch
+        {
+            OperandType.InlineNone => 0,
+            OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+            OperandType.InlineVar => 2,
+            OperandType.InlineBrTarget or OperandType.InlineField or OperandType.InlineI or OperandType.InlineMethod
+                or OperandType.InlineSig or OperandType.InlineString or OperandType.InlineTok or OperandType.ShortInlineR => 4,
+            OperandType.InlineI8 or OperandType.InlineR => 8,
+            OperandType.InlineSwitch => sizeof(int) + (BitConverter.ToInt32(instructions, operandIndex) * sizeof(int)),
+            _ => throw new InvalidOperationException($"Unsupported IL operand type '{operandType}'."),
+        };
+
     private static IServiceProvider BuildServiceProvider()
     {
         var services = new ServiceCollection();
@@ -197,7 +282,7 @@ public sealed class McpToolSchemaTests
         services.AddHttpContextAccessor();
         services.AddSingleton<IOptions<MemoriesMcpAuthenticationOptions>>(Options.Create(new MemoriesMcpAuthenticationOptions()));
         services.AddScoped<TenantClaimAuthorizationFilter>();
-        services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
+        services.AddScoped<McpToolExecutor>();
         services.AddSingleton<ILogger<TenantClaimAuthorizationFilter>>(NullLogger<TenantClaimAuthorizationFilter>.Instance);
         services.AddSingleton<IHttpContextAccessor>(_ =>
         {

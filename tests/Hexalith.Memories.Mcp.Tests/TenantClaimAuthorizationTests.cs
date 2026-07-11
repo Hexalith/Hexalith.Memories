@@ -20,7 +20,7 @@ using Shouldly;
 public sealed class TenantClaimAuthorizationTests
 {
     [Fact]
-    public void AuthorizeTenant_AllowsMatchingTenantAndSnapshotsIt()
+    public void AuthorizeTenant_AllowsMatchingTenantAndReturnsApprovedSnapshot()
     {
         DefaultHttpContext context = CreateContext("tenant-a");
         var accessor = new HttpContextAccessor { HttpContext = context };
@@ -31,7 +31,7 @@ public sealed class TenantClaimAuthorizationTests
         authorized.ShouldBeTrue();
         error.ShouldBeNull();
         tenantId.ShouldBe("tenant-a");
-        context.Items[AuthorizedTenantAccessor.HttpContextItemKey].ShouldBe("tenant-a");
+        context.Items.ShouldBeEmpty();
     }
 
     [Fact]
@@ -76,26 +76,17 @@ public sealed class TenantClaimAuthorizationTests
     }
 
     [Fact]
-    public void AuthorizeTenant_ThrowsWhenAuthorizedTenantAlreadyPresent()
+    public void AuthorizeTenant_UsesExactOrdinalClaimMatching()
     {
         DefaultHttpContext context = CreateContext("tenant-a");
-        context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = "stale-tenant";
         var filter = CreateFilter(new HttpContextAccessor { HttpContext = context });
 
-        Should.Throw<InvalidOperationException>(
-            () => filter.TryAuthorizeTenant("tenant-a", "search_memory", out _, out _))
-            .Message.ShouldContain("HttpContext.Items leaked");
-    }
+        bool authorized = filter.TryAuthorizeTenant("TENANT-A", "search_memory", out string tenantId, out CallToolResult? error);
 
-    [Fact]
-    public void AuthorizedTenantAccessor_ReturnsSnapshot()
-    {
-        var context = new DefaultHttpContext();
-        context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = "tenant-a";
-        var accessor = new AuthorizedTenantAccessor(new HttpContextAccessor { HttpContext = context });
-
-        accessor.TryGetAuthorizedTenant(out string tenantId).ShouldBeTrue();
-        tenantId.ShouldBe("tenant-a");
+        authorized.ShouldBeFalse();
+        tenantId.ShouldBeEmpty();
+        error.ShouldNotBeNull();
+        error!.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("TENANT_FORBIDDEN");
     }
 
     private static DefaultHttpContext CreateContext(params string[] tenants)

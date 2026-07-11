@@ -55,7 +55,7 @@ internal static class McpCompositionRoot
         services.AddSingleton<ServerUpstreamTokenFactory>();
         services.AddTransient<IClaimsTransformation, MemoriesMcpClaimsTransformation>();
         services.AddScoped<TenantClaimAuthorizationFilter>();
-        services.AddScoped<IAuthorizedTenantAccessor, AuthorizedTenantAccessor>();
+        services.AddScoped<McpToolExecutor>();
         services.AddHostedService<StartupValidationHostedService>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

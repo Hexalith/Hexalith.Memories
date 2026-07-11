@@ -139,8 +139,5 @@ public sealed class EvidencePacketMcpParityTests
     }
 
     private static SearchMemoryTool CreateTool(StubMemoriesClient stub, string tenantId)
-    {
-        var (authorization, accessor) = McpToolTestFactory.CreateAuth(tenantId);
-        return new SearchMemoryTool(stub, new McpErrorMapper(), authorization, accessor);
-    }
+        => new(stub, McpToolTestFactory.CreateExecutor(tenantId));
 }

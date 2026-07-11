@@ -52,11 +52,6 @@ internal sealed partial class TenantClaimAuthorizationFilter(
             return false;
         }
 
-        if (context.Items.ContainsKey(AuthorizedTenantAccessor.HttpContextItemKey))
-        {
-            throw new InvalidOperationException("HttpContext.Items leaked across requests - authorization state must be request-scoped.");
-        }
-
         ClaimsPrincipal user = context.User;
         if (user.Identity?.IsAuthenticated != true)
         {
@@ -71,7 +66,6 @@ internal sealed partial class TenantClaimAuthorizationFilter(
             return false;
         }
 
-        context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = tenantId;
         authorizedTenant = tenantId;
         return true;
     }

@@ -59,9 +59,19 @@ public sealed class GetCaseInfoToolTests
         result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("CASE_NOT_FOUND");
     }
 
-    private static GetCaseInfoTool CreateTool(StubMemoriesClient stub)
+    [Fact]
+    public async Task MismatchedTenant_ReturnsAuthorizationErrorWithoutCallingClient()
     {
-        var (authorization, accessor) = McpToolTestFactory.CreateAuth();
-        return new GetCaseInfoTool(stub, new McpErrorMapper(), authorization, accessor);
+        var stub = new StubMemoriesClient();
+        GetCaseInfoTool tool = CreateTool(stub);
+
+        CallToolResult result = await tool.GetCaseAsync("other-tenant", "case-1", TestContext.Current.CancellationToken);
+
+        stub.GetCaseCalls.ShouldBeEmpty();
+        result.IsError.ShouldBe(true);
+        result.StructuredContent!.Value.GetProperty("code").GetString().ShouldBe("TENANT_FORBIDDEN");
     }
+
+    private static GetCaseInfoTool CreateTool(StubMemoriesClient stub)
+        => new(stub, McpToolTestFactory.CreateExecutor());
 }
