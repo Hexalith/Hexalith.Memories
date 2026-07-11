@@ -46,7 +46,9 @@ public class MemoriesClientSendDecodeTests
     [Fact]
     public async Task SendDecode_EmptyBody_ThrowsInvalidResponseNamingTheType()
     {
-        MemoriesClient client = CreateClient(HttpStatusCode.OK, "null");
+        var content = new ByteArrayContent([]);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, content);
 
         MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
             () => client.GetCaseAsync("acme", "case-1", CancellationToken.None));
@@ -70,6 +72,46 @@ public class MemoriesClientSendDecodeTests
 
         // "parsed as Case" proves typeof(T).Name is interpolated into the INVALID_RESPONSE message.
         exception.Error.Message.ShouldContain("parsed as Case");
+    }
+
+    [Theory]
+    [InlineData("io")]
+    [InlineData("http")]
+    [InlineData("unsupported")]
+    public async Task SendDecode_ContentReadFailure_ThrowsInvalidResponseWithOriginalCause(string failureKind)
+    {
+        Exception failure = failureKind switch
+        {
+            "io" => new IOException("read failed"),
+            "http" => new HttpRequestException("transport failed"),
+            "unsupported" => new NotSupportedException("unsupported content"),
+            _ => throw new ArgumentOutOfRangeException(nameof(failureKind)),
+        };
+        MemoriesClient client = CreateClient(HttpStatusCode.OK, new ThrowingHttpContent(() => failure));
+
+        MemoriesRemoteException exception = await Should.ThrowAsync<MemoriesRemoteException>(
+            () => client.GetCaseAsync("acme", "case-1", CancellationToken.None));
+
+        exception.Error.Code.ShouldBe("INVALID_RESPONSE");
+        exception.InnerException.ShouldBeSameAs(failure);
+    }
+
+    [Fact]
+    public async Task SendDecode_CancelledContentRead_RethrowsCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        MemoriesClient client = CreateClient(
+            HttpStatusCode.OK,
+            new ThrowingHttpContent(() =>
+            {
+                cts.Cancel();
+                return new OperationCanceledException(cts.Token);
+            }));
+
+        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(
+            () => client.GetCaseAsync("acme", "case-1", cts.Token));
+
+        exception.CancellationToken.ShouldBe(cts.Token);
     }
 
     [Fact]
@@ -105,14 +147,18 @@ public class MemoriesClientSendDecodeTests
     }
 
     private static MemoriesClient CreateClient(HttpStatusCode status, string body)
+        => CreateClient(status, new StringContent(body, Encoding.UTF8, "application/json"));
+
+    private static MemoriesClient CreateClient(HttpStatusCode status, HttpContent content)
     {
         var handler = new TestDelegatingHandler((_, _) =>
             Task.FromResult(new HttpResponseMessage(status)
             {
-                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                Content = content,
             }));
         var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });
         return new MemoriesClient(httpClient, options, NullLogger<MemoriesClient>.Instance);
     }
+
 }

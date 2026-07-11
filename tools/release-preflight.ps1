@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:SemverPattern = '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$'
+$script:DryRunReportedStaleCheckout = $false
 
 function Invoke-GitCommand {
     param(
@@ -92,24 +93,98 @@ function Get-SemanticReleaseDryRunOutput {
 }
 
 function Get-NextReleaseVersionFromDryRun {
-    param([Parameter(Mandatory)][string] $DryRunOutput)
+    param(
+        [Parameter(Mandatory)]
+        [string] $DryRunOutput,
 
-    if ($DryRunOutput -match "There are no relevant changes, so no new version is released\.") {
-        return $null
+        [bool] $AllowBareTerminalRecords = $false
+    )
+
+    $ansiEscapePattern = "`e\[[0-?]*[ -/]*[@-~]"
+    $normalizedDryRunOutput = [regex]::Replace($DryRunOutput, $ansiEscapePattern, "")
+    $semanticReleaseLoggerPrefixPattern = '^\[[^\]\r\n]+\] \[semantic-release\] › ℹ  (?<message>.*)$'
+    $nextVersionPrefix = "The next release version is"
+    $noReleaseSentence = "There are no relevant changes, so no new version is released."
+    $staleCheckoutSentence = "The local branch main is behind the remote one, therefore a new version won't be published."
+    $parsedVersions = [System.Collections.Generic.List[string]]::new()
+    $malformedVersionMarkers = [System.Collections.Generic.List[string]]::new()
+    $noReleaseMatchCount = 0
+    $staleCheckoutMatchCount = 0
+
+    foreach ($line in ($normalizedDryRunOutput -split "\r?\n")) {
+        $message = $null
+        $prefixMatch = [regex]::Match($line, $semanticReleaseLoggerPrefixPattern)
+        if ($prefixMatch.Success) {
+            $message = $prefixMatch.Groups["message"].Value
+        }
+        elseif ($AllowBareTerminalRecords) {
+            $message = $line
+        }
+
+        if ($null -eq $message) {
+            continue
+        }
+
+        if ($message.StartsWith($nextVersionPrefix, [System.StringComparison]::Ordinal)) {
+            $validVersionMatch = [regex]::Match(
+                $message,
+                "^The next release version is (?<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)$")
+            if ($validVersionMatch.Success) {
+                $parsedVersions.Add($validVersionMatch.Groups["version"].Value)
+            }
+            else {
+                $malformedVersionMarkers.Add($message)
+            }
+        }
+        elseif ($message -ieq $noReleaseSentence) {
+            $noReleaseMatchCount++
+        }
+        elseif ($message -ceq $staleCheckoutSentence) {
+            $staleCheckoutMatchCount++
+        }
     }
 
-    $versionMatches = [regex]::Matches(
-        $DryRunOutput,
-        "The next release version is (?<version>[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?)")
-
-    if ($versionMatches.Count -eq 0) {
-        throw "semantic-release dry-run completed, but the next release version could not be parsed. Expected 'The next release version is <version>' or the no-release message."
-    }
-
-    $distinctVersions = @($versionMatches | ForEach-Object { $_.Groups["version"].Value } | Select-Object -Unique)
+    $distinctVersions = @($parsedVersions | Select-Object -Unique)
     if ($distinctVersions.Count -gt 1) {
         $candidates = $distinctVersions -join ', '
         throw "semantic-release dry-run reported multiple distinct next-release versions ($candidates). The release preflight refuses to choose between them; resolve the semantic-release output before publishing."
+    }
+
+    $terminalOutcomes = [System.Collections.Generic.List[string]]::new()
+    if ($distinctVersions.Count -eq 1) {
+        $terminalOutcomes.Add("next release version $($distinctVersions[0])")
+    }
+
+    if ($noReleaseMatchCount -gt 0) {
+        $terminalOutcomes.Add("no release")
+    }
+
+    if ($staleCheckoutMatchCount -gt 0) {
+        $terminalOutcomes.Add("stale checkout")
+    }
+
+    if ($malformedVersionMarkers.Count -gt 0) {
+        $markers = $malformedVersionMarkers -join "', '"
+        $detectedOutcomes = if ($terminalOutcomes.Count -eq 0) { "none" } else { $terminalOutcomes -join ', ' }
+        throw "semantic-release dry-run reported malformed next-release marker(s) ('$markers') alongside recognized terminal outcomes: $detectedOutcomes. Expected 'The next release version is <version>' with a valid semantic version."
+    }
+
+    if ($terminalOutcomes.Count -eq 0) {
+        throw "semantic-release dry-run completed, but its terminal outcome could not be parsed. Expected exactly one semantic-release logger record (or exact bare fixture record) containing: 'The next release version is <version>', 'There are no relevant changes, so no new version is released.', or 'The local branch main is behind the remote one, therefore a new version won't be published.'."
+    }
+
+    if ($terminalOutcomes.Count -gt 1) {
+        $outcomes = $terminalOutcomes -join ', '
+        throw "semantic-release dry-run reported multiple terminal outcomes ($outcomes). The release preflight requires exactly one recognized outcome before publishing."
+    }
+
+    if ($staleCheckoutMatchCount -gt 0) {
+        $script:DryRunReportedStaleCheckout = $true
+        return $null
+    }
+
+    if ($noReleaseMatchCount -gt 0) {
+        return $null
     }
 
     $distinctVersions[0]
@@ -167,14 +242,21 @@ try {
     $version = $NextVersion
     if ([string]::IsNullOrWhiteSpace($version)) {
         $dryRunOutput = Get-SemanticReleaseDryRunOutput
-        $version = Get-NextReleaseVersionFromDryRun -DryRunOutput $dryRunOutput
+        $allowBareTerminalRecords = ![string]::IsNullOrWhiteSpace($SemanticReleaseDryRunOutputPath)
+        $version = Get-NextReleaseVersionFromDryRun -DryRunOutput $dryRunOutput -AllowBareTerminalRecords $allowBareTerminalRecords
     }
     elseif ($version -notmatch $script:SemverPattern) {
         throw "NextVersion '$version' does not match the expected semver shape '<major>.<minor>.<patch>[-prerelease|+build]'. Pass the bare semver value (no leading 'v') or omit -NextVersion to let semantic-release dry-run compute it."
     }
 
     if ([string]::IsNullOrWhiteSpace($version)) {
-        Write-Host "semantic-release dry-run reported no release; release preflight passed with no tag check required."
+        if ($script:DryRunReportedStaleCheckout) {
+            Write-Host "semantic-release dry-run reported a stale checkout; release preflight passed with no release or tag check required."
+        }
+        else {
+            Write-Host "semantic-release dry-run reported no release; release preflight passed with no tag check required."
+        }
+
         exit 0
     }
 

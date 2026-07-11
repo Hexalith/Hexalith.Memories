@@ -24,13 +24,13 @@ so that a route rename cannot silently break consumers and the client's exceptio
 
 4. **One generic send/decode replaces the 22× block.** A single generic `SendAsync<T>` (or equivalently named private/protected helper) backs the standard "request → deserialize `T` or throw" methods, eliminating the 22 copy-pasted decode blocks. It is cancellation-aware (rethrows `OperationCanceledException when ct.IsCancellationRequested`), maps non-2xx via `ErrorResponseDecoder` → `MemoriesRemoteException`, and derives the `INVALID_RESPONSE` empty-body / parse-failure messages from `typeof(T).Name`. Special-shape methods (streaming exports, workflow-`Uri`/instance-id readers, `ProbeHealthAsync`, `404 → null` reads, tenant pagination) keep their bespoke behavior via thin wrappers over the shared send/decode — their observable behavior is unchanged.
 
-5. **`TraverseAsync` parameter order corrected — via a compat overload.** A new corrected `TraverseAsync` puts `CancellationToken` **last** (move `int? tokenBudget = null` before `CancellationToken ct = default`), matching every sibling client method, the server `GET /api/tenants/{tenantId}/traverse` endpoint, and `GraphTraversalService.TraverseAsync`. Because this method is **stable** (not `[Experimental]` — see Dev Notes ⚠️), the existing positional signature is **kept as an `[Obsolete]` compat overload** that forwards to the corrected one, so no external positional caller breaks. Commit stays `refactor(...)` (no `BREAKING CHANGE:` footer). Mockability and wire-surface tests still pass.
+5. **`TraverseAsync` parameter order corrected — approved breaking reorder.** The corrected `TraverseAsync` puts `CancellationToken` **last** (move `int? tokenBudget = null` before `CancellationToken ct = default`), matching every sibling client method, the server `GET /api/tenants/{tenantId}/traverse` endpoint, and `GraphTraversalService.TraverseAsync`. The stable positional signature is intentionally replaced because retaining both swapped optional-parameter overloads is CS0121-ambiguous. This is an approved breaking API change and requires a `refactor(...)!` / `BREAKING CHANGE:` marker and a major release. Mockability and wire-surface tests still pass.
 
 6. **Route drift guard still passes.** `tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs` is updated so its code→doc extraction still resolves all 46 `/api/*` routes now that they come from `MemoriesRoutes` constants rather than inline literals (its regex only matches inline `app.MapX("/…")` today). `docs/operations/route-surface.md` route strings and row count remain unchanged.
 
 7. **Behavior preserved; build green.** All existing tests pass unchanged: client wire-surface tests under `tests/Hexalith.Memories.Cli.Tests/ClientRest/` (exact path + query assertions), server endpoint/auth/rate-limit tests, route-surface & deployment contract tests, MCP `StubMemoriesClient` tool tests, and `MemoriesClientMockabilityContractTests` (class not sealed, public methods stay `virtual`). `dotnet build Hexalith.Memories.slnx` succeeds with **0 warnings, 0 errors**.
 
-8. **No scope leakage.** No CLI change (Story 25.5), no MCP change (Story 25.6), no route versioning or contract renaming or persistence-DTO split (Story 25.4). No new packages, no controllers, no submodule edits.
+8. **No unrelated scope leakage.** No CLI change (Story 25.5). The MCP tool caller and MCP test stub may receive only the signature-order adaptation required by the approved AC5 break; broader MCP consolidation remains Story 25.6. No route versioning, contract renaming, or persistence-DTO split (Story 25.4). No new packages, no controllers, and no submodule edits.
 
 ## Tasks / Subtasks
 
@@ -56,15 +56,24 @@ so that a route rename cannot silently break consumers and the client's exceptio
 - [x] **Task 6 — Verify** (AC: 7, 8)
   - [x] `dotnet build Hexalith.Memories.slnx` → 0 warnings. Run the client, server-route, MCP-stub, and mockability test filters listed in Dev Notes → Testing. `git diff --check` the touched paths. (Full solution Release build: 0 warnings / 0 errors; test suites green — see Completion Notes.)
 
+### Review Findings
+
+- [x] [Review][Patch] Formalize the approved breaking `TraverseAsync` contract — Administrator chose the breaking API on 2026-07-11: AC5/AC8 and the premise correction now authorize the reordered signature and necessary MCP adaptation. Commit the review remediation with a breaking-change marker so the next release is major; published tag `v1.44.1` was not rewritten [_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md:27]
+- [ ] [Review][Patch] Remove the five unrelated submodule pointer advances from this no-submodule story [references/Hexalith.EventStore:1]
+- [x] [Review][Patch] Source emitted `Location` URIs and authorization route labels from `MemoriesRoutes` so the next route rename cannot leave them stale — already resolved by the later route-versioning work on current `main`; verified no endpoint `/api` literals remain and route-surface tests pass 11/11 [src/Hexalith.Memories.Server/Endpoints/CasesEndpoints.cs:77]
+- [x] [Review][Patch] Reject whitespace and dot-segment route values before URI resolution can normalize a case export into a broader tenant export [src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs:334]
+- [x] [Review][Patch] Cover the generic decoder's real empty body, cancellation, and `IOException`/`HttpRequestException`/`NotSupportedException` mappings — the tests exposed and the patch fixed early content buffering by using `ResponseHeadersRead` [tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSendDecodeTests.cs:47]
+- [x] [Review][Patch] Assert the exact request paths selected by the two handler client methods [tests/Hexalith.Memories.Cli.Tests/Cli/MemoriesClientHandlersContractTests.cs:73]
+
 ## Dev Notes
 
-> The dev agent has ONLY this file. Read the whole Dev Notes section before editing. This is a **behavior-preserving refactor**: the existing integration, contract, wire-surface, and drift-guard tests are the safety net — do not change what they assert; make them pass while removing duplication.
+> The dev agent has ONLY this file. Read the whole Dev Notes section before editing. This is a behavior-preserving route/decode refactor except for the explicitly approved breaking `TraverseAsync` parameter reorder in AC5. The existing integration, contract, wire-surface, and drift-guard tests are the safety net — do not change what they assert; make them pass while removing duplication.
 
 ### ⚠️ Two premise corrections vs. the epic acceptance criteria (verified against code)
 
 The epic text (`epics.md` §25.3) has two inaccuracies the dev must not take at face value:
 
-1. **`TraverseAsync` is NOT `[Experimental]`.** `MemoriesClient.cs:940` doc comment reads *"Stable since Story 10.2."* There is no `[Experimental]` attribute. Reordering its public parameters would be a **breaking change to a published, packable API surface** (`Hexalith.Memories.Client.Rest` is `IsPackable=true`). The genuinely `[Experimental]` client methods are `CreateTenantAsync`, `CreateCaseAsync`, `GetTelemetrySummaryAsync` (`HXL001`) and `ListHandlersAsync`, `GetHandlerMismatchesAsync` (`HXL002`) — **not** `TraverseAsync`. **Maintainer decision (locked): use a compat overload** — add the corrected signature (token last) and keep the old positional order as an `[Obsolete]` forwarding overload, so no external caller breaks and the commit stays `refactor(...)` (no `BREAKING CHANGE:`). Task 5 encodes this.
+1. **`TraverseAsync` is NOT `[Experimental]`.** `MemoriesClient.cs:940` doc comment reads *"Stable since Story 10.2."* There is no `[Experimental]` attribute. Reordering its public parameters is therefore a **breaking change to a published, packable API surface** (`Hexalith.Memories.Client.Rest` is `IsPackable=true`). The genuinely `[Experimental]` client methods are `CreateTenantAsync`, `CreateCaseAsync`, `GetTelemetrySummaryAsync` (`HXL001`) and `ListHandlersAsync`, `GetHandlerMismatchesAsync` (`HXL002`) — **not** `TraverseAsync`. The original compat-overload direction was superseded after the two swapped optional signatures proved CS0121-ambiguous. Jerome approved the breaking reorder during implementation, and Administrator reaffirmed that disposition during code review on 2026-07-11. AC5 and AC8 now encode the approved break and its narrowly required MCP adaptation; release metadata must signal a major change.
 2. **"60 server literals" does not reconcile with the code.** Authoritative counts today: **46 server route registrations / 37 distinct path templates** in the 7 endpoint classes, **+6** non-mapping path literals in middleware/rate-limiter = **52** server-side path literals. Client side: **23 route-bearing method groupings / 20 distinct templates** (+2 duplicated `relativePath` literals). Do **not** chase the exact numbers "60/23"; the deliverable is *single-sourcing every route path literal*, and the tests (not a count) prove completeness.
 
 ### What this story is (and the audit finding it closes)
@@ -188,6 +197,7 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
 
 ### Completion Notes List
 
+- **2026-07-11 review remediation:** Administrator approved the breaking `TraverseAsync` reorder; AC5/AC8 and the premise correction now match that decision. Route builders reject whitespace and `.`/`..` segments, preventing `HttpClient` dot-segment normalization from widening a case-export request to tenant export. Generic GET decoding uses `ResponseHeadersRead`, allowing the documented `IOException`/`HttpRequestException`/`NotSupportedException` mapping to execute; focused tests now cover those failures, true empty content, cancellation, and exact handler routes. Current `main` already contains the absolute `MemoriesRoutes` location builders from later route-versioning work. Verification: Release solution build 0 warnings/0 errors; Contracts 579/579; CLI 445/445; route surface 11/11.
 - **A21 closed.** HTTP routes are single-sourced in `MemoriesRoutes` (Contracts.V1): 37 template constants (leading-slash, `{placeholder}` tokens) consumed by the server, plus segment-escaping `*Path` builders consumed by the client. Contracts stays a pure library (no ASP.NET/routing package added; not registered in `MemoriesJsonContext`).
 - **Server:** all 46 `app.MapX` registrations across the 7 `*Endpoints.cs` files now reference `MemoriesRoutes.*` (byte-identical templates); the 6 non-mapping literals in `TenantAuthorizationMiddleware`/`InboundRateLimitPartitionFactory` are sourced from the table. In-handler `Location`/response-header interpolations and auth-log/error-message strings were intentionally left as-is — AC 2 scopes to the 46 registrations + 6 middleware literals, and those other literals include human-readable error text that should not be forced through the route table.
 - **Client:** the 22 copy-pasted decode blocks collapse to one generic `private SendAsync<T>` (GET → decode-required-`T`) backed by `ReadRequiredAsync<T>`/`ReadOptionalAsync<T>` (Variant-B cancellation-aware catch, `INVALID_RESPONSE` messages derived from `typeof(T).Name`) and `ThrowIfNotSuccessAsync`/`ToRemoteExceptionAsync`. Special shapes (streaming exports, instance-id/`Uri` readers, `ProbeHealthAsync`, `404 → null` reads, tenant pagination) keep bespoke behavior over the shared helpers. All `api/…` request paths derive from `MemoriesRoutes` builders — no path literal remains in `MemoriesClient.cs` (new guard test). Class stays non-sealed, public methods stay `virtual`, helpers are `private` — mockability guard passes.
@@ -227,8 +237,17 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]`.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (status → review)
 - `_bmad-output/implementation-artifacts/25-3-shared-route-table-and-client-consolidation.md` (this file)
 
+**Review remediation (2026-07-11):**
+- `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`
+- `src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs`
+- `tests/Hexalith.Memories.Cli.Tests/Cli/MemoriesClientHandlersContractTests.cs`
+- `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientSendDecodeTests.cs`
+- `tests/Hexalith.Memories.Cli.Tests/ClientRest/ThrowingHttpContent.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/MemoriesRoutesTests.cs`
+
 ## Change Log
 
 | Date | Change |
 | ---- | ------ |
+| 2026-07-11 | Code-review remediation: approved and documented the breaking `TraverseAsync` disposition; rejected invalid/dot route segments; made generic GET decoding use `ResponseHeadersRead`; covered true empty content, cancellation, content-read failures, and exact handler routes; confirmed later route-versioning work already removed stale server locations. One historical submodule-pointer finding remains pending because removing it from published commit `8e92fe7` requires a history decision. |
 | 2026-07-08 | Story 25.3 implemented: `MemoriesRoutes` single-source route table (Contracts.V1); 46 server registrations + 6 middleware literals + all client paths sourced from it; 22 client decode blocks consolidated behind generic `SendAsync<T>` (Variant-B, `typeof(T).Name` messages); `TraverseAsync` parameter order corrected (`ct` last) as an **accepted breaking reorder** (compat overload proven CS0121-ambiguous; requires `BREAKING CHANGE:` footer / major bump). Route-surface drift guard updated to resolve route constants; repointed a stale 25.1 ingestion-determinism guard. Added `MemoriesRoutes`/`SendAsync` coverage + a client no-literal guard. Full Release build 0/0; Contracts 619, Cli 424, Server 2509 (1 pre-existing skip), Mcp 90 — all green. |

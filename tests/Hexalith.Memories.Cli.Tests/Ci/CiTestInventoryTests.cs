@@ -191,6 +191,32 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_ReleasePreflightFixtures_RunExactlyOnceBeforeLivePreflightAndSemanticRelease()
+    {
+        string repoRoot = GetRepoRoot();
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+        const string FixtureCommand = "python3 -m unittest discover -s tests/tooling/release_preflight -p \"*_test.py\"";
+
+        ReleaseWorkflowStep[] fixtureSteps = [.. steps.Where(step => string.Equals(step.Run, FixtureCommand, StringComparison.Ordinal))];
+        fixtureSteps.Length.ShouldBe(1, "release.yml must invoke the canonical release-preflight fixture command exactly once.");
+
+        int fixturesIndex = Array.IndexOf(steps, fixtureSteps[0]);
+        int preflightIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run release preflight", StringComparison.Ordinal));
+        int semanticReleaseIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+
+        preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the live release preflight.");
+        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
+        fixturesIndex.ShouldBeLessThan(preflightIndex, "release-preflight fixtures must run before the live release preflight.");
+        fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "release-preflight fixtures must run before semantic-release starts publish-capable work.");
+
+        ReleaseWorkflowStep step = fixtureSteps[0];
+        step.Name.ShouldBe("Run release preflight fixtures");
+        step.If.ShouldBeNull("release-preflight fixtures must run unconditionally.");
+        step.ContinueOnError.ShouldBeNull("release-preflight fixture failures must fail the release job.");
+        step.Uses.ShouldBeNull();
+    }
+
+    [Fact]
     public void ReleaseWorkflow_RunSemanticReleaseStep_UsesCanonicalCommand()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run semantic-release");
@@ -712,6 +738,7 @@ public sealed partial class CiTestInventoryTests
             string name = line[StepHeaderPrefix.Length..].Trim();
             string? shell = null;
             string? @if = null;
+            string? continueOnError = null;
             string? run = null;
             string? uses = null;
             List<string> runBlockLines = [];
@@ -754,6 +781,10 @@ public sealed partial class CiTestInventoryTests
                 {
                     @if = StripQuotes(trimmed["if:".Length..].Trim());
                 }
+                else if (trimmed.StartsWith("continue-on-error:", StringComparison.Ordinal))
+                {
+                    continueOnError = StripQuotes(trimmed["continue-on-error:".Length..].Trim());
+                }
                 else if (trimmed.StartsWith("uses:", StringComparison.Ordinal))
                 {
                     uses = trimmed["uses:".Length..].Trim();
@@ -778,6 +809,7 @@ public sealed partial class CiTestInventoryTests
                 Name: name,
                 Shell: shell,
                 If: @if,
+                ContinueOnError: continueOnError,
                 Run: run,
                 Uses: uses,
                 RunBlock: string.Join('\n', runBlockLines)));
@@ -892,7 +924,14 @@ public sealed partial class CiTestInventoryTests
         return value;
     }
 
-    private sealed record ReleaseWorkflowStep(string Name, string? Shell, string? If, string? Run, string? Uses, string RunBlock);
+    private sealed record ReleaseWorkflowStep(
+        string Name,
+        string? Shell,
+        string? If,
+        string? ContinueOnError,
+        string? Run,
+        string? Uses,
+        string RunBlock);
 
     private static int CountOccurrences(string haystack, string needle)
     {

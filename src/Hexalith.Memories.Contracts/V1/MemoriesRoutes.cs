@@ -336,10 +336,22 @@ public static class MemoriesRoutes
         string result = template;
         foreach ((string token, string value) in tokens)
         {
-            result = result.Replace("{" + token + "}", Uri.EscapeDataString(value), StringComparison.Ordinal);
+            result = result.Replace("{" + token + "}", EscapeSegment(token, value), StringComparison.Ordinal);
         }
 
         return result.TrimStart('/');
+    }
+
+    /// <summary>Validates and escapes one route-segment value without allowing URI dot-segment normalization.</summary>
+    private static string EscapeSegment(string token, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value, token);
+        if (value is "." or "..")
+        {
+            throw new ArgumentException("Route segment values cannot be '.' or '..'.", token);
+        }
+
+        return Uri.EscapeDataString(value);
     }
 
     /// <summary>Substitutes escaped route parameters while preserving the template's leading slash.</summary>

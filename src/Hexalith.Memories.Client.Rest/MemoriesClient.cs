@@ -506,7 +506,9 @@ public class MemoriesClient
     /// <returns>The decoded, non-null response.</returns>
     private async Task<T> SendAsync<T>(string relativePath, CancellationToken ct)
     {
-        using HttpResponseMessage response = await _httpClient.GetAsync(relativePath, ct).ConfigureAwait(false);
+        using HttpResponseMessage response = await _httpClient
+            .GetAsync(relativePath, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
         return await ReadRequiredAsync<T>(response, ct).ConfigureAwait(false);
     }

@@ -91,6 +91,19 @@ public class MemoriesRoutesTests
         MemoriesRoutes.ConsistencyVerifyStatusPath("t", "inst 1").ShouldBe("api/v1/tenants/t/consistency/verify/inst%201");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void PathBuilders_InvalidSegmentValues_ThrowArgumentException(string caseId)
+    {
+        ArgumentException exception = Should.Throw<ArgumentException>(
+            () => MemoriesRoutes.CaseExportPath("acme", caseId));
+
+        exception.ParamName.ShouldBe("caseId");
+    }
+
     [Fact]
     public void ServerLocationBuilders_ReturnAbsoluteEscapedV1Locations()
     {

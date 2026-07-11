@@ -63,7 +63,8 @@ public sealed class MemoriesClientHandlersContractTests
         string json = JsonSerializer.Serialize(serverInstance, MemoriesJsonContext.Options);
         json.ShouldContain("\"subscriptionStatus\":\"active\"");
 
-        using HttpClient httpClient = CreateClient(json);
+        Uri? requestUri = null;
+        using HttpClient httpClient = CreateClient(json, request => requestUri = request.RequestUri);
         MemoriesClient client = new(
             httpClient,
             Options.Create(new MemoriesClientOptions { Endpoint = httpClient.BaseAddress! }),
@@ -79,6 +80,8 @@ public sealed class MemoriesClientHandlersContractTests
         received.Handlers.Count.ShouldBe(1);
         received.Handlers[0].EventsProcessedCount.ShouldBe(5L);
         received.Handlers[0].ObservedEventTypes[0].EventType.ShouldBe("ClaimSubmittedV2");
+        requestUri.ShouldNotBeNull();
+        requestUri.AbsolutePath.ShouldBe(MemoriesRoutes.Handlers);
     }
 
     [Fact]
@@ -107,7 +110,8 @@ public sealed class MemoriesClientHandlersContractTests
         json.ShouldContain("\"category\":\"projectionBindingMissing\"");
         json.ShouldContain("\"severity\":\"warning\"");
 
-        using HttpClient httpClient = CreateClient(json);
+        Uri? requestUri = null;
+        using HttpClient httpClient = CreateClient(json, request => requestUri = request.RequestUri);
         MemoriesClient client = new(
             httpClient,
             Options.Create(new MemoriesClientOptions { Endpoint = httpClient.BaseAddress! }),
@@ -122,6 +126,8 @@ public sealed class MemoriesClientHandlersContractTests
         received.Mismatches[0].Severity.ShouldBe(HandlerMismatchSeverity.Warning);
         received.Summary.RoutesConfigured.ShouldBe(1);
         received.HasWarnings.ShouldBeTrue();
+        requestUri.ShouldNotBeNull();
+        requestUri.AbsolutePath.ShouldBe(MemoriesRoutes.TenantHandlerMismatches.Replace("{tenantId}", "acme", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -148,20 +154,27 @@ public sealed class MemoriesClientHandlersContractTests
         exception.Error.Code.ShouldBe("REDIS_UNAVAILABLE");
     }
 
-    private static HttpClient CreateClient(string jsonBody)
+    private static HttpClient CreateClient(
+        string jsonBody,
+        Action<HttpRequestMessage>? inspectRequest = null)
     {
         HttpResponseMessage response = new(HttpStatusCode.OK)
         {
             Content = new StringContent(jsonBody, Encoding.UTF8, "application/json"),
         };
-        return new HttpClient(new StaticResponseHandler(response)) { BaseAddress = new Uri("http://127.0.0.1:65011/") };
+        return new HttpClient(new StaticResponseHandler(response, inspectRequest)) { BaseAddress = new Uri("http://127.0.0.1:65011/") };
     }
 
-    private sealed class StaticResponseHandler(HttpResponseMessage response) : HttpMessageHandler
+    private sealed class StaticResponseHandler(
+        HttpResponseMessage response,
+        Action<HttpRequestMessage>? inspectRequest = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(CloneResponse(response));
+        {
+            inspectRequest?.Invoke(request);
+            return Task.FromResult(CloneResponse(response));
+        }
 
         private static HttpResponseMessage CloneResponse(HttpResponseMessage source)
         {
